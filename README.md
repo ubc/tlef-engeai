@@ -9,7 +9,7 @@ Before running the application, you need to create a `.env` file in the root of 
 Create a file named `.env` and add the following content:
 
 ```
-TLEF_ENGE-AI_PORT=8020
+TLEF_ENGE_AI_PORT=8020
 ```
 
 ## Development

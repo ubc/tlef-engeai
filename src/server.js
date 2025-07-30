@@ -4,7 +4,7 @@ const path = require('path');
 const exampleRoutes = require('./routes/example/hello');
 
 const app = express();
-const port = process.env.TLEF_ENGE - AI_PORT || 8020;
+const port = process.env.TLEF_ENGE_AI_PORT || 8020;
 
 // Serve static files from the 'public' directory
 app.use(express.static(path.join(__dirname, '../public')));
