@@ -16,7 +16,8 @@
   "type": "commonjs",
   "dependencies": {
     "dotenv": "^17.0.1",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "task-master-ai": "^0.23.0"
   },
   "devDependencies": {
     "browser-sync": "^3.0.4",

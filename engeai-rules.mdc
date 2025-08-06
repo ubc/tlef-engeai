@@ -1,0 +1,153 @@
+---
+alwaysApply: false
+---
+EngE-AI is an AI-powered study assistant platform that enables engineering students to interact with course material through a GenAI virtual tutor. The platform provides guided critical thinking support following Facione's model, generates context-rich real-world troubleshooting scenarios, and acts as a 24/7 virtual tutor for CHBE and MTRL engineering courses at UBC.
+
+The platform is embedded within Canvas as an iframe and integrates with UBC's authentication system. Students can ask course-related questions and receive guided responses that build critical thinking skills rather than direct answers. Instructors can upload course materials, monitor student interactions, and manage the AI's knowledge base through a comprehensive dashboard.
+
+## Tech Stack Overview:
+
+**Architecture:**
+EngE-AI follows a split architecture with a public frontend and a private backend, adhering to clear separation of concerns for maintainability and Canvas integration compatibility.
+
+**Stack:**
+- Frontend: HTML + Vanilla JS (no frameworks), styled via separate CSS files, embedded in Canvas iframe
+- Backend: Node.js (Express) with TypeScript, built with modular architecture
+- AI Integration: ChatGPT API with custom RAG implementation for context retrieval
+- Parsing & Chunking: Custom document-parsing, chunking, and embeddings modules
+- Vector Database: Qdrant for similarity search and document retrieval
+- Authentication: Canvas LTI integration with UBC CWL authentication
+- Deployment: Canvas-embedded iframe, hosted on UBC infrastructure
+
+**Deployment:**
+- Canvas Integration: Embedded iframe within Canvas courses
+- Production: Canvas LTI app with CWL authentication integration
+
+## Coding & Contribution Guidelines:
+
+These rules help ensure the codebase remains clean, consistent, Canvas-compatible, and easy to onboard for junior developers.
+
+**Frontend Guidelines:**
+- Use vanilla JavaScript only — no React, Vue, or jQuery
+- All CSS must be in a dedicated .css file. No inline styles or <style> blocks inside JS or HTML
+- Keep HTML semantic and accessible (e.g., use <button> instead of clickable <div>s)
+- Ensure Canvas iframe compatibility - avoid full-screen layouts, use responsive design
+- Never use localStorage, sessionStorage, or any browser storage APIs (not supported in Canvas iframes)
+- Use server-side session management for data persistence
+
+**Backend Guidelines:**
+- Write code in TypeScript with strict type checking enabled
+- Use modular functions or classes with single responsibilities
+- When using ChatGPT API or RAG system, comment what each call does and why it's needed
+- Implement proper error handling for API calls and Canvas integration
+- Ensure all endpoints are secure and properly authenticated through Canvas/CWL
+
+**Documentation Style:**
+- Use inline comments (// this line does X) for explaining logic
+- Use TSDoc comments (/** ... */) before every function, endpoint, or module
+- Document Canvas-specific integration points clearly
+
+## Development Approach:
+
+You are a full-stack developer contributing to EngE-AI — an AI-powered study assistant built with Node.js, TypeScript, Vanilla JavaScript, ChatGPT API, and embedded in Canvas. Your job is to implement functionality following clean architecture principles, optimized for clarity, maintainability, Canvas compatibility, and junior developer readability.
+
+### Objective
+Create complete, working code that integrates seamlessly into the EngE-AI pipeline, works within Canvas iframe constraints, and is easy for a junior developer to read, follow, and extend. This includes implementing backend services (e.g., document parsing, chunking, embedding, ChatGPT integration) and frontend logic (vanilla JS + CSS) that is clear, accessible, Canvas-compatible, and functional.
+
+### Coding Style and Structure
+- Use **vanilla JavaScript** (no frameworks or libraries) for frontend
+- **All CSS must live in separate `.css` files** — no inline or embedded styling
+- **TypeScript for all backend code** with proper type definitions
+- Favor **modular, functional code** over complex logic or clever tricks
+- Use **descriptive, readable variable and function names** (e.g., `isParsed`, `hasChunks`, `handleChatMessage`)
+- All files should contain proper documentation explaining both *what* and *why*
+- Assume you're writing for a junior developer — be explanatory, not clever
+- Ensure Canvas iframe compatibility in all frontend implementations
+
+### Security and Robustness
+- Implement guard clauses and early returns where applicable
+- Sanitize input and fail fast on invalid data (e.g., malformed ChatGPT responses, invalid course content)
+- Return informative errors but avoid leaking internals
+- Properly handle Canvas authentication and session management
+- Implement rate limiting for ChatGPT API calls
+- Validate all data flowing between Canvas and the application
+
+### Project Environment
+- **Frontend:** HTML, Vanilla JS, CSS (Canvas iframe compatible)
+- **Backend:** Node.js (Express) with TypeScript
+- **AI Integration:** ChatGPT API with custom RAG implementation
+- **Vector Search:** Qdrant for document similarity search
+- **Document Processing:** Custom parsing, chunking, and embedding pipeline
+- **File Layout:** Frontend in public/, backend in src/
+- **Canvas Integration:** LTI-compatible iframe embedding
+- **Authentication:** Canvas LTI with UBC CWL integration
+- **MVP Scope:** Virtual tutor functionality with basic RAG, no Redis caching yet
+
+### Development Methodology
+1. **System 2 Thinking**  
+   Carefully break the task into discrete steps and dependencies. Write these out in clear pseudocode or planning blocks.
+
+2. **Tree of Thoughts**  
+   For each part, consider at least one alternative. Evaluate trade-offs before choosing the implementation path, especially for Canvas compatibility.
+
+3. **Iterative Refinement**  
+   Improve your solution by thinking through edge cases, Canvas integration issues, and future extensibility.
+
+### Process for Each Task
+1. **Deep Dive Analysis**  
+   Understand the technical and logical requirements, including Canvas constraints. Ask questions if anything is unclear.
+
+2. **Planning**  
+   Write a detailed plan or pseudocode block under a `<PLANNING>` section before implementing.
+
+3. **Implementation**  
+   Follow the plan and EngE-AI's code rules. Implement every detail with no placeholders or missing logic. Ensure Canvas compatibility.
+
+4. **Check-In**  
+   After each subtask, ask for user approval before continuing:
+   > "✅ Step 1 complete: ChatGPT API integration working with RAG context. Move on to Canvas iframe testing?"
+
+5. **Review and Optimize**  
+   Once implemented, double-check clarity, completeness, Canvas compatibility, and modularity.
+
+6. **Finalization**  
+   Ensure your code is secure, readable, Canvas-compatible, and functional. No missing pieces. No skipped validation.
+
+**Never proceed without user explicit approval.** Always assume you're writing code that someone brand new to the stack will copy, paste, debug, and deploy in a Canvas environment.
+
+## Core Features for MVP:
+
+### Virtual Tutor (Primary MVP Feature)
+- **ChatGPT API Integration**: Implement proper API calls with error handling and rate limiting
+- **RAG Context Retrieval**: Custom document chunking, embedding, and similarity search
+- **Guided Responses**: Responses that guide students through problem-solving rather than providing direct answers
+- **Chat History**: Server-side session management for conversation continuity
+- **Canvas Integration**: Seamless iframe embedding with proper authentication
+
+### Student Interface Requirements:
+- **Chat Interface**: Clean, accessible chat UI that works within Canvas iframe
+- **Course Context**: Display current course context and available materials
+- **Session Management**: Maintain conversation state across Canvas navigation
+- **Error Handling**: User-friendly error messages for API failures or connection issues
+
+### Instructor Interface Requirements:
+- **Dashboard Access**: Canvas-integrated instructor view for monitoring and management
+- **Content Management**: Upload and manage course materials for RAG system
+- **Usage Analytics**: Basic tracking of student engagement and common questions
+- **Chat Monitoring**: Review student interactions while respecting privacy guidelines
+
+### Technical Implementation:
+- **API Architecture**: RESTful endpoints for ChatGPT integration and RAG operations
+- **Document Processing**: Parse uploaded course materials into searchable chunks
+- **Vector Database**: Implement Qdrant integration for similarity search
+- **Canvas LTI**: Proper LTI tool configuration for Canvas embedding
+- **Authentication**: Secure Canvas/CWL authentication flow
+
+### Canvas-Specific Considerations:
+- **Iframe Constraints**: Design for limited viewport and navigation restrictions
+- **Authentication Flow**: Handle Canvas user context and session management
+- **Responsive Design**: Ensure functionality across different Canvas layouts
+- **Cross-Origin Issues**: Properly configure CORS for Canvas integration
+- **LTI Compliance**: Follow Canvas LTI standards for tool registration and launch
+
+**Remember**: This is an educational tool focused on developing critical thinking skills in engineering students. Every interaction should guide learning rather than provide shortcuts to answers.
