@@ -1,0 +1,20 @@
+<!-- public/components/chat-window.html -->
+<header id="chat-header" class="chat-header">
+    <div id="chat-title" class="chat-title"></div>
+    <div class="chat-actions">
+        <button id="pin-chat-btn" class="icon-btn" title="Star this chat"><i data-feather="star"></i></button>
+        <button id="delete-chat-btn" class="icon-btn" title="Delete this chat"><i data-feather="trash-2"></i></button>
+    </div>
+</header>
+<div id="message-area" class="message-area">
+    <!-- Messages will be injected here -->
+</div>
+<footer id="chat-footer" class="chat-footer">
+    <div class="input-area">
+        <input id="chat-input" type="text" placeholder="Enter your thoughts here!" />
+        <button id="send-btn" class="send-btn"><i data-feather="arrow-up"></i></button>
+    </div>
+    <div id="disclaimer" class="disclaimer">
+        EngE-AI can also make mistakes. <a href="#">Check info here</a>.
+    </div>
+</footer>

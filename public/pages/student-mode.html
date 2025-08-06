@@ -26,12 +26,12 @@
                     </div>
                 </div>
                 <nav class="chat-list">
-                    <button class="add-chat-btn">
+                    <button id="add-chat-btn" class="add-chat-btn">
                         <i data-feather="plus"></i>
                         <span>Add New Chat</span>
                     </button>
-                    <ul>
-                        <li class="chat-item active">No Title</li>
+                    <ul id="chat-list-ul">
+                        <!-- Chat items will be rendered here -->
                     </ul>
                 </nav>
             </div>
@@ -42,26 +42,10 @@
                 </button>
             </div>
         </aside>
-        <main class="chat-window">
-            <header class="chat-header">
-                <div class="chat-title">No Title</div>
-                <div class="chat-actions">
-                    <button class="icon-btn" title="Star this chat"><i data-feather="star"></i></button>
-                    <button class="icon-btn" title="Delete this chat"><i data-feather="trash-2"></i></button>
-                </div>
-            </header>
-            <div class="message-area">
-                <!-- Messages will be injected here by JavaScript later -->
-            </div>
-            <footer class="chat-footer">
-                <div class="input-area">
-                    <input type="text" placeholder="Enter your thoughts here!" />
-                    <button class="send-btn"><i data-feather="arrow-up"></i></button>
-                </div>
-                <div class="disclaimer">
-                    EngE-AI can also make mistakes. <a href="#">Check info here</a>.
-                </div>
-            </footer>
+        
+        <!-- The main content area where components will be loaded -->
+        <main id="main-content-area" class="chat-window">
+            <!-- This will be populated by student-mode.ts -->
         </main>
     </div>
 
