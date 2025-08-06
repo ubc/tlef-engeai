@@ -12,6 +12,10 @@ yarn-debug.log*
 yarn-error.log*
 dev-debug.log
 
+# Compiled TypeScript
+dist/
+public/dist/
+
 # Dependency directories
 node_modules/
 

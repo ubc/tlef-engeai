@@ -22,7 +22,7 @@
 .login-box h1 {
     font-size: 2.5rem;
     font-weight: 700;
-    color: var(--primary-color);
+    color: var(--color-chbe-green);
     margin-bottom: 0.5rem;
 }
 
@@ -63,19 +63,19 @@
 }
 
 .role-student:hover {
-    border-color: var(--student-color);
+    border-color: var(--color-chbe-green); /* Student is Green */
 }
 
 .role-student h3 {
-    color: var(--student-color);
+    color: var(--color-chbe-green); /* Student is Green */
 }
 
 .role-instructor:hover {
-    border-color: var(--instructor-color);
+    border-color: var(--color-ubc-blue); /* Instructor is Blue */
 }
 
 .role-instructor h3 {
-    color: var(--instructor-color);
+    color: var(--color-ubc-blue); /* Instructor is Blue */
 }
 
 

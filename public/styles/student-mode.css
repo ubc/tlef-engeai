@@ -1,0 +1,206 @@
+/* styles/student-mode.css */
+
+:root {
+    --sidebar-bg: #f7f7f7;
+    --chat-bg: #ffffff;
+    --border-color: #e0e0e0;
+    --hover-bg: #efefef;
+    --text-primary: #333333;
+    --text-secondary: #6c757d;
+    --gingham-color: rgba(92, 138, 58, 0.1); /* Based on --color-chbe-green */
+}
+
+html, body {
+    height: 100%;
+    overflow: hidden;
+}
+
+body {
+    background-color: var(--chat-bg);
+}
+
+.chat-dashboard {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    opacity: 0;
+    animation: fadeIn 0.5s forwards;
+    transition: filter 0.3s ease-in-out;
+}
+
+@keyframes fadeIn { to { opacity: 1; } }
+
+/* --- Sidebar --- */
+.sidebar {
+    width: 280px;
+    background-color: var(--sidebar-bg);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 0.75rem;
+    animation: slideInLeft 0.6s forwards;
+    opacity: 0;
+}
+
+@keyframes slideInLeft {
+    from { transform: translateX(-50px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.sidebar-header .logo-box {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-radius: 8px;
+    background-color: var(--color-navy-blue);
+    color: white;
+}
+
+.logo-box .logo-text { display: flex; flex-direction: column; }
+.logo-text span { font-weight: 700; font-size: 1.1rem; }
+.logo-text p { font-size: 0.75rem; margin: 0; opacity: 0.8; }
+
+.add-chat-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.8rem;
+    margin: 1rem 0 0.5rem;
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.add-chat-btn:hover {
+    background-color: var(--color-chbe-green); /* Green Theme */
+    color: white;
+    border-color: var(--color-chbe-green);
+}
+.add-chat-btn .feather { width: 18px; height: 18px; }
+
+.chat-list ul { list-style: none; padding: 0; margin: 0; }
+.chat-list .chat-item { padding: 0.5rem 0.8rem; border-radius: 8px; cursor: pointer; margin-bottom: 0.5rem; font-weight: 500; transition: background-color 0.2s; font-size: 0.9rem; }
+.chat-list .chat-item.active {
+    background-color: var(--color-chbe-green); /* Green Theme */
+    color: white;
+}
+.chat-list .chat-item:not(.active):hover { background-color: var(--hover-bg); }
+
+.sidebar-footer { padding-top: 0.75rem; border-top: 1px solid var(--border-color); }
+.report-history-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    background-color: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.report-history-btn:hover { background-color: var(--color-eng-red); color: white; border-color: var(--color-eng-red); }
+.report-history-btn .feather { width: 16px; height: 16px; }
+
+/* --- Chat Window --- */
+.chat-window { flex-grow: 1; display: flex; flex-direction: column; background-color: var(--chat-bg); animation: slideInUp 0.7s 0.2s forwards; opacity: 0; }
+@keyframes slideInUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.chat-header { display: flex; align-items: center; padding: 0.3rem 1rem; border-bottom: 1px solid var(--border-color); }
+.chat-title { font-weight: 600; color: var(--text-primary); margin-right: auto; font-size: 0.9rem; }
+.chat-actions { display: flex; gap: 0.25rem; }
+.icon-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 0.4rem; }
+.icon-btn:hover { color: var(--color-chbe-green); }
+.icon-btn .feather { width: 18px; height: 18px; }
+
+.message-area {
+    flex-grow: 1;
+    padding: 1.5rem;
+    background-image:
+        linear-gradient(var(--gingham-color) 1px, transparent 1px),
+        linear-gradient(to right, var(--gingham-color) 1px, var(--chat-bg) 1px);
+    background-size: 20px 20px;
+}
+
+.chat-footer { padding: 0.75rem 1rem; border-top: 1px solid var(--border-color); }
+.input-area { display: flex; align-items: center; border: 1px solid var(--border-color); border-radius: 12px; padding: 0.2rem 0.4rem; }
+.input-area input { flex-grow: 1; border: none; outline: none; font-size: 0.9rem; padding: 0.4rem; background: transparent; }
+.input-area .send-btn {
+    background-color: var(--color-chbe-green); /* Green Theme */
+    color: white;
+    border: none;
+    border-radius: 8px;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.input-area .send-btn:hover {
+    background-color: #4a6f2e; /* Darker Green */
+}
+.input-area .send-btn .feather { width: 18px; height: 18px; }
+
+.disclaimer { text-align: center; margin-top: 0.5rem; font-size: 0.7rem; color: var(--text-secondary); }
+.disclaimer a {
+    color: var(--color-chbe-green); /* Green Theme */
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/* --- Modal --- */
+.modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+.modal-backdrop.visible {
+    opacity: 1;
+    pointer-events: auto;
+    backdrop-filter: blur(4px);
+}
+
+.modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.95);
+    background-color: white;
+    padding: 2rem;
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    z-index: 1000;
+    max-width: 600px;
+    width: 90%;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.modal.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(-50%, -50%) scale(1);
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1rem; }
+.modal-header h2 { margin: 0; color: var(--color-navy-blue); }
+.close-modal { background: none; border: none; cursor: pointer; padding: 0.5rem; color: var(--text-secondary); }
+.modal-content p { margin: 0 0 1rem; line-height: 1.7; }
+.modal-content strong { color: var(--color-eng-red); }

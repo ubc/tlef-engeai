@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EngE-AI | Student Mode</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="/styles/style.css" />
+    <link rel="stylesheet" href="/styles/student-mode.css" />
+    <script src="https://unpkg.com/feather-icons"></script>
+</head>
+<body>
+    <div class="chat-dashboard">
+        <aside class="sidebar">
+            <div>
+                <div class="sidebar-header">
+                    <div class="logo-box">
+                        <i data-feather="box"></i>
+                        <div class="logo-text">
+                            <span>EngE-AI</span>
+                            <p>Engineering companion</p>
+                        </div>
+                    </div>
+                </div>
+                <nav class="chat-list">
+                    <button class="add-chat-btn">
+                        <i data-feather="plus"></i>
+                        <span>Add New Chat</span>
+                    </button>
+                    <ul>
+                        <li class="chat-item active">No Title</li>
+                    </ul>
+                </nav>
+            </div>
+            <div class="sidebar-footer">
+                <button class="report-history-btn">
+                    <i data-feather="alert-triangle"></i>
+                    <span>Report History</span>
+                </button>
+            </div>
+        </aside>
+        <main class="chat-window">
+            <header class="chat-header">
+                <div class="chat-title">No Title</div>
+                <div class="chat-actions">
+                    <button class="icon-btn" title="Star this chat"><i data-feather="star"></i></button>
+                    <button class="icon-btn" title="Delete this chat"><i data-feather="trash-2"></i></button>
+                </div>
+            </header>
+            <div class="message-area">
+                <!-- Messages will be injected here by JavaScript later -->
+            </div>
+            <footer class="chat-footer">
+                <div class="input-area">
+                    <input type="text" placeholder="Enter your thoughts here!" />
+                    <button class="send-btn"><i data-feather="arrow-up"></i></button>
+                </div>
+                <div class="disclaimer">
+                    EngE-AI can also make mistakes. <a href="#">Check info here</a>.
+                </div>
+            </footer>
+        </main>
+    </div>
+
+    <script src="/dist/student-mode.js"></script>
+    <script>
+        feather.replace(); // Initialize Feather Icons
+    </script>
+</body>
+</html>
