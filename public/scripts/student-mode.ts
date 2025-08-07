@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatListEl = document.getElementById('chat-list-ul');
 
     // --- COMPONENT LOADING ---
-    const loadComponent = async (componentName: 'welcome-screen' | 'chat-window') => {
+    const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'report-history') => {
         if (!mainContentArea) return;
         
         try {
@@ -41,8 +41,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (componentName === 'chat-window') {
                 attachChatWindowListeners();
                 renderActiveChat();
-            } else {
+            } else if (componentName === 'welcome-screen') {
                 attachWelcomeScreenListeners();
+            } else if (componentName === 'report-history') {
+                attachReportHistoryListeners();
             }
         } catch (error) {
             console.error(`Error loading component ${componentName}:`, error);
@@ -105,6 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const pinBtn = document.getElementById('pin-chat-btn');
         const deleteBtn = document.getElementById('delete-chat-btn');
         const disclaimerLink = document.querySelector('#disclaimer a') as HTMLAnchorElement | null;
+        const reportHistoryBtns = document.querySelectorAll('.report-history-btn');
         
         // auto-grow textarea up to 4 lines, wrap long strings
         const autoGrow = () => {
@@ -132,6 +135,24 @@ document.addEventListener('DOMContentLoaded', () => {
         disclaimerLink?.addEventListener('click', (e) => {
             e.preventDefault();
             openDisclaimerModal();
+        });
+
+        // open report history
+        reportHistoryBtns.forEach(btn => btn.addEventListener('click', () => loadComponent('report-history')));
+    };
+
+    const attachReportHistoryListeners = () => {
+        const backBtn = document.getElementById('back-to-chat-btn');
+        const reportList = document.querySelector('.report-list');
+
+        backBtn?.addEventListener('click', () => loadComponent('chat-window'));
+
+        // Expand/collapse
+        reportList?.addEventListener('click', (e) => {
+            const header = (e.target as HTMLElement).closest('.report-item-header') as HTMLElement | null;
+            if (!header) return;
+            const item = header.closest('.report-item');
+            item?.classList.toggle('open');
         });
     };
 
