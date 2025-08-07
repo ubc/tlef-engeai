@@ -61,9 +61,21 @@ body {
     color: white;
 }
 
-.logo-box .logo-text { display: flex; flex-direction: column; }
-.logo-text span { font-weight: 700; font-size: 1.1rem; }
-.logo-text p { font-size: 0.75rem; margin: 0; opacity: 0.8; }
+.logo-box .logo-text { 
+    display: flex; 
+    flex-direction: column; 
+}
+
+.logo-text span {
+    font-weight: 700; 
+    font-size: 1.1rem; 
+}
+
+.logo-text p { 
+    font-size: 0.75rem; 
+    margin: 0; 
+    opacity: 0.8; 
+}
 
 .add-chat-btn {
     width: 100%;
@@ -86,17 +98,41 @@ body {
     color: white;
     border-color: var(--color-chbe-green);
 }
-.add-chat-btn .feather { width: 18px; height: 18px; }
+.add-chat-btn .feather { 
+    width: 18px; 
+    height: 18px; 
+}
 
-.chat-list ul { list-style: none; padding: 0; margin: 0; }
-.chat-list .chat-item { padding: 0.5rem 0.8rem; border-radius: 8px; cursor: pointer; margin-bottom: 0.5rem; font-weight: 500; transition: background-color 0.2s; font-size: 0.9rem; }
+.chat-list ul { 
+    list-style: none; 
+    padding: 0; 
+    margin: 0; 
+}
+
+.chat-list .chat-item { 
+    padding: 0.5rem 0.8rem; 
+    border-radius: 8px; 
+    cursor: pointer; 
+    margin-bottom: 0.5rem; 
+    font-weight: 500; 
+    transition: background-color 0.2s; 
+    font-size: 0.9rem; 
+}
+
 .chat-list .chat-item.active {
     background-color: var(--color-chbe-green);
     color: white;
 }
-.chat-list .chat-item:not(.active):hover { background-color: var(--hover-bg); }
 
-.sidebar-footer { padding-top: 0.75rem; border-top: 1px solid var(--border-color); }
+.chat-list .chat-item:not(.active):hover { 
+    background-color: var(--hover-bg); 
+}
+
+.sidebar-footer { 
+    padding-top: 0.75rem; 
+    border-top: 1px solid var(--border-color); 
+}
+
 .report-history-btn {
     width: 100%;
     display: flex;
@@ -111,20 +147,66 @@ body {
     cursor: pointer;
     transition: all 0.2s;
 }
-.report-history-btn:hover { background-color: var(--color-eng-red); color: white; border-color: var(--color-eng-red); }
-.report-history-btn .feather { width: 16px; height: 16px; }
+.report-history-btn:hover { 
+    background-color: var(--color-eng-red); 
+    color: white; 
+    border-color: var(--color-eng-red); 
+}
+
+.report-history-btn .feather { 
+    width: 16px; 
+    height: 16px; 
+}
 
 /* --- Chat Window --- */
-.chat-window { flex-grow: 1; display: flex; flex-direction: column; background-color: var(--chat-bg); animation: slideInUp 0.7s 0.2s forwards; opacity: 0; }
+.chat-window { 
+    flex-grow: 1; 
+    display: flex; 
+    flex-direction: column; 
+    background-color: var(--chat-bg); 
+    animation: slideInUp 0.7s 0.2s forwards; opacity: 0; }
+
 @keyframes slideInUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-.chat-header { display: flex; align-items: center; padding: 0.3rem 1rem; border-bottom: 1px solid var(--border-color); }
-.chat-title { font-weight: 600; color: var(--text-primary); margin-right: auto; font-size: 0.9rem; }
-.chat-actions { display: flex; gap: 0.25rem; }
-.icon-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 0.4rem; }
-.icon-btn:hover { color: var(--color-chbe-green); }
-.icon-btn.pinned { color: var(--pinned-color); }
-.icon-btn .feather { width: 18px; height: 18px; }
+.chat-header { 
+    display: flex; 
+    align-items: center; 
+    padding: 0.3rem 1rem; 
+    border-bottom: 1px solid var(--border-color); 
+}
+
+.chat-title { 
+    font-weight: 600; 
+    color: var(--text-primary); 
+    margin-right: auto; 
+    font-size: 0.9rem; 
+}
+
+.chat-actions { 
+    display: flex; 
+    gap: 0.25rem; 
+}
+
+.icon-btn { 
+    background: none; 
+    border: none; 
+    cursor: pointer; 
+    color: var(--text-secondary); 
+    padding: 0.4rem; 
+}
+
+.icon-btn:hover { 
+    color: var(--color-chbe-green); 
+}
+
+.icon-btn .pinned { 
+    color: var(--pinned-color); 
+}
+
+.icon-btn .feather { 
+    width: 18px; 
+    height: 18px; 
+}
 
 .message-area {
     flex-grow: 1;
@@ -207,15 +289,63 @@ body {
     border-bottom-left-radius: 4px;
 }
 
-.chat-footer { padding: 0.75rem 1rem; border-top: 1px solid var(--border-color); }
-.input-area { display: flex; align-items: center; border: 1px solid var(--border-color); border-radius: 12px; padding: 0.2rem 0.4rem; }
-.input-area input { flex-grow: 1; border: none; outline: none; font-size: 0.9rem; padding: 0.4rem; background: transparent; }
-.input-area .send-btn { background-color: var(--color-chbe-green); color: white; border: none; border-radius: 8px; width: 32px; height: 32px; cursor: pointer; transition: background-color 0.2s; display: flex; align-items: center; justify-content: center; }
-.input-area .send-btn:hover { background-color: #4a6f2e; }
-.input-area .send-btn .feather { width: 18px; height: 18px; }
+.chat-footer { 
+    padding: 0.75rem 1rem; 
+    border-top: 1px solid var(--border-color); 
+}
 
-.disclaimer { text-align: center; margin-top: 0.5rem; font-size: 0.7rem; color: var(--text-secondary); }
-.disclaimer a { color: var(--color-chbe-green); text-decoration: underline; cursor: pointer; }
+.input-area { 
+    display: flex; 
+    align-items: center; 
+    border: 1px solid var(--border-color); 
+    border-radius: 12px; padding: 
+    0.2rem 0.4rem; 
+}
+
+.input-area input { 
+    flex-grow: 1; 
+    border: none; 
+    outline: none; 
+    font-size: 0.9rem; 
+    padding: 0.4rem;
+    background: transparent; 
+}
+
+.input-area .send-btn { 
+    background-color: var(--color-chbe-green); 
+    color: white; 
+    border: none; 
+    border-radius: 8px; 
+    width: 32px; 
+    height: 32px; 
+    cursor: pointer; 
+    transition: background-color 0.2s; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+}
+
+.input-area .send-btn:hover { 
+    background-color: #4a6f2e; 
+}
+
+.input-area .send-btn .feather { 
+    width: 18px; 
+    height: 18px; 
+}
+
+.disclaimer { 
+    text-align: center; 
+    margin-top: 0.5rem; 
+    font-size: 0.7rem; 
+    color: var(--text-secondary); 
+}
+
+.disclaimer a { 
+    color: var(--color-chbe-green); 
+    text-decoration: underline; 
+    cursor: pointer; 
+}
 
 /* --- Modal --- */
 /* ... (existing modal styles) */

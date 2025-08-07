@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch(`/components/${componentName}.html`);
             if (!response.ok) throw new Error('Network response was not ok');
+            console.log('Response:', response);
             mainContentArea.innerHTML = await response.text();
             feather.replace();
             
@@ -114,7 +115,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- EVENT HANDLERS ---
     const createNewChat = () => {
-        const newChat: Chat = { id: Date.now(), title: 'New Chat', messages: [], isPinned: false };
+        const newChat: Chat = { id: Date.now(), 
+                                title: 'New Chat', 
+                                messages: [], 
+                                isPinned: false };
         chats.push(newChat);
         activeChatId = newChat.id;
         updateUI();

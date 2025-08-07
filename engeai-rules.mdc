@@ -27,6 +27,12 @@ EngE-AI follows a split architecture with a public frontend and a private backen
 
 These rules help ensure the codebase remains clean, consistent, Canvas-compatible, and easy to onboard for junior developers.
 
+**File-based Rules:**
+- **No Direct Editing of Compiled Files:**
+  - Never edit files in the `public/dist/` directory directly. These are compiled assets.
+  - All frontend logic must be written in the corresponding TypeScript files located in `public/scripts/`.
+  - The build process is the only process that should modify files in `public/dist/`.
+
 **Frontend Guidelines:**
 - Use vanilla JavaScript only — no React, Vue, or jQuery
 - All CSS must be in a dedicated .css file. No inline styles or <style> blocks inside JS or HTML
