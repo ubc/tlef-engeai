@@ -456,4 +456,92 @@ body {
 }
 
 /* --- Modal --- */
-/* ... (existing modal styles) */
+/* Overlay dims and subtly blurs the background (ChatGPT-like) */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;                 /* toggled via .show */
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 1000;
+}
+
+.modal-overlay.show { display: flex; }
+
+/* Modal container */
+.modal {
+    width: min(640px, 95vw);
+    max-height: 80vh;
+    overflow: auto;
+    background-color: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+    animation: scaleIn 0.15s ease-out;
+}
+
+@keyframes scaleIn {
+    from { transform: scale(0.98); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+/* Modal header with close button */
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    background: var(--chat-bg);
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--color-chbe-green); /* Accent inspired by welcome */
+}
+
+.close-modal {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 0.35rem;
+    border-radius: 8px;
+}
+
+.close-modal:hover {
+    background-color: var(--hover-bg);
+    color: var(--color-chbe-green); /* Accent inspired by welcome button */
+}
+
+/* Modal body */
+.modal-content {
+    padding: 1rem 1.25rem 1.25rem;
+    color: var(--text-primary);
+}
+
+.modal-content p {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.92rem;
+    line-height: 1.65;
+}
+
+/* When modal is open, soften the app content */
+body.modal-open .chat-dashboard {
+    filter: blur(2px) brightness(0.88);
+    pointer-events: none; /* prevent interactions behind overlay */
+}
+
+body.modal-open {
+    overflow: hidden; /* prevent background scroll while modal open */
+}

@@ -104,6 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const inputEl = document.getElementById('chat-input') as HTMLTextAreaElement;
         const pinBtn = document.getElementById('pin-chat-btn');
         const deleteBtn = document.getElementById('delete-chat-btn');
+        const disclaimerLink = document.querySelector('#disclaimer a') as HTMLAnchorElement | null;
         
         // auto-grow textarea up to 4 lines, wrap long strings
         const autoGrow = () => {
@@ -126,6 +127,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         pinBtn?.addEventListener('click', togglePin);
         deleteBtn?.addEventListener('click', deleteActiveChat);
+
+        // open disclaimer modal
+        disclaimerLink?.addEventListener('click', (e) => {
+            e.preventDefault();
+            openDisclaimerModal();
+        });
     };
 
     // --- EVENT HANDLERS ---
@@ -179,6 +186,53 @@ document.addEventListener('DOMContentLoaded', () => {
             activeChatId = null;
         }
         updateUI();
+    };
+
+    // --- DISCLAIMER MODAL ---
+    const openDisclaimerModal = async () => {
+        // Prevent multiple overlays
+        if (document.querySelector('.modal-overlay')) {
+            document.body.classList.add('modal-open');
+            (document.querySelector('.modal-overlay') as HTMLElement)?.classList.add('show');
+            return;
+        }
+
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        document.body.appendChild(overlay);
+
+        try {
+            const response = await fetch('/components/disclaimer.html');
+            if (!response.ok) throw new Error('Failed to load disclaimer');
+            overlay.innerHTML = await response.text();
+        } catch (err) {
+            overlay.innerHTML = '<div class="modal"><div class="modal-header"><h2>Disclaimer</h2></div><div class="modal-content"><p>Unable to load content.</p></div></div>';
+        }
+
+        // Show overlay and lock background
+        overlay.classList.add('show');
+        document.body.classList.add('modal-open');
+        feather.replace();
+
+        const closeBtn = overlay.querySelector('.close-modal') as HTMLButtonElement | null;
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                closeDisclaimerModal();
+            }
+        };
+
+        const closeDisclaimerModal = () => {
+            document.body.classList.remove('modal-open');
+            overlay.classList.remove('show');
+            overlay.remove();
+            window.removeEventListener('keydown', onKeyDown);
+        };
+
+        closeBtn?.addEventListener('click', closeDisclaimerModal);
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeDisclaimerModal();
+        });
+        window.addEventListener('keydown', onKeyDown);
     };
 
     chatListEl?.addEventListener('click', (e) => {
