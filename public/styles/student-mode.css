@@ -2,8 +2,8 @@
 
 :root {
     --sidebar-bg: #f7f7f7;
-    --chat-bg: #ffffff;
-    --border-color: #e0e0e0;
+    --chat-bg: #fcfcfc;
+    --border-color: #b8b8b8;
     --hover-bg: #efefef;
     --text-primary: #333333;
     --text-secondary: #6c757d;
@@ -11,6 +11,7 @@
     --user-message-bg: var(--color-ubc-blue);
     --bot-message-bg: #f1f1f1;
     --pinned-color: #ffc107;
+    --background-2: #ECE5DD;
 }
 
 html, body {
@@ -33,10 +34,14 @@ body {
 
 @keyframes fadeIn { to { opacity: 1; } }
 
+#main-content-area {
+    flex-grow: 1;
+}
+
 /* --- Sidebar --- */
 .sidebar {
     width: 280px;
-    background-color: var(--sidebar-bg);
+    background-color: var(--background-2);
     border-right: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
@@ -57,7 +62,7 @@ body {
     gap: 0.75rem;
     padding: 0.75rem;
     border-radius: 8px;
-    background-color: var(--color-navy-blue);
+    background-color: var(--color-chbe-green);
     color: white;
 }
 
@@ -110,10 +115,9 @@ body {
 }
 
 .chat-list .chat-item { 
-    padding: 0.5rem 0.8rem; 
+    padding: 0.25rem 0.5rem; 
     border-radius: 8px; 
     cursor: pointer; 
-    margin-bottom: 0.5rem; 
     font-weight: 500; 
     transition: background-color 0.2s; 
     font-size: 0.9rem; 
@@ -130,7 +134,8 @@ body {
 
 .sidebar-footer { 
     padding-top: 0.75rem; 
-    border-top: 1px solid var(--border-color); 
+    border-top: 1px solid var(--border-color);
+
 }
 
 .report-history-btn {
@@ -140,7 +145,7 @@ body {
     justify-content: center;
     gap: 0.75rem;
     padding: 0.5rem 0;
-    background-color: #fff;
+    background-color: var(--background-2); 
     border: 1px solid var(--border-color);
     border-radius: 8px;
     font-weight: 600;
@@ -162,16 +167,27 @@ body {
 .chat-window { 
     flex-grow: 1; 
     display: flex; 
+    width: 100%;
+    height: 100%;
     flex-direction: column; 
     background-color: var(--chat-bg); 
     animation: slideInUp 0.7s 0.2s forwards; opacity: 0; }
 
-@keyframes slideInUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes slideInUp { 
+        from { 
+            transform: translateY(30px); 
+            opacity: 0; 
+        } 
+        to { 
+            transform: translateY(0); 
+            opacity: 1; 
+        } 
+}
 
 .chat-header { 
     display: flex; 
     align-items: center; 
-    padding: 0.3rem 1rem; 
+    padding: 0.7rem 1rem; 
     border-bottom: 1px solid var(--border-color); 
 }
 
@@ -210,141 +226,210 @@ body {
 
 .message-area {
     flex-grow: 1;
-    padding: 1.5rem;
+    width: min(820px, calc(100% - 32px));
+    margin: 0 auto;
     display: flex;
     flex-direction: column;
     gap: 1rem;
     overflow-y: auto;
     position: relative; /* Needed for welcome screen positioning */
+    padding-bottom: 140px; /* space for input + disclaimer */
 }
-
-/* --- Welcome Screen --- */
-.welcome-screen {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 90%;
-    max-width: 600px;
-    display: none; /* Hidden by default */
-}
-.welcome-screen.visible {
-    display: block;
-}
-
-.welcome-box {
-    background-color: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(5px);
-    padding: 2rem;
-    border-radius: 16px;
-    border: 1px solid var(--border-color);
-    text-align: center;
-}
-.welcome-box h2 {
-    color: var(--color-eng-red);
-    margin-top: 0;
-}
-.welcome-box p {
-    line-height: 1.6;
-    margin-bottom: 1rem;
-}
-.welcome-box strong {
-    color: var(--text-primary);
-}
-.welcome-add-btn {
-    background-color: var(--color-chbe-green);
-    color: white;
-    border: none;
-    padding: 0.8rem 1.5rem;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background-color 0.2s;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 1rem;
-}
-.welcome-add-btn:hover {
-    background-color: #4a6f2e; /* Darker Green */
-}
-
 
 .message {
-    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    padding: 0.5rem 1rem;
     border-radius: 12px;
     max-width: 70%;
     line-height: 1.5;
 }
 .user-message {
-    background-color: var(--user-message-bg);
+    background-color: #386714;
     color: white;
     align-self: flex-end;
     border-bottom-right-radius: 4px;
 }
 .bot-message {
-    background-color: var(--bot-message-bg);
     color: var(--text-primary);
     align-self: flex-start;
-    border-bottom-left-radius: 4px;
 }
 
-.chat-footer { 
-    padding: 0.75rem 1rem; 
-    border-top: 1px solid var(--border-color); 
+/* --- Chat Footer (floating input) --- */
+.chat-footer {
+    padding: 0;
+    background-color: transparent;
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 0;                 /* no visible bar */
+    z-index: 20;               /* above messages */
 }
 
-.input-area { 
-    display: flex; 
-    align-items: center; 
-    border: 1px solid var(--border-color); 
-    border-radius: 12px; padding: 
-    0.2rem 0.4rem; 
+/* Floating wrapper centered above the bottom */
+.chat-footer-content {
+    position: absolute;
+    left: 50%;
+    bottom: 0px;              /* lift above bottom */
+    transform: translateX(-50%);
+    width: min(820px, calc(100% - 32px));
+    display: flex;
+    flex-direction: column;
+    gap: 0px;
+    pointer-events: auto;     /* interactive */
+    border-radius: 20px 20px 0px 0px;
+    background-color: var(--chat-bg);
+    padding-bottom: 5px;
 }
 
-.input-area input { 
-    flex-grow: 1; 
-    border: none; 
-    outline: none; 
-    font-size: 0.9rem; 
-    padding: 0.4rem;
-    background: transparent; 
+/* Input bubble */
+.input-area {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 0.15rem 0.5rem;
+    background-color: var(--background-2);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
 }
 
-.input-area .send-btn { 
-    background-color: var(--color-chbe-green); 
-    color: white; 
-    border: none; 
-    border-radius: 8px; 
-    width: 32px; 
-    height: 32px; 
-    cursor: pointer; 
-    transition: background-color 0.2s; 
-    display: flex; 
-    align-items: center; 
-    justify-content: center; 
+.input-area input {
+    flex-grow: 1;
+    border: none;
+    outline: none;
+    font-size: 0.75rem;
+    background-color: transparent;
+    padding: 0.5rem 1rem;
 }
 
-.input-area .send-btn:hover { 
-    background-color: #4a6f2e; 
+/* Send button styling */
+.input-area .send-btn {
+    background-color: var(--color-chbe-green);
+    color: white;
+    border: none;
+    border-radius: 9999px;
+    width: 28px;
+    height: 28px;
+    flex: 0 0 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 0.5rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
 }
 
-.input-area .send-btn .feather { 
-    width: 18px; 
-    height: 18px; 
+.input-area .send-btn:hover {
+    background-color: #4a6f2e;
 }
 
-.disclaimer { 
-    text-align: center; 
-    margin-top: 0.5rem; 
-    font-size: 0.7rem; 
-    color: var(--text-secondary); 
+.input-area .send-btn:active {
+    transform: scale(0.98);
 }
 
-.disclaimer a { 
-    color: var(--color-chbe-green); 
-    text-decoration: underline; 
-    cursor: pointer; 
+.input-area .send-btn .feather {
+    width: 18px;
+    height: 18px;
+}
+
+/* Disclaimer below input */
+.disclaimer {
+    text-align: center;
+    align-self: center;
+    font-size: 0.6rem;
+    color: var(--text-secondary);
+    border-radius: 10px;
+    padding: 0.2rem 1rem;
+    width:fit-content;
+}
+
+/* --- Welcome Screen --- */
+.welcome-screen {
+    flex-grow: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 1.5rem;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+}
+
+.welcome-box {
+    background-color: var(--background-2);
+    padding: 2.5rem 3rem;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.07);
+    animation: slideInUp 0.5s 0.1s forwards;
+    opacity: 0;
+    max-width: 850px;
+    align-items: center;
+}
+
+.welcome-icon {
+    color: var(--color-chbe-green);
+    width: 48px;
+    height: 48px;
+    margin-bottom: 1rem;
+    stroke-width: 1.5;
+}
+
+.welcome-box h2 {
+    color: var(--text-primary);
+    font-size: 1.75rem;
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+}
+
+.welcome-box p {
+    line-height: 1.7;
+    margin-bottom: 1.25rem;
+    color: var(--text-secondary);
+    font-size: 0.94rem;
+}
+
+.welcome-box p.intro {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+
+.welcome-box strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.welcome-add-btn {
+    background-color: var(--color-chbe-green);
+    color: white;
+    border: none;
+    padding: 0.8rem 1.75rem;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 1rem;
+    font-size: 1rem;
+    box-shadow: 0 4px 15px rgba(92, 138, 58, 0.2);
+}
+
+.welcome-add-btn:hover {
+    background-color: #4a6f2e; /* Darker Green */
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(92, 138, 58, 0.3);
+}
+
+.welcome-add-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 4px 15px rgba(92, 138, 58, 0.2);
 }
 
 /* --- Modal --- */
