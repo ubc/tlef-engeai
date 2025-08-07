@@ -101,13 +101,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const attachChatWindowListeners = () => {
         const sendBtn = document.getElementById('send-btn');
-        const inputEl = document.getElementById('chat-input') as HTMLInputElement;
+        const inputEl = document.getElementById('chat-input') as HTMLTextAreaElement;
         const pinBtn = document.getElementById('pin-chat-btn');
         const deleteBtn = document.getElementById('delete-chat-btn');
         
+        // auto-grow textarea up to 4 lines, wrap long strings
+        const autoGrow = () => {
+            if (!inputEl) return;
+            inputEl.style.height = 'auto';
+            const lineHeight = parseFloat(getComputedStyle(inputEl).lineHeight || '20');
+            const maxH = lineHeight * 4;
+            inputEl.style.height = Math.min(inputEl.scrollHeight, maxH) + 'px';
+            inputEl.style.overflowY = inputEl.scrollHeight > maxH ? 'auto' : 'hidden';
+        };
+        inputEl?.addEventListener('input', autoGrow);
+        autoGrow();
+
         sendBtn?.addEventListener('click', sendMessage);
-        inputEl?.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') sendMessage();
+        inputEl?.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
         });
         pinBtn?.addEventListener('click', togglePin);
         deleteBtn?.addEventListener('click', deleteActiveChat);
@@ -125,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const sendMessage = () => {
-        const inputEl = document.getElementById('chat-input') as HTMLInputElement;
+        const inputEl = document.getElementById('chat-input') as HTMLTextAreaElement;
         const text = inputEl.value.trim();
         if (text === '') return;
         const activeChat = chats.find(c => c.id === activeChatId);
@@ -133,6 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
         activeChat.messages.push({ sender: 'user', text });
         renderActiveChat();
         inputEl.value = '';
+        inputEl.style.height = 'auto';
 
         fetch('/api/chat/message', {
             method: 'POST',

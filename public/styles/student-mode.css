@@ -171,7 +171,9 @@ body {
     height: 100%;
     flex-direction: column; 
     background-color: var(--chat-bg); 
-    animation: slideInUp 0.7s 0.2s forwards; opacity: 0; }
+    animation: slideInUp 0.7s 0.2s forwards; opacity: 0;
+    overflow-y: auto;          /* scrollbar at far right */
+}
 
     @keyframes slideInUp { 
         from { 
@@ -189,6 +191,10 @@ body {
     align-items: center; 
     padding: 0.7rem 1rem; 
     border-bottom: 1px solid var(--border-color); 
+    position: sticky;         /* keep attached at top */
+    top: 0;                   /* stick to top inside chat-window */
+    z-index: 5;               /* above messages */
+    background: var(--chat-bg); /* avoid transparency while scrolling */
 }
 
 .chat-title { 
@@ -231,9 +237,9 @@ body {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    overflow-y: auto;
-    position: relative; /* Needed for welcome screen positioning */
-    padding-bottom: 140px; /* space for input + disclaimer */
+    overflow-y: auto;          /* scrollbar only for chat area */
+    position: relative;        /* Needed for welcome screen positioning */
+    padding-bottom: 140px;     /* space for input + disclaimer */
 }
 
 .message {
@@ -301,6 +307,23 @@ body {
     font-size: 0.75rem;
     background-color: transparent;
     padding: 0.5rem 1rem;
+}
+
+/* Multiline textarea input: wraps and auto-grows up to 4 lines */
+.input-area textarea#chat-input {
+    flex-grow: 1;
+    border: none;
+    outline: none;
+    font-size: 0.75rem;          /* keep existing size */
+    background-color: transparent;
+    padding: 0.5rem 1rem;
+    resize: none;                 /* we auto-grow with JS */
+    line-height: 1.4;
+    max-height: calc(1.4em * 4);  /* cap at ~4 lines */
+    overflow: hidden;             /* switch to auto in JS when capped */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;      /* wrap long unbroken strings */
+    word-break: break-word;
 }
 
 /* Send button styling */
