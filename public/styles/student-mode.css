@@ -75,10 +75,10 @@ body {
     padding: 10px 0px 0px 10px;
 }
 
-/* Hide chat list actions (trash/star) when sidebar is collapsed */
-.sidebar.collapsed .chat-list .icon-btn {
-    display: none !important;
-}
+/* Hide chat list action buttons when collapsed, EXCEPT show the pinned star */
+.sidebar.collapsed .chat-list .icon-btn { display: none !important; }
+/* Show the button if it contains a pinned star icon */
+.sidebar.collapsed .chat-list .icon-btn:has(.pinned) { display: inline-flex !important; }
 
 @keyframes slideInLeft {
     from { transform: translateX(-50px); opacity: 0; }
@@ -166,14 +166,15 @@ body {
     border-radius: 8px; 
     cursor: pointer; 
     font-weight: 500; 
-    transition: background-color 0.2s; 
+    transition: background-color 0.2s, box-shadow 0.2s; 
     font-size: 0.9rem; 
 }
 
 .chat-list .chat-item.active {
     background-color: #e2d9cf;
     color: rgb(103, 103, 103);
-    box-shadow: 0px 2px 2px 0px rgba(0, 0, 0, 0.1);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18),
+                inset 0 -1px 0 rgba(255, 255, 255, 0.55);
 }
 
 .chat-list .chat-item:not(.active):hover { 
