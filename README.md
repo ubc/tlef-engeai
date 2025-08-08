@@ -30,15 +30,23 @@ TLEF_ENGE_AI_PORT=8020
 
 ## Development
 
-To run the application in development mode, run the following command:
+Option A — Build first, then run dev:
 
 ```bash
-npm run dev
+npm run build   # compile backend TS to dist/ and frontend TS to public/dist/
+npm run dev     # start server + BrowserSync proxy
 ```
 
-This will start the Node.js server with `nodemon` for backend reloading and also launch `BrowserSync`. BrowserSync will automatically open a new tab in your browser. Use the URL it provides for development.
+Option B — Use helper script (does both steps):
 
-Any changes to frontend files in the `public` directory will cause the browser to reload automatically. Changes to backend files in the `src` directory will cause the server to restart.
+```bash
+./dev.sh
+```
+
+Notes:
+- BrowserSync will open a new tab; use its URL for development.
+- Backend runs via ts-node (no auto-reload). If you change backend files under `src/`, restart dev or set up nodemon locally.
+- Frontend under `public/` auto-reloads in the browser. If you edit TypeScript in `public/scripts/`, compile to `public/dist/` with `npm run build:frontend` (or watch via `npx tsc -p public/tsconfig.json -w`).
 
 ## Production
 

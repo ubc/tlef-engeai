@@ -481,8 +481,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    addChatBtn?.addEventListener('click', createNewChat);
-
     // Sidebar collapse toggle button
     const ensureSidebarCollapseButton = () => {
         if (!sidebarHeaderEl) return;
