@@ -57,6 +57,13 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- RENDER & UPDATE FUNCTIONS ---
+    const scrollToBottom = () => {
+        const scrollContainer = document.querySelector('.chat-window') as HTMLElement | null;
+        if (!scrollContainer) return;
+        requestAnimationFrame(() => {
+            scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        });
+    };
     const updateUI = () => {
         renderChatList();
         if (chats.length === 0) {
@@ -235,9 +242,12 @@ document.addEventListener('DOMContentLoaded', () => {
             );
             messageAreaEl.appendChild(messageEl);
         });
-        messageAreaEl.scrollTop = messageAreaEl.scrollHeight;
+        // Always scroll to newest message on the scroll container (chat-window)
+        scrollToBottom();
         renderPinnedBanner(activeChat);
         feather.replace();
+        // In case icon rendering changes layout, scroll again next frame
+        scrollToBottom();
     };
 
     const ensureChatHeaderStructure = () => {
