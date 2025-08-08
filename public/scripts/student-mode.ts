@@ -68,12 +68,135 @@ document.addEventListener('DOMContentLoaded', () => {
         const sortedChats = [...chats].sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0));
 
         sortedChats.forEach(chat => {
-            const li = document.createElement('li');
-            li.className = `chat-item ${chat.id === activeChatId ? 'active' : ''}`;
-            li.textContent = chat.title;
-            li.dataset.chatId = chat.id.toString();
+            const li = createChatListItem(chat);
             chatListEl.appendChild(li);
         });
+
+        // Render Feather icons for newly injected buttons
+        feather.replace();
+    };
+
+    const handlePinClickForChat = (targetChatId: number): void => {
+        const targetChat = chats.find(c => c.id === targetChatId);
+        if (!targetChat) return;
+        targetChat.isPinned = !targetChat.isPinned;
+        renderChatList();
+        if (activeChatId === targetChatId) {
+            renderActiveChat();
+        }
+    };
+
+    const deleteChatById = (targetChatId: number): void => {
+        chats = chats.filter(c => c.id !== targetChatId);
+        // Do not change activeChatId here unless we deleted the active one
+        renderChatList();
+    };
+
+    const handleDeleteClickForChat = (targetChatId: number): void => {
+        if (activeChatId === targetChatId) {
+            deleteActiveChat();
+        } else {
+            deleteChatById(targetChatId);
+        }
+    };
+
+    const createChatListItem = (chat: Chat): HTMLLIElement => {
+        const li = document.createElement('li');
+        li.className = `chat-item ${chat.id === activeChatId ? 'active' : ''}`;
+        li.dataset.chatId = chat.id.toString();
+
+        // Layout: title on the left, right-side holds actions and optional always-visible pin
+        li.style.display = 'flex';
+        li.style.justifyContent = 'space-between';
+        li.style.alignItems = 'center';
+
+        const titleSpan = document.createElement('span');
+        titleSpan.textContent = chat.title;
+        titleSpan.style.flex = '1';
+        titleSpan.style.minWidth = '0';
+
+        // Actions shown on hover (trash first, then star if unpinned)
+        const actions = document.createElement('div');
+        actions.style.display = 'flex';
+        actions.style.gap = '4px';
+        actions.style.alignItems = 'center';
+        actions.style.visibility = 'hidden';
+        actions.style.opacity = '0';
+        actions.style.transition = 'opacity 0.15s ease-in-out';
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'icon-btn';
+        deleteBtn.style.padding = '0';
+        deleteBtn.title = 'Delete chat';
+        const trashIcon = document.createElement('i');
+        trashIcon.setAttribute('data-feather', 'trash-2');
+        deleteBtn.appendChild(trashIcon);
+        deleteBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            handleDeleteClickForChat(chat.id);
+        });
+
+        actions.appendChild(deleteBtn);
+
+        // Right side container combines always-visible pin (if pinned) and hover actions
+        const rightSide = document.createElement('div');
+        rightSide.style.display = 'flex';
+        rightSide.style.alignItems = 'center';
+        rightSide.style.gap = '6px';
+
+        if (chat.isPinned) {
+            // Always visible, lit star; still clickable to unpin
+            const alwaysPinBtn = document.createElement('button');
+            alwaysPinBtn.className = 'icon-btn';
+            alwaysPinBtn.style.padding = '0';
+            alwaysPinBtn.title = 'Unpin chat';
+            const alwaysPinIcon = document.createElement('i');
+            alwaysPinIcon.setAttribute('data-feather', 'star');
+            alwaysPinIcon.classList.add('pinned');
+            alwaysPinBtn.appendChild(alwaysPinIcon);
+            alwaysPinBtn.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                handlePinClickForChat(chat.id);
+            });
+            rightSide.appendChild(actions); // trash on hover
+            rightSide.appendChild(alwaysPinBtn); // star always visible
+        } else {
+            // Unpinned: star appears only on hover within actions (after trash)
+            const pinBtn = document.createElement('button');
+            pinBtn.className = 'icon-btn';
+            pinBtn.style.padding = '0';
+            pinBtn.title = 'Pin chat';
+            const pinIcon = document.createElement('i');
+            pinIcon.setAttribute('data-feather', 'star');
+            pinBtn.appendChild(pinIcon);
+            pinBtn.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                handlePinClickForChat(chat.id);
+            });
+            actions.appendChild(pinBtn);
+            rightSide.appendChild(actions);
+        }
+
+        // Hover behavior: reveal/hide actions
+        li.addEventListener('mouseenter', () => {
+            actions.style.visibility = 'visible';
+            actions.style.opacity = '1';
+        });
+        li.addEventListener('mouseleave', () => {
+            actions.style.opacity = '0';
+            actions.style.visibility = 'hidden';
+        });
+
+        // Selecting a chat when clicking anywhere except buttons
+        li.addEventListener('click', () => {
+            activeChatId = chat.id;
+            renderChatList();
+            renderActiveChat();
+        });
+
+        li.appendChild(titleSpan);
+        li.appendChild(rightSide);
+        return li;
     };
 
     const renderActiveChat = () => {
@@ -258,8 +381,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     chatListEl?.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
-        if (target.matches('.chat-item')) {
-            activeChatId = Number(target.dataset.chatId);
+        const li = target.closest('.chat-item') as HTMLLIElement | null;
+        if (li && !((target as HTMLElement).closest('button'))) {
+            activeChatId = Number(li.dataset.chatId);
             renderChatList();
             renderActiveChat();
         }

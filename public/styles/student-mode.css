@@ -124,8 +124,9 @@ body {
 }
 
 .chat-list .chat-item.active {
-    background-color: var(--color-chbe-green);
-    color: white;
+    background-color: #e2d9cf;
+    color: rgb(103, 103, 103);
+    box-shadow: 0px 2px 2px 0px rgba(0, 0, 0, 0.1);
 }
 
 .chat-list .chat-item:not(.active):hover { 
