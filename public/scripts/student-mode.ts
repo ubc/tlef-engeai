@@ -5,6 +5,7 @@ declare const feather: {
 };
 
 interface ChatMessage {
+    id: number;
     sender: 'user' | 'bot';
     text: string;
 }
@@ -14,6 +15,7 @@ interface Chat {
     title: string;
     messages: ChatMessage[];
     isPinned: boolean;
+    pinnedMessageId?: number | null;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -25,6 +27,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const mainContentArea = document.getElementById('main-content-area');
     const addChatBtn = document.getElementById('add-chat-btn');
     const chatListEl = document.getElementById('chat-list-ul');
+    const sidebarEl = document.querySelector('.sidebar') as HTMLElement | null;
+    const sidebarHeaderEl = document.querySelector('.sidebar-header') as HTMLElement | null;
 
     // --- COMPONENT LOADING ---
     const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'report-history') => {
@@ -207,15 +211,93 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (!activeChat || !chatTitleEl || !messageAreaEl || !pinBtn) return;
 
+        ensureChatHeaderStructure();
+
         chatTitleEl.textContent = activeChat.title;
         pinBtn.classList.toggle('pinned', activeChat.isPinned);
 
         messageAreaEl.innerHTML = '';
         activeChat.messages.forEach(msg => {
-            const messageEl = createMessageElement(msg.sender, msg.text);
+            const isPinnedMessage = activeChat.pinnedMessageId === msg.id;
+            const messageEl = createMessageElement(
+                msg.id,
+                msg.sender,
+                msg.text,
+                isPinnedMessage,
+                () => {
+                    if (activeChat.pinnedMessageId === msg.id) {
+                        activeChat.pinnedMessageId = null;
+                    } else {
+                        activeChat.pinnedMessageId = msg.id;
+                    }
+                    renderActiveChat();
+                }
+            );
             messageAreaEl.appendChild(messageEl);
         });
         messageAreaEl.scrollTop = messageAreaEl.scrollHeight;
+        renderPinnedBanner(activeChat);
+        feather.replace();
+    };
+
+    const ensureChatHeaderStructure = () => {
+        const header = document.getElementById('chat-header');
+        if (!header) return;
+        // Ensure a main row container exists to hold title + actions
+        let mainRow = header.querySelector('.chat-header-main') as HTMLDivElement | null;
+        const title = document.getElementById('chat-title');
+        const actions = header.querySelector('.chat-actions') as HTMLElement | null;
+        if (!mainRow && title && actions) {
+            mainRow = document.createElement('div');
+            mainRow.className = 'chat-header-main';
+            header.insertBefore(mainRow, actions);
+            // Move title and actions into main row
+            mainRow.appendChild(title);
+            mainRow.appendChild(actions);
+        }
+
+        // Ensure pinned line container exists under the main row
+        let pinnedLine = document.getElementById('pinned-inline') as HTMLDivElement | null;
+        if (!pinnedLine) {
+            pinnedLine = document.createElement('div');
+            pinnedLine.id = 'pinned-inline';
+            pinnedLine.className = 'pinned-inline';
+            header.appendChild(pinnedLine);
+        }
+    };
+
+    const renderPinnedBanner = (chat: Chat) => {
+        const header = document.getElementById('chat-header');
+        const pinnedLine = document.getElementById('pinned-inline') as HTMLDivElement | null;
+        if (!header || !pinnedLine) return;
+
+        if (!chat.pinnedMessageId) {
+            pinnedLine.style.display = 'none';
+            return;
+        }
+
+        const pinned = chat.messages.find(m => (m as any).id === chat.pinnedMessageId);
+        if (!pinned) {
+            pinnedLine.style.display = 'none';
+            return;
+        }
+
+        pinnedLine.style.display = 'flex';
+        pinnedLine.innerHTML = '';
+        const icon = document.createElement('i');
+        icon.setAttribute('data-feather', 'star');
+        icon.classList.add('pinned');
+        const text = document.createElement('span');
+        text.className = 'pinned-text';
+        text.textContent = pinned.text;
+        pinnedLine.appendChild(icon);
+        pinnedLine.appendChild(text);
+        pinnedLine.onclick = () => {
+            const msgEl = document.getElementById(`msg-${(pinned as any).id}`);
+            if (msgEl) {
+                msgEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+            }
+        };
     };
 
     // --- EVENT LISTENERS ATTACHMENT ---
@@ -296,7 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (text === '') return;
         const activeChat = chats.find(c => c.id === activeChatId);
         if (!activeChat) return;
-        activeChat.messages.push({ sender: 'user', text });
+        activeChat.messages.push({ id: Date.now(), sender: 'user', text });
         renderActiveChat();
         inputEl.value = '';
         inputEl.style.height = 'auto';
@@ -308,7 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         .then(res => res.json())
         .then(data => {
-            activeChat.messages.push({ sender: 'bot', text: data.reply });
+            activeChat.messages.push({ id: Date.now() + 1, sender: 'bot', text: data.reply });
             renderActiveChat();
         });
     };
@@ -391,10 +473,59 @@ document.addEventListener('DOMContentLoaded', () => {
 
     addChatBtn?.addEventListener('click', createNewChat);
 
-    const createMessageElement = (sender: 'user' | 'bot', text: string): HTMLElement => {
+    // Sidebar collapse toggle button
+    const ensureSidebarCollapseButton = () => {
+        if (!sidebarHeaderEl) return;
+        if (sidebarHeaderEl.querySelector('.collapse-sidebar-btn')) return;
+
+        const btn = document.createElement('button');
+        btn.className = 'icon-btn collapse-sidebar-btn';
+        btn.title = 'Collapse sidebar';
+        const icon = document.createElement('i');
+        icon.setAttribute('data-feather', 'chevrons-left');
+        btn.appendChild(icon);
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!sidebarEl) return;
+            const collapsed = sidebarEl.classList.toggle('collapsed');
+            const i = btn.querySelector('i');
+            if (i) i.setAttribute('data-feather', collapsed ? 'chevrons-right' : 'chevrons-left');
+            feather.replace();
+        });
+
+        // Place the button at the end of the header area
+        sidebarHeaderEl.appendChild(btn);
+        feather.replace();
+    };
+    ensureSidebarCollapseButton();
+
+    const createMessageElement = (
+        messageId: number,
+        sender: 'user' | 'bot',
+        text: string,
+        isPinned: boolean,
+        onTogglePin: () => void
+    ): HTMLElement => {
         const messageWrapper = document.createElement('div');
         messageWrapper.classList.add('message', `${sender}-message`);
+        messageWrapper.id = `msg-${messageId}`;
         messageWrapper.textContent = text;
+
+        const actions = document.createElement('div');
+        actions.className = 'msg-actions';
+        const pinBtn = document.createElement('button');
+        pinBtn.className = 'icon-btn';
+        pinBtn.title = isPinned ? 'Unpin message' : 'Pin message';
+        const pinIcon = document.createElement('i');
+        pinIcon.setAttribute('data-feather', 'star');
+        if (isPinned) pinIcon.classList.add('pinned');
+        pinBtn.appendChild(pinIcon);
+        pinBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onTogglePin();
+        });
+        actions.appendChild(pinBtn);
+        messageWrapper.appendChild(actions);
         return messageWrapper;
     };
 
