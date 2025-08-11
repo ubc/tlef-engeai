@@ -8,6 +8,7 @@ interface ChatMessage {
     id: number;
     sender: 'user' | 'bot';
     text: string;
+    timestamp: number;
 }
 
 interface Chat {
@@ -57,6 +58,19 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- RENDER & UPDATE FUNCTIONS ---
+    const formatFullTimestamp = (timestampMs: number | undefined): string => {
+        const d = new Date(typeof timestampMs === 'number' ? timestampMs : Date.now());
+        const hours = d.getHours();
+        const minutes = d.getMinutes().toString().padStart(2, '0');
+        const monthNames = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+        const month = monthNames[d.getMonth()];
+        const day = d.getDate();
+        const year = d.getFullYear();
+        return `${hours}:${minutes} ${month} ${day}, ${year}`;
+    };
     const scrollToBottom = () => {
         const scrollContainer = document.querySelector('.chat-window') as HTMLElement | null;
         if (!scrollContainer) return;
@@ -230,6 +244,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 msg.id,
                 msg.sender,
                 msg.text,
+                msg.timestamp,
                 isPinnedMessage,
                 () => {
                     if (activeChat.pinnedMessageId === msg.id) {
@@ -312,6 +327,12 @@ document.addEventListener('DOMContentLoaded', () => {
         text.textContent = pinned.text;
         pinnedLine.appendChild(icon);
         pinnedLine.appendChild(text);
+
+        // Timestamp right beside the pinned text
+        const timeEl = document.createElement('span');
+        timeEl.className = 'pinned-time';
+        timeEl.textContent = `• ${formatFullTimestamp((pinned as any).timestamp)}`;
+        pinnedLine.appendChild(timeEl);
         pinnedLine.onclick = () => {
             const msgEl = document.getElementById(`msg-${(pinned as any).id}`);
             if (msgEl) {
@@ -413,7 +434,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (text === '') return;
         const activeChat = chats.find(c => c.id === activeChatId);
         if (!activeChat) return;
-        activeChat.messages.push({ id: Date.now(), sender: 'user', text });
+        activeChat.messages.push({ id: Date.now(), sender: 'user', text, timestamp: Date.now() });
         renderActiveChat();
         inputEl.value = '';
         inputEl.style.height = 'auto';
@@ -425,7 +446,8 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         .then(res => res.json())
         .then(data => {
-            activeChat.messages.push({ id: Date.now() + 1, sender: 'bot', text: data.reply });
+            const serverTimestamp = typeof data.timestamp === 'number' ? data.timestamp : Date.now();
+            activeChat.messages.push({ id: Date.now() + 1, sender: 'bot', text: data.reply, timestamp: serverTimestamp });
             renderActiveChat();
         });
     };
@@ -539,13 +561,24 @@ document.addEventListener('DOMContentLoaded', () => {
         messageId: number,
         sender: 'user' | 'bot',
         text: string,
+        timestamp: number | undefined,
         isPinned: boolean,
         onTogglePin: () => void
     ): HTMLElement => {
         const messageWrapper = document.createElement('div');
         messageWrapper.classList.add('message', `${sender}-message`);
         messageWrapper.id = `msg-${messageId}`;
-        messageWrapper.textContent = text;
+        // Content container
+        const contentEl = document.createElement('div');
+        contentEl.className = 'message-content';
+        contentEl.textContent = text;
+        messageWrapper.appendChild(contentEl);
+
+        // Timestamp footer
+        const timeEl = document.createElement('div');
+        timeEl.className = 'message-timestamp';
+        timeEl.textContent = formatFullTimestamp(timestamp);
+        messageWrapper.appendChild(timeEl);
 
         const actions = document.createElement('div');
         actions.className = 'msg-actions';

@@ -44,6 +44,8 @@ body {
     border-radius: 10px;
     border: 1px solid var(--border-color);
     width: 270px;
+    flex: 0 0 270px;    /* prevent shrinking when content grows */
+    min-width: 270px;   /* keep intended width unless explicitly collapsed */
     background-color: var(--background-2);
     display: flex;
     flex-direction: column;
@@ -57,6 +59,8 @@ body {
 /* Collapsed sidebar to widen main chat area while keeping message content max width constant */
 .sidebar.collapsed {
     width: 56px;
+    flex: 0 0 56px;     /* collapsed width fixed */
+    min-width: 56px;
     padding: 0.5rem;
     transition: width 0.25s ease, padding 0.25s ease;
 }
@@ -264,7 +268,7 @@ body {
     border: 1px solid var(--border-color);
     padding: 0.7rem 1rem; 
     position: sticky;         /* keep attached at top */
-    top: 0;                   /* stick to top inside chat-window */
+    top: 10px;                /* keep 10px gap when stuck */
     z-index: 5;               /* above messages */
     background: var(--chat-bg); /* avoid transparency while scrolling */
     animation: slideInDown 0.5s 0.1s forwards;
@@ -309,6 +313,13 @@ body {
     text-overflow: ellipsis;
 }
 
+/* Small date indicator beside pinned text */
+.pinned-inline .pinned-time {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-left: 6px;
+}
+
 .chat-title { 
     font-weight: 600; 
     color: var(--text-primary); 
@@ -344,7 +355,7 @@ body {
 
 .message-area {
     flex-grow: 1;
-    width: min(750px, calc(100% - 32px));
+    width: min(900px, calc(100% - 32px)); /* allow wider content area */
     margin: 0 auto;
     display: flex;
     flex-direction: column;
@@ -358,11 +369,24 @@ body {
     font-size: 0.85rem;
     padding: 0.5rem 1rem;
     border-radius: 12px;
-    max-width: 70%;
+    max-width: 100%;            /* allow messages to utilize full message-area width */
     line-height: 1.5;
+    overflow-wrap: anywhere;    /* wrap long unbroken strings */
+    word-break: break-word;
 }
 .message { 
     position: relative; 
+}
+
+/* Message content and timestamp layout */
+.message .message-content {
+    white-space: pre-wrap;
+}
+
+.message .message-timestamp {
+    margin-top: 4px;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
 }
 
 .msg-actions {
@@ -404,7 +428,7 @@ body {
 }
 .bot-message {
     color: var(--text-primary);
-    align-self: flex-start;
+    align-self: stretch;        /* let bot messages fill available width */
 }
 
 /* --- Chat Footer (floating input) --- */
