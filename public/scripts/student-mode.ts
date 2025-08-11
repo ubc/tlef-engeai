@@ -1,5 +1,7 @@
 // public/scripts/student-mode.ts
 
+import { execFile } from "child_process";
+
 declare const feather: {
     replace: () => void;
 };

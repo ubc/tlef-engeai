@@ -40,9 +40,11 @@ body {
 
 /* --- Sidebar --- */
 .sidebar {
-    width: 280px;
+    margin: 10px 5px 10px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    width: 270px;
     background-color: var(--background-2);
-    border-right: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -80,10 +82,6 @@ body {
 /* Show the button if it contains a pinned star icon */
 .sidebar.collapsed .chat-list .icon-btn:has(.pinned) { display: inline-flex !important; }
 
-@keyframes slideInLeft {
-    from { transform: translateX(-50px); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-}
 
 .sidebar-header .logo-box {
     display: flex;
@@ -224,27 +222,53 @@ body {
     scrollbar-gutter: stable both-edges; /* keep layout stable when scrollbar appears */
 }
 
-    @keyframes slideInUp { 
-        from { 
-            transform: translateY(30px); 
-            opacity: 0; 
-        } 
-        to { 
-            transform: translateY(0); 
-            opacity: 1; 
-        } 
+@keyframes slideInUp { 
+    from { 
+        transform: translateY(30px); 
+        opacity: 0; 
+    } 
+    to { 
+        transform: translateY(0); 
+        opacity: 1; 
+    } 
+}
+
+@keyframes slideInDown { 
+    from { 
+        transform: translateY(-30px); 
+        opacity: 0; 
+    } 
+    to { 
+        transform: translateY(0); 
+        opacity: 1; 
+    } 
+}
+
+@keyframes slideInLeft {
+    from { 
+        transform: translateX(-30px); 
+        opacity: 0; 
+    } 
+    to { 
+        transform: translateX(0); 
+        opacity: 1; 
+    } 
 }
 
 .chat-header { 
     display: flex; 
     flex-direction: column;
     gap: 4px;
+    margin: 10px 10px 5px 5px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
     padding: 0.7rem 1rem; 
-    border-bottom: 1px solid var(--border-color); 
     position: sticky;         /* keep attached at top */
     top: 0;                   /* stick to top inside chat-window */
     z-index: 5;               /* above messages */
     background: var(--chat-bg); /* avoid transparency while scrolling */
+    animation: slideInDown 0.5s 0.1s forwards;
+    opacity: 0;
 }
 
 .chat-header-main {
@@ -387,7 +411,7 @@ body {
     flex-direction: column;
     gap: 0px;
     pointer-events: auto;     /* interactive */
-    border-radius: 20px 20px 0px 0px;
+    border-radius: 10px 10px 0px 0px;
     background-color: var(--chat-bg);
     padding-bottom: 5px;
 }
@@ -399,7 +423,7 @@ body {
     justify-content: center;
     align-items: center;
     border: 1px solid var(--border-color);
-    border-radius: 20px;
+    border-radius: 10px;
     padding: 0.15rem 0.5rem;
     background-color: var(--background-2);
     box-shadow: 0 2px 6px rgba(0,0,0,0.12);
@@ -661,15 +685,18 @@ body.modal-open {
     flex-direction: column;
     gap: 0.75rem;
     height: 100%;
-    padding: 0.75rem 1rem;
+    margin: 10px 10px 5px 5px;
 }
 
 .report-header {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 0.5rem;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    padding: 8px;
+    animation: slideInDown 0.5s 0.1s forwards;
+    opacity: 0;
 }
 
 .report-header h3 {
@@ -720,6 +747,8 @@ body.modal-open {
     gap: 0.75rem;
     padding: 0.7rem 0.9rem;
     cursor: pointer;
+    animation: slideInUp 0.5s 0.1s forwards;
+    opacity: 0;
 }
 
 .report-item-header .summary { 
