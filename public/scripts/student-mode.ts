@@ -305,7 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
         pinnedLine.style.display = 'flex';
         pinnedLine.innerHTML = '';
         const icon = document.createElement('i');
-        icon.setAttribute('data-feather', 'star');
+        icon.setAttribute('data-feather', 'map-pin');
         icon.classList.add('pinned');
         const text = document.createElement('span');
         text.className = 'pinned-text';
@@ -319,16 +319,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        // Add remove button with trash icon (wrap <i> in a stable button so Feather replace doesn't drop handlers)
+        // Add remove button with text "remove"
         const removeBtn = document.createElement('button');
         removeBtn.className = 'remove-pin-btn icon-btn';
         removeBtn.title = 'Remove pin';
-        removeBtn.setAttribute('aria-label', 'Remove pinned message');
+        removeBtn.classList.add('remove-pin-btn');
+        removeBtn.textContent = 'remove';
+        removeBtn.style.color = 'var(--text-secondary)';
         // Push to the right edge
         removeBtn.style.marginLeft = 'auto';
-        const trashIcon = document.createElement('i');
-        trashIcon.setAttribute('data-feather', 'trash-2');
-        removeBtn.appendChild(trashIcon);
         removeBtn.addEventListener('click', (ev) => {
             ev.stopPropagation();
             deletePinnedMessage(chat);
@@ -554,7 +553,7 @@ document.addEventListener('DOMContentLoaded', () => {
         pinBtn.className = 'icon-btn';
         pinBtn.title = isPinned ? 'Unpin message' : 'Pin message';
         const pinIcon = document.createElement('i');
-        pinIcon.setAttribute('data-feather', 'star');
+        pinIcon.setAttribute('data-feather', 'map-pin');
         if (isPinned) pinIcon.classList.add('pinned');
         pinBtn.appendChild(pinIcon);
         pinBtn.addEventListener('click', (e) => {
