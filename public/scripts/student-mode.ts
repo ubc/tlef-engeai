@@ -1,7 +1,5 @@
 // public/scripts/student-mode.ts
 
-import { execFile } from "child_process";
-
 declare const feather: {
     replace: () => void;
 };
@@ -278,6 +276,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    const deletePinnedMessage = (chat: Chat) => {
+        const pinnedLine = document.getElementById('pinned-inline') as HTMLDivElement | null;
+        if (!pinnedLine) return;
+        pinnedLine.style.display = 'none';
+        chat.pinnedMessageId = null;
+        renderActiveChat();
+        renderChatList();
+        feather.replace();
+    };
+
     const renderPinnedBanner = (chat: Chat) => {
         const header = document.getElementById('chat-header');
         const pinnedLine = document.getElementById('pinned-inline') as HTMLDivElement | null;
@@ -310,6 +318,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 msgEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
             }
         };
+
+        // Add remove button with trash icon (wrap <i> in a stable button so Feather replace doesn't drop handlers)
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'remove-pin-btn icon-btn';
+        removeBtn.title = 'Remove pin';
+        removeBtn.setAttribute('aria-label', 'Remove pinned message');
+        // Push to the right edge
+        removeBtn.style.marginLeft = 'auto';
+        const trashIcon = document.createElement('i');
+        trashIcon.setAttribute('data-feather', 'trash-2');
+        removeBtn.appendChild(trashIcon);
+        removeBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            deletePinnedMessage(chat);
+        });
+        pinnedLine.appendChild(removeBtn);
     };
 
     // --- EVENT LISTENERS ATTACHMENT ---

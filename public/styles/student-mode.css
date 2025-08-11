@@ -796,3 +796,10 @@ body.modal-open {
     font-size: 0.8rem;
 }
 .report-item.open .report-details { display: block; }
+
+.remove-pin-btn {
+    width: auto;
+    height: auto;
+    background-color: transparent;
+    border: none;
+}
