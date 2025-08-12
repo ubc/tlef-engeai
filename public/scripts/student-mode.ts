@@ -445,8 +445,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const dashboard = document.querySelector('.chat-dashboard') as HTMLElement | null;
         if (!panel) return;
         const willOpen = !panel.classList.contains('open');
-        panel.classList.toggle('open', willOpen);
-        panel.setAttribute('aria-hidden', String(!willOpen));
+a        if (willOpen) {
+            panel.classList.remove('closing');
+            panel.classList.add('open');
+            panel.setAttribute('aria-hidden', 'false');
+        } else {
+            // add a brief closing class so content fades, then remove .open
+            panel.classList.add('closing');
+            // allow fade-out to play before collapsing
+            setTimeout(() => {
+                panel.classList.remove('open');
+                panel.setAttribute('aria-hidden', 'true');
+                panel.classList.remove('closing');
+            }, 180);
+        }
         // mark dashboard state so CSS can split widths evenly
         if (dashboard) {
             dashboard.classList.toggle('artefact-open', willOpen);
