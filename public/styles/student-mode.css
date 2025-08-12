@@ -285,7 +285,7 @@ body {
     display: flex; 
     flex-direction: column;
     gap: 4px;
-    margin: 0px 10px 5px 5px;
+    margin: 0px 10px 15px 5px;
     border-radius: 10px;
     border: 1px solid var(--border-color);
     padding: 0.7rem 1rem; 
@@ -489,7 +489,7 @@ body {
     font-size: 0.7rem;
 }
 
-/* Inline timestamp actions: " • Pin • Flag" */
+/* Inline  actions: " • Pin • Flag" */
 .message .message-timestamp .timestamp-actions {
     display: inline;
     margin-left: 6px;
@@ -688,6 +688,13 @@ body {
     width: fit-content;
     opacity: 0;
     animation: slideInUp 0.5s 0.2s forwards;
+}
+
+.disclaimer a {
+    color: var(--color-chbe-green);
+    text-decoration: none;
+    font-weight: 600;
+    text-decoration: underline;
 }
 
 /* --- Welcome Screen --- */

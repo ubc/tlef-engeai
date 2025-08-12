@@ -529,6 +529,20 @@ document.addEventListener('DOMContentLoaded', () => {
                                 messages: [], 
                                 isPinned: false };
         chats.push(newChat);
+
+        // Delay the message to ensure the chat window is rendered
+        setTimeout(() => {
+            newChat.messages.push({ id: Date.now(), sender: 'bot', text: 
+                    'Hello! I am EngE-AI, your AI companion for chemical, environmental, and materials engineering.' + 
+                    ' As this is week 2, in lectures this week we have learned about PID control and Fluid Dynamics. ' + 
+                    'What would you like to discuss? ' + 
+                    ' Remember: I am designed to enhance your learning, not replace it, always verify important information.', 
+                    timestamp: Date.now() });
+            // Re-render the active chat so the new message appears immediately
+            renderActiveChat();
+            renderChatList();
+            scrollToBottom();
+        }, 400);
         activeChatId = newChat.id;
         updateUI();
     };
@@ -702,7 +716,7 @@ document.addEventListener('DOMContentLoaded', () => {
             messageWrapper.appendChild(chip);
         }
 
-        // Timestamp footer with inline actions (Pin • Flag)
+        // Timestamp footer with inline icon actions (Pin, Flag)
         const timeEl = document.createElement('div');
         timeEl.className = 'message-timestamp';
         timeEl.textContent = formatFullTimestamp(timestamp);
@@ -711,21 +725,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const actionsInline = document.createElement('span');
         actionsInline.className = 'timestamp-actions';
 
-        // Separator helper
-        const appendDot = () => {
-            const dot = document.createElement('span');
-            dot.className = 'timestamp-dot';
-            dot.textContent = ' • ';
-            actionsInline.appendChild(dot);
-        };
-
         // Pin / Unpin action
-        appendDot();
         const pinBtn = document.createElement('button');
         pinBtn.type = 'button';
         pinBtn.className = 'timestamp-action-btn';
-        pinBtn.textContent = isPinned ? 'Unpin' : 'Pin';
         pinBtn.title = isPinned ? 'Unpin this message' : 'Pin this message';
+        pinBtn.setAttribute('aria-label', pinBtn.title);
+        const pinIconEl = document.createElement('i');
+        pinIconEl.setAttribute('data-feather', 'map-pin');
+        if (isPinned) {
+            pinIconEl.classList.add('pinned');
+        }
+        const pinLabelEl = document.createElement('span');
+        pinLabelEl.textContent = isPinned ? 'Unpin' : 'Pin';
+        pinLabelEl.className = 'timestamp-action-label';
+        pinLabelEl.style.marginLeft = '4px';
+        pinBtn.appendChild(pinIconEl);
+        pinBtn.appendChild(pinLabelEl);
         pinBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             onTogglePin();
@@ -740,12 +756,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Flag action (only for bot messages)
         if (sender === 'bot') {
-            appendDot();
             const flagBtn = document.createElement('button');
             flagBtn.type = 'button';
             flagBtn.className = 'timestamp-action-btn';
-            flagBtn.textContent = 'Flag';
             flagBtn.title = 'Flag this message';
+            flagBtn.setAttribute('aria-label', 'Flag this message');
+            flagBtn.style.marginLeft = '6px';
+            const flagIconEl = document.createElement('i');
+            flagIconEl.setAttribute('data-feather', 'flag');
+            const flagLabelEl = document.createElement('span');
+            flagLabelEl.textContent = 'Flag';
+            flagLabelEl.className = 'timestamp-action-label';
+            flagLabelEl.style.marginLeft = '4px';
+            flagBtn.appendChild(flagIconEl);
+            flagBtn.appendChild(flagLabelEl);
             flagBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 openFlagDialog(messageId);

@@ -162,4 +162,5 @@
 
 .disclaimer { text-align: center; align-self: center; font-size: 0.6rem; color: var(--text-secondary); border-radius: 10px; padding: 0.2rem 1rem; width: fit-content; opacity: 0; animation: slideInUp 0.5s 0.2s forwards; }
 
-
+.message .message-timestamp .timestamp-action-btn .feather { width: 12px; height: 12px; }
+.message .message-timestamp .timestamp-action-btn .pinned { color: var(--pinned-color); }
