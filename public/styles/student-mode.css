@@ -489,6 +489,35 @@ body {
     font-size: 0.7rem;
 }
 
+/* Inline timestamp actions: " • Pin • Flag" */
+.message .message-timestamp .timestamp-actions {
+    display: inline;
+    margin-left: 6px;
+    color: inherit; /* inherit timestamp color */
+    font-size: inherit; /* align size with timestamp */
+}
+
+.message .message-timestamp .timestamp-dot {
+    color: inherit;
+}
+
+.message .message-timestamp .timestamp-action-btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0 0 0 0;
+    cursor: pointer;
+    color: inherit; /* align with component font color */
+    font: inherit;  /* inherit size/weight */
+    text-decoration: none;
+}
+
+.message .message-timestamp .timestamp-action-btn:hover,
+.message .message-timestamp .timestamp-action-btn:focus {
+    color: var(--color-eng-red); /* match report history hover */
+    outline: none;
+}
+
 .msg-actions {
     position: absolute;
     top: 6px;

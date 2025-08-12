@@ -555,8 +555,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const artefact = (data.artefact && data.artefact.type === 'mermaid' && typeof data.artefact.source === 'string')
                 ? ({ type: 'mermaid' as const, source: data.artefact.source as string, title: (data.artefact.title as string | undefined) })
                 : undefined;
-            activeChat.messages.push({ id: Date.now() + 1, sender: 'bot', text: data.reply, timestamp: serverTimestamp, artefact });
+            const botMsg: ChatMessage = { id: Date.now() + 1, sender: 'bot', text: data.reply, timestamp: serverTimestamp, artefact };
+            activeChat.messages.push(botMsg);
             renderActiveChat();
+            // Auto-open artefact when present
+            if (artefact) {
+                openArtefactFromMessage(botMsg);
+            }
         });
     };
 
@@ -697,10 +702,64 @@ document.addEventListener('DOMContentLoaded', () => {
             messageWrapper.appendChild(chip);
         }
 
-        // Timestamp footer
+        // Timestamp footer with inline actions (Pin • Flag)
         const timeEl = document.createElement('div');
         timeEl.className = 'message-timestamp';
         timeEl.textContent = formatFullTimestamp(timestamp);
+
+        // Inline text actions aligned with timestamp
+        const actionsInline = document.createElement('span');
+        actionsInline.className = 'timestamp-actions';
+
+        // Separator helper
+        const appendDot = () => {
+            const dot = document.createElement('span');
+            dot.className = 'timestamp-dot';
+            dot.textContent = ' • ';
+            actionsInline.appendChild(dot);
+        };
+
+        // Pin / Unpin action
+        appendDot();
+        const pinBtn = document.createElement('button');
+        pinBtn.type = 'button';
+        pinBtn.className = 'timestamp-action-btn';
+        pinBtn.textContent = isPinned ? 'Unpin' : 'Pin';
+        pinBtn.title = isPinned ? 'Unpin this message' : 'Pin this message';
+        pinBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onTogglePin();
+        });
+        pinBtn.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onTogglePin();
+            }
+        });
+        actionsInline.appendChild(pinBtn);
+
+        // Flag action (only for bot messages)
+        if (sender === 'bot') {
+            appendDot();
+            const flagBtn = document.createElement('button');
+            flagBtn.type = 'button';
+            flagBtn.className = 'timestamp-action-btn';
+            flagBtn.textContent = 'Flag';
+            flagBtn.title = 'Flag this message';
+            flagBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openFlagDialog(messageId);
+            });
+            flagBtn.addEventListener('keydown', (e: KeyboardEvent) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openFlagDialog(messageId);
+                }
+            });
+            actionsInline.appendChild(flagBtn);
+        }
+
+        timeEl.appendChild(actionsInline);
         messageWrapper.appendChild(timeEl);
 
         // Context menu (right-click) handler
