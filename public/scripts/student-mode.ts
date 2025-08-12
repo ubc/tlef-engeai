@@ -736,7 +736,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Pin / Unpin action
         const pinBtn = document.createElement('button');
         pinBtn.type = 'button';
-        pinBtn.className = 'timestamp-action-btn';
+        pinBtn.className = 'timestamp-action-btn pin-action-btn';
         pinBtn.title = isPinned ? 'Unpin this message' : 'Pin this message';
         pinBtn.setAttribute('aria-label', pinBtn.title);
         const pinIconEl = document.createElement('i');
@@ -766,7 +766,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sender === 'bot') {
             const flagBtn = document.createElement('button');
             flagBtn.type = 'button';
-            flagBtn.className = 'timestamp-action-btn';
+            flagBtn.className = 'timestamp-action-btn flag-action-btn';
             flagBtn.title = 'Flag this message';
             flagBtn.setAttribute('aria-label', 'Flag this message');
             flagBtn.style.marginLeft = '6px';

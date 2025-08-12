@@ -492,8 +492,14 @@ body {
     color: #346c09;;
 }
 
-.user-message .message .message-timestamp  {
-    color: #000000;
+.message.user-message .message-timestamp  {
+    color: #ffffff;
+}
+
+/* Only change color for the PIN action on user messages */
+.message.user-message .message-timestamp .pin-action-btn:hover,
+.message.user-message .message-timestamp .pin-action-btn:focus {
+    color: var(--color-eng-red);
 }
 
 /* Inline  actions: " • Pin • Flag" */
