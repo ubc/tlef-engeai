@@ -719,7 +719,15 @@ document.addEventListener('DOMContentLoaded', () => {
         // Timestamp footer with inline icon actions (Pin, Flag)
         const timeEl = document.createElement('div');
         timeEl.className = 'message-timestamp';
-        timeEl.textContent = formatFullTimestamp(timestamp);
+        // Clock icon + timestamp text
+        const clockIcon = document.createElement('i');
+        clockIcon.setAttribute('data-feather', 'clock');
+        clockIcon.classList.add('timestamp-clock');
+        const timeTextEl = document.createElement('span');
+        timeTextEl.className = 'timestamp-text';
+        timeTextEl.textContent = formatFullTimestamp(timestamp);
+        timeEl.appendChild(clockIcon);
+        timeEl.appendChild(timeTextEl);
 
         // Inline text actions aligned with timestamp
         const actionsInline = document.createElement('span');

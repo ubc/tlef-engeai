@@ -433,7 +433,7 @@ body {
     font-size: 0.72rem;
     font-weight: 600;
     cursor: pointer;
-    margin-top: 6px;
+    margin: 6px 0px 6px 0px;
     width: fit-content;
 }
 .open-artefact-chip:hover {
@@ -487,14 +487,23 @@ body {
 .message .message-timestamp {
     margin-top: 4px;
     font-size: 0.7rem;
+    display: flex; /* block-level flex so it always drops below artefact chip */
+    align-items: center;
+    color: #346c09;;
+}
+
+.user-message .message .message-timestamp  {
+    color: #000000;
 }
 
 /* Inline  actions: " • Pin • Flag" */
 .message .message-timestamp .timestamp-actions {
-    display: inline;
-    margin-left: 6px;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 5px; /* ACTION SPACING: modify this to adjust gap between timestamp and first action */
     color: inherit; /* inherit timestamp color */
     font-size: inherit; /* align size with timestamp */
+    gap: 5px;
 }
 
 .message .message-timestamp .timestamp-dot {
@@ -510,12 +519,39 @@ body {
     color: inherit; /* align with component font color */
     font: inherit;  /* inherit size/weight */
     text-decoration: none;
+    display: inline-flex;
+    align-items: center;
 }
 
 .message .message-timestamp .timestamp-action-btn:hover,
 .message .message-timestamp .timestamp-action-btn:focus {
-    color: var(--color-eng-red); /* match report history hover */
+    color: var(--color-eng-red); /* align with CHBE green */
     outline: none;
+}
+
+.message .message-timestamp {
+    gap: 5px;
+}
+
+/* Ensure timestamp, pin and flag icons share the same size */
+.message .message-timestamp .feather {
+    width: 14px;
+    height: 14px;
+}
+
+/* Label next to icons */
+.message .message-timestamp .timestamp-action-label {
+    font-size: 0.7rem;
+}
+
+/* Horizontal spacing between action buttons */
+.message .message-timestamp .timestamp-action-btn + .timestamp-action-btn {
+    margin-left: 10px; /* ACTION SPACING BETWEEN ICON BUTTONS: modify this to adjust spacing between pin and flag */
+}
+
+/* CHBE green accent on pinned icon */
+.message .message-timestamp .pinned {
+    color: var(--color-chbe-green);
 }
 
 .msg-actions {
