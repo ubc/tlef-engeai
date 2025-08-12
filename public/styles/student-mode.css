@@ -34,8 +34,104 @@ body {
 
 @keyframes fadeIn { to { opacity: 1; } }
 
+
+@keyframes slideInUp { 
+    from { 
+        transform: translateY(30px); 
+        opacity: 0; 
+    } 
+    to { 
+        transform: translateY(0); 
+        opacity: 1; 
+    } 
+}
+
+@keyframes slideInDown { 
+    from { 
+        transform: translateY(-30px); 
+        opacity: 0; 
+    } 
+    to { 
+        transform: translateY(0); 
+        opacity: 1; 
+    } 
+}
+
+@keyframes slideInLeft {
+    from { 
+        transform: translateX(-30px); 
+        opacity: 0; 
+    } 
+    to { 
+        transform: translateX(0); 
+        opacity: 1; 
+    } 
+}
+
 #main-content-area {
     flex-grow: 1;
+}
+
+/* --- Artefact Panel (slide-in from right) --- */
+.artefact-panel {
+    position: relative;
+    width: 0;
+    flex: 0 0 0;
+    overflow: hidden; /* hide when closed */
+    border: 1px solid var(--border-color);
+    background: var(--background-2);
+    margin: 10px 10px 10px 5px;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.07);
+    transition: width 0.3s ease, flex-basis 0.3s ease;
+}
+
+.artefact-panel.open {
+    /* When open, share space equally with main content area */
+    width: auto;
+    flex: 1 1 0;
+}
+
+/* When artefact is open, make main content area share equal width */
+.chat-dashboard.artefact-open #main-content-area {
+    flex: 1 1 0;
+}
+
+/* Optional: add symmetric margins so visual widths feel equal */
+.chat-dashboard.artefact-open #main-content-area {
+    margin: 10px 5px 10px 10px;
+}
+
+.artefact-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    background: var(--background-2);
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+    z-index: 2;
+}
+
+.artefact-header h3 {
+    margin: 0;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+}
+
+.artefact-content {
+    height: calc(100% - 48px);
+    overflow: auto; /* independent scrolling */
+    padding: 0.8rem;
+}
+
+/* Mermaid sizing inside panel */
+.artefact-content .mermaid {
+    margin: 0;
 }
 
 /* --- Sidebar --- */
@@ -224,51 +320,30 @@ body {
     background-color: var(--chat-bg); 
     overflow-y: auto;          /* scrollbar at far right */
     scrollbar-gutter: stable both-edges; /* keep layout stable when scrollbar appears */
+    padding: 0 10px 0 5px;    /* align children without relying on sticky margins */
 }
 
-@keyframes slideInUp { 
-    from { 
-        transform: translateY(30px); 
-        opacity: 0; 
-    } 
-    to { 
-        transform: translateY(0); 
-        opacity: 1; 
-    } 
-}
-
-@keyframes slideInDown { 
-    from { 
-        transform: translateY(-30px); 
-        opacity: 0; 
-    } 
-    to { 
-        transform: translateY(0); 
-        opacity: 1; 
-    } 
-}
-
-@keyframes slideInLeft {
-    from { 
-        transform: translateX(-30px); 
-        opacity: 0; 
-    } 
-    to { 
-        transform: translateX(0); 
-        opacity: 1; 
-    } 
+/* Blocker above sticky header to ensure no content overlays header area */
+.chat-header-blocker {
+    height: 10px;
+    margin: 0px 10px 0px 5px;
+    position: sticky;
+    top: 0px;
+    z-index: 9;
+    background-color: var(--chat-bg);
+    pointer-events: none;
 }
 
 .chat-header { 
     display: flex; 
     flex-direction: column;
     gap: 4px;
-    margin: 10px 10px 5px 5px;
+    margin: 0px 10px 5px 5px;
     border-radius: 10px;
     border: 1px solid var(--border-color);
     padding: 0.7rem 1rem; 
     position: sticky;         /* keep attached at top */
-    top: 10px;                /* keep 10px gap when stuck */
+    top: 10px;
     z-index: 5;               /* above messages */
     background: var(--chat-bg); /* avoid transparency while scrolling */
     animation: slideInDown 0.5s 0.1s forwards;
@@ -386,7 +461,6 @@ body {
 .message .message-timestamp {
     margin-top: 4px;
     font-size: 0.7rem;
-    color: var(--text-secondary);
 }
 
 .msg-actions {
@@ -420,8 +494,36 @@ body {
     border: none;
 }
 
+/* Context menu for message actions */
+.context-menu {
+    position: fixed;
+    z-index: 1001;
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+    min-width: 180px;
+    padding: 2px 0;
+}
+.context-menu ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.context-menu .menu-item {
+    padding: 5px 8px;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+.context-menu .menu-item:hover {
+    background: var(--hover-bg);
+    color: var(--color-chbe-green);
+    border-radius: 8px;
+}
+
 .user-message {
-    background-color: #386714;
+    background-color: #346c09;
     color: white;
     align-self: flex-end;
     border-bottom-right-radius: 4px;

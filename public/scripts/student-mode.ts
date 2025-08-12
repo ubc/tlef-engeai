@@ -60,16 +60,33 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- RENDER & UPDATE FUNCTIONS ---
     const formatFullTimestamp = (timestampMs: number | undefined): string => {
         const d = new Date(typeof timestampMs === 'number' ? timestampMs : Date.now());
+        const now = new Date();
+
+        const sameYMD = (a: Date, b: Date) =>
+            a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+        const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+
         const hours = d.getHours();
         const minutes = d.getMinutes().toString().padStart(2, '0');
-        const monthNames = [
-            'January', 'February', 'March', 'April', 'May', 'June',
-            'July', 'August', 'September', 'October', 'November', 'December'
-        ];
-        const month = monthNames[d.getMonth()];
-        const day = d.getDate();
-        const year = d.getFullYear();
-        return `${hours}:${minutes} ${month} ${day}, ${year}`;
+
+        let dateLabel: string;
+        if (sameYMD(d, now)) {
+            dateLabel = 'Today';
+        } else if (sameYMD(d, yesterday)) {
+            dateLabel = 'Yesterday';
+        } else {
+            const monthNames = [
+                'January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'
+            ];
+            const month = monthNames[d.getMonth()];
+            const day = d.getDate();
+            const year = d.getFullYear();
+            dateLabel = `${month} ${day}, ${year}`;
+        }
+
+        return `${hours}:${minutes} ${dateLabel}`;
     };
     const scrollToBottom = () => {
         const scrollContainer = document.querySelector('.chat-window') as HTMLElement | null;
@@ -367,6 +384,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const inputEl = document.getElementById('chat-input') as HTMLTextAreaElement;
         const pinBtn = document.getElementById('pin-chat-btn');
         const deleteBtn = document.getElementById('delete-chat-btn');
+        const artefactToggleBtn = document.getElementById('toggle-artefact-btn');
         const disclaimerLink = document.querySelector('#disclaimer a') as HTMLAnchorElement | null;
         const reportHistoryBtns = document.querySelectorAll('.report-history-btn');
         
@@ -392,6 +410,9 @@ document.addEventListener('DOMContentLoaded', () => {
         pinBtn?.addEventListener('click', togglePin);
         deleteBtn?.addEventListener('click', deleteActiveChat);
 
+        // artefact toggle
+        artefactToggleBtn?.addEventListener('click', toggleArtefactPanel);
+
         // open disclaimer modal
         disclaimerLink?.addEventListener('click', (e) => {
             e.preventDefault();
@@ -415,6 +436,50 @@ document.addEventListener('DOMContentLoaded', () => {
             const item = header.closest('.report-item');
             item?.classList.toggle('open');
         });
+    };
+
+    // --- ARTEFACT PANEL TOGGLE ---
+    const toggleArtefactPanel = () => {
+        const panel = document.getElementById('artefact-panel');
+        const closeBtn = document.getElementById('close-artefact-btn');
+        const dashboard = document.querySelector('.chat-dashboard') as HTMLElement | null;
+        if (!panel) return;
+        const willOpen = !panel.classList.contains('open');
+        panel.classList.toggle('open', willOpen);
+        panel.setAttribute('aria-hidden', String(!willOpen));
+        // mark dashboard state so CSS can split widths evenly
+        if (dashboard) {
+            dashboard.classList.toggle('artefact-open', willOpen);
+        }
+
+        // Bind close button when present
+        if (closeBtn) {
+            closeBtn.onclick = () => toggleArtefactPanel();
+        }
+
+        // Lazy-load artefact content on open
+        if (willOpen) {
+            const container = panel.querySelector('.artefact-content') as HTMLElement | null;
+            if (container && container.childElementCount === 0) {
+                fetch('/components/artefact.html')
+                    .then(res => res.text())
+                    .then(html => {
+                        container.innerHTML = html;
+                        // Re-initialize Mermaid after content injection
+                        try {
+                            // @ts-ignore
+                            if (window.mermaid && typeof window.mermaid.init === 'function') {
+                                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                                // @ts-ignore
+                                window.mermaid.init(undefined, container.querySelectorAll('.mermaid'));
+                            }
+                        } catch {}
+                    })
+                    .catch(() => {
+                        container.innerHTML = '<p style="padding:8px;color:var(--text-secondary)">Failed to load artefact.</p>';
+                    });
+            }
+        }
     };
 
     // --- EVENT HANDLERS ---
@@ -580,22 +645,105 @@ document.addEventListener('DOMContentLoaded', () => {
         timeEl.textContent = formatFullTimestamp(timestamp);
         messageWrapper.appendChild(timeEl);
 
+        // Context menu (right-click) handler
+        messageWrapper.addEventListener('contextmenu', (e: MouseEvent) => {
+            e.preventDefault();
+            openMessageContextMenu(e.clientX, e.clientY, isPinned, onTogglePin);
+        });
+
+        // Hover affordance: down-facing arrow to indicate options
         const actions = document.createElement('div');
         actions.className = 'msg-actions';
-        const pinBtn = document.createElement('button');
-        pinBtn.className = 'icon-btn';
-        pinBtn.title = isPinned ? 'Unpin message' : 'Pin message';
-        const pinIcon = document.createElement('i');
-        pinIcon.setAttribute('data-feather', 'map-pin');
-        if (isPinned) pinIcon.classList.add('pinned');
-        pinBtn.appendChild(pinIcon);
-        pinBtn.addEventListener('click', (e) => {
+        const moreBtn = document.createElement('button');
+        moreBtn.className = 'icon-btn';
+        moreBtn.title = 'More options';
+        const moreIcon = document.createElement('i');
+        moreIcon.setAttribute('data-feather', 'chevron-down');
+        moreBtn.appendChild(moreIcon);
+        moreBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            onTogglePin();
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            openMessageContextMenu(rect.left, rect.bottom, isPinned, onTogglePin);
         });
-        actions.appendChild(pinBtn);
+        actions.appendChild(moreBtn);
         messageWrapper.appendChild(actions);
         return messageWrapper;
+    };
+
+    // Load and control message context menu
+    let messageMenuLoaded = false;
+    const ensureMessageMenu = async () => {
+        if (messageMenuLoaded) return;
+        const containerId = 'message-context-menu-container';
+        if (!document.getElementById(containerId)) {
+            const holder = document.createElement('div');
+            holder.id = containerId;
+            document.body.appendChild(holder);
+        }
+        try {
+            const res = await fetch('/components/message-menu.html');
+            if (!res.ok) throw new Error('Failed to load message menu');
+            const html = await res.text();
+            (document.getElementById('message-context-menu-container') as HTMLElement).innerHTML = html;
+            messageMenuLoaded = true;
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const closeMessageContextMenu = () => {
+        const menu = document.getElementById('message-context-menu') as HTMLElement | null;
+        if (menu) menu.style.display = 'none';
+        document.removeEventListener('click', closeMessageContextMenu);
+        document.removeEventListener('keydown', escListener);
+    };
+
+    const escListener = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') closeMessageContextMenu();
+    };
+
+    const openMessageContextMenu = async (
+        x: number,
+        y: number,
+        isPinned: boolean,
+        onTogglePin: () => void
+    ) => {
+        await ensureMessageMenu();
+        const menu = document.getElementById('message-context-menu') as HTMLElement | null;
+        if (!menu) return;
+        // Toggle pin/unpin visibility
+        const pinItem = menu.querySelector('[data-action="pin"]') as HTMLElement | null;
+        const unpinItem = menu.querySelector('[data-action="unpin"]') as HTMLElement | null;
+        if (pinItem && unpinItem) {
+            pinItem.style.display = isPinned ? 'none' : 'block';
+            unpinItem.style.display = isPinned ? 'block' : 'none';
+        }
+        // Set position
+        const menuRect = menu.getBoundingClientRect();
+        const maxX = window.innerWidth - menuRect.width - 8;
+        const maxY = window.innerHeight - menuRect.height - 8;
+        menu.style.left = Math.min(x, maxX) + 'px';
+        menu.style.top = Math.min(y, maxY) + 'px';
+        menu.style.display = 'block';
+
+        // Bind click handlers
+        const onAction = (e: Event) => {
+            const target = e.target as HTMLElement;
+            const li = target.closest('.menu-item') as HTMLElement | null;
+            if (!li) return;
+            const action = li.dataset.action;
+            if (action === 'pin' || action === 'unpin') {
+                onTogglePin();
+                closeMessageContextMenu();
+            }
+        };
+        menu.onclick = onAction;
+
+        // Close on outside click or ESC
+        setTimeout(() => {
+            document.addEventListener('click', closeMessageContextMenu);
+            document.addEventListener('keydown', escListener);
+        }, 0);
     };
 
     // --- INITIALIZATION ---

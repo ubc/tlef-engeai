@@ -1,0 +1,24 @@
+<div class="artefact-body">
+  <pre class="mermaid">
+flowchart LR
+  subgraph Intake
+    A[User Input] --> B{Parse}
+  end
+  B -- valid --> C[Analysis]
+  B -- invalid --> D[Feedback]
+  C --> E[Generate Artefact]
+  E --> F>Preview]
+  F --> G{Approve?}
+  G -- Yes --> H[Attach to Chat]
+  G -- No --> I[Revise]
+  I --> E
+  D --> A
+  H --> J((Done))
+  
+  style H fill:#c6f6d5,stroke:#2f855a,stroke-width:2px
+  style D fill:#fed7d7,stroke:#c53030
+  classDef step fill:#edf2f7,stroke:#a0aec0
+  class A,C,E,F,I,J step
+  </pre>
+</div>
+

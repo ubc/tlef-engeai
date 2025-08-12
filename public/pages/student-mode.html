@@ -47,8 +47,21 @@
         <main id="main-content-area">
             <!-- This will be populated by student-mode.ts -->
         </main>
+
+        <!-- Artefact panel (hidden by default, slides from right) -->
+        <aside id="artefact-panel" class="artefact-panel" aria-hidden="true">
+            <div class="artefact-header">
+                <h3>Artefact</h3>
+                <button id="close-artefact-btn" class="icon-btn" title="Close"><i data-feather="x"></i></button>
+            </div>
+            <div class="artefact-content">
+                <!-- Content will be loaded from /components/artefact.html -->
+            </div>
+        </aside>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({ startOnLoad: true, theme: 'default' });</script>
     <script src="/dist/student-mode.js"></script>
     <script>
         feather.replace(); // Initialize Feather Icons

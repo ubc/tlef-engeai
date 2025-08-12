@@ -1,8 +1,10 @@
 <!-- public/components/chat-window.html -->
 <div class="chat-window">
+    <div class="chat-header-blocker" aria-hidden="true"></div>
     <header id="chat-header" class="chat-header">
         <div id="chat-title" class="chat-title"></div>
         <div class="chat-actions">
+            <button id="toggle-artefact-btn" class="icon-btn" title="Toggle Artefact (Whiteboard)"><i data-feather="monitor"></i></button>
             <button id="pin-chat-btn" class="icon-btn" title="Star this chat"><i data-feather="star"></i></button>
             <button id="delete-chat-btn" class="icon-btn" title="Delete this chat"><i data-feather="trash-2"></i></button>
         </div>
