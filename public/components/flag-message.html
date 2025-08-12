@@ -1,0 +1,37 @@
+<div class="flag-message">
+  <div class="flag-top">
+    <div class="flag-top-header">Flagged Message</div>
+    <div class="flag-message-content" id="flag-message-content"></div>
+  </div>
+  <div class="flag-bottom">
+    <div class="flag-bottom-header">Reason for Flag</div>
+    <form id="flag-form" class="flag-form">
+      <label class="flag-checkbox">
+        <input type="checkbox" name="reasons" value="safety_incorrect_engineering" />
+        <span>Wrong calculations, formulas, or engineering principles that could lead to safety issues or incorrect designs</span>
+      </label>
+      <label class="flag-checkbox">
+        <input type="checkbox" name="reasons" value="harassment_edi" />
+        <span>Contains harassment, or content that violates EDI (Equity, Diversity, Inclusion) principles</span>
+      </label>
+      <label class="flag-checkbox">
+        <input type="checkbox" name="reasons" value="off_topic_opinion_political" />
+        <span>Response veers into personal opinions, political views, or non-academic discussions inappropriate for engineering education</span>
+      </label>
+      <label class="flag-checkbox">
+        <input type="checkbox" name="reasons" value="plagiarism_academic_dishonesty" />
+        <span>Provides content that appears copied from sources without attribution or encourages academic dishonesty</span>
+      </label>
+      <div class="flag-other">
+        <label for="flag-other-text">Others:</label>
+        <input id="flag-other-text" name="otherText" type="text" placeholder="Add more details..." />
+      </div>
+      <div class="flag-actions">
+        <button type="button" id="flag-submit-btn" class="flag-submit">Submit Flag</button>
+        <button type="button" id="flag-cancel-btn" class="flag-cancel">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+

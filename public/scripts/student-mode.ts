@@ -706,7 +706,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Context menu (right-click) handler
         messageWrapper.addEventListener('contextmenu', (e: MouseEvent) => {
             e.preventDefault();
-            openMessageContextMenu(e.clientX, e.clientY, isPinned, onTogglePin);
+            openMessageContextMenu(e.clientX, e.clientY, isPinned, onTogglePin, sender, messageId);
         });
 
         // Hover affordance: down-facing arrow to indicate options
@@ -721,7 +721,7 @@ document.addEventListener('DOMContentLoaded', () => {
         moreBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-            openMessageContextMenu(rect.left, rect.bottom, isPinned, onTogglePin);
+            openMessageContextMenu(rect.left, rect.bottom, isPinned, onTogglePin, sender, messageId);
         });
         actions.appendChild(moreBtn);
         messageWrapper.appendChild(actions);
@@ -822,6 +822,97 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch {}
     };
 
+    // --- FLAGGING SUPPORT ---
+    const openFlagDialog = (messageId: number) => {
+        const chat = chats.find(c => c.id === activeChatId);
+        if (!chat) return;
+        const msg = chat.messages.find(m => m.id === messageId);
+        if (!msg || msg.sender !== 'bot') return; // Only bot messages can be flagged
+
+        const panel = document.getElementById('artefact-panel');
+        const dashboard = document.querySelector('.chat-dashboard') as HTMLElement | null;
+        if (!panel) return;
+
+        const proceed = () => {
+            const container = panel.querySelector('.artefact-content') as HTMLElement | null;
+            if (!container) return;
+
+            fetch('/components/flag-message.html')
+                .then(res => res.text())
+                .then(html => {
+                    container.innerHTML = html;
+                    // Populate flagged message text only (exclude artefact chips)
+                    const msgBox = container.querySelector('#flag-message-content') as HTMLElement | null;
+                    if (msgBox) {
+                        msgBox.textContent = msg.text;
+                    }
+
+                    // Wire up actions
+                    const submitBtn = container.querySelector('#flag-submit-btn') as HTMLButtonElement | null;
+                    const cancelBtn = container.querySelector('#flag-cancel-btn') as HTMLButtonElement | null;
+                    submitBtn?.addEventListener('click', () => handleFlagSubmit());
+                    cancelBtn?.addEventListener('click', () => closeArtefactPanel());
+                })
+                .catch(() => {
+                    const container = panel.querySelector('.artefact-content') as HTMLElement | null;
+                    if (container) {
+                        container.innerHTML = '<p style="padding:8px;color:var(--text-secondary)">Failed to load flag form.</p>';
+                    }
+                });
+
+            // Open panel
+            panel.classList.remove('closing');
+            panel.classList.add('open');
+            panel.setAttribute('aria-hidden', 'false');
+            if (dashboard) dashboard.classList.add('artefact-open');
+        };
+
+        // If already open, close first for consistent animation, then open
+        const wasOpen = panel.classList.contains('open');
+        if (wasOpen) {
+            panel.classList.add('closing');
+            setTimeout(() => {
+                panel.classList.remove('open');
+                panel.setAttribute('aria-hidden', 'true');
+                panel.classList.remove('closing');
+                if (dashboard) dashboard.classList.remove('artefact-open');
+                setTimeout(proceed, 10);
+            }, 180);
+        } else {
+            proceed();
+        }
+    };
+
+    const handleFlagSubmit = () => {
+        const form = document.getElementById('flag-form') as HTMLFormElement | null;
+        if (!form) return;
+        const reasons: string[] = [];
+        form.querySelectorAll('input[name="reasons"]:checked').forEach((el) => {
+            reasons.push((el as HTMLInputElement).value);
+        });
+        const other = (document.getElementById('flag-other-text') as HTMLInputElement | null)?.value?.trim();
+        if (other) reasons.push(`other:${other}`);
+
+        // Confirmation message (no backend integration yet)
+        alert('Thanks for your report. Your feedback helps improve EngE-AI.');
+        closeArtefactPanel();
+    };
+
+    const closeArtefactPanel = () => {
+        const panel = document.getElementById('artefact-panel');
+        const dashboard = document.querySelector('.chat-dashboard') as HTMLElement | null;
+        if (!panel) return;
+        if (panel.classList.contains('open')) {
+            panel.classList.add('closing');
+            setTimeout(() => {
+                panel.classList.remove('open');
+                panel.setAttribute('aria-hidden', 'true');
+                panel.classList.remove('closing');
+                if (dashboard) dashboard.classList.remove('artefact-open');
+            }, 180);
+        }
+    };
+
     // Load and control message context menu
     let messageMenuLoaded = false;
     const ensureMessageMenu = async () => {
@@ -858,7 +949,9 @@ document.addEventListener('DOMContentLoaded', () => {
         x: number,
         y: number,
         isPinned: boolean,
-        onTogglePin: () => void
+        onTogglePin: () => void,
+        sender: 'user' | 'bot',
+        messageId: number
     ) => {
         await ensureMessageMenu();
         const menu = document.getElementById('message-context-menu') as HTMLElement | null;
@@ -866,9 +959,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // Toggle pin/unpin visibility
         const pinItem = menu.querySelector('[data-action="pin"]') as HTMLElement | null;
         const unpinItem = menu.querySelector('[data-action="unpin"]') as HTMLElement | null;
+        const flagItem = menu.querySelector('[data-action="flag"]') as HTMLElement | null;
         if (pinItem && unpinItem) {
             pinItem.style.display = isPinned ? 'none' : 'block';
             unpinItem.style.display = isPinned ? 'block' : 'none';
+        }
+        // Only show flag option for bot messages
+        if (flagItem) {
+            flagItem.style.display = sender === 'bot' ? 'block' : 'none';
         }
         // Set position
         const menuRect = menu.getBoundingClientRect();
@@ -886,6 +984,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const action = li.dataset.action;
             if (action === 'pin' || action === 'unpin') {
                 onTogglePin();
+                closeMessageContextMenu();
+            }
+            if (action === 'flag' && sender === 'bot') {
+                openFlagDialog(messageId);
                 closeMessageContextMenu();
             }
         };
