@@ -1,0 +1,69 @@
+/* styles/artefact.css */
+
+/* Artefact Panel (slide-in from right) */
+.artefact-panel {
+  position: relative;
+  width: 0;
+  flex: 0 0 0;
+  overflow: hidden; /* hide when closed */
+  border: 1px solid var(--border-color);
+  background: var(--background-2);
+  margin: 10px 10px 10px 5px;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.07);
+  /* Smooth expand from right to left */
+  max-width: 0;                 /* start collapsed */
+  transition: max-width 0.35s ease, flex-grow 0.35s ease;
+}
+
+.artefact-panel.open {
+  /* When open, share space equally with main content area */
+  width: auto;
+  flex: 1 1 0;
+  max-width: 100vw;            /* allow panel to grow to its flex share smoothly */
+}
+
+/* When artefact is open, make main content area share equal width */
+.chat-dashboard.artefact-open #main-content-area {
+  flex: 1 1 0;
+  margin: 10px 5px 10px 10px; /* symmetric margins */
+}
+
+.artefact-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  background: var(--background-2);
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+  z-index: 2;
+}
+
+.artefact-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.artefact-content {
+  height: calc(100% - 48px);
+  overflow: auto; /* independent scrolling */
+  padding: 0.8rem;
+}
+
+/* Prevent content from popping in before width grows */
+.artefact-panel:not(.open) .artefact-content { opacity: 0; }
+.artefact-panel.open .artefact-content { animation: fadeIn 0.2s 0.15s forwards; }
+
+/* Fade-out animation for closing */
+.artefact-panel.closing .artefact-content { animation: fadeOut 0.2s forwards; }
+
+/* Mermaid sizing inside panel */
+.artefact-content .mermaid { margin: 0; }
+
+

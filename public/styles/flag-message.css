@@ -1,0 +1,54 @@
+/* styles/flag-message.css */
+
+.flag-message {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 8px;
+}
+
+.flag-top, .flag-bottom {
+  background: var(--chat-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.flag-top {
+  flex: 1 1 50%;
+  min-height: 0; /* allow scrolling child */
+  display: flex;
+  flex-direction: column;
+}
+
+.flag-top-header, .flag-bottom-header { font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
+
+.flag-message-content {
+  flex: 1 1 auto;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--text-primary);
+  background: var(--background-2);
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.flag-bottom { flex: 1 1 50%; min-height: 0; }
+
+.flag-form { display: flex; flex-direction: column; gap: 8px; }
+
+.flag-checkbox { display: flex; align-items: flex-start; gap: 8px; font-size: 0.85rem; }
+.flag-checkbox input[type="checkbox"] { margin-top: 2px; }
+
+.flag-other { display: flex; align-items: center; gap: 8px; }
+.flag-other input[type="text"] {
+  flex: 1 1 auto; border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; background: var(--chat-bg); color: var(--text-primary);
+}
+
+.flag-actions { display: flex; gap: 8px; margin-top: 6px; }
+.flag-submit, .flag-cancel { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--background-2); color: var(--text-primary); font-weight: 600; cursor: pointer; }
+.flag-submit:hover { background: var(--color-chbe-green); color: white; border-color: var(--color-chbe-green); }
+.flag-cancel:hover { background: var(--hover-bg); }
+
+
