@@ -95,10 +95,15 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${hours}:${minutes} ${dateLabel}`;
     };
     const scrollToBottom = () => {
-        const scrollContainer = document.querySelector('.chat-window') as HTMLElement | null;
+        const scrollContainer = document.getElementById('message-area') as HTMLElement | null;
         if (!scrollContainer) return;
         requestAnimationFrame(() => {
-            scrollContainer.scrollTop = scrollContainer.scrollHeight;
+            try {
+                scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+            } catch {
+                // Fallback for older browsers
+                scrollContainer.scrollTop = scrollContainer.scrollHeight;
+            }
         });
     };
     const updateUI = () => {
