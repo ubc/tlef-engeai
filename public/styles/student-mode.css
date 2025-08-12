@@ -443,6 +443,31 @@ body {
     height: 18px; 
 }
 
+.open-artefact-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 9999px;
+    border: 1px solid var(--border-color);
+    background: var(--background-2);
+    color: var(--text-primary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 6px;
+    width: fit-content;
+}
+.open-artefact-chip:hover {
+    background: var(--hover-bg);
+    color: var(--color-chbe-green);
+    border-color: var(--color-chbe-green);
+}
+.open-artefact-chip .feather {
+    width: 14px;
+    height: 14px;
+}
+
 .message-area {
     flex-grow: 1;
     width: min(900px, calc(100% - 32px)); /* allow wider content area */
