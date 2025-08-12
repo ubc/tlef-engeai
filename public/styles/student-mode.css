@@ -26,7 +26,7 @@ body {
 .chat-dashboard {
     display: flex;
     height: 100vh;
-    width: 100vw;
+    width: 100%;
     opacity: 0;
     animation: fadeIn 0.5s forwards;
     transition: filter 0.3s ease-in-out;
@@ -263,6 +263,7 @@ body {
     /* REMOVED: overflow-y: auto - this was causing the dragging */
     scrollbar-gutter: stable both-edges; 
     padding: 0 10px 0 5px;
+    overflow-x: hidden;  /* ADD: This single line prevents trackpad drag */
 }
 
 /* Blocker above sticky header to ensure no content overlays header area */
@@ -454,6 +455,7 @@ body {
     flex-direction: column;
     gap: 1rem;
     overflow-y: auto; /* MOVED: Scrolling happens here now */
+    overflow-x: hidden;
     position: relative;        
     padding-bottom: 160px; /* Normal spacing */
     flex-shrink: 1;
@@ -472,7 +474,6 @@ body {
     line-height: 1.5;
     overflow-wrap: anywhere;    /* wrap long unbroken strings */
     word-break: break-word;
-    overflow-x: visible;
 }
 .message { 
     position: relative; 
