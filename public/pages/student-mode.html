@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EngE-AI | Student Mode</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="/styles/style.css" />
+    <link rel="stylesheet" href="/styles/message-menu.css" />
+    <link rel="stylesheet" href="/styles/artefact.css" />
+    <link rel="stylesheet" href="/styles/chat-window.css" />
+    <link rel="stylesheet" href="/styles/report-history.css" />
+    <link rel="stylesheet" href="/styles/welcome-screen.css" />
+    <link rel="stylesheet" href="/styles/flag-message.css" />
+    <link rel="stylesheet" href="/styles/disclaimer-modal.css" />
+    <link rel="stylesheet" href="/styles/student-mode.css" />
+    <script src="https://unpkg.com/feather-icons"></script>
+
+</head>
+<body>
+    <div class="chat-dashboard">
+        <aside class="sidebar">
+            <div>
+                <div class="sidebar-header">
+                    <div class="logo-box">
+                        <i data-feather="box"></i>
+                        <div class="logo-text">
+                            <span>EngE-AI</span>
+                            <p>Engineering companion</p>
+                        </div>
+                    </div>
+                </div>
+                <nav class="chat-list">
+                    <button id="add-chat-btn" class="add-chat-btn">
+                        <i data-feather="plus"></i>
+                        <span>Add New Chat</span>
+                    </button>
+                    <ul id="chat-list-ul">
+                        <!-- Chat items will be rendered here -->
+                    </ul>
+                </nav>
+            </div>
+            <div class="sidebar-footer">
+                <button class="report-history-btn">
+                    <i data-feather="alert-triangle"></i>
+                    <span>Report History</span>
+                </button>
+            </div>
+        </aside>
+        
+        <!-- The main content area where components will be loaded -->
+        <main id="main-content-area">
+            <!-- This will be populated by student-mode.ts -->
+        </main>
+
+        <!-- Artefact panel (hidden by default, slides from right) -->
+        <aside id="artefact-panel" class="artefact-panel" aria-hidden="true">
+            <div class="artefact-header">
+                <h3>Artefact</h3>
+                <button id="close-artefact-btn" class="icon-btn" title="Close"><i data-feather="x"></i></button>
+            </div>
+            <div class="artefact-content">
+                <!-- Content will be loaded from /components/artefact.html -->
+            </div>
+        </aside>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({ startOnLoad: true, theme: 'default' });</script>
+    <script src="/dist/student-mode.js"></script>
+    <script>
+        feather.replace(); // Initialize Feather Icons
+    </script>
+</body>
+</html>

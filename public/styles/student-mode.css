@@ -1,0 +1,1043 @@
+/* styles/student-mode.css */
+
+:root {
+    --sidebar-bg: #f7f7f7;
+    --chat-bg: #fcfcfc;
+    --border-color: #b8b8b8;
+    --hover-bg: #efefef;
+    --text-primary: #333333;
+    --text-secondary: #6c757d;
+    --gingham-color: rgba(92, 138, 58, 0.1); /* Based on --color-chbe-green */
+    --user-message-bg: var(--color-ubc-blue);
+    --bot-message-bg: #f1f1f1;
+    --pinned-color: var(--color-chbe-green);
+    --background-2: #ECE5DD;
+}
+
+html, body {
+    height: 100%;
+    overflow: hidden;
+}
+
+body {
+    background-color: var(--chat-bg);
+}
+
+.chat-dashboard {
+    display: flex;
+    height: 100vh;
+    width: 100%;
+    opacity: 0;
+    animation: fadeIn 0.5s forwards;
+    transition: filter 0.3s ease-in-out;
+}
+
+@keyframes fadeIn { to { opacity: 1; } }
+
+
+@keyframes slideInUp { 
+    from { 
+        transform: translateY(30px); 
+        opacity: 0; 
+    } 
+    to { 
+        transform: translateY(0); 
+        opacity: 1; 
+    } 
+}
+
+@keyframes slideInDown { 
+    from { 
+        transform: translateY(-30px); 
+        opacity: 0; 
+    } 
+    to { 
+        transform: translateY(0); 
+        opacity: 1; 
+    } 
+}
+
+@keyframes slideInLeft {
+    from { 
+        transform: translateX(-30px); 
+        opacity: 0; 
+    } 
+    to { 
+        transform: translateX(0); 
+        opacity: 1; 
+    } 
+}
+
+#main-content-area {
+    flex-grow: 1;
+}
+
+/* moved: artefact styles now in styles/artefact.css */
+
+/* moved: flag component styles now in styles/flag-message.css (component exists as HTML) */
+
+/* --- Sidebar --- */
+.sidebar {
+    margin: 10px 5px 10px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    width: 270px;
+    flex: 0 0 270px;    /* prevent shrinking when content grows */
+    min-width: 270px;   /* keep intended width unless explicitly collapsed */
+    background-color: var(--background-2);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 0.75rem;
+    animation: slideInLeft 0.6s forwards;
+    opacity: 0;
+    transition: width 0.25s ease, padding 0.25s ease;
+}
+
+/* Collapsed sidebar to widen main chat area while keeping message content max width constant */
+.sidebar.collapsed {
+    width: 56px;
+    flex: 0 0 56px;     /* collapsed width fixed */
+    min-width: 56px;
+    padding: 0.5rem;
+    transition: width 0.25s ease, padding 0.25s ease;
+}
+
+.sidebar.collapsed .logo-text,
+.sidebar.collapsed .add-chat-btn span,
+.sidebar.collapsed .report-history-btn span,
+.sidebar.collapsed .chat-item span {
+    display: none; /* hide text when collapsed */
+}
+
+.sidebar.collapsed .add-chat-btn,
+.sidebar.collapsed .report-history-btn {
+    justify-content: center;
+}
+
+.sidebar-header .collapse-sidebar-btn {
+    padding: 10px 0px 0px 10px;
+}
+
+/* Hide chat list action buttons when collapsed, EXCEPT show the pinned star */
+.sidebar.collapsed .chat-list .icon-btn { display: none !important; }
+/* Show the button if it contains a pinned star icon */
+.sidebar.collapsed .chat-list .icon-btn:has(.pinned) { display: inline-flex !important; }
+
+
+.sidebar-header .logo-box {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-radius: 8px;
+    background-color: var(--color-chbe-green);
+    color: white;
+    height: 56px;              /* keep constant height expanded/collapsed */
+    box-sizing: border-box;
+}
+
+.logo-box .logo-text { 
+    display: flex; 
+    flex-direction: column; 
+}
+
+.logo-text span {
+    font-weight: 700; 
+    font-size: 1.1rem; 
+}
+
+.logo-text p { 
+    font-size: 0.75rem; 
+    margin: 0; 
+    opacity: 0.8; 
+}
+
+.add-chat-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.8rem;
+    margin: 1rem 0 0.5rem;
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.add-chat-btn:hover {
+    background-color: var(--color-chbe-green);
+    color: white;
+    border-color: var(--color-chbe-green);
+}
+.add-chat-btn .feather { 
+    width: 18px; 
+    height: 18px; 
+}
+
+.chat-list ul { 
+    list-style: none; 
+    padding: 0; 
+    margin: 0; 
+}
+
+/* Make chat list fill the sidebar center area and scroll intuitively */
+.chat-list {
+    display: flex;
+    flex-direction: column;
+    min-height: 0; /* allows child flex to shrink properly */
+}
+.chat-list ul {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.chat-list .chat-item { 
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 40px;            /* consistent, larger click target */
+    padding: 0 0.5rem;           /* vertical height driven by min-height */
+    border-radius: 8px; 
+    cursor: pointer; 
+    font-weight: 500; 
+    transition: background-color 0.2s, box-shadow 0.2s; 
+    font-size: 0.9rem; 
+}
+
+.chat-list .chat-item.active {
+    background-color: #e2d9cf;
+    color: rgb(103, 103, 103);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18),
+                inset 0 -1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.chat-list .chat-item:not(.active):hover { 
+    background-color: var(--hover-bg); 
+}
+
+.sidebar-footer { 
+    padding-top: 0.75rem; 
+    border-top: 1px solid var(--border-color);
+
+}
+
+.report-history-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    background-color: var(--background-2); 
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.report-history-btn:hover { 
+    background-color: var(--color-eng-red); 
+    color: white; 
+    border-color: var(--color-eng-red); 
+}
+
+.report-history-btn .feather { 
+    width: 16px; 
+    height: 16px; 
+}
+
+/* Chat Window - Remove scrolling, let message area handle it */
+.chat-window { 
+    flex-grow: 1; 
+    display: flex; 
+    width: 100%;
+    height: 100vh; 
+    flex-direction: column; 
+    background-color: var(--chat-bg); 
+    /* REMOVED: overflow-y: auto - this was causing the dragging */
+    scrollbar-gutter: stable both-edges; 
+    padding: 0 10px 0 5px;
+    overflow-x: hidden;  /* ADD: This single line prevents trackpad drag */
+}
+
+/* Blocker above sticky header to ensure no content overlays header area */
+/* Blocker above sticky header */
+.chat-header-blocker {
+    height: 10px;
+    margin: 0px 10px 0px 5px;
+    position: sticky;
+    top: 0px;
+    z-index: 9;
+    background-color: var(--chat-bg);
+    pointer-events: none;
+    flex-shrink: 0;
+    min-height: 10px;
+}
+
+/* Chat Header - Now sticky within message area */
+.chat-header { 
+    display: flex; 
+    flex-direction: column;
+    gap: 4px;
+    margin: 0px 10px 15px 5px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    padding: 0.7rem 1rem; 
+    position: sticky;         
+    top: 10px;
+    z-index: 5;               
+    background: var(--chat-bg); 
+    animation: slideInDown 0.5s 0.1s forwards;
+    opacity: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
+    overflow: hidden;
+    flex-shrink: 0; 
+    min-height: fit-content; 
+}
+
+.chat-header-main {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    /* FIXED: Prevent vertical compression */
+    flex-shrink: 0;
+    min-height: fit-content;
+}
+
+/* Pinned container - prevent shrinking */
+.pinned-banner, .pinned-inline {
+    display: none;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0rem 0rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.8rem;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+    /* FIXED: Prevent vertical shrinking */
+    flex-shrink: 0;
+    min-height: fit-content;
+}
+
+
+.pinned-inline {
+    border-top: 1px dotted var(--border-color);
+    padding-top: 4px;
+    margin-top: 2px;
+}
+
+/* Icons - keep fixed size */
+.pinned-banner .feather, 
+.pinned-inline .feather { 
+    width: 10px;
+    height: 10px; 
+    flex-shrink: 0;
+    flex-grow: 0;
+}
+
+.pinned-banner .pinned, 
+.pinned-inline .pinned { 
+    color: var(--pinned-color); 
+}
+
+/* AGGRESSIVE: Text container with absolute width control */
+.pinned-banner .pinned-text, 
+.pinned-inline .pinned-text {
+    /* AGGRESSIVE: Force text to behave */
+    flex: 1 1 0%; /* Take available space but can shrink to 0 */
+    min-width: 0; /* Allow shrinking below content size */
+    max-width: 100%; /* Never exceed container */
+    overflow: hidden; /* Hide overflow */
+    text-overflow: ellipsis; /* Show ellipsis */
+    white-space: nowrap; /* Prevent wrapping */
+    box-sizing: border-box;
+    /* Additional constraint to prevent expansion */
+    width: 0; /* Start with 0 width, let flex grow it within limits */
+}
+
+/* Small date indicator beside pinned text */
+.pinned-inline .pinned-time {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-left: 6px;
+    flex-shrink: 0;
+    flex-grow: 0;
+    white-space: nowrap;
+    max-width: fit-content;
+}
+
+.chat-title { 
+    font-weight: 600; 
+    color: var(--text-primary); 
+    margin-right: auto; 
+    font-size: 0.9rem;
+    /* Add overflow protection */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1 1 0%;
+}
+
+.chat-actions { 
+    display: flex; 
+    gap: 0.25rem; 
+}
+
+.icon-btn { 
+    background: none; 
+    border: none; 
+    cursor: pointer; 
+    color: var(--text-secondary); 
+    padding: 0.4rem; 
+}
+
+.icon-btn:hover { 
+    color: var(--color-chbe-green); 
+}
+
+.icon-btn .pinned { 
+    color: var(--pinned-color); 
+}
+
+.icon-btn .feather { 
+    width: 18px; 
+    height: 18px; 
+}
+
+.open-artefact-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 9999px;
+    border: 1px solid var(--border-color);
+    background: var(--background-2);
+    color: var(--text-primary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin: 6px 0px 6px 0px;
+    width: fit-content;
+}
+.open-artefact-chip:hover {
+    background: var(--hover-bg);
+    color: var(--color-chbe-green);
+    border-color: var(--color-chbe-green);
+}
+.open-artefact-chip .feather {
+    width: 14px;
+    height: 14px;
+}
+
+/* Message Area - This becomes the scrolling container */
+.message-area {
+    flex-grow: 1;
+    width: min(900px, calc(100% - 32px)); 
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    overflow-y: auto; /* MOVED: Scrolling happens here now */
+    overflow-x: hidden;
+    position: relative;        
+    padding-bottom: 160px; /* Normal spacing */
+    flex-shrink: 1;
+    min-height: 0;
+    /* ADDED: Proper scroll styling */
+    scrollbar-gutter: stable;
+    scroll-behavior: smooth;
+}
+
+
+.message {
+    font-size: 0.85rem;
+    padding: 0.5rem 1rem;
+    border-radius: 12px;
+    max-width: 100%;            /* allow messages to utilize full message-area width */
+    line-height: 1.5;
+    overflow-wrap: anywhere;    /* wrap long unbroken strings */
+    word-break: break-word;
+}
+.message { 
+    position: relative; 
+}
+
+/* Message content and timestamp layout */
+.message .message-content {
+    white-space: pre-wrap;
+}
+
+.message .message-timestamp {
+    margin-top: 4px;
+    font-size: 0.7rem;
+    display: flex; /* block-level flex so it always drops below artefact chip */
+    align-items: center;
+    color: #346c09;;
+}
+
+.message.user-message .message-timestamp  {
+    color: #ffffff;
+}
+
+/* Only change color for the PIN action on user messages */
+.message.user-message .message-timestamp .pin-action-btn:hover,
+.message.user-message .message-timestamp .pin-action-btn:focus {
+    color: var(--color-eng-red);
+}
+
+/* Inline  actions: " • Pin • Flag" */
+.message .message-timestamp .timestamp-actions {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 5px; /* ACTION SPACING: modify this to adjust gap between timestamp and first action */
+    color: inherit; /* inherit timestamp color */
+    font-size: inherit; /* align size with timestamp */
+    gap: 5px;
+}
+
+.message .message-timestamp .timestamp-dot {
+    color: inherit;
+}
+
+.message .message-timestamp .timestamp-action-btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0 0 0 0;
+    cursor: pointer;
+    color: inherit; /* align with component font color */
+    font: inherit;  /* inherit size/weight */
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+}
+
+.message .message-timestamp .timestamp-action-btn:hover,
+.message .message-timestamp .timestamp-action-btn:focus {
+    color: var(--color-eng-red); /* align with CHBE green */
+    outline: none;
+}
+
+.message .message-timestamp {
+    gap: 5px;
+}
+
+/* Ensure timestamp, pin and flag icons share the same size */
+.message .message-timestamp .feather {
+    width: 14px;
+    height: 14px;
+}
+
+/* Label next to icons */
+.message .message-timestamp .timestamp-action-label {
+    font-size: 0.7rem;
+}
+
+/* Horizontal spacing between action buttons */
+.message .message-timestamp .timestamp-action-btn + .timestamp-action-btn {
+    margin-left: 10px; /* ACTION SPACING BETWEEN ICON BUTTONS: modify this to adjust spacing between pin and flag */
+}
+
+/* CHBE green accent on pinned icon */
+.message .message-timestamp .pinned {
+    color: var(--color-chbe-green);
+}
+
+.msg-actions {
+    position: absolute;
+    top: 6px;
+    right: -28px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.15s ease-in-out;
+    z-index: 10;
+}
+.message:hover .msg-actions {
+    opacity: 1;
+    visibility: visible;
+}
+.user-message .msg-actions {
+    left: -28px;
+    right: auto;
+}
+.bot-message .msg-actions {
+    right: -28px;
+    left: auto;
+}
+
+.remove-pin-btn {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin-left: auto;
+    margin-right: 5px;
+    padding: 0;
+    border: none;
+    flex-shrink: 0;
+    flex-grow: 0;
+    white-space: nowrap;
+    width: auto;
+    height: auto;
+    background-color: transparent;
+    max-width: fit-content;
+}
+
+/* moved: context menu styles now in styles/message-menu.css */
+
+.user-message {
+    background-color: #346c09;
+    color: white;
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+}
+.bot-message {
+    color: var(--text-primary);
+    align-self: stretch;        /* let bot messages fill available width */
+}
+
+/* Chat Footer - Now outside scrolling area, uses normal flow */
+.chat-footer {
+    padding: 0;
+    background-color: transparent;
+    position: relative; /* CHANGED: Normal flow, not sticky */
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 0;                 
+    z-index: 20;               
+    flex-shrink: 0; /* Never shrink */
+    pointer-events: none;
+    /* Keep at bottom of chat-window */
+    margin-top: auto;
+}
+
+
+/* Chat Footer Content - Center within chat window */
+.chat-footer-content {
+    position: absolute;
+    left: 50%;
+    bottom: 0px;              
+    transform: translateX(-50%);
+    width: min(820px, calc(100% - 32px));
+    display: flex;
+    flex-direction: column;
+    gap: 0px;
+    pointer-events: auto;
+    border-radius: 10px 10px 0px 0px;
+    background-color: var(--chat-bg);
+    padding-bottom: 5px;
+    flex-shrink: 0;
+}
+
+/* Input bubble */
+/* Input Area - No changes needed, will inherit correct centering */
+.input-area {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 0.15rem 0.5rem;
+    background-color: var(--background-2);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+    opacity: 0;
+    animation: slideInUp 0.5s 0.1s forwards;
+}
+
+.input-area input {
+    flex-grow: 1;
+    border: none;
+    outline: none;
+    font-size: 0.75rem;
+    background-color: transparent;
+    padding: 0.5rem 1rem;
+}
+
+/* Multiline textarea input: wraps and auto-grows up to 4 lines */
+.input-area textarea#chat-input {
+    flex-grow: 1;
+    border: none;
+    outline: none;
+    font-size: 0.75rem;          /* keep existing size */
+    background-color: transparent;
+    padding: 0.5rem 1rem;
+    resize: none;                 /* we auto-grow with JS */
+    line-height: 1.4;
+    max-height: calc(1.4em * 4);  /* cap at ~4 lines */
+    overflow: hidden;             /* switch to auto in JS when capped */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;      /* wrap long unbroken strings */
+    word-break: break-word;
+}
+
+/* Send button styling */
+.input-area .send-btn {
+    background-color: var(--color-chbe-green);
+    color: white;
+    border: none;
+    border-radius: 9999px;
+    width: 28px;
+    height: 28px;
+    flex: 0 0 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 0.5rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+}
+
+.input-area .send-btn:hover {
+    background-color: #4a6f2e;
+}
+
+.input-area .send-btn:active {
+    transform: scale(0.98);
+}
+
+.input-area .send-btn .feather {
+    width: 18px;
+    height: 18px;
+}
+
+/* Disclaimer - No changes needed */
+.disclaimer {
+    text-align: center;
+    align-self: center;
+    font-size: 0.6rem;
+    color: var(--text-secondary);
+    border-radius: 10px;
+    padding: 0.2rem 1rem;
+    width: fit-content;
+    opacity: 0;
+    animation: slideInUp 0.5s 0.2s forwards;
+}
+
+.disclaimer a {
+    color: var(--color-chbe-green);
+    text-decoration: none;
+    font-weight: 600;
+    text-decoration: underline;
+}
+
+/* --- Welcome Screen --- */
+.welcome-screen {
+    flex-grow: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 1.5rem;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+}
+
+.welcome-box {
+    background-color: var(--background-2);
+    padding: 2.5rem 3rem;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.07);
+    animation: slideInUp 0.5s 0.1s forwards;
+    opacity: 0;
+    max-width: 850px;
+    align-items: center;
+}
+
+.welcome-icon {
+    color: var(--color-chbe-green);
+    width: 48px;
+    height: 48px;
+    margin-bottom: 1rem;
+    stroke-width: 1.5;
+}
+
+.welcome-box h2 {
+    color: var(--text-primary);
+    font-size: 1.75rem;
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+}
+
+.welcome-box p {
+    line-height: 1.7;
+    margin-bottom: 1.25rem;
+    color: var(--text-secondary);
+    font-size: 0.94rem;
+}
+
+.welcome-box p.intro {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+
+.welcome-box strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.welcome-add-btn {
+    background-color: var(--color-chbe-green);
+    color: white;
+    border: none;
+    padding: 0.8rem 1.75rem;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 1rem;
+    font-size: 1rem;
+    box-shadow: 0 4px 15px rgba(92, 138, 58, 0.2);
+}
+
+.welcome-add-btn:hover {
+    background-color: #4a6f2e; /* Darker Green */
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(92, 138, 58, 0.3);
+}
+
+.welcome-add-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 4px 15px rgba(92, 138, 58, 0.2);
+}
+
+/* --- Modal --- */
+/* Overlay dims and subtly blurs the background (ChatGPT-like) */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;                 /* toggled via .show */
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 1000;
+}
+
+.modal-overlay.show { display: flex; }
+
+/* Modal container */
+.modal {
+    width: min(640px, 95vw);
+    max-height: 80vh;
+    overflow: auto;
+    background-color: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+    animation: scaleIn 0.15s ease-out;
+}
+
+@keyframes scaleIn {
+    from { transform: scale(0.98); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+/* Modal header with close button */
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    background: var(--chat-bg);
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--color-chbe-green); /* Accent inspired by welcome */
+}
+
+.close-modal {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 0.35rem;
+    border-radius: 8px;
+}
+
+.close-modal:hover {
+    background-color: var(--hover-bg);
+    color: var(--color-chbe-green); /* Accent inspired by welcome button */
+}
+
+/* Modal body */
+.modal-content {
+    padding: 1rem 1.25rem 1.25rem;
+    color: var(--text-primary);
+}
+
+.modal-content p {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.92rem;
+    line-height: 1.65;
+}
+
+/* When modal is open, soften the app content */
+body.modal-open .chat-dashboard {
+    filter: blur(2px) brightness(0.88);
+    pointer-events: none; /* prevent interactions behind overlay */
+}
+
+body.modal-open {
+    overflow: hidden; /* prevent background scroll while modal open */
+}
+
+/* --- Report History --- */
+.report-history {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    height: 100%;
+    margin: 10px 10px 5px 5px;
+}
+
+.report-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    padding: 8px;
+    animation: slideInDown 0.5s 0.1s forwards;
+    opacity: 0;
+}
+
+.report-header h3 {
+    margin: 0;
+    margin-right: auto;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+}
+
+.report-bug-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--background-2);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.4rem 0.65rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.report-bug-btn:hover {
+    background-color: var(--color-eng-red);
+    color: white;
+    border-color: var(--color-eng-red);
+}
+
+.report-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.report-item {
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.07);
+}
+
+.report-item.resolved { opacity: 0.95; }
+
+.report-item-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 0.9rem;
+    cursor: pointer;
+    animation: slideInUp 0.5s 0.1s forwards;
+    opacity: 0;
+}
+
+.report-item-header .summary { 
+    flex: 1; 
+}
+
+.report-item-header .title { 
+    font-weight: 600; 
+    font-size: 0.85rem; 
+    color: var(--text-primary); 
+}
+
+.report-item-header .meta { 
+    font-size: 0.7rem; 
+    color: var(--text-secondary); 
+    margin-top: 0.2rem; 
+}
+
+.report-item-header .status { 
+    display: inline-flex; 
+    align-items: center; 
+    gap: 0.3rem; 
+}
+
+.report-item-header .chevron { 
+    width: 18px; 
+    height: 18px; 
+    color: var(--text-secondary); 
+}
+
+.chip { 
+    display: inline-flex; 
+    align-items: center; 
+    padding: 0.15rem 0.5rem; 
+    border-radius: 9999px; 
+    font-size: 0.7rem; 
+    border: 1px solid var(--border-color);
+}
+.chip-warn { background: #fff7e6; color: #ad6800; }
+.chip-ok { background: #edf7ed; color: #2e7d32; }
+
+.report-details {
+    display: none;
+    padding: 0 0.9rem 0.9rem;
+    font-size: 0.8rem;
+}
+.report-item.open .report-details { display: block; }
+
+.remove-pin-btn {
+    width: auto;
+    height: auto;
+    background-color: transparent;
+    border: none;
+}

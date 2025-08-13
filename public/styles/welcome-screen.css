@@ -1,0 +1,14 @@
+/* styles/welcome-screen.css */
+
+.welcome-screen { flex-grow: 1; display: flex; justify-content: center; align-items: center; padding: 1.5rem; box-sizing: border-box; width: 100%; height: 100%; }
+.welcome-box { background-color: var(--background-2); padding: 2.5rem 3rem; border-radius: 16px; border: 1px solid var(--border-color); text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.07); animation: slideInUp 0.5s 0.1s forwards; opacity: 0; max-width: 850px; align-items: center; }
+.welcome-icon { color: var(--color-chbe-green); width: 48px; height: 48px; margin-bottom: 1rem; stroke-width: 1.5; }
+.welcome-box h2 { color: var(--text-primary); font-size: 1.75rem; margin-top: 0; margin-bottom: 0.5rem; }
+.welcome-box p { line-height: 1.7; margin-bottom: 1.25rem; color: var(--text-secondary); font-size: 0.94rem; }
+.welcome-box p.intro { font-size: 1.1rem; font-weight: 500; color: var(--text-primary); }
+.welcome-box strong { color: var(--text-primary); font-weight: 600; }
+.welcome-add-btn { background-color: var(--color-chbe-green); color: white; border: none; padding: 0.8rem 1.75rem; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.6rem; margin-top: 1rem; font-size: 1rem; box-shadow: 0 4px 15px rgba(92, 138, 58, 0.2); }
+.welcome-add-btn:hover { background-color: #4a6f2e; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(92, 138, 58, 0.3); }
+.welcome-add-btn:active { transform: translateY(0); box-shadow: 0 4px 15px rgba(92, 138, 58, 0.2); }
+
+

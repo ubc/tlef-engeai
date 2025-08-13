@@ -3,13 +3,38 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>tlef-EngE-AI</title>
-		<link rel="stylesheet" href="styles/style.css" />
+		<title>EngE-AI | Login</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com">
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+		<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+		
+		<!-- Global styles -->
+		<link rel="stylesheet" href="/styles/style.css" />
+		<!-- Page-specific styles -->
+		<link rel="stylesheet" href="/styles/login.css" />
 	</head>
 	<body>
-		<h1>Welcome to tlef-EngE-AI</h1>
-		<p>Message from server: <span id="message">Loading...</span></p>
-		<a href="/settings">Go to Settings</a>
-		<script src="scripts/front-end.js"></script>
+		<div class="login-container">
+			<div class="login-box">
+				<h1>EngE-AI</h1>
+				<p class="subtitle">AI-powered Engineering Education Assistant</p>
+
+				<h2>Select your role</h2>
+
+				<div class="role-selection">
+					<a href="/pages/student-mode.html" class="role-box role-student">
+						<h3>Student</h3>
+						<p>Ask questions about course materials</p>
+					</a>
+					<a href="/pages/instructor-mode.html" class="role-box role-instructor">
+						<h3>Instructor</h3>
+						<p>Upload and manage course materials</p>
+					</a>
+				</div>
+
+				<p class="footer-text">University of British Columbia</p>
+			</div>
+		</div>
+        <script src="/dist/front-end.js"></script>
 	</body>
 </html>

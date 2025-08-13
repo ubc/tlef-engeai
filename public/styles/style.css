@@ -1,21 +1,38 @@
-/* Global Variables */
+/* styles/style.css */
+
 :root {
-    --primary-bg-color: blue;
-    --primary-text-color: white;
+    --color-chbe-green: #5C8A3A;
+    --color-ubc-blue: #2F5F8F;
+    --color-navy-blue: #1B365D;
+    --color-eng-red: #8B0000;
+    --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+html {
+    overflow-x: hidden;
 }
 
 body {
-    font-family: sans-serif;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
     margin: 0;
-    background: var(--primary-bg-color);
-    color: var(--primary-text-color)
+    font-family: var(--font-family);
+    background-color: var(--color-eng-red);
+    color: #212529;
+    line-height: 1.6;
+    overflow-x: hidden; /* Prevent horizontal scroll on body */
 }
 
+/* REMOVED: Duplicate body rule that was overriding overflow-x: hidden */
+
 a {
-    color: var(--primary-text-color);
+    color: var(--color-ubc-blue);
+    text-decoration: none;
+    transition: color 0.2s ease-in-out;
+}
+
+a:hover {
+    color: var(--color-navy-blue);
 }
