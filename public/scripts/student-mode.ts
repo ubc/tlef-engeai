@@ -94,6 +94,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         return `${hours}:${minutes} ${dateLabel}`;
     };
+    
+    const updateUI = () => {
+        renderChatList();
+        if (chats.length === 0) {
+            // No chats yet: show welcome screen
+            loadComponent('welcome-screen');
+        } else {
+            loadComponent('chat-window');
+        }
+    };
+
     const scrollToBottom = () => {
         const scrollContainer = document.getElementById('message-area') as HTMLElement | null;
         if (!scrollContainer) return;
@@ -105,15 +116,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 scrollContainer.scrollTop = scrollContainer.scrollHeight;
             }
         });
-    };
-    const updateUI = () => {
-        renderChatList();
-        if (chats.length === 0) {
-            // No chats yet: show welcome screen
-            loadComponent('welcome-screen');
-        } else {
-            loadComponent('chat-window');
-        }
     };
 
     // Ensure artefact close button always closes the panel

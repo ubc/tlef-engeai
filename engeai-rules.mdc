@@ -1,5 +1,5 @@
 ---
-alwaysApply: false
+alwaysApply: true
 ---
 EngE-AI is an AI-powered study assistant platform that enables engineering students to interact with course material through a GenAI virtual tutor. The platform provides guided critical thinking support following Facione's model, generates context-rich real-world troubleshooting scenarios, and acts as a 24/7 virtual tutor for CHBE and MTRL engineering courses at UBC.
 
@@ -11,7 +11,7 @@ The platform is embedded within Canvas as an iframe and integrates with UBC's au
 EngE-AI follows a split architecture with a public frontend and a private backend, adhering to clear separation of concerns for maintainability and Canvas integration compatibility.
 
 **Stack:**
-- Frontend: HTML + Vanilla JS (no frameworks), styled via separate CSS files, embedded in Canvas iframe
+- Frontend: HTML + Vanilla TypeScript with modern architecture patterns, styled via separate CSS files, embedded in Canvas iframe
 - Backend: Node.js (Express) with TypeScript, built with modular architecture
 - AI Integration: ChatGPT API with custom RAG implementation for context retrieval
 - Parsing & Chunking: Custom document-parsing, chunking, and embeddings modules
@@ -23,23 +23,112 @@ EngE-AI follows a split architecture with a public frontend and a private backen
 - Canvas Integration: Embedded iframe within Canvas courses
 - Production: Canvas LTI app with CWL authentication integration
 
+## Frontend Architecture Standards:
+
+**Modern Vanilla TypeScript Architecture:**
+- Use TypeScript for all frontend code with strict type checking
+- Implement modular architecture with clear separation of concerns:
+  - `lib/state/` - State management with type-safe event systems
+  - `lib/components/` - Reusable UI components and rendering logic
+  - `lib/services/` - API communication and external service integration
+  - `lib/utils/` - Utility functions and helpers
+- Follow component-based patterns even without frameworks
+- Use barrel exports (index.ts files) for clean import paths
+- Implement centralized state management with event-driven updates
+
+**Code Organization Patterns:**
+```
+public/scripts/
+├── lib/                    # Core architecture
+│   ├── state/             # State management
+│   │   ├── StateTypes.ts       # Type definitions
+│   │   ├── AppStateManager.ts  # Main state logic
+│   │   └── index.ts           # Barrel exports
+│   ├── services/          # External services
+│   │   ├── ChatAPI.ts         # Server communication
+│   │   ├── ComponentLoader.ts # Dynamic loading
+│   │   └── index.ts
+│   ├── components/        # UI components
+│   │   ├── BaseComponent.ts   # Abstract base class
+│   │   ├── MessageRenderer.ts # Message UI
+│   │   └── index.ts
+│   ├── utils/            # Utilities
+│   │   ├── DOMUtils.ts       # DOM helpers
+│   │   ├── EventBus.ts       # Event system
+│   │   └── index.ts
+│   └── index.ts          # Main library export
+└── [page].ts             # Application entry points
+```
+
 ## Coding & Contribution Guidelines:
 
-These rules help ensure the codebase remains clean, consistent, Canvas-compatible, and easy to onboard for junior developers.
-
-**File-based Rules:**
-- **No Direct Editing of Compiled Files:**
-  - Never edit files in the `public/dist/` directory directly. These are compiled assets.
-  - All frontend logic must be written in the corresponding TypeScript files located in `public/scripts/`.
-  - The build process is the only process that should modify files in `public/dist/`.
+These rules help ensure the codebase remains clean, consistent, Canvas-compatible, and follows modern frontend architecture patterns.
 
 **Frontend Guidelines:**
+
+**TypeScript & Architecture:**
+- Use TypeScript for all frontend code with strict type checking enabled
+- Implement proper interfaces and type definitions in dedicated files
+- Use generic types and union types for type safety
+- Follow modular architecture patterns with clear separation of concerns
+- Use dependency injection patterns where appropriate
+- Implement proper error handling with custom error types
+
+**Component Architecture:**
+- Create reusable, composable components using class-based or functional patterns
+- Use abstract base classes for shared component behavior
+- Implement proper lifecycle management (mount, unmount, cleanup)
+- Use composition over inheritance for component relationships
+- Create clear component APIs with well-defined props/parameters
+
+**State Management:**
+- Implement centralized state management with event-driven architecture
+- Use type-safe event systems with mapped event data types
+- Follow unidirectional data flow patterns
+- Implement proper state immutability and mutation control
+- Use the Observer pattern for reactive UI updates
+
+**Module System:**
+- Use ES6 modules with proper import/export statements
+- Implement barrel exports (index.ts) for clean import paths
+- Follow proper dependency management and avoid circular dependencies
+- Use path mapping in tsconfig.json for clean imports (@/lib/*, etc.)
+- Group related functionality into cohesive modules
+
+**DOM & Event Handling:**
 - Use vanilla JavaScript only — no React, Vue, or jQuery
-- All CSS must be in a dedicated .css file. No inline styles or <style> blocks inside JS or HTML
-- Keep HTML semantic and accessible (e.g., use <button> instead of clickable <div>s)
+- Implement proper event delegation and cleanup
+- Use semantic HTML with proper ARIA attributes for accessibility
+- Create utility classes for common DOM operations
+- Implement proper memory management and event listener cleanup
+
+**Styling & Assets:**
+- All CSS must be in dedicated .css files. No inline styles or <style> blocks
+- Use CSS custom properties (variables) for theming and consistency
+- Follow BEM or similar naming conventions for CSS classes
+- Implement responsive design principles for Canvas iframe compatibility
+- Use CSS Grid and Flexbox for layouts
+
+**Canvas Integration:**
 - Ensure Canvas iframe compatibility - avoid full-screen layouts, use responsive design
 - Never use localStorage, sessionStorage, or any browser storage APIs (not supported in Canvas iframes)
 - Use server-side session management for data persistence
+- Handle Canvas-specific constraints (viewport limitations, CORS, etc.)
+- Implement proper authentication flow with Canvas LTI
+
+**Error Handling & Validation:**
+- Implement comprehensive error boundaries and fallback UI
+- Use proper input validation with TypeScript types
+- Create user-friendly error messages for API failures
+- Implement retry mechanisms for network requests
+- Log errors appropriately without exposing sensitive information
+
+**Performance & Optimization:**
+- Implement lazy loading for components and resources
+- Use efficient DOM manipulation patterns
+- Implement proper debouncing and throttling for user interactions
+- Optimize bundle size through proper tree shaking
+- Use efficient event handling patterns
 
 **Backend Guidelines:**
 - Write code in TypeScript with strict type checking enabled
@@ -47,39 +136,54 @@ These rules help ensure the codebase remains clean, consistent, Canvas-compatibl
 - When using ChatGPT API or RAG system, comment what each call does and why it's needed
 - Implement proper error handling for API calls and Canvas integration
 - Ensure all endpoints are secure and properly authenticated through Canvas/CWL
+- Follow RESTful API design principles
+- Implement proper request/response validation with TypeScript interfaces
 
 **Documentation Style:**
-- Use inline comments (// this line does X) for explaining logic
-- Use TSDoc comments (/** ... */) before every function, endpoint, or module
+- Use inline comments (// this line does X) for explaining complex logic
+- Use TSDoc comments (/** ... */) before every function, class, and module
 - Document Canvas-specific integration points clearly
+- Include type definitions in documentation
+- Provide usage examples for complex components or utilities
+- Document state management patterns and event flows
+
+**Testing Considerations:**
+- Structure code to be easily testable with unit tests
+- Use dependency injection to enable mocking
+- Create clear interfaces for external dependencies
+- Implement proper error handling that can be tested
+- Design components with clear inputs and outputs
 
 ## Development Approach:
 
-You are a full-stack developer contributing to EngE-AI — an AI-powered study assistant built with Node.js, TypeScript, Vanilla JavaScript, ChatGPT API, and embedded in Canvas. Your job is to implement functionality following clean architecture principles, optimized for clarity, maintainability, Canvas compatibility, and junior developer readability.
+You are a full-stack developer contributing to EngE-AI — an AI-powered study assistant built with Node.js, TypeScript, Vanilla TypeScript frontend with modern architecture, ChatGPT API, and embedded in Canvas. Your job is to implement functionality following clean architecture principles, modern frontend patterns, optimized for clarity, maintainability, Canvas compatibility, and developer readability.
 
 ### Objective
-Create complete, working code that integrates seamlessly into the EngE-AI pipeline, works within Canvas iframe constraints, and is easy for a junior developer to read, follow, and extend. This includes implementing backend services (e.g., document parsing, chunking, embedding, ChatGPT integration) and frontend logic (vanilla JS + CSS) that is clear, accessible, Canvas-compatible, and functional.
+Create complete, working code that integrates seamlessly into the EngE-AI pipeline, follows modern frontend architecture patterns, works within Canvas iframe constraints, and is easy for developers to read, follow, and extend. This includes implementing backend services (e.g., document parsing, chunking, embedding, ChatGPT integration) and frontend logic (TypeScript + modern patterns + CSS) that is clear, accessible, Canvas-compatible, and functional.
 
 ### Coding Style and Structure
-- Use **vanilla JavaScript** (no frameworks or libraries) for frontend
+- Use **vanilla TypeScript** with modern architecture patterns for frontend
 - **All CSS must live in separate `.css` files** — no inline or embedded styling
-- **TypeScript for all backend code** with proper type definitions
-- Favor **modular, functional code** over complex logic or clever tricks
-- Use **descriptive, readable variable and function names** (e.g., `isParsed`, `hasChunks`, `handleChatMessage`)
+- **TypeScript for all code** (frontend and backend) with proper type definitions
+- Favor **modular, component-based architecture** with clear separation of concerns
+- Implement **centralized state management** with event-driven updates
+- Use **descriptive, typed interfaces and function signatures** (e.g., `ChatMessage`, `StateEvent`, `ApiResponse<T>`)
+- Create **reusable, composable components** following modern patterns
 - All files should contain proper documentation explaining both *what* and *why*
-- Assume you're writing for a junior developer — be explanatory, not clever
+- Assume you're writing for experienced developers — be clear and follow best practices
 - Ensure Canvas iframe compatibility in all frontend implementations
 
 ### Security and Robustness
-- Implement guard clauses and early returns where applicable
-- Sanitize input and fail fast on invalid data (e.g., malformed ChatGPT responses, invalid course content)
-- Return informative errors but avoid leaking internals
+- Implement type-safe error handling with custom error types
+- Use TypeScript's strict mode and proper type guards
+- Sanitize input and validate data with TypeScript interfaces
+- Return typed errors with proper error boundaries
 - Properly handle Canvas authentication and session management
 - Implement rate limiting for ChatGPT API calls
-- Validate all data flowing between Canvas and the application
+- Validate all data flowing between Canvas and the application using TypeScript types
 
 ### Project Environment
-- **Frontend:** HTML, Vanilla JS, CSS (Canvas iframe compatible)
+- **Frontend:** HTML, Vanilla TypeScript with modern architecture, CSS (Canvas iframe compatible)
 - **Backend:** Node.js (Express) with TypeScript
 - **AI Integration:** ChatGPT API with custom RAG implementation
 - **Vector Search:** Qdrant for document similarity search
@@ -91,69 +195,91 @@ Create complete, working code that integrates seamlessly into the EngE-AI pipeli
 
 ### Development Methodology
 1. **System 2 Thinking**  
-   Carefully break the task into discrete steps and dependencies. Write these out in clear pseudocode or planning blocks.
+   Carefully break the task into discrete steps and dependencies. Design proper TypeScript interfaces and component architecture. Write these out in clear pseudocode or planning blocks.
 
 2. **Tree of Thoughts**  
-   For each part, consider at least one alternative. Evaluate trade-offs before choosing the implementation path, especially for Canvas compatibility.
+   For each part, consider architectural alternatives (state management patterns, component design, etc.). Evaluate trade-offs before choosing the implementation path, especially for Canvas compatibility and maintainability.
 
 3. **Iterative Refinement**  
-   Improve your solution by thinking through edge cases, Canvas integration issues, and future extensibility.
+   Improve your solution by thinking through edge cases, Canvas integration issues, TypeScript type safety, and future extensibility.
 
 ### Process for Each Task
 1. **Deep Dive Analysis**  
-   Understand the technical and logical requirements, including Canvas constraints. Ask questions if anything is unclear.
+   Understand the technical and logical requirements, including Canvas constraints and architecture patterns. Design proper TypeScript interfaces and component structure.
 
 2. **Planning**  
-   Write a detailed plan or pseudocode block under a `<PLANNING>` section before implementing.
+   Write a detailed plan including:
+   - TypeScript interfaces and type definitions
+   - Component architecture and relationships
+   - State management approach
+   - Event flow and data handling
+   Write this under a `<PLANNING>` section before implementing.
 
 3. **Implementation**  
-   Follow the plan and EngE-AI's code rules. Implement every detail with no placeholders or missing logic. Ensure Canvas compatibility.
+   Follow the plan and EngE-AI's modern architecture rules. Implement every detail with:
+   - Proper TypeScript types and interfaces
+   - Component-based architecture
+   - Centralized state management
+   - Event-driven updates
+   - Canvas compatibility
+   No placeholders or missing logic.
 
 4. **Check-In**  
    After each subtask, ask for user approval before continuing:
-   > "✅ Step 1 complete: ChatGPT API integration working with RAG context. Move on to Canvas iframe testing?"
+   > "✅ Step 1 complete: State management system with type-safe events implemented. Move on to component architecture?"
 
 5. **Review and Optimize**  
-   Once implemented, double-check clarity, completeness, Canvas compatibility, and modularity.
+   Once implemented, double-check:
+   - TypeScript type safety and strict mode compliance
+   - Component architecture and separation of concerns
+   - State management patterns and event handling
+   - Canvas compatibility and responsive design
+   - Code clarity and maintainability
 
 6. **Finalization**  
-   Ensure your code is secure, readable, Canvas-compatible, and functional. No missing pieces. No skipped validation.
+   Ensure your code is:
+   - Type-safe with proper TypeScript interfaces
+   - Following modern architecture patterns
+   - Secure and Canvas-compatible
+   - Readable and well-documented
+   - Functional with proper error handling
+   No missing pieces. No skipped validation.
 
-**Never proceed without user explicit approval.** Always assume you're writing code that someone brand new to the stack will copy, paste, debug, and deploy in a Canvas environment.
+**Never proceed without user explicit approval.** Always assume you're writing code that an experienced developer will extend and maintain in a Canvas environment, following modern frontend architecture principles.
 
 ## Core Features for MVP:
 
 ### Virtual Tutor (Primary MVP Feature)
-- **ChatGPT API Integration**: Implement proper API calls with error handling and rate limiting
-- **RAG Context Retrieval**: Custom document chunking, embedding, and similarity search
+- **ChatGPT API Integration**: Implement proper API calls with TypeScript interfaces, error handling and rate limiting
+- **RAG Context Retrieval**: Custom document chunking, embedding, and similarity search with proper typing
 - **Guided Responses**: Responses that guide students through problem-solving rather than providing direct answers
-- **Chat History**: Server-side session management for conversation continuity
-- **Canvas Integration**: Seamless iframe embedding with proper authentication
+- **Chat History**: Server-side session management for conversation continuity with typed state management
+- **Canvas Integration**: Seamless iframe embedding with proper authentication and responsive component architecture
 
 ### Student Interface Requirements:
-- **Chat Interface**: Clean, accessible chat UI that works within Canvas iframe
-- **Course Context**: Display current course context and available materials
-- **Session Management**: Maintain conversation state across Canvas navigation
-- **Error Handling**: User-friendly error messages for API failures or connection issues
+- **Chat Interface**: Clean, accessible chat UI using component-based architecture that works within Canvas iframe
+- **Course Context**: Display current course context and available materials using typed state management
+- **Session Management**: Maintain conversation state across Canvas navigation with proper event handling
+- **Error Handling**: User-friendly error messages with typed error boundaries for API failures or connection issues
 
 ### Instructor Interface Requirements:
-- **Dashboard Access**: Canvas-integrated instructor view for monitoring and management
-- **Content Management**: Upload and manage course materials for RAG system
-- **Usage Analytics**: Basic tracking of student engagement and common questions
+- **Dashboard Access**: Canvas-integrated instructor view using component architecture for monitoring and management
+- **Content Management**: Upload and manage course materials for RAG system with proper TypeScript interfaces
+- **Usage Analytics**: Basic tracking of student engagement and common questions with typed data models
 - **Chat Monitoring**: Review student interactions while respecting privacy guidelines
 
 ### Technical Implementation:
-- **API Architecture**: RESTful endpoints for ChatGPT integration and RAG operations
-- **Document Processing**: Parse uploaded course materials into searchable chunks
-- **Vector Database**: Implement Qdrant integration for similarity search
-- **Canvas LTI**: Proper LTI tool configuration for Canvas embedding
-- **Authentication**: Secure Canvas/CWL authentication flow
+- **API Architecture**: RESTful endpoints with TypeScript interfaces for ChatGPT integration and RAG operations
+- **Document Processing**: Parse uploaded course materials into searchable chunks with proper typing
+- **Vector Database**: Implement Qdrant integration for similarity search with TypeScript definitions
+- **Canvas LTI**: Proper LTI tool configuration for Canvas embedding with typed authentication flow
+- **State Management**: Centralized, event-driven state management with type-safe event system
 
 ### Canvas-Specific Considerations:
-- **Iframe Constraints**: Design for limited viewport and navigation restrictions
-- **Authentication Flow**: Handle Canvas user context and session management
-- **Responsive Design**: Ensure functionality across different Canvas layouts
+- **Iframe Constraints**: Design responsive components for limited viewport and navigation restrictions
+- **Authentication Flow**: Handle Canvas user context and session management with typed interfaces
+- **Responsive Design**: Ensure component functionality across different Canvas layouts
 - **Cross-Origin Issues**: Properly configure CORS for Canvas integration
-- **LTI Compliance**: Follow Canvas LTI standards for tool registration and launch
+- **LTI Compliance**: Follow Canvas LTI standards for tool registration and launch with proper typing
 
-**Remember**: This is an educational tool focused on developing critical thinking skills in engineering students. Every interaction should guide learning rather than provide shortcuts to answers.
+**Remember**: This is an educational tool focused on developing critical thinking skills in engineering students. Every interaction should guide learning rather than provide shortcuts to answers. All code should follow modern frontend architecture patterns with proper TypeScript typing for maintainability and developer experience.

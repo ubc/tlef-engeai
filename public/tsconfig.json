@@ -5,7 +5,11 @@
     "outDir": "./dist",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": {
+      "@/*": ["./scripts/*"],
+      "@/lib": ["./scripts/index"]
+    }
   },
   "include": ["scripts/**/*.ts"]
 }
