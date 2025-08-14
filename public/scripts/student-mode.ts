@@ -24,6 +24,7 @@ interface Chat {
     pinnedMessageId?: number | null;
 }
 
+
 document.addEventListener('DOMContentLoaded', () => {
     // --- STATE MANAGEMENT ---
     let chats: Chat[] = []; // Start with no chats
