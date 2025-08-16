@@ -155,29 +155,29 @@ export class ModalManager {
      * 
      */
 
-        private static replacePlaceHolders(
-            html : string, 
-            data : any
-        ) : string {
-    
-            let result = html;
-    
-            // Replace common placeholders (keep in mid that the data type of data is any)
-            if (data.title) result = result.replace('{{title}}', data.title);
-            if (data.content) result = result.replace('{{content}}', data.content);
-            if (data.message) result = result.replace('{{message}}', data.message);
-    
-            // Replace all other placeholders
-            Object.keys(data).forEach(key => {
-                if (! (key === 'title' || key === 'content' || key === 'message')) {
-                    //skip common placeholders
-                    const placeHolder = `{{${key}}}`;
-                    const value = typeof data[key] === 'string' ? data[key] : JSON.stringify(data[key])
-                    result = result.replace(placeHolder, value);
-                }
-            })
-            return result;
-        }
+    private static replacePlaceHolders(
+        html : string, 
+        data : any
+    ) : string {
+
+        let result = html;
+
+        // Replace common placeholders (keep in mid that the data type of data is any)
+        if (data.title) result = result.replace('{{title}}', data.title);
+        if (data.content) result = result.replace('{{content}}', data.content);
+        if (data.message) result = result.replace('{{message}}', data.message);
+
+        // Replace all other placeholders
+        Object.keys(data).forEach(key => {
+            if (! (key === 'title' || key === 'content' || key === 'message')) {
+                //skip common placeholders
+                const placeHolder = `{{${key}}}`;
+                const value = typeof data[key] === 'string' ? data[key] : JSON.stringify(data[key])
+                result = result.replace(placeHolder, value);
+            }
+        })
+        return result;
+    }
 
     // ===== DEFAULT MODAL CONTENT ======
 

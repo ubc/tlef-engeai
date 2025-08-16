@@ -8,7 +8,6 @@ import { Chat, ChatMessage, StateEvent, StateEventData } from './StateTypes';
  * It is responsible for:
  *  - Managing the state of the chat application, including chats, messages, and active chat.
  *  - Managing the event system for the chat application.
- *  - Being a singleton class, so there is only one instance of the class.
  *  - Managing the state of the chat application, including chats, messages, and active chat.
  * 
  *  @author : @gatahcha
@@ -25,12 +24,6 @@ export class ChatStateManager {
 
     // ===== SINGLETON PATTERN (Optional) =====
     private static instance: ChatStateManager | null = null;
-
-    private constructor() {
-        this.chats = [];
-        this.activeChatId = null;
-        this.listeners = new Map();
-    }
 
     static getInstance(): ChatStateManager {
         if (!ChatStateManager.instance) {
@@ -124,11 +117,8 @@ export class ChatStateManager {
      *  - The chatId is always a unique number.
      */
     createChat(title: string = 'no title'): Chat {
-        // TODO: Create new Chat object with unique ID
-        // TODO: Add to chats array
-        // TODO: Emit 'chat:added' event
-        // TODO: Return the new chat
 
+        //create the new chat
         const newChat = {
             id: this.generateId(),
             title,
@@ -138,7 +128,10 @@ export class ChatStateManager {
             timestamp: Date.now()
         }
 
+        //add the new chat to the chats array
         this.chats.push(newChat);
+
+        //emit the event
         this.emit('chat-added', { chatId: newChat.id });
         return newChat;
     }
@@ -155,17 +148,16 @@ export class ChatStateManager {
      * 
      */
     deleteChat(chatId: number): boolean {
-        // TODO: Find chat index in array
-        // TODO: Return false if not found
-        // TODO: Remove from array
-        // TODO: Handle active chat cleanup if needed
-        // TODO: Emit 'chat:removed' event
-        // TODO: Return true on success
 
+        //find the index of the chat in the chats array
         const index = this.chats.findIndex(chat => chat.id === chatId);
+
+        //check if the chat exists
         if (index === -1) {
             return false;
         }
+
+        //remove the chat from the chats array
         else {
             this.chats.splice(index, 1);
             this.emit('chat-removed', { chatId: chatId });
@@ -679,5 +671,6 @@ export class ChatStateManager {
 }
 
 // ===== EXPORT SINGLETON INSTANCE =====
-export const chatState = ChatStateManager.getInstance();
+const chatState = ChatStateManager.getInstance();
+export default chatState;
 
