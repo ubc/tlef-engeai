@@ -1,4 +1,4 @@
-
+// File: public/scripts/lib/utils/EventBus.ts
 
 /**
  * EventBus - Global system for loose coupling between components

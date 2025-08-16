@@ -493,4 +493,37 @@ export class ChatApi {
     }
 
 
+    // ===== MOCK/LOCAL HELPERS (frontend-only) =====
+
+    /**
+     * Send message to local mock endpoint without session/auth
+     * Maps server response into ChatResponse
+     */
+    static async sendMessageLocalMock(message: string): Promise<ChatResponse> {
+        const result = await this.makeRequest<any>('POST', '/api/chat/message', { message });
+
+        if (!result || typeof result.reply !== 'string') {
+            throw new Error('Invalid mock response');
+        }
+
+        const artefact = result.artefact && result.artefact.type === 'mermaid' && typeof result.artefact.source === 'string'
+            ? { type: 'mermaid' as const, source: String(result.artefact.source), title: result.artefact.title as (string | undefined) }
+            : undefined;
+
+        return {
+            reply: result.reply,
+            timestamp: typeof result.timestamp === 'number' ? result.timestamp : Date.now(),
+            artefact,
+            metadata: { processingTime: Number(result.processingTime) || 0, tokensUsed: 0 }
+        };
+    }
+
+    /**
+     * Health check on local mock service (no auth)
+     */
+    static async healthCheckLocal(): Promise<{ status: string; [key: string]: any }>{
+        return await this.makeRequest('GET', '/api/chat/health');
+    }
+
+
 }

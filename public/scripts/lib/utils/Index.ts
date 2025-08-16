@@ -1,4 +1,4 @@
-
+// File: public/scripts/lib/utils/Index.ts
 
 export * from './DOMUtils';
 export * from './EventBus';

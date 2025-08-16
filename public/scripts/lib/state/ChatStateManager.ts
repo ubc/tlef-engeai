@@ -103,8 +103,11 @@ export class ChatStateManager {
         const callbacks = this.listeners.get(event) || [];
         callbacks.forEach(callback => callback(data));
 
-        //always emit 'state:changed' after other events
-        this.emit('state:changed', { chatId: this.activeChatId || 0});
+        // emit 'state-changed' after other events without recursion
+        if (event !== 'state-changed') {
+            const stateChangedCallbacks = this.listeners.get('state-changed') || [];
+            stateChangedCallbacks.forEach(callback => callback({ chatId: this.activeChatId || 0 } as any));
+        }
     }
 
     // ===== CHAT OPERATIONS =====
@@ -163,6 +166,41 @@ export class ChatStateManager {
             this.emit('chat-removed', { chatId: chatId });
             return true;
         }
+    }
+
+    /**
+     * Select and activate a sensible chat after state changes (e.g., deletions)
+     *
+     * Behavior:
+     *  - If there are no chats, clears the active chat and emits 'chat-activated' with null
+     *  - If the current active chat still exists, keeps it as active
+     *  - Otherwise, prefers the most recent pinned chat; if none, the most recent chat
+     *
+     * @returns the new active chat ID or null if none exists
+     */
+    setActiveChatOrFirst(): number | null {
+        if (this.chats.length === 0) {
+            this.activeChatId = null;
+            this.emit('chat-activated', { chatId: null });
+            return null;
+        }
+
+        if (this.activeChatId != null && this.chats.some(chat => chat.id === this.activeChatId)) {
+            return this.activeChatId;
+        }
+
+        const pinnedChats = this.chats
+            .filter(chat => chat.isPinned)
+            .sort((a, b) => b.timestamp - a.timestamp);
+
+        const fallbackChats = this.chats
+            .slice()
+            .sort((a, b) => b.timestamp - a.timestamp);
+
+        const nextActive = pinnedChats[0] || fallbackChats[0];
+        this.activeChatId = nextActive.id;
+        this.emit('chat-activated', { chatId: nextActive.id });
+        return nextActive.id;
     }
 
     /**

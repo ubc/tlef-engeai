@@ -1,3 +1,23 @@
+// File: public/scripts/lib/utils/ModalManager.ts`
+
+/**
+ * ModalManager - Manages modal dialogs and their lifecycle
+ * 
+ * Purpose: Provides a centralized system for creating, showing, and managing modal dialogs.
+ * Handles modal creation, content loading, behavior setup, and animation.
+ * Supports multiple modal types, custom content, and configuration options.
+ * 
+ * Use Cases:
+ * - Displaying dialogs for user interaction (e.g., confirmation, error messages)
+ * - Showing content in a modal (e.g., disclaimer, settings)
+ * - Handling modal lifecycle (e.g., closing, cleanup)
+ * 
+ * @author: @gatahcha
+ * @version: 1.0.0
+ * @since: 2025-08-16
+ */
+
+
 type ModalType = 'disclaimer' | 'flag' | 'artefact' | 'settings' | 'error' ;
 
 interface ModalConfig {
@@ -46,6 +66,7 @@ export class ModalManager {
 
          //create modal overlay
          const overlay = this.createModalOverlay(modalId, config);
+         overlay.setAttribute('data-modal-type', type);
          document.body.appendChild(overlay);
 
          try {
@@ -122,22 +143,26 @@ export class ModalManager {
         data? : any
     ) : Promise<string> {
 
-        try {
-            //load modal content from HTML file
-            const response = await fetch(`/components/modals/${type}.html`);
-            if (!response.ok) {
-                throw new Error(`Failed to load modal content: ${response.statusText}`);
-            }
-            let html = await response.text();
-            if (data) {
-                html = this.replacePlaceHolders(html, data);
-            }
+        // Try components/modals/<type>.html first, then fallback to components/<type>.html
+        const tryPaths = [
+            `/components/modals/${type}.html`,
+            `/components/${type}.html`
+        ];
 
-            return html;
-
-        } catch (error) {
-            console.error('Error loading modal content:', error);
-            throw error;
+        for (const url of tryPaths) {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    continue;
+                }
+                let html = await response.text();
+                if (data) {
+                    html = this.replacePlaceHolders(html, data);
+                }
+                return html;
+            } catch {
+                // try next
+            }
         }
 
         // Fallback to default content if HTML file is not found
@@ -432,7 +457,39 @@ export class ModalManager {
     private static closeModal(
         type : ModalType
     ) : void {
-        
+        try {
+            // Find overlay by modal type
+            const overlay = document.querySelector(`.modal-overlay[data-modal-type="${type}"]`) as HTMLElement | null;
+            if (!overlay) {
+                return;
+            }
+
+            // Remove escape key handler if present
+            const escHandler = this.escapeHandlers.get(type);
+            if (escHandler) {
+                document.removeEventListener('keydown', escHandler);
+                this.escapeHandlers.delete(type);
+            }
+
+            // Update tracking structures
+            if (this.activeModals.has(type)) {
+                this.activeModals.delete(type);
+            }
+            // Remove the last occurrence of type from the stack
+            const lastIndex = this.modalStack.lastIndexOf(type);
+            if (lastIndex !== -1) {
+                this.modalStack.splice(lastIndex, 1);
+            }
+
+            // Animate out and clean up
+            this.hideModalWithAnimation(overlay, type).catch(() => {
+                // Fallback: ensure removal
+                overlay.remove();
+                this.cleanupAfterClose(type);
+            });
+        } catch {
+            // No-op
+        }
     }
 
     /**
@@ -443,9 +500,9 @@ export class ModalManager {
      */
 
     private static cleanupAfterClose(type : ModalType) : void {
-        
-        //remove body class if no modals are opened
-        if  (this.activeModals.size === 0) {
+        // Remove body class if no overlays remain in DOM or no active modals tracked
+        const overlaysRemaining = document.querySelectorAll('.modal-overlay').length;
+        if (overlaysRemaining === 0 || this.activeModals.size === 0) {
             document.body.classList.remove('modal-open');
         }
 

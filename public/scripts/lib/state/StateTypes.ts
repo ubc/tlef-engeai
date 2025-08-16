@@ -28,7 +28,7 @@ export type StateEvent =
     | 'message-added' 
     | 'message-pinned' 
     | 'message-unpinned'
-    | 'state:changed';
+    | 'state-changed';
 
 export interface StateEventData {
     'chat-added' : { chatId : number };
@@ -38,7 +38,7 @@ export interface StateEventData {
     'message-added' : { chatId : number, messageId : number };
     'message-pinned' : { chatId : number, messageId : number };
     'message-unpinned' : { chatId : number};
-    'state:changed' : { chatId : number };
+    'state-changed' : { chatId : number };
 }
 
 
