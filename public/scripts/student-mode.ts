@@ -1,28 +1,7 @@
 // public/scripts/student-mode.ts
 
-declare const feather: {
-    replace: () => void;
-};
-
-interface ChatMessage {
-    id: number;
-    sender: 'user' | 'bot';
-    text: string;
-    timestamp: number;
-    artefact?: {
-        type: 'mermaid';
-        source: string;
-        title?: string;
-    };
-}
-
-interface Chat {
-    id: number;
-    title: string;
-    messages: ChatMessage[];
-    isPinned: boolean;
-    pinnedMessageId?: number | null;
-}
+import type { Chat, ChatMessage } from './types.js';
+import { loadComponentHTML, sendMessageToServer, renderFeatherIcons } from './api.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- STATE MANAGEMENT ---
@@ -42,11 +21,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!mainContentArea) return;
         
         try {
-            const response = await fetch(`/components/${componentName}.html`);
-            if (!response.ok) throw new Error('Network response was not ok');
-            console.log('Response:', response);
-            mainContentArea.innerHTML = await response.text();
-            feather.replace();
+            const html = await loadComponentHTML(componentName);
+            mainContentArea.innerHTML = html;
+            renderFeatherIcons();
             
             // After loading, attach necessary event listeners
             if (componentName === 'chat-window') {
@@ -145,7 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Render Feather icons for newly injected buttons
-        feather.replace();
+        renderFeatherIcons();
     };
 
     const handlePinClickForChat = (targetChatId: number): void => {
@@ -307,7 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Always scroll to newest message on the scroll container (chat-window)
         scrollToBottom();
         renderPinnedBanner(activeChat);
-        feather.replace();
+        renderFeatherIcons();
         // In case icon rendering changes layout, scroll again next frame
         scrollToBottom();
     };
@@ -345,7 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chat.pinnedMessageId = null;
         renderActiveChat();
         renderChatList();
-        feather.replace();
+        renderFeatherIcons();
     };
 
     const renderPinnedBanner = (chat: Chat) => {
@@ -560,25 +537,15 @@ document.addEventListener('DOMContentLoaded', () => {
         inputEl.value = '';
         inputEl.style.height = 'auto';
 
-        fetch('/api/chat/message', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text })
-        })
-        .then(res => res.json())
-        .then(data => {
-            const serverTimestamp = typeof data.timestamp === 'number' ? data.timestamp : Date.now();
-            const artefact = (data.artefact && data.artefact.type === 'mermaid' && typeof data.artefact.source === 'string')
-                ? ({ type: 'mermaid' as const, source: data.artefact.source as string, title: (data.artefact.title as string | undefined) })
-                : undefined;
-            const botMsg: ChatMessage = { id: Date.now() + 1, sender: 'bot', text: data.reply, timestamp: serverTimestamp, artefact };
-            activeChat.messages.push(botMsg);
-            renderActiveChat();
-            // Auto-open artefact when present
-            if (artefact) {
-                openArtefactFromMessage(botMsg);
-            }
-        });
+        sendMessageToServer(text)
+            .then(({ reply, timestamp, artefact }) => {
+                const botMsg: ChatMessage = { id: Date.now() + 1, sender: 'bot', text: reply, timestamp, artefact };
+                activeChat.messages.push(botMsg);
+                renderActiveChat();
+                if (artefact) {
+                    openArtefactFromMessage(botMsg);
+                }
+            });
     };
 
     const togglePin = () => {
@@ -624,7 +591,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show overlay and lock background
         overlay.classList.add('show');
         document.body.classList.add('modal-open');
-        feather.replace();
+        renderFeatherIcons();
 
         const closeBtn = overlay.querySelector('.close-modal') as HTMLButtonElement | null;
         const onKeyDown = (e: KeyboardEvent) => {
@@ -677,12 +644,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const collapsed = sidebarEl.classList.toggle('collapsed');
             const i = btn.querySelector('i');
             if (i) i.setAttribute('data-feather', collapsed ? 'chevrons-right' : 'chevrons-left');
-            feather.replace();
+            renderFeatherIcons();
         });
 
         // Place the button at the end of the header area
         sidebarHeaderEl.appendChild(btn);
-        feather.replace();
+        renderFeatherIcons();
     };
     ensureSidebarCollapseButton();
 
