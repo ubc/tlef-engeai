@@ -340,7 +340,7 @@ body {
 /* open-artefact-chip provided by chat-window.css */
 
 /* Message Area - This becomes the scrolling container */
-/* Use base message-area from chat-window.css, only ensure no horizontal scroll */
+/* Use base message-area from chat-window.css with padding-based centering */
 .message-area { overflow-x: hidden; }
 
 
