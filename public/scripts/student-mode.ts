@@ -1,7 +1,7 @@
 // public/scripts/student-mode.ts
 
-import type { Chat, ChatMessage } from './types.js';
-import { loadComponentHTML, sendMessageToServer, renderFeatherIcons } from './api.js';
+import type { Chat, ChatMessage } from './functions/types.js';
+import { loadComponentHTML, sendMessageToServer, renderFeatherIcons } from './functions/api.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- STATE MANAGEMENT ---
@@ -15,6 +15,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const sidebarEl = document.querySelector('.sidebar') as HTMLElement | null;
     const sidebarHeaderEl = document.querySelector('.sidebar-header') as HTMLElement | null;
     const artefactCloseBtn = document.getElementById('close-artefact-btn');
+
+    // --- ESC KEY LISTENER FOR ARTEFACT PANEL ---
+    let artefactEscListener: ((e: KeyboardEvent) => void) | null = null;
+
+    const addArtefactEscListener = () => {
+        if (artefactEscListener) return; // Already added
+        
+        artefactEscListener = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                const panel = document.getElementById('artefact-panel');
+                if (panel && panel.classList.contains('open')) {
+                    toggleArtefactPanel();
+                }
+            }
+        };
+        
+        document.addEventListener('keydown', artefactEscListener);
+    };
+
+    const removeArtefactEscListener = () => {
+        if (artefactEscListener) {
+            document.removeEventListener('keydown', artefactEscListener);
+            artefactEscListener = null;
+        }
+    };
 
     // --- COMPONENT LOADING ---
     const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'report-history') => {
@@ -456,6 +481,8 @@ document.addEventListener('DOMContentLoaded', () => {
             panel.classList.remove('closing');
             panel.classList.add('open');
             panel.setAttribute('aria-hidden', 'false');
+            // Add ESC listener when panel opens
+            addArtefactEscListener();
         } else {
             // add a brief closing class so content fades, then remove .open
             panel.classList.add('closing');
@@ -464,6 +491,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 panel.classList.remove('open');
                 panel.setAttribute('aria-hidden', 'true');
                 panel.classList.remove('closing');
+                // Remove ESC listener when panel closes
+                removeArtefactEscListener();
             }, 180);
         }
         // mark dashboard state so CSS can split widths evenly
@@ -478,6 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Lazy-load artefact content on open
         if (willOpen) {
+
             const container = panel.querySelector('.artefact-content') as HTMLElement | null;
             if (container && container.childElementCount === 0) {
                 fetch('/components/artefact.html')
@@ -787,46 +817,6 @@ document.addEventListener('DOMContentLoaded', () => {
         messageWrapper.appendChild(actions);
         return messageWrapper;
     };
-    // Seed predefined chats with distinct Mermaid diagrams (reset every load)
-    const seedPredefinedChats = () => {
-        const samples: Array<{title: string; text: string; mermaid: string}> = [
-            {
-                title: 'Process Overview',
-                text: 'Here is a high-level process overview. Click to view the artefact.',
-                mermaid: `flowchart TD\n  Start --> A[Collect Input]\n  A --> B{Valid?}\n  B -- Yes --> C[Analyze]\n  B -- No --> D[Request Fix]\n  C --> E[Generate]\n  E --> End`
-            },
-            {
-                title: 'Sequence Demo',
-                text: 'A simple sequence between client and server.',
-                mermaid: `sequenceDiagram\n  participant C as Client\n  participant S as Server\n  C->>S: Request data\n  S-->>C: Respond with JSON\n  C->>S: ACK`
-            },
-            {
-                title: 'State Machine',
-                text: 'A small state machine example.',
-                mermaid: `stateDiagram-v2\n  [*] --> Idle\n  Idle --> Loading: fetch\n  Loading --> Success: ok\n  Loading --> Error: fail\n  Success --> [*]\n  Error --> Idle`
-            },
-            {
-                title: 'Class Diagram',
-                text: 'A mini class diagram sample.',
-                mermaid: `classDiagram\n  class User {\n    +id: number\n    +name: string\n    +login() void\n  }\n  class Session {\n    +token: string\n    +expiresAt: Date\n  }\n  User "1" -- "*" Session`
-            },
-            {
-                title: 'ER Diagram',
-                text: 'An ER-style entity relation sample.',
-                mermaid: `erDiagram\n  USER ||--o{ ORDER : places\n  ORDER ||--|{ LINE_ITEM : contains\n  USER {\n    string id\n    string name\n  }\n  ORDER {\n    string id\n    date created\n  }\n  LINE_ITEM {\n    string sku\n    int quantity\n  }`
-            }
-        ];
-
-        chats = samples.map((s, idx) => ({
-            id: Date.now() + idx,
-            title: s.title,
-            isPinned: idx === 0,
-            messages: [
-                { id: Date.now() + idx * 10 + 1, sender: 'bot', text: s.text, timestamp: Date.now(), artefact: { type: 'mermaid', source: s.mermaid } }
-            ]
-        }));
-        activeChatId = chats[0].id;
-    };
 
     // Open artefact from a specific message
     const openArtefactFromMessage = (msg: ChatMessage) => {
@@ -844,6 +834,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 panel.setAttribute('aria-hidden', 'true');
                 panel.classList.remove('closing');
                 if (dashboard) dashboard.classList.remove('artefact-open');
+                // Remove ESC listener when closing
+                removeArtefactEscListener();
                 // after closed, proceed to open with new content
                 setTimeout(() => showMermaidInPanel(msg), 10);
             }, 180);
@@ -871,6 +863,9 @@ document.addEventListener('DOMContentLoaded', () => {
         panel.classList.add('open');
         panel.setAttribute('aria-hidden', 'false');
         if (dashboard) dashboard.classList.add('artefact-open');
+        
+        // Add ESC listener when opening
+        addArtefactEscListener();
 
         // init mermaid on new content
         try {
@@ -925,6 +920,9 @@ document.addEventListener('DOMContentLoaded', () => {
             panel.classList.add('open');
             panel.setAttribute('aria-hidden', 'false');
             if (dashboard) dashboard.classList.add('artefact-open');
+            
+            // Add ESC listener when opening
+            addArtefactEscListener();
         };
 
         // If already open, close first for consistent animation, then open
@@ -936,6 +934,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 panel.setAttribute('aria-hidden', 'true');
                 panel.classList.remove('closing');
                 if (dashboard) dashboard.classList.remove('artefact-open');
+                // Remove ESC listener when closing
+                removeArtefactEscListener();
                 setTimeout(proceed, 10);
             }, 180);
         } else {
@@ -969,6 +969,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 panel.setAttribute('aria-hidden', 'true');
                 panel.classList.remove('closing');
                 if (dashboard) dashboard.classList.remove('artefact-open');
+                // Remove ESC listener when closing
+                removeArtefactEscListener();
             }, 180);
         }
     };

@@ -1,5 +1,13 @@
 // public/scripts/api.ts
 
+/**
+ * API for the student mode
+ * 
+ * @author: @gatahcha
+ * @version: 1.0.0
+ * @since: 2025-08-16
+ */
+
 import type { Artefact } from './types';
 
 declare const feather: { replace: () => void };
@@ -10,6 +18,11 @@ export interface ChatResponse {
     artefact?: Artefact;
 }
 
+/**
+ * Send a message to the server and return the response
+ * @param text - The message to send to the server
+ * @returns The response from the server
+ */
 export async function sendMessageToServer(text: string): Promise<ChatResponse> {
     const res = await fetch('/api/chat/message', {
         method: 'POST',
@@ -25,12 +38,20 @@ export async function sendMessageToServer(text: string): Promise<ChatResponse> {
     return { reply: data.reply as string, timestamp: serverTimestamp, artefact };
 }
 
+/**
+ * Load the HTML for a component
+ * @param componentName - The name of the component to load
+ * @returns The HTML for the component
+ */
 export async function loadComponentHTML(componentName: 'welcome-screen' | 'chat-window' | 'report-history'): Promise<string> {
     const response = await fetch(`/components/${componentName}.html`);
     if (!response.ok) throw new Error('Network response was not ok');
     return await response.text();
 }
 
+/**
+ * Render Feather icons
+ */
 export function renderFeatherIcons(): void {
     try { feather.replace(); } catch {}
 }

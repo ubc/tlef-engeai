@@ -1,11 +1,24 @@
 // public/scripts/types.ts
 
+/**
+ * Types for the student mode
+ * @author: @gatahcha
+ * @version: 1.0.0
+ * @since: 2025-08-16
+ */
+
+/**
+ * The type of artefact
+ */
 export interface Artefact {
     type: 'mermaid';
     source: string;
     title?: string;
 }
 
+/**
+ * The type of chat message
+ */
 export interface ChatMessage {
     id: number;
     sender: 'user' | 'bot';
@@ -14,6 +27,9 @@ export interface ChatMessage {
     artefact?: Artefact;
 }
 
+/**
+ * The type of chat
+ */
 export interface Chat {
     id: number;
     title: string;
