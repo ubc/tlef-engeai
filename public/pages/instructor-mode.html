@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EngE-AI | Student Mode</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="/styles/style.css" />
+    <link rel="stylesheet" href="/styles/chat-components/message-menu.css" />
+    <link rel="stylesheet" href="/styles/chat-components/artefact.css" />
+    <link rel="stylesheet" href="/styles/chat-components/chat-window.css" />
+    <link rel="stylesheet" href="/styles/chat-components/report-history.css" />
+    <link rel="stylesheet" href="/styles/chat-components/welcome-screen.css" />
+    <link rel="stylesheet" href="/styles/chat-components/flag-message.css" />
+    <link rel="stylesheet" href="/styles/chat-components/disclaimer.css" />
+    <link rel="stylesheet" href="/styles/chat-components/student-mode.css" />
+    <script src="https://unpkg.com/feather-icons"></script>
+
+</head>
+<body>
+    <div class="chat-dashboard">
+        <aside class="sidebar">
+            <div>
+                <div class="sidebar-header">
+                    <div class="logo-box">
+                        <i data-feather="box"></i>
+                        <div class="logo-text">
+                            <span>EngE-AI</span>
+                            <p>Instructor Mode</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <aside class="sidebar-content">
+                <div class="sidebar-content-header">
+                    <div class="triple-line-menu">
+                        <div class="triple-line-menu-item">
+                            <i data-feather="chevron-left"></i>
+                            <span>Collapse Chat</span>
+                        </div>
+                    </div>
+                    <ul>
+                        <li>
+                            <a href="#">
+                                <i data-feather="message-circle"></i>
+                                <span>Chats</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#">
+                                <i data-feather="alert-triangle"></i>
+                                <span>Reports</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#">
+                                <i data-feather="monitor"></i>
+                                <span>Monitor</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#">
+                                <i data-feather="paperclip"></i>
+                                <span>Documents</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </aside>
+        </aside>
+        
+        <!-- The main content area where components will be loaded -->
+        <main id="main-content-area">
+            <!-- This will be populated by student-mode.ts -->
+        </main>
+
+        <!-- Artefact panel (hidden by default, slides from right) -->
+        <aside id="artefact-panel" class="artefact-panel" aria-hidden="true">
+            <div class="artefact-header">
+                <h3>Artefact</h3>
+                <button id="close-artefact-btn" class="icon-btn" title="Close"><i data-feather="x"></i></button>
+            </div>
+            <div class="artefact-content">
+                <!-- Content will be loaded from /components/artefact.html -->
+            </div>
+        </aside>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({ startOnLoad: true, theme: 'default' });</script>
+    <script type="module" src="/dist/instructor-mode.js"></script>
+    <script>
+        feather.replace(); // Initialize Feather Icons
+    </script>
+</body>
+</html>

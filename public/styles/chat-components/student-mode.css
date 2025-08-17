@@ -253,68 +253,17 @@ body {
 }
 
 /* Chat Window - Remove scrolling, let message area handle it */
-.chat-window { 
-    flex-grow: 1; 
-    display: flex; 
-    width: 100%;
-    height: 100vh; 
-    flex-direction: column; 
-    background-color: var(--chat-bg); 
-    /* REMOVED: overflow-y: auto - this was causing the dragging */
-    scrollbar-gutter: stable both-edges; 
-    padding: 0 10px 0 5px;
-    overflow-x: hidden;  /* ADD: This single line prevents trackpad drag */
-}
+.chat-window { overflow-x: hidden; }
 
 /* Blocker above sticky header to ensure no content overlays header area */
 /* Blocker above sticky header */
-.chat-header-blocker {
-    height: 10px;
-    margin: 0px 10px 0px 5px;
-    position: sticky;
-    top: 0px;
-    z-index: 9;
-    background-color: var(--chat-bg);
-    pointer-events: none;
-    flex-shrink: 0;
-    min-height: 10px;
-}
+/* chat-header-blocker styles provided by chat-window.css */
 
 /* Chat Header - Now sticky within message area */
-.chat-header { 
-    display: flex; 
-    flex-direction: column;
-    gap: 4px;
-    margin: 0px 10px 15px 5px;
-    border-radius: 10px;
-    border: 1px solid var(--border-color);
-    padding: 0.7rem 1rem; 
-    position: sticky;         
-    top: 10px;
-    z-index: 5;               
-    background: var(--chat-bg); 
-    animation: slideInDown 0.5s 0.1s forwards;
-    opacity: 0;
-    width: 100%;
-    max-width: 100%;
-    box-sizing: border-box;
-    min-width: 0;
-    overflow: hidden;
-    flex-shrink: 0; 
-    min-height: fit-content; 
-}
+/* Use base chat-header from chat-window.css, only override bottom spacing */
+.chat-header { margin-bottom: 15px; }
 
-.chat-header-main {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    width: 100%;
-    max-width: 100%;
-    overflow: hidden;
-    /* FIXED: Prevent vertical compression */
-    flex-shrink: 0;
-    min-height: fit-content;
-}
+/* chat-header-main provided by chat-window.css */
 
 /* Pinned container - prevent shrinking */
 .pinned-banner, .pinned-inline {
@@ -382,102 +331,20 @@ body {
     max-width: fit-content;
 }
 
-.chat-title { 
-    font-weight: 600; 
-    color: var(--text-primary); 
-    margin-right: auto; 
-    font-size: 0.9rem;
-    /* Add overflow protection */
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1 1 0%;
-}
+/* chat-title provided by chat-window.css */
 
-.chat-actions { 
-    display: flex; 
-    gap: 0.25rem; 
-}
+/* chat-actions provided by chat-window.css */
 
-.icon-btn { 
-    background: none; 
-    border: none; 
-    cursor: pointer; 
-    color: var(--text-secondary); 
-    padding: 0.4rem; 
-}
+/* icon-btn variants provided by chat-window.css */
 
-.icon-btn:hover { 
-    color: var(--color-chbe-green); 
-}
-
-.icon-btn .pinned { 
-    color: var(--pinned-color); 
-}
-
-.icon-btn .feather { 
-    width: 18px; 
-    height: 18px; 
-}
-
-.open-artefact-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
-    border-radius: 9999px;
-    border: 1px solid var(--border-color);
-    background: var(--background-2);
-    color: var(--text-primary);
-    font-size: 0.72rem;
-    font-weight: 600;
-    cursor: pointer;
-    margin: 6px 0px 6px 0px;
-    width: fit-content;
-}
-.open-artefact-chip:hover {
-    background: var(--hover-bg);
-    color: var(--color-chbe-green);
-    border-color: var(--color-chbe-green);
-}
-.open-artefact-chip .feather {
-    width: 14px;
-    height: 14px;
-}
+/* open-artefact-chip provided by chat-window.css */
 
 /* Message Area - This becomes the scrolling container */
-.message-area {
-    flex-grow: 1;
-    width: min(900px, calc(100% - 32px)); 
-    margin: 0 auto;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    overflow-y: auto; /* MOVED: Scrolling happens here now */
-    overflow-x: hidden;
-    position: relative;        
-    padding-bottom: 160px; /* Normal spacing */
-    flex-shrink: 1;
-    min-height: 0;
-    /* ADDED: Proper scroll styling */
-    scrollbar-gutter: stable;
-    scroll-behavior: smooth;
-}
+/* Use base message-area from chat-window.css, only ensure no horizontal scroll */
+.message-area { overflow-x: hidden; }
 
 
-.message {
-    font-size: 0.85rem;
-    padding: 0.5rem 1rem;
-    border-radius: 12px;
-    max-width: 100%;            /* allow messages to utilize full message-area width */
-    line-height: 1.5;
-    overflow-wrap: anywhere;    /* wrap long unbroken strings */
-    word-break: break-word;
-}
-.message { 
-    position: relative; 
-}
+/* message base styles provided by chat-window.css */
 
 /* Message content and timestamp layout */
 .message .message-content {
@@ -560,27 +427,7 @@ body {
     color: var(--color-chbe-green);
 }
 
-.msg-actions {
-    position: absolute;
-    top: 6px;
-    right: -28px;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.15s ease-in-out;
-    z-index: 10;
-}
-.message:hover .msg-actions {
-    opacity: 1;
-    visibility: visible;
-}
-.user-message .msg-actions {
-    left: -28px;
-    right: auto;
-}
-.bot-message .msg-actions {
-    right: -28px;
-    left: auto;
-}
+/* msg-actions provided by chat-window.css */
 
 .remove-pin-btn {
     color: var(--text-secondary);
@@ -601,230 +448,15 @@ body {
 
 /* moved: context menu styles now in styles/message-menu.css */
 
-.user-message {
-    background-color: #346c09;
-    color: white;
-    align-self: flex-end;
-    border-bottom-right-radius: 4px;
-}
-.bot-message {
-    color: var(--text-primary);
-    align-self: stretch;        /* let bot messages fill available width */
-}
+/* user-message and bot-message provided by chat-window.css */
 
 /* Chat Footer - Now outside scrolling area, uses normal flow */
-.chat-footer {
-    padding: 0;
-    background-color: transparent;
-    position: relative; /* CHANGED: Normal flow, not sticky */
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 0;                 
-    z-index: 20;               
-    flex-shrink: 0; /* Never shrink */
-    pointer-events: none;
-    /* Keep at bottom of chat-window */
-    margin-top: auto;
-}
-
-
-/* Chat Footer Content - Center within chat window */
-.chat-footer-content {
-    position: absolute;
-    left: 50%;
-    bottom: 0px;              
-    transform: translateX(-50%);
-    width: min(820px, calc(100% - 32px));
-    display: flex;
-    flex-direction: column;
-    gap: 0px;
-    pointer-events: auto;
-    border-radius: 10px 10px 0px 0px;
-    background-color: var(--chat-bg);
-    padding-bottom: 5px;
-    flex-shrink: 0;
-}
-
-/* Input bubble */
-/* Input Area - No changes needed, will inherit correct centering */
-.input-area {
-    width: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 0.15rem 0.5rem;
-    background-color: var(--background-2);
-    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
-    opacity: 0;
-    animation: slideInUp 0.5s 0.1s forwards;
-}
-
-.input-area input {
-    flex-grow: 1;
-    border: none;
-    outline: none;
-    font-size: 0.75rem;
-    background-color: transparent;
-    padding: 0.5rem 1rem;
-}
-
-/* Multiline textarea input: wraps and auto-grows up to 4 lines */
-.input-area textarea#chat-input {
-    flex-grow: 1;
-    border: none;
-    outline: none;
-    font-size: 0.75rem;          /* keep existing size */
-    background-color: transparent;
-    padding: 0.5rem 1rem;
-    resize: none;                 /* we auto-grow with JS */
-    line-height: 1.4;
-    max-height: calc(1.4em * 4);  /* cap at ~4 lines */
-    overflow: hidden;             /* switch to auto in JS when capped */
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;      /* wrap long unbroken strings */
-    word-break: break-word;
-}
-
-/* Send button styling */
-.input-area .send-btn {
-    background-color: var(--color-chbe-green);
-    color: white;
-    border: none;
-    border-radius: 9999px;
-    width: 28px;
-    height: 28px;
-    flex: 0 0 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-left: 0.5rem;
-    cursor: pointer;
-    transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
-}
-
-.input-area .send-btn:hover {
-    background-color: #4a6f2e;
-}
-
-.input-area .send-btn:active {
-    transform: scale(0.98);
-}
-
-.input-area .send-btn .feather {
-    width: 18px;
-    height: 18px;
-}
+/* chat footer and input-area provided by chat-window.css */
 
 /* Disclaimer - No changes needed */
-.disclaimer {
-    text-align: center;
-    align-self: center;
-    font-size: 0.6rem;
-    color: var(--text-secondary);
-    border-radius: 10px;
-    padding: 0.2rem 1rem;
-    width: fit-content;
-    opacity: 0;
-    animation: slideInUp 0.5s 0.2s forwards;
-}
+/* disclaimer styles provided by component stylesheet */
 
-.disclaimer a {
-    color: var(--color-chbe-green);
-    text-decoration: none;
-    font-weight: 600;
-    text-decoration: underline;
-}
-
-/* --- Welcome Screen --- */
-.welcome-screen {
-    flex-grow: 1;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 1.5rem;
-    box-sizing: border-box;
-    width: 100%;
-    height: 100%;
-}
-
-.welcome-box {
-    background-color: var(--background-2);
-    padding: 2.5rem 3rem;
-    border-radius: 16px;
-    border: 1px solid var(--border-color);
-    text-align: center;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.07);
-    animation: slideInUp 0.5s 0.1s forwards;
-    opacity: 0;
-    max-width: 850px;
-    align-items: center;
-}
-
-.welcome-icon {
-    color: var(--color-chbe-green);
-    width: 48px;
-    height: 48px;
-    margin-bottom: 1rem;
-    stroke-width: 1.5;
-}
-
-.welcome-box h2 {
-    color: var(--text-primary);
-    font-size: 1.75rem;
-    margin-top: 0;
-    margin-bottom: 0.5rem;
-}
-
-.welcome-box p {
-    line-height: 1.7;
-    margin-bottom: 1.25rem;
-    color: var(--text-secondary);
-    font-size: 0.94rem;
-}
-
-.welcome-box p.intro {
-    font-size: 1.1rem;
-    font-weight: 500;
-    color: var(--text-primary);
-}
-
-
-.welcome-box strong {
-    color: var(--text-primary);
-    font-weight: 600;
-}
-
-.welcome-add-btn {
-    background-color: var(--color-chbe-green);
-    color: white;
-    border: none;
-    padding: 0.8rem 1.75rem;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.6rem;
-    margin-top: 1rem;
-    font-size: 1rem;
-    box-shadow: 0 4px 15px rgba(92, 138, 58, 0.2);
-}
-
-.welcome-add-btn:hover {
-    background-color: #4a6f2e; /* Darker Green */
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(92, 138, 58, 0.3);
-}
-
-.welcome-add-btn:active {
-    transform: translateY(0);
-    box-shadow: 0 4px 15px rgba(92, 138, 58, 0.2);
-}
+/* welcome screen styles provided by component stylesheet */
 
 /* --- Modal --- */
 /* Overlay dims and subtly blurs the background (ChatGPT-like) */
@@ -917,127 +549,6 @@ body.modal-open {
     overflow: hidden; /* prevent background scroll while modal open */
 }
 
-/* --- Report History --- */
-.report-history {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    height: 100%;
-    margin: 10px 10px 5px 5px;
-}
+/* report history styles provided by component stylesheet */
 
-.report-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    border-radius: 10px;
-    border: 1px solid var(--border-color);
-    padding: 8px;
-    animation: slideInDown 0.5s 0.1s forwards;
-    opacity: 0;
-}
-
-.report-header h3 {
-    margin: 0;
-    margin-right: auto;
-    font-size: 0.95rem;
-    color: var(--text-primary);
-}
-
-.report-bug-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    background: var(--background-2);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 0.4rem 0.65rem;
-    font-weight: 600;
-    cursor: pointer;
-}
-.report-bug-btn:hover {
-    background-color: var(--color-eng-red);
-    color: white;
-    border-color: var(--color-eng-red);
-}
-
-.report-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-}
-
-.report-item {
-    background: var(--chat-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.07);
-}
-
-.report-item.resolved { opacity: 0.95; }
-
-.report-item-header {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.7rem 0.9rem;
-    cursor: pointer;
-    animation: slideInUp 0.5s 0.1s forwards;
-    opacity: 0;
-}
-
-.report-item-header .summary { 
-    flex: 1; 
-}
-
-.report-item-header .title { 
-    font-weight: 600; 
-    font-size: 0.85rem; 
-    color: var(--text-primary); 
-}
-
-.report-item-header .meta { 
-    font-size: 0.7rem; 
-    color: var(--text-secondary); 
-    margin-top: 0.2rem; 
-}
-
-.report-item-header .status { 
-    display: inline-flex; 
-    align-items: center; 
-    gap: 0.3rem; 
-}
-
-.report-item-header .chevron { 
-    width: 18px; 
-    height: 18px; 
-    color: var(--text-secondary); 
-}
-
-.chip { 
-    display: inline-flex; 
-    align-items: center; 
-    padding: 0.15rem 0.5rem; 
-    border-radius: 9999px; 
-    font-size: 0.7rem; 
-    border: 1px solid var(--border-color);
-}
-.chip-warn { background: #fff7e6; color: #ad6800; }
-.chip-ok { background: #edf7ed; color: #2e7d32; }
-
-.report-details {
-    display: none;
-    padding: 0 0.9rem 0.9rem;
-    font-size: 0.8rem;
-}
-.report-item.open .report-details { display: block; }
-
-.remove-pin-btn {
-    width: auto;
-    height: auto;
-    background-color: transparent;
-    border: none;
-}
+/* duplicate remove-pin-btn cleaned; single definition kept above */
