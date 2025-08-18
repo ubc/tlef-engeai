@@ -23,7 +23,7 @@ body {
     background-color: var(--chat-bg);
 }
 
-.chat-dashboard {
+.main-dashboard {
     display: flex;
     height: 100vh;
     width: 100%;
@@ -333,7 +333,7 @@ body {
 }
 
 /* When modal is open, soften the app content */
-body.modal-open .chat-dashboard {
+body.modal-open .main-dashboard {
     filter: blur(2px) brightness(0.88);
     pointer-events: none; /* prevent interactions behind overlay */
 }

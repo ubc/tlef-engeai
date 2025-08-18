@@ -21,7 +21,7 @@ body {
     background-color: var(--chat-bg);
 }
 
-.instructor-dashboard {
+.main-dashboard {
     display: flex;
     flex-direction: row;
     height: 100vh;

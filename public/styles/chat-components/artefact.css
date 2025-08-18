@@ -24,12 +24,12 @@
 }
 
 /* When artefact is open, make main content area share equal width */
-.chat-dashboard.artefact-open #main-content-area {
+.main-dashboard.artefact-open #main-content-area {
   flex: 1 1 0;
   margin: 10px 5px 10px 10px; /* symmetric margins */
 }
 
-.instructor-dashboard.artefact-open #main-content-area {
+.main-dashboard.artefact-open #main-content-area {
   flex: 1 1 0;
   margin: 10px 5px 10px 10px; /* symmetric margins */
 }

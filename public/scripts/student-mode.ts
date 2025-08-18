@@ -123,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Ensure artefact close button always closes the panel
     artefactCloseBtn?.addEventListener('click', () => {
         const panel = document.getElementById('artefact-panel');
-        const dashboard = document.querySelector('.chat-dashboard') as HTMLElement | null;
+        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
         if (!panel) return;
         if (panel.classList.contains('open')) {
             panel.classList.add('closing');
@@ -263,6 +263,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Selecting a chat when clicking anywhere except buttons
         li.addEventListener('click', () => {
+
+            // Close artifact panel when switching chats
+            const panel = document.getElementById('artefact-panel');
+            const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
+            if (panel && panel.classList.contains('open')) {
+                panel.classList.add('closing');
+                setTimeout(() => {
+                    panel.classList.remove('open');
+                    panel.setAttribute('aria-hidden', 'true');
+                    panel.classList.remove('closing');
+                    if (dashboard) dashboard.classList.remove('artefact-open');
+                    removeArtefactEscListener();
+                }, 180);
+            }
+
             activeChatId = chat.id;
             renderChatList();
             renderActiveChat();
@@ -474,7 +489,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const toggleArtefactPanel = () => {
         const panel = document.getElementById('artefact-panel');
         const closeBtn = document.getElementById('close-artefact-btn');
-        const dashboard = document.querySelector('.chat-dashboard') as HTMLElement | null;
+        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
         if (!panel) return;
         const willOpen = !panel.classList.contains('open');
         if (willOpen) {
@@ -533,6 +548,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- EVENT HANDLERS ---
     const createNewChat = () => {
+
+        // Close artifact panel when deleting active chat
+        const panel = document.getElementById('artefact-panel');
+        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
+        if (panel && panel.classList.contains('open')) {
+            panel.classList.add('closing');
+            setTimeout(() => {
+                panel.classList.remove('open');
+                panel.setAttribute('aria-hidden', 'true');
+                panel.classList.remove('closing');
+                if (dashboard) dashboard.classList.remove('artefact-open');
+                removeArtefactEscListener();
+            }, 180);
+        }
+
         const newChat: Chat = { id: Date.now(), 
                                 title: 'no title', 
                                 messages: [], 
@@ -587,6 +617,21 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const deleteActiveChat = () => {
+
+        // Close artifact panel when deleting active chat
+        const panel = document.getElementById('artefact-panel');
+        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
+        if (panel && panel.classList.contains('open')) {
+            panel.classList.add('closing');
+            setTimeout(() => {
+                panel.classList.remove('open');
+                panel.setAttribute('aria-hidden', 'true');
+                panel.classList.remove('closing');
+                if (dashboard) dashboard.classList.remove('artefact-open');
+                removeArtefactEscListener();
+            }, 180);
+        }
+
         chats = chats.filter(c => c.id !== activeChatId);
         if (chats.length > 0) {
             const lastPinned = chats.filter(c => c.isPinned).pop();
@@ -822,7 +867,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const openArtefactFromMessage = (msg: ChatMessage) => {
         if (!msg.artefact) return;
         const panel = document.getElementById('artefact-panel');
-        const dashboard = document.querySelector('.chat-dashboard') as HTMLElement | null;
+        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
         if (!panel) return;
 
         // Close then open for the requested behaviour
@@ -846,7 +891,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const showMermaidInPanel = (msg: ChatMessage) => {
         const panel = document.getElementById('artefact-panel');
-        const dashboard = document.querySelector('.chat-dashboard') as HTMLElement | null;
+        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
         if (!panel || !msg.artefact) return;
         const container = panel.querySelector('.artefact-content') as HTMLElement | null;
         if (!container) return;
@@ -885,7 +930,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!msg || msg.sender !== 'bot') return; // Only bot messages can be flagged
 
         const panel = document.getElementById('artefact-panel');
-        const dashboard = document.querySelector('.chat-dashboard') as HTMLElement | null;
+        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
         if (!panel) return;
 
         const proceed = () => {
@@ -960,7 +1005,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const closeArtefactPanel = () => {
         const panel = document.getElementById('artefact-panel');
-        const dashboard = document.querySelector('.chat-dashboard') as HTMLElement | null;
+        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
         if (!panel) return;
         if (panel.classList.contains('open')) {
             panel.classList.add('closing');
