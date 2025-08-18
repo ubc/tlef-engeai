@@ -55,7 +55,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     attachWelcomeScreenListeners();
                 })
             }
-
             renderFeatherIcons();
 
         }
