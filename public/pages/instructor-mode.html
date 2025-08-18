@@ -51,11 +51,11 @@
                     </div>
                     <div class="chat-menu">
                         <div class="add-chat-box">
-                            <button class="add-chat-button">
+                            <button class="add-chat-btn" id="add-chat-btn">
                                 <p>+ add new chat</p>
                             </button>
                         </div>
-                        <ul class="chat-list-ul">
+                        <ul id="chat-list-ul" class="chat-list-ul">
                             <!-- Chat items will be rendered here -->
                         </ul>
                     </div>
@@ -67,7 +67,20 @@
         <div id="main-content-area">
             <!-- content will be populated here -->
         </div>
+
+        <!-- Artefact panel (hidden by default, slides from right) -->
+        <aside id="artefact-panel" class="artefact-panel" aria-hidden="true">
+            <div class="artefact-header">
+                <h3>Artefact</h3>
+                <button id="close-artefact-btn" class="icon-btn" title="Close"><i data-feather="x"></i></button>
+            </div>
+            <div class="artefact-content">
+                <!-- Content will be loaded from /components/artefact.html -->
+            </div>
+        </aside>
     </div>
+
+    
 
 
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>

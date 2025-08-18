@@ -29,6 +29,12 @@
   margin: 10px 5px 10px 10px; /* symmetric margins */
 }
 
+.instructor-dashboard.artefact-open #main-content-area {
+  flex: 1 1 0;
+  margin: 10px 5px 10px 10px; /* symmetric margins */
+}
+
+
 .artefact-header {
   display: flex;
   align-items: center;
@@ -57,14 +63,22 @@
 }
 
 /* Prevent content from popping in before width grows */
-.artefact-panel:not(.open) .artefact-content { opacity: 0; }
-.artefact-panel.open .artefact-content { animation: fadeIn 0.2s 0.15s forwards; }
+.artefact-panel:not(.open) .artefact-content { 
+  opacity: 0; 
+}
+.artefact-panel.open .artefact-content { 
+  animation: fadeIn 0.2s 0.15s forwards; 
+}
 
 /* Fade-out animation for closing */
-.artefact-panel.closing .artefact-content { animation: fadeOut 0.2s forwards; }
+.artefact-panel.closing .artefact-content { 
+  animation: fadeOut 0.2s forwards; 
+}
 
 /* Mermaid sizing inside panel */
-.artefact-content .mermaid { margin: 0; }
+.artefact-content .mermaid { 
+  margin: 0; 
+}
 
 
 

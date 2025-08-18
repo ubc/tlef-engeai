@@ -11,6 +11,8 @@
   padding: 0 10px 0 5px;
 }
 
+/* ======== CHAT-HEADER CONTENT ========== */
+
 .chat-header-blocker {
   height: 10px;
   margin: 0px 10px 0px 5px;
@@ -71,6 +73,10 @@
 
 .chat-actions { display: flex; gap: 0.25rem; }
 
+
+
+/* ======== MESSAGE CONTENT ========== */
+
 .message-area {
   flex-grow: 1;
   width: 100%; 
@@ -110,22 +116,58 @@
   transition: opacity 0.15s ease-in-out;
   z-index: 10;
 }
-.message:hover .msg-actions { opacity: 1; visibility: visible; }
-.user-message .msg-actions { left: -28px; right: auto; }
-.bot-message .msg-actions { right: -28px; left: auto; }
+.message:hover .msg-actions { 
+  opacity: 1; 
+  visibility: visible; 
+}
+
+.user-message .msg-actions { 
+  left: -28px; 
+  right: auto; 
+}
+
+.bot-message .msg-actions { 
+  right: -28px; 
+  left: auto; 
+}
 
 .icon-btn { 
-  background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 0.4rem; 
+  background: none; 
+  border: none; 
+  cursor: pointer; 
+  color: var(--text-secondary); 
+  padding: 0.4rem; 
 }
-.icon-btn:hover { color: var(--color-chbe-green); }
-.icon-btn .pinned { color: var(--pinned-color); }
-.icon-btn .feather { width: 18px; height: 18px; }
+
+.icon-btn:hover { 
+  color: var(--color-chbe-green); 
+}
+
+.icon-btn .pinned { 
+  color: var(--pinned-color); 
+}
+
+.icon-btn .feather { 
+  width: 18px; 
+  height: 18px; 
+}
 
 .open-artefact-chip {
-  display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 9999px;
-  border: 1px solid var(--border-color); background: var(--background-2); color: var(--text-primary);
-  font-size: 0.72rem; font-weight: 600; cursor: pointer; margin-top: 6px; width: fit-content;
+  display: inline-flex; 
+  align-items: center; 
+  gap: 6px;
+  padding: 4px 8px; 
+  border-radius: 9999px;
+  border: 1px solid var(--border-color); 
+  background: var(--background-2); 
+  color: var(--text-primary);
+  font-size: 0.72rem; 
+  font-weight: 600; 
+  cursor: pointer; 
+  margin-top: 6px; 
+  width: fit-content;
 }
+
 .open-artefact-chip:hover { background: var(--hover-bg); color: var(--color-chbe-green); border-color: var(--color-chbe-green); }
 .open-artefact-chip .feather { width: 14px; height: 14px; }
 
@@ -163,3 +205,179 @@
 
 .message .message-timestamp .timestamp-action-btn .feather { width: 12px; height: 12px; }
 .message .message-timestamp .timestamp-action-btn .pinned { color: var(--pinned-color); }
+
+
+
+/* Message Area - This becomes the scrolling container */
+/* Use base message-area from chat-window.css with padding-based centering */
+.message-area { overflow-x: hidden; }
+
+
+/* message base styles provided by chat-window.css */
+
+/* Message content and timestamp layout */
+.message .message-content {
+    white-space: pre-wrap;
+}
+
+.message .message-timestamp {
+    margin-top: 4px;
+    font-size: 0.7rem;
+    display: flex; /* block-level flex so it always drops below artefact chip */
+    align-items: center;
+    color: #346c09;;
+}
+
+.message.user-message .message-timestamp  {
+    color: #ffffff;
+}
+
+/* Only change color for the PIN action on user messages */
+.message.user-message .message-timestamp .pin-action-btn:hover,
+.message.user-message .message-timestamp .pin-action-btn:focus {
+    color: var(--color-eng-red);
+}
+
+/* Inline  actions: " • Pin • Flag" */
+.message .message-timestamp .timestamp-actions {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 5px; /* ACTION SPACING: modify this to adjust gap between timestamp and first action */
+    color: inherit; /* inherit timestamp color */
+    font-size: inherit; /* align size with timestamp */
+    gap: 5px;
+}
+
+.message .message-timestamp .timestamp-dot {
+    color: inherit;
+}
+
+.message .message-timestamp .timestamp-action-btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0 0 0 0;
+    cursor: pointer;
+    color: inherit; /* align with component font color */
+    font: inherit;  /* inherit size/weight */
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+}
+
+.message .message-timestamp .timestamp-action-btn:hover,
+.message .message-timestamp .timestamp-action-btn:focus {
+    color: var(--color-eng-red); /* align with CHBE green */
+    outline: none;
+}
+
+.message .message-timestamp {
+    gap: 5px;
+}
+
+/* Ensure timestamp, pin and flag icons share the same size */
+.message .message-timestamp .feather {
+    width: 14px;
+    height: 14px;
+}
+
+/* Label next to icons */
+.message .message-timestamp .timestamp-action-label {
+    font-size: 0.7rem;
+}
+
+/* Horizontal spacing between action buttons */
+.message .message-timestamp .timestamp-action-btn + .timestamp-action-btn {
+    margin-left: 10px; /* ACTION SPACING BETWEEN ICON BUTTONS: modify this to adjust spacing between pin and flag */
+}
+
+/* CHBE green accent on pinned icon */
+.message .message-timestamp .pinned {
+    color: var(--color-chbe-green);
+}
+
+/* msg-actions provided by chat-window.css */
+
+.remove-pin-btn {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin-left: auto;
+    margin-right: 5px;
+    padding: 0;
+    border: none;
+    flex-shrink: 0;
+    flex-grow: 0;
+    white-space: nowrap;
+    width: auto;
+    height: auto;
+    background-color: transparent;
+    max-width: fit-content;
+}
+
+
+/* Pinned container - prevent shrinking */
+.pinned-banner, .pinned-inline {
+    display: none;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0rem 0rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.8rem;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+    /* FIXED: Prevent vertical shrinking */
+    flex-shrink: 0;
+    min-height: fit-content;
+}
+
+
+.pinned-inline {
+    border-top: 1px dotted var(--border-color);
+    padding-top: 4px;
+    margin-top: 2px;
+}
+
+/* Icons - keep fixed size */
+.pinned-banner .feather, 
+.pinned-inline .feather { 
+    width: 10px;
+    height: 10px; 
+    flex-shrink: 0;
+    flex-grow: 0;
+}
+
+.pinned-banner .pinned, 
+.pinned-inline .pinned { 
+    color: var(--pinned-color); 
+}
+
+/* AGGRESSIVE: Text container with absolute width control */
+.pinned-banner .pinned-text, 
+.pinned-inline .pinned-text {
+    /* AGGRESSIVE: Force text to behave */
+    flex: 1 1 0%; /* Take available space but can shrink to 0 */
+    min-width: 0; /* Allow shrinking below content size */
+    max-width: 100%; /* Never exceed container */
+    overflow: hidden; /* Hide overflow */
+    text-overflow: ellipsis; /* Show ellipsis */
+    white-space: nowrap; /* Prevent wrapping */
+    box-sizing: border-box;
+    /* Additional constraint to prevent expansion */
+    width: 0; /* Start with 0 width, let flex grow it within limits */
+}
+
+/* Small date indicator beside pinned text */
+.pinned-inline .pinned-time {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-left: 6px;
+    flex-shrink: 0;
+    flex-grow: 0;
+    white-space: nowrap;
+    max-width: fit-content;
+}

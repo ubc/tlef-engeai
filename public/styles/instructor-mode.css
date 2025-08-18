@@ -30,10 +30,10 @@ body {
     background-color: var(--chat-bg);
 }
 
-
-
 .instructor-sidebar {
     width: 270px;
+    flex: 0 0 270px;
+    min-width: 270px;
     margin: 10px 5px 10px 10px;
     padding: 0.75rem;
     background-color: var(--background-2);
@@ -198,7 +198,7 @@ body {
     flex-shrink: 0;
 }
 
-.add-chat-box .add-chat-button {
+.add-chat-box .add-chat-btn {
     flex-direction: 1;
     background-color: transparent;
     border: 1px solid var(--border-color);
@@ -210,12 +210,12 @@ body {
     align-items: center;
 }
 
-.add-chat-box .add-chat-button p {
+.add-chat-box .add-chat-btn p {
     margin: 0;
     padding: 0;
 }
 
-.add-chat-box .add-chat-button:hover {
+.add-chat-box .add-chat-btn:hover {
     background-color: var(--background-2);
     color: var(--text-primary);
     font-size: 0.9rem;
