@@ -43,7 +43,14 @@ export async function sendMessageToServer(text: string): Promise<ChatResponse> {
  * @param componentName - The name of the component to load
  * @returns The HTML for the component
  */
-export async function loadComponentHTML(componentName: 'welcome-screen' | 'chat-window' | 'report-history'): Promise<string> {
+export async function loadComponentHTML(
+    componentName:  | 'welcome-screen' 
+                    | 'chat-window' 
+                    | 'report-history' 
+                    | 'report-instructor'
+                    | 'monitor-instructor'
+                    | 'document-instructor'
+): Promise<string> {
     const response = await fetch(`/components/${componentName}.html`);
     if (!response.ok) throw new Error('Network response was not ok');
     return await response.text();

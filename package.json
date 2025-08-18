@@ -10,6 +10,7 @@
     "start": "cross-env NODE_ENV=production node dist/server.js",
     "dev": "npm-run-all --parallel dev:*",
     "dev:server": "cross-env NODE_ENV=development nodemon",
+    "dev:frontend": "tsc -p public/tsconfig.json --watch",
     "dev:client": "browser-sync start --proxy 'http://localhost:8020' --files 'public'",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
