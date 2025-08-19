@@ -49,7 +49,7 @@ export async function loadComponentHTML(
                     | 'report-history' 
                     | 'report-instructor'
                     | 'monitor-instructor'
-                    | 'document-instructor'
+                    | 'documents-instructor'
 ): Promise<string> {
     const response = await fetch(`/components/${componentName}.html`);
     if (!response.ok) throw new Error('Network response was not ok');

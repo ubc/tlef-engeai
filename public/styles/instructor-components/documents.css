@@ -1,0 +1,276 @@
+/* Base Styles */
+.document-upload {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--chat-bg);
+}
+
+.document-header {
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    z-index: 5;  
+    margin: 10px 10px 5px 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 0.7rem 1rem; 
+    gap: 10px;
+    background-color: var(--color-chbe-green);
+    animation: slideInDown 0.5s 0.1s forwards;
+    min-height: fit-content;
+}
+
+.document-header p {
+    margin: 0 5px 0 20px;
+    font-size: 0.8rem;
+    font-weight: 550;
+    color: var(--chat-bg);
+}
+
+.document-upload .main-content-area {
+    width: 100%;
+}
+
+/* Week Accordion Styles */
+.week-accordion-item {
+    margin: 20px 20px 20px 20px;
+    min-height: fit-content;
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.title-bar {  
+    padding: 5px 20px 5px 20px;
+    cursor: pointer;
+}
+
+.title-bar:hover {
+    background-color: var(--background-2, #f8f9fa);
+    transition: background-color 0.2s ease;
+}
+
+.title-border {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    border-bottom: 2px solid var(--border-color);
+    padding: 0px 10px 5px 10px;
+    align-items: center;
+}
+
+.week-title {
+    padding: 0 0 0 20px;
+}
+
+.week-title p {
+    margin: 0;
+}
+
+.week-title .week-number {
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin: 5px 0px 10px 0px;
+}
+
+.week-title .completed-session {
+    font-size: 0.8rem;
+}
+
+.published {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.publish-btn {
+    border-radius: 10px;
+    background-color: transparent;
+    border: 2px solid var(--border-color);
+    padding: 15px 10px 15px 10px;
+}
+
+.publish-btn:hover {
+    cursor: pointer;
+    background-color: var(--color-chbe-green);
+    transform: scale(1.1);
+    transition: all 0.3s;
+}
+
+.publish-btn p {
+    font-size: 0.6rem;
+    font-weight: 400;
+    color: #212529;
+    margin: 0;
+}
+
+.publish-btn:hover p {
+    color: var(--chat-bg);
+}
+
+/* Upload Content Accordion Animation */
+.upload-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+    padding: 0 20px;
+}
+
+.upload-content.active {
+    max-height: 2000px; /* Adjust based on your content */
+    padding: 20px;
+    transition: max-height 0.3s ease-in, padding 0.3s ease-in;
+}
+
+/* Lecture Item Styles */
+.lecture-item {
+    display: flex;
+    flex-direction: column;
+    margin: 10px 10px 10px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+}
+
+.lecture-item-title {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px;
+    margin-right: 20px;
+    cursor: pointer;
+}
+
+.lecture-item-title:hover {
+    background-color: var(--background-2, #f8f9fa);
+    transition: background-color 0.2s ease;
+}
+
+.lecture-item-title .feather {
+    width: 20px;
+    height: 20px;
+}
+
+.lecture-item-title p {
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin: 0 0 0 0;
+    padding: 5px 0px 5px 20px;
+}
+
+.lecture-item-title p.main-title {
+    font-weight: 600;
+}
+
+/* Learning Objectives Styles */
+.learning-objectives {
+    width: auto;
+    height: 50px;
+    background-color: var(--background-2);
+    border-radius: 5px;
+    border: 2px solid var(--border-color);
+    align-items: center;
+    justify-content: flex-start;
+    display: flex;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out, margin 0.3s ease-out, opacity 0.3s ease-out;
+    opacity: 0;
+    margin: 0 10px;
+}
+
+.learning-objectives.lecture-active {
+    max-height: 80px;
+    opacity: 1;
+    margin: 10px;
+    transition: max-height 0.3s ease-in, margin 0.3s ease-in, opacity 0.3s ease-in;
+}
+
+.learning-objectives p {
+    margin: 0;
+    padding: 10px 0px 0px 20px;
+    font-size: 0.8rem;
+}
+
+/* File Upload Styles */
+.file-upload {
+    width: auto;
+    height: 150px;
+    background-color: var(--background-2);
+    border-radius: 8px;
+    border: 5px dashed var(--color-ubc-blue);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out, margin 0.3s ease-out, opacity 0.3s ease-out;
+    opacity: 0;
+    margin: 0 10px;
+}
+
+.file-upload.lecture-active {
+    max-height: 200px;
+    opacity: 1;
+    margin: 10px;
+    transition: max-height 0.3s ease-in, margin 0.3s ease-in, opacity 0.3s ease-in;
+}
+
+.file-upload::before {
+    content: 'Drop files here or click to upload';
+    color: var(--color-ubc-blue, #0052cc);
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-align: center;
+}
+
+.file-upload:hover {
+    background-color: var(--background-3, #e9ecef);
+    transition: background-color 0.2s ease;
+    cursor: pointer;
+}
+
+/* Arrow Icon Animation */
+.lecture-item-title i[data-feather="arrow-down"],
+.title-bar i[data-feather="arrow-down"] {
+    transition: transform 0.3s ease;
+}
+
+/* Animations */
+@keyframes slideInDown {
+    from {
+        opacity: 0;
+        transform: translate3d(0, -100%, 0);
+    }
+    to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .document-header {
+        margin: 5px;
+        padding: 0.5rem;
+    }
+    
+    .week-accordion-item {
+        margin: 10px;
+    }
+    
+    .title-bar {
+        padding: 5px 10px;
+    }
+    
+    .week-title {
+        padding: 0 0 0 10px;
+    }
+    
+    .lecture-item-title p {
+        font-size: 0.8rem;
+        padding: 5px 0px 5px 10px;
+    }
+}

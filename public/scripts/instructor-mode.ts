@@ -6,7 +6,7 @@ const enum StateEvent {
     Chat,
     Report,
     Monitor,
-    document
+    Documents
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -16,16 +16,51 @@ document.addEventListener('DOMContentLoaded', () => {
     const logoBox = document.querySelector('.logo-box');
     const sidebarMenuListEl =document.querySelector('.sidebar-menu-list');
     const sidebarCollapseButton = document.querySelector('.sidebar-collapse-icon');
+    const sidebarContentEl = document.getElementById('sidebar-content');
     const mainContentAreaEl = document.getElementById('main-content-area');
     const sideBarAddChatBtn = document.getElementById('add-chat-btn');
+    const chatMenuEl = document.getElementById('chat-menu');
     const chatListEl = document.getElementById('chat-list-ul');
 
     // Current State
-    let currentState : StateEvent = StateEvent.Chat;
+    let currentState : StateEvent = StateEvent.Documents;
 
     // --- STATE MANAGEMENT ----
     let chats: Chat[] = []
     let activeChatId: number | null = null;
+    const chatStateEl = document.getElementById('chat-state');
+    const reportStateEl = document.getElementById('report-state');
+    const monitorStateEl = document.getElementById('monitor-state');
+    const documentsStateEl = document.getElementById('documents-state');
+
+    chatStateEl?.addEventListener('click', () => {
+        if(currentState !== StateEvent.Chat) {
+            currentState = StateEvent.Chat;
+            updateUI();
+        }
+    });
+
+    reportStateEl?.addEventListener('click', () => {
+        if (currentState !== StateEvent.Report) {
+            currentState = StateEvent.Report;
+            updateUI();
+        }
+    });
+
+    monitorStateEl?.addEventListener('click', () => {
+        if (currentState !== StateEvent.Monitor) {
+            currentState = StateEvent.Monitor;
+            updateUI();
+        }
+    });
+
+    documentsStateEl?.addEventListener('click', () => {
+        if (currentState !== StateEvent.Documents) {
+            currentState = StateEvent.Documents;
+            updateUI();
+        }
+    });
+
 
 
     // --- ESC KEY LISTENER FOR ARTEFACT PANEL ---
@@ -68,10 +103,8 @@ document.addEventListener('DOMContentLoaded', () => {
         sidebarCollapseButton.addEventListener('click', () => {
             if (!sidebarEl) return;
             sidebarEl.classList.toggle('collapsed');
-            console.log('About to toggle log yuhuuu');
             if(!logoBox) return;
             logoBox.classList.toggle('collapsed');
-            console.log('Logo box classes:', logoBox.className);
             if(!sidebarMenuListEl) return;
             if (!sidebarMenuListEl.classList.contains('collapsed')){
                 sidebarMenuListEl.classList.toggle('collapsed');
@@ -80,7 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     sidebarCollapseToggle();
 
-    const loadComponent = async (componentName :'welcome-screen' | 'chat-window' | 'report-instructor' | 'monitor-instructor' | 'document-instructor' | 'report-history') => {
+    const loadComponent = async (componentName :'welcome-screen' | 'chat-window' | 'report-instructor' | 'monitor-instructor' | 'documents-instructor' | 'report-history') => {
         if (!mainContentAreaEl) return;
         try {
             const html = await loadComponentHTML(componentName);
@@ -95,7 +128,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 sideBarAddChatListeners();
             }
             renderFeatherIcons();
-
         }
         catch (error) {
             console.log(`Error loading component ${componentName}:`, error);
@@ -104,16 +136,52 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const updateUI = () => {
+
+        console.log("current state is : " + currentState.toString());
+
         if ( currentState === StateEvent.Chat ) {
+
             if (!sidebarMenuListEl) return;
             if (!sidebarMenuListEl.classList.contains('collapsed')) {
                 sidebarMenuListEl.classList.toggle('collapsed');
             }
-            if (chats.length === 0) loadComponent('welcome-screen');
-            else{
-                console.log(chats.length);
-                loadComponent('chat-window');
+            if (chats.length === 0) {
+                loadComponent('welcome-screen');
+
+                //activate chat menu when the state is at chat
+                if (chatMenuEl) chatMenuEl.style.visibility = 'visible';
             }
+            else{
+                loadComponent('chat-window');
+
+                //activate chat menu when the state is at chat
+                const chatMenuEl = document.getElementById('chat-menu');
+                if (sidebarContentEl && chatMenuEl) {
+                    sidebarContentEl.appendChild(chatMenuEl);
+                }
+
+                renderActiveChat();
+            }
+        }
+        else if ( currentState === StateEvent.Report){
+            loadComponent('report-instructor');
+            sidebarNoChat();
+        }
+        else if ( currentState === StateEvent.Monitor){
+            loadComponent('monitor-instructor');
+            sidebarNoChat();
+        }
+        else if ( currentState === StateEvent.Documents){
+            loadComponent('documents-instructor');
+            sidebarNoChat();
+        }
+    }
+    
+    const sidebarNoChat = () => {
+        if (sidebarMenuListEl) sidebarMenuListEl.classList.remove('collapsed');
+        if (chatMenuEl) chatMenuEl.style.visibility = 'hidden';
+        if (sidebarContentEl && chatMenuEl) {
+            sidebarContentEl.removeChild(chatMenuEl);
         }
     }
 
@@ -195,7 +263,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
         if (!panel) return;
         const willOpen = !panel.classList.contains('open');
-        console.log("mekimekimeki" + willOpen);
         if (willOpen) {
             panel.classList.remove('closing');
             panel.classList.add('open');
@@ -283,12 +350,10 @@ document.addEventListener('DOMContentLoaded', () => {
             scrollToBottom();
         }, 400);
         activeChatId = newChat.id;
-        console.log("length of the chats" + chats.length);
         updateUI();
     }
 
     const sendMessage = () => {
-        console.log("")
         const inputEl = document.getElementById('chat-input') as HTMLTextAreaElement;
         const text = inputEl.value.trim();
         if (text === '') return;
@@ -363,7 +428,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             activeChatId = null;
         }
-        console.log("chat is deleted");
         updateUI();
     };
 

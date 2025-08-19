@@ -133,8 +133,17 @@ body {
     min-height: 0;
 }
 
-
 .sidebar-menu-list ul{
+    margin: 0px 0px 0px 0px;
+    padding: 0px 0px 0px 0px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+}
+
+
+.sidebar-menu-list.collapsed ul{
     margin: 0px 0px 0px 0px;
     padding: 0px 0px 0px 0px;
     display: flex;
@@ -163,10 +172,16 @@ body {
     height: 20px;
 }
 
+.sidebar-menu-list .menu-list-item.active .feather {
+    width: 24px;
+    height: 24px;
+    color: var(--color-chbe-green);
+}
 
 
 .sidebar-menu-list .menu-list-item:not(.active):hover {
     background-color: var(--hover-bg);
+    cursor: pointer;
 }
 
 .sidebar-menu-list.collapsed .menu-list-item {
