@@ -3,78 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-    <link rel="stylesheet" href="../styles/instructor-components/documents.css">
-    <script type="module" src="../dist/feature/documents.js"></script>
-    <script src="https://unpkg.com/feather-icons"></script>
+    <title>EngE-AI Engineering companion - Documents</title>
+    <link rel="stylesheet" href="/styles/instructor-components/documents.css">
 </head>
 <body>
-    <div class="document-upload" id="document-upload">
-        <div class="document-header" id="document-header">
-            <p class="title"> EngE-AI : Document Upload </p>
-            <p class="course-code">CHBE_V 220 - Founding Principles in Chemical and Biological Engineering I</p>
-        </div>
-        <div class="main-content-area">
-            <div class="week-accordion-item">
-                <div class="title-bar" id="title-bar">
-                    <div class="title-border">
-                        <div class="week-title">
-                            <p class="week-number" id="week-number">Week 1</p>
-                            <p class="completed-session" id="completed-session">0 / 4 Session is completed</p>
-                        </div>
-                        <div class="published">
-                            <button class="publish-btn">
-                                <p>Published</p>
-                            </button>
-                            <i data-feather="arrow-down"></i>
-                        </div>
-                    </div>
-                </div>
-                <div class="upload-content" id="upload-content">
-                    <div class="lecture-item">
-                        <div class="lecture-item-title">
-                            <p class="lecture-title">Lecture-1: 0 Document uploaded </p>
-                            <i data-feather="arrow-down"></i>
-                        </div>
-                        <div id="learning-objectives-1" class="learning-objectives">
-                            <p>Learning Objectives</p>
-                        </div>
-                        <div class="file-upload">
-                        </div>
-                    </div>
-                    <div class="lecture-item">
-                        <div class="lecture-item-title">
-                            <p class="main-title">Lecture-2: 0 Document uploaded</p>
-                            <i data-feather="arrow-down"></i>
-                        </div>
-                        <div id="learning-objectives-2" class="learning-objectives">
-                            <p>Learning Objectives</p>
-                        </div>
-                        <div class="file-upload"></div>
-                    </div>
-                    <div class="lecture-item">
-                        <div class="lecture-item-title">
-                            <p class="main-title">Lecture-3: 0 Document uploaded</p>
-                            <i data-feather="arrow-down"></i>
-                        </div>
-                        <div id="learning-objectives-3" class="learning-objectives">
-                            <p>Learning Objectives</p>
-                        </div>
-                        <div class="file-upload"></div>
-                    </div>
-                    <div class="lecture-item">
-                        <div class="lecture-item-title">
-                            <p class="main-title">Tutorial: 0 Document uploaded</p>
-                            <i data-feather="arrow-down"></i>
-                        </div>
-                        <div id="learning-objectives-4" class="learning-objectives">
-                            <p>Learning Objectives</p>
-                        </div>
-                        <div class="file-upload"></div>
-                    </div>
-                </div>
+    <div class="container">
+        <main class="main-content">
+            <div class="header">
+                <h1>Documents</h1>
             </div>
-        </div>
+            <div id="documents-container" class="documents-container">
+                <!-- Content will be dynamically generated here -->
+            </div>
+        </main>
     </div>
+    <!-- Modal mount point -->
+    <div id="upload-modal-mount"></div>
 </body>
 </html>

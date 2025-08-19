@@ -1,6 +1,7 @@
 import { loadComponentHTML, renderFeatherIcons, sendMessageToServer } from "./functions/api.js";
 import { State } from "./functions/state.js";
 import { Chat, ChatMessage } from "./functions/types.js";
+import { initializeDocumentsPage } from "./feature/documents.js";
 
 const enum StateEvent {
     Chat,
@@ -23,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatListEl = document.getElementById('chat-list-ul');
 
     // Current State
-    let currentState : StateEvent = StateEvent.Documents;
+    let currentState : StateEvent = StateEvent.Chat;
 
     // --- STATE MANAGEMENT ----
     let chats: Chat[] = []
@@ -126,6 +127,9 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (componentName === 'chat-window'){
                 attachChatWindowListeners();
                 sideBarAddChatListeners();
+            }
+            else if (componentName === 'documents-instructor') {
+                initializeDocumentsPage();
             }
             renderFeatherIcons();
         }
