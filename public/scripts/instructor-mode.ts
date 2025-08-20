@@ -1,6 +1,5 @@
 import { loadComponentHTML, renderFeatherIcons, sendMessageToServer } from "./functions/api.js";
-import { State } from "./functions/state.js";
-import { Chat, ChatMessage } from "./functions/types.js";
+import { activeClass, Chat, ChatMessage } from "./functions/types.js";
 import { initializeDocumentsPage } from "./feature/documents.js";
 
 const enum StateEvent {
@@ -9,6 +8,18 @@ const enum StateEvent {
     Monitor,
     Documents
 }
+
+let CHBE220_Class : activeClass = {
+    name:'CHBE-220',
+    instructor: [
+        'john Doe', 'Killian Azhar'
+    ],
+    teachingAssistant: [
+        'Arc Warden', 'Alucard'
+    ],
+    onBoarded : true,
+}
+
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -114,12 +125,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     sidebarCollapseToggle();
 
-    const loadComponent = async (componentName :'welcome-screen' | 'chat-window' | 'report-instructor' | 'monitor-instructor' | 'documents-instructor' | 'report-history') => {
+    const loadComponent = async (
+        componentName :'welcome-screen' 
+                        | 'chat-window' 
+                        | 'report-instructor' 
+                        | 'monitor-instructor' 
+                        | 'documents-instructor' 
+                        | 'report-history' 
+                        | 'disclaimer'
+        ) => {
         if (!mainContentAreaEl) return;
         try {
+            console.log("DEBUG1");
             const html = await loadComponentHTML(componentName);
             mainContentAreaEl.innerHTML = html;
-
+            console.log("DEBUG2");
             if (componentName === 'welcome-screen') {
                 sideBarAddChatListeners();
                 attachWelcomeScreenListeners();
@@ -129,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 sideBarAddChatListeners();
             }
             else if (componentName === 'documents-instructor') {
-                initializeDocumentsPage();
+                initializeDocumentsPage(CHBE220_Class);
             }
             renderFeatherIcons();
         }
@@ -138,6 +158,8 @@ document.addEventListener('DOMContentLoaded', () => {
             mainContentAreaEl.innerHTML = `<p style="color: red; text-align: center;"> Error loading content. </p>`
         }
     };
+
+    const getChatMenu = () => document.getElementById('chat-menu');
 
     const updateUI = () => {
 
@@ -152,17 +174,22 @@ document.addEventListener('DOMContentLoaded', () => {
             if (chats.length === 0) {
                 loadComponent('welcome-screen');
 
-                //activate chat menu when the state is at chat
-                if (chatMenuEl) chatMenuEl.style.visibility = 'visible';
+                // Ensure chat menu is attached and visible
+                const cm = getChatMenu();
+                if (sidebarContentEl && cm && !sidebarContentEl.contains(cm)) {
+                    sidebarContentEl.appendChild(cm);
+                }
+                if (cm) cm.style.visibility = 'visible';
             }
             else{
                 loadComponent('chat-window');
 
                 //activate chat menu when the state is at chat
-                const chatMenuEl = document.getElementById('chat-menu');
-                if (sidebarContentEl && chatMenuEl) {
-                    sidebarContentEl.appendChild(chatMenuEl);
+                const cm = getChatMenu();
+                if (sidebarContentEl && cm && !sidebarContentEl.contains(cm)) {
+                    sidebarContentEl.appendChild(cm);
                 }
+                if (cm) cm.style.visibility = 'visible';
 
                 renderActiveChat();
             }
@@ -183,10 +210,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const sidebarNoChat = () => {
         if (sidebarMenuListEl) sidebarMenuListEl.classList.remove('collapsed');
-        if (chatMenuEl) chatMenuEl.style.visibility = 'hidden';
-        if (sidebarContentEl && chatMenuEl) {
-            sidebarContentEl.removeChild(chatMenuEl);
-        }
+        const cm = getChatMenu();
+        if (cm) cm.style.visibility = 'hidden';
+        // Do not remove the chat-menu from the DOM; keep it mounted for quick return to Chat
     }
 
     const scrollToBottom = () => {
@@ -456,9 +482,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.appendChild(overlay);
 
         try {
-            const response = await fetch('/components/disclaimer.html');
-            if (!response.ok) throw new Error('Failed to load disclaimer');
-            overlay.innerHTML = await response.text();
+            overlay.innerHTML = await loadComponentHTML('disclaimer');
         } catch (err) {
             overlay.innerHTML = '<div class="modal"><div class="modal-header"><h2>Disclaimer</h2></div><div class="modal-content"><p>Unable to load content.</p></div></div>';
         }

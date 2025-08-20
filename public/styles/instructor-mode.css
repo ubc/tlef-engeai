@@ -133,6 +133,17 @@ body {
     min-height: 0;
 }
 
+.sidebar-menu-list{
+    /* Give the left menu a real column width so its <li> can fill it */
+    flex: 0 0 100%;
+    width: 100%;
+}
+
+.sidebar-menu-list.collapsed {
+    flex: 0 0 38px;
+    width: 38px;
+}
+
 .sidebar-menu-list ul{
     margin: 0px 0px 0px 0px;
     padding: 0px 0px 0px 0px;

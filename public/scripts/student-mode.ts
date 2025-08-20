@@ -656,9 +656,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.appendChild(overlay);
 
         try {
-            const response = await fetch('/components/disclaimer.html');
-            if (!response.ok) throw new Error('Failed to load disclaimer');
-            overlay.innerHTML = await response.text();
+            overlay.innerHTML = await loadComponentHTML('disclaimer');
         } catch (err) {
             overlay.innerHTML = '<div class="modal"><div class="modal-header"><h2>Disclaimer</h2></div><div class="modal-content"><p>Unable to load content.</p></div></div>';
         }

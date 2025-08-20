@@ -1,29 +1,37 @@
-import { WeeklySection, CourseContent, LearningObjective, AdditionalMaterial } from '../functions/types';
+import { loadComponentHTML } from '@/functions/api.js';
+import { WeeklySection, CourseContent, LearningObjective, AdditionalMaterial, activeClass } from '../functions/types';
 
 // In-memory store for the course data
 let courseData: WeeklySection[] = [];
 
 // Function to initialize the documents page
-export function initializeDocumentsPage() {
+export function initializeDocumentsPage( currentClass : activeClass) {
     //
-    console.log('Documents page initialized');
-    generateInitialData();
-    renderDocumentsPage();
-    setupEventListeners();
+
+    if (!currentClass.onBoarded){
+        renderOnboarding();
+    }
+    else {
+        console.log('Documents page initialized');
+        generateInitialData();
+        renderDocumentsPage();
+        setupEventListeners();
+    }
 }
 
+
 // Generate initial empty data structure for 12 weeks
-function generateInitialData() {
+const generateInitialData = () => {
     if (courseData.length > 0) return; // Don't regenerate if data exists
     for (let i = 1; i <= 12; i++) {
         const week: WeeklySection = {
             weekNumber: i,
             title: `WEEK ${i}`,
             content: [
-                { id: 1, title: `Lecture ${ (i - 1) * 3 + 1}`, status: 'Draft', learningObjectives: [], files: [] },
-                { id: 2, title: `Lecture ${ (i - 1) * 3 + 2}`, status: 'Draft', learningObjectives: [], files: [] },
-                { id: 3, title: `Lecture ${ (i - 1) * 3 + 3}`, status: 'Draft', learningObjectives: [], files: [] },
-                { id: 4, title: `Tutorial ${i}`, status: 'Draft', learningObjectives: [], files: [] },
+                { id: 1, title: `Lecture ${ (i - 1) * 3 + 1}`, status: 'Draft', learningObjectives: []},
+                { id: 2, title: `Lecture ${ (i - 1) * 3 + 2}`, status: 'Draft', learningObjectives: []},
+                { id: 3, title: `Lecture ${ (i - 1) * 3 + 3}`, status: 'Draft', learningObjectives: []},
+                { id: 4, title: `Tutorial ${i}`, status: 'Draft', learningObjectives: [] },
             ]
         };
         courseData.push(week);
@@ -31,7 +39,7 @@ function generateInitialData() {
 }
 
 // Render the entire documents page from the courseData
-function renderDocumentsPage() {
+const renderDocumentsPage = () => {
     const container = document.getElementById('documents-container');
     if (!container) return;
 
@@ -39,7 +47,7 @@ function renderDocumentsPage() {
 }
 
 // Render a single week section
-function renderWeek(week: WeeklySection): string {
+const renderWeek = (week: WeeklySection): string => {
     const sectionsCompleted = week.content.filter(c => c.status === 'Published').length;
     const totalSections = week.content.length;
 
@@ -62,7 +70,7 @@ function renderWeek(week: WeeklySection): string {
 }
 
 // Render a single content item (lecture/tutorial)
-function renderContentItem(weekNumber: number, content: CourseContent): string {
+const renderContentItem = (weekNumber: number, content: CourseContent): string => {
     return `
         <div class="content-item" id="content-item-${weekNumber}-${content.id}">
             <div class="content-header">
@@ -95,7 +103,7 @@ function renderContentItem(weekNumber: number, content: CourseContent): string {
 }
 
 // Render the learning objectives section for a content item
-function renderObjectives(weekNumber: number, contentId: number): string {
+const renderObjectives = (weekNumber: number, contentId: number): string => {
     const week = courseData.find(w => w.weekNumber === weekNumber);
     const content = week?.content.find(c => c.id === contentId);
     if (!content) return '';
@@ -130,6 +138,17 @@ function renderObjectives(weekNumber: number, contentId: number): string {
 
     return html;
 }
+
+
+//render onboarding
+
+const renderOnboarding = async () => {
+    const container = document.getElementById('documents-container');
+    if (!container) return;
+    container.innerHTML = await loadComponentHTML('onboarding');
+}
+
+
 
 // Setup all event listeners for the page
 function setupEventListeners() {
@@ -444,26 +463,22 @@ function getUploadModalHTML(): string {
     return `
     <div class="modal">
         <div class="modal-header">
-            <h2>Upload Additional Material</h2>
+            <div></div>
             <button class="upload-close-btn" aria-label="Close">×</button>
         </div>
         <div class="modal-content">
-            <div class="upload-card">
-                <button id="upload-file-btn" class="upload-file-btn">📁 Upload Content</button>
-                <input id="hidden-file-input" type="file" style="display:none" />
-                <div class="file-selected"><span id="selected-file-name">No file selected</span></div>
-            </div>
             <div class="form-section">
-                <label class="section-label" for="mat-name">Material Name</label>
+                <label class="section-label" for="mat-name">Content Title</label>
                 <input id="mat-name" type="text" class="text-input" placeholder="Enter a name for this additional material..." />
-            </div>
-            <div class="form-section">
-                <label class="section-label" for="mat-url">URL Input</label>
-                <input id="mat-url" type="url" class="text-input" placeholder="Enter URL to import content from web..." />
             </div>
             <div class="form-section">
                 <label class="section-label" for="mat-text">Text Area</label>
                 <textarea id="mat-text" class="text-area" placeholder="Enter or paste your content directly here..."></textarea>
+            </div>
+            <div class="upload-card">
+                <button id="upload-file-btn" class="upload-file-btn">📁 Upload Content</button>
+                <input id="hidden-file-input" type="file" style="display:none" />
+                <div class="file-selected"><span id="selected-file-name">No file selected</span></div>
             </div>
         </div>
         <div class="modal-footer">

@@ -38,6 +38,19 @@ export interface Chat {
     pinnedMessageId?: number | null;
 }
 
+// ===========================================
+// ========= INSTRUCTOR DATA TYPE ============
+// ===========================================
+
+export interface activeClass {
+    name: string,
+    instructor : string[],
+    teachingAssistant : string[],
+    onBoarded : boolean;
+}
+
+
+
 /**
  * The type of a single learning objective
  */
@@ -45,15 +58,6 @@ export interface LearningObjective {
     title: string;
     description: string;
     published: boolean;
-}
-
-/**
- * The type for an uploaded file
- */
-export interface UploadedFile {
-    name: string;
-    url: string;
-    status: 'uploaded' | 'missing';
 }
 
 /**
@@ -83,7 +87,6 @@ export interface CourseContent {
     title: string;
     status: 'Draft' | 'Published';
     learningObjectives: LearningObjective[];
-    files: UploadedFile[];
     additionalMaterials?: AdditionalMaterial[];
 }
 
