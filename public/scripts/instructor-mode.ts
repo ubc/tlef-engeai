@@ -1,6 +1,7 @@
 import { loadComponentHTML, renderFeatherIcons, sendMessageToServer } from "./functions/api.js";
 import { activeClass, Chat, ChatMessage } from "./functions/types.js";
 import { initializeDocumentsPage } from "./feature/documents.js";
+import { renderOnboarding } from "./feature/onboarding.js";
 
 const enum StateEvent {
     Chat,
@@ -10,14 +11,14 @@ const enum StateEvent {
 }
 
 let CHBE220_Class : activeClass = {
-    name:'CHBE-220',
-    instructor: [
-        'john Doe', 'Killian Azhar'
+    onBoarded : false,
+    name:'',
+    instructors: [
     ],
-    teachingAssistant: [
-        'Arc Warden', 'Alucard'
+    teachingAssistants: [
     ],
-    onBoarded : true,
+    frameType: 'byTopic',
+    tilesNumber: 0
 }
 
 
@@ -35,7 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatListEl = document.getElementById('chat-list-ul');
 
     // Current State
-    let currentState : StateEvent = StateEvent.Chat;
+    let currentState : StateEvent = StateEvent.Documents;
 
     // --- STATE MANAGEMENT ----
     let chats: Chat[] = []
@@ -136,10 +137,8 @@ document.addEventListener('DOMContentLoaded', () => {
         ) => {
         if (!mainContentAreaEl) return;
         try {
-            console.log("DEBUG1");
             const html = await loadComponentHTML(componentName);
             mainContentAreaEl.innerHTML = html;
-            console.log("DEBUG2");
             if (componentName === 'welcome-screen') {
                 sideBarAddChatListeners();
                 attachWelcomeScreenListeners();
@@ -164,6 +163,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const updateUI = () => {
 
         console.log("current state is : " + currentState.toString());
+
+        if (!CHBE220_Class.onBoarded) {
+            renderOnboarding(CHBE220_Class);
+            return;
+        }
 
         if ( currentState === StateEvent.Chat ) {
 
@@ -229,6 +233,14 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // // --- EVENT LISTENER ATTACHMENT ---
+
+    //set custom windows listener on onboarding
+    window.addEventListener('onboardingComplete', () => {
+
+        console.log("DEBUG #39 : " + JSON.stringify(CHBE220_Class) );
+        updateUI();
+    })
+
     const attachWelcomeScreenListeners = () => {
         const welcomeBtn = document.getElementById('welcome-add-chat-btn');
         if (!welcomeBtn) return;

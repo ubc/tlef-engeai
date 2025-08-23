@@ -1,22 +1,15 @@
-import { loadComponentHTML } from '@/functions/api.js';
+import { loadComponentHTML } from '../functions/api.js';
 import { WeeklySection, CourseContent, LearningObjective, AdditionalMaterial, activeClass } from '../functions/types';
-
 // In-memory store for the course data
 let courseData: WeeklySection[] = [];
 
 // Function to initialize the documents page
 export function initializeDocumentsPage( currentClass : activeClass) {
-    //
 
-    if (!currentClass.onBoarded){
-        renderOnboarding();
-    }
-    else {
-        console.log('Documents page initialized');
-        generateInitialData();
-        renderDocumentsPage();
-        setupEventListeners();
-    }
+    console.log('Documents page initialized');
+    generateInitialData();
+    renderDocumentsPage();
+    setupEventListeners();
 }
 
 
@@ -140,13 +133,7 @@ const renderObjectives = (weekNumber: number, contentId: number): string => {
 }
 
 
-//render onboarding
 
-const renderOnboarding = async () => {
-    const container = document.getElementById('documents-container');
-    if (!container) return;
-    container.innerHTML = await loadComponentHTML('onboarding');
-}
 
 
 

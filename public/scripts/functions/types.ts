@@ -1,11 +1,17 @@
 // public/scripts/types.ts
 
+
+
 /**
  * Types for the student mode
  * @author: @gatahcha
  * @version: 1.0.0
  * @since: 2025-08-16
  */
+
+// =====================================
+// ========= CHAT DATA TYPE ============
+// =====================================
 
 /**
  * The type of artefact
@@ -39,16 +45,45 @@ export interface Chat {
 }
 
 // ===========================================
+// ========= ONBOARDING DATA TYPE ============
+// ===========================================
+
+export enum onBoardingScreen {
+    GettingStarted = 1,
+    CourseName = 2,
+    InstructorName = 3,
+    TAName = 4,
+    CourseFrame = 5,
+    ContentNumber = 6,
+    Finalization = 7,
+}
+
+
+// ===========================================
 // ========= INSTRUCTOR DATA TYPE ============
 // ===========================================
 
 export interface activeClass {
-    name: string,
-    instructor : string[],
-    teachingAssistant : string[],
     onBoarded : boolean;
+    name: string,
+    instructors: string[],
+    teachingAssistants: string[],
+    frameType: frameType;
+    tilesNumber: number;
 }
 
+/**
+ * frameTypes: Course content organization strategy. 
+ *              It is either percourse or perweek 
+ */
+export type frameType = 
+    | 'byWeek'
+    | 'byTopic'
+;
+
+// ==========================================
+// ========= DOCUMENTS DATA TYPE ============
+// ==========================================
 
 
 /**

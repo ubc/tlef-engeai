@@ -1,31 +1,170 @@
-
 <div class="onboarding">
-    <div class="title-onboarding">
-        <h1>Welcome to EngE-AI on boarding</h1>
-    </div>
+    <link rel="stylesheet" href="/styles/instructor-components/onboarding.css">
     <div class="steps-onboarding">
-        <h1>Please input these following steps</h1>
-        <div class="input-item" id="class-name">
-            <h2>Class name</h2>
-            <input type="text" id="class-name-input">
+
+        <!-- Screen 1: Welcome -->
+        <div class="screen" id="screen-1">
+            <div class="screen-header">
+                <h1 class="screen-title">Welcome to EngE-AI</h1>
+                <p class="screen-subtitle">Let's set up your course in just a few simple steps</p>
+            </div>
+            <div class="navigation">
+                <button class="nav-btn btn-next">Get Started</button>
+                <div class="step-counter">1 of 7</div>
+            </div>
         </div>
-        <div class="input-item" id="instructor-name">
-            <h2>Instructor names</h2>
-            <input type="text" id="instructor-name-input">
+
+        <!-- Screen 2: Class Name -->
+        <div class="screen" id="screen-2">
+            <div class="screen-header">
+                <h1 class="screen-title">What's your class name?</h1>
+                <p class="screen-subtitle">This will help identify your course</p>
+            </div>
+            <div class="input-item">
+                <input type="text" class="input-field" id="className" placeholder="e.g., CHBE 220" />
+            </div>
+            <div class="navigation">
+                <button class="nav-btn btn-back" id="classNameBack">Back</button>
+                <button class="nav-btn btn-next" id="classNameNext">Next</button>
+                <div class="step-counter">2 of 7</div>
+            </div>
         </div>
-        <div class="input-item" id="teaching-assistant-name">
-            <h2>Teaching Assistant names</h2>
-            <input type="text" id="teaching-assistant-name-input">
+
+        <!-- Screen 3: Instructors -->
+        <div class="screen" id="screen-3">
+            <div class="screen-header">
+                <h1 class="screen-title">Who are the instructors?</h1>
+                <p class="screen-subtitle">Add all the instructors for this course</p>
+            </div>
+            <div class="input-item">
+                <div class="input-area">
+                    <input type="text" class="input-field" id="instructorInput" placeholder="Enter instructor name" />
+                    <button class="add-btn" id="instructorAddBtn">+</button>
+                </div>
+                <div class="items-list" id="instructorsList">
+                    
+                </div>
+            </div>
+            <div class="navigation">
+                <button class="nav-btn btn-back" id="instructorBack">Back</button>
+                <button class="nav-btn btn-next" id="instructorsNext">Next</button>
+                <div class="step-counter">3 of 7</div>
+            </div>
         </div>
-        <div class="manage-options" id="manage-options">
-            <select name="manage-select" id="manage-select">
-                <option value="perweek">perweek</option>
-                <option value="per-chapters">perchapters</option>
-            </select>
+
+        <!-- Screen 4: Teaching Assistants -->
+        <div class="screen" id="screen-4">
+            <div class="screen-header">
+                <h1 class="screen-title">Any teaching assistants?</h1>
+                <p class="screen-subtitle">Add TAs if you have any (optional)</p>
+            </div>
+            <div class="input-item">
+                <div class="input-area">
+                    <input type="text" class="input-field" id="taInput" placeholder="Enter TA name (optional)" />
+                    <button class="add-btn" id="taAddBtn">+</button>
+                </div>
+                <div class="items-list" id="tasList">
+                    
+                </div>
+            </div>
+            <div class="navigation">
+                <button class="nav-btn btn-back" id="taBack">Back</button>
+                <button class="nav-btn btn-next" id="taNext">Next</button>
+                <div class="step-counter">4 of 7</div>
+            </div>
         </div>
-        <div class="input-item" id="tiles-number">
-            <h2>How many weeks / chapters you plan</h2>
-            <input type="text" id="tiles-number-input">
+
+        <!-- Screen 5: Course Division -->
+        <div class="screen" id="screen-5">
+            <div class="screen-header">
+                <h1 class="screen-title">How is your course content divided?</h1>
+                <p class="screen-subtitle">This helps us organize your materials</p>
+            </div>
+            <div class="radio-group">
+                <div class="radio-option">
+                    <input type="radio" name="division" value="byWeek" id="divisionWeek" checked />
+                    <label for="divisionWeek">By Week</label>
+                </div>
+                <div class="radio-option" >
+                    <input type="radio" name="division" value="byTopic" id="divisionTopic" />
+                    <label for="divisionTopic">By Topic</label>
+                </div>
+            </div>
+            <div class="navigation">
+                <button class="nav-btn btn-back" id="divisionBack">Back</button>
+                <button class="nav-btn btn-next" id="divisionNext">Next</button>
+                <div class="step-counter">5 of 7</div>
+            </div>
+        </div>
+
+        <!-- Screen 6: Number Count -->
+        <div class="screen" id="screen-6">
+            <div class="screen-header">
+                <h1 class="screen-title" id="countTitle">How many weeks are there in your course?</h1>
+                <p class="screen-subtitle">We'll create this many sections for you</p>
+            </div>
+            <div class="input-item">
+                <input type="number" class="input-field" id="countInput" placeholder="12" value="12" min="1" max="52" />
+            </div>
+            <div class="navigation">
+                <button class="nav-btn btn-back" id="numCountBack">Back</button>
+                <button class="nav-btn btn-next" id="numCountNext">Next</button>
+                <div class="step-counter">6 of 7</div>
+            </div>
+        </div>
+
+        <!-- Screen 7: Complete -->
+        <div class="screen" id="screen-7">
+            <h1>On boarding Summary</h1>
+            <div class="input-item" id="className">
+                <h2>Class name</h2>
+                <input type="text" id="classNameFinal" placeholder="Enter your class name">
+            </div>
+            <div class="input-item" id="instructorName">
+                <h2>Instructors</h2>
+                <div class="input-area">
+                    <input type="text" id="instructorNameInput" placeholder="Enter Instructor Name">
+                    <button class="add-btn" id="instructorAddBtnFinal">+</button>
+                </div>
+                <div class="items-list" id="instructorsListFinal">
+                    
+                </div>
+            </div>
+            <div class="input-item" id="teachingAssistantName" >
+                <h2>Teaching Assistants</h2>
+                <div class="input-area">
+                    <input type="text" id="taNameInput" placeholder="Enter TA name (optional)">
+                    <button class="add-btn" id="taAddBtnFinal">+</button>
+                </div>
+                <div class="items-list" id="tasListFinal">
+
+                </div>
+            </div>
+            <div class="manage-options" id="manageOptions">
+                <h2>How is your course content divided?</h2>
+                <div class="radio-group">
+                    <div class="radio-option">
+                        <input type="radio" id="divisionWeekFinal" name="manageSelect" value="byWeek">
+                        <label for="perWeek">By Week</label>
+                    </div>
+                    <div class="radio-option">
+                        <input type="radio" id="divisionTopicFinal" name="manageSelect" value="byTopic">
+                        <label for="perChapter">By Topic</label>
+                    </div>
+                </div>
+            </div>
+            <div class="input-item" id="tilesNumber">
+                <h2>How many weeks are there in your course</h2>
+                <input type="number" class="input-field" id="countInputFinal" placeholder="12" value="12" min="1" max="52" />
+            </div>
+
+            <div class="navigation">
+                <button class="nav-btn btn-back" id="finalizationBack" >Back</button>
+                <button class="submit-btn" id="submitOnboarding">
+                    Get Started
+                </button>
+                <div class="step-counter">7 of 7</div>
+            </div>
         </div>
     </div>
 </div>

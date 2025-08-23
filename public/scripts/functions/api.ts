@@ -71,7 +71,7 @@ export async function loadComponentHTML(
             response = await fetch(`/components/monitor/${componentName}.html`);
             break;
         case 'documents-instructor':
-        // case 'onboarding':
+        case 'onboarding':
             response = await fetch(`/components/documents/${componentName}.html`);
             break;
         default:

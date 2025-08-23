@@ -285,6 +285,7 @@ body {
 
 #main-content-area {
     flex-grow: 1;
+    margin: 10px;
 }
 
 
