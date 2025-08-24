@@ -50,8 +50,7 @@
 .screen {
     display: none;
     opacity: 0;
-    transform: translateY(30px);
-    transition: opacity 2s ease-in-out, transform 2s ease-in-out;
+    transform: translateX(-30px);
     pointer-events: none;
 }
 
@@ -62,18 +61,32 @@
     align-items: center; 
 
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
     pointer-events: auto;
 }
 
-.screen.exiting {
-    opacity: 0;
-    transform: translateY(-30px);
+.screen.slide-in-right {
+    animation: slideInRight 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
+
+.screen.slide-in-left {
+    animation: slideInleft 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.screen.slide-out-left {
+    animation: slideOutLeft 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.screen.slide-out-right {
+    animation: slideOutRight 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+
+
 
 .screen.active .navigation {
     justify-items: center;
-    margin : 20px;
+    margin : 20px 20px 0px 20px;
     align-items: center;
 }
 
@@ -121,6 +134,8 @@
 .input-area {
     display: flex;
     flex-direction: row;
+    justify-content: center;
+    margin-bottom: 10px;
 }
 
 .input-area .add-btn {
@@ -131,6 +146,7 @@
     color: white;
     width: 3rem;
     font-size: 800;
+    cursor: pointer;
 }
 
 
@@ -279,6 +295,14 @@
     color: var(--text-primary);
 }
 
+.step-counter {
+    background-color: var(--color-chbe-green);
+    padding : 5px 10px;
+    color: var(--background-2);
+    border-radius: 20px;
+    font-size: small;
+}
+
 .empty-state {
     margin: 10px 0 0 0;
     text-align: center;
@@ -291,6 +315,65 @@
 #finalizationBack {
     width: 100%;
 }
+
+.modal-overlay {
+    inset : 0;
+    display: block;
+    position: fixed;
+    background-color: rgba(0,0,0,0.55);
+    backdrop-filter: blur(4px);
+    align-content: center;
+    padding: 1rem;
+    justify-items: center;
+    z-index: 1000;
+}
+
+.alert-modal {
+    width: 640px;
+    background-color: white;
+    overflow: auto;
+    border-radius: 20px;
+    border: 2px solid var(--color-chbe-green);
+    animation: slideInDown 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.alert-header {
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--color-eng-red);
+    border-bottom: 2px solid var(--border-color);
+}
+
+.alert-header p {
+    padding: 10px;
+    margin: 0px 0 0px 0;
+}
+
+.alert-modal .modal-content {
+    text-align: center;
+    justify-content: center;
+    margin: 20px;
+}
+
+.alert-modal .modal-content p {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 50px;
+    color: var(--color-chbe-green);
+}
+
+.alert-modal 
+.modal-content
+button {
+    background-color: var(--background-2);
+    color: var(--color-chbe-green);
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    font-weight: 700;
+}
+
 
 
 

@@ -11,14 +11,16 @@ const enum StateEvent {
 }
 
 let CHBE220_Class : activeClass = {
-    onBoarded : false,
-    name:'',
+    onBoarded : true,
+    name:'CHBE 443',
     instructors: [
+        'killian Azhar',
     ],
     teachingAssistants: [
+        'John Doe'
     ],
     frameType: 'byTopic',
-    tilesNumber: 0
+    tilesNumber: 10,
 }
 
 
@@ -237,7 +239,6 @@ document.addEventListener('DOMContentLoaded', () => {
     //set custom windows listener on onboarding
     window.addEventListener('onboardingComplete', () => {
 
-        console.log("DEBUG #39 : " + JSON.stringify(CHBE220_Class) );
         updateUI();
     })
 

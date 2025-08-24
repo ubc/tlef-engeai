@@ -1,6 +1,29 @@
-//render onboarding
+// Render the onboarding flow
 
-import { getCallSites } from "util";
+/**
+ * Renders the onboarding page and orchestrates the 7-step onboarding flow:
+ * 1) Getting Started
+ * 2) Course Name
+ * 3) Instructor Name
+ * 4) Teaching Assistant Name
+ * 5) Course Frame
+ * 6) Content Count
+ * 7) Finalization
+ *
+ * After successful completion, the gathered class metadata (activeClass) is persisted
+ * and the user is redirected to the documents page.
+ *
+ * Notes:
+ * - The provided instructorClass object is only mutated after final confirmation.
+ *
+ * @param instructorClass - Class metadata accumulated during onboarding
+ * @returns void
+ *
+ * @author: gatahcha
+ * @date: 2025-08-24
+ * @version: 1.0.0
+ */
+
 import { loadComponentHTML } from "../functions/api.js";
 import { activeClass, onBoardingScreen} from "../functions/types.js";
 
@@ -9,6 +32,7 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
     let debugNumber = 0;
     //display carrousel
     let currentScreen : onBoardingScreen = onBoardingScreen.GettingStarted;
+    const totalScreen = 7;
 
     const currentClass : activeClass = {
         onBoarded : false,
@@ -39,17 +63,20 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
         } )
         .catch( () => {
             console.log("DEBUG #22 number : " + debugNumber);
-        } );
+        } 
+    );
 
+    /** ########################################################## */
+    /** #####################  FUNCTIONS  ###################### */
+    /** ########################################################## */
 
     /**
-     * FUNCTIONS 
+     * Add an instructor to the internal currentClass data structure,
+     * then re-render the instructor list components.
      */
-
-
     function addInstructor() : void {
 
-        //fincing HTML input element for add isnsturctor
+        // Find the appropriate input element for adding an instructor
         let inputEl: HTMLInputElement | null;;
         let instructorName;
         switch ( currentScreen ) {
@@ -57,29 +84,33 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
                 inputEl = document.getElementById('instructorInput') as HTMLInputElement;
                 break;
             case onBoardingScreen.Finalization:
-                inputEl = document.getElementById('instructorNameInput') as HTMLInputElement;
+                inputEl = document.getElementById('instructorInputFinal') as HTMLInputElement;
                 break;
             default:
                 inputEl = null;
         }
         if (!inputEl) return;
 
-        // find the value 
+        // Read the input value
         instructorName = inputEl.value.trim();
 
         if (!instructorName || instructorName === '') {
-            alert("please input the correct instructor");
+            showAlertModal("please input the valid instructor")
             return;
         }
 
-        //push into the classList
+        // Persist to current class state
         currentClass.instructors.push(instructorName);
         inputEl.value = '';
 
-        //render isntructor's component
+        // Re-render instructor components
         renderInstructor();
     }
 
+    /**
+     * Remove an instructor from currentClass and re-render the lists.
+     * @param name Name of the instructor to remove
+     */
     function removeInstructor(name : string) : void {
         const index = currentClass.instructors.indexOf(name);
         if (index > -1) {
@@ -88,6 +119,9 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
         } 
     }
 
+    /**
+     * Add a teaching assistant to currentClass and re-render the lists.
+     */
     function addTA() : void {
 
         let inputEl: HTMLInputElement | null;;
@@ -98,16 +132,13 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
                 inputEl = document.getElementById('taInput') as HTMLInputElement;
                 break;
             case onBoardingScreen.Finalization:
-                inputEl = document.getElementById('taNameInput') as HTMLInputElement;
+                inputEl = document.getElementById('taInputFinal') as HTMLInputElement;
                 break;
             default:
-                console.log("DEBUG #28");
                 inputEl = null;
         }
 
-        console.log("DEBUG #27 : ");
         if (!inputEl) return;
-        console.log("DEBUG #28 : ");
         taName = inputEl.value.trim();
         currentClass.teachingAssistants.push(taName);
         inputEl.value = ''
@@ -116,10 +147,11 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
 
     }
 
+    /**
+     * Remove a teaching assistant from currentClass and re-render the lists.
+     * @param name Name of the teaching assistant to remove
+     */
     function removeTA(name : string) : void {
-
-        console.log("DEBUG #40");
-
         const index = currentClass.teachingAssistants.indexOf(name);
         if (index > -1) {
             currentClass.teachingAssistants.splice(index, 1);
@@ -128,14 +160,14 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
     }
 
 
+    /** ########################################################## */
+    /** ##############  RENDER AND UPDATES  ###################### */
+    /** ########################################################## */
+
     /**
-     * RENDER AND UPDATES
+     * Activate the current screen and deactivate all others.
      */
-
     function updateUI() : void {
-
-        console.log("DEBUG #34");
-        console.log(JSON.stringify(currentClass));
 
         //element variables
         const allScreenEl = document.querySelectorAll('.screen');
@@ -152,17 +184,18 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
             screenElement.classList.add('active');
         } 
         else {
-            console.log(`Screen element not found: screen-${currentScreen}`);
             screenElement = document.getElementById('screen-1');
             if (screenElement) screenElement.classList.add('active');
         }
     }
-    
-    function renderInstructor() : void {
 
-        console.log("DEBUG #24 : + " + currentClass);
+    
+    /**
+     * Render instructor chips for both the entry step and the confirmation step.
+     */
+    function renderInstructor() : void {
         
-        //apply render instructor for both steps instructor input page + confirmation page
+        // Render for both the instructor input page and the confirmation page
         let instructorListEl : HTMLElement| null = document.getElementById('instructorsList');
         let instructorListFinalEl : HTMLElement| null = document.getElementById('instructorsListFinal');
 
@@ -172,7 +205,7 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
         if (!instructorListFinalEl) return;
         instructorListFinalEl.innerHTML = "";
 
-        //setting notification if there is no isntructor
+        // Empty-state message when no instructors are present
         if (currentClass.instructors.length === 0) {
             let emptyDiv = document.createElement('div');
             emptyDiv.className = 'empty-state';
@@ -184,8 +217,6 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
         }
         else {
             currentClass.instructors.forEach( name => {
-
-                console.log("DEBUG #25 : name-" + name);
 
                 const tagSpan = document.createElement('span');
                 tagSpan.className = 'class-item-tag'
@@ -203,7 +234,6 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
                 const tagSpanCopy = tagSpan.cloneNode(true) as HTMLElement;
                 const cloneRemoveButton = tagSpanCopy.querySelector('button');
                 if (!cloneRemoveButton) {
-                    console.log("DEBUG #41 : " + "cloneRemoveButton Problematic");
                     return;
                 }
                 cloneRemoveButton.addEventListener( 'click', ()=>removeInstructor(name) );
@@ -215,9 +245,12 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
     }
 
 
+    /**
+     * Render teaching assistant chips for both the entry step and the confirmation step.
+     */
     function renderTA() : void {
-    
-        //apply render TA for both steps TA input page + confirmation page
+        
+        // Render for both the TA input page and the confirmation page
         let TAListEl : HTMLElement| null = document.getElementById('tasList');
         let TAListFinalEl : HTMLElement| null = document.getElementById('tasListFinal');
 
@@ -227,7 +260,7 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
         if (!TAListFinalEl) return;
         TAListFinalEl.innerHTML = "";
 
-        //setting notification if there is no TA
+        // Empty-state message when no TAs are present
         if (currentClass.teachingAssistants.length === 0) {
             let emptyDiv = document.createElement('div');
             emptyDiv.className = 'empty-state';
@@ -251,11 +284,10 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
                 tagSpan.appendChild(removeBtn);
                 TAListEl.appendChild(tagSpan);
 
-                //adding to the confirmation page
+                // Add to the confirmation page
                 const tagSpanCopy = tagSpan.cloneNode(true) as HTMLElement;
                 const cloneRemoveButton = tagSpanCopy.querySelector('button');
                 if (!cloneRemoveButton) {
-                    console.log("DEBUG #42 : " + "cloneRemoveButton Problematic \\ TA");
                     return;
                 }
                 cloneRemoveButton.addEventListener( 'click', ()=>removeTA(name) );
@@ -264,12 +296,10 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
         }
     }
 
+    /**
+     * Validate the current step, persist values into currentClass, and advance the flow.
+     */
     function nextScreen() : void {
-
-        let screenCurrentEl : HTMLElement | null;
-        let screenNextEl : HTMLElement | null;
-
-        //setting exception pop up when citeria is not satisfied
 
         switch(currentScreen) {
             case onBoardingScreen.CourseName:
@@ -278,31 +308,31 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
                 if (classNameStr && classNameStr !== '') {
                     currentClass.name = classNameStr;
                     
-                    //change variables in the confirmation page
+                    // Reflect the value on the confirmation page
                     const classNameFinalEl = document.getElementById('classNameFinal') as HTMLInputElement;
                     classNameFinalEl.value = currentClass.name;
 
                     break; 
                 } 
-                alert('please enter the correct course number');
+                showAlertModal('please enter the valid course name');
                 return;
             case onBoardingScreen.InstructorName:
                 if (currentClass.instructors.length > 0) break;
-                //put pop up information that the number of instructor should be more than 1
-                alert("number of instructor should be at least 1");
+                // Require at least one instructor
+                showAlertModal("At least one instructor is required");
                 return;
             case onBoardingScreen.TAName:
                 if (currentClass.teachingAssistants.length > 0) break;
-                //put pop up information that the number of instructor should be more than 1
-                alert("number of TA should be morethan 1");
+                // Require at least one teaching assistant
+                showAlertModal("At least one instructor is required");
                 return;
             case onBoardingScreen.CourseFrame:
-                //course frame invariant : its either between those two options
+                // Course frame invariant: must be one of the two radio options
                 const frameElement = document.querySelector('input[name="division"]:checked') as HTMLInputElement ;
                 if (!frameElement) return;
                 currentClass.frameType = frameElement.value === 'byWeek' ? 'byWeek' : 'byTopic';
                 
-                //modifying value on the confirmation page
+                // Reflect the value on the confirmation page
                 const manageOptionFinalEl = document.querySelector(`input[name="manageSelect"][value="${currentClass.frameType}"]`) as HTMLInputElement;
                 if (!manageOptionFinalEl) return;
                 manageOptionFinalEl.checked = true;
@@ -314,7 +344,7 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
                 const contentNumber = parseInt(contentNumberStr);
                 currentClass.tilesNumber = contentNumber;
 
-                //modifying value on the confirmation page
+                // Reflect the value on the confirmation page
                 const countInputFinalEl = document.getElementById('countInputFinal') as HTMLInputElement;
                 if (!countInputFinalEl) return;
                 countInputFinalEl.value = currentClass.tilesNumber.toString();
@@ -324,100 +354,54 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
                 console.log("DEBUG #29 : nextScreen");
         }
         
-        //setting next screen
-        switch(currentScreen){
-            case onBoardingScreen.GettingStarted:
-            case onBoardingScreen.CourseName:
-            case onBoardingScreen.InstructorName:
-            case onBoardingScreen.TAName:
-            case onBoardingScreen.CourseFrame:
-            case onBoardingScreen.ContentNumber:
-                screenCurrentEl = document.getElementById(`screen-${currentScreen}`);
-                screenNextEl = document.getElementById(`screen-${currentScreen + 1}`);
-                break;
-            default:
-                screenCurrentEl = null;
-                screenNextEl = null;
-                alert("next screen is not found");
-                break;
-        }
-
-        if (!screenCurrentEl) return;
-        if (!screenNextEl) return;
-
-        currentScreen++;
-        updateUI();
+        // Advance to the next screen
+        if (currentScreen < totalScreen) transitionToScreen( currentScreen + 1, 'next' );
     }
 
 
+    /**
+     * Navigate to the previous screen if available.
+     */
     function backScreen() : void {
-    
-        let screenCurrentEl : HTMLElement | null;
-        let screenPrevEl : HTMLElement | null;
-
-        switch(currentScreen){
-            case onBoardingScreen.CourseName:
-            case onBoardingScreen.InstructorName:
-            case onBoardingScreen.TAName:
-            case onBoardingScreen.CourseFrame:
-            case onBoardingScreen.ContentNumber:
-            case onBoardingScreen.Finalization:
-                screenCurrentEl = document.getElementById(`screen-${currentScreen}`);
-                screenPrevEl = document.getElementById(`screen-${currentScreen - 1}`);
-                break;
-            
-            default:
-                screenCurrentEl = null;
-                screenPrevEl = null;
-                alert("previous screen is not found");
-                return;
-        }
-
-        if (!screenCurrentEl) return;
-        if (!screenPrevEl) return;
-
-        screenCurrentEl.classList.remove('active');
-        screenPrevEl.classList.add('active');
-        
-        currentScreen--;
-        updateUI();
+        if (currentScreen > 1) transitionToScreen(currentScreen - 1, 'left' );
     }
 
+
+    /**
+     * Validate all fields on the confirmation step, persist into the provided
+     * instructorClass, and dispatch the completion event.
+     */
     function finalConfirmation() {
 
-        //check the course name
+        // Check the course name
         const courseNameConfirmEl = document.getElementById("classNameFinal") as HTMLInputElement;
-        if (!courseNameConfirmEl) {
-            alert("course name confirm element is problematic");
-            return;
-        }
+        if (!courseNameConfirmEl) return; 
         const courseNameConfirm = courseNameConfirmEl.value;
         if (!courseNameConfirm || courseNameConfirm === '' ){
-            alert("course name confirm cannot be empty");
+            showAlertModal("Please inpt the valid course number");
             return;
         }
 
         currentClass.name = courseNameConfirm;
 
-
-        //check the instructor (the list is directly modifie in the currentClass.instructor)
+        // Ensure at least one instructor exists (list already maintained in currentClass)
         if (currentClass.instructors.length === 0) {
-            alert("instrcutors cannot be 0");
+            showAlertModal("At least one insturctor is required");
             return;
         } 
 
-        //check TA name (the list is directly modified from the currentclass.Teaching assistants);
+        // Ensure at least one teaching assistant exists (list already maintained in currentClass)
         if (currentClass.teachingAssistants.length === 0) {
-            alert("teaching assistant cannot be 0");
+            showAlertModal("At least one teaching assistant is required");
             return;
         }
 
-        //check if number of topics or week cannot exceed 52 or lessthan 0
+        // Validate the number of topics/weeks is within 1-52
         const numTopicEl = document.getElementById('countInputFinal') as HTMLInputElement;
         const numTopicValue = parseInt(numTopicEl.value);
 
         if (numTopicValue > 52 || numTopicValue==0){
-            alert("Topic / Week cannot exced 52");
+            showAlertModal("Number of topics/weeks must be between 1 and 52");
             return;
         }
 
@@ -425,35 +409,72 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
 
         currentClass.onBoarded = true;
 
-        //POST currentClass to database
+        // POST currentClass to the database (handled elsewhere)
 
-        //wait until the response is 200 ok
+        // Wait for persistence confirmation (omitted here), then copy to instructorClass
         Object.assign(instructorClass, currentClass);
 
         window.dispatchEvent(new CustomEvent('onboardingComplete'));
     }
 
     /**
-     * EVENT LISTENERS
+     * Animate the transition between screens and update the currentScreen value.
      */
-    //add event listener to the button
+    function transitionToScreen (targetScreen : onBoardingScreen, direction : 'next' | 'left') {
+        const currentScreenEl = document.getElementById(`screen-${currentScreen}`);
+        const targetScreenEl = document.getElementById(`screen-${targetScreen}`);
 
+        if (!currentScreenEl) return;
+        if (!targetScreenEl) return;
+
+        // Remove any existing animation classes
+        currentScreenEl.className = "screen active";
+        targetScreenEl.className = "screen";
+
+        // Add animation classes based on direction
+        if (direction === 'next') {
+            currentScreenEl.classList.add('slide-out-left');
+            targetScreenEl.classList.add('slide-in-right');
+        }
+        else {
+            currentScreenEl.classList.add('slide-out-right');
+            targetScreenEl.classList.add('slide-in-left');
+        }
+
+
+
+        // Clean up after the animation completes
+        setTimeout( () => {
+            currentScreenEl.classList.remove('active');
+            currentScreenEl.className = 'screen';
+            targetScreenEl.className = 'screen active';
+            currentScreen = targetScreen;
+        }, 400 ) 
+
+
+    }
+
+    /** ########################################################## */
+    /** #################  EVENT LISTENERS  ###################### */
+    /** ########################################################## */
+    
+    /**
+     * Set up all event listeners required across onboarding pages.
+     */
     function setEventListeners() : void {
         initPageButtonEventListeners();
         SetPageThreeEventListeners();
         setPageFourEventListeners();
-        setPageFiveEventListeners();
-        setPageSixEventListeners();
         setPageSevenEventListeners();
     }
-
-    //PAGE 3
+    
+    /**
+     * Set up event listeners for page 3, including:
+     * - Pressing Enter in the input adds the entered value
+     */
     function SetPageThreeEventListeners () : void {
         const addInstructorBtn = document.getElementById('instructorAddBtn');
-        if (!addInstructorBtn) {
-            alert("instructor add button is problematic")
-            return;
-        }
+        if (!addInstructorBtn) return;
         addInstructorBtn.addEventListener('click', addInstructor);
 
         const instructorInputEl = document.getElementById('instructorInput') as HTMLInputElement;
@@ -461,15 +482,18 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
         instructorInputEl.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
+                e.stopPropagation
                 addInstructor();
             }
         });
     }
 
+    /**
+     * Set up event listeners for page 4 (Teaching Assistant entry).
+     */
     function setPageFourEventListeners () : void {
         const addTABtn = document.getElementById('taAddBtn');
         if (!addTABtn) {
-            alert("TS add button is problematic")
             return;
         }
         addTABtn.addEventListener('click', addTA);
@@ -479,43 +503,57 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
         taInputEl.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
+                e.stopPropagation();
                 addTA();
             }
         });
 
     }
 
-    function setPageFiveEventListeners () {
-        
-    }
-
-    function setPageSixEventListeners () {
-
-        return;
-    }
-
+    /**
+     * Set up event listeners for page 7 (Final confirmation and submission).
+     */
     function setPageSevenEventListeners () {
 
-        //add event listener at confirmation page to the instructor
+        // Set event listeners for the instructor and TA inputs
+        const instructorInputList = document.getElementById('instructorInputFinal') as HTMLInputElement;
+        if (!instructorInputList) return;
+        instructorInputList.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                addInstructor();
+            }
+        })
+
+        const taInputFinalList = document.getElementById('taInputFinal');
+        if (!taInputFinalList) return;
+        taInputFinalList.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                addTA();
+            }
+        })
+
+        // Add button listeners on the confirmation page (instructor)
         const addInstructorBtnFinal = document.getElementById('instructorAddBtnFinal');
         if (!addInstructorBtnFinal) {
-            alert("instructorxxxx add button is problematic")
             return;
         }
         addInstructorBtnFinal.addEventListener('click', addInstructor);
 
-        //add event listener at confirmation page to the TA
+        // Add button listeners on the confirmation page (TA)
         const addTABtn = document.getElementById('taAddBtnFinal');
         if (!addTABtn) {
-            alert("TS add button is problematic")
             return;
         }
         addTABtn.addEventListener('click', addTA);
 
-        //finalize submission
+        // Finalize submission
         const finalSubmissionBtn = document.getElementById('submitOnboarding');
         if (!finalSubmissionBtn) {
-            alert("final submission button is problematic, check again");
+            showAlertModal("final submission button is problematic, check again");
             return;
         }
 
@@ -524,19 +562,80 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
         return;
     }
 
-    function initPageButtonEventListeners () {
-        //add event listeners to next page
-        //remove onCLick on every button
+    /**
+     * Initialize the Next/Back navigation button listeners for all pages.
+     */
+    function initPageButtonEventListeners () : void {
+        // Add event listeners to navigate pages
+        // Remove inline onClick handlers on buttons (handled via JS here)
         const nextScreenBtns = document.querySelectorAll('.btn-next');
         const backScreenBtns = document.querySelectorAll('.btn-back');
 
         nextScreenBtns.forEach(button => {
-            console.log("DEBUG #20");
             button.addEventListener('click', nextScreen);
         });
         backScreenBtns.forEach(button => {
             button.addEventListener('click', backScreen);
         });
+        
+    }
+
+    /**
+     * Display a simple alert modal with provided text content.
+     * @param textContent Message to show in the modal
+     */
+    function showAlertModal(textContent: string): void {
+        // Create modal overlay
+        const modalEl = document.createElement('div');
+        modalEl.className = 'modal-overlay';
+
+        // Create alert modal container
+        const alertModalEl = document.createElement('div');
+        alertModalEl.className = 'alert-modal';
+
+        // Create alert header
+        const alertHeaderEl = document.createElement('div');
+        alertHeaderEl.className = 'alert-header';
+        
+        const headerTextEl = document.createElement('p');
+        headerTextEl.textContent = 'ALERT!';
+        alertHeaderEl.appendChild(headerTextEl);
+
+        // Create modal content
+        const modalContentEl = document.createElement('div');
+        modalContentEl.className = 'modal-content';
+        
+        // Create content text
+        const contentTextEl = document.createElement('p');
+        contentTextEl.textContent = textContent;
+        
+        // Create close button
+        const closeButtonEl = document.createElement('button');
+        closeButtonEl.id = 'close-modal';
+        closeButtonEl.className = 'close-modal';
+        closeButtonEl.textContent = 'Okay';
+        
+        // Add close functionality
+        closeButtonEl.addEventListener('click', () => {
+            modalEl.remove(); // Remove the entire modal from DOM
+        });
+
+        // Append content elements to modal content
+        modalContentEl.appendChild(contentTextEl);
+        modalContentEl.appendChild(closeButtonEl);
+
+        // Append header and content to alert modal
+        alertModalEl.appendChild(alertHeaderEl);
+        alertModalEl.appendChild(modalContentEl);
+
+        // Append alert modal to overlay
+        modalEl.appendChild(alertModalEl);
+
+        // Add modal to document body
+        document.body.appendChild(modalEl);
+
+        // Show the modal (assumes a .show CSS class is defined)
+        modalEl.classList.add('show'); // or modalEl.style.display = 'flex';
     }
     
 }

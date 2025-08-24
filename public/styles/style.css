@@ -71,3 +71,36 @@ a:hover {
         opacity: 1; 
     } 
 }
+
+@keyframes slideInRight {
+    from { 
+        transform: translateX(30px); 
+        opacity: 0; 
+    } 
+    to { 
+        transform: translateX(0px); 
+        opacity: 1; 
+    } 
+}
+
+@keyframes slideOutLeft {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(-30px);
+        opacity: 0;
+    }
+}
+
+@keyframes slideOutRight {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translate(30px);
+        opacity: 0;
+    }
+}

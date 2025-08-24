@@ -2,6 +2,18 @@
     <link rel="stylesheet" href="/styles/instructor-components/onboarding.css">
     <div class="steps-onboarding">
 
+        <!-- <div class="modal-overlay">
+            <div class="alert-modal">
+                <div class="alert-header">
+                    <p>alert</p>
+                </div>
+                <div class="modal-content">
+                    <p>final submission button is problematic, check again</p>
+                    <button id="close-modal" class="close-modal">Okay</button>
+                </div>
+            </div>
+        </div> -->
+
         <!-- Screen 1: Welcome -->
         <div class="screen" id="screen-1">
             <div class="screen-header">
@@ -9,7 +21,7 @@
                 <p class="screen-subtitle">Let's set up your course in just a few simple steps</p>
             </div>
             <div class="navigation">
-                <button class="nav-btn btn-next">Get Started</button>
+                <button class="nav-btn btn-next" id="getStarted">Get Started</button>
                 <div class="step-counter">1 of 7</div>
             </div>
         </div>
@@ -123,7 +135,7 @@
             <div class="input-item" id="instructorName">
                 <h2>Instructors</h2>
                 <div class="input-area">
-                    <input type="text" id="instructorNameInput" placeholder="Enter Instructor Name">
+                    <input type="text" id="instructorInputFinal" placeholder="Enter Instructor Name">
                     <button class="add-btn" id="instructorAddBtnFinal">+</button>
                 </div>
                 <div class="items-list" id="instructorsListFinal">
@@ -133,7 +145,7 @@
             <div class="input-item" id="teachingAssistantName" >
                 <h2>Teaching Assistants</h2>
                 <div class="input-area">
-                    <input type="text" id="taNameInput" placeholder="Enter TA name (optional)">
+                    <input type="text" id="taInputFinal" placeholder="Enter TA name (optional)">
                     <button class="add-btn" id="taAddBtnFinal">+</button>
                 </div>
                 <div class="items-list" id="tasListFinal">
