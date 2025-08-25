@@ -70,6 +70,7 @@ export interface activeClass {
     teachingAssistants: string[],
     frameType: frameType;
     tilesNumber: number;
+    content: ContentDivision[];
 }
 
 /**
@@ -92,7 +93,7 @@ export type frameType =
 export interface LearningObjective {
     title: string;
     description: string;
-    published: boolean;
+    uploaded: boolean;
 }
 
 /**
@@ -111,7 +112,7 @@ export interface AdditionalMaterial {
     url?: string;
     // For 'text' we store the raw text content
     text?: string;
-    status: 'added';
+    uploaded: boolean;
 }
 
 /**
@@ -120,17 +121,19 @@ export interface AdditionalMaterial {
 export interface CourseContent {
     id: number;
     title: string;
-    status: 'Draft' | 'Published';
+    completed: boolean;
+    // uploaded: boolean; No need to set uploaded, as the content is uploaded by default
     learningObjectives: LearningObjective[];
     additionalMaterials?: AdditionalMaterial[];
 }
 
 /**
- * The type for a weekly section of course content
+ * The type of content division : by week or by topic
  */
-export interface WeeklySection {
-    weekNumber: number;
+export interface ContentDivision {
+    contentId : number;
     title: string;
+    published: boolean;
     content: CourseContent[];
 }
 

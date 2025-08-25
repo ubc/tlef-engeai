@@ -1,476 +1,955 @@
-import { loadComponentHTML } from '../functions/api.js';
-import { WeeklySection, CourseContent, LearningObjective, AdditionalMaterial, activeClass } from '../functions/types';
+
+
+/**
+ * This file contains the functions for the documents page.
+ * 
+ * @author: Charisma
+ * @date: 2025-08-25
+ * @version: 1.0.0
+ * @description: This file contains the functions for the documents page.
+ * 
+ * @param currentClass the currently active class
+ * @returns null
+ */
+
+/**
+ * This file contains the functions for the documents page.
+ * 
+ * @param currentClass the currently active class
+ * @returns null
+ */
+
+import { 
+    ContentDivision, 
+    CourseContent, 
+    AdditionalMaterial, 
+    activeClass 
+} from '../functions/types';
+
 // In-memory store for the course data
-let courseData: WeeklySection[] = [];
+let courseData: ContentDivision[] = [];
 
 // Function to initialize the documents page
 export function initializeDocumentsPage( currentClass : activeClass) {
 
-    console.log('Documents page initialized');
-    generateInitialData();
+    // Build initial in-memory data from onboarding selections
+    loadClassroomData(currentClass);
+    // Render DOM using safe DOM APIs (no string concatenation)
     renderDocumentsPage();
     setupEventListeners();
-}
 
-
-// Generate initial empty data structure for 12 weeks
-const generateInitialData = () => {
-    if (courseData.length > 0) return; // Don't regenerate if data exists
-    for (let i = 1; i <= 12; i++) {
-        const week: WeeklySection = {
-            weekNumber: i,
-            title: `WEEK ${i}`,
-            content: [
-                { id: 1, title: `Lecture ${ (i - 1) * 3 + 1}`, status: 'Draft', learningObjectives: []},
-                { id: 2, title: `Lecture ${ (i - 1) * 3 + 2}`, status: 'Draft', learningObjectives: []},
-                { id: 3, title: `Lecture ${ (i - 1) * 3 + 3}`, status: 'Draft', learningObjectives: []},
-                { id: 4, title: `Tutorial ${i}`, status: 'Draft', learningObjectives: [] },
-            ]
-        };
-        courseData.push(week);
+    /**
+     * Generate initial data based according to the currentClass
+     * 
+     * @param currentClass the currently active class
+     */
+    function loadClassroomData( currentClass : activeClass ) {
+        const total = currentClass.tilesNumber;
+        const isByWeek = currentClass.frameType === 'byWeek';
+        courseData = [];
+        for (let i = 0; i < total; i++) {
+            const title = isByWeek ? `Week ${i}` : `Topic ${i}`;
+            courseData.push(currentClass.content[i]);
+        }
     }
-}
 
-// Render the entire documents page from the courseData
-const renderDocumentsPage = () => {
-    const container = document.getElementById('documents-container');
-    if (!container) return;
+    /**
+     * Render the documentPage
+     * 
+     * @returns null
+     */
+    function renderDocumentsPage() {
+        const container = document.getElementById('documents-container');
+        if (!container) return;
 
-    container.innerHTML = courseData.map(week => renderWeek(week)).join('');
-}
+        // Clear existing children
+        while (container.firstChild) container.removeChild(container.firstChild);
 
-// Render a single week section
-const renderWeek = (week: WeeklySection): string => {
-    const sectionsCompleted = week.content.filter(c => c.status === 'Published').length;
-    const totalSections = week.content.length;
+        // Append each division element
+        courseData.forEach((division) => {
+            const el = createDivisionElement(division);
+            container.appendChild(el);
+        });
+    }
 
-    return `
-        <div class="week-section">
-            <div class="week-header" data-week="${week.weekNumber}">
-                <div>
-                    <div class="week-title">${week.title}</div>
-                    <div class="completion-status">${sectionsCompleted} / ${totalSections} Sections completed</div>
-                </div>
-                <div class="week-status">
-                    <div class="expand-icon" id="icon-${week.weekNumber}">▼</div>
-                </div>
-            </div>
-            <div class="week-content" id="content-${week.weekNumber}">
-                ${week.content.map(content => renderContentItem(week.weekNumber, content)).join('')}
-            </div>
-        </div>
-    `;
-}
+    /**
+     * Create a division (week/topic) section element
+     * 
+     * @param division the division to create an element for
+     * @returns the created element
+     */
+    function createDivisionElement(division: ContentDivision): HTMLElement {
 
-// Render a single content item (lecture/tutorial)
-const renderContentItem = (weekNumber: number, content: CourseContent): string => {
-    return `
-        <div class="content-item" id="content-item-${weekNumber}-${content.id}">
-            <div class="content-header">
-                <div class="content-title">${content.title}</div>
-                <div class="content-status ${content.status === 'Published' ? 'status-published' : 'status-draft'}">${content.status}</div>
-            </div>
-            <div class="learning-objectives">
-                <div class="objectives-accordion">
-                    <div class="objectives-header" data-week="${weekNumber}" data-content="${content.id}">
-                        <div class="objectives-title">Learning Objectives</div>
-                        <div class="objectives-count">
-                            <span id="count-${weekNumber}-${content.id}">${content.learningObjectives.length}</span> objectives
-                            <span class="expand-icon" id="obj-icon-${weekNumber}-${content.id}">▼</span>
-                        </div>
-                    </div>
-                    <div class="objectives-content" id="objectives-${weekNumber}-${content.id}">
-                        ${renderObjectives(weekNumber, content.id)}
-                    </div>
-                </div>
-            </div>
-            <div class="document-upload">
-                <div class="upload-area">
-                    <div class="upload-icon">📁</div>
-                    <div class="upload-text">Upload your document here</div>
-                </div>
-            </div>
-            ${renderAdditionalMaterials(content)}
-        </div>
-    `;
-}
+        // create the wrapper for the division
+        const wrapper = document.createElement('div');
+        wrapper.className = 'week-section';
 
-// Render the learning objectives section for a content item
-const renderObjectives = (weekNumber: number, contentId: number): string => {
-    const week = courseData.find(w => w.weekNumber === weekNumber);
-    const content = week?.content.find(c => c.id === contentId);
-    if (!content) return '';
+        // create the header for the division
+        const header = document.createElement('div');
+        header.className = 'week-header';
+        header.setAttribute('data-division', String(division.contentId));
 
-    let html = content.learningObjectives.map((obj, index) => `
-        <div class="objective-item">
-            <div class="objective-header" data-week="${weekNumber}" data-content="${contentId}" data-objective="${index}">
-                <div class="objective-title">${obj.title}</div>
-                <div class="objective-actions">
-                    <button class="action-btn edit-btn" data-action="edit">Edit</button>
-                    <button class="action-btn delete-btn" data-action="delete">Delete</button>
-                    <span class="expand-icon" id="item-icon-${weekNumber}-${contentId}-${index}">▼</span>
-                </div>
-            </div>
-            <div class="objective-content" id="objective-content-${weekNumber}-${contentId}-${index}">
-                <div class="objective-description">${obj.description}</div>
-            </div>
-        </div>
-    `).join('');
+        // create the left side of the header
+        // display the title and the completed status of the division
+        const left = document.createElement('div');
+        const title = document.createElement('div');
+        title.className = 'week-title';
+        title.textContent = division.title;
+        const status = document.createElement('div');
+        status.className = 'completion-status';
+        const sectionsCompleted = division.content.filter(c => c.learningObjectives.every(o => o.uploaded)).length;
+        const totalSections = division.content.length;
+        status.textContent = `${sectionsCompleted} / ${totalSections} Sections completed`;
+        left.appendChild(title);
+        left.appendChild(status);
 
-    html += `
-        <div class="add-objective">
-            <div class="add-objective-form">
-                <div class="input-label">Objective Title:</div>
-                <input type="text" class="objective-title-input" id="new-title-${weekNumber}-${contentId}" placeholder="Enter the learning objective title...">
-                <div class="input-label">Objective Description:</div>
-                <textarea class="objective-description-input" id="new-description-${weekNumber}-${contentId}" placeholder="Enter a detailed description of what students will learn..."></textarea>
-                <button class="add-btn" data-action="add" data-week="${weekNumber}" data-content="${contentId}">Add Objective</button>
-            </div>
-        </div>
-    `;
+        // create the right side of the header
+        const right = document.createElement('div');
+        right.className = 'week-status';
+        const expandIcon = document.createElement('div');
+        expandIcon.className = 'expand-icon';
+        expandIcon.id = `icon-${division.contentId}`;
+        expandIcon.textContent = '▼';
+        right.appendChild(expandIcon);
 
-    return html;
-}
+        // append the left and right sides to the header
+        header.appendChild(left);
+        header.appendChild(right);
+
+        // create the content for the division
+        const contentEl = document.createElement('div');
+        contentEl.className = 'week-content';
+        contentEl.id = `content-division-${division.contentId}`;
+
+        // append the header and the content to the wrapper
+        wrapper.appendChild(header);
+        wrapper.appendChild(contentEl);
+        return wrapper;
+    }
 
 
+    /**
+     * Setup all event listeners for the page (delegated, with safety checks)
+     * 
+     * @returns null    
+     */
+    function setupEventListeners() {
+        const container = document.getElementById('documents-container');
+        if (!container) return;
 
+        container.addEventListener('click', (event) => {
+            const target = event.target as HTMLElement;
 
-
-
-// Setup all event listeners for the page
-function setupEventListeners() {
-    const container = document.getElementById('documents-container');
-    if (!container) return;
-
-    container.addEventListener('click', (event) => {
-        const target = event.target as HTMLElement;
-
-        // Week header toggles
-        const weekHeader = target.closest('.week-header');
-        if (weekHeader) {
-            const weekNumber = parseInt(weekHeader.getAttribute('data-week')!, 10);
-            toggleWeek(weekNumber);
-            return;
-        }
-
-        // Objectives accordion toggles
-        const objectivesHeader = target.closest('.objectives-header');
-        if (objectivesHeader) {
-            const weekNumber = parseInt(objectivesHeader.getAttribute('data-week')!, 10);
-            const contentId = parseInt(objectivesHeader.getAttribute('data-content')!, 10);
-            toggleObjectives(weekNumber, contentId);
-            return;
-        }
-
-        // Individual objective item toggles
-        const objectiveHeader = target.closest('.objective-header');
-        if (objectiveHeader) {
-            const weekNumber = parseInt(objectiveHeader.getAttribute('data-week')!, 10);
-            const contentId = parseInt(objectiveHeader.getAttribute('data-content')!, 10);
-            const objectiveIndex = parseInt(objectiveHeader.getAttribute('data-objective')!, 10);
-            toggleObjectiveItem(weekNumber, contentId, objectiveIndex);
-            return;
-        }
-        
-        // Upload area -> open modal
-        const uploadArea = target.closest('.upload-area');
-        if (uploadArea) {
-            const contentItem = uploadArea.closest('.content-item');
-            if (contentItem) {
-                const ids = contentItem.id.split('-'); // content-item-WEEK-CONTENTID
-                const weekNumber = parseInt(ids[2], 10);
-                const contentId = parseInt(ids[3], 10);
-                openUploadModal(weekNumber, contentId);
+            // Division header toggles
+            const divisionHeader = target.closest('.week-header') as HTMLElement | null;
+            if (divisionHeader) {
+                const divisionId = parseInt(divisionHeader.getAttribute('data-division') || '0', 10);
+                if (!divisionId) return;
+                toggleDivision(divisionId);
                 return;
             }
+
+            // Objectives accordion toggles
+            const objectivesHeader = target.closest('.objectives-header') as HTMLElement | null;
+            if (objectivesHeader) {
+                const divisionId = parseInt(objectivesHeader.getAttribute('data-division') || '0', 10);
+                const contentId = parseInt(objectivesHeader.getAttribute('data-content') || '0', 10);
+                if (!divisionId || !contentId) return;
+                toggleObjectives(divisionId, contentId);
+                return;
+            }
+
+            // Individual objective item toggles
+            const objectiveHeader = target.closest('.objective-header') as HTMLElement | null;
+            if (objectiveHeader) {
+                const divisionId = parseInt(objectiveHeader.getAttribute('data-division') || '0', 10);
+                const contentId = parseInt(objectiveHeader.getAttribute('data-content') || '0', 10);
+                const objectiveIndex = parseInt(objectiveHeader.getAttribute('data-objective') || '-1', 10);
+                if (!divisionId || !contentId || objectiveIndex < 0) return;
+                toggleObjectiveItem(divisionId, contentId, objectiveIndex);
+                return;
+            }
+            
+            // Upload area -> open modal
+            const uploadArea = target.closest('.upload-area');
+            if (uploadArea) {
+                const contentItem = uploadArea.closest('.content-item') as HTMLElement | null;
+                if (!contentItem) return;
+                const ids = contentItem.id.split('-'); // content-item-divisionId-contentId
+                const divisionId = parseInt(ids[2] || '0', 10);
+                const contentId = parseInt(ids[3] || '0', 10);
+                if (!divisionId || !contentId) return;
+                openUploadModal(divisionId, contentId);
+                    return;
+            }
+            
+            // Handle actions on buttons
+            const button = target.closest('button') as HTMLButtonElement | null;
+            if (!button) return;
+
+            const action = button.dataset.action;
+            if (!action) return;
+            
+            const objectiveItem = button.closest('.objective-item');
+            const headerElement = objectiveItem?.querySelector('.objective-header') as HTMLElement | null;
+            const divisionId = parseInt(button.dataset.week || headerElement?.dataset.division || '0', 10);
+            const contentId = parseInt(button.dataset.content || headerElement?.dataset.content || '0', 10);
+            const objectiveIndex = parseInt(headerElement?.dataset.objective || '-1', 10);
+
+            switch (action) {
+                case 'add':
+                    addObjective(divisionId, contentId);
+                    break;
+                case 'edit':
+                    event.stopPropagation();
+                    editObjective(divisionId, contentId, objectiveIndex);
+                    break;
+                case 'delete':
+                    event.stopPropagation();
+                    deleteObjective(divisionId, contentId, objectiveIndex);
+                    break;
+                case 'save':
+                    event.stopPropagation();
+                    saveObjective(divisionId, contentId, objectiveIndex);
+                    break;
+                case 'cancel':
+                    event.stopPropagation();
+                    cancelEdit(divisionId, contentId);
+                    break;
+                case 'delete-material':
+                    event.stopPropagation();
+                    deleteAdditionalMaterial(divisionId, contentId, button.dataset.materialId || '');
+                    break;
+            }
+        });
+    }
+
+    // --- Event Handler Functions ---
+
+    /**
+     * Toggle the expansion state of a division
+     * 
+     * @param divisionId the id of the division to toggle
+     * @returns null
+     */
+    function toggleDivision(divisionId: number) {
+        const content = document.getElementById(`content-division-${divisionId}`);
+        const icon = document.getElementById(`icon-${divisionId}`);
+        if (!content || !icon) return;
+            content.classList.toggle('expanded');
+            icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
+    }
+
+    /**
+     * Toggle the expansion state of the objectives for a content item
+     * 
+     * @param divisionId the id of the division
+     * @param contentId the id of the content item
+     * @returns null
+     */
+    function toggleObjectives(divisionId: number, contentId: number) {
+        const content = document.getElementById(`objectives-${divisionId}-${contentId}`);
+        const icon = document.getElementById(`obj-icon-${divisionId}-${contentId}`);
+        if (!content || !icon) return;
+            content.classList.toggle('expanded');
+            icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
+    }
+
+    /**
+     * Toggle the expansion state of an objective item
+     * 
+     * @param divisionId the id of the division
+     * @param contentId the id of the content item
+     * @param index the index of the objective item
+     * @returns null
+     */
+    function toggleObjectiveItem(divisionId: number, contentId: number, index: number) {
+        const content = document.getElementById(`objective-content-${divisionId}-${contentId}-${index}`);
+        const icon = document.getElementById(`item-icon-${divisionId}-${contentId}-${index}`);
+        if (!content || !icon) return;
+            content.classList.toggle('expanded');
+            icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
+    }
+
+    /**
+     * Add a new objective to a content item
+     * 
+     * @param divisionId the id of the division
+     * @param contentId the id of the content item
+     * @returns null
+     */
+    function addObjective(divisionId: number, contentId: number) {
+        const titleInput = document.getElementById(`new-title-${divisionId}-${contentId}`) as HTMLInputElement | null;
+        const descriptionInput = document.getElementById(`new-description-${divisionId}-${contentId}`) as HTMLTextAreaElement | null;
+        if (!titleInput || !descriptionInput) return;
+
+        // get the title and description from the input fields
+        const title = titleInput.value.trim();
+        const description = descriptionInput.value.trim();
+        if (!title || !description) {
+            alert('Please fill in both title and description.');
+            return;
         }
-        
-        // Handle actions on buttons
-        const button = target.closest('button');
-        if (!button) return;
 
-        const action = button.dataset.action;
-        if (!action) return;
-        
-        const objectiveItem = button.closest('.objective-item');
-        const headerElement = objectiveItem?.querySelector('.objective-header') as HTMLElement | null;
-        const weekNumber = parseInt(button.dataset.week || headerElement?.dataset.week || '0', 10);
-        const contentId = parseInt(button.dataset.content || headerElement?.dataset.content || '0', 10);
-        const objectiveIndex = parseInt(headerElement?.dataset.objective || '-1', 10);
-
-
-        switch (action) {
-            case 'add':
-                addObjective(weekNumber, contentId);
-                break;
-            case 'edit':
-                event.stopPropagation();
-                editObjective(weekNumber, contentId, objectiveIndex);
-                break;
-            case 'delete':
-                event.stopPropagation();
-                deleteObjective(weekNumber, contentId, objectiveIndex);
-                break;
-            case 'save':
-                 event.stopPropagation();
-                saveObjective(weekNumber, contentId, objectiveIndex);
-                break;
-            case 'cancel':
-                 event.stopPropagation();
-                cancelEdit(weekNumber, contentId);
-                break;
-            case 'delete-material':
-                event.stopPropagation();
-                deleteAdditionalMaterial(weekNumber, contentId, button.dataset.materialId || '');
-                break;
-        }
-    });
-}
-
-// --- Event Handler Functions ---
-
-function toggleWeek(weekNumber: number) {
-    const content = document.getElementById(`content-${weekNumber}`);
-    const icon = document.getElementById(`icon-${weekNumber}`);
-    if (content && icon) {
-        content.classList.toggle('expanded');
-        icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
-    }
-}
-
-function toggleObjectives(weekNumber: number, contentId: number) {
-    const content = document.getElementById(`objectives-${weekNumber}-${contentId}`);
-    const icon = document.getElementById(`obj-icon-${weekNumber}-${contentId}`);
-    if (content && icon) {
-        content.classList.toggle('expanded');
-        icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
-    }
-}
-
-function toggleObjectiveItem(weekNumber: number, contentId: number, index: number) {
-    const content = document.getElementById(`objective-content-${weekNumber}-${contentId}-${index}`);
-    const icon = document.getElementById(`item-icon-${weekNumber}-${contentId}-${index}`);
-    if (content && icon) {
-        content.classList.toggle('expanded');
-        icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
-    }
-}
-
-function addObjective(weekNumber: number, contentId: number) {
-    const titleInput = document.getElementById(`new-title-${weekNumber}-${contentId}`) as HTMLInputElement;
-    const descriptionInput = document.getElementById(`new-description-${weekNumber}-${contentId}`) as HTMLTextAreaElement;
-
-    const title = titleInput.value.trim();
-    const description = descriptionInput.value.trim();
-
-    if (!title || !description) {
-        alert('Please fill in both title and description.');
-        return;
-    }
-
-    const week = courseData.find(w => w.weekNumber === weekNumber);
-    const content = week?.content.find(c => c.id === contentId);
-    if (content) {
-        content.learningObjectives.push({ title, description, published: false });
-        titleInput.value = '';
-        descriptionInput.value = '';
-        // Re-render only the affected content item for efficiency
-        refreshContentItem(weekNumber, contentId);
-    }
-}
-
-function editObjective(weekNumber: number, contentId: number, index: number) {
-    const objective = courseData.find(w => w.weekNumber === weekNumber)
-                                ?.content.find(c => c.id === contentId)
-                                ?.learningObjectives[index];
-    if (!objective) return;
-
-    const contentDiv = document.getElementById(`objective-content-${weekNumber}-${contentId}-${index}`);
-    if (!contentDiv) return;
-
-    contentDiv.innerHTML = `
-        <div class="edit-form">
-            <input type="text" class="edit-input" id="edit-title-${weekNumber}-${contentId}-${index}" value="${objective.title}">
-            <textarea class="edit-input" id="edit-desc-${weekNumber}-${contentId}-${index}">${objective.description}</textarea>
-            <div class="edit-actions">
-                <button class="save-btn" data-action="save" data-week="${weekNumber}" data-content="${contentId}" data-objective="${index}">Save</button>
-                <button class="cancel-btn" data-action="cancel" data-week="${weekNumber}" data-content="${contentId}">Cancel</button>
-            </div>
-        </div>
-    `;
-    contentDiv.classList.add('expanded');
-}
-
-function saveObjective(weekNumber: number, contentId: number, index: number) {
-    const title = (document.getElementById(`edit-title-${weekNumber}-${contentId}-${index}`) as HTMLInputElement).value.trim();
-    const description = (document.getElementById(`edit-desc-${weekNumber}-${contentId}-${index}`) as HTMLTextAreaElement).value.trim();
-
-    if (!title || !description) {
-        alert('Title and description cannot be empty.');
-        return;
-    }
-    const objective = courseData.find(w => w.weekNumber === weekNumber)
-                                ?.content.find(c => c.id === contentId)
-                                ?.learningObjectives[index];
-    if (objective) {
-        objective.title = title;
-        objective.description = description;
-        refreshContentItem(weekNumber, contentId);
-    }
-}
-
-function cancelEdit(weekNumber: number, contentId: number) {
-    refreshContentItem(weekNumber, contentId);
-}
-
-function deleteObjective(weekNumber: number, contentId: number, index: number) {
-    if (confirm('Are you sure you want to delete this objective?')) {
-        const content = courseData.find(w => w.weekNumber === weekNumber)
-                                    ?.content.find(c => c.id === contentId);
+        // find the division and the content item
+        const division = courseData.find(d => d.contentId === divisionId);
+        const content = division?.content.find(c => c.id === contentId);
         if (content) {
-            content.learningObjectives.splice(index, 1);
-            refreshContentItem(weekNumber, contentId);
+            content.learningObjectives.push({ title, description, uploaded: false });
+            titleInput.value = '';
+            descriptionInput.value = '';
+            // Re-render only the affected content item for efficiency
+            refreshContentItem(divisionId, contentId);
         }
     }
-}
 
-// Helper to refresh a single content item instead of the whole page
-function refreshContentItem(weekNumber: number, contentId: number) {
-    const content = courseData.find(w => w.weekNumber === weekNumber)?.content.find(c => c.id === contentId);
-    const itemContainer = document.getElementById(`content-item-${weekNumber}-${contentId}`);
-    
-    if (content && itemContainer) {
-        itemContainer.outerHTML = renderContentItem(weekNumber, content);
+    /**
+     * Edit an learning objective
+     * 
+     * @param divisionId the id of the division
+     * @param contentId the id of the content item
+     * @param index the index of the objective item
+     * @returns null
+     */
+    function editObjective(divisionId: number, contentId: number, index: number) {
+        const objective = courseData.find(d => d.contentId === divisionId)
+                                    ?.content.find(c => c.id === contentId)
+                                    ?.learningObjectives[index];
+        if (!objective) return;
+
+        const contentDiv = document.getElementById(`objective-content-${divisionId}-${contentId}-${index}`);
+        if (!contentDiv) return;
+
+        // Clear and build edit form via DOM APIs
+        while (contentDiv.firstChild) contentDiv.removeChild(contentDiv.firstChild);
+
+        const form = document.createElement('div');
+        form.className = 'edit-form';
+
+        const titleInput = document.createElement('input');
+        titleInput.type = 'text';
+        titleInput.className = 'edit-input';
+        titleInput.id = `edit-title-${divisionId}-${contentId}-${index}`;
+        titleInput.value = objective.title;
+
+        const descInput = document.createElement('textarea');
+        descInput.className = 'edit-input';
+        descInput.id = `edit-desc-${divisionId}-${contentId}-${index}`;
+        descInput.value = objective.description;
+
+        const actions = document.createElement('div');
+        actions.className = 'edit-actions';
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'save-btn';
+        saveBtn.dataset.action = 'save';
+        saveBtn.dataset.week = String(divisionId);
+        saveBtn.dataset.content = String(contentId);
+        saveBtn.dataset.objective = String(index);
+        saveBtn.textContent = 'Save';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'cancel-btn';
+        cancelBtn.dataset.action = 'cancel';
+        cancelBtn.dataset.week = String(divisionId);
+        cancelBtn.dataset.content = String(contentId);
+        cancelBtn.textContent = 'Cancel';
+        actions.appendChild(saveBtn);
+        actions.appendChild(cancelBtn);
+
+        form.appendChild(titleInput);
+        form.appendChild(descInput);
+        form.appendChild(actions);
+
+        contentDiv.appendChild(form);
+        contentDiv.classList.add('expanded');
     }
-}
 
-// Make functions globally available for inline event handlers if needed,
-// but the delegated event listener is the primary method.
-// Example: (window as any).toggleWeek = toggleWeek;
+    /**
+     * Save the edited objective
+     * 
+     * @param divisionId the id of the division
+     * @param contentId the id of the content item
+     * @param index the index of the objective item
+     * @returns null
+     */
+    function saveObjective(divisionId: number, contentId: number, index: number) {
+        const title = (document.getElementById(`edit-title-${divisionId}-${contentId}-${index}`) as HTMLInputElement).value.trim();
+        const description = (document.getElementById(`edit-desc-${divisionId}-${contentId}-${index}`) as HTMLTextAreaElement).value.trim();
 
-// ----- Additional Materials (front-end only) -----
+        if (!title || !description) {
+            alert('Title and description cannot be empty.');
+            return;
+        }
+        const objective = courseData.find(d => d.contentId === divisionId)
+                                    ?.content.find(c => c.id === contentId)
+                                    ?.learningObjectives[index];
+        if (objective) {
+            objective.title = title;
+            objective.description = description;
+            refreshContentItem(divisionId, contentId);
+        }
+    }
 
-function renderAdditionalMaterials(content: CourseContent): string {
-    const items = content.additionalMaterials || [];
-    if (items.length === 0) return '';
-    const list = items.map(m => `
-        <div class="additional-material" data-material-id="${m.id}">
-            <div class="am-title">${m.name}</div>
-            <div class="am-meta">${m.sourceType === 'file' ? 'File' : m.sourceType === 'url' ? 'URL' : 'Text'}</div>
-            <div class="am-actions">
-                <button class="action-btn delete-btn" data-action="delete-material" data-material-id="${m.id}">Delete</button>
-            </div>
-        </div>
-    `).join('');
-    return `<div class="additional-materials">${list}</div>`;
-}
+    /**
+     * Cancel the edit of an objective
+     * 
+     * @param divisionId the id of the division
+     * @param contentId the id of the content item
+     * @returns null
+     */
+    function cancelEdit(divisionId: number, contentId: number) {
+        refreshContentItem(divisionId, contentId);
+    }
 
-function openUploadModal(weekNumber: number, contentId: number) {
-    const mount = document.getElementById('upload-modal-mount');
-    if (!mount) return;
+    function deleteObjective(divisionId: number, contentId: number, index: number) {
+        if (confirm('Are you sure you want to delete this objective?')) {
+            const content = courseData.find(d => d.contentId === divisionId)
+                                        ?.content.find(c => c.id === contentId);
+            if (content) {
+                content.learningObjectives.splice(index, 1);
+                refreshContentItem(divisionId, contentId);
+            }
+        }
+    }
 
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay upload-modal-overlay';
-    overlay.innerHTML = getUploadModalHTML();
-    mount.innerHTML = '';
-    mount.appendChild(overlay);
-    document.body.classList.add('modal-open');
+    /**
+     * Refresh a single content item instead of the whole page
+     * 
+     * @param divisionId the id of the division
+     * @param contentId the id of the content item
+     * @returns null
+     */
+    function refreshContentItem(divisionId: number, contentId: number) {
+        const division = courseData.find(d => d.contentId === divisionId);
+        const content = division?.content.find(c => c.id === contentId);
+        const itemContainer = document.getElementById(`content-item-${divisionId}-${contentId}`);
+        if (!division || !content || !itemContainer) return;
+        // Rebuild via DOM and replace
+        const built = buildContentItemDOM(divisionId, content);
+        const parent = itemContainer.parentElement;
+        if (!parent) return;
+        parent.replaceChild(built, itemContainer);
+    }
 
-    const close = () => {
+    /**
+     * Build a content item DOM node (helper for refresh)
+     * 
+     * @param divisionId the id of the division
+     * @param content the content item to build the DOM for
+     * @returns the created element
+     */
+    function buildContentItemDOM(divisionId: number, content: CourseContent): HTMLElement {
+        // Reuse the createContentItemElement pattern used at page render time
+        const item = document.createElement('div');
+        item.className = 'content-item';
+        item.id = `content-item-${divisionId}-${content.id}`;
+        // Header
+        const header = document.createElement('div');
+        header.className = 'content-header';
+        const title = document.createElement('div');
+        title.className = 'content-title';
+        title.textContent = content.title;
+        const status = document.createElement('div');
+        status.className = `content-status ${content.learningObjectives.every(o => o.uploaded) ? 'status-published' : 'status-draft'}`;
+        status.textContent = content.learningObjectives.every(o => o.uploaded) ? 'Published' : 'Draft';
+        header.appendChild(title);
+        header.appendChild(status);
+
+        // Objectives
+        const objectivesContainer = document.createElement('div');
+        objectivesContainer.className = 'learning-objectives';
+
+        // create the accordion for the objectives
+        const accordion = document.createElement('div');
+        accordion.className = 'objectives-accordion';
+
+        // create the header for the objectives
+        const headerRow = document.createElement('div');
+        headerRow.className = 'objectives-header';
+        headerRow.setAttribute('data-division', String(divisionId));
+        headerRow.setAttribute('data-content', String(content.id));
+
+        // create the title for the objectives
+        const headerTitle = document.createElement('div');
+        headerTitle.className = 'objectives-title';
+        headerTitle.textContent = 'Learning Objectives';
+
+        // create the count for the objectives
+        const headerCount = document.createElement('div');
+        headerCount.className = 'objectives-count';
+        const countSpan = document.createElement('span');
+        countSpan.id = `count-${divisionId}-${content.id}`;
+        countSpan.textContent = String(content.learningObjectives.length);
+
+        // create the expand icon for the objectives
+        const countText = document.createTextNode(' objectives ');
+        const expandSpan = document.createElement('span');
+        expandSpan.className = 'expand-icon';
+        expandSpan.id = `obj-icon-${divisionId}-${content.id}`;
+        expandSpan.textContent = '▼';
+
+        // append the count, text, and expand icon to the header
+        headerCount.appendChild(countSpan);
+        headerCount.appendChild(countText);
+        headerCount.appendChild(expandSpan);
+
+        // append the title and count to the header
+        headerRow.appendChild(headerTitle);
+        headerRow.appendChild(headerCount);
+
+        // create the content for the objectives
+        const objectivesContent = document.createElement('div');
+        objectivesContent.className = 'objectives-content';
+        objectivesContent.id = `objectives-${divisionId}-${content.id}`;
+        objectivesContent.appendChild(createObjectivesListElement(divisionId, content.id));
+        accordion.appendChild(headerRow);
+        accordion.appendChild(objectivesContent);
+        objectivesContainer.appendChild(accordion);
+
+        // Upload
+        const uploadWrap = document.createElement('div');
+        uploadWrap.className = 'document-upload';
+        const uploadArea = document.createElement('div');
+        uploadArea.className = 'upload-area';
+        const uploadIcon = document.createElement('div');
+        uploadIcon.className = 'upload-icon';
+        uploadIcon.textContent = '📁';
+        const uploadText = document.createElement('div');
+        uploadText.className = 'upload-text';
+        uploadText.textContent = 'Upload your document here';
+        uploadArea.appendChild(uploadIcon);
+        uploadArea.appendChild(uploadText);
+        uploadWrap.appendChild(uploadArea);
+
+        const materialsEl = createAdditionalMaterialsElement(content);
+        if (materialsEl) item.appendChild(materialsEl);
+
+        item.appendChild(header);
+        item.appendChild(objectivesContainer);
+        item.appendChild(uploadWrap);
+        return item;
+    }
+
+    // Make functions globally available for inline event handlers if needed,
+    // but the delegated event listener is the primary method.
+    // Example: (window as any).toggleWeek = toggleWeek;
+
+    // ----- Additional Materials (front-end only) -----
+
+    /**
+     * Build the additional materials container via DOM APIs
+     * 
+     * @param content the content item to build the DOM for
+     * @returns the created element
+     */
+    function createAdditionalMaterialsElement(content: CourseContent): HTMLElement | null {
+        const items = content.additionalMaterials || [];
+        if (items.length === 0) return null;
+
+        const wrap = document.createElement('div');
+        wrap.className = 'additional-materials';
+
+        items.forEach(m => {
+            const row = document.createElement('div');
+            row.className = 'additional-material';
+            row.setAttribute('data-material-id', m.id);
+
+            const title = document.createElement('div');
+            title.className = 'am-title';
+            title.textContent = m.name;
+
+            const meta = document.createElement('div');
+            meta.className = 'am-meta';
+            meta.textContent = m.sourceType === 'file' ? 'File' : m.sourceType === 'url' ? 'URL' : 'Text';
+
+            const actions = document.createElement('div');
+            actions.className = 'am-actions';
+            const del = document.createElement('button');
+            del.className = 'action-btn delete-btn';
+            del.dataset.action = 'delete-material';
+            del.dataset.materialId = m.id;
+            del.textContent = 'Delete';
+            actions.appendChild(del);
+
+            row.appendChild(title);
+            row.appendChild(meta);
+            row.appendChild(actions);
+            wrap.appendChild(row);
+        });
+
+        return wrap;
+    }
+
+    /**
+     * Open the upload modal
+     * 
+     * @param divisionId the id of the division
+     * @param contentId the id of the content item
+     * @returns null
+     */
+    function openUploadModal(divisionId: number, contentId: number) {
+        // get the mount point for the modal
+        const mount = document.getElementById('upload-modal-mount');
+        if (!mount) return;
+
+        // create the overlay for the modal
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay upload-modal-overlay';
         mount.innerHTML = '';
-        document.body.classList.remove('modal-open');
-    };
+        mount.appendChild(overlay);
+        document.body.classList.add('modal-open');
 
-    const closeBtn = overlay.querySelector('.upload-close-btn') as HTMLButtonElement | null;
-    const cancelBtn = overlay.querySelector('#upload-cancel-btn') as HTMLButtonElement | null;
-    closeBtn?.addEventListener('click', close);
-    cancelBtn?.addEventListener('click', close);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-    window.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { close(); window.removeEventListener('keydown', esc); } });
+        // create the modal
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        overlay.appendChild(modal);
 
-    const fileBtn = overlay.querySelector('#upload-file-btn') as HTMLButtonElement | null;
-    const fileInput = overlay.querySelector('#hidden-file-input') as HTMLInputElement | null;
-    const fileName = overlay.querySelector('#selected-file-name') as HTMLSpanElement | null;
-    let selectedFile: File | null = null;
-    fileBtn?.addEventListener('click', () => fileInput?.click());
-    fileInput?.addEventListener('change', () => {
-        const f = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
-        selectedFile = f;
-        if (fileName) fileName.textContent = f ? f.name : 'No file selected';
-    });
+        // create the header for the modal
+        const header = document.createElement('div');
+        header.className = 'modal-header';
+        const spacer = document.createElement('div');
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'upload-close-btn';
+        closeBtn.setAttribute('aria-label', 'Close');
+        closeBtn.textContent = '×';
+        header.appendChild(spacer);
+        header.appendChild(closeBtn);
 
-    const uploadBtn = overlay.querySelector('#upload-submit-btn') as HTMLButtonElement | null;
-    uploadBtn?.addEventListener('click', () => {
-        const name = (overlay.querySelector('#mat-name') as HTMLInputElement).value.trim();
-        const url = (overlay.querySelector('#mat-url') as HTMLInputElement).value.trim();
-        const text = (overlay.querySelector('#mat-text') as HTMLTextAreaElement).value.trim();
+        // create the content for the modal
+        const content = document.createElement('div');
+        content.className = 'modal-content';
 
-        if (!name) {
-            alert('Please enter a material name.');
-            return;
-        }
-        if (!selectedFile && !url && !text) {
-            alert('Provide a file, URL, or text content.');
-            return;
-        }
+        // create the first section for the modal
+        const section1 = document.createElement('div');
+        section1.className = 'form-section';
 
-        const week = courseData.find(w => w.weekNumber === weekNumber);
-        const content = week?.content.find(c => c.id === contentId);
-        if (!content) return;
-        if (!content.additionalMaterials) content.additionalMaterials = [];
+        // create the label for the first section
+        const label1 = document.createElement('label');
+        label1.className = 'section-label';
+        label1.setAttribute('for', 'mat-name');
+        label1.textContent = 'Content Title';
 
-        const id = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-        const material: AdditionalMaterial = { id, name, sourceType: 'text', status: 'added' };
-        if (selectedFile) {
-            material.sourceType = 'file';
-            material.file = selectedFile;
-            material.previewUrl = URL.createObjectURL(selectedFile);
-        } else if (url) {
-            material.sourceType = 'url';
-            material.url = url;
-        } else if (text) {
-            material.sourceType = 'text';
-            material.text = text;
-        }
-        content.additionalMaterials.push(material);
-        refreshContentItem(weekNumber, contentId);
-        close();
-    });
+        // create the input for the first section
+        const nameInput = document.createElement('input');
+        nameInput.id = 'mat-name';
+        nameInput.type = 'text';
+        nameInput.className = 'text-input';
+        nameInput.placeholder = 'Enter a name for this additional material...';
+        section1.appendChild(label1);
+        section1.appendChild(nameInput);
+
+
+
+        // create the second section for the modal
+        const section2 = document.createElement('div');
+        section2.className = 'form-section';
+
+        // create the label for the second section
+        const label2 = document.createElement('label');
+        label2.className = 'section-label';
+        label2.setAttribute('for', 'mat-text');
+        label2.textContent = 'Text Area';
+
+        // create the textarea for the second section
+        const textArea = document.createElement('textarea');
+        textArea.id = 'mat-text';
+        textArea.className = 'text-area';
+        textArea.placeholder = 'Enter or paste your content directly here...';
+        section2.appendChild(label2);
+        section2.appendChild(textArea);
+
+        // create the third section for the modal
+
+        // create the upload card for the modal
+        const uploadCard = document.createElement('div');
+        uploadCard.className = 'upload-card';
+
+        // create the button for the upload card
+        const uploadFileBtn = document.createElement('button');
+        uploadFileBtn.id = 'upload-file-btn';
+        uploadFileBtn.className = 'upload-file-btn';
+        uploadFileBtn.textContent = '📁 Upload Content';
+
+        // create the hidden input for the upload card
+        const hiddenInput = document.createElement('input');
+        hiddenInput.id = 'hidden-file-input';
+        hiddenInput.type = 'file';
+        hiddenInput.style.display = 'none';
+
+        // create the file selected for the upload card
+        const fileSelected = document.createElement('div');
+        fileSelected.className = 'file-selected';
+        const selectedFileName = document.createElement('span');
+        selectedFileName.id = 'selected-file-name';
+        selectedFileName.textContent = 'No file selected';
+        fileSelected.appendChild(selectedFileName);
+        uploadCard.appendChild(uploadFileBtn);
+        uploadCard.appendChild(hiddenInput);
+        uploadCard.appendChild(fileSelected);
+
+        // append the sections to the content
+        content.appendChild(section1);
+        content.appendChild(section2);
+        content.appendChild(uploadCard);
+
+
+
+        // create the footer for the modal
+        const footer = document.createElement('div');
+        footer.className = 'modal-footer';
+
+        // create the cancel button for the footer
+        const cancelBtn = document.createElement('button');
+        cancelBtn.id = 'upload-cancel-btn';
+        cancelBtn.className = 'cancel-btn';
+        cancelBtn.textContent = 'Cancel';
+
+        // create the upload button for the footer
+        const uploadBtn = document.createElement('button');
+        uploadBtn.id = 'upload-submit-btn';
+        uploadBtn.className = 'save-btn';
+        uploadBtn.textContent = 'Upload';
+        footer.appendChild(cancelBtn);
+        footer.appendChild(uploadBtn);
+
+        // append the header, content, and footer to the modal
+        modal.appendChild(header);
+        modal.appendChild(content);
+        modal.appendChild(footer);
+
+
+
+        // create the close function for the modal
+        const close = () => {
+            mount.innerHTML = '';
+            document.body.classList.remove('modal-open');
+        };
+
+        // add the event listeners to the modal
+        closeBtn.addEventListener('click', close);
+        cancelBtn.addEventListener('click', close);
+        overlay.addEventListener('click', (e) => {
+             if (e.target === overlay) close(); 
+        });
+
+        // create the event listener for the escape key
+        window.addEventListener('keydown', function esc(e) { 
+            if (e.key === 'Escape') { 
+                close(); window.removeEventListener('keydown', esc); 
+            } 
+        });
+
+        // create the event listener for the upload file button
+        let selectedFile: File | null = null;
+        uploadFileBtn.addEventListener('click', () => hiddenInput.click());
+        hiddenInput.addEventListener('change', () => {
+            const f = hiddenInput.files && hiddenInput.files[0] ? hiddenInput.files[0] : null;
+            selectedFile = f;
+            selectedFileName.textContent = f ? f.name : 'No file selected';
+        });
+
+        // create the event listener for the upload button
+        uploadBtn.addEventListener('click', () => {
+            const name = nameInput.value.trim();
+            const text = textArea.value.trim();
+            const url = '';
+            if (!name) { alert('Please enter a material name.'); return; }
+            if (!selectedFile && !url && !text) { alert('Provide a file, URL, or text content.'); return; }
+
+            // get the division and the content item
+            const division = courseData.find(d => d.contentId === divisionId);
+            const contentItem = division?.content.find(c => c.id === contentId);
+            if (!contentItem) return;
+            if (!contentItem.additionalMaterials) contentItem.additionalMaterials = [];
+
+            // create the id for the material
+            const id = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+            const material: AdditionalMaterial = { id, name, sourceType: 'text', uploaded: false };
+
+            // set the source type and the file, url, or text content
+            if (selectedFile) {
+                material.sourceType = 'file';
+                material.file = selectedFile;
+                material.previewUrl = URL.createObjectURL(selectedFile);
+            } else if (url) {
+                material.sourceType = 'url';
+                material.url = url;
+            } else if (text) {
+                material.sourceType = 'text';
+                material.text = text;
+            }
+
+            // add the material to the content item
+            contentItem.additionalMaterials.push(material);
+
+            // refresh the content item
+            refreshContentItem(divisionId, contentId);
+
+            // close the modal
+            close();
+        });
+    }
+
+    /**
+     * Delete an additional material
+     * 
+     * @param divisionId the id of the division
+     * @param contentId the id of the content item
+     * @param materialId the id of the material to delete
+     * @returns null
+     */
+    function deleteAdditionalMaterial(
+        divisionId: number, 
+        contentId: number, 
+        materialId: string
+    ) {
+        // get the division and the content item
+        const division = courseData.find(d => d.contentId === divisionId);
+        const content = division?.content.find(c => c.id === contentId);
+        if (!content || !content.additionalMaterials) return;
+        content.additionalMaterials = content.additionalMaterials.filter(m => m.id !== materialId);
+        refreshContentItem(divisionId, contentId);
+    }
+
+    // Build the Objectives list + Add form via DOM APIs
+    function createObjectivesListElement(divisionId: number, contentId: number): HTMLElement {
+
+        // create the wrapper for the objectives
+        const wrapper = document.createElement('div');
+        const division = courseData.find(d => d.contentId === divisionId);
+        const content = division?.content.find(c => c.id === contentId);
+        if (!content) return wrapper;
+
+        // create the list of objectives
+        content.learningObjectives.forEach((obj, index) => {
+            const item = document.createElement('div');
+            item.className = 'objective-item';
+
+            // create the header for the objective
+            const header = document.createElement('div');
+            header.className = 'objective-header';
+            header.setAttribute('data-division', String(divisionId));
+            header.setAttribute('data-content', String(contentId));
+            header.setAttribute('data-objective', String(index));
+
+            // create the title for the objective
+            const title = document.createElement('div');
+            title.className = 'objective-title';
+            title.textContent = obj.title;
+
+            const actions = document.createElement('div');
+            actions.className = 'objective-actions';
+
+            const editBtn = document.createElement('button');
+            editBtn.className = 'action-btn edit-btn';
+            editBtn.dataset.action = 'edit';
+            editBtn.textContent = 'Edit';
+
+            const delBtn = document.createElement('button');
+            delBtn.className = 'action-btn delete-btn';
+            delBtn.dataset.action = 'delete';
+            delBtn.textContent = 'Delete';
+
+            const expand = document.createElement('span');
+            expand.className = 'expand-icon';
+            expand.id = `item-icon-${divisionId}-${contentId}-${index}`;
+            expand.textContent = '▼';
+
+            // append the edit, delete, and expand icon to the actions
+            actions.appendChild(editBtn);
+            actions.appendChild(delBtn);
+            actions.appendChild(expand);
+
+            // append the title and actions to the header
+            header.appendChild(title);
+            header.appendChild(actions);
+
+            // create the body for the objective
+            const body = document.createElement('div');
+            body.className = 'objective-content';
+            body.id = `objective-content-${divisionId}-${contentId}-${index}`;
+
+            // create the description for the objective
+            const desc = document.createElement('div');
+            desc.className = 'objective-description';
+            desc.textContent = obj.description;
+
+            // append the description to the body
+            body.appendChild(desc);
+
+            // append the header and body to the item
+            item.appendChild(header);
+            item.appendChild(body);
+            wrapper.appendChild(item);
+        });
+
+        // create the wrapper for the add objective form
+        const addWrap = document.createElement('div');
+        addWrap.className = 'add-objective';
+
+        // create the form for the add objective
+        const addForm = document.createElement('div');
+        addForm.className = 'add-objective-form';
+
+        // create the title label for the add objective form
+        const titleLabel = document.createElement('div');
+        titleLabel.className = 'input-label';
+        titleLabel.textContent = 'Objective Title:';
+
+        // create the title input for the add objective form
+        const titleInput = document.createElement('input');
+        titleInput.type = 'text';
+        titleInput.className = 'objective-title-input';
+        titleInput.id = `new-title-${divisionId}-${contentId}`;
+        titleInput.placeholder = 'Enter the learning objective title...';
+
+        // create the description label for the add objective form
+        const descLabel = document.createElement('div');
+        descLabel.className = 'input-label';
+        descLabel.textContent = 'Objective Description:';
+
+        // create the description input for the add objective form
+        const descInput = document.createElement('textarea');
+        descInput.className = 'objective-description-input';
+        descInput.id = `new-description-${divisionId}-${contentId}`;
+        descInput.placeholder = 'Enter a detailed description of what students will learn...';
+
+        // create the add button for the add objective form
+        const addBtn = document.createElement('button');
+        addBtn.className = 'add-btn';
+        addBtn.dataset.action = 'add';
+        addBtn.dataset.week = String(divisionId);
+        addBtn.dataset.content = String(contentId);
+        addBtn.textContent = 'Add Objective';
+
+        // append the title, description, and add button to the form
+        addForm.appendChild(titleLabel);
+        addForm.appendChild(titleInput);
+        addForm.appendChild(descLabel);
+        addForm.appendChild(descInput);
+        addForm.appendChild(addBtn);
+        addWrap.appendChild(addForm);
+        wrapper.appendChild(addWrap);
+
+        return wrapper;
+    }
 }
 
-function deleteAdditionalMaterial(weekNumber: number, contentId: number, materialId: string) {
-    const week = courseData.find(w => w.weekNumber === weekNumber);
-    const content = week?.content.find(c => c.id === contentId);
-    if (!content || !content.additionalMaterials) return;
-    content.additionalMaterials = content.additionalMaterials.filter(m => m.id !== materialId);
-    refreshContentItem(weekNumber, contentId);
-}
 
-function getUploadModalHTML(): string {
-    return `
-    <div class="modal">
-        <div class="modal-header">
-            <div></div>
-            <button class="upload-close-btn" aria-label="Close">×</button>
-        </div>
-        <div class="modal-content">
-            <div class="form-section">
-                <label class="section-label" for="mat-name">Content Title</label>
-                <input id="mat-name" type="text" class="text-input" placeholder="Enter a name for this additional material..." />
-            </div>
-            <div class="form-section">
-                <label class="section-label" for="mat-text">Text Area</label>
-                <textarea id="mat-text" class="text-area" placeholder="Enter or paste your content directly here..."></textarea>
-            </div>
-            <div class="upload-card">
-                <button id="upload-file-btn" class="upload-file-btn">📁 Upload Content</button>
-                <input id="hidden-file-input" type="file" style="display:none" />
-                <div class="file-selected"><span id="selected-file-name">No file selected</span></div>
-            </div>
-        </div>
-        <div class="modal-footer">
-            <button id="upload-cancel-btn" class="cancel-btn">Cancel</button>
-            <button id="upload-submit-btn" class="save-btn">Upload</button>
-        </div>
-    </div>`;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -10,8 +10,9 @@ const enum StateEvent {
     Documents
 }
 
-let CHBE220_Class : activeClass = {
-    onBoarded : true,
+let CHBE220_Class : activeClass = 
+{
+    onBoarded : false,
     name:'CHBE 443',
     instructors: [
         'killian Azhar',
@@ -21,6 +22,22 @@ let CHBE220_Class : activeClass = {
     ],
     frameType: 'byTopic',
     tilesNumber: 10,
+    content: [
+        {
+            contentId: 1,
+            title: 'Week 1',
+            published: true,
+            content: [
+                {
+                    id: 1,
+                    title: 'Lecture 1',
+                    learningObjectives: [],
+                    additionalMaterials: [],
+                    completed: false
+                }
+            ]
+        }
+    ]
 }
 
 
@@ -238,7 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     //set custom windows listener on onboarding
     window.addEventListener('onboardingComplete', () => {
-
+        console.log('current class is : ', JSON.stringify(CHBE220_Class));
         updateUI();
     })
 
