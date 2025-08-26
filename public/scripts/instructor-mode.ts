@@ -10,7 +10,7 @@ const enum StateEvent {
     Documents
 }
 
-let CHBE220_Class : activeClass = 
+let currentClass : activeClass = 
 {
     onBoarded : false,
     name:'CHBE 443',
@@ -167,7 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 sideBarAddChatListeners();
             }
             else if (componentName === 'documents-instructor') {
-                initializeDocumentsPage(CHBE220_Class);
+                initializeDocumentsPage(currentClass);
             }
             renderFeatherIcons();
         }
@@ -183,8 +183,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         console.log("current state is : " + currentState.toString());
 
-        if (!CHBE220_Class.onBoarded) {
-            renderOnboarding(CHBE220_Class);
+        if (!currentClass.onBoarded) {
+            renderOnboarding(currentClass);
             return;
         }
 
@@ -230,6 +230,18 @@ document.addEventListener('DOMContentLoaded', () => {
             sidebarNoChat();
         }
     }
+
+    // Attempt to load CHBE220 class data from JSON and assign to state
+    fetch('/data/MTRL251.json')
+        .then(r => r.json())
+        .then((data: activeClass) => {
+            currentClass = data;
+            updateUI();
+        })
+        .catch(() => {
+            // Fallback to default currentClass defined above
+            updateUI();
+        });
     
     const sidebarNoChat = () => {
         if (sidebarMenuListEl) sidebarMenuListEl.classList.remove('collapsed');
@@ -255,7 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     //set custom windows listener on onboarding
     window.addEventListener('onboardingComplete', () => {
-        console.log('current class is : ', JSON.stringify(CHBE220_Class));
+        console.log('current class is : ', JSON.stringify(currentClass));
         updateUI();
     })
 
@@ -1226,6 +1238,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 0);
     };
 
-    updateUI();
+    // initial UI update is triggered after attempting JSON load above
 
 });

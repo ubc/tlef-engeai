@@ -1,0 +1,197 @@
+{
+    "onBoarded": true,
+    "name": "CHBE 241",
+    "instructors": [
+      "Killian Azhar",
+      "Thamuz"
+    ],
+    "teachingAssistants": [
+      "Charisma"
+    ],
+    "frameType": "byTopic",
+    "tilesNumber": 13,
+    "content": [
+      {
+        "contentId": 1756157775976,
+        "title": "Topic 1",
+        "published": false,
+        "content": [
+          {
+            "id": 1756157775976,
+            "title": "Topic 1",
+            "learningObjectives": [],
+            "additionalMaterials": [],
+            "completed": false
+          }
+        ]
+      },
+      {
+        "contentId": 1756157775977,
+        "title": "Topic 2",
+        "published": false,
+        "content": [
+          {
+            "id": 1756157775977,
+            "title": "Topic 2",
+            "learningObjectives": [],
+            "additionalMaterials": [],
+            "completed": false
+          }
+        ]
+      },
+      {
+        "contentId": 1756157775978,
+        "title": "Topic 3",
+        "published": false,
+        "content": [
+          {
+            "id": 1756157775978,
+            "title": "Topic 3",
+            "learningObjectives": [],
+            "additionalMaterials": [],
+            "completed": false
+          }
+        ]
+      },
+      {
+        "contentId": 1756157775979,
+        "title": "Topic 4",
+        "published": false,
+        "content": [
+          {
+            "id": 1756157775979,
+            "title": "Topic 4",
+            "learningObjectives": [],
+            "additionalMaterials": [],
+            "completed": false
+          }
+        ]
+      },
+      {
+        "contentId": 1756157775980,
+        "title": "Topic 5",
+        "published": false,
+        "content": [
+          {
+            "id": 1756157775980,
+            "title": "Topic 5",
+            "learningObjectives": [],
+            "additionalMaterials": [],
+            "completed": false
+          }
+        ]
+      },
+      {
+        "contentId": 1756157775981,
+        "title": "Topic 6",
+        "published": false,
+        "content": [
+          {
+            "id": 1756157775981,
+            "title": "Topic 6",
+            "learningObjectives": [],
+            "additionalMaterials": [],
+            "completed": false
+          }
+        ]
+      },
+      {
+        "contentId": 1756157775982,
+        "title": "Topic 7",
+        "published": false,
+        "content": [
+          {
+            "id": 1756157775982,
+            "title": "Topic 7",
+            "learningObjectives": [],
+            "additionalMaterials": [],
+            "completed": false
+          }
+        ]
+      },
+      {
+        "contentId": 1756157775983,
+        "title": "Topic 8",
+        "published": false,
+        "content": [
+          {
+            "id": 1756157775983,
+            "title": "Topic 8",
+            "learningObjectives": [],
+            "additionalMaterials": [],
+            "completed": false
+          }
+        ]
+      },
+      {
+        "contentId": 1756157775984,
+        "title": "Topic 9",
+        "published": false,
+        "content": [
+          {
+            "id": 1756157775984,
+            "title": "Topic 9",
+            "learningObjectives": [],
+            "additionalMaterials": [],
+            "completed": false
+          }
+        ]
+      },
+      {
+        "contentId": 1756157775985,
+        "title": "Topic 10",
+        "published": false,
+        "content": [
+          {
+            "id": 1756157775985,
+            "title": "Topic 10",
+            "learningObjectives": [],
+            "additionalMaterials": [],
+            "completed": false
+          }
+        ]
+      },
+      {
+        "contentId": 1756157775986,
+        "title": "Topic 11",
+        "published": false,
+        "content": [
+          {
+            "id": 1756157775986,
+            "title": "Topic 11",
+            "learningObjectives": [],
+            "additionalMaterials": [],
+            "completed": false
+          }
+        ]
+      },
+      {
+        "contentId": 1756157775987,
+        "title": "Topic 12",
+        "published": false,
+        "content": [
+          {
+            "id": 1756157775987,
+            "title": "Topic 12",
+            "learningObjectives": [],
+            "additionalMaterials": [],
+            "completed": false
+          }
+        ]
+      },
+      {
+        "contentId": 1756157775988,
+        "title": "Topic 13",
+        "published": false,
+        "content": [
+          {
+            "id": 1756157775988,
+            "title": "Topic 13",
+            "learningObjectives": [],
+            "additionalMaterials": [],
+            "completed": false
+          }
+        ]
+      }
+    ]
+}

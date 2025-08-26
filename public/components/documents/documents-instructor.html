@@ -5,11 +5,281 @@
             <h1>Documents</h1>
         </div>
         <div id="documents-container" class="documents-container">
-            <!-- Content will be dynamically generated here -->
+            <div class="content-session">
+                <div class="week-header" >
+                    <div>
+                        <div class="week-title">Week 1: Introduction to Web Development</div>
+                        <div class="completion-status">3 / 4 Sections completed</div>
+                    </div>
+                    <div class="week-status">
+                        <div class="content-status status-add-session">Add Session</div>
+
+                        <div class="content-status status-published">Published</div>
+                        <label class="toggle-switch" id="week-1-toggle-switch">
+                            <input type="checkbox" id="publish-week-1">
+                            <span class="toggle-slider"></span>
+                        </label>
+
+                        <div class="expand-icon" id="icon-1">▼</div>
+                    </div>
+                </div>
+                
+                <!-- Week Content: uses weekNumber (1) -->
+                <div class="division-content expanded" id="content-1">
+                    
+                    <!-- Content Item 1: Lecture -->
+                    <!-- ID format: content-item-${weekNumber}-${content.id} -->
+                    <div class="content-item" id="content-item-1-101">
+                        <div class="content-header">
+                            <div class="content-title">Lecture 1: HTML Fundamentals</div>
+                            <div class="content-status-row">
+                                <div class="content-status status-delete-section">Delete Section</div>
+                                <div class="content-status status-completed">Completed</div>
+                            </div>
+                        </div>
+                        <div class="learning-objectives">
+                            <div class="objectives-accordion">
+                                <!-- data-week uses weekNumber, data-content uses content.id -->
+                                <div class="objectives-header" data-week="1" data-content="101">
+                                    <div class="objectives-title">Learning Objectives</div>
+                                    <div class="objectives-count">
+                                        <span id="count-1-101">2</span> objectives
+                                        <span class="expand-icon" id="obj-icon-1-101">▼</span>
+                                    </div>
+                                </div>
+                                <div class="objectives-content" id="objectives-1-101">
+                                    <!-- First objective -->
+                                    <div class="objective-item">
+                                        <div class="objective-header" data-week="1" data-content="101" data-objective="0">
+                                            <div class="objective-title">Understanding HTML Structure</div>
+                                            <div class="objective-actions">
+                                                <button class="action-btn edit-btn" data-action="edit">Edit</button>
+                                                <button class="action-btn delete-btn" data-action="delete">Delete</button>
+                                                <span class="expand-icon" id="item-icon-1-101-0">▼</span>
+                                            </div>
+                                        </div>
+                                        <div class="objective-content" id="objective-content-1-101-0">
+                                            <div class="objective-description">Students will learn the basic structure of HTML documents, including DOCTYPE, html, head, and body tags.</div>
+                                        </div>
+                                    </div>
+                                    <!-- Second objective -->
+                                    <div class="objective-item">
+                                        <div class="objective-header" data-week="1" data-content="101" data-objective="1">
+                                            <div class="objective-title">HTML Elements and Attributes</div>
+                                            <div class="objective-actions">
+                                                <button class="action-btn edit-btn" data-action="edit">Edit</button>
+                                                <button class="action-btn delete-btn" data-action="delete">Delete</button>
+                                                <span class="expand-icon" id="item-icon-1-101-1">▼</span>
+                                            </div>
+                                        </div>
+                                        <div class="objective-content" id="objective-content-1-101-1">
+                                            <div class="objective-description">Students will understand how to use common HTML elements and their attributes to create structured content.</div>
+                                        </div>
+                                    </div>
+                                    <!-- Add objective form -->
+                                    <div class="add-objective">
+                                        <div class="add-objective-form">
+                                            <div class="input-label">Objective Title:</div>
+                                            <input type="text" class="objective-title-input" id="new-title-1-101" placeholder="Enter the learning objective title...">
+                                            <div class="input-label">Objective Description:</div>
+                                            <textarea class="objective-description-input" id="new-description-1-101" placeholder="Enter a detailed description of what students will learn..."></textarea>
+                                            <button class="add-btn" data-action="add" data-week="1" data-content="101">Add Objective</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="document-upload">
+                            <div class="upload-area">
+                                <div class="upload-icon">📁</div>
+                                <div class="upload-text">Upload your document here</div>
+                            </div>
+                        </div>
+                        <!-- Additional materials if any -->
+                        <div class="additional-materials">
+                            <div class="additional-material" data-material-id="mat_001">
+                                <div>
+                                    <div class="am-title">HTML Reference Guide</div>
+                                    <div class="am-meta">File</div>
+                                </div>
+                                <div class="am-actions">
+                                    <button class="action-btn delete-btn" data-action="delete-material" data-material-id="mat_001">Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+        
+                    <!-- Content Item 2: Lecture -->
+                    <div class="content-item" id="content-item-1-102">
+                        <div class="content-header">
+                            <div class="content-title">Lecture 2: CSS Basics</div>
+                            <div class="content-status status-completed">Published</div>
+                        </div>
+                        <div class="learning-objectives">
+                            <div class="objectives-accordion">
+                                <div class="objectives-header" data-week="1" data-content="102">
+                                    <div class="objectives-title">Learning Objectives</div>
+                                    <div class="objectives-count">
+                                        <span id="count-1-102">1</span> objectives
+                                        <span class="expand-icon" id="obj-icon-1-102">▼</span>
+                                    </div>
+                                </div>
+                                <div class="objectives-content" id="objectives-1-102">
+                                    <div class="objective-item">
+                                        <div class="objective-header" data-week="1" data-content="102" data-objective="0">
+                                            <div class="objective-title">CSS Syntax and Selectors</div>
+                                            <div class="objective-actions">
+                                                <button class="action-btn edit-btn" data-action="edit">Edit</button>
+                                                <button class="action-btn delete-btn" data-action="delete">Delete</button>
+                                                <span class="expand-icon" id="item-icon-1-102-0">▼</span>
+                                            </div>
+                                        </div>
+                                        <div class="objective-content" id="objective-content-1-102-0">
+                                            <div class="objective-description">Students will learn CSS syntax, different types of selectors, and how to apply styles to HTML elements.</div>
+                                        </div>
+                                    </div>
+                                    <div class="add-objective">
+                                        <div class="add-objective-form">
+                                            <div class="input-label">Objective Title:</div>
+                                            <input type="text" class="objective-title-input" id="new-title-1-102" placeholder="Enter the learning objective title...">
+                                            <div class="input-label">Objective Description:</div>
+                                            <textarea class="objective-description-input" id="new-description-1-102" placeholder="Enter a detailed description of what students will learn..."></textarea>
+                                            <button class="add-btn" data-action="add" data-week="1" data-content="102">Add Objective</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="document-upload">
+                            <div class="upload-area">
+                                <div class="upload-icon">📁</div>
+                                <div class="upload-text">Upload your document here</div>
+                            </div>
+                        </div>
+                    </div>
+        
+                    <!-- Content Item 3: Lecture -->
+                    <div class="content-item" id="content-item-1-103">
+                        <div class="content-header">
+                            <div class="content-title">Lecture 3: JavaScript Introduction</div>
+                            <div class="content-status status-completed">Published</div>
+                        </div>
+                        <div class="learning-objectives">
+                            <div class="objectives-accordion">
+                                <div class="objectives-header" data-week="1" data-content="103">
+                                    <div class="objectives-title">Learning Objectives</div>
+                                    <div class="objectives-count">
+                                        <span id="count-1-103">2</span> objectives
+                                        <span class="expand-icon" id="obj-icon-1-103">▼</span>
+                                    </div>
+                                </div>
+                                <div class="objectives-content" id="objectives-1-103">
+                                    <div class="objective-item">
+                                        <div class="objective-header" data-week="1" data-content="103" data-objective="0">
+                                            <div class="objective-title">Variables and Data Types</div>
+                                            <div class="objective-actions">
+                                                <button class="action-btn edit-btn" data-action="edit">Edit</button>
+                                                <button class="action-btn delete-btn" data-action="delete">Delete</button>
+                                                <span class="expand-icon" id="item-icon-1-103-0">▼</span>
+                                            </div>
+                                        </div>
+                                        <div class="objective-content" id="objective-content-1-103-0">
+                                            <div class="objective-description">Students will understand JavaScript variables, primitive data types, and basic operations.</div>
+                                        </div>
+                                    </div>
+                                    <div class="objective-item">
+                                        <div class="objective-header" data-week="1" data-content="103" data-objective="1">
+                                            <div class="objective-title">Functions and Control Flow</div>
+                                            <div class="objective-actions">
+                                                <button class="action-btn edit-btn" data-action="edit">Edit</button>
+                                                <button class="action-btn delete-btn" data-action="delete">Delete</button>
+                                                <span class="expand-icon" id="item-icon-1-103-1">▼</span>
+                                            </div>
+                                        </div>
+                                        <div class="objective-content" id="objective-content-1-103-1">
+                                            <div class="objective-description">Students will learn how to create functions and use conditional statements and loops.</div>
+                                        </div>
+                                    </div>
+                                    <div class="add-objective">
+                                        <div class="add-objective-form">
+                                            <div class="input-label">Objective Title:</div>
+                                            <input type="text" class="objective-title-input" id="new-title-1-103" placeholder="Enter the learning objective title...">
+                                            <div class="input-label">Objective Description:</div>
+                                            <textarea class="objective-description-input" id="new-description-1-103" placeholder="Enter a detailed description of what students will learn..."></textarea>
+                                            <button class="add-btn" data-action="add" data-week="1" data-content="103">Add Objective</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="document-upload">
+                            <div class="upload-area">
+                                <div class="upload-icon">📁</div>
+                                <div class="upload-text">Upload your document here</div>
+                            </div>
+                        </div>
+                    </div>
+        
+                    <!-- Content Item 4: Tutorial -->
+                    <div class="content-item" id="content-item-1-104">
+                        <div class="content-header">
+                            <div class="content-title">Tutorial: Building Your First Web Page</div>
+                            <div class="content-status status-draft">Draft</div>
+                        </div>
+                        <div class="learning-objectives">
+                            <div class="objectives-accordion">
+                                <div class="objectives-header" data-week="1" data-content="104">
+                                    <div class="objectives-title">Learning Objectives</div>
+                                    <div class="objectives-count">
+                                        <span id="count-1-104">1</span> objectives
+                                        <span class="expand-icon" id="obj-icon-1-104">▼</span>
+                                    </div>
+                                </div>
+                                <div class="objectives-content" id="objectives-1-104">
+                                    <div class="objective-item">
+                                        <div class="objective-header" data-week="1" data-content="104" data-objective="0">
+                                            <div class="objective-title">Practical Application</div>
+                                            <div class="objective-actions">
+                                                <button class="action-btn edit-btn" data-action="edit">Edit</button>
+                                                <button class="action-btn delete-btn" data-action="delete">Delete</button>
+                                                <span class="expand-icon" id="item-icon-1-104-0">▼</span>
+                                            </div>
+                                        </div>
+                                        <div class="objective-content" id="objective-content-1-104-0">
+                                            <div class="objective-description">Students will apply HTML, CSS, and JavaScript knowledge to create a complete, functional web page.</div>
+                                        </div>
+                                    </div>
+                                    <div class="add-objective">
+                                        <div class="add-objective-form">
+                                            <div class="input-label">Objective Title:</div>
+                                            <input type="text" class="objective-title-input" id="new-title-1-104" placeholder="Enter the learning objective title...">
+                                            <div class="input-label">Objective Description:</div>
+                                            <textarea class="objective-description-input" id="new-description-1-104" placeholder="Enter a detailed description of what students will learn..."></textarea>
+                                            <button class="add-btn" data-action="add" data-week="1" data-content="104">Add Objective</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="document-upload">
+                            <div class="upload-area">
+                                <div class="upload-icon">📁</div>
+                                <div class="upload-text">Upload your document here</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </main>
 </div>
 <!-- Modal mount point -->
 <div id="upload-modal-mount"></div>
+
+<script>
+    document.getElementById('publish-week-1').checked = true;
+</script>
+
+
 
  

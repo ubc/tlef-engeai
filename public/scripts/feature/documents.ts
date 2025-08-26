@@ -3,7 +3,7 @@
 /**
  * This file contains the functions for the documents page.
  * 
- * @author: Charisma
+ * @author: @gatahcha
  * @date: 2025-08-25
  * @version: 1.0.0
  * @description: This file contains the functions for the documents page.
@@ -45,10 +45,8 @@ export function initializeDocumentsPage( currentClass : activeClass) {
      */
     function loadClassroomData( currentClass : activeClass ) {
         const total = currentClass.tilesNumber;
-        const isByWeek = currentClass.frameType === 'byWeek';
         courseData = [];
         for (let i = 0; i < total; i++) {
-            const title = isByWeek ? `Week ${i}` : `Topic ${i}`;
             courseData.push(currentClass.content[i]);
         }
     }
@@ -61,6 +59,8 @@ export function initializeDocumentsPage( currentClass : activeClass) {
     function renderDocumentsPage() {
         const container = document.getElementById('documents-container');
         if (!container) return;
+
+        //return; //for debugging purposes, do not change this line
 
         // Clear existing children
         while (container.firstChild) container.removeChild(container.firstChild);
@@ -82,7 +82,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
 
         // create the wrapper for the division
         const wrapper = document.createElement('div');
-        wrapper.className = 'week-section';
+        wrapper.className = 'content-session';
 
         // create the header for the division
         const header = document.createElement('div');
@@ -97,19 +97,61 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         title.textContent = division.title;
         const status = document.createElement('div');
         status.className = 'completion-status';
-        const sectionsCompleted = division.content.filter(c => c.learningObjectives.every(o => o.uploaded)).length;
+
+        const sectionsCompleted = division.content.filter(c=> c.completed).length;
         const totalSections = division.content.length;
         status.textContent = `${sectionsCompleted} / ${totalSections} Sections completed`;
         left.appendChild(title);
         left.appendChild(status);
 
-        // create the right side of the header
+        // create the right side of the header (add session, publish toggle/status, then expand arrow)
         const right = document.createElement('div');
         right.className = 'week-status';
+
+        // Add Session badge/button
+        const addSessionBadge = document.createElement('div');
+        addSessionBadge.className = 'content-status status-add-session';
+        addSessionBadge.textContent = 'Add Session';
+        // Prevent header toggle when clicking Add Session
+        addSessionBadge.addEventListener('click', (e) => {
+            e.stopPropagation();
+            addSession(division);
+        });
+
+        // Toggle switch
+        const toggleWrap = document.createElement('label');
+        toggleWrap.className = 'toggle-switch';
+        const toggleInput = document.createElement('input');
+        toggleInput.type = 'checkbox';
+        toggleInput.checked = !!division.published;
+        const toggleSlider = document.createElement('span');
+        toggleSlider.className = 'toggle-slider';
+        toggleWrap.appendChild(toggleInput);
+        toggleWrap.appendChild(toggleSlider);
+
+        // Published status
+        const statusBadge = document.createElement('div');
+        const isPublished = !!division.published;
+        statusBadge.className = `content-status ${isPublished ? 'status-published' : 'status-draft'}`;
+        statusBadge.textContent = isPublished ? 'Published' : 'Draft';
+
+        // Expand icon (arrow)
         const expandIcon = document.createElement('div');
         expandIcon.className = 'expand-icon';
         expandIcon.id = `icon-${division.contentId}`;
         expandIcon.textContent = '▼';
+
+        // Wire toggle behaviour (update in-memory state and badge only)
+        toggleInput.addEventListener('change', (e) => {
+            const checked = (e.currentTarget as HTMLInputElement).checked;
+            division.published = checked;
+            statusBadge.className = `content-status ${checked ? 'status-published' : 'status-draft'}`;
+            statusBadge.textContent = checked ? 'Published' : 'Draft';
+        });
+
+        right.appendChild(addSessionBadge);
+        right.appendChild(statusBadge);
+        right.appendChild(toggleWrap);
         right.appendChild(expandIcon);
 
         // append the left and right sides to the header
@@ -118,8 +160,15 @@ export function initializeDocumentsPage( currentClass : activeClass) {
 
         // create the content for the division
         const contentEl = document.createElement('div');
-        contentEl.className = 'week-content';
+        contentEl.className = 'division-content';
         contentEl.id = `content-division-${division.contentId}`;
+
+        //TODO: append all the content of the division.
+        division.content.forEach((content) => {
+            const item = buildContentItemDOM(division.contentId, content);
+            contentEl.appendChild(item);
+        });
+
 
         // append the header and the content to the wrapper
         wrapper.appendChild(header);
@@ -218,6 +267,8 @@ export function initializeDocumentsPage( currentClass : activeClass) {
                     break;
                 case 'delete-material':
                     event.stopPropagation();
+                    //print the divisionId, contentId, and materialId
+                    console.log('DEBUG #13: divisionId : ', divisionId, ' ; contentId : ', contentId, ' ; materialId : ', button.dataset.materialId);
                     deleteAdditionalMaterial(divisionId, contentId, button.dataset.materialId || '');
                     break;
             }
@@ -448,11 +499,22 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         const title = document.createElement('div');
         title.className = 'content-title';
         title.textContent = content.title;
+        const statusRow = document.createElement('div');
+        statusRow.className = 'content-status-row';
+        const deleteBadge = document.createElement('div');
+        deleteBadge.className = 'content-status status-delete-section';
+        deleteBadge.textContent = 'Delete Section';
+        deleteBadge.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteSection(divisionId, content.id);
+        });
         const status = document.createElement('div');
-        status.className = `content-status ${content.learningObjectives.every(o => o.uploaded) ? 'status-published' : 'status-draft'}`;
-        status.textContent = content.learningObjectives.every(o => o.uploaded) ? 'Published' : 'Draft';
+        status.className = 'content-status status-completed';
+        status.textContent = 'Completed';
+        statusRow.appendChild(deleteBadge);
+        statusRow.appendChild(status);
         header.appendChild(title);
-        header.appendChild(status);
+        header.appendChild(statusRow);
 
         // Objectives
         const objectivesContainer = document.createElement('div');
@@ -521,12 +583,57 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         uploadWrap.appendChild(uploadArea);
 
         const materialsEl = createAdditionalMaterialsElement(content);
-        if (materialsEl) item.appendChild(materialsEl);
 
         item.appendChild(header);
         item.appendChild(objectivesContainer);
         item.appendChild(uploadWrap);
+        // Append uploaded files list directly under the upload box
+        if (materialsEl) item.appendChild(materialsEl);
         return item;
+    }
+
+    // ----- Sessions management -----
+    function addSession(division: ContentDivision) {
+        // Generate a new unique content id within this division
+        const existingIds = division.content.map(c => c.id);
+        const base = division.contentId * 100 + 1; // e.g., week 3 -> 301 base
+        let next = base;
+        while (existingIds.includes(next)) next++;
+
+        const newContent: CourseContent = {
+            id: next,
+            title: `New Session ${division.content.length + 1}`,
+            completed: false,
+            learningObjectives: [],
+            additionalMaterials: []
+        };
+        division.content.push(newContent);
+        // Append to DOM
+        const container = document.getElementById(`content-division-${division.contentId}`);
+        if (!container) return;
+        const built = buildContentItemDOM(division.contentId, newContent);
+        container.appendChild(built);
+        // Update header completion count
+        updateDivisionCompletion(division.contentId);
+    }
+
+    function deleteSection(divisionId: number, contentId: number) {
+        const division = courseData.find(d => d.contentId === divisionId);
+        if (!division) return;
+        if (!confirm('Delete this section?')) return;
+        division.content = division.content.filter(c => c.id !== contentId);
+        const item = document.getElementById(`content-item-${divisionId}-${contentId}`);
+        if (item && item.parentElement) item.parentElement.removeChild(item);
+        updateDivisionCompletion(divisionId);
+    }
+
+    function updateDivisionCompletion(divisionId: number) {
+        const division = courseData.find(d => d.contentId === divisionId);
+        if (!division) return;
+        const sectionsCompleted = division.content.filter(c => c.completed).length;
+        const totalSections = division.content.length;
+        const container = document.querySelector(`.week-header[data-division="${divisionId}"] .completion-status`) as HTMLElement | null;
+        if (container) container.textContent = `${sectionsCompleted} / ${totalSections} Sections completed`;
     }
 
     // Make functions globally available for inline event handlers if needed,
@@ -663,7 +770,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         const uploadCard = document.createElement('div');
         uploadCard.className = 'upload-card';
 
-        // create the button for the upload card
+        // create the button for the upload card (kept for semantics, but entire card is clickable)
         const uploadFileBtn = document.createElement('button');
         uploadFileBtn.id = 'upload-file-btn';
         uploadFileBtn.className = 'upload-file-btn';
@@ -741,6 +848,13 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         // create the event listener for the upload file button
         let selectedFile: File | null = null;
         uploadFileBtn.addEventListener('click', () => hiddenInput.click());
+        // Make entire upload card act as the trigger
+        uploadCard.addEventListener('click', (e) => {
+            // Avoid double-trigger from inner button
+            if ((e.target as HTMLElement).id !== 'hidden-file-input') {
+                hiddenInput.click();
+            }
+        });
         hiddenInput.addEventListener('change', () => {
             const f = hiddenInput.files && hiddenInput.files[0] ? hiddenInput.files[0] : null;
             selectedFile = f;
@@ -802,12 +916,26 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         contentId: number, 
         materialId: string
     ) {
+
+        console.log('DEBUG #11');
         // get the division and the content item
         const division = courseData.find(d => d.contentId === divisionId);
-        const content = division?.content.find(c => c.id === contentId);
-        if (!content || !content.additionalMaterials) return;
+        if (!division) {
+            //print the divisionId
+            console.log('DEBUG #11.1', divisionId);
+            alert('Division not found');
+            return;
+        }
+
+        const content = division.content.find(c => c.id === contentId);
+        if (!content || !content.additionalMaterials) {
+            alert('Content not found');
+            return;
+        }
+
         content.additionalMaterials = content.additionalMaterials.filter(m => m.id !== materialId);
         refreshContentItem(divisionId, contentId);
+        console.log('DEBUG #12');
     }
 
     // Build the Objectives list + Add form via DOM APIs

@@ -3,6 +3,7 @@ import express from 'express';
 import path from 'path';
 import exampleRoutes from './routes/example/hello';
 import chatRoutes from './routes/chat'; // Import the new chat routes
+import ollamaRoutes from './routes/ollama';
 
 dotenv.config();
 
@@ -28,6 +29,7 @@ app.get('/settings', (req: any, res: any) => {
 // API endpoints
 app.use('/api/example', exampleRoutes);
 app.use('/api/chat', chatRoutes); // Use the new chat routes
+app.use('/api/ollama', ollamaRoutes);
 
 app.listen(port, () => {
 	console.log(`Server is running on http://localhost:${port}`);
