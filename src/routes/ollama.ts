@@ -7,10 +7,11 @@ const OLLAMA_API_URL = 'http://localhost:11434/api/chat';
 
 router.post('/chat', async (req: Request, res: Response) => {
     try {
-        const { model, messages } = req.body;
+        const { messages } = req.body;
+        const model = 'llama3.1:latest'; // Hardcoded model
 
-        if (!model || !messages) {
-            return res.status(400).send({ error: 'Missing model or messages in request body' });
+        if (!messages) {
+            return res.status(400).send({ error: 'Missing messages in request body' });
         }
 
         const ollamaRes = await fetch(OLLAMA_API_URL, {

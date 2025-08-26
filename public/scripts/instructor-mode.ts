@@ -436,15 +436,89 @@ document.addEventListener('DOMContentLoaded', () => {
         inputEl.value = '';
         inputEl.style.height = 'auto';
 
-        sendMessageToServer(text)
-            .then(({ reply, timestamp, artefact }) => {
-                const botMsg: ChatMessage = { id: Date.now() + 1, sender: 'bot', text: reply, timestamp, artefact };
-                activeChat.messages.push(botMsg);
-                renderActiveChat();
-                if (artefact) {
-                    openArtefactFromMessage(botMsg);
-                }
-            });
+        // Create a placeholder for the bot's message
+        const botMessageId = Date.now() + 1;
+        const botMessage: ChatMessage = {
+            id: botMessageId,
+            sender: 'bot',
+            text: '...',
+            timestamp: Date.now(),
+            artefact: undefined,
+        };
+        activeChat.messages.push(botMessage);
+        renderActiveChat(); // Render the placeholder
+
+        const botMessageElement = document.getElementById(`msg-${botMessageId}`);
+        const botContentElement = botMessageElement?.querySelector('.message-content');
+        if (botContentElement) {
+            botContentElement.textContent = ''; // Clear placeholder text
+        }
+
+        // Prepare messages for the Ollama API
+        const ollamaMessages = activeChat.messages.map(msg => ({
+            role: msg.sender === 'user' ? 'user' : 'assistant',
+            content: msg.text
+        }));
+
+        // Call the streaming endpoint
+        fetch('/api/ollama/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                messages: ollamaMessages,
+            }),
+        })
+        .then(response => {
+            if (!response.ok || !response.body) {
+                throw new Error('Network response was not ok.');
+            }
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let accumulatedContent = '';
+
+            function push() {
+                reader.read().then(({ done, value }) => {
+                    if (done) {
+                        console.log('Stream complete');
+                        botMessage.text = accumulatedContent; // Final update to state
+                        return;
+                    }
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    // Ollama streams JSON objects separated by newlines
+                    chunk.split('\n').forEach(line => {
+                        if (line.trim()) {
+                            try {
+                                const parsed = JSON.parse(line);
+                                if (parsed.message && parsed.message.content) {
+                                    accumulatedContent += parsed.message.content;
+                                    if (botContentElement) {
+                                        botContentElement.textContent = accumulatedContent;
+                                        scrollToBottom();
+                                    }
+                                }
+                                if (parsed.done) {
+                                    botMessage.text = accumulatedContent;
+                                }
+                            } catch (error) {
+                                console.error('Error parsing stream chunk:', error, 'Chunk:', line);
+                            }
+                        }
+                    });
+                    push(); // Continue reading
+                });
+            }
+            push();
+        })
+        .catch(error => {
+            console.error('Error sending message:', error);
+            if (botContentElement) {
+                botContentElement.textContent = 'Sorry, I encountered an error. Please try again.';
+            }
+            botMessage.text = 'Sorry, I encountered an error. Please try again.';
+        });
     };
 
     const togglePin = () => {
