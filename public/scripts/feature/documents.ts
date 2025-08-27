@@ -25,6 +25,7 @@ import {
     AdditionalMaterial, 
     activeClass 
 } from '../functions/types';
+import { uploadTextToQdrant } from '../services/QdrantService.js';
 
 // In-memory store for the course data
 let courseData: ContentDivision[] = [];
@@ -862,44 +863,78 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         });
 
         // create the event listener for the upload button
-        uploadBtn.addEventListener('click', () => {
+        uploadBtn.addEventListener('click', async () => {
             const name = nameInput.value.trim();
             const text = textArea.value.trim();
             const url = '';
             if (!name) { alert('Please enter a material name.'); return; }
             if (!selectedFile && !url && !text) { alert('Provide a file, URL, or text content.'); return; }
 
-            // get the division and the content item
-            const division = courseData.find(d => d.contentId === divisionId);
-            const contentItem = division?.content.find(c => c.id === contentId);
-            if (!contentItem) return;
-            if (!contentItem.additionalMaterials) contentItem.additionalMaterials = [];
+            try {
+                // get the division and the content item
+                const division = courseData.find(d => d.contentId === divisionId);
+                const contentItem = division?.content.find(c => c.id === contentId);
+                if (!contentItem) return;
+                if (!contentItem.additionalMaterials) contentItem.additionalMaterials = [];
 
-            // create the id for the material
-            const id = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-            const material: AdditionalMaterial = { id, name, sourceType: 'text', uploaded: false };
+                // create the id for the material
+                const id = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+                const material: AdditionalMaterial = { id, name, sourceType: 'text', uploaded: false };
 
-            // set the source type and the file, url, or text content
-            if (selectedFile) {
-                material.sourceType = 'file';
-                material.file = selectedFile;
-                material.previewUrl = URL.createObjectURL(selectedFile);
-            } else if (url) {
-                material.sourceType = 'url';
-                material.url = url;
-            } else if (text) {
-                material.sourceType = 'text';
-                material.text = text;
+                let contentToUpload: string | null = null;
+
+                // Handle different content sources
+                if (selectedFile) {
+                    // For now, only handle markdown files
+                    if (selectedFile.name.toLowerCase().endsWith('.md')) {
+                        const reader = new FileReader();
+                        contentToUpload = await new Promise((resolve, reject) => {
+                            reader.onload = () => resolve(reader.result as string);
+                            reader.onerror = () => reject(reader.error);
+                            if (selectedFile) {
+                            reader.readAsText(selectedFile);
+                        }
+                        });
+                        material.sourceType = 'file';
+                        material.file = selectedFile;
+                        material.previewUrl = URL.createObjectURL(selectedFile);
+                    } else {
+                        alert('Currently only supporting markdown (.md) files');
+                        return;
+                    }
+                } else if (text) {
+                    contentToUpload = text;
+                    material.sourceType = 'text';
+                    material.text = text;
+                }
+
+                // Upload to Qdrant if we have content
+                if (contentToUpload) {
+                    try {
+                        const qdrantResult = await uploadTextToQdrant(contentToUpload);
+                        console.log('Successfully uploaded to Qdrant:', qdrantResult);
+                        material.uploaded = true;
+                        // Store the Qdrant document ID in the material
+                        material.qdrantId = qdrantResult.id;
+                    } catch (error) {
+                        console.error('Failed to upload to Qdrant:', error);
+                        alert('Failed to upload content to Qdrant. Please try again.');
+                        return;
+                    }
+                }
+
+                // add the material to the content item
+                contentItem.additionalMaterials.push(material);
+
+                // refresh the content item
+                refreshContentItem(divisionId, contentId);
+
+                // close the modal
+                close();
+            } catch (error) {
+                console.error('Error in upload process:', error);
+                alert('An error occurred during upload. Please try again.');
             }
-
-            // add the material to the content item
-            contentItem.additionalMaterials.push(material);
-
-            // refresh the content item
-            refreshContentItem(divisionId, contentId);
-
-            // close the modal
-            close();
         });
     }
 

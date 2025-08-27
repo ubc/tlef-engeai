@@ -13,12 +13,12 @@ const enum StateEvent {
 let currentClass : activeClass = 
 {
     onBoarded : false,
-    name:'CHBE 443',
+    name:'',
     instructors: [
-        'killian Azhar',
+        '',
     ],
     teachingAssistants: [
-        'John Doe'
+        ''
     ],
     frameType: 'byTopic',
     tilesNumber: 10,
@@ -42,6 +42,8 @@ let currentClass : activeClass =
 
 
 document.addEventListener('DOMContentLoaded', () => {
+
+    console.log("DOMContentLoaded is called");
 
     // --- DOM ELEMNET SELECTORS ---
     const sidebarEl = document.querySelector('.instructor-sidebar');
@@ -181,6 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const updateUI = () => {
 
+        console.log("updateUI is called");
         console.log("current state is : " + currentState.toString());
 
         if (!currentClass.onBoarded) {
@@ -231,17 +234,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Attempt to load CHBE220 class data from JSON and assign to state
-    fetch('/data/MTRL251.json')
-        .then(r => r.json())
-        .then((data: activeClass) => {
-            currentClass = data;
-            updateUI();
-        })
-        .catch(() => {
-            // Fallback to default currentClass defined above
-            updateUI();
-        });
+    // // Attempt to load CHBE220 class data from JSON and assign to state
+    // fetch('/data/MTRL251.json')
+    //     .then(r => r.json())
+    //     .then((data: activeClass) => {
+    //         currentClass = data;
+    //         updateUI();
+    //     })
+    //     .catch(() => {
+    //         // Fallback to default currentClass defined above
+    //         updateUI();
+    //     });
     
     const sidebarNoChat = () => {
         if (sidebarMenuListEl) sidebarMenuListEl.classList.remove('collapsed');
@@ -1313,5 +1316,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // initial UI update is triggered after attempting JSON load above
+
+    updateUI();
 
 });

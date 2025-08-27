@@ -113,6 +113,8 @@ export interface AdditionalMaterial {
     // For 'text' we store the raw text content
     text?: string;
     uploaded: boolean;
+    // ID returned from Qdrant after successful upload
+    qdrantId?: string;
 }
 
 /**

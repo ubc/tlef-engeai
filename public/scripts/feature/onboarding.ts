@@ -29,6 +29,7 @@ import { activeClass, ContentDivision, CourseContent, onBoardingScreen} from "..
 
 export const renderOnboarding = async ( instructorClass : activeClass ): Promise<void> => {
 
+    console.log("renderOnboarding is called");
     let debugNumber = 0;
     //display carrousel
     let currentScreen : onBoardingScreen = onBoardingScreen.GettingStarted;
@@ -45,8 +46,11 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
     }
 
     const container = document.getElementById('main-content-area');
+
+    console.log("container is : " + container);
     if (!container) return;
 
+    console.log("loadComponentHTML is called");
     return loadComponentHTML('onboarding')
         .then( html => {
             debugNumber = 1;
