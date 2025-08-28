@@ -102,6 +102,12 @@ export interface LearningObjective {
 
 /**
  * Additional material attached to a course content item (front-end only for now)
+ *
+ * addtitional material is only applicable for text only eventually (as we use RAG)
+ * 
+ * So initially, instructor can upload file, url, or text.
+ * 
+ * But eventually, we will only allow text (processed in the backend).
  */
 export type AdditionalMaterialSource = 'file' | 'url' | 'text';
 
@@ -109,6 +115,9 @@ export interface AdditionalMaterial {
     id: string,
     date : Date,
     name: string;
+    contentTitle: string;
+    subcontentTitle: string;
+    courseName: string;
     sourceType: AdditionalMaterialSource;
     // For 'file' we keep a reference to the File and an object URL for preview
     file?: File;
@@ -120,6 +129,8 @@ export interface AdditionalMaterial {
     uploaded: boolean;
     // ID returned from Qdrant after successful upload
     qdrantId?: string;
+    // For 'text' we store the chunk number
+    chunkNumber?: number;
 }
 
 /**

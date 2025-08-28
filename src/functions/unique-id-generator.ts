@@ -2,18 +2,6 @@
 
 /**
  * ===========================================
- * ========= UNIQUE ID GENERATOR ============
- * ===========================================
- *
- * @fileoverview A comprehensive ID generation system for EngE-AI course content hierarchy.
- * This module provides deterministic, collision-resistant unique identifiers for all levels
- * of the course content structure using hierarchical hashing algorithms.
- *
- * @author EngE-AI Development Team
- * @version 1.0.0
- * @since 2025-08-28
- * 
- * ===========================================
  * ========= ID GENERATION ALGORITHM ========
  * ===========================================
  *
@@ -29,32 +17,10 @@
  * - Fixed length: All IDs are exactly 12 hexadecimal characters
  * - Scalability: Supports billions of unique items per level
  *
- * ===========================================
- * ========= HIERARCHICAL FORMULAS ==========
- * ===========================================
- *
- * Course ID:        coursename + "-" + coursebuilddate
- * Content ID:       contenttitle + "-" + coursename + "-" + contentbuilddate
- * SubContent ID:    subcontenttitle + "-" + contenttitle + "-" + coursename + "-" + subcontentbuilddate
- * Learning Obj ID:  learningobjectivestitle + "-" + subcontenttitle + "-" + contenttitle + "-" + coursename + "-" + learningobjectivebuilddate
- * Upload Content ID: uploadcontenttitle + "-" + subcontenttitle + "-" + contenttitle + "-" + coursename + "-" + uploadcontentdate
- *
- * ===========================================
- * ========= TECHNICAL SPECIFICATIONS =======
- * ===========================================
- *
- * - Hash Algorithm: xxHash32 (32-bit variant)
- * - Seed: Configurable numeric seed for deterministic generation
- * - Output Format: 12-character hexadecimal string (0-9, a-f)
- * - Collision Probability: < 1 in 4.2 billion for 12-character IDs
- * - Input Encoding: UTF-8 string concatenation with dash separators
- * - Date Format: ISO 8601 date string (YYYY-MM-DD)
- * - Generation Speed: ~10,000 IDs/second (typical hardware)
- * - Memory Usage: Minimal (no persistent state)
- * - Thread Safety: Instance-level isolation (use separate instances per thread)
- * - Deterministic: Same input + seed = same output (across sessions)
- * - IDs are not cryptographically secure (use cryptographic hashes if needed)
- * - Seed should be kept consistent for ID stability across deployments
+ * @author: @gatahcha
+ * @version: 1.0.0
+ * @since: 2025-08-28
+ * 
  */
 
 

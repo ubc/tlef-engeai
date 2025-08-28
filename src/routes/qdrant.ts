@@ -3,6 +3,7 @@ import { Router, Request, Response } from 'express';
 import fetch from 'node-fetch';
 import fs from 'fs';
 import { QdrantClient } from '@qdrant/js-client-rest';
+import { AdditionalMaterial } from '../functions/types';
 const router: Router = express.Router();
 
 
@@ -16,6 +17,58 @@ const qdrantClient = new QdrantClient({
 });
 
 
+/**
+ * Upload coument to qdrant
+ * 
+ *  - chukfile 
+ * 
+ * PAYLOADS:
+ *  - id
+ *  - date
+ *  - content Title
+ *  - subcontent Title
+ *  - chunkNumber
+ */
+
+
+class QdrantUpload {
+
+
+    constructor(private qdrantClient: QdrantClient) {
+        this.qdrantClient = qdrantClient;
+    }
+
+    async uploadTextToQdrant(uploadContent: AdditionalMaterial, vector: number[]) {
+
+        //create payload
+        const payload = {
+            id: uploadContent.id,
+            date: uploadContent.date,
+            courseName: uploadContent.courseName,
+            contentTitle: uploadContent.contentTitle,
+            subcontentTitle: uploadContent.subcontentTitle,
+            chunkNumber: uploadContent.chunkNumber,
+        };
+
+        //collection name : follows courseName
+        const collectionName = uploadContent.courseName;
+
+        // Upload to Qdrant using upsert (points.insert)
+        const result = await this.qdrantClient.upsert(collectionName, {
+            points: [
+                {
+                    id: payload.id,
+                    payload: payload,
+                    vector: vector,
+                }
+            ]
+        });
+        
+        return result;
+    }
+
+
+}
 
 // // Helper function to upload to Qdrant
 // async function uploadToQdrant(textContent: string) {

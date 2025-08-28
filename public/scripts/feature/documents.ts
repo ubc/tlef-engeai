@@ -898,6 +898,9 @@ export function initializeDocumentsPage( currentClass : activeClass) {
                 const material: AdditionalMaterial = {
                     id,
                     name,
+                    contentTitle: division?.title || 'Unknown Content',
+                    subcontentTitle: contentItem.title,
+                    courseName: currentClass.name,
                     sourceType: 'text',
                     date: new Date(),
                     uploaded: false

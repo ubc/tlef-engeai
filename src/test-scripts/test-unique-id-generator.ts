@@ -252,6 +252,9 @@ function testUploadContentID() {
     const uploadContent1: AdditionalMaterial = {
         id: 'upload1',
         name: 'Chemical Process Flow Diagram.pdf',
+        contentTitle: 'Week 1 - Introduction',
+        subcontentTitle: 'Lecture 1.1 - Basic Concepts',
+        courseName: 'CHBE241',
         date: new Date('2024-03-15'),
         sourceType: 'file',
         uploaded: false
@@ -272,6 +275,9 @@ function testUploadContentID() {
     const uploadContent2: AdditionalMaterial = {
         id: 'upload2',
         name: 'Reference Materials.pdf',
+        contentTitle: 'Week 1 - Introduction',
+        subcontentTitle: 'Lecture 1.1 - Basic Concepts',
+        courseName: 'CHBE241',
         date: new Date('2024-03-15'),
         sourceType: 'file',
         uploaded: false
@@ -302,6 +308,9 @@ function testUploadContentID() {
     const uploadContent4: AdditionalMaterial = {
         id: 'upload4',
         name: 'Online Tutorial Link',
+        contentTitle: 'Week 1 - Introduction',
+        subcontentTitle: 'Lecture 1.1 - Basic Concepts',
+        courseName: 'CHBE241',
         date: new Date('2024-03-15'),
         sourceType: 'url',
         url: 'https://example.com/tutorial',
@@ -365,6 +374,9 @@ function testHierarchicalUniqueness() {
     const uploadContent: AdditionalMaterial = {
         id: 'upload1',
         name: 'Course Materials Document.pdf',
+        contentTitle: 'Week 1 - Introduction',
+        subcontentTitle: 'Lecture 1 - Basic Concepts',
+        courseName: 'CHBE241',
         date: new Date('2024-03-15'),
         sourceType: 'file',
         uploaded: false

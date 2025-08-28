@@ -2,6 +2,7 @@ import { loadComponentHTML, renderFeatherIcons, sendMessageToServer } from "./fu
 import { activeClass, Chat, ChatMessage } from "../../src/functions/types.js";
 import { initializeDocumentsPage } from "./feature/documents.js";
 import { renderOnboarding } from "./feature/onboarding.js";
+import { initializeFlagReports } from "./feature/reports.js";
 
 const enum StateEvent {
     Chat,
@@ -14,7 +15,7 @@ let currentClass : activeClass =
 {
     id: '',
     date: new Date(),
-    onBoarded : false,
+    onBoarded : true,
     name:'',
     instructors: [
         '',
@@ -175,6 +176,9 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (componentName === 'documents-instructor') {
                 initializeDocumentsPage(currentClass);
             }
+            else if (componentName === 'report-instructor') {
+                initializeFlagReports();
+            }
             renderFeatherIcons();
         }
         catch (error) {
@@ -189,6 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         console.log("updateUI is called");
         console.log("current state is : " + currentState.toString());
+        console.log("currentClass is : ", JSON.stringify(currentClass));
 
         if (!currentClass.onBoarded) {
             renderOnboarding(currentClass);
@@ -238,17 +243,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // // Attempt to load CHBE220 class data from JSON and assign to state
-    // fetch('/data/MTRL251.json')
-    //     .then(r => r.json())
-    //     .then((data: activeClass) => {
-    //         currentClass = data;
-    //         updateUI();
-    //     })
-    //     .catch(() => {
-    //         // Fallback to default currentClass defined above
-    //         updateUI();
-    //     });
+    // Attempt to load CHBE220 class data from JSON and assign to state
+    console.log("Attempting to load class data");
+    fetch('/data/MTRL251.json')
+        .then(r => r.json())
+        .then((data: activeClass) => {
+            currentClass = data;
+            console.log("currentClass is : ", JSON.stringify(currentClass));
+            updateUI();
+        })
+        .catch(() => {
+            // Fallback to default currentClass defined above
+            console.log("Error loading class data");
+            updateUI();
+        });
+    
+    
     
     const sidebarNoChat = () => {
         if (sidebarMenuListEl) sidebarMenuListEl.classList.remove('collapsed');

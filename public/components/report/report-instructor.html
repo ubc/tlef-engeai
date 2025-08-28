@@ -1,0 +1,77 @@
+<div class="report-instructor-container">
+    <link rel="stylesheet" href="/styles/instructor-components/report-instructor.css">
+    <main class="main-content">
+        <!-- Header with title and navigation tiles -->
+        <header class="flag-reports-header">
+            <div class="header-left">
+                <h1>Flag Reports</h1>
+                <div class="last-updated">Last Updated: 8:30 AM, May 17, 2026</div>
+            </div>
+            <div class="header-right">
+                <div class="nav-tiles">
+                    <div class="nav-tile">
+                        <i data-feather="alert-triangle"></i>
+                        <span class="count">4</span>
+                    </div>
+                    <div class="nav-tile">
+                        <i data-feather="check"></i>
+                        <span class="count">✓</span>
+                    </div>
+                    <div class="nav-tile">
+                        <i data-feather="users"></i>
+                        <span class="count">2</span>
+                    </div>
+                    <div class="nav-tile">
+                        <i data-feather="check-circle"></i>
+                        <span class="count">✓</span>
+                    </div>
+                </div>
+                <div class="time-filter-dropdown">
+                    <select id="time-filter">
+                        <option value="recent">Recent Reports</option>
+                        <option value="former">Former Reports</option>
+                    </select>
+                    <i data-feather="chevron-down"></i>
+                </div>
+            </div>
+        </header>
+
+        <!-- Filter checkboxes section -->
+        <section class="filter-section">
+            <div class="filter-checkboxes">
+                <label class="filter-checkbox">
+                    <input type="checkbox" data-filter="safety" checked>
+                    <span class="checkmark">✓</span>
+                    <span class="filter-text">Wrong calculations, formulas, or engineering principles that could lead to safety issues or incorrect designs</span>
+                </label>
+                <label class="filter-checkbox">
+                    <input type="checkbox" data-filter="harassment" checked>
+                    <span class="checkmark">✓</span>
+                    <span class="filter-text">Contains harassment, or content that violates EDI (Equity, Diversity, Inclusion) principles</span>
+                </label>
+                <label class="filter-checkbox">
+                    <input type="checkbox" data-filter="inappropriate" checked>
+                    <span class="checkmark">✓</span>
+                    <span class="filter-text">Response veers into personal opinions, political views, or non-academic discussions inappropriate for engineering education</span>
+                </label>
+                <label class="filter-checkbox">
+                    <input type="checkbox" data-filter="dishonesty" checked>
+                    <span class="checkmark">✓</span>
+                    <span class="filter-text">Provides content that appears copied from sources without attribution or encourages academic dishonesty</span>
+                </label>
+                <label class="filter-checkbox">
+                    <input type="checkbox" data-filter="other" checked>
+                    <span class="checkmark">✓</span>
+                    <span class="filter-text">Others</span>
+                </label>
+            </div>
+        </section>
+
+        <!-- Flag reports list - dynamically populated by TypeScript -->
+        <section class="reports-list" id="flag-reports-list">
+            <!-- Report cards will be dynamically generated here -->
+        </section>
+    </main>
+</div>
+
+
