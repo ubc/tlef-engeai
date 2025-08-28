@@ -1,5 +1,5 @@
 import { loadComponentHTML, renderFeatherIcons, sendMessageToServer } from "./functions/api.js";
-import { activeClass, Chat, ChatMessage } from "./functions/types.js";
+import { activeClass, Chat, ChatMessage } from "../../src/functions/types.js";
 import { initializeDocumentsPage } from "./feature/documents.js";
 import { renderOnboarding } from "./feature/onboarding.js";
 
@@ -10,8 +10,10 @@ const enum StateEvent {
     Documents
 }
 
-let currentClass : activeClass = 
+let currentClass : activeClass =
 {
+    id: '',
+    date: new Date(),
     onBoarded : false,
     name:'',
     instructors: [
@@ -24,12 +26,14 @@ let currentClass : activeClass =
     tilesNumber: 10,
     content: [
         {
-            contentId: 1,
+            id: '1',
+            date: new Date(),
             title: 'Week 1',
             published: true,
             content: [
                 {
-                    id: 1,
+                    id: '1',
+                    date: new Date(),
                     title: 'Lecture 1',
                     learningObjectives: [],
                     additionalMaterials: [],

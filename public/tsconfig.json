@@ -11,5 +11,5 @@
       "@/lib": ["./scripts/index"]
     }
   },
-  "include": ["scripts/**/*.ts"]
+  "include": ["scripts/**/*.ts", "../src/functions/types.ts"]
 }

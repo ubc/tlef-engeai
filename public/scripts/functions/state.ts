@@ -7,7 +7,7 @@
  * @since: 2025-08-16
  */
 
-import type { Chat, ChatMessage } from './types';
+import type { Chat, ChatMessage } from '../../../src/functions/types';
 
 /**
  * The state of the student mode

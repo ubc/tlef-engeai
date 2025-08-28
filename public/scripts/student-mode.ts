@@ -1,6 +1,6 @@
 // public/scripts/student-mode.ts
 
-import type { Chat, ChatMessage } from './functions/types.js';
+import type { Chat, ChatMessage } from '../../src/functions/types.js';
 import { loadComponentHTML, sendMessageToServer, renderFeatherIcons } from './functions/api.js';
 
 document.addEventListener('DOMContentLoaded', () => {

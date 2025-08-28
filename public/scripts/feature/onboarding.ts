@@ -25,7 +25,7 @@
  */
 
 import { loadComponentHTML } from "../functions/api.js";
-import { activeClass, ContentDivision, CourseContent, onBoardingScreen} from "../functions/types.js";
+import { activeClass, ContentDivision, CourseContent, onBoardingScreen} from "../../../src/functions/types.js";
 
 export const renderOnboarding = async ( instructorClass : activeClass ): Promise<void> => {
 
@@ -36,6 +36,8 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
     const totalScreen = 7;
 
     const currentClass : activeClass = {
+        id: '',
+        date: new Date(),
         onBoarded: false,
         name: '',
         instructors: [],
@@ -423,10 +425,7 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
 
         currentClass.onBoarded = true;
 
-        // create the content for the course
-        const content = createContent(currentClass);
-
-        // POST currentClass to the database (handled elsewhere)
+        // POST currentClass to the database (handled by backend)
 
         // Wait for persistence confirmation (omitted here), then copy to instructorClass
         Object.assign(instructorClass, currentClass);
@@ -434,97 +433,7 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
         window.dispatchEvent(new CustomEvent('onboardingComplete'));
     }
 
-    /**
-     * Create the content for the course
-     * @param currentClass the currently active class
-     * @returns null
-     */
-    function createContent(currentClass : activeClass) : void {
-        // create the content for the course
 
-        //if the content division type is by week, create the content for the week
-        //each week there will be four content items : lecture-1, lecture-2, lecture-3, tutorial-1
-
-        if (currentClass.frameType === 'byWeek') {
-            // create the content for the week
-            for (let i = 1; i <= currentClass.tilesNumber; i++) {
-                // create the content for the week
-                const currentWeek :  ContentDivision= {
-                    contentId: new Date().getTime(),
-                    title: `Week ${i}`,
-                    published: false,
-                    content: []
-                }
-                
-                //adding the content for the week
-                const lecture1 : CourseContent = {
-                    id: new Date().getTime(),
-                    title: `Lecture ${i}`,
-                    learningObjectives: [],
-                    additionalMaterials: [],
-                    completed: false
-                }
-                const lecture2 : CourseContent = {
-                    id: new Date().getTime(),
-                    title: `Lecture ${i}`,
-                    learningObjectives: [],
-                    additionalMaterials: [],
-                    completed: false
-                }
-                
-                const lecture3 : CourseContent = {
-                    id: new Date().getTime(),
-                    title: `Lecture ${i}`,
-                    learningObjectives: [],
-                    additionalMaterials: [],
-                    completed: false
-                }
-                
-                const tutorial1 : CourseContent = {
-                    id: new Date().getTime(),
-                    title: `Tutorial ${i}`,
-                    learningObjectives: [],
-                    additionalMaterials: [],
-                    completed: false
-                }
-                
-                //adding the content for the week
-                currentWeek.content.push(lecture1, lecture2, lecture3, tutorial1);
-
-                currentClass.content.push(currentWeek);
-            }
-        }
-
-        //if the content division type is by topic, create the content for the topic
-        //for each topic, just create one content item : topic-1
-
-        else {
-            for (let i = 1; i <= currentClass.tilesNumber; i++) {
-                // create the content for the topic
-                const currentTopic :  ContentDivision= {
-                    contentId: new Date().getTime(),
-                    title: `Topic ${i}`,
-                    published: false,
-                    content: []
-                }
-
-                //adding the content for the topic
-                const topic1 : CourseContent = {
-                    id: new Date().getTime(),
-                    title: `Topic ${i}`,
-                    learningObjectives: [],
-                    additionalMaterials: [],
-                    completed: false
-                }
-
-                //adding the content for the topic
-                currentTopic.content.push(topic1);
-                currentClass.content.push(currentTopic);
-                console.log(currentClass.content);
-            }
-        }
-        
-    }
 
     /**
      * Animate the transition between screens and update the currentScreen value.

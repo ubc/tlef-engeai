@@ -24,7 +24,7 @@ import {
     CourseContent, 
     AdditionalMaterial, 
     activeClass 
-} from '../functions/types';
+} from '../../../src/functions/types';
 import { uploadTextToQdrant } from '../services/QdrantService.js';
 
 // In-memory store for the course data
@@ -88,7 +88,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         // create the header for the division
         const header = document.createElement('div');
         header.className = 'week-header';
-        header.setAttribute('data-division', String(division.contentId));
+        header.setAttribute('data-division', division.id);
 
         // create the left side of the header
         // display the title and the completed status of the division
@@ -139,7 +139,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         // Expand icon (arrow)
         const expandIcon = document.createElement('div');
         expandIcon.className = 'expand-icon';
-        expandIcon.id = `icon-${division.contentId}`;
+        expandIcon.id = `icon-${division.id}`;
         expandIcon.textContent = '▼';
 
         // Wire toggle behaviour (update in-memory state and badge only)
@@ -162,11 +162,11 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         // create the content for the division
         const contentEl = document.createElement('div');
         contentEl.className = 'division-content';
-        contentEl.id = `content-division-${division.contentId}`;
+        contentEl.id = `content-division-${division.id}`;
 
         //TODO: append all the content of the division.
         division.content.forEach((content) => {
-            const item = buildContentItemDOM(division.contentId, content);
+            const item = buildContentItemDOM(division.id, content);
             contentEl.appendChild(item);
         });
 
@@ -193,7 +193,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
             // Division header toggles
             const divisionHeader = target.closest('.week-header') as HTMLElement | null;
             if (divisionHeader) {
-                const divisionId = parseInt(divisionHeader.getAttribute('data-division') || '0', 10);
+                const divisionId = divisionHeader.getAttribute('data-division') || '0';
                 if (!divisionId) return;
                 toggleDivision(divisionId);
                 return;
@@ -202,8 +202,8 @@ export function initializeDocumentsPage( currentClass : activeClass) {
             // Objectives accordion toggles
             const objectivesHeader = target.closest('.objectives-header') as HTMLElement | null;
             if (objectivesHeader) {
-                const divisionId = parseInt(objectivesHeader.getAttribute('data-division') || '0', 10);
-                const contentId = parseInt(objectivesHeader.getAttribute('data-content') || '0', 10);
+                const divisionId = objectivesHeader.getAttribute('data-division') || '0';
+                const contentId = objectivesHeader.getAttribute('data-content') || '0';
                 if (!divisionId || !contentId) return;
                 toggleObjectives(divisionId, contentId);
                 return;
@@ -212,8 +212,8 @@ export function initializeDocumentsPage( currentClass : activeClass) {
             // Individual objective item toggles
             const objectiveHeader = target.closest('.objective-header') as HTMLElement | null;
             if (objectiveHeader) {
-                const divisionId = parseInt(objectiveHeader.getAttribute('data-division') || '0', 10);
-                const contentId = parseInt(objectiveHeader.getAttribute('data-content') || '0', 10);
+                const divisionId = objectiveHeader.getAttribute('data-division') || '0';
+                const contentId = objectiveHeader.getAttribute('data-content') || '0';
                 const objectiveIndex = parseInt(objectiveHeader.getAttribute('data-objective') || '-1', 10);
                 if (!divisionId || !contentId || objectiveIndex < 0) return;
                 toggleObjectiveItem(divisionId, contentId, objectiveIndex);
@@ -226,8 +226,8 @@ export function initializeDocumentsPage( currentClass : activeClass) {
                 const contentItem = uploadArea.closest('.content-item') as HTMLElement | null;
                 if (!contentItem) return;
                 const ids = contentItem.id.split('-'); // content-item-divisionId-contentId
-                const divisionId = parseInt(ids[2] || '0', 10);
-                const contentId = parseInt(ids[3] || '0', 10);
+                const divisionId = ids[2] || '0';
+                const contentId = ids[3] || '0';
                 if (!divisionId || !contentId) return;
                 openUploadModal(divisionId, contentId);
                     return;
@@ -242,8 +242,8 @@ export function initializeDocumentsPage( currentClass : activeClass) {
             
             const objectiveItem = button.closest('.objective-item');
             const headerElement = objectiveItem?.querySelector('.objective-header') as HTMLElement | null;
-            const divisionId = parseInt(button.dataset.week || headerElement?.dataset.division || '0', 10);
-            const contentId = parseInt(button.dataset.content || headerElement?.dataset.content || '0', 10);
+            const divisionId = button.dataset.week || headerElement?.dataset.division || '0';
+            const contentId = button.dataset.content || headerElement?.dataset.content || '0';
             const objectiveIndex = parseInt(headerElement?.dataset.objective || '-1', 10);
 
             switch (action) {
@@ -284,7 +284,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
      * @param divisionId the id of the division to toggle
      * @returns null
      */
-    function toggleDivision(divisionId: number) {
+    function toggleDivision(divisionId: string) {
         const content = document.getElementById(`content-division-${divisionId}`);
         const icon = document.getElementById(`icon-${divisionId}`);
         if (!content || !icon) return;
@@ -299,7 +299,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
      * @param contentId the id of the content item
      * @returns null
      */
-    function toggleObjectives(divisionId: number, contentId: number) {
+    function toggleObjectives(divisionId: string, contentId: string) {
         const content = document.getElementById(`objectives-${divisionId}-${contentId}`);
         const icon = document.getElementById(`obj-icon-${divisionId}-${contentId}`);
         if (!content || !icon) return;
@@ -315,7 +315,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
      * @param index the index of the objective item
      * @returns null
      */
-    function toggleObjectiveItem(divisionId: number, contentId: number, index: number) {
+    function toggleObjectiveItem(divisionId: string, contentId: string, index: number) {
         const content = document.getElementById(`objective-content-${divisionId}-${contentId}-${index}`);
         const icon = document.getElementById(`item-icon-${divisionId}-${contentId}-${index}`);
         if (!content || !icon) return;
@@ -330,7 +330,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
      * @param contentId the id of the content item
      * @returns null
      */
-    function addObjective(divisionId: number, contentId: number) {
+    function addObjective(divisionId: string, contentId: string) {
         const titleInput = document.getElementById(`new-title-${divisionId}-${contentId}`) as HTMLInputElement | null;
         const descriptionInput = document.getElementById(`new-description-${divisionId}-${contentId}`) as HTMLTextAreaElement | null;
         if (!titleInput || !descriptionInput) return;
@@ -344,10 +344,17 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         }
 
         // find the division and the content item
-        const division = courseData.find(d => d.contentId === divisionId);
+        const division = courseData.find(d => d.id === divisionId);
         const content = division?.content.find(c => c.id === contentId);
         if (content) {
-            content.learningObjectives.push({ title, description, uploaded: false });
+            const newObjective = {
+                id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // change later once the database is setup
+                title,
+                description,
+                date: new Date(),
+                uploaded: false
+            };
+            content.learningObjectives.push(newObjective);
             titleInput.value = '';
             descriptionInput.value = '';
             // Re-render only the affected content item for efficiency
@@ -363,8 +370,8 @@ export function initializeDocumentsPage( currentClass : activeClass) {
      * @param index the index of the objective item
      * @returns null
      */
-    function editObjective(divisionId: number, contentId: number, index: number) {
-        const objective = courseData.find(d => d.contentId === divisionId)
+    function editObjective(divisionId: string, contentId: string, index: number) {
+        const objective = courseData.find(d => d.id === divisionId)
                                     ?.content.find(c => c.id === contentId)
                                     ?.learningObjectives[index];
         if (!objective) return;
@@ -423,7 +430,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
      * @param index the index of the objective item
      * @returns null
      */
-    function saveObjective(divisionId: number, contentId: number, index: number) {
+    function saveObjective(divisionId: string, contentId: string, index: number) {
         const title = (document.getElementById(`edit-title-${divisionId}-${contentId}-${index}`) as HTMLInputElement).value.trim();
         const description = (document.getElementById(`edit-desc-${divisionId}-${contentId}-${index}`) as HTMLTextAreaElement).value.trim();
 
@@ -431,7 +438,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
             alert('Title and description cannot be empty.');
             return;
         }
-        const objective = courseData.find(d => d.contentId === divisionId)
+        const objective = courseData.find(d => d.id === divisionId)
                                     ?.content.find(c => c.id === contentId)
                                     ?.learningObjectives[index];
         if (objective) {
@@ -448,13 +455,13 @@ export function initializeDocumentsPage( currentClass : activeClass) {
      * @param contentId the id of the content item
      * @returns null
      */
-    function cancelEdit(divisionId: number, contentId: number) {
+    function cancelEdit(divisionId: string, contentId: string) {
         refreshContentItem(divisionId, contentId);
     }
 
-    function deleteObjective(divisionId: number, contentId: number, index: number) {
+    function deleteObjective(divisionId: string, contentId: string, index: number) {
         if (confirm('Are you sure you want to delete this objective?')) {
-            const content = courseData.find(d => d.contentId === divisionId)
+            const content = courseData.find(d => d.id === divisionId)
                                         ?.content.find(c => c.id === contentId);
             if (content) {
                 content.learningObjectives.splice(index, 1);
@@ -470,8 +477,8 @@ export function initializeDocumentsPage( currentClass : activeClass) {
      * @param contentId the id of the content item
      * @returns null
      */
-    function refreshContentItem(divisionId: number, contentId: number) {
-        const division = courseData.find(d => d.contentId === divisionId);
+    function refreshContentItem(divisionId: string, contentId: string) {
+        const division = courseData.find(d => d.id === divisionId);
         const content = division?.content.find(c => c.id === contentId);
         const itemContainer = document.getElementById(`content-item-${divisionId}-${contentId}`);
         if (!division || !content || !itemContainer) return;
@@ -489,7 +496,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
      * @param content the content item to build the DOM for
      * @returns the created element
      */
-    function buildContentItemDOM(divisionId: number, content: CourseContent): HTMLElement {
+    function buildContentItemDOM(divisionId: string, content: CourseContent): HTMLElement {
         // Reuse the createContentItemElement pattern used at page render time
         const item = document.createElement('div');
         item.className = 'content-item';
@@ -505,10 +512,6 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         const deleteBadge = document.createElement('div');
         deleteBadge.className = 'content-status status-delete-section';
         deleteBadge.textContent = 'Delete Section';
-        deleteBadge.addEventListener('click', (e) => {
-            e.stopPropagation();
-            deleteSection(divisionId, content.id);
-        });
         const status = document.createElement('div');
         status.className = 'content-status status-completed';
         status.textContent = 'Completed';
@@ -516,6 +519,12 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         statusRow.appendChild(status);
         header.appendChild(title);
         header.appendChild(statusRow);
+
+        // Add event listener for delete badge
+        deleteBadge.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteSection(divisionId, content.id);
+        });
 
         // Objectives
         const objectivesContainer = document.createElement('div');
@@ -564,6 +573,12 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         objectivesContent.className = 'objectives-content';
         objectivesContent.id = `objectives-${divisionId}-${content.id}`;
         objectivesContent.appendChild(createObjectivesListElement(divisionId, content.id));
+
+        // Add event listener for delete badge
+        deleteBadge.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteSection(divisionId, content.id);
+        });
         accordion.appendChild(headerRow);
         accordion.appendChild(objectivesContent);
         objectivesContainer.appendChild(accordion);
@@ -597,29 +612,30 @@ export function initializeDocumentsPage( currentClass : activeClass) {
     function addSession(division: ContentDivision) {
         // Generate a new unique content id within this division
         const existingIds = division.content.map(c => c.id);
-        const base = division.contentId * 100 + 1; // e.g., week 3 -> 301 base
+        const base = parseInt(division.id) * 100 + 1; // e.g., week 3 -> 301 base
         let next = base;
-        while (existingIds.includes(next)) next++;
+        while (existingIds.includes(String(next))) next++;
 
         const newContent: CourseContent = {
-            id: next,
+            id: String(next),
             title: `New Session ${division.content.length + 1}`,
+            date: new Date(),
             completed: false,
             learningObjectives: [],
             additionalMaterials: []
         };
         division.content.push(newContent);
         // Append to DOM
-        const container = document.getElementById(`content-division-${division.contentId}`);
+        const container = document.getElementById(`content-division-${division.id}`);
         if (!container) return;
-        const built = buildContentItemDOM(division.contentId, newContent);
+        const built = buildContentItemDOM(division.id, newContent);
         container.appendChild(built);
         // Update header completion count
-        updateDivisionCompletion(division.contentId);
+        updateDivisionCompletion(division.id);
     }
 
-    function deleteSection(divisionId: number, contentId: number) {
-        const division = courseData.find(d => d.contentId === divisionId);
+    function deleteSection(divisionId: string, contentId: string) {
+        const division = courseData.find(d => d.id === divisionId);
         if (!division) return;
         if (!confirm('Delete this section?')) return;
         division.content = division.content.filter(c => c.id !== contentId);
@@ -628,8 +644,8 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         updateDivisionCompletion(divisionId);
     }
 
-    function updateDivisionCompletion(divisionId: number) {
-        const division = courseData.find(d => d.contentId === divisionId);
+    function updateDivisionCompletion(divisionId: string) {
+        const division = courseData.find(d => d.id === divisionId);
         if (!division) return;
         const sectionsCompleted = division.content.filter(c => c.completed).length;
         const totalSections = division.content.length;
@@ -694,7 +710,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
      * @param contentId the id of the content item
      * @returns null
      */
-    function openUploadModal(divisionId: number, contentId: number) {
+    function openUploadModal(divisionId: string, contentId: string) {
         // get the mount point for the modal
         const mount = document.getElementById('upload-modal-mount');
         if (!mount) return;
@@ -872,14 +888,20 @@ export function initializeDocumentsPage( currentClass : activeClass) {
 
             try {
                 // get the division and the content item
-                const division = courseData.find(d => d.contentId === divisionId);
+                const division = courseData.find(d => d.id === divisionId);
                 const contentItem = division?.content.find(c => c.id === contentId);
                 if (!contentItem) return;
                 if (!contentItem.additionalMaterials) contentItem.additionalMaterials = [];
 
                 // create the id for the material
                 const id = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-                const material: AdditionalMaterial = { id, name, sourceType: 'text', uploaded: false };
+                const material: AdditionalMaterial = {
+                    id,
+                    name,
+                    sourceType: 'text',
+                    date: new Date(),
+                    uploaded: false
+                };
 
                 let contentToUpload: string | null = null;
 
@@ -947,14 +969,14 @@ export function initializeDocumentsPage( currentClass : activeClass) {
      * @returns null
      */
     function deleteAdditionalMaterial(
-        divisionId: number, 
-        contentId: number, 
+        divisionId: string,
+        contentId: string,
         materialId: string
     ) {
 
         console.log('DEBUG #11');
         // get the division and the content item
-        const division = courseData.find(d => d.contentId === divisionId);
+        const division = courseData.find(d => d.id === divisionId);
         if (!division) {
             //print the divisionId
             console.log('DEBUG #11.1', divisionId);
@@ -974,11 +996,11 @@ export function initializeDocumentsPage( currentClass : activeClass) {
     }
 
     // Build the Objectives list + Add form via DOM APIs
-    function createObjectivesListElement(divisionId: number, contentId: number): HTMLElement {
+    function createObjectivesListElement(divisionId: string, contentId: string): HTMLElement {
 
         // create the wrapper for the objectives
         const wrapper = document.createElement('div');
-        const division = courseData.find(d => d.contentId === divisionId);
+        const division = courseData.find(d => d.id === divisionId);
         const content = division?.content.find(c => c.id === contentId);
         if (!content) return wrapper;
 

@@ -8,7 +8,7 @@
  * @since: 2025-08-16
  */
 
-import type { Artefact } from './types';
+import type { Artefact } from '../../../src/functions/types';
 
 declare const feather: { replace: () => void };
 

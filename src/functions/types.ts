@@ -64,7 +64,9 @@ export enum onBoardingScreen {
 // ===========================================
 
 export interface activeClass {
-    onBoarded : boolean;
+    id : string,
+    date : Date,
+    onBoarded : boolean, 
     name: string,
     instructors: string[],
     teachingAssistants: string[],
@@ -91,6 +93,8 @@ export type frameType =
  * The type of a single learning objective
  */
 export interface LearningObjective {
+    id : string,
+    date : Date
     title: string;
     description: string;
     uploaded: boolean;
@@ -102,7 +106,8 @@ export interface LearningObjective {
 export type AdditionalMaterialSource = 'file' | 'url' | 'text';
 
 export interface AdditionalMaterial {
-    id: string; // unique client-side id
+    id: string,
+    date : Date,
     name: string;
     sourceType: AdditionalMaterialSource;
     // For 'file' we keep a reference to the File and an object URL for preview
@@ -121,7 +126,8 @@ export interface AdditionalMaterial {
  * The type for a piece of course content (e.g., lecture, tutorial)
  */
 export interface CourseContent {
-    id: number;
+    id: string;
+    date: Date,
     title: string;
     completed: boolean;
     // uploaded: boolean; No need to set uploaded, as the content is uploaded by default
@@ -133,7 +139,8 @@ export interface CourseContent {
  * The type of content division : by week or by topic
  */
 export interface ContentDivision {
-    contentId : number;
+    id : string;
+    date : Date;
     title: string;
     published: boolean;
     content: CourseContent[];
