@@ -87,6 +87,11 @@
     background: rgba(255,255,255,0.2);
 }
 
+.nav-tile.active {
+    background: rgba(255,255,255,0.3);
+    border-color: rgba(255,255,255,0.6);
+}
+
 .nav-tile i {
     width: 18px;
     height: 18px;

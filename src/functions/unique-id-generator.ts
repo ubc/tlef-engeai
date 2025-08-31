@@ -183,11 +183,33 @@ export class IDGenerator {
      *
      * @internal This method is called internally by all public ID generation methods
      */
-        uniqueIDGenerator(input : string) : string {
-            const hashOutput1 = xxHash32(input, this.seed).toString(16);console.log(hashOutput1);
-            const hashOutput2 = xxHash32(hashOutput1, this.seed).toString(16);console.log(hashOutput2);
-            const hashResult = (hashOutput1 + hashOutput2).substring(0,12);
+    uniqueIDGenerator(input : string) : string {
+        const hashResult = this.hash48hex(input);
+        return hashResult;
+    }
+
+    /**
+     * 48-bit non-cryptographic hash in TypeScript
+     * @param input - The string to be hashed
+     * @returns A 12-character hexadecimal string (collision-resistant ID)
+     */
+    hash48hex(input: string): string {
+        const data = new TextEncoder().encode(input);
     
-            return hashResult;
+        let h = 0x9e3779b9; // 32-bit seed
+    
+        for (const byte of data) {
+            h ^= byte;
+            h = Math.imul(h, 0x85ebca6b);
+            h ^= h >>> 13;
+            h = Math.imul(h, 0xc2b2ae35);
+            h ^= h >>> 16;
         }
+    
+        // Constrain to 48 bits (safe in JS number)
+        const hash48 = h >>> 0 & 0xFFFFFFFFFFFF;
+    
+        // Convert to hex string, pad to 12 chars (48 bits)
+        return hash48.toString(16).padStart(12, "0");
+    }
 }

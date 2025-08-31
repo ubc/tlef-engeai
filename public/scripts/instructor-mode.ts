@@ -191,9 +191,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const updateUI = () => {
 
-        console.log("updateUI is called");
-        console.log("current state is : " + currentState.toString());
-        console.log("currentClass is : ", JSON.stringify(currentClass));
+        // console.log("updateUI is called");
+        // console.log("current state is : " + currentState.toString());
+        // console.log("currentClass is : ", JSON.stringify(currentClass));
 
         if (!currentClass.onBoarded) {
             renderOnboarding(currentClass);
@@ -249,7 +249,7 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(r => r.json())
         .then((data: activeClass) => {
             currentClass = data;
-            console.log("currentClass is : ", JSON.stringify(currentClass));
+            // console.log("currentClass is : ", JSON.stringify(currentClass));
             updateUI();
         })
         .catch(() => {

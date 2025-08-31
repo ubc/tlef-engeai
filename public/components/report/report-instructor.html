@@ -9,21 +9,13 @@
             </div>
             <div class="header-right">
                 <div class="nav-tiles">
-                    <div class="nav-tile">
+                    <div class="nav-tile active" data-section="flag-reports">
                         <i data-feather="alert-triangle"></i>
-                        <span class="count">4</span>
+                        <span class="count" id="flag-reports-count"></span>
                     </div>
-                    <div class="nav-tile">
+                    <div class="nav-tile" data-section="resolved-flag">
                         <i data-feather="check"></i>
-                        <span class="count">✓</span>
-                    </div>
-                    <div class="nav-tile">
-                        <i data-feather="users"></i>
-                        <span class="count">2</span>
-                    </div>
-                    <div class="nav-tile">
-                        <i data-feather="check-circle"></i>
-                        <span class="count">✓</span>
+                        <span class="count" id="resolved-flag-count"></span>
                     </div>
                 </div>
                 <div class="time-filter-dropdown">
@@ -58,6 +50,11 @@
                     <input type="checkbox" data-filter="dishonesty" checked>
                     <span class="checkmark">✓</span>
                     <span class="filter-text">Provides content that appears copied from sources without attribution or encourages academic dishonesty</span>
+                </label>
+                <label class="filter-checkbox">
+                    <input type="checkbox" data-filter="interface bug" checked>
+                    <span class="checkmark">✓</span>
+                    <span class="filter-text">Interface bugs or usability issues</span>
                 </label>
                 <label class="filter-checkbox">
                     <input type="checkbox" data-filter="other" checked>

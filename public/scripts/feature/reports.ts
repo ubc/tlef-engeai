@@ -11,7 +11,7 @@
 interface FlagReport {
     id: string;
     timestamp: string;
-    flagType: 'safety' | 'harassment' | 'inappropriate' | 'dishonesty' | 'other';
+    flagType: 'safety' | 'harassment' | 'inappropriate' | 'dishonesty' | 'interface bug' | 'other';
     reportType: string;
     chatContent: string;
     studentName: string;
@@ -50,7 +50,7 @@ So: t = (1.5 × 2000) / (2 × 250) = 6 mm
 A 6mm wall thickness should be sufficient for your ammonia vessel. You don't need any safety factors since ammonia isn't that dangerous.`,
         studentName: 'Uzumaki Doritos',
         status: 'unresolved',
-        collapsed: false
+        collapsed: true
     },
     {
         id: '3',
@@ -71,22 +71,57 @@ A 6mm wall thickness should be sufficient for your ammonia vessel. You don't nee
         studentName: 'Charisma Rusdiyanto',
         status: 'unresolved',
         collapsed: true
+    },
+    {
+        id: '5',
+        timestamp: '3:45 PM, March 15, 2026',
+        flagType: 'safety',
+        reportType: 'Flag: Wrong calculations, formulas, or engineering principles that could lead to safety issues or incorrect designs',
+        chatContent: 'Chat: For the reactor design, just use a safety factor of 1.2. That should be enough for most applications.',
+        studentName: 'Alex Johnson',
+        status: 'resolved',
+        collapsed: true
+    },
+    {
+        id: '6',
+        timestamp: '3:45 PM, March 15, 2026',
+        flagType: 'interface bug',
+        reportType: 'Flag: Interface bugs or usability issues',
+        chatContent: 'Chat: The interface is not working properly. The buttons are not working.',
+        studentName: 'Alex Johnson',
+        status: 'resolved',
+        collapsed: true
+    },
+    {
+        id: '7',
+        timestamp: '11:20 AM, March 14, 2026',
+        flagType: 'inappropriate',
+        reportType: 'Flag: Response veers into personal opinions, political views, or non-academic discussions inappropriate for engineering education',
+        chatContent: 'Chat: Climate change regulations are just government overreach affecting engineering costs.',
+        studentName: 'Sarah Chen',
+        status: 'resolved',
+        collapsed: true
     }
 ];
 
 // Current filter state
 let currentFilters = {
-    flagTypes: new Set(['safety', 'harassment', 'inappropriate', 'dishonesty', 'other']),
+    flagTypes: new Set(['safety', 'harassment', 'inappropriate', 'dishonesty', 'interface bug', 'other']),
     timeFilter: 'recent' as 'recent' | 'former'
 };
+
+let currentSection: 'flag-reports' | 'resolved-flag' = 'flag-reports';
 
 /**
  * Initialize the flag reports interface
  */
 export function initializeFlagReports(): void {
-    setupEventListeners();
-    renderReports();
-    updateNavigationCounts();
+
+
+    renderReports(); // Render initial reports
+    setupEventListeners(); // Setup event listeners for filtering and collapse functionality
+    updateActiveNavigation(); // Set initial active stats
+
 }
 
 /**
@@ -110,6 +145,12 @@ function setupEventListeners(): void {
     if (reportsList) {
         reportsList.addEventListener('click', handleReportCardClick);
     }
+
+    // Navigation tile listeners
+    const navTiles = document.querySelectorAll('.nav-tile');
+    navTiles.forEach(tile => {
+        tile.addEventListener('click', handleNavigationClick);
+    });
 }
 
 /**
@@ -131,10 +172,54 @@ function handleFilterChange(event: Event): void {
 }
 
 /**
+ * Handle navigation tile clicks
+ */
+function handleNavigationClick(event: Event): void {
+    const target = event.target as HTMLElement;
+    const navTile = target.closest('.nav-tile') as HTMLElement;
+    if (!navTile) return;
+
+    const section = navTile.dataset.section as typeof currentSection;
+    if (!section) return;
+
+    // Update active section
+    currentSection = section;
+    
+    // Update active state in UI
+    updateActiveNavigation();
+    
+    // Re-render reports for new section
+    renderReports();
+}
+
+/**
+ * Update active navigation state
+ */
+function updateActiveNavigation(): void {
+    const navTiles = document.querySelectorAll('.nav-tile');
+    navTiles.forEach(tile => {
+        const tileElement = tile as HTMLElement;
+        const section = tileElement.dataset.section;
+        
+        if (section === currentSection) {
+            tileElement.classList.add('active');
+        } else {
+            tileElement.classList.remove('active');
+        }
+    });
+}
+
+/**
  * Handle report card clicks for collapse/expand
  */
 function handleReportCardClick(event: Event): void {
     const target = event.target as HTMLElement;
+    
+    // Handle resolve button clicks
+    if (target.classList.contains('resolve-button')) {
+        handleResolveClick(target);
+        return;
+    }
     
     // Don't collapse if clicking on response section elements
     if (target.closest('.response-section')) {
@@ -149,6 +234,24 @@ function handleReportCardClick(event: Event): void {
 
     // Toggle collapse state
     toggleReportCollapse(reportId);
+}
+
+/**
+ * Handle resolve button clicks
+ */
+function handleResolveClick(button: HTMLElement): void {
+    const reportId = button.dataset.reportId;
+    if (!reportId) return;
+
+    const report = reportData.find(r => r.id === reportId);
+    if (!report) return;
+
+    // Toggle resolved status
+    report.status = report.status === 'unresolved' ? 'resolved' : 'unresolved';
+    
+    // Re-render to update UI and navigation counts
+    renderReports();
+    updateNavigationCounts();
 }
 
 /**
@@ -181,13 +284,29 @@ function renderReports(): void {
     const reportsList = document.getElementById('flag-reports-list');
     if (!reportsList) return;
 
-    // Filter reports
-    const filteredReports = reportData.filter(report => 
-        currentFilters.flagTypes.has(report.flagType)
-    );
+    // Filter reports based on current section
+    let sectionReports: FlagReport[] = [];
+    
+    switch (currentSection) {
+        case 'flag-reports':
+            sectionReports = reportData.filter(report => 
+                report.status === 'unresolved' && currentFilters.flagTypes.has(report.flagType)
+            );
+            break;
+        case 'resolved-flag':
+            sectionReports = reportData.filter(report => 
+                report.status === 'resolved' && currentFilters.flagTypes.has(report.flagType)
+            );
+            break;
+        default:
+            //alert
+            alert('Invalid section');
+            sectionReports = [];
+            break;
+    }
 
     // Sort by time filter
-    const sortedReports = [...filteredReports].sort((a, b) => {
+    const sortedReports = [...sectionReports].sort((a, b) => {
         // Convert timestamp strings to dates for sorting
         const dateA = new Date(a.timestamp);
         const dateB = new Date(b.timestamp);
@@ -300,35 +419,24 @@ function createReportCard(report: FlagReport): HTMLElement {
 }
 
 /**
- * Update navigation tile counts based on current data and filters
+ * Update navigation tile counts for all sections
  */
 function updateNavigationCounts(): void {
-    // Count filtered reports by flag type
-    const filteredReports = reportData.filter(report => 
-        currentFilters.flagTypes.has(report.flagType)
-    );
-    
-    const counts = {
-        safety: 0,
-        harassment: 0,
-        inappropriate: 0,
-        dishonesty: 0,
-        other: 0
-    };
-    
-    filteredReports.forEach(report => {
-        if (counts.hasOwnProperty(report.flagType)) {
-            counts[report.flagType as keyof typeof counts]++;
+    const navTiles = document.querySelectorAll('.nav-tile');   
+    if (navTiles) {
+        // Count unresolved flag reports
+        const unresolvedFlags = reportData.filter(report => report.status === 'unresolved').length;
+        const flagReportsCount = document.getElementById('flag-reports-count');
+        if (flagReportsCount) {
+            flagReportsCount.textContent = String(unresolvedFlags);
         }
-    });
-    
-    // Update navigation tiles
-    const tiles = document.querySelectorAll('.nav-tile .tile-count');
-    if (tiles.length >= 5) {
-        (tiles[0] as HTMLElement).textContent = String(counts.safety);
-        (tiles[1] as HTMLElement).textContent = String(counts.harassment);
-        (tiles[2] as HTMLElement).textContent = String(counts.inappropriate);
-        (tiles[3] as HTMLElement).textContent = String(counts.dishonesty);
-        (tiles[4] as HTMLElement).textContent = String(counts.other);
+        
+        // Count resolved flag reports  
+        const resolvedFlags = reportData.filter(report => report.status === 'resolved').length;
+        const resolvedFlagCount = document.getElementById('resolved-flag-count');
+        if (resolvedFlagCount) {
+            resolvedFlagCount.textContent = String(resolvedFlags);
+        }
     }
 }
+
