@@ -157,4 +157,80 @@ export interface ContentDivision {
     content: CourseContent[];
 }
 
+/**
+ * ============================
+ * ===== MONGO DATA TYPE ======
+ * ============================
+ * 
+ */
+
+/**
+ * active course list
+ */
+export interface ActiveCourseListDB {
+    id: string;
+    date: Date;
+    name: string;
+    frameType: frameType;
+    tilesNumber: number;
+}
+
+/**
+ * user in the database
+ */
+export interface UserDB {
+    id: string;
+    name: string;
+    UBCID: string;
+    userId: number;
+    activeCourseId: string;
+    activeCourseName: string;
+    role: string;
+}
+
+/**
+ * message in the database
+ */
+export interface MessageDB {
+    id: string;
+    sender: 'user' | 'bot';
+    userId: number;
+    courseName: string;
+    isPinned: boolean;
+    isFlag: boolean;
+    content: string;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+/**
+ * document in the database
+ * only be used for storing learning objectives
+ * Additional material remains in the quadrant vector database
+ */
+export interface LearningObjectiveDB {
+    id: string;
+    name: string;
+    content: string;
+    courseName: string;
+    contentTitle: string;
+    subcontentTitle: string;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+// Types for flag reports
+export interface FlagReportDB {
+    id: string;
+    timestamp: string;
+    flagType: 'safety' | 'harassment' | 'inappropriate' | 'dishonesty' | 'interface bug' | 'other';
+    reportType: string;
+    chatContent: string;
+    userId: number;
+    status: 'unresolved' | 'resolved';
+    response?: string; // if resolved, the response from the instructor
+    createdAt: Date;
+    updatedAt: Date;
+}
+
 

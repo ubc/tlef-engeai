@@ -374,6 +374,35 @@ button {
     font-weight: 700;
 }
 
+.team-credits {
+    margin: 20px 0 0 0;
+    text-align: center;
+    color: var(--text-primary);
+}
+
+.team-credits h3 {
+    color: var(--color-chbe-green);
+}
+
+.team-members {
+    display: flex;
+    flex-direction: column;
+}
+
+.team-member {
+    margin: 10px 0 0 0;
+    text-align: center;
+}
+
+.team-member a {
+    color: var(--color-chbe-green);
+    text-decoration: none;
+}
+
+.team-member a:hover {
+    color: var(--color-eng-red);
+    cursor: pointer;
+}
 
 
 

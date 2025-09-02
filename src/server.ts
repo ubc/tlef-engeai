@@ -2,10 +2,10 @@ import dotenv from 'dotenv';
 import express from 'express';
 import path from 'path';
 import cors from 'cors';
-import exampleRoutes from './routes/example/hello';
 import chatRoutes from './routes/chat';
 import ollamaRoutes from './routes/ollama';
 import qdrantRoutes from './routes/qdrant';  // Import Qdrant routes
+import mongodbRoutes from './routes/mongodb';  // Import MongoDB routes
 
 dotenv.config();
 
@@ -32,10 +32,10 @@ app.get('/settings', (req: any, res: any) => {
 });
 
 // API endpoints
-app.use('/api/example', exampleRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/ollama', ollamaRoutes);
 app.use('/api/qdrant', qdrantRoutes);  // Add Qdrant routes
+app.use('/api/mongodb', mongodbRoutes);  // Add MongoDB routes
 
 app.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);

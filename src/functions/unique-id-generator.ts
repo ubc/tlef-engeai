@@ -24,10 +24,14 @@
  */
 
 
-
-
-import { xxHash32 } from "js-xxhash";
-import { activeClass, ContentDivision, CourseContent, LearningObjective, AdditionalMaterial } from "./types";
+import { 
+    activeClass, 
+    ContentDivision, 
+    CourseContent, 
+    LearningObjective, 
+    AdditionalMaterial, 
+    UserDB
+} from "./types";
 
 /**
  * ===========================================
@@ -195,21 +199,45 @@ export class IDGenerator {
      */
     hash48hex(input: string): string {
         const data = new TextEncoder().encode(input);
-    
-        let h = 0x9e3779b9; // 32-bit seed
-    
-        for (const byte of data) {
-            h ^= byte;
-            h = Math.imul(h, 0x85ebca6b);
-            h ^= h >>> 13;
-            h = Math.imul(h, 0xc2b2ae35);
-            h ^= h >>> 16;
+      
+        // Two independent 32-bit lanes
+        let h1 = 0x9e3779b9 | 0;
+        let h2 = 0x85ebca6b | 0;
+      
+        for (const b of data) {
+          // Lane 1 (murmur-ish)
+          h1 ^= b;
+          h1 = Math.imul(h1, 0x85ebca6b);
+          h1 ^= h1 >>> 13;
+          h1 = Math.imul(h1, 0xc2b2ae35);
+          h1 ^= h1 >>> 16;
+      
+          // Lane 2 (different constants/rotations)
+          let x = (h2 ^ (b + 0x9e3779b9)) | 0;
+          x = Math.imul(x, 0x27d4eb2d);
+          x ^= x >>> 15;
+          x = Math.imul(x, 0x165667b1);
+          x ^= x >>> 17;
+          h2 = x | 0;
         }
-    
-        // Constrain to 48 bits (safe in JS number)
-        const hash48 = h >>> 0 & 0xFFFFFFFFFFFF;
-    
-        // Convert to hex string, pad to 12 chars (48 bits)
-        return hash48.toString(16).padStart(12, "0");
+      
+        const lo32 = h1 >>> 0;            // 32 low bits
+        const hi16 = (h2 >>> 0) & 0xffff; // 16 high bits
+        const value48 = hi16 * 0x100000000 + lo32; // (hi16 << 32) + lo32, exact in JS number
+      
+        return value48.toString(16).padStart(12, "0");
     }
+
+    /**
+     * Generates a unique User ID using the formula:
+     * UBCID + "-" + name + "-" + role + "-" + activeCourseName -> uniqueIDGenerator
+     *
+     * @param user - The user object containing UBCID, name, role, and active course name
+     * @returns A 12-character hexadecimal string representing the unique user ID
+     */
+    userID(user: UserDB): string {
+        const hashInput = user.UBCID + "-" + user.name + "-" + user.role + "-" + user.activeCourseName;
+        return this.uniqueIDGenerator(hashInput);
+    }
+      
 }

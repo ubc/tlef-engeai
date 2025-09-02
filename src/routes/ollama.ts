@@ -1,3 +1,31 @@
+/**
+ * ===========================================
+ * ========= OLLAMA LLM INTEGRATION ==========
+ * ===========================================
+ *
+ * This module provides Express.js routes for integrating with Ollama local LLM server
+ * to enable AI-powered chat functionality for the EngE-AI platform.
+ *
+ * Key Features:
+ * - Streaming chat responses from local Ollama instance
+ * - Direct proxy to Ollama API with error handling
+ * - Support for conversational message history
+ * - Real-time response streaming for better UX
+ * - Configurable model selection (currently llama3.1:latest)
+ *
+ * API Endpoints:
+ * - POST /chat - Send messages to Ollama and stream responses
+ *
+ * Dependencies:
+ * - Ollama server running on localhost:11434
+ * - Compatible LLM model (llama3.1:latest) installed in Ollama
+ *
+ * @author: EngE-AI Team
+ * @version: 1.0.0
+ * @since: 2025-01-27
+ * 
+ */
+
 import express, { Request, Response } from 'express';
 import fetch from 'node-fetch';
 
