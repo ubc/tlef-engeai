@@ -15,10 +15,10 @@
 
 
 .steps-onboarding {
-    max-width: 800px;
+    width: 75%;
     margin: 10px auto;
     background-color: var(--chat-bg);
-    padding: 3rem;
+    padding: 2rem 0.5rem;
     border-radius: 16px;
     border: 1px solid var(--border-color);
     box-shadow: 0 10px 30px rgba(0,0,0,0.07);

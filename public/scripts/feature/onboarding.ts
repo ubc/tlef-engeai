@@ -25,9 +25,9 @@
  */
 
 import { loadComponentHTML } from "../functions/api.js";
-import { activeClass, ContentDivision, CourseContent, onBoardingScreen} from "../../../src/functions/types.js";
+import { activeCourse, ContentDivision, courseItem, onBoardingScreen} from "../../../src/functions/types.js";
 
-export const renderOnboarding = async ( instructorClass : activeClass ): Promise<void> => {
+export const renderOnboarding = async ( instructorClass : activeCourse ): Promise<void> => {
 
     console.log("renderOnboarding is called");
     let debugNumber = 0;
@@ -35,11 +35,11 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
     let currentScreen : onBoardingScreen = onBoardingScreen.GettingStarted;
     const totalScreen = 7;
 
-    const currentClass : activeClass = {
+    const currentClass : activeCourse = {
         id: '',
         date: new Date(),
         onBoarded: false,
-        name: '',
+        courseName: '',
         instructors: [],
         teachingAssistants: [],
         frameType: 'byWeek',
@@ -223,7 +223,7 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
             instructorListFinalEl.appendChild(emptyDivCopy);
         }
         else {
-            currentClass.instructors.forEach( name => {
+            currentClass.instructors.forEach( (name: string) => {
 
                 const tagSpan = document.createElement('span');
                 tagSpan.className = 'class-item-tag'
@@ -278,7 +278,7 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
             TAListFinalEl.appendChild(emptyDivCopy);
         }
         else {
-            currentClass.teachingAssistants.forEach( name => {
+            currentClass.teachingAssistants.forEach( (name: string) => {
                 const tagSpan = document.createElement('span');
                 tagSpan.className = 'class-item-tag'
                 tagSpan.appendChild(document.createTextNode(name + ''));
@@ -313,11 +313,11 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
                 const classnameBox = document.getElementById('className') as HTMLInputElement;
                 const classNameStr = classnameBox.value;
                 if (classNameStr && classNameStr !== '') {
-                    currentClass.name = classNameStr;
+                    currentClass.courseName = classNameStr;
                     
                     // Reflect the value on the confirmation page
                     const classNameFinalEl = document.getElementById('classNameFinal') as HTMLInputElement;
-                    classNameFinalEl.value = currentClass.name;
+                    classNameFinalEl.value = currentClass.courseName;
 
                     break; 
                 } 
@@ -389,7 +389,7 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
             return;
         }
 
-        currentClass.name = courseNameConfirm;
+        currentClass.courseName = courseNameConfirm;
 
         // Ensure at least one instructor exists (list already maintained in currentClass)
         if (currentClass.instructors.length === 0) {
@@ -671,7 +671,7 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
     /**
      * return the currentClass from backend
      */
-    async function postCurrentClassToDatabase(currentClass: activeClass): Promise<activeClass> {
+    async function postCurrentClassToDatabase(currentClass: activeCourse): Promise<activeCourse> {
 
         console.log("postCurrentClassToDatabase is called");
         console.log("currentClass is : ", currentClass);
@@ -691,6 +691,6 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
         }
         
         const result = await response.json();
-        return result.data as activeClass;
+        return result.data as activeCourse;
     }
 }

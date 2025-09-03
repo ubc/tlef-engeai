@@ -21,9 +21,9 @@
 
 import { 
     ContentDivision, 
-    CourseContent, 
+    courseItem, 
     AdditionalMaterial, 
-    activeClass 
+    activeCourse 
 } from '../../../src/functions/types';
 import { uploadTextToQdrant } from '../services/QdrantService.js';
 
@@ -31,7 +31,7 @@ import { uploadTextToQdrant } from '../services/QdrantService.js';
 let courseData: ContentDivision[] = [];
 
 // Function to initialize the documents page
-export function initializeDocumentsPage( currentClass : activeClass) {
+export function initializeDocumentsPage( currentClass : activeCourse) {
 
     // Build initial in-memory data from onboarding selections
     loadClassroomData(currentClass);
@@ -44,7 +44,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
      * 
      * @param currentClass the currently active class
      */
-    function loadClassroomData( currentClass : activeClass ) {
+    function loadClassroomData( currentClass : activeCourse ) {
         const total = currentClass.tilesNumber;
         courseData = [];
         for (let i = 0; i < total; i++) {
@@ -57,17 +57,25 @@ export function initializeDocumentsPage( currentClass : activeClass) {
                     id: String(i + 1),
                     date: new Date(),
                     title: currentClass.frameType === 'byWeek' ? `Week ${i + 1}` : `Topic ${i + 1}`,
+                    courseName: currentClass.courseName,
                     published: false,
                     items: [
                         {
                             id: String(i + 1),
                             date: new Date(),
                             title: currentClass.frameType === 'byWeek' ? `Lecture ${i + 1}` : `Session ${i + 1}`,
+                            courseName: currentClass.courseName,
+                            divisionTitle: currentClass.frameType === 'byWeek' ? `Week ${i + 1}` : `Topic ${i + 1}`,
+                            itemTitle: currentClass.frameType === 'byWeek' ? `Lecture ${i + 1}` : `Session ${i + 1}`,
                             learningObjectives: [],
                             additionalMaterials: [],
-                            completed: false
+                            completed: false,
+                            createdAt: new Date(),
+                            updatedAt: new Date()
                         }
-                    ]
+                    ],
+                    createdAt: new Date(),
+                    updatedAt: new Date()
                 };
                 courseData.push(defaultDivision);
             }
@@ -371,10 +379,13 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         if (content) {
             const newObjective = {
                 id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // change later once the database is setup
-                title,
-                description,
-                date: new Date(),
-                uploaded: false
+                content: description,
+                courseName: currentClass.courseName,
+                divisionTitle: division?.title || '',
+                itemTitle: content.title,
+                subcontentTitle: title,
+                createdAt: new Date(),
+                updatedAt: new Date()
             };
             content.learningObjectives.push(newObjective);
             titleInput.value = '';
@@ -411,12 +422,12 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         titleInput.type = 'text';
         titleInput.className = 'edit-input';
         titleInput.id = `edit-title-${divisionId}-${contentId}-${index}`;
-        titleInput.value = objective.title;
+        titleInput.value = objective.subcontentTitle;
 
         const descInput = document.createElement('textarea');
         descInput.className = 'edit-input';
         descInput.id = `edit-desc-${divisionId}-${contentId}-${index}`;
-        descInput.value = objective.description;
+        descInput.value = objective.content;
 
         const actions = document.createElement('div');
         actions.className = 'edit-actions';
@@ -464,8 +475,8 @@ export function initializeDocumentsPage( currentClass : activeClass) {
                                     ?.items.find(c => c.id === contentId)
                                     ?.learningObjectives[index];
         if (objective) {
-            objective.title = title;
-            objective.description = description;
+            objective.subcontentTitle = title;
+            objective.content = description;
             refreshContentItem(divisionId, contentId);
         }
     }
@@ -518,7 +529,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
      * @param content the content item to build the DOM for
      * @returns the created element
      */
-    function buildContentItemDOM(divisionId: string, content: CourseContent): HTMLElement {
+    function buildContentItemDOM(divisionId: string, content: courseItem): HTMLElement {
         // Reuse the createContentItemElement pattern used at page render time
         const item = document.createElement('div');
         item.className = 'content-item';
@@ -638,13 +649,18 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         let next = base;
         while (existingIds.includes(String(next))) next++;
 
-        const newContent: CourseContent = {
+        const newContent: courseItem = {
             id: String(next),
             title: `New Session ${division.items.length + 1}`,
             date: new Date(),
+            courseName: currentClass.courseName,
+            divisionTitle: division.title,
+            itemTitle: `New Session ${division.items.length + 1}`,
             completed: false,
             learningObjectives: [],
-            additionalMaterials: []
+            additionalMaterials: [],
+            createdAt: new Date(),
+            updatedAt: new Date()
         };
         division.items.push(newContent);
         // Append to DOM
@@ -687,14 +703,14 @@ export function initializeDocumentsPage( currentClass : activeClass) {
      * @param content the content item to build the DOM for
      * @returns the created element
      */
-    function createAdditionalMaterialsElement(content: CourseContent): HTMLElement | null {
+    function createAdditionalMaterialsElement(content: courseItem): HTMLElement | null {
         const items = content.additionalMaterials || [];
         if (items.length === 0) return null;
 
         const wrap = document.createElement('div');
         wrap.className = 'additional-materials';
 
-        items.forEach(m => {
+        items.forEach((m: AdditionalMaterial) => {
             const row = document.createElement('div');
             row.className = 'additional-material';
             row.setAttribute('data-material-id', m.id);
@@ -920,12 +936,14 @@ export function initializeDocumentsPage( currentClass : activeClass) {
                 const material: AdditionalMaterial = {
                     id,
                     name,
-                    contentTitle: division?.title || 'Unknown Content',
-                    subcontentTitle: contentItem.title,
-                    courseName: currentClass.name,
+                    courseName: currentClass.courseName,
+                    divisionTitle: division?.title || 'Unknown Content',
+                    itemTitle: contentItem.title,
                     sourceType: 'text',
                     date: new Date(),
-                    uploaded: false
+                    uploaded: false,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
                 };
 
                 let contentToUpload: string | null = null;
@@ -944,7 +962,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
                         });
                         material.sourceType = 'file';
                         material.file = selectedFile;
-                        material.previewUrl = URL.createObjectURL(selectedFile);
+                        // Note: previewUrl is not part of the AdditionalMaterial interface
                     } else {
                         alert('Currently only supporting markdown (.md) files');
                         return;
@@ -1044,7 +1062,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
             // create the title for the objective
             const title = document.createElement('div');
             title.className = 'objective-title';
-            title.textContent = obj.title;
+            title.textContent = obj.subcontentTitle;
 
             const actions = document.createElement('div');
             actions.className = 'objective-actions';
@@ -1081,7 +1099,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
             // create the description for the objective
             const desc = document.createElement('div');
             desc.className = 'objective-description';
-            desc.textContent = obj.description;
+            desc.textContent = obj.content;
 
             // append the description to the body
             body.appendChild(desc);

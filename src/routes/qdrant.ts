@@ -73,8 +73,8 @@ class QdrantUpload {
             id: uploadContent.id,
             date: uploadContent.date,
             courseName: uploadContent.courseName,
-            contentTitle: uploadContent.contentTitle,
-            subcontentTitle: uploadContent.subcontentTitle,
+            contentTitle: uploadContent.divisionTitle,
+            subcontentTitle: uploadContent.itemTitle,
             chunkNumber: uploadContent.chunkNumber,
         };
 

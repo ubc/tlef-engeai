@@ -185,7 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
         li.style.alignItems = 'center';
 
         const titleSpan = document.createElement('span');
-        titleSpan.textContent = chat.title;
+        titleSpan.textContent = chat.itemTitle;
         titleSpan.style.flex = '1';
         titleSpan.style.minWidth = '0';
 
@@ -298,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         ensureChatHeaderStructure();
 
-        chatTitleEl.textContent = activeChat.title;
+        chatTitleEl.textContent = activeChat.itemTitle;
         pinBtn.classList.toggle('pinned', activeChat.isPinned);
 
         messageAreaEl.innerHTML = '';
@@ -564,14 +564,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const newChat: Chat = { id: Date.now(), 
-                                title: 'no title', 
+                                courseName: 'Default Course',
+                                divisionTitle: 'Default Division',
+                                itemTitle: 'no title', 
                                 messages: [], 
                                 isPinned: false };
         chats.push(newChat);
 
         // Delay the message to ensure the chat window is rendered
         setTimeout(() => {
-            newChat.messages.push({ id: Date.now(), sender: 'bot', text: 
+            newChat.messages.push({ id: Date.now(), sender: 'bot', userId: 1, courseName: 'Default Course', text: 
                     'Hello! I am EngE-AI, your AI companion for chemical, environmental, and materials engineering.' + 
                     ' As this is week 2, in lectures this week we have learned about PID control and Fluid Dynamics. ' + 
                     'What would you like to discuss? ' + 
@@ -592,19 +594,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (text === '') return;
         const activeChat = chats.find(c => c.id === activeChatId);
         if (!activeChat) return;
-        activeChat.messages.push({ id: Date.now(), sender: 'user', text, timestamp: Date.now() });
+        activeChat.messages.push({ id: Date.now(), sender: 'user', userId: 1, courseName: activeChat.courseName, text, timestamp: Date.now() });
         renderActiveChat();
         inputEl.value = '';
         inputEl.style.height = 'auto';
 
         sendMessageToServer(text)
-            .then(({ reply, timestamp, artefact }) => {
-                const botMsg: ChatMessage = { id: Date.now() + 1, sender: 'bot', text: reply, timestamp, artefact };
+            .then(({ reply, timestamp }) => {
+                const botMsg: ChatMessage = { id: Date.now() + 1, sender: 'bot', userId: 1, courseName: activeChat.courseName, text: reply, timestamp };
                 activeChat.messages.push(botMsg);
                 renderActiveChat();
-                if (artefact) {
-                    openArtefactFromMessage(botMsg);
-                }
             });
     };
 
@@ -743,20 +742,7 @@ document.addEventListener('DOMContentLoaded', () => {
         contentEl.textContent = text;
         messageWrapper.appendChild(contentEl);
 
-        // Append artefact chip for bot messages that carry artefacts
-        const chat = chats.find(c => c.id === activeChatId);
-        const thisMsg = chat?.messages.find(m => (m as any).id === messageId) as ChatMessage | undefined;
-        if (sender === 'bot' && thisMsg && thisMsg.artefact) {
-            const chip = document.createElement('button');
-            chip.className = 'open-artefact-chip';
-            chip.title = 'Open artefact';
-            chip.innerHTML = `<i data-feather="monitor"></i><span>Open artefact</span>`;
-            chip.addEventListener('click', (e) => {
-                e.stopPropagation();
-                openArtefactFromMessage(thisMsg);
-            });
-            messageWrapper.appendChild(chip);
-        }
+        // Artefact functionality disabled for now
 
         // Timestamp footer with inline icon actions (Pin, Flag)
         const timeEl = document.createElement('div');
@@ -861,64 +847,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return messageWrapper;
     };
 
-    // Open artefact from a specific message
-    const openArtefactFromMessage = (msg: ChatMessage) => {
-        if (!msg.artefact) return;
-        const panel = document.getElementById('artefact-panel');
-        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
-        if (!panel) return;
-
-        // Close then open for the requested behaviour
-        const wasOpen = panel.classList.contains('open');
-        if (wasOpen) {
-            panel.classList.add('closing');
-            setTimeout(() => {
-                panel.classList.remove('open');
-                panel.setAttribute('aria-hidden', 'true');
-                panel.classList.remove('closing');
-                if (dashboard) dashboard.classList.remove('artefact-open');
-                // Remove ESC listener when closing
-                removeArtefactEscListener();
-                // after closed, proceed to open with new content
-                setTimeout(() => showMermaidInPanel(msg), 10);
-            }, 180);
-        } else {
-            showMermaidInPanel(msg);
-        }
-    };
-
-    const showMermaidInPanel = (msg: ChatMessage) => {
-        const panel = document.getElementById('artefact-panel');
-        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
-        if (!panel || !msg.artefact) return;
-        const container = panel.querySelector('.artefact-content') as HTMLElement | null;
-        if (!container) return;
-
-        // Replace body content but keep outer template
-        const body = document.createElement('div');
-        body.className = 'artefact-body';
-        body.innerHTML = `<pre class="mermaid">${msg.artefact.source}</pre>`;
-        container.innerHTML = '';
-        container.appendChild(body);
-
-        // open panel
-        panel.classList.remove('closing');
-        panel.classList.add('open');
-        panel.setAttribute('aria-hidden', 'false');
-        if (dashboard) dashboard.classList.add('artefact-open');
-        
-        // Add ESC listener when opening
-        addArtefactEscListener();
-
-        // init mermaid on new content
-        try {
-            // @ts-ignore
-            if (window.mermaid && typeof window.mermaid.init === 'function') {
-                // @ts-ignore
-                window.mermaid.init(undefined, container.querySelectorAll('.mermaid'));
-            }
-        } catch {}
-    };
+    // Artefact functionality disabled for now
 
     // --- FLAGGING SUPPORT ---
     const openFlagDialog = (messageId: number) => {

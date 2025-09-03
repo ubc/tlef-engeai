@@ -46,7 +46,7 @@ export function setActiveChat(chatId: number): void {
  * @returns The new chat
  */
 export function createChat(): Chat {
-    const newChat: Chat = { id: Date.now(), title: 'no title', messages: [], isPinned: false };
+    const newChat: Chat = { id: Date.now(), courseName: 'Default Course', divisionTitle: 'Default Division', itemTitle: 'no title', messages: [], isPinned: false };
     state.chats.push(newChat);
     state.activeChatId = newChat.id;
     return newChat;

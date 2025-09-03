@@ -8,14 +8,13 @@
  * @since: 2025-08-16
  */
 
-import type { Artefact } from '../../../src/functions/types';
+// Artefact functionality disabled for now
 
 declare const feather: { replace: () => void };
 
 export interface ChatResponse {
     reply: string;
     timestamp: number;
-    artefact?: Artefact;
 }
 
 /**
@@ -31,11 +30,7 @@ export async function sendMessageToServer(text: string): Promise<ChatResponse> {
     });
     const data = await res.json();
     const serverTimestamp = typeof data.timestamp === 'number' ? data.timestamp : Date.now();
-    const artefact: Artefact | undefined =
-        data.artefact && data.artefact.type === 'mermaid' && typeof data.artefact.source === 'string'
-            ? { type: 'mermaid', source: data.artefact.source as string, title: (data.artefact.title as string | undefined) }
-            : undefined;
-    return { reply: data.reply as string, timestamp: serverTimestamp, artefact };
+    return { reply: data.reply as string, timestamp: serverTimestamp };
 }
 
 /**
