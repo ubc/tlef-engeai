@@ -29,6 +29,8 @@ import { loadComponentHTML } from "../functions/api.js";
 import { activeCourse, ContentDivision, courseItem, onBoardingScreen } from "../../../src/functions/types.js";
 import { showErrorModal, showHelpModal } from "../modal-overlay.js";
 
+
+
 // ===========================================
 // TYPE DEFINITIONS
 // ===========================================
@@ -39,12 +41,97 @@ import { showErrorModal, showHelpModal } from "../modal-overlay.js";
 interface OnboardingState {
     currentStep: number;
     totalSteps: number;
-    courseName: string;
-    instructors: string[];
-    teachingAssistants: string[];
-    divisionType: 'byWeek' | 'byTopic';
-    contentCount: number;
     isValid: boolean;
+}
+
+// ===========================================
+// DROPDOWN OPTIONS DATA
+// ===========================================
+
+/**
+ * Available course options for selection
+ */
+const COURSE_OPTIONS = [
+    { value: "", text: "Select a course..." },
+    { value: "CHBE 241", text: "CHBE 241 - Chemical and Biological Engineering Fundamentals" },
+    { value: "CHBE 251", text: "CHBE 251 - Chemical and Biological Engineering Design" },
+    { value: "MTRL 251", text: "MTRL 251 - Materials Engineering Fundamentals" },
+    { value: "MTRL 252", text: "MTRL 252 - Materials Engineering Design" },
+    { value: "CHBE 341", text: "CHBE 341 - Process Engineering" },
+    { value: "MTRL 341", text: "MTRL 341 - Materials Processing" }
+];
+
+/**
+ * Available instructor options for selection
+ */
+const INSTRUCTOR_OPTIONS = [
+    { value: "", text: "Select an instructor..." },
+    { value: "Dr. S. Alireza Bagherzadeh", text: "Dr. S. Alireza Bagherzadeh" },
+    { value: "Dr. Amir M. Dehkhoda", text: "Dr. Amir M. Dehkhoda" },
+    { value: "Dr. Jonathan Verrett", text: "Dr. Jonathan Verrett" },
+    { value: "Dr. Richard Tape", text: "Dr. Richard Tape" },
+    { value: "Dr. Jane Smith", text: "Dr. Jane Smith" },
+    { value: "Dr. John Doe", text: "Dr. John Doe" },
+    { value: "Dr. Sarah Johnson", text: "Dr. Sarah Johnson" },
+    { value: "Dr. Michael Brown", text: "Dr. Michael Brown" }
+];
+
+/**
+ * Available teaching assistant options for selection
+ */
+const TA_OPTIONS = [
+    { value: "", text: "Select a teaching assistant..." },
+    { value: "Alice Chen", text: "Alice Chen" },
+    { value: "Bob Wilson", text: "Bob Wilson" },
+    { value: "Carol Davis", text: "Carol Davis" },
+    { value: "David Lee", text: "David Lee" },
+    { value: "Emma Garcia", text: "Emma Garcia" },
+    { value: "Frank Miller", text: "Frank Miller" },
+    { value: "Grace Taylor", text: "Grace Taylor" },
+    { value: "Henry Anderson", text: "Henry Anderson" }
+];
+
+// ===========================================
+// UTILITY FUNCTIONS FOR DROPDOWN POPULATION
+// ===========================================
+
+/**
+ * Populates a select element with options from the provided data
+ * 
+ * @param selectElement - The select element to populate
+ * @param options - Array of option objects with value and text properties
+ */
+function populateSelectOptions(selectElement: HTMLSelectElement, options: Array<{value: string, text: string}>): void {
+    selectElement.innerHTML = '';
+    options.forEach(option => {
+        const optionElement = document.createElement('option');
+        optionElement.value = option.value;
+        optionElement.textContent = option.text;
+        selectElement.appendChild(optionElement);
+    });
+}
+
+/**
+ * Populates all dropdown elements with their respective options
+ */
+function populateAllDropdowns(): void {
+    // Course dropdowns
+    const courseSelects = document.querySelectorAll('#courseSelect, #reviewCourseSelect') as NodeListOf<HTMLSelectElement>;
+    courseSelects.forEach(select => {
+        populateSelectOptions(select, COURSE_OPTIONS);
+    });
+
+    // Instructor dropdowns
+    const instructorSelects = document.querySelectorAll('#instructorSelect, #reviewInstructorSelect') as NodeListOf<HTMLSelectElement>;
+    instructorSelects.forEach(select => {
+        populateSelectOptions(select, INSTRUCTOR_OPTIONS);
+    });
+
+    // Teaching Assistant dropdowns
+    const taSelects = document.querySelectorAll('#taSelect, #reviewTASelect') as NodeListOf<HTMLSelectElement>;
+    taSelects.forEach(select => {
+        populateSelectOptions(select, TA_OPTIONS);
+    });
 }
 
 // ===========================================
@@ -61,24 +148,24 @@ interface OnboardingState {
  * 4. Manages step navigation and validation
  * 5. Handles final submission to the database
  * 
- * @param instructorClass - The instructor's course object to be populated
+ * @param instructorCourse - The instructor's course object to be populated
  * @returns Promise<void>
  */
-export const renderOnboarding = async (instructorClass: activeCourse): Promise<void> => {
+export const renderOnboarding = async (instructorCourse: activeCourse): Promise<void> => {
     console.log("🚀 Starting onboarding process...");
     
     try {
+        // Create a copy of the instructor course for temporary state management
+        const onBoardingCourse: activeCourse = { ...instructorCourse };
+        
         // Initialize onboarding state
         const state: OnboardingState = {
             currentStep: 1,
             totalSteps: 7,
-            courseName: '',
-            instructors: [],
-            teachingAssistants: [],
-            divisionType: 'byWeek',
-            contentCount: 12,
             isValid: false
         };
+
+        
 
         // Load the onboarding component
         const container = document.getElementById('main-content-area');
@@ -100,7 +187,7 @@ export const renderOnboarding = async (instructorClass: activeCourse): Promise<v
         }
 
         // Initialize the onboarding interface
-        await initializeOnboarding(state, instructorClass);
+        await initializeOnboarding(state, onBoardingCourse, instructorCourse);
 
     } catch (error) {
         console.error("❌ Error during onboarding initialization:", error);
@@ -116,45 +203,77 @@ export const renderOnboarding = async (instructorClass: activeCourse): Promise<v
  * Initializes the onboarding interface with event listeners and initial state
  * 
  * @param state - The onboarding state object
- * @param instructorClass - The instructor's course object
+ * @param onBoardingCourse - The onboarding course object for temporary state management
+ * @param instructorCourse - The original instructor course object (only modified when database is set)
  */
-async function initializeOnboarding(state: OnboardingState, instructorClass: activeCourse): Promise<void> {
+async function initializeOnboarding(state: OnboardingState, onBoardingCourse: activeCourse, instructorCourse: activeCourse): Promise<void> {
     console.log("🔧 Initializing onboarding interface...");
 
+    // Populate all dropdowns with options from TypeScript
+    populateAllDropdowns();
+
     // Set up navigation event listeners
-    setupNavigationListeners(state, instructorClass);
+    setupNavigationListeners(state, onBoardingCourse, instructorCourse);
     
     // Set up form event listeners
-    setupFormListeners(state);
+    setupFormListeners(state, onBoardingCourse);
+    
+    // Set up review step event listeners
+    setupReviewFormListeners(state, onBoardingCourse);
     
     // Set up help button listener
     setupHelpListener(state);
     
+    // Set up window resize listener for responsive justify-content
+    setupResizeListener(state, onBoardingCourse);
+    
     // Initialize the first step
-    updateStepDisplay(state);
+    updateStepDisplay(state, onBoardingCourse);
     
     // Set up step indicators
-    updateStepIndicators(state);
+    updateStepIndicators(state, onBoardingCourse);
     
     console.log("✅ Onboarding interface initialized successfully");
+}
+
+/**
+ * Sets up window resize listener to recalculate content justification
+ * 
+ * @param state - The onboarding state object
+ * @param onBoardingCourse - The onboarding course object for state synchronization
+ */
+function setupResizeListener(state: OnboardingState, onBoardingCourse: activeCourse): void {
+    let resizeTimeout: number;
+    
+    window.addEventListener('resize', () => {
+        // Debounce resize events to avoid excessive calculations
+        clearTimeout(resizeTimeout);
+        resizeTimeout = window.setTimeout(() => {
+            const currentStepElement = document.getElementById(`content-step-${state.currentStep}`);
+            if (currentStepElement && currentStepElement.classList.contains('active')) {
+                adjustContentJustification(currentStepElement);
+            }
+        }, 100);
+    });
 }
 
 /**
  * Sets up navigation button event listeners
  * 
  * @param state - The onboarding state object
- * @param instructorClass - The instructor's course object
+ * @param onBoardingCourse - The onboarding course object for temporary state management
+ * @param instructorCourse - The original instructor course object (only modified when database is set)
  */
-function setupNavigationListeners(state: OnboardingState, instructorClass: activeCourse): void {
+function setupNavigationListeners(state: OnboardingState, onBoardingCourse: activeCourse, instructorCourse: activeCourse): void {
     const backBtn = document.getElementById('backBtn') as HTMLButtonElement;
     const nextBtn = document.getElementById('nextBtn') as HTMLButtonElement;
 
     if (backBtn) {
-        backBtn.addEventListener('click', () => handleBackNavigation(state));
+        backBtn.addEventListener('click', () => handleBackNavigation(state, onBoardingCourse));
     }
 
     if (nextBtn) {
-        nextBtn.addEventListener('click', () => handleNextNavigation(state, instructorClass));
+        nextBtn.addEventListener('click', () => handleNextNavigation(state, onBoardingCourse, instructorCourse));
     }
 }
 
@@ -163,14 +282,14 @@ function setupNavigationListeners(state: OnboardingState, instructorClass: activ
  * 
  * @param state - The onboarding state object
  */
-function setupFormListeners(state: OnboardingState): void {
+function setupFormListeners(state: OnboardingState, onBoardingCourse: activeCourse): void {
     // Course selection
     const courseSelect = document.getElementById('courseSelect') as HTMLSelectElement;
     if (courseSelect) {
         courseSelect.addEventListener('change', (e) => {
             const target = e.target as HTMLSelectElement;
-            state.courseName = target.value;
-            updateStepIndicators(state);
+            onBoardingCourse.courseName = target.value;
+            updateStepIndicators(state, onBoardingCourse);
         });
     }
 
@@ -180,10 +299,10 @@ function setupFormListeners(state: OnboardingState): void {
     if (instructorSelect && addInstructorBtn) {
         const addInstructor = () => {
             const selectedValue = instructorSelect.value;
-            if (selectedValue && !state.instructors.includes(selectedValue)) {
-                state.instructors.push(selectedValue);
-                updateSelectedItemsDisplay('selectedInstructors', state.instructors, state);
-                updateStepIndicators(state);
+            if (selectedValue && !onBoardingCourse.instructors.includes(selectedValue)) {
+                onBoardingCourse.instructors.push(selectedValue);
+                updateSelectedItemsDisplay('selectedInstructors', onBoardingCourse.instructors, state, onBoardingCourse);
+                updateStepIndicators(state, onBoardingCourse);
                 instructorSelect.value = ''; // Reset selection
             }
         };
@@ -206,10 +325,10 @@ function setupFormListeners(state: OnboardingState): void {
     if (taSelect && addTABtn) {
         const addTA = () => {
             const selectedValue = taSelect.value;
-            if (selectedValue && !state.teachingAssistants.includes(selectedValue)) {
-                state.teachingAssistants.push(selectedValue);
-                updateSelectedItemsDisplay('selectedTAs', state.teachingAssistants, state);
-                updateStepIndicators(state);
+            if (selectedValue && !onBoardingCourse.teachingAssistants.includes(selectedValue)) {
+                onBoardingCourse.teachingAssistants.push(selectedValue);
+                updateSelectedItemsDisplay('selectedTAs', onBoardingCourse.teachingAssistants, state, onBoardingCourse);
+                updateStepIndicators(state, onBoardingCourse);
                 taSelect.value = ''; // Reset selection
             }
         };
@@ -231,18 +350,19 @@ function setupFormListeners(state: OnboardingState): void {
     divisionRadios.forEach(radio => {
         radio.addEventListener('change', (e) => {
             const target = e.target as HTMLInputElement;
-            state.divisionType = target.value as 'byWeek' | 'byTopic';
-            updateContentCountDescription(state);
+            onBoardingCourse.frameType = target.value as 'byWeek' | 'byTopic';
+            updateContentCountDescription(state, onBoardingCourse);
         });
     });
 
     // Content count input
     const contentCountInput = document.getElementById('contentCount') as HTMLInputElement;
+    contentCountInput.value = onBoardingCourse.tilesNumber.toString();
     if (contentCountInput) {
         contentCountInput.addEventListener('input', (e) => {
             const target = e.target as HTMLInputElement;
-            state.contentCount = parseInt(target.value) || 0;
-            updateStepIndicators(state);
+            onBoardingCourse.tilesNumber = parseInt(target.value) || 0;
+            updateStepIndicators(state, onBoardingCourse);
         });
     }
 }
@@ -252,14 +372,14 @@ function setupFormListeners(state: OnboardingState): void {
  * 
  * @param state - The onboarding state object
  */
-function setupReviewFormListeners(state: OnboardingState): void {
+function setupReviewFormListeners(state: OnboardingState, onBoardingCourse: activeCourse): void {
     // Review course selection
     const reviewCourseSelect = document.getElementById('reviewCourseSelect') as HTMLSelectElement;
     if (reviewCourseSelect) {
         reviewCourseSelect.addEventListener('change', (e) => {
             const target = e.target as HTMLSelectElement;
-            state.courseName = target.value;
-            updateStepIndicators(state);
+            onBoardingCourse.courseName = target.value;
+            updateStepIndicators(state, onBoardingCourse);
         });
     }
 
@@ -269,10 +389,11 @@ function setupReviewFormListeners(state: OnboardingState): void {
     if (reviewInstructorSelect && reviewAddInstructorBtn) {
         const addReviewInstructor = () => {
             const selectedValue = reviewInstructorSelect.value;
-            if (selectedValue && !state.instructors.includes(selectedValue)) {
-                state.instructors.push(selectedValue);
-                updateSelectedItemsDisplay('reviewSelectedInstructors', state.instructors, state);
-                updateStepIndicators(state);
+            if (selectedValue && !onBoardingCourse.instructors.includes(selectedValue)) {
+                console.log('Adding instructor:', selectedValue); 
+                onBoardingCourse.instructors.push(selectedValue);
+                updateSelectedItemsDisplay('reviewSelectedInstructors', onBoardingCourse.instructors, state, onBoardingCourse);
+                updateStepIndicators(state, onBoardingCourse);
                 reviewInstructorSelect.value = ''; // Reset selection
             }
         };
@@ -295,10 +416,10 @@ function setupReviewFormListeners(state: OnboardingState): void {
     if (reviewTASelect && reviewAddTABtn) {
         const addReviewTA = () => {
             const selectedValue = reviewTASelect.value;
-            if (selectedValue && !state.teachingAssistants.includes(selectedValue)) {
-                state.teachingAssistants.push(selectedValue);
-                updateSelectedItemsDisplay('reviewSelectedTAs', state.teachingAssistants, state);
-                updateStepIndicators(state);
+            if (selectedValue && !onBoardingCourse.teachingAssistants.includes(selectedValue)) {
+                onBoardingCourse.teachingAssistants.push(selectedValue);
+                updateSelectedItemsDisplay('reviewSelectedTAs', onBoardingCourse.teachingAssistants, state, onBoardingCourse);
+                updateStepIndicators(state, onBoardingCourse);
                 reviewTASelect.value = ''; // Reset selection
             }
         };
@@ -320,8 +441,8 @@ function setupReviewFormListeners(state: OnboardingState): void {
     reviewDivisionRadios.forEach(radio => {
         radio.addEventListener('change', (e) => {
             const target = e.target as HTMLInputElement;
-            state.divisionType = target.value as 'byWeek' | 'byTopic';
-            updateReviewContentCountDescription(state);
+            onBoardingCourse.frameType = target.value as 'byWeek' | 'byTopic';
+            updateReviewContentCountDescription(state, onBoardingCourse);
         });
     });
 
@@ -330,8 +451,8 @@ function setupReviewFormListeners(state: OnboardingState): void {
     if (reviewContentCountInput) {
         reviewContentCountInput.addEventListener('input', (e) => {
             const target = e.target as HTMLInputElement;
-            state.contentCount = parseInt(target.value) || 0;
-            updateStepIndicators(state);
+            onBoardingCourse.tilesNumber = parseInt(target.value) || 0;
+            updateStepIndicators(state, onBoardingCourse);
         });
     }
 }
@@ -347,10 +468,10 @@ function setupHelpListener(state: OnboardingState): void {
         helpBtn.addEventListener('click', () => {
             showStepHelp(state.currentStep);
         });
+        }
     }
-}
 
-/**
+    /**
  * Shows help content for the current step
  * 
  * @param stepNumber - The current step number
@@ -396,11 +517,11 @@ function getStepHelpContent(stepNumber: number): { title: string; content: strin
  * 
  * @param state - The onboarding state object
  */
-function handleBackNavigation(state: OnboardingState): void {
+function handleBackNavigation(state: OnboardingState, onBoardingCourse: activeCourse): void {
     if (state.currentStep > 1) {
         state.currentStep--;
-        updateStepDisplay(state);
-        updateStepIndicators(state);
+        updateStepDisplay(state, onBoardingCourse);
+        updateStepIndicators(state, onBoardingCourse);
         updateNavigationButtons(state);
         console.log(`⬅️ Navigated to step ${state.currentStep}`);
     }
@@ -410,30 +531,31 @@ function handleBackNavigation(state: OnboardingState): void {
  * Handles next navigation and final submission
  * 
  * @param state - The onboarding state object
- * @param instructorClass - The instructor's course object
+ * @param onBoardingCourse - The onboarding course object for temporary state management
+ * @param instructorCourse - The original instructor course object (only modified when database is set)
  */
-async function handleNextNavigation(state: OnboardingState, instructorClass: activeCourse): Promise<void> {
+async function handleNextNavigation(state: OnboardingState, onBoardingCourse: activeCourse, instructorCourse: activeCourse): Promise<void> {
     // Validate current step before proceeding
-    if (!(await validateCurrentStep(state))) {
-        return;
-    }
+    if (!(await validateCurrentStep(state, onBoardingCourse))) {
+            return;
+        } 
 
     if (state.currentStep < state.totalSteps) {
         // Move to next step
-        state.currentStep++;
-        updateStepDisplay(state);
-        updateStepIndicators(state);
-        updateNavigationButtons(state);
+        state.currentStep++; 
+        updateStepDisplay(state, onBoardingCourse); //
+        updateStepIndicators(state, onBoardingCourse);
+        updateNavigationButtons(state); //
         
         // Update review content if we're on the final step
         if (state.currentStep === state.totalSteps) {
-            updateReviewContent(state);
+            updateReviewContent(state, onBoardingCourse);
         }
         
         console.log(`➡️ Navigated to step ${state.currentStep}`);
     } else {
         // Final submission
-        await handleFinalSubmission(state, instructorClass);
+        await handleFinalSubmission(state, onBoardingCourse, instructorCourse);
     }
 }
 
@@ -443,20 +565,20 @@ async function handleNextNavigation(state: OnboardingState, instructorClass: act
  * @param state - The onboarding state object
  * @returns Promise<boolean> indicating if validation passed
  */
-async function validateCurrentStep(state: OnboardingState): Promise<boolean> {
+async function validateCurrentStep(state: OnboardingState, onBoardingCourse: activeCourse): Promise<boolean> {
     switch (state.currentStep) {
         case 1: // Getting Started - always valid
             return true;
             
         case 2: // Course Name
-            if (!state.courseName) {
+            if (!onBoardingCourse.courseName) {
                 await showErrorModal("Validation Error", "Please select a course name.");
                 return false;
             }
             return true;
             
         case 3: // Instructors
-            if (state.instructors.length === 0) {
+            if (onBoardingCourse.instructors.length === 0) {
                 await showErrorModal("Validation Error", "Please select at least one instructor.");
                 return false;
             }
@@ -469,18 +591,18 @@ async function validateCurrentStep(state: OnboardingState): Promise<boolean> {
             return true;
             
         case 6: // Content Count
-            if (state.contentCount < 1 || state.contentCount > 52) {
+            if (onBoardingCourse.tilesNumber < 1 || onBoardingCourse.tilesNumber > 52) {
                 await showErrorModal("Validation Error", "Please enter a valid number of sections (1-52).");
                 return false;
             }
-            if (state.divisionType === 'byWeek' && state.contentCount > 14) {
+            if (onBoardingCourse.frameType === 'byWeek' && onBoardingCourse.tilesNumber > 14) {
                 await showErrorModal("Validation Error", "For weekly organization, please enter 14 weeks or fewer.");
                 return false;
             }
             return true;
             
         case 7: // Finalization - validate all fields
-            return await validateAllFields(state);
+            return await validateAllFields(state, onBoardingCourse);
             
         default:
             return true;
@@ -493,23 +615,23 @@ async function validateCurrentStep(state: OnboardingState): Promise<boolean> {
  * @param state - The onboarding state object
  * @returns Promise<boolean> indicating if all validations passed
  */
-async function validateAllFields(state: OnboardingState): Promise<boolean> {
-    if (!state.courseName) {
+async function validateAllFields(state: OnboardingState, onBoardingCourse: activeCourse): Promise<boolean> {
+    if (!onBoardingCourse.courseName) {
         await showErrorModal("Validation Error", "Course name is required.");
         return false;
     }
     
-    if (state.instructors.length === 0) {
+    if (onBoardingCourse.instructors.length === 0) {
         await showErrorModal("Validation Error", "At least one instructor is required.");
         return false;
     }
     
-    if (state.contentCount < 1 || state.contentCount > 52) {
+    if (onBoardingCourse.tilesNumber < 1 || onBoardingCourse.tilesNumber > 52) {
         await showErrorModal("Validation Error", "Invalid number of sections.");
         return false;
     }
     
-    if (state.divisionType === 'byWeek' && state.contentCount > 14) {
+    if (onBoardingCourse.frameType === 'byWeek' && onBoardingCourse.tilesNumber > 14) {
         await showErrorModal("Validation Error", "For weekly organization, maximum 14 weeks allowed.");
         return false;
     }
@@ -522,11 +644,12 @@ async function validateAllFields(state: OnboardingState): Promise<boolean> {
 // ===========================================
 
 /**
- * Updates the display to show the current step
+ * Updates the display to show the current step and synchronizes all form values
  * 
  * @param state - The onboarding state object
+ * @param onBoardingCourse - The onboarding course object for state synchronization
  */
-function updateStepDisplay(state: OnboardingState): void {
+function updateStepDisplay(state: OnboardingState, onBoardingCourse: activeCourse): void {
     // Hide all content steps
     const contentSteps = document.querySelectorAll('.content-step');
     contentSteps.forEach(step => step.classList.remove('active'));
@@ -535,6 +658,80 @@ function updateStepDisplay(state: OnboardingState): void {
     const currentStepElement = document.getElementById(`content-step-${state.currentStep}`);
     if (currentStepElement) {
         currentStepElement.classList.add('active');
+        
+        // Check if content overflows and adjust justify-content accordingly
+        setTimeout(() => adjustContentJustification(currentStepElement), 10);
+    }
+    
+    // Synchronize all form values with current state
+    synchronizeFormValues(state, onBoardingCourse);
+}
+
+/**
+ * Adjusts the justify-content of a content step based on whether content overflows
+ * 
+ * @param contentStepElement - The content step element to adjust
+ */
+function adjustContentJustification(contentStepElement: HTMLElement): void {
+    const contentStepInner = contentStepElement.querySelector('.content-step-inner') as HTMLElement;
+    if (!contentStepInner) return;
+    
+    // Get the available height (viewport height minus navigation and padding)
+    const availableHeight = window.innerHeight - 200; // Account for navigation and margins
+    
+    // Get the content height
+    const contentHeight = contentStepInner.scrollHeight;
+    
+    // If content is taller than available space, use flex-start for scrolling
+    // Otherwise, use center for better visual balance
+    if (contentHeight > availableHeight) {
+        contentStepElement.classList.add('overflow-content');
+        contentStepElement.classList.remove('center-content');
+    } else {
+        contentStepElement.classList.add('center-content');
+        contentStepElement.classList.remove('overflow-content');
+    }
+}
+
+/**
+ * Synchronizes all form values with the current onboarding course state
+ * This ensures that when users navigate between steps, all form elements
+ * reflect their most recent selections
+ * 
+ * @param state - The onboarding state object
+ * @param onBoardingCourse - The onboarding course object for state synchronization
+ */
+function synchronizeFormValues(state: OnboardingState, onBoardingCourse: activeCourse): void {
+    // Step 2: Course Name
+    const courseSelect = document.getElementById('courseSelect') as HTMLSelectElement;
+    if (courseSelect) {
+        courseSelect.value = onBoardingCourse.courseName;
+    }
+    
+    // Step 3: Instructors
+    updateSelectedItemsDisplay('selectedInstructors', onBoardingCourse.instructors, state, onBoardingCourse);
+    
+    // Step 4: Teaching Assistants
+    updateSelectedItemsDisplay('selectedTAs', onBoardingCourse.teachingAssistants, state, onBoardingCourse);
+    
+    // Step 5: Course Division
+    const divisionRadios = document.querySelectorAll('input[name="division"]') as NodeListOf<HTMLInputElement>;
+    divisionRadios.forEach(radio => {
+        radio.checked = radio.value === onBoardingCourse.frameType;
+    });
+    
+    // Step 6: Content Count
+    const contentCountInput = document.getElementById('contentCount') as HTMLInputElement;
+    if (contentCountInput) {
+        contentCountInput.value = onBoardingCourse.tilesNumber.toString();
+    }
+    
+    // Update content count description based on division type
+    updateContentCountDescription(state, onBoardingCourse);
+    
+    // Step 7: Review step - synchronize all review form elements
+    if (state.currentStep === 7) {
+        updateReviewContent(state, onBoardingCourse);
     }
 }
 
@@ -543,7 +740,7 @@ function updateStepDisplay(state: OnboardingState): void {
  * 
  * @param state - The onboarding state object
  */
-function updateStepIndicators(state: OnboardingState): void {
+function updateStepIndicators(state: OnboardingState, onBoardingCourse: activeCourse): void {
     const stepItems = document.querySelectorAll('.step-item');
     
     stepItems.forEach((item, index) => {
@@ -565,11 +762,11 @@ function updateStepIndicators(state: OnboardingState): void {
         
         if (stepLine && stepNumber < state.currentStep) {
             stepLine.classList.add('completed');
-        }
-    });
-}
+            }
+        });
+    }
 
-/**
+    /**
  * Updates the navigation buttons based on current step
  * 
  * @param state - The onboarding state object
@@ -598,7 +795,7 @@ function updateNavigationButtons(state: OnboardingState): void {
  * @param items - Array of selected items
  * @param state - The onboarding state object
  */
-function updateSelectedItemsDisplay(containerId: string, items: string[], state: OnboardingState): void {
+function updateSelectedItemsDisplay(containerId: string, items: string[], state: OnboardingState, onBoardingCourse: activeCourse): void {
     const container = document.getElementById(containerId);
     if (!container) return;
     
@@ -616,7 +813,7 @@ function updateSelectedItemsDisplay(containerId: string, items: string[], state:
         const removeBtn = itemElement.querySelector('.remove-btn');
         if (removeBtn) {
             removeBtn.addEventListener('click', () => {
-                removeSelectedItem(containerId, item, state);
+                removeSelectedItem(containerId, item, state, onBoardingCourse);
             });
         }
         
@@ -631,7 +828,7 @@ function updateSelectedItemsDisplay(containerId: string, items: string[], state:
  * @param item - The item to remove
  * @param state - The onboarding state object
  */
-function removeSelectedItem(containerId: string, item: string, state: OnboardingState): void {
+function removeSelectedItem(containerId: string, item: string, state: OnboardingState, onBoardingCourse: activeCourse): void {
     const container = document.getElementById(containerId);
     if (!container) return;
     
@@ -645,17 +842,17 @@ function removeSelectedItem(containerId: string, item: string, state: Onboarding
     });
     
     // Update state based on container type
-    if (containerId === 'selectedInstructors') {
-        const index = state.instructors.indexOf(item);
+    if (containerId === 'selectedInstructors' || containerId === 'reviewSelectedInstructors') {
+        const index = onBoardingCourse.instructors.indexOf(item);
         if (index > -1) {
-            state.instructors.splice(index, 1);
-            updateStepIndicators(state);
+            onBoardingCourse.instructors.splice(index, 1);
+            updateStepIndicators(state, onBoardingCourse);
         }
-    } else if (containerId === 'selectedTAs') {
-        const index = state.teachingAssistants.indexOf(item);
+    } else if (containerId === 'selectedTAs' || containerId === 'reviewSelectedTAs') {
+        const index = onBoardingCourse.teachingAssistants.indexOf(item);
         if (index > -1) {
-            state.teachingAssistants.splice(index, 1);
-            updateStepIndicators(state);
+            onBoardingCourse.teachingAssistants.splice(index, 1);
+            updateStepIndicators(state, onBoardingCourse);
         }
     }
 }
@@ -664,12 +861,13 @@ function removeSelectedItem(containerId: string, item: string, state: Onboarding
  * Updates the content count description based on division type
  * 
  * @param state - The onboarding state object
+ * @param onBoardingCourse - The onboarding course object for temporary state management
  */
-function updateContentCountDescription(state: OnboardingState): void {
+function updateContentCountDescription(state: OnboardingState, onBoardingCourse: activeCourse): void {
     const descriptionElement = document.getElementById('countDescription');
     if (!descriptionElement) return;
     
-    if (state.divisionType === 'byWeek') {
+    if (onBoardingCourse.frameType === 'byWeek') {
         descriptionElement.textContent = 'How many weeks are in your course?';
     } else {
         descriptionElement.textContent = 'How many topics are in your course?';
@@ -681,18 +879,18 @@ function updateContentCountDescription(state: OnboardingState): void {
  * 
  * @param state - The onboarding state object
  */
-function updateReviewContent(state: OnboardingState): void {
+function updateReviewContent(state: OnboardingState, onBoardingCourse: activeCourse): void {
     // Update course name dropdown
     const reviewCourseSelect = document.getElementById('reviewCourseSelect') as HTMLSelectElement;
     if (reviewCourseSelect) {
-        reviewCourseSelect.value = state.courseName;
+        reviewCourseSelect.value = onBoardingCourse.courseName;
     }
     
     // Update division type radio buttons
     const reviewByWeek = document.getElementById('reviewByWeek') as HTMLInputElement;
     const reviewByTopic = document.getElementById('reviewByTopic') as HTMLInputElement;
     if (reviewByWeek && reviewByTopic) {
-        if (state.divisionType === 'byWeek') {
+        if (onBoardingCourse.frameType === 'byWeek') {
             reviewByWeek.checked = true;
         } else {
             reviewByTopic.checked = true;
@@ -702,29 +900,30 @@ function updateReviewContent(state: OnboardingState): void {
     // Update content count input
     const reviewContentCountInput = document.getElementById('reviewContentCount') as HTMLInputElement;
     if (reviewContentCountInput) {
-        reviewContentCountInput.value = state.contentCount.toString();
+        reviewContentCountInput.value = onBoardingCourse.tilesNumber.toString();
     }
     
     // Update instructors display
-    updateSelectedItemsDisplay('reviewSelectedInstructors', state.instructors, state);
+    updateSelectedItemsDisplay('reviewSelectedInstructors', onBoardingCourse.instructors, state, onBoardingCourse);
     
     // Update teaching assistants display
-    updateSelectedItemsDisplay('reviewSelectedTAs', state.teachingAssistants, state);
+    updateSelectedItemsDisplay('reviewSelectedTAs', onBoardingCourse.teachingAssistants, state, onBoardingCourse);
     
     // Update content count description
-    updateReviewContentCountDescription(state);
+    updateReviewContentCountDescription(state, onBoardingCourse);
 }
 
 /**
  * Updates the content count description for review step
  * 
  * @param state - The onboarding state object
+ * @param onBoardingCourse - The onboarding course object for temporary state management
  */
-function updateReviewContentCountDescription(state: OnboardingState): void {
+function updateReviewContentCountDescription(state: OnboardingState, onBoardingCourse: activeCourse): void {
     const descriptionElement = document.getElementById('reviewCountDescription');
     if (!descriptionElement) return;
     
-    if (state.divisionType === 'byWeek') {
+    if (onBoardingCourse.frameType === 'byWeek') {
         descriptionElement.textContent = 'How many weeks are in your course?';
     } else {
         descriptionElement.textContent = 'How many topics are in your course?';
@@ -739,30 +938,32 @@ function updateReviewContentCountDescription(state: OnboardingState): void {
  * Handles the final submission of the onboarding data
  * 
  * @param state - The onboarding state object
- * @param instructorClass - The instructor's course object
+ * @param onBoardingCourse - The onboarding course object for temporary state management
+ * @param instructorCourse - The original instructor course object (only modified when database is set)
+ * @returns Promise<void>
  */
-async function handleFinalSubmission(state: OnboardingState, instructorClass: activeCourse): Promise<void> {
+async function handleFinalSubmission(state: OnboardingState, onBoardingCourse: activeCourse, instructorCourse: activeCourse): Promise<void> {
     console.log("🎯 Processing final submission...");
     
     try {
-        // Create the course object
+        // Create the course object from onboarding data
         const courseData: activeCourse = {
-            id: generateUniqueId(),
+            id: generateUniqueId(), // remove later
             date: new Date(),
             onBoarded: true,
-            courseName: state.courseName,
-            instructors: state.instructors,
-            teachingAssistants: state.teachingAssistants,
-            frameType: state.divisionType,
-            tilesNumber: state.contentCount,
+            courseName: onBoardingCourse.courseName,
+            instructors: onBoardingCourse.instructors,
+            teachingAssistants: onBoardingCourse.teachingAssistants,
+            frameType: onBoardingCourse.frameType,
+            tilesNumber: onBoardingCourse.tilesNumber,
             divisions: []
         };
         
         // Submit to database
         const submittedCourse = await postCourseToDatabase(courseData);
         
-        // Update the instructor class object
-        Object.assign(instructorClass, submittedCourse);
+        // Update the instructor course global variable (only modified when database is set)
+        Object.assign(instructorCourse, submittedCourse);
         
         // Remove onboarding-active class to show instructor sidebar
         document.body.classList.remove('onboarding-active');
@@ -785,21 +986,21 @@ async function handleFinalSubmission(state: OnboardingState, instructorClass: ac
  * @returns Promise<activeCourse>
  */
 async function postCourseToDatabase(courseData: activeCourse): Promise<activeCourse> {
-    const response = await fetch('/api/mongodb/courses', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
+        const response = await fetch('/api/mongodb/courses', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
         body: JSON.stringify(courseData)
-    });
-    
-    if (!response.ok) {
+        });
+        
+        if (!response.ok) {
         throw new Error(`Failed to post course data: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        return result.data as activeCourse;
     }
-    
-    const result = await response.json();
-    return result.data as activeCourse;
-}
 
 // ===========================================
 // UTILITY FUNCTIONS

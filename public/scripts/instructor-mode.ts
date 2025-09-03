@@ -18,38 +18,12 @@ let currentClass : activeCourse =
     onBoarded : false,
     courseName:'',
     instructors: [
-        '',
     ],
     teachingAssistants: [
-        ''
     ],
     frameType: 'byTopic',
-    tilesNumber: 0,
+    tilesNumber: 52,
     divisions: [
-        {
-            id: '1',
-            date: new Date(),
-            title: 'Week 1',
-            courseName: '',
-            published: true,
-            items: [
-                {
-                    id: '1',
-                    date: new Date(),
-                    title: 'Lecture 1',
-                    courseName: '',
-                    divisionTitle: 'Week 1',
-                    itemTitle: 'Lecture 1',
-                    learningObjectives: [],
-                    additionalMaterials: [],
-                    completed: false,
-                    createdAt: new Date(),
-                    updatedAt: new Date()
-                }
-            ],
-            createdAt: new Date(),
-            updatedAt: new Date()
-        }
     ]
 }
 
