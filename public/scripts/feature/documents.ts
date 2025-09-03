@@ -48,7 +48,29 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         const total = currentClass.tilesNumber;
         courseData = [];
         for (let i = 0; i < total; i++) {
-            courseData.push(currentClass.content[i]);
+            // Check if the content item exists, if not create a default one
+            if (currentClass.divisions[i]) {
+                courseData.push(currentClass.divisions[i]);
+            } else {
+                // Create a default content division if it doesn't exist
+                const defaultDivision: ContentDivision = {
+                    id: String(i + 1),
+                    date: new Date(),
+                    title: currentClass.frameType === 'byWeek' ? `Week ${i + 1}` : `Topic ${i + 1}`,
+                    published: false,
+                    items: [
+                        {
+                            id: String(i + 1),
+                            date: new Date(),
+                            title: currentClass.frameType === 'byWeek' ? `Lecture ${i + 1}` : `Session ${i + 1}`,
+                            learningObjectives: [],
+                            additionalMaterials: [],
+                            completed: false
+                        }
+                    ]
+                };
+                courseData.push(defaultDivision);
+            }
         }
     }
 
@@ -99,8 +121,8 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         const status = document.createElement('div');
         status.className = 'completion-status';
 
-        const sectionsCompleted = division.content.filter(c=> c.completed).length;
-        const totalSections = division.content.length;
+        const sectionsCompleted = division.items.filter(c=> c.completed).length;
+        const totalSections = division.items.length;
         status.textContent = `${sectionsCompleted} / ${totalSections} Sections completed`;
         left.appendChild(title);
         left.appendChild(status);
@@ -165,7 +187,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         contentEl.id = `content-division-${division.id}`;
 
         //TODO: append all the content of the division.
-        division.content.forEach((content) => {
+        division.items.forEach((content) => {
             const item = buildContentItemDOM(division.id, content);
             contentEl.appendChild(item);
         });
@@ -345,7 +367,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
 
         // find the division and the content item
         const division = courseData.find(d => d.id === divisionId);
-        const content = division?.content.find(c => c.id === contentId);
+        const content = division?.items.find(c => c.id === contentId);
         if (content) {
             const newObjective = {
                 id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // change later once the database is setup
@@ -372,7 +394,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
      */
     function editObjective(divisionId: string, contentId: string, index: number) {
         const objective = courseData.find(d => d.id === divisionId)
-                                    ?.content.find(c => c.id === contentId)
+                                    ?.items.find(c => c.id === contentId)
                                     ?.learningObjectives[index];
         if (!objective) return;
 
@@ -439,7 +461,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
             return;
         }
         const objective = courseData.find(d => d.id === divisionId)
-                                    ?.content.find(c => c.id === contentId)
+                                    ?.items.find(c => c.id === contentId)
                                     ?.learningObjectives[index];
         if (objective) {
             objective.title = title;
@@ -462,7 +484,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
     function deleteObjective(divisionId: string, contentId: string, index: number) {
         if (confirm('Are you sure you want to delete this objective?')) {
             const content = courseData.find(d => d.id === divisionId)
-                                        ?.content.find(c => c.id === contentId);
+                                        ?.items.find(c => c.id === contentId);
             if (content) {
                 content.learningObjectives.splice(index, 1);
                 refreshContentItem(divisionId, contentId);
@@ -479,7 +501,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
      */
     function refreshContentItem(divisionId: string, contentId: string) {
         const division = courseData.find(d => d.id === divisionId);
-        const content = division?.content.find(c => c.id === contentId);
+        const content = division?.items.find(c => c.id === contentId);
         const itemContainer = document.getElementById(`content-item-${divisionId}-${contentId}`);
         if (!division || !content || !itemContainer) return;
         // Rebuild via DOM and replace
@@ -611,20 +633,20 @@ export function initializeDocumentsPage( currentClass : activeClass) {
     // ----- Sessions management -----
     function addSession(division: ContentDivision) {
         // Generate a new unique content id within this division
-        const existingIds = division.content.map(c => c.id);
+        const existingIds = division.items.map(c => c.id);
         const base = parseInt(division.id) * 100 + 1; // e.g., week 3 -> 301 base
         let next = base;
         while (existingIds.includes(String(next))) next++;
 
         const newContent: CourseContent = {
             id: String(next),
-            title: `New Session ${division.content.length + 1}`,
+            title: `New Session ${division.items.length + 1}`,
             date: new Date(),
             completed: false,
             learningObjectives: [],
             additionalMaterials: []
         };
-        division.content.push(newContent);
+        division.items.push(newContent);
         // Append to DOM
         const container = document.getElementById(`content-division-${division.id}`);
         if (!container) return;
@@ -638,7 +660,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         const division = courseData.find(d => d.id === divisionId);
         if (!division) return;
         if (!confirm('Delete this section?')) return;
-        division.content = division.content.filter(c => c.id !== contentId);
+        division.items = division.items.filter(c => c.id !== contentId);
         const item = document.getElementById(`content-item-${divisionId}-${contentId}`);
         if (item && item.parentElement) item.parentElement.removeChild(item);
         updateDivisionCompletion(divisionId);
@@ -647,8 +669,8 @@ export function initializeDocumentsPage( currentClass : activeClass) {
     function updateDivisionCompletion(divisionId: string) {
         const division = courseData.find(d => d.id === divisionId);
         if (!division) return;
-        const sectionsCompleted = division.content.filter(c => c.completed).length;
-        const totalSections = division.content.length;
+        const sectionsCompleted = division.items.filter(c => c.completed).length;
+        const totalSections = division.items.length;
         const container = document.querySelector(`.week-header[data-division="${divisionId}"] .completion-status`) as HTMLElement | null;
         if (container) container.textContent = `${sectionsCompleted} / ${totalSections} Sections completed`;
     }
@@ -889,7 +911,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
             try {
                 // get the division and the content item
                 const division = courseData.find(d => d.id === divisionId);
-                const contentItem = division?.content.find(c => c.id === contentId);
+                const contentItem = division?.items.find(c => c.id === contentId);
                 if (!contentItem) return;
                 if (!contentItem.additionalMaterials) contentItem.additionalMaterials = [];
 
@@ -987,7 +1009,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
             return;
         }
 
-        const content = division.content.find(c => c.id === contentId);
+        const content = division.items.find(c => c.id === contentId);
         if (!content || !content.additionalMaterials) {
             alert('Content not found');
             return;
@@ -1004,7 +1026,7 @@ export function initializeDocumentsPage( currentClass : activeClass) {
         // create the wrapper for the objectives
         const wrapper = document.createElement('div');
         const division = courseData.find(d => d.id === divisionId);
-        const content = division?.content.find(c => c.id === contentId);
+        const content = division?.items.find(c => c.id === contentId);
         if (!content) return wrapper;
 
         // create the list of objectives

@@ -11,14 +11,14 @@
  * Key Features:
  * - Singleton MongoDB connection management with authentication
  * - Active course list database operations (CRUD)
- * - Course schema validation with Mongoose ODM
+ * - Native MongoDB driver integration for direct database operations
  * - Environment-based configuration for database credentials
  * - Express.js router integration for RESTful API endpoints
  *
  * Database Structure:
- * - Database: active-course-list-db
+ * - Database: TLEF-ENGEAI-DB
  * - Collection: active-course-list
- * - Schema: Course with id, name, description, timestamps
+ * - Document Structure: Course with id, name, description, timestamps
  *
  * Environment Variables Required:
  * - MONGO_USERNAME: MongoDB authentication username
@@ -33,21 +33,30 @@
 import express, { Request, Response } from 'express';
 const router = express.Router();
 export default router;
-import mongoose from 'mongoose';
+import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 import dotenv from 'dotenv';
-import { ActiveCourseListDB } from '../functions/types';
+import { activeCourse, ContentDivision, courseItem } from '../functions/types';
+import { IDGenerator } from '../functions/unique-id-generator';
+
 dotenv.config();
 
 
 export class EngEAI_MongoDB {
 
     private static instance: EngEAI_MongoDB;
-    private static activeCourseListDatabase: string = 'active-course-list-db';
+    private static activeCourseListDatabase: string = 'TLEF-ENGEAI-DB';
     private static activeCourseListCollection: string = 'active-course-list';
     private static MONGO_URL = `mongodb://${process.env.MONGO_USERNAME}:${process.env.MONGO_PASSWORD}@localhost:27017`;
+    private client: MongoClient;
+    private db!: Db;
     private activeCourses = [];
+    public idGenerator : IDGenerator; 
     
     constructor() {
+        this.idGenerator = new IDGenerator();
+        this.client = new MongoClient(EngEAI_MongoDB.MONGO_URL, {
+            authSource: 'admin',
+        });
     }
 
     /**
@@ -57,26 +66,26 @@ export class EngEAI_MongoDB {
         if (!EngEAI_MongoDB.instance) {
             EngEAI_MongoDB.instance = new EngEAI_MongoDB();
             
-            // Only connect if not already connected
-            if (mongoose.connection.readyState === 0) {
-                await mongoose.connect(EngEAI_MongoDB.MONGO_URL, {
-                    authSource: 'admin',
-                });
+            // Connect to MongoDB if not already connected
+            try {
+                await EngEAI_MongoDB.instance.client.connect();
+                EngEAI_MongoDB.instance.db = EngEAI_MongoDB.instance.client.db(EngEAI_MongoDB.activeCourseListDatabase);
+            } catch (error) {
+                // Connection already exists or failed
+                if (!EngEAI_MongoDB.instance.db) {
+                    EngEAI_MongoDB.instance.db = EngEAI_MongoDB.instance.client.db(EngEAI_MongoDB.activeCourseListDatabase);
+                }
             }
         }
         return EngEAI_MongoDB.instance;
     }
 
-    //set course schema
-    private courseSchema = mongoose.model('courselist', new mongoose.Schema({
-        id: { type: String, required: true },
-        name: { type: String, required: true }, // should be unique
-        frameType: { type: String, required: true, enum: ['byWeek', 'byTopic'] },
-        tilesNumber: { type: Number, required: true },
-        date: { type: Date, required: true },
-        createdAt: { type: Date, default: Date.now },
-        updatedAt: { type: Date, default: Date.now },
-    }, { collection: EngEAI_MongoDB.activeCourseListCollection }));
+    /**
+     * Get the active course list collection
+     */
+    private getCourseCollection(): Collection {
+        return this.db.collection(EngEAI_MongoDB.activeCourseListCollection);
+    }
 
     /**
      * post active course, creates a database and collection for the course
@@ -90,80 +99,30 @@ export class EngEAI_MongoDB {
      * @param course - the active course to post
      * @returns void
      */
-    public postActiveCourse = async (course: ActiveCourseListDB) => {
+    public postActiveCourse = async (course: activeCourse) => {
 
         try {
         
-            await this.courseSchema.create(course);
+            await this.getCourseCollection().insertOne(course);
 
-            //create DB called this course's name
-            const dbName = course.name;
-    
-            //create users collection, schema, push a random user into the collection, and remove it after 1 second
-            //helps to ensure that the DB and collection is created
-            const userCollection = `${dbName}_users`;
-            const userSchema = mongoose.model(userCollection, new mongoose.Schema({
-                id: { type: String, required: true },
-                name: { type: String, required: true },
-                UBCID: { type: String, required: true },
-                role: { type: String, required: true, enum: ['student', 'instructor', 'teaching assistant'] },
-                createdAt: { type: Date, default: Date.now },
-                updatedAt: { type: Date, default: Date.now },
-            }, { collection: userCollection }));
-            userSchema.createCollection();
+            //use singleton's DB
+            const courseName = course.courseName;
+
+            //create users collection
+            const userCollection = `${courseName}_users`;
+            await this.db.createCollection(userCollection);
     
             //create messages collection
-            //message follows the same schema as the chat messages
-            const messagesCollection = `${dbName}_messages`;
-            const messagesSchema = mongoose.model(
-                messagesCollection, new mongoose.Schema({
-                    id: { type: String, required: true },
-                    sender: { type: String, required: true },
-                    userId: { type: Number, required: true },
-                    courseName: { type: String, required: true },
-                    isPinned: { type: Boolean, required: true },
-                    isFlag: { type: Boolean, required: true },
-                    content: { type: String, required: true },
-                    createdAt: { type: Date, default: Date.now },
-                    updatedAt: { type: Date, default: Date.now },
-                }, { collection: messagesCollection })
-            );
-            messagesSchema.createCollection();
+            const messagesCollection = `${courseName}_messages`;
+            await this.db.createCollection(messagesCollection);
     
             //create documents collection
-            const learningObjectivesCollection = `${dbName}_learningObjectives`;
-            const learningObjectivesSchema = mongoose.model(
-                learningObjectivesCollection, new mongoose.Schema({
-                    id: { type: String, required: true },
-                    name: { type: String, required: true },
-                    content: { type: String, required: true },
-                    courseName: { type: String, required: true },
-                    subcontentTitle: { type: String, required: true },
-                    contentTitle: { type: String, required: true },
-                    createdAt: { type: Date, default: Date.now },
-                    updatedAt: { type: Date, default: Date.now },
-                }, { collection: learningObjectivesCollection })
-            );
-    
-            learningObjectivesSchema.createCollection();
+            const learningObjectivesCollection = `${courseName}_learningObjectives`;
+            await this.db.createCollection(learningObjectivesCollection);
     
             //create flags collection
-            const flagsCollection = `${dbName}_flags`;
-            const flagReportSchema = mongoose.model(
-                flagsCollection, new mongoose.Schema({
-                    id: { type: String, required: true },
-                    timestamp: { type: String, required: true },
-                    flagType: { type: String, required: true },
-                    reportType: { type: String, required: true },
-                    chatContent: { type: String, required: true },
-                    userId: { type: Number, required: true },
-                    status: { type: String, required: true },
-                    response: { type: String, required: false },
-                    createdAt: { type: Date, default: Date.now },
-                    updatedAt: { type: Date, default: Date.now },
-                }, { collection: flagsCollection })
-            );
-            flagReportSchema.createCollection();
+            const flagsCollection = `${courseName}_flags`;
+            await this.db.createCollection(flagsCollection);
         
         } catch (error) {
             console.error('Error creating collections and schemas:', error);
@@ -175,8 +134,8 @@ export class EngEAI_MongoDB {
      * @param course - the course to delete
      * @returns Promise<void>
      */
-    public deleteActiveCourse = async (course: ActiveCourseListDB) => {
-        await this.courseSchema.deleteOne({ id: course.id });
+    public deleteActiveCourse = async (course: activeCourse) => {
+        await this.getCourseCollection().deleteOne({ id: course.id });
     }
 
     /**
@@ -185,7 +144,7 @@ export class EngEAI_MongoDB {
      * @returns Promise<any> - the course document or null if not found
      */
     public getActiveCourse = async (id: string) => {
-        return await this.courseSchema.findOne({ id: id });
+        return await this.getCourseCollection().findOne({ id: id });
     }
 
     /**
@@ -194,7 +153,7 @@ export class EngEAI_MongoDB {
      * @returns Promise<any> - the course document or null if not found
      */
     public getCourseByName = async (name: string) => {
-        return await this.courseSchema.findOne({ name: name });
+        return await this.getCourseCollection().findOne({ name: name });
     }
 
     /**
@@ -202,7 +161,7 @@ export class EngEAI_MongoDB {
      * @returns Promise<any[]> - array of all course documents
      */
     public getAllActiveCourses = async () => {
-        return await this.courseSchema.find();
+        return await this.getCourseCollection().find({}).toArray();
     }
 
     /**
@@ -211,12 +170,13 @@ export class EngEAI_MongoDB {
      * @param updateData - the data to update
      * @returns Promise<any> - the updated course document
      */
-    public updateActiveCourse = async (id: string, updateData: Partial<ActiveCourseListDB>) => {
-        return await this.courseSchema.findOneAndUpdate(
+    public updateActiveCourse = async (id: string, updateData: Partial<activeCourse>) => {
+        const result = await this.getCourseCollection().findOneAndUpdate(
             { id: id },
-            { ...updateData, updatedAt: new Date() },
-            { new: true }
+            { $set: { ...updateData, updatedAt: new Date() } },
+            { returnDocument: 'after' }
         );
+        return result;
     }
 
 }
@@ -241,7 +201,7 @@ const asyncHandler = (fn: (req: Request, res: Response) => Promise<any>) =>
             });
     };
 
-// Validation middleware
+// Validation middleware for existing courses (requires ID)
 const validateCourse = (req: Request, res: Response, next: Function) => {
     const course = req.body;
     
@@ -287,24 +247,258 @@ const validateCourse = (req: Request, res: Response, next: Function) => {
         });
     }
 
+    // Validate new fields
+    if (typeof course.onBoarded !== 'boolean') {
+        return res.status(400).json({
+            success: false,
+            error: 'onBoarded is required and must be a boolean'
+        });
+    }
+
+    if (!Array.isArray(course.instructors)) {
+        return res.status(400).json({
+            success: false,
+            error: 'instructors is required and must be an array'
+        });
+    }
+
+    if (!Array.isArray(course.teachingAssistants)) {
+        return res.status(400).json({
+            success: false,
+            error: 'teachingAssistants is required and must be an array'
+        });
+    }
+
+    if (!Array.isArray(course.divisions)) {
+        return res.status(400).json({
+            success: false,
+            error: 'divisions is required and must be an array'
+        });
+    }
+
+    next();
+};
+
+// Validation middleware for new course creation (doesn't require ID)
+const validateNewCourse = (req: Request, res: Response, next: Function) => {
+    const course = req.body;
+    
+    if (!course) {
+        return res.status(400).json({
+            success: false,
+            error: 'Request body is required'
+        });
+    }
+
+    if (!course.name || typeof course.name !== 'string' || course.name.trim() === '') {
+        return res.status(400).json({
+            success: false,
+            error: 'Course name is required and must be a non-empty string'
+        });
+    }
+
+    if (!course.frameType || !['byWeek', 'byTopic'].includes(course.frameType)) {
+        return res.status(400).json({
+            success: false,
+            error: 'Frame type is required and must be either "byWeek" or "byTopic"'
+        });
+    }
+
+    if (!course.tilesNumber || typeof course.tilesNumber !== 'number' || course.tilesNumber <= 0) {
+        return res.status(400).json({
+            success: false,
+            error: 'Tiles number is required and must be a positive number'
+        });
+    }
+
+    if (!course.instructors || !Array.isArray(course.instructors) || course.instructors.length === 0) {
+        return res.status(400).json({
+            success: false,
+            error: 'Instructors array is required and must contain at least one instructor'
+        });
+    }
+
+    if (!course.teachingAssistants || !Array.isArray(course.teachingAssistants)) {
+        return res.status(400).json({
+            success: false,
+            error: 'Teaching assistants array is required'
+        });
+    }
+
+    if (!course.date) {
+        return res.status(400).json({
+            success: false,
+            error: 'Date is required'
+        });
+    }
+
     next();
 };
 
 // Routes
 
 // POST /api/mongodb/courses - Create a new course
-router.post('/courses', validateCourse, asyncHandler(async (req: Request, res: Response) => {
+router.post('/courses', validateNewCourse, asyncHandler(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const courseData: ActiveCourseListDB = {
+
+        //print the body
+        console.log("body: ", req.body);
+
+        //creating id - ensure date is a Date object for ID generation
+        const tempActiveClass = {
             ...req.body,
             date: new Date(req.body.date)
+        } as activeCourse;
+        const id = instance.idGenerator.courseID(tempActiveClass);
+
+        //create  coursecontent based on the frametype and tilesNumber
+        const courseContent : ContentDivision[] = [];
+        if (req.body.frameType === 'byWeek') {
+            for (let i = 0; i < req.body.tilesNumber; i++) {
+
+                //mock lecture 1
+                const courseContentLecture1: courseItem = {
+                    id: '',
+                    date: new Date(),
+                    title: `Lecture 1`,
+                    courseName: req.body.name,
+                    divisionTitle: `Week ${i + 1}`,
+                    itemTitle: `Lecture 1`,
+                    completed: false,
+                    learningObjectives: [],
+                    additionalMaterials: [],
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                }
+
+
+                //mock lecture 2
+                const courseContentLecture2: courseItem = {
+                    id: '',
+                    date: new Date(),
+                    title: `Lecture 2`,
+                    courseName: req.body.name,
+                    divisionTitle: `Week ${i + 1}`,
+                    itemTitle: `Lecture 2`,
+                    completed: false,
+                    learningObjectives: [],
+                    additionalMaterials: [],
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                }
+
+                //mock lecture 3
+                const courseContentLecture3: courseItem = {
+                    id: '',
+                    date: new Date(),
+                    title: `Lecture 3`,
+                    courseName: req.body.name,
+                    divisionTitle: `Week ${i + 1}`,
+                    itemTitle: `Lecture 3`,
+                    completed: false,
+                    learningObjectives: [],
+                    additionalMaterials: [],
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                }
+
+                //mock content
+                const contentMock: ContentDivision = {
+                    id: '',
+                    date: new Date(req.body.date),
+                    title: `Week ${i + 1}`,
+                    courseName: req.body.name,
+                    published: true,
+                    items: [courseContentLecture1, courseContentLecture2, courseContentLecture3],
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                }
+
+                //initiate id for each lecture
+                courseContentLecture1.id = instance.idGenerator.subContentID(courseContentLecture1, contentMock.title, req.body.name);
+                courseContentLecture2.id = instance.idGenerator.subContentID(courseContentLecture2, contentMock.title, req.body.name);
+                courseContentLecture3.id = instance.idGenerator.subContentID(courseContentLecture3, contentMock.title, req.body.name);
+
+                courseContent.push({
+                    id: instance.idGenerator.contentID(contentMock, req.body.name),
+                    date: new Date(req.body.date),
+                    title: `Week ${i + 1}`,
+                    courseName: req.body.name,
+                    published: true,
+                    items: [courseContentLecture1, courseContentLecture2, courseContentLecture3],
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                });
+            }
+        } else if (req.body.frameType === 'byTopic') {
+            for (let i = 0; i < req.body.tilesNumber; i++) {
+
+                //mock topic 1
+                const courseContentTopic1: courseItem = {
+                    id: '',
+                    date: new Date(req.body.date),
+                    title: `Topic ${i + 1}`,
+                    courseName: req.body.name,
+                    divisionTitle: `Topic ${i + 1}`,
+                    itemTitle: `Topic ${i + 1}`,
+                    completed: false,
+                    learningObjectives: [],
+                    additionalMaterials: [],
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                }
+
+                //mock course division
+                const contentMock: ContentDivision = {
+                    id: '',
+                    date: new Date(req.body.date),
+                    title: `Topic ${i + 1}`,
+                    courseName: req.body.name,
+                    published: true,
+                    items: [courseContentTopic1],
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                }
+
+                //initiate id for each lecture
+                courseContentTopic1.id = instance.idGenerator.subContentID(courseContentTopic1, contentMock.title, req.body.name);
+
+                courseContent.push({
+                    id: instance.idGenerator.contentID(contentMock, req.body.name),
+                    date: new Date(req.body.date),
+                    title: `Topic ${i + 1}`,
+                    courseName: req.body.name,
+                    published: true,
+                    items: [courseContentTopic1],
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                });
+            }
+        }
+
+        //add the coursecontent to the body
+        req.body.divisions = courseContent;
+
+        const courseData: activeCourse = {
+            ...req.body, //spread the properties of the body first
+            id: id, // use the generated id
+            date: new Date(req.body.date),
+            onBoarded: false, // default to false for new courses
+            instructors: req.body.instructors || [],
+            teachingAssistants: req.body.teachingAssistants || [],
+            tilesNumber: req.body.tilesNumber || 0
         };
         
+        
         await instance.postActiveCourse(courseData);
+
+        // Since activeCourse is the correct type, we can return it directly
+        const activeClassData: activeCourse = courseData as activeCourse;
+
         res.status(201).json({
             success: true,
-            data: courseData,
+            data: activeClassData,
             message: 'Course created successfully'
         });
     } catch (error) {
@@ -405,7 +599,7 @@ router.delete('/courses/:id', asyncHandler(async (req: Request, res: Response) =
     }
     
     // Delete the course
-    await instance.deleteActiveCourse(existingCourse as ActiveCourseListDB);
+    await instance.deleteActiveCourse(existingCourse as unknown as activeCourse);
     
     res.status(200).json({
         success: true,
@@ -417,14 +611,15 @@ router.delete('/courses/:id', asyncHandler(async (req: Request, res: Response) =
 router.get('/health', asyncHandler(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const connectionState = mongoose.connection.readyState;
+        // Test the connection by pinging the database
+        await instance['db'].admin().ping();
         
         res.status(200).json({
             success: true,
             data: {
                 status: 'healthy',
                 database: 'connected',
-                connectionState: connectionState,
+                connectionState: 1,
                 timestamp: new Date().toISOString()
             }
         });

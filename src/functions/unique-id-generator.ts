@@ -25,9 +25,9 @@
 
 
 import { 
-    activeClass, 
+    activeCourse, 
     ContentDivision, 
-    CourseContent, 
+    courseItem, 
     LearningObjective, 
     AdditionalMaterial, 
     UserDB
@@ -57,24 +57,14 @@ import {
  */
 export class IDGenerator {
 
-    /**
-     * Internal seed value used for hash generation.
-     * Parsed from constructor string parameter for deterministic output.
-     * @private
-     */
-    private seed : number;
 
     /**
-     * Creates a new IDGenerator instance with specified seed for deterministic ID generation.
-     *
-     * The seed ensures that the same input will always generate the same ID across
-     * different sessions and environments, which is crucial for system consistency.
+     * Creates a new IDGenerator instance for deterministic ID generation.
      *
      * @constructor
-     * @param seedString - String representation of the numeric seed (e.g., '12345')
      */
-    constructor(seedString : string) {
-        this.seed = parseInt(seedString);
+    constructor() {
+        
     }
 
     /**
@@ -84,9 +74,9 @@ export class IDGenerator {
      * @param currentClass - The active class/course object containing name and date
      * @returns A 12-character hexadecimal string representing the unique course ID
      */
-    courseID(currentClass : activeClass) : string {
-        const courseName = currentClass.name;
-        const courseDate = currentClass.date.toISOString().split('T')[0];
+    courseID(currentCourse : activeCourse) : string {
+        const courseName = currentCourse.courseName;
+        const courseDate = currentCourse.date.toISOString().split('T')[0];
 
         const hashInput = courseName + "-" + courseDate;
         console.log(hashInput);
@@ -121,7 +111,7 @@ export class IDGenerator {
      * @param courseName - The name of the course for hierarchical uniqueness
      * @returns A 12-character hexadecimal string representing the unique subcontent ID
      */
-    subContentID(subContent: CourseContent, contentTitle: string, courseName: string): string {
+    subContentID(subContent: courseItem, contentTitle: string, courseName: string): string {
         const subContentTitle = subContent.title;
         const subContentDate = subContent.date.toISOString().split('T')[0];
         const hashInput = subContentTitle + "-" + contentTitle + "-" + courseName + "-" + subContentDate;
@@ -140,8 +130,8 @@ export class IDGenerator {
      * @returns A 12-character hexadecimal string representing the unique learning objective ID
      */
     learningObjectiveID(learningObjective: LearningObjective, subContentTitle: string, contentTitle: string, courseName: string): string {
-        const learningObjectiveTitle = learningObjective.title;
-        const learningObjectiveDate = learningObjective.date.toISOString().split('T')[0];
+        const learningObjectiveTitle = learningObjective.content;
+        const learningObjectiveDate = learningObjective.createdAt.toISOString().split('T')[0];
         const hashInput = learningObjectiveTitle + "-" + subContentTitle + "-" + contentTitle + "-" + courseName + "-" + learningObjectiveDate;
 
         return this.uniqueIDGenerator(hashInput);

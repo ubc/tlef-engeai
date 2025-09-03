@@ -1,26 +1,16 @@
 // public/scripts/types.ts
 
-
-
 /**
  * Types for the student mode
  * @author: @gatahcha
- * @version: 1.0.0
- * @since: 2025-08-16
+ * @version: 1.0.1
+ * @since: 2025-09-02
  */
 
 // =====================================
 // ========= CHAT DATA TYPE ============
 // =====================================
 
-/**
- * The type of artefact
- */
-export interface Artefact {
-    type: 'mermaid';
-    source: string;
-    title?: string;
-}
 
 /**
  * The type of chat message
@@ -28,9 +18,10 @@ export interface Artefact {
 export interface ChatMessage {
     id: number;
     sender: 'user' | 'bot';
+    userId: number;
+    courseName: string;
     text: string;
     timestamp: number;
-    artefact?: Artefact;
 }
 
 /**
@@ -38,7 +29,9 @@ export interface ChatMessage {
  */
 export interface Chat {
     id: number;
-    title: string;
+    courseName: string;
+    divisionTitle: string;
+    itemTitle: string;
     messages: ChatMessage[];
     isPinned: boolean;
     pinnedMessageId?: number | null;
@@ -58,21 +51,20 @@ export enum onBoardingScreen {
     Finalization = 7,
 }
 
-
 // ===========================================
 // ========= INSTRUCTOR DATA TYPE ============
 // ===========================================
 
-export interface activeClass {
+export interface activeCourse {
     id : string,
     date : Date,
     onBoarded : boolean, 
-    name: string,
+    courseName: string,
     instructors: string[],
     teachingAssistants: string[],
     frameType: frameType;
     tilesNumber: number;
-    content: ContentDivision[];
+    divisions: ContentDivision[]; // previously content
 }
 
 /**
@@ -84,26 +76,56 @@ export type frameType =
     | 'byTopic'
 ;
 
-// ==========================================
-// ========= DOCUMENTS DATA TYPE ============
-// ==========================================
+/**
+ * The type of content division : by week or by topic
+ */
+export interface ContentDivision {
+    id : string;
+    date : Date;
+    title: string;
+    courseName: string;
+    published: boolean;
+    items: courseItem[]; // previously content
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+/**
+ * The type for a piece of course content (e.g., lecture, tutorial)
+ */
+export interface courseItem {
+    id: string;
+    date: Date,
+    title: string;
+    courseName: string;
+    divisionTitle: string;
+    itemTitle: string;
+    completed: boolean;
+    learningObjectives: LearningObjective[];
+    additionalMaterials?: AdditionalMaterial[];
+    createdAt: Date;
+    updatedAt: Date;
+}
 
 
 /**
  * The type of a single learning objective
  */
 export interface LearningObjective {
-    id : string,
-    date : Date
-    title: string;
-    description: string;
-    uploaded: boolean;
+    id: string;
+    content: string;
+    courseName: string;
+    divisionTitle: string;
+    itemTitle: string;
+    subcontentTitle: string;
+    createdAt: Date;
+    updatedAt: Date;
 }
 
 /**
  * Additional material attached to a course content item (front-end only for now)
  *
- * addtitional material is only applicable for text only eventually (as we use RAG)
+ * additional material is only applicable for text only eventually (as we use RAG)
  * 
  * So initially, instructor can upload file, url, or text.
  * 
@@ -115,64 +137,17 @@ export interface AdditionalMaterial {
     id: string,
     date : Date,
     name: string;
-    contentTitle: string;
-    subcontentTitle: string;
     courseName: string;
+    divisionTitle: string;
+    itemTitle: string;
     sourceType: AdditionalMaterialSource;
-    // For 'file' we keep a reference to the File and an object URL for preview
     file?: File;
-    previewUrl?: string;
-    // For 'url' we store the link
-    url?: string;
-    // For 'text' we store the raw text content
     text?: string;
     uploaded: boolean;
-    // ID returned from Qdrant after successful upload
     qdrantId?: string;
-    // For 'text' we store the chunk number
     chunkNumber?: number;
-}
-
-/**
- * The type for a piece of course content (e.g., lecture, tutorial)
- */
-export interface CourseContent {
-    id: string;
-    date: Date,
-    title: string;
-    completed: boolean;
-    // uploaded: boolean; No need to set uploaded, as the content is uploaded by default
-    learningObjectives: LearningObjective[];
-    additionalMaterials?: AdditionalMaterial[];
-}
-
-/**
- * The type of content division : by week or by topic
- */
-export interface ContentDivision {
-    id : string;
-    date : Date;
-    title: string;
-    published: boolean;
-    content: CourseContent[];
-}
-
-/**
- * ============================
- * ===== MONGO DATA TYPE ======
- * ============================
- * 
- */
-
-/**
- * active course list
- */
-export interface ActiveCourseListDB {
-    id: string;
-    date: Date;
-    name: string;
-    frameType: frameType;
-    tilesNumber: number;
+    createdAt: Date;
+    updatedAt: Date;
 }
 
 /**
@@ -185,42 +160,15 @@ export interface UserDB {
     userId: number;
     activeCourseId: string;
     activeCourseName: string;
-    role: string;
-}
-
-/**
- * message in the database
- */
-export interface MessageDB {
-    id: string;
-    sender: 'user' | 'bot';
-    userId: number;
-    courseName: string;
-    isPinned: boolean;
-    isFlag: boolean;
-    content: string;
-    createdAt: Date;
-    updatedAt: Date;
-}
-
-/**
- * document in the database
- * only be used for storing learning objectives
- * Additional material remains in the quadrant vector database
- */
-export interface LearningObjectiveDB {
-    id: string;
-    name: string;
-    content: string;
-    courseName: string;
-    contentTitle: string;
-    subcontentTitle: string;
+    role: 'instructor' | 'teaching assistant' | 'student';
+    status: 'active' | 'inactive';
+    chats: Chat[];
     createdAt: Date;
     updatedAt: Date;
 }
 
 // Types for flag reports
-export interface FlagReportDB {
+export interface FlagReport {
     id: string;
     timestamp: string;
     flagType: 'safety' | 'harassment' | 'inappropriate' | 'dishonesty' | 'interface bug' | 'other';
@@ -232,5 +180,3 @@ export interface FlagReportDB {
     createdAt: Date;
     updatedAt: Date;
 }
-
-

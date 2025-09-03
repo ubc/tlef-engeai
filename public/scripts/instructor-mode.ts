@@ -1,5 +1,5 @@
 import { loadComponentHTML, renderFeatherIcons, sendMessageToServer } from "./functions/api.js";
-import { activeClass, Chat, ChatMessage } from "../../src/functions/types.js";
+import { activeCourse, Chat, ChatMessage } from "../../src/functions/types.js";
 import { initializeDocumentsPage } from "./feature/documents.js";
 import { renderOnboarding } from "./feature/onboarding.js";
 import { initializeFlagReports } from "./feature/reports.js";
@@ -11,12 +11,12 @@ const enum StateEvent {
     Documents
 }
 
-let currentClass : activeClass =
+let currentClass : activeCourse =
 {
     id: '',
     date: new Date(),
-    onBoarded : true,
-    name:'',
+    onBoarded : false,
+    courseName:'',
     instructors: [
         '',
     ],
@@ -24,23 +24,31 @@ let currentClass : activeClass =
         ''
     ],
     frameType: 'byTopic',
-    tilesNumber: 10,
-    content: [
+    tilesNumber: 0,
+    divisions: [
         {
             id: '1',
             date: new Date(),
             title: 'Week 1',
+            courseName: '',
             published: true,
-            content: [
+            items: [
                 {
                     id: '1',
                     date: new Date(),
                     title: 'Lecture 1',
+                    courseName: '',
+                    divisionTitle: 'Week 1',
+                    itemTitle: 'Lecture 1',
                     learningObjectives: [],
                     additionalMaterials: [],
-                    completed: false
+                    completed: false,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
                 }
-            ]
+            ],
+            createdAt: new Date(),
+            updatedAt: new Date()
         }
     ]
 }
@@ -245,18 +253,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Attempt to load CHBE220 class data from JSON and assign to state
     console.log("Attempting to load class data");
-    fetch('/data/MTRL251.json')
-        .then(r => r.json())
-        .then((data: activeClass) => {
-            currentClass = data;
-            // console.log("currentClass is : ", JSON.stringify(currentClass));
-            updateUI();
-        })
-        .catch(() => {
-            // Fallback to default currentClass defined above
-            console.log("Error loading class data");
-            updateUI();
-        });
+    // fetch('/data/MTRL251.json')
+    //     .then(r => r.json())
+    //     .then((data: activeClass) => {
+    //         currentClass = data;
+    //         // console.log("currentClass is : ", JSON.stringify(currentClass));
+    //         updateUI();
+    //     })
+    //     .catch(() => {
+    //         // Fallback to default currentClass defined above
+    //         console.log("Error loading class data");
+    //         updateUI();
+    //     });
     
     
     
@@ -420,14 +428,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const newChat : Chat = {id: Date.now(),
-                                title: 'no title',
+                                courseName: currentClass.courseName,
+                                divisionTitle: 'General',
+                                itemTitle: 'Chat',
                                 messages: [],
                                 isPinned: false};
         chats.push(newChat);
 
         //Delay the message to ensure the chat window is rendered
         setTimeout(() => {
-            newChat.messages.push({ id: Date.now(), sender: 'bot', text: 
+            newChat.messages.push({ id: Date.now(), sender: 'bot', userId: 0, courseName: currentClass.courseName, text: 
                     'Hello! I am EngE-AI, your AI companion for chemical, environmental, and materials engineering.' + 
                     ' As this is week 2, in lectures this week we have learned about PID control and Fluid Dynamics. ' + 
                     'What would you like to discuss? ' + 
@@ -448,7 +458,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (text === '') return;
         const activeChat = chats.find(c => c.id === activeChatId);
         if (!activeChat) return;
-        activeChat.messages.push({ id: Date.now(), sender: 'user', text, timestamp: Date.now() });
+        activeChat.messages.push({ id: Date.now(), sender: 'user', userId: 0, courseName: currentClass.courseName, text, timestamp: Date.now() });
         renderActiveChat();
         inputEl.value = '';
         inputEl.style.height = 'auto';
@@ -458,10 +468,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const botMessage: ChatMessage = {
             id: botMessageId,
             sender: 'bot',
+            userId: 0,
+            courseName: currentClass.courseName,
             text: '...',
             timestamp: Date.now(),
-            artefact: undefined,
-        };
+        } as ChatMessage & { artefact?: any };
         activeChat.messages.push(botMessage);
         renderActiveChat(); // Render the placeholder
 
@@ -762,7 +773,7 @@ document.addEventListener('DOMContentLoaded', () => {
         li.style.alignItems = 'center';
 
         const titleSpan = document.createElement('span');
-        titleSpan.textContent = chat.title;
+        titleSpan.textContent = `${chat.divisionTitle} - ${chat.itemTitle}`;
         titleSpan.style.flex = '1';
         titleSpan.style.minWidth = '0';
 
@@ -875,7 +886,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         ensureChatHeaderStructure();
 
-        chatTitleEl.textContent = activeChat.title;
+        chatTitleEl.textContent = `${activeChat.divisionTitle} - ${activeChat.itemTitle}`;
         pinBtn.classList.toggle('pinned', activeChat.isPinned);
 
         messageAreaEl.innerHTML = '';
@@ -965,7 +976,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Append artefact chip for bot messages that carry artefacts
         const chat = chats.find(c => c.id === activeChatId);
         const thisMsg = chat?.messages.find(m => (m as any).id === messageId) as ChatMessage | undefined;
-        if (sender === 'bot' && thisMsg && thisMsg.artefact) {
+        if (sender === 'bot' && thisMsg && (thisMsg as any).artefact) {
             const chip = document.createElement('button');
             chip.className = 'open-artefact-chip';
             chip.title = 'Open artefact';
@@ -1083,7 +1094,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Open artefact from a specific message
     const openArtefactFromMessage = (msg: ChatMessage) => {
-        if (!msg.artefact) return;
+        if (!(msg as any).artefact) return;
         const panel = document.getElementById('artefact-panel');
         const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
         if (!panel) return;
@@ -1110,14 +1121,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const showMermaidInPanel = (msg: ChatMessage) => {
         const panel = document.getElementById('artefact-panel');
         const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
-        if (!panel || !msg.artefact) return;
+        if (!panel || !(msg as any).artefact) return;
         const container = panel.querySelector('.artefact-content') as HTMLElement | null;
         if (!container) return;
 
         // Replace body content but keep outer template
         const body = document.createElement('div');
         body.className = 'artefact-body';
-        body.innerHTML = `<pre class="mermaid">${msg.artefact.source}</pre>`;
+        body.innerHTML = `<pre class="mermaid">${(msg as any).artefact.source}</pre>`;
         container.innerHTML = '';
         container.appendChild(body);
 

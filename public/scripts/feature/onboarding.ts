@@ -44,7 +44,7 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
         teachingAssistants: [],
         frameType: 'byWeek',
         tilesNumber: 0,
-        content: []
+        divisions: []
     }
 
     const container = document.getElementById('main-content-area');
@@ -378,7 +378,7 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
      * Validate all fields on the confirmation step, persist into the provided
      * instructorClass, and dispatch the completion event.
      */
-    function finalConfirmation() {
+    async function finalConfirmation() {
 
         // Check the course name
         const courseNameConfirmEl = document.getElementById("classNameFinal") as HTMLInputElement;
@@ -426,11 +426,23 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
         currentClass.onBoarded = true;
 
         // POST currentClass to the database (handled by backend)
-
-        // Wait for persistence confirmation (omitted here), then copy to instructorClass
-        Object.assign(instructorClass, currentClass);
-
-        window.dispatchEvent(new CustomEvent('onboardingComplete'));
+        try {
+            console.log("posting currentClass to the database");
+            console.log("currentClass is : ", currentClass);
+            const postedCurrentClass = await postCurrentClassToDatabase(currentClass);
+            Object.assign(currentClass, postedCurrentClass);
+            Object.assign(instructorClass, postedCurrentClass);
+            console.log("postedCurrentClass is : ", postedCurrentClass);
+            
+        } catch (error) {
+            console.error('Error posting currentClass to the database:', error);
+            showAlertModal('Error posting currentClass to the database');
+            currentClass.onBoarded = false;
+            return;
+        } finally {
+            Object.assign(instructorClass, currentClass);
+            window.dispatchEvent(new CustomEvent('onboardingComplete'));
+        }
     }
 
 
@@ -575,7 +587,7 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
             return;
         }
 
-        finalSubmissionBtn.addEventListener('click', finalConfirmation );
+        finalSubmissionBtn.addEventListener('click', async () => await finalConfirmation() );
 
         return;
     }
@@ -655,5 +667,30 @@ export const renderOnboarding = async ( instructorClass : activeClass ): Promise
         // Show the modal (assumes a .show CSS class is defined)
         modalEl.classList.add('show'); // or modalEl.style.display = 'flex';
     }
-    
+
+    /**
+     * return the currentClass from backend
+     */
+    async function postCurrentClassToDatabase(currentClass: activeClass): Promise<activeClass> {
+
+        console.log("postCurrentClassToDatabase is called");
+        console.log("currentClass is : ", currentClass);
+
+        const response = await fetch('/api/mongodb/courses', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(currentClass)
+        });
+
+        console.log("response is : ", response);
+        
+        if (!response.ok) {
+            throw new Error('Failed to post currentClass to the database');
+        }
+        
+        const result = await response.json();
+        return result.data as activeClass;
+    }
 }
