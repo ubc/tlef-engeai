@@ -1,223 +1,447 @@
 <div class="onboarding">
     <link rel="stylesheet" href="/styles/instructor-components/onboarding.css">
-    <div class="steps-onboarding">
-
-        <!-- <div class="modal-overlay">
-            <div class="alert-modal">
-                <div class="alert-header">
-                    <p>alert</p>
-                </div>
-                <div class="modal-content">
-                    <p>final submission button is problematic, check again</p>
-                    <button id="close-modal" class="close-modal">Okay</button>
-                </div>
-            </div>
-        </div> -->
-
-        <!-- Screen 1: Welcome -->
-        <div class="screen" id="screen-1">
-            <div class="screen-header">
-                <h1 class="screen-title">Welcome to EngE-AI</h1>
-                <p class="screen-subtitle">Let's set up your course in just a few simple steps</p>
-            </div>
-            <div class="team-credits">
-                <h3>Project Contributors:</h3>
-                <div class="team-members">
-                    <div class="team-member">
-                        <a href="https://chbe.ubc.ca/s-alireza-bagherzadeh/" target="_blank">
-                            <strong>S. Alireza Bagherzadeh</strong>
-                        </a> - <em>Principal Investigator</em>
-                    </div>
-                    <div class="team-member">
-                        <a href="https://mtrl.ubc.ca/amir-m-dehkhoda/" target="_blank">
-                            <strong>Dr. Amir M. Dehkhoda</strong>
-                        </a> - <em>Team member</em>
-                    </div>
-                    <div class="team-member">
-                        <a href="https://chbe.ubc.ca/jonathan-verrett/" target="_blank">
-                            <strong>Jonathan Verrett</strong>
-                        </a> - <em>Team member</em>
-                    </div>
-                    <div class="team-member">
-                        <a href="https://example.com/lucy-profile" target="_blank">
-                            <strong>Lucy Zhang</strong>
-                        </a> - <em>LLM Model Evaluator</em>
-                    </div>
-                    <div class="team-member">
-                        <a href="https://example.com/marcella-profile" target="_blank">
-                            <strong>Marcella Kwan</strong>
-                        </a> - <em>LLM Model Evaluator</em>
-                    </div>
-                    <div class="team-member">
-                        <a href="https://ctlt.ubc.ca/2022/11/15/richard-tape/" target="_blank">
-                            <strong>Richard Tape</strong>
-                        </a> - <em>Project Supervisor</em>
-                    </div>
-                    <div class="team-member">
-                        <a href="https://example.com/charisma-profile" target="_blank">
-                            <strong>Charisma Rusdiyanto</strong>
-                        </a> - <em>Software (Full Stack) Developer</em>
-                    </div>
-                </div>
-            </div>
-            <div class="navigation">
-                <button class="nav-btn btn-next" id="getStarted">Get Started</button>
-                <div class="step-counter">1 of 7</div>
-            </div>
-        </div>
-
-        <!-- Screen 2: Class Name -->
-        <div class="screen" id="screen-2">
-            <div class="screen-header">
-                <h1 class="screen-title">What's your class name?</h1>
-                <p class="screen-subtitle">This will help identify your course</p>
-            </div>
-            <div class="input-item">
-                <input type="text" class="input-field" id="className" placeholder="e.g., CHBE 241" />
-            </div>
-            <div class="navigation">
-                <button class="nav-btn btn-back" id="classNameBack">Back</button>
-                <button class="nav-btn btn-next" id="classNameNext">Next</button>
-                <div class="step-counter">2 of 7</div>
-            </div>
-        </div>
-
-        <!-- Screen 3: Instructors -->
-        <div class="screen" id="screen-3">
-            <div class="screen-header">
-                <h1 class="screen-title">Who are the instructors?</h1>
-                <p class="screen-subtitle">Add all the instructors for this course</p>
-            </div>
-            <div class="input-item">
-                <div class="input-area">
-                    <input type="text" class="input-field" id="instructorInput" placeholder="Enter instructor name" />
-                    <button class="add-btn" id="instructorAddBtn">+</button>
-                </div>
-                <div class="items-list" id="instructorsList">
-                    
-                </div>
-            </div>
-            <div class="navigation">
-                <button class="nav-btn btn-back" id="instructorBack">Back</button>
-                <button class="nav-btn btn-next" id="instructorsNext">Next</button>
-                <div class="step-counter">3 of 7</div>
-            </div>
-        </div>
-
-        <!-- Screen 4: Teaching Assistants -->
-        <div class="screen" id="screen-4">
-            <div class="screen-header">
-                <h1 class="screen-title">Any teaching assistants?</h1>
-                <p class="screen-subtitle">Add TAs if you have any (optional)</p>
-            </div>
-            <div class="input-item">
-                <div class="input-area">
-                    <input type="text" class="input-field" id="taInput" placeholder="Enter TA name (optional)" />
-                    <button class="add-btn" id="taAddBtn">+</button>
-                </div>
-                <div class="items-list" id="tasList">
-                    
-                </div>
-            </div>
-            <div class="navigation">
-                <button class="nav-btn btn-back" id="taBack">Back</button>
-                <button class="nav-btn btn-next" id="taNext">Next</button>
-                <div class="step-counter">4 of 7</div>
-            </div>
-        </div>
-
-        <!-- Screen 5: Course Division -->
-        <div class="screen" id="screen-5">
-            <div class="screen-header">
-                <h1 class="screen-title">How is your course content divided?</h1>
-                <p class="screen-subtitle">This helps us organize your materials</p>
-            </div>
-            <div class="radio-group">
-                <label class="radio-option">
-                    <input type="radio" name="division" value="byWeek" id="divisionWeek" checked />
-                    <label for="divisionWeek">By Week</label>
-                </label>
-                <label class="radio-option" >
-                    <input type="radio" name="division" value="byTopic" id="divisionTopic" />
-                    <label for="divisionTopic">By Topic</label>
-                </label>
-            </div>
-            <div class="navigation">
-                <button class="nav-btn btn-back" id="divisionBack">Back</button>
-                <button class="nav-btn btn-next" id="divisionNext">Next</button>
-                <div class="step-counter">5 of 7</div>
-            </div>
-        </div>
-
-        <!-- Screen 6: Number Count -->
-        <div class="screen" id="screen-6">
-            <div class="screen-header">
-                <h1 class="screen-title" id="countTitle">How many weeks are there in your course?</h1>
-                <p class="screen-subtitle">We'll create this many sections for you</p>
-            </div>
-            <div class="input-item">
-                <input type="number" class="input-field" id="countInput" placeholder="12" value="12" min="1" max="52" />
-            </div>
-            <div class="navigation">
-                <button class="nav-btn btn-back" id="numCountBack">Back</button>
-                <button class="nav-btn btn-next" id="numCountNext">Next</button>
-                <div class="step-counter">6 of 7</div>
-            </div>
-        </div>
-
-        <!-- Screen 7: Complete -->
-        <div class="screen" id="screen-7">
-            <h1>On boarding Summary</h1>
-            <div class="input-item" id="className">
-                <h2>Class name</h2>
-                <input type="text" id="classNameFinal" placeholder="Enter your class name">
-            </div>
-            <div class="input-item" id="instructorName">
-                <h2>Instructors</h2>
-                <div class="input-area">
-                    <input type="text" id="instructorInputFinal" placeholder="Enter Instructor Name">
-                    <button class="add-btn" id="instructorAddBtnFinal">+</button>
-                </div>
-                <div class="items-list" id="instructorsListFinal">
-                    
-                </div>
-            </div>
-            <div class="input-item" id="teachingAssistantName" >
-                <h2>Teaching Assistants</h2>
-                <div class="input-area">
-                    <input type="text" id="taInputFinal" placeholder="Enter TA name (optional)">
-                    <button class="add-btn" id="taAddBtnFinal">+</button>
-                </div>
-                <div class="items-list" id="tasListFinal">
-
-                </div>
-            </div>
-            <div class="manage-options" id="manageOptions">
-                <h2>How is your course content divided?</h2>
-                <div class="radio-group">
-                    <label class="radio-option">
-                        <input type="radio" id="divisionWeekFinal" name="manageSelect" value="byWeek">
-                        <label for="perWeek">By Week</label>
-                    </label>
-                    <label class="radio-option">
-                        <input type="radio" id="divisionTopicFinal" name="manageSelect" value="byTopic">
-                        <label for="perChapter">By Topic</label>
-                    </label>
-                </div>
-            </div>
-            <div class="input-item" id="tilesNumber">
-                <h2>How many weeks are there in your course</h2>
-                <input type="number" class="input-field" id="countInputFinal" placeholder="12" value="12" min="1" max="52" />
-            </div>
-
-            <div class="navigation">
-                <button class="nav-btn btn-back" id="finalizationBack" >Back</button>
-                <button class="submit-btn" id="submitOnboarding">
-                    Get Started
-                </button>
-                <div class="step-counter">7 of 7</div>
-            </div>
-        </div>
+    <link rel="stylesheet" href="/styles/modal-overlay.css">
+    
+    <!-- Left Steps Panel -->
+    <div class="onboarding-steps-panel">
         
+        <div class="steps-header">
+            <div class="logo-box">
+                <i data-feather="box"></i>
+                <div class="logo-text">
+                    <span>EngE-AI</span>
+                    <p>Instructor Mode: Course Setup</p>
+                </div>
+            </div>
+        </div>
+
+        <h2>Complete these setup steps to get started</h2>
+        
+        <div class="steps-list">
+            <!-- Step 1: Getting Started -->
+            <div class="step-item" data-step="1">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">1</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Getting Started</h3>
+                    <p>Welcome to EngE-AI</p>
+                </div>
+            </div>
+
+            <!-- Step 2: Course Name -->
+            <div class="step-item" data-step="2">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">2</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Course Name</h3>
+                    <p>Select your course</p>
+                </div>
+            </div>
+
+            <!-- Step 3: Instructors -->
+            <div class="step-item" data-step="3">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">3</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Instructors</h3>
+                    <p>Add course instructors</p>
+                </div>
+            </div>
+
+            <!-- Step 4: Teaching Assistants -->
+            <div class="step-item" data-step="4">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">4</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Teaching Assistants</h3>
+                    <p>Add TAs (optional)</p>
+                </div>
+            </div>
+
+            <!-- Step 5: Course Division -->
+            <div class="step-item" data-step="5">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">5</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Course Division</h3>
+                    <p>Organize by week or topic</p>
+                </div>
+            </div>
+
+            <!-- Step 6: Content Count -->
+            <div class="step-item" data-step="6">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">6</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Content Count</h3>
+                    <p>Number of sections</p>
+                </div>
+            </div>
+
+            <!-- Step 7: Finalization -->
+            <div class="step-item" data-step="7">
+                <div class="step-indicator">
+                    <div class="step-circle current">
+                        <span class="step-number">7</span>
+                    </div>
+                </div>
+                <div class="step-content">
+                    <h3>Finalization</h3>
+                    <p>Review and complete</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Content Area -->
+    <div class="onboarding-content-area">
+        <!-- Help Menu -->
+        <div class="help-menu">
+            <button class="help-btn" id="helpBtn">
+                <i data-feather="info"></i>
+                <span>Help</span>
+            </button>
+        </div>
+        <!-- Step 1: Getting Started -->
+        <div class="content-step active" id="content-step-1">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Welcome to EngE-AI</h1>
+                    <p>Let's set up your course in just a few simple steps</p>
+                </div>
+                
+                <div class="welcome-content">
+                    <div class="welcome-message">
+                        <h3>Ready to get started?</h3>
+                        <p>This onboarding process will help you set up your course with all the necessary information. We'll guide you through each step to ensure everything is configured correctly.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: Course Name -->
+        <div class="content-step" id="content-step-2">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Select Your Course</h1>
+                    <p>Choose the course you're setting up</p>
+                </div>
+                
+                <div class="form-group">
+                    <label for="courseSelect">Course Name</label>
+                    <select id="courseSelect" class="form-select">
+                        <option value="">Select a course...</option>
+                        <option value="CHBE 241">CHBE 241 - Chemical and Biological Engineering Fundamentals</option>
+                        <option value="CHBE 251">CHBE 251 - Chemical and Biological Engineering Design</option>
+                        <option value="MTRL 251">MTRL 251 - Materials Engineering Fundamentals</option>
+                        <option value="MTRL 252">MTRL 252 - Materials Engineering Design</option>
+                        <option value="CHBE 341">CHBE 341 - Process Engineering</option>
+                        <option value="MTRL 341">MTRL 341 - Materials Processing</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3: Instructors -->
+        <div class="content-step" id="content-step-3">
+            <div class="step-header">
+                <h1>Add Instructors</h1>
+                <p>Select all instructors for this course</p>
+            </div>
+            
+            <div class="form-group">
+                <label for="instructorSelect">Instructors</label>
+                <div class="dropdown-with-add">
+                    <select id="instructorSelect" class="form-select">
+                        <option value="">Select an instructor...</option>
+                        <option value="Dr. S. Alireza Bagherzadeh">Dr. S. Alireza Bagherzadeh</option>
+                        <option value="Dr. Amir M. Dehkhoda">Dr. Amir M. Dehkhoda</option>
+                        <option value="Dr. Jonathan Verrett">Dr. Jonathan Verrett</option>
+                        <option value="Dr. Richard Tape">Dr. Richard Tape</option>
+                        <option value="Dr. Jane Smith">Dr. Jane Smith</option>
+                        <option value="Dr. John Doe">Dr. John Doe</option>
+                        <option value="Dr. Sarah Johnson">Dr. Sarah Johnson</option>
+                        <option value="Dr. Michael Brown">Dr. Michael Brown</option>
+                    </select>
+                    <button type="button" class="add-instructor-btn" id="addInstructorBtn">Add</button>
+                </div>
+                <div class="selected-items" id="selectedInstructors"></div>
+            </div>
+        </div>
+
+        <!-- Step 4: Teaching Assistants -->
+        <div class="content-step" id="content-step-4">
+            <div class="step-header">
+                <h1>Add Teaching Assistants</h1>
+                <p>Select TAs for this course (optional)</p>
+            </div>
+            
+            <div class="form-group">
+                <label for="taSelect">Teaching Assistants</label>
+                <div class="dropdown-with-add">
+                    <select id="taSelect" class="form-select">
+                        <option value="">Select a teaching assistant...</option>
+                        <option value="Alice Chen">Alice Chen</option>
+                        <option value="Bob Wilson">Bob Wilson</option>
+                        <option value="Carol Davis">Carol Davis</option>
+                        <option value="David Lee">David Lee</option>
+                        <option value="Emma Garcia">Emma Garcia</option>
+                        <option value="Frank Miller">Frank Miller</option>
+                        <option value="Grace Taylor">Grace Taylor</option>
+                        <option value="Henry Anderson">Henry Anderson</option>
+                    </select>
+                    <button type="button" class="add-ta-btn" id="addTABtn">Add</button>
+                </div>
+                <div class="selected-items" id="selectedTAs"></div>
+            </div>
+        </div>
+
+        <!-- Step 5: Course Division -->
+        <div class="content-step" id="content-step-5">
+            <div class="step-header">
+                <h1>Course Organization</h1>
+                <p>How would you like to organize your course content?</p>
+            </div>
+            
+            <div class="form-group">
+                <div class="radio-options">
+                    <label class="radio-option">
+                        <input type="radio" name="division" value="byWeek" checked>
+                        <div class="radio-content">
+                            <h3>By Week</h3>
+                            <p>Organize content by weekly schedule</p>
+                        </div>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="division" value="byTopic">
+                        <div class="radio-content">
+                            <h3>By Topic</h3>
+                            <p>Organize content by subject topics</p>
+                        </div>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 6: Content Count -->
+        <div class="content-step" id="content-step-6">
+            <div class="step-header">
+                <h1>Number of Sections</h1>
+                <p id="countDescription">How many weeks are in your course?</p>
+            </div>
+            
+            <div class="form-group">
+                <label for="contentCount">Number of Sections</label>
+                <input type="number" id="contentCount" class="form-input" value="12" min="1" max="52">
+                <p class="form-help">Enter the number of weeks or topics for your course</p>
+            </div>
+        </div>
+
+        <!-- Step 7: Finalization -->
+        <div class="content-step" id="content-step-7">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Review Your Setup</h1>
+                    <p>Please review and make any final changes before completing setup</p>
+                </div>
+                
+                <div class="review-content">
+                    <div class="form-group">
+                        <label for="reviewCourseSelect">Course Name</label>
+                        <select id="reviewCourseSelect" class="form-select">
+                            <option value="">Select a course...</option>
+                            <option value="CHBE 241">CHBE 241 - Chemical and Biological Engineering Fundamentals</option>
+                            <option value="CHBE 251">CHBE 251 - Chemical and Biological Engineering Design</option>
+                            <option value="MTRL 251">MTRL 251 - Materials Engineering Fundamentals</option>
+                            <option value="MTRL 252">MTRL 252 - Materials Engineering Design</option>
+                            <option value="CHBE 341">CHBE 341 - Process Engineering</option>
+                            <option value="MTRL 341">MTRL 341 - Materials Processing</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="reviewInstructorSelect">Instructors</label>
+                        <div class="dropdown-with-add">
+                            <select id="reviewInstructorSelect" class="form-select">
+                                <option value="">Select an instructor...</option>
+                                <option value="Dr. S. Alireza Bagherzadeh">Dr. S. Alireza Bagherzadeh</option>
+                                <option value="Dr. Amir M. Dehkhoda">Dr. Amir M. Dehkhoda</option>
+                                <option value="Dr. Jonathan Verrett">Dr. Jonathan Verrett</option>
+                                <option value="Dr. Richard Tape">Dr. Richard Tape</option>
+                                <option value="Dr. Jane Smith">Dr. Jane Smith</option>
+                                <option value="Dr. John Doe">Dr. John Doe</option>
+                                <option value="Dr. Sarah Johnson">Dr. Sarah Johnson</option>
+                                <option value="Dr. Michael Brown">Dr. Michael Brown</option>
+                            </select>
+                            <button type="button" class="add-instructor-btn" id="reviewAddInstructorBtn">Add</button>
+                        </div>
+                        <div class="selected-items" id="reviewSelectedInstructors"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="reviewTASelect">Teaching Assistants</label>
+                        <div class="dropdown-with-add">
+                            <select id="reviewTASelect" class="form-select">
+                                <option value="">Select a teaching assistant...</option>
+                                <option value="Alice Chen">Alice Chen</option>
+                                <option value="Bob Wilson">Bob Wilson</option>
+                                <option value="Carol Davis">Carol Davis</option>
+                                <option value="David Lee">David Lee</option>
+                                <option value="Emma Garcia">Emma Garcia</option>
+                                <option value="Frank Miller">Frank Miller</option>
+                                <option value="Grace Taylor">Grace Taylor</option>
+                                <option value="Henry Anderson">Henry Anderson</option>
+                            </select>
+                            <button type="button" class="add-ta-btn" id="reviewAddTABtn">Add</button>
+                        </div>
+                        <div class="selected-items" id="reviewSelectedTAs"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Course Organization</label>
+                        <div class="radio-options">
+                            <div class="radio-option">
+                                <input type="radio" id="reviewByWeek" name="reviewDivision" value="byWeek">
+                                <div class="radio-content">
+                                    <h3>By Week</h3>
+                                    <p>Organize content chronologically by weeks</p>
+                                </div>
+                            </div>
+                            <div class="radio-option">
+                                <input type="radio" id="reviewByTopic" name="reviewDivision" value="byTopic">
+                                <div class="radio-content">
+                                    <h3>By Topic</h3>
+                                    <p>Organize content by subject matter</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="reviewContentCount">Number of Sections</label>
+                        <input type="number" id="reviewContentCount" class="form-input" min="1" max="52" value="12">
+                        <p class="form-help" id="reviewCountDescription">How many weeks are in your course?</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="onboarding-navigation">
+            <button class="nav-btn btn-back" id="backBtn" style="display: none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15,18 9,12 15,6"></polyline>
+                </svg>
+                Back
+            </button>
+            <button class="nav-btn btn-next" id="nextBtn">
+                Next
+                <i data-feather="chevron-right"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Help Content Templates (Hidden) -->
+    <div id="help-templates" style="display: none;">
+        <!-- Step 1 Help -->
+        <div id="help-step-1">
+            <p><strong>Welcome to EngE-AI!</strong></p>
+            <p>This onboarding process will guide you through setting up your course. Each step is designed to be simple and straightforward.</p>
+            <p><strong>What you'll need:</strong></p>
+            <ul>
+                <li>Your course information</li>
+                <li>Instructor and TA details</li>
+                <li>Course organization preferences</li>
+            </ul>
+            <p>Take your time with each step - you can always go back to make changes.</p>
+        </div>
+
+        <!-- Step 2 Help -->
+        <div id="help-step-2">
+            <p><strong>Select your course from the dropdown menu.</strong></p>
+            <p>Choose the course you'll be teaching from the available options. If your course isn't listed, please contact the system administrator.</p>
+            <p><strong>Available courses include:</strong></p>
+            <ul>
+                <li>CHBE 241 - Chemical and Biological Engineering Fundamentals</li>
+                <li>MTRL 251 - Materials Engineering Fundamentals</li>
+            </ul>
+        </div>
+
+        <!-- Step 3 Help -->
+        <div id="help-step-3">
+            <p><strong>Add instructors for your course.</strong></p>
+            <p>Select instructors from the dropdown and click "Add" to include them. You can add multiple instructors.</p>
+            <p><strong>Tips:</strong></p>
+            <ul>
+                <li>At least one instructor is required</li>
+                <li>You can remove instructors by clicking the × button</li>
+                <li>Instructors will have full access to course management</li>
+            </ul>
+        </div>
+
+        <!-- Step 4 Help -->
+        <div id="help-step-4">
+            <p><strong>Add teaching assistants (optional).</strong></p>
+            <p>Teaching assistants can help manage the course and interact with students. This step is optional but recommended for larger courses.</p>
+            <p><strong>TA capabilities:</strong></p>
+            <ul>
+                <li>Monitor student interactions</li>
+                <li>Access course materials</li>
+                <li>Generate reports</li>
+            </ul>
+        </div>
+
+        <!-- Step 5 Help -->
+        <div id="help-step-5">
+            <p><strong>Choose how to organize your course content.</strong></p>
+            <p><strong>By Week:</strong> Organize content chronologically by weeks (recommended for semester courses)</p>
+            <p><strong>By Topic:</strong> Organize content by subject matter (recommended for modular courses)</p>
+            <p>This choice affects how content is presented to students and how you'll manage the course structure.</p>
+        </div>
+
+        <!-- Step 6 Help -->
+        <div id="help-step-6">
+            <p><strong>Specify the number of sections for your course.</strong></p>
+            <p><strong>For weekly organization:</strong> Enter the number of weeks (1-14)</p>
+            <p><strong>For topic organization:</strong> Enter the number of topics (1-52)</p>
+            <p>This determines how many content sections you'll have to manage. You can always adjust this later.</p>
+        </div>
+
+        <!-- Step 7 Help -->
+        <div id="help-step-7">
+            <p><strong>Review all your selections before completing setup.</strong></p>
+            <p>This final step shows a summary of all your choices. Please verify:</p>
+            <ul>
+                <li>Course name is correct</li>
+                <li>All instructors are listed</li>
+                <li>Teaching assistants (if any) are correct</li>
+                <li>Organization type and count are appropriate</li>
+            </ul>
+            <p>Click "Complete Setup" to finish the onboarding process.</p>
+        </div>
     </div>
 </div>

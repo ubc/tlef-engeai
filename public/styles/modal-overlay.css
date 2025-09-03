@@ -1,0 +1,411 @@
+/* ===========================================
+   MODAL OVERLAY SYSTEM
+   =========================================== */
+
+/**
+ * Modal Overlay System for EngE-AI
+ * 
+ * This CSS file provides a comprehensive modal overlay system that can be used
+ * throughout the application for various types of overlays including:
+ * - Error modals
+ * - Disclaimer modals
+ * - Confirmation dialogs
+ * - Information modals
+ * - Custom content modals
+ * 
+ * @author: gatahcha
+ * @date: 2025-01-27
+ * @version: 1.0.0
+ */
+
+/* ===========================================
+   BASE MODAL OVERLAY
+   =========================================== */
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.modal-overlay.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.modal-overlay.hide {
+    opacity: 0;
+    visibility: hidden;
+}
+
+/* ===========================================
+   MODAL CONTAINER
+   =========================================== */
+
+.modal-container {
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    max-width: 90vw;
+    max-height: 90vh;
+    overflow: hidden;
+    transform: scale(0.9) translateY(20px);
+    transition: transform 0.3s ease;
+    position: relative;
+}
+
+.modal-overlay.show .modal-container {
+    transform: scale(1) translateY(0);
+}
+
+/* ===========================================
+   MODAL HEADER
+   =========================================== */
+
+.modal-header {
+    padding: 1.5rem 2rem 1rem 2rem;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.modal-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin: 0;
+}
+
+.modal-close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: #6c757d;
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-close-btn:hover {
+    background-color: #f8f9fa;
+    color: #495057;
+}
+
+/* ===========================================
+   MODAL BODY
+   =========================================== */
+
+.modal-body {
+    padding: 1.5rem 2rem;
+    overflow-y: auto;
+    max-height: 60vh;
+}
+
+.modal-content {
+    font-size: 1rem;
+    line-height: 1.6;
+    color: #495057;
+}
+
+.modal-content p {
+    margin: 0 0 1rem 0;
+}
+
+.modal-content p:last-child {
+    margin-bottom: 0;
+}
+
+/* ===========================================
+   MODAL FOOTER
+   =========================================== */
+
+.modal-footer {
+    padding: 1rem 2rem 1.5rem 2rem;
+    border-top: 1px solid #e9ecef;
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.modal-btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 100px;
+    font-family: inherit;
+}
+
+.modal-btn-primary {
+    background-color: var(--color-chbe-green);
+    color: white;
+}
+
+.modal-btn-primary:hover {
+    background-color: #4a6f2e;
+    transform: translateY(-1px);
+}
+
+.modal-btn-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.modal-btn-secondary:hover {
+    background-color: #5a6268;
+    transform: translateY(-1px);
+}
+
+.modal-btn-outline {
+    background-color: transparent;
+    color: var(--color-chbe-green);
+    border: 2px solid var(--color-chbe-green);
+}
+
+.modal-btn-outline:hover {
+    background-color: var(--color-chbe-green);
+    color: white;
+}
+
+.modal-btn-danger {
+    background-color: #dc3545;
+    color: white;
+}
+
+.modal-btn-danger:hover {
+    background-color: #c82333;
+    transform: translateY(-1px);
+}
+
+/* ===========================================
+   SPECIFIC MODAL TYPES
+   =========================================== */
+
+/* Error Modal */
+.modal-error .modal-title {
+    color: #dc3545;
+}
+
+.modal-error .modal-header {
+    border-bottom-color: var(--border-color);
+}
+
+.modal-error .modal-container {
+    border-left: 4px solid #dc3545;
+}
+
+.modal-error .modal-icon {
+    color: #dc3545;
+    font-size: 2rem;
+    margin-right: 1rem;
+}
+
+/* Warning Modal */
+.modal-warning .modal-title {
+    color: #ffc107;
+}
+
+.modal-warning .modal-header {
+    border-bottom-color: #ffeaa7;
+}
+
+.modal-warning .modal-icon {
+    color: #ffc107;
+    font-size: 2rem;
+    margin-right: 1rem;
+}
+
+/* Success Modal */
+.modal-success .modal-title {
+    color: #28a745;
+}
+
+.modal-success .modal-header {
+    border-bottom-color: #c3e6cb;
+}
+
+.modal-success .modal-icon {
+    color: #28a745;
+    font-size: 2rem;
+    margin-right: 1rem;
+}
+
+/* Info Modal */
+.modal-info .modal-title {
+    color: #17a2b8;
+}
+
+.modal-info .modal-header {
+    border-bottom-color: #bee5eb;
+}
+
+.modal-info .modal-icon {
+    color: #17a2b8;
+    font-size: 2rem;
+    margin-right: 1rem;
+}
+
+/* Disclaimer Modal */
+.modal-disclaimer {
+    max-width: 600px;
+}
+
+.modal-disclaimer .modal-body {
+    max-height: 50vh;
+}
+
+.modal-disclaimer .disclaimer-content {
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.modal-disclaimer .disclaimer-content h4 {
+    color: #2c3e50;
+    font-size: 1.1rem;
+    margin: 1rem 0 0.5rem 0;
+}
+
+.modal-disclaimer .disclaimer-content h4:first-child {
+    margin-top: 0;
+}
+
+.modal-disclaimer .disclaimer-content ul {
+    margin: 0.5rem 0 1rem 1.5rem;
+    padding: 0;
+}
+
+.modal-disclaimer .disclaimer-content li {
+    margin-bottom: 0.25rem;
+}
+
+/* ===========================================
+   RESPONSIVE DESIGN
+   =========================================== */
+
+@media (max-width: 768px) {
+    .modal-container {
+        margin: 1rem;
+        max-width: calc(100vw - 2rem);
+        max-height: calc(100vh - 2rem);
+    }
+    
+    .modal-header,
+    .modal-body,
+    .modal-footer {
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+    }
+    
+    .modal-title {
+        font-size: 1.25rem;
+    }
+    
+    .modal-footer {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .modal-btn {
+        width: 100%;
+    }
+}
+
+/* ===========================================
+   ANIMATIONS
+   =========================================== */
+
+@keyframes modalSlideIn {
+    from {
+        transform: scale(0.9) translateY(20px);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1) translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes modalSlideOut {
+    from {
+        transform: scale(1) translateY(0);
+        opacity: 1;
+    }
+    to {
+        transform: scale(0.9) translateY(20px);
+        opacity: 0;
+    }
+}
+
+.modal-container.slide-in {
+    animation: modalSlideIn 0.3s ease;
+}
+
+.modal-container.slide-out {
+    animation: modalSlideOut 0.3s ease;
+}
+
+/* ===========================================
+   ACCESSIBILITY
+   =========================================== */
+
+.modal-overlay:focus {
+    outline: none;
+}
+
+.modal-close-btn:focus,
+.modal-btn:focus {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .modal-container {
+        border: 2px solid #000;
+    }
+    
+    .modal-header {
+        border-bottom-color: #000;
+    }
+    
+    .modal-footer {
+        border-top-color: #000;
+    }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+    .modal-overlay,
+    .modal-container,
+    .modal-close-btn,
+    .modal-btn {
+        transition: none;
+    }
+    
+    .modal-container.slide-in,
+    .modal-container.slide-out {
+        animation: none;
+    }
+}
