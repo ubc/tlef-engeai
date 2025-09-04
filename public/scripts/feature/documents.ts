@@ -26,6 +26,7 @@ import {
     activeCourse 
 } from '../../../src/functions/types';
 import { uploadTextToQdrant } from '../services/QdrantService.js';
+import { showConfirmModal } from '../modal-overlay.js';
 
 // In-memory store for the course data
 let courseData: ContentDivision[] = [];
@@ -554,7 +555,15 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     async function deleteObjective(divisionId: string, contentId: string, index: number) {
-        if (confirm('Are you sure you want to delete this objective?')) {
+        // Show confirmation modal
+        const result = await showConfirmModal(
+            'Delete Learning Objective',
+            'Are you sure you want to delete this learning objective? This action cannot be undone.',
+            'Delete',
+            'Cancel'
+        );
+
+        if (result.action === 'delete') {
             const content = courseData.find(d => d.id === divisionId)
                                         ?.items.find(c => c.id === contentId);
             const objective = content?.learningObjectives[index];
