@@ -495,13 +495,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }));
 
         // Call the streaming endpoint
-        fetch('/api/ollama/chat', {
+        fetch('/api/ollama/chat/rag', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
                 messages: ollamaMessages,
+                enableRAG: true,
+                courseName: currentClass.courseName,
+                maxDocuments: 3,
+                scoreThreshold: 0.7
             }),
         })
         .then(response => {

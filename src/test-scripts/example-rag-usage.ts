@@ -21,6 +21,8 @@ const API_BASE_URL = 'http://localhost:3000/api/ollama';
 async function basicRAGExample() {
     console.log('\n📚 Example 1: Basic RAG Query');
     console.log('=' .repeat(50));
+    console.log('This example shows how the AI tutor will reference course materials naturally.');
+    console.log('Expected response style: "In the module, it is discussed that..."');
     
     const response = await fetch(`${API_BASE_URL}/chat/rag`, {
         method: 'POST',
@@ -38,6 +40,7 @@ async function basicRAGExample() {
     
     console.log('Status:', response.status);
     console.log('Response will be streamed...');
+    console.log('Look for phrases like "In the module..." or "According to the course materials..."');
 }
 
 /**

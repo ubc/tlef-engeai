@@ -124,8 +124,23 @@ Diffusion is a fundamental mechanism of mass transfer...
 
 --- END OF RELEVANT MATERIALS ---
 
-Please use the above course materials to provide accurate, contextually relevant responses...
+Use the above course materials to provide accurate, contextually relevant responses. 
+When referencing the materials, use natural phrases like "In the module, it is discussed that..." 
+or "According to the course materials..." or "The lecture notes explain that..." to help 
+students connect your answers to their course content. If the materials don't contain 
+relevant information, please indicate this and provide general guidance.
 ```
+
+## AI Response Style
+
+The AI tutor will now naturally reference course materials using phrases like:
+- "In the module, it is discussed that..."
+- "According to the course materials..."
+- "The lecture notes explain that..."
+- "As mentioned in the course content..."
+- "The module covers this topic by stating..."
+
+This helps students connect AI responses directly to their course content and understand where the information comes from.
 
 ## Error Handling
 

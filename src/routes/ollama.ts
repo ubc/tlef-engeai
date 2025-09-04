@@ -75,7 +75,7 @@ async function initializeEmbeddings() {
     };
 
     const config: Partial<EmbeddingsConfig> = {
-        providerType: 'ollama' as any,
+        providerType: 'ubc-genai-toolkit-llm', // Use the correct provider type for LLM-based embeddings
         logger: new ConsoleLogger(),
         llmConfig: llmConfig,
     };
@@ -196,7 +196,8 @@ function formatRetrievedDocuments(documents: RetrievedDocument[]): string {
     });
 
     context += '\n--- END OF RELEVANT MATERIALS ---\n\n';
-    context += 'Please use the above course materials to provide accurate, contextually relevant responses. ';
+    context += 'Use the above course materials to provide accurate, contextually relevant responses. ';
+    context += 'When referencing the materials, use natural phrases like "In the module, it is discussed that..." or "According to the course materials..." or "The lecture notes explain that..." to help students connect your answers to their course content. ';
     context += 'If the materials don\'t contain relevant information, please indicate this and provide general guidance.';
 
     return context;
@@ -216,9 +217,13 @@ router.post('/chat/rag', async (req: Request, res: Response) => {
         const model = 'llama3.1:latest';
         let enhancedMessages = [...messages];
 
+        console.log("Debugging #24 : ", messages);
+
         // Add RAG context if enabled and there are user messages
         if (enableRAG && messages.length > 0) {
             const lastUserMessage = messages.filter(m => m.role === 'user').pop();
+
+            console.log("Debugging #25 : ", lastUserMessage);
             if (lastUserMessage) {
                 try {
                     const retrievedDocs = await retrieveSimilarDocuments(
@@ -230,11 +235,26 @@ router.post('/chat/rag', async (req: Request, res: Response) => {
 
                     if (retrievedDocs.length > 0) {
                         const contextText = formatRetrievedDocuments(retrievedDocs);
+
+                        console.log("contextText : ", contextText);
                         
                         // Add system message with context
                         const systemMessage = {
                             role: 'system' as const,
-                            content: `You are an AI tutor for engineering students. ${contextText}`
+                            content: `You are an AI tutor for engineering students. Your role is to help students understand course concepts by connecting their questions to the provided course materials.
+
+When answering questions:
+1. Use the provided course materials to give contextually relevant responses
+2. Reference the materials naturally using phrases like:
+   - "In the module, it is discussed that..."
+   - "According to the course materials..."
+   - "The lecture notes explain that..."
+   - "As mentioned in the course content..."
+   - "The module covers this topic by stating..."
+3. Help students connect your answers to their course content
+4. If the materials don't contain relevant information, indicate this and provide general guidance
+
+${contextText}`
                         };
 
                         // Insert system message before the last user message
@@ -255,6 +275,9 @@ router.post('/chat/rag', async (req: Request, res: Response) => {
                 }
             }
         }
+
+        console.log("Debugging #28 : ", enhancedMessages);
+
 
         const ollamaRes = await fetch(OLLAMA_API_URL, {
             method: 'POST',

@@ -409,7 +409,6 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
 
     if (!course.courseName || typeof course.courseName !== 'string' || course.courseName.trim() === '') {
         console.log("🔴 Course name is required and must be a non-empty string");
-        console.log("course: ", course);
         return res.status(400).json({
             success: false,
             error: 'Course name is required and must be a non-empty string'
@@ -669,10 +668,8 @@ router.get('/courses/:id', asyncHandler(async (req: Request, res: Response) => {
 router.get('/courses/name/:name', asyncHandler(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
 
-    
-    const course = await instance.getCourseByName(req.params.name);
 
-    console.log("course: ", course); // this is not printed
+    const course = await instance.getCourseByName(req.params.name);
     
     if (!course) {
         return res.status(404).json({
