@@ -669,7 +669,7 @@ router.get('/courses/:id', asyncHandler(async (req: Request, res: Response) => {
 router.get('/courses/name/:name', asyncHandler(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
 
-    console.log("req.params.name: ", req.params.name, "YUHU");
+    
     const course = await instance.getCourseByName(req.params.name);
 
     console.log("course: ", course); // this is not printed

@@ -475,13 +475,15 @@
 
 /* Upload Modal */
 .modal-overlay.upload-modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.35);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
+    position: fixed !important;
+    inset: 0 !important;
+    background: rgba(0,0,0,0.35) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    z-index: 1000 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
 }
 
 .modal-overlay .modal {

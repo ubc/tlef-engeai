@@ -31,7 +31,12 @@ import { Router, Request, Response } from 'express';
 import fetch from 'node-fetch';
 import fs from 'fs';
 import { QdrantClient } from '@qdrant/js-client-rest';
-import { AdditionalMaterial } from '../functions/types';
+import type { AdditionalMaterial } from '../functions/types';
+import { ChunkingModule, ChunkingConfig } from 'ubc-genai-toolkit-chunking';
+import { EmbeddingsModule, EmbeddingsConfig, EmbeddingProviderType } from 'ubc-genai-toolkit-embeddings';
+import { ConsoleLogger } from 'ubc-genai-toolkit-core';
+import { LLMConfig, ProviderType } from 'ubc-genai-toolkit-llm';
+
 const router: Router = express.Router();
 
 
@@ -40,13 +45,89 @@ const router: Router = express.Router();
 const QDRANT_HOST = process.env.QDRANT_URL || 'http://localhost:6333';
 const API_ENDPOINT = `${QDRANT_HOST}/api/documents`;
 
+// Corpus configuration
+let corpusConfig = {
+    chunkingSize: 1000,
+    overlapSize: 200
+};
+
+let defaultOption = { // data type : partial<chunkingConfig>
+    strategy: 'token',
+    defaultOptions: {
+        chunkSize: corpusConfig.chunkingSize,
+        chunkOverlap: corpusConfig.overlapSize,
+    }
+};
+
+let corpusModule = new ChunkingModule(defaultOption as Partial<ChunkingConfig>);
+
 const qdrantClient = new QdrantClient({
-    url: QDRANT_HOST,
+    url: process.env.QDRANT_URL,
+    apiKey: process.env.QDRANT_API_KEY,
 });
 
+let embeddingsModule: EmbeddingsModule | undefined;
+
+// Collection configuration
+const collectionName = 'tlef_documents';
+const vectorSize = 768; // Based on nomic-embed-text
 
 /**
- * Upload coument to qdrant
+ * Setup embeddings module
+ */
+async function setupEmbeddings() {
+    try {
+        const logger = new ConsoleLogger('tlef-qdrant-app');
+
+        const llmConfig: Partial<LLMConfig> = {
+            provider: process.env.LLM_PROVIDER as ProviderType,
+            apiKey: process.env.LLM_API_KEY,
+            endpoint: process.env.LLM_ENDPOINT,
+            defaultModel: process.env.LLM_DEFAULT_MODEL,
+            embeddingModel: process.env.LLM_EMBEDDING_MODEL,
+        };
+
+        const config: Partial<EmbeddingsConfig> = {
+            providerType: process.env.EMBEDDING_PROVIDER as EmbeddingProviderType,
+            logger: logger,
+            llmConfig: llmConfig,
+        };
+
+        embeddingsModule = await EmbeddingsModule.create(config);
+        console.log('✅ Embeddings module initialized successfully.');
+    } catch (error) {
+        console.error('❌ Failed to initialize embeddings module:', error);
+        process.exit(1);
+    }
+}
+
+/**
+ * Setup Qdrant collection
+ */
+async function setupQdrant() {
+    try {
+        const response = await qdrantClient.getCollections();
+        const collectionNames = response.collections.map((collection) => collection.name);
+
+        if (!collectionNames.includes(collectionName)) {
+            await qdrantClient.createCollection(collectionName, {
+                vectors: {
+                    size: vectorSize,
+                    distance: 'Cosine',
+                },
+            });
+            console.log(`✅ Collection '${collectionName}' created.`);
+        } else {
+            console.log(`ℹ️ Collection '${collectionName}' already exists.`);
+        }
+    } catch (error) {
+        console.error('❌ Qdrant setup failed:', error);
+        process.exit(1);
+    }
+}
+
+/**
+ * Upload document to qdrant
  * 
  *  - chukfile 
  * 
@@ -66,7 +147,28 @@ class QdrantUpload {
         this.qdrantClient = qdrantClient;
     }
 
-    async uploadTextToQdrant(uploadContent: AdditionalMaterial, vector: number[]) {
+    async uploadTextToQdrant(uploadContent: AdditionalMaterial) {
+
+        console.log('DEBUG #26 : Uploading text to Qdrant', uploadContent);
+
+        // Ensure embeddings module is initialized
+        if (!embeddingsModule) {
+            await setupEmbeddings();
+        }
+
+        // Generate vector embedding for the text content
+        let vector: number[] = [];
+        try {
+            if (!embeddingsModule) {
+                throw new Error('Embeddings module not initialized');
+            }
+            const embeddingResult = await embeddingsModule.embed(uploadContent.text || '');
+            vector = embeddingResult[0]; // embed returns number[][], we need the first array
+            console.log('✅ Vector embedding generated successfully');
+        } catch (error) {
+            console.error('❌ Failed to generate embedding:', error);
+            throw new Error('Failed to generate text embedding');
+        }
 
         //create payload
         const payload = {
@@ -76,13 +178,15 @@ class QdrantUpload {
             contentTitle: uploadContent.divisionTitle,
             subcontentTitle: uploadContent.itemTitle,
             chunkNumber: uploadContent.chunkNumber,
+            text: uploadContent.text, // Include the actual text content
         };
 
-        //collection name : follows courseName
-        const collectionName = uploadContent.courseName;
+        // Use the global collection name instead of course-specific collections
+        // This allows for better cross-course similarity search
+        const targetCollectionName = collectionName;
 
         // Upload to Qdrant using upsert (points.insert)
-        const result = await this.qdrantClient.upsert(collectionName, {
+        const result = await this.qdrantClient.upsert(targetCollectionName, {
             points: [
                 {
                     id: payload.id,
@@ -106,10 +210,11 @@ class QdrantUpload {
         id?: string,
     ) : Promise<any> {
         let result: any;
+        const targetCollectionName = collectionName;
 
         //search chunk by id
         if (id) {
-            result = await this.qdrantClient.scroll(courseName, {
+            result = await this.qdrantClient.scroll(targetCollectionName, {
                 filter: {
                     courseName: courseName,
                     id: id,
@@ -120,14 +225,14 @@ class QdrantUpload {
 
         //get all documents from qdrant
         if (!contentTitle) {
-            result = await this.qdrantClient.scroll(courseName, {
+            result = await this.qdrantClient.scroll(targetCollectionName, {
                 filter: {
                     courseName: courseName,
                 }
             });
         }
         else if (!subcontentTitle) {
-            result = await this.qdrantClient.scroll(courseName, {
+            result = await this.qdrantClient.scroll(targetCollectionName, {
                 filter: {
                     courseName: courseName,
                     contentTitle: contentTitle,
@@ -135,7 +240,7 @@ class QdrantUpload {
             });
         }
         else if (!chunkNumber) {
-            result = await this.qdrantClient.scroll(courseName, {
+            result = await this.qdrantClient.scroll(targetCollectionName, {
                 filter: {
                     courseName: courseName,
                     contentTitle: contentTitle,
@@ -144,7 +249,7 @@ class QdrantUpload {
             });
         }
         else {
-            result = await this.qdrantClient.scroll(courseName, {
+            result = await this.qdrantClient.scroll(targetCollectionName, {
                 filter: {
                     courseName: courseName,
                     contentTitle: contentTitle,
@@ -154,6 +259,51 @@ class QdrantUpload {
             });
         }
         //if subcontentTitle is not provided, return all documents
+        return result;
+    }
+
+    /**
+     * Search for similar documents using vector similarity
+     */
+    async searchSimilarDocuments(
+        queryText: string,
+        courseName?: string,
+        limit: number = 10,
+        scoreThreshold: number = 0.7
+    ): Promise<any> {
+        // Ensure embeddings module is initialized
+        if (!embeddingsModule) {
+            await setupEmbeddings();
+        }
+
+        // Generate vector embedding for the query
+        let queryVector: number[] = [];
+        try {
+            if (!embeddingsModule) {
+                throw new Error('Embeddings module not initialized');
+            }
+            const embeddingResult = await embeddingsModule.embed(queryText);
+            queryVector = embeddingResult[0]; // embed returns number[][], we need the first array
+            console.log('✅ Query vector embedding generated successfully');
+        } catch (error) {
+            console.error('❌ Failed to generate query embedding:', error);
+            throw new Error('Failed to generate query embedding');
+        }
+
+        // Build filter for course-specific search if needed
+        const filter: any = {};
+        if (courseName) {
+            filter.courseName = courseName;
+        }
+
+        // Search for similar vectors
+        const result = await this.qdrantClient.search(collectionName, {
+            vector: queryVector,
+            filter: Object.keys(filter).length > 0 ? filter : undefined,
+            limit: limit,
+            score_threshold: scoreThreshold,
+        });
+
         return result;
     }
 
@@ -207,10 +357,15 @@ const validateDocument = (req: Request, res: Response, next: Function) => {
 const qdrantUpload = new QdrantUpload(qdrantClient);
 
 // POST /api/qdrant/documents - Upload a document
-router.post('/documents/:courseName/:contentTitle/:subContentTitle', validateDocument, asyncHandler(async (req: Request, res: Response) => {
+router.post('/documents/', validateDocument, asyncHandler(async (req: Request, res: Response) => {
+    const uploadContent: AdditionalMaterial = req.body;
     try {
-        const result = await qdrantUpload.uploadTextToQdrant(req.body.text, req.body.vector);
-        res.status(200).json(result);
+        const result = await qdrantUpload.uploadTextToQdrant(uploadContent);
+        res.status(200).json({
+            status: 200,
+            message: 'Document uploaded successfully',
+            data: result
+        });
     } catch (error) {
         throw {
             status: 500,
@@ -244,15 +399,57 @@ router.get('/documents/:courseName/:contentTitle/:subContentTitle/:chunkNumber',
     res.status(200).json(result);
 }));
 
+// POST /api/qdrant/search - Search for similar documents using vector similarity
+router.post('/search', asyncHandler(async (req: Request, res: Response) => {
+    const { query, courseName, limit, scoreThreshold } = req.body;
+    
+    if (!query || typeof query !== 'string') {
+        return res.status(400).json({
+            status: 400,
+            message: 'Query text is required and must be a string'
+        });
+    }
 
+    try {
+        const result = await qdrantUpload.searchSimilarDocuments(
+            query,
+            courseName,
+            limit || 10,
+            scoreThreshold || 0.7
+        );
+        
+        res.status(200).json({
+            status: 200,
+            message: 'Search completed successfully',
+            data: result
+        });
+    } catch (error) {
+        throw {
+            status: 500,
+            message: 'Failed to search documents',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}));
 
-
-
-
-
-
-
-
+// POST /api/qdrant/setup - Initialize embeddings and Qdrant collection
+router.post('/setup', asyncHandler(async (req: Request, res: Response) => {
+    try {
+        await setupEmbeddings();
+        await setupQdrant();
+        
+        res.status(200).json({
+            status: 200,
+            message: 'Qdrant and embeddings setup completed successfully'
+        });
+    } catch (error) {
+        throw {
+            status: 500,
+            message: 'Failed to setup Qdrant and embeddings',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}));
 
 export default router;
 
