@@ -232,7 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // //make a get request for course
     getCourse('CHBE241').then((data: activeCourse) => {
-        console.log("data: ", data);
+        console.log("data: ", JSON.stringify(data));
         currentClass = data;
         document.body.classList.remove('onboarding-active');
         updateUI();

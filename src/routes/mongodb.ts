@@ -194,6 +194,107 @@ export class EngEAI_MongoDB {
         return result;
     }
 
+    /**
+     * Add a learning objective to a specific course item
+     * @param courseId - the course ID
+     * @param divisionId - the division ID
+     * @param contentId - the content item ID
+     * @param learningObjective - the learning objective to add
+     * @returns Promise<any> - the updated course document
+     */
+    public addLearningObjective = async (courseId: string, divisionId: string, contentId: string, learningObjective: any) => {
+        const result = await this.getCourseCollection().findOneAndUpdate(
+            { 
+                id: courseId,
+                'divisions.id': divisionId,
+                'divisions.items.id': contentId
+            },
+            { 
+                $push: { 
+                    'divisions.$[division].items.$[item].learningObjectives': learningObjective
+                },
+                $set: { updatedAt: new Date() }
+            },
+            { 
+                arrayFilters: [
+                    { 'division.id': divisionId },
+                    { 'item.id': contentId }
+                ],
+                returnDocument: 'after' 
+            }
+        );
+        return result;
+    }
+
+    /**
+     * Update a learning objective in a specific course item
+     * @param courseId - the course ID
+     * @param divisionId - the division ID
+     * @param contentId - the content item ID
+     * @param objectiveId - the learning objective ID
+     * @param updateData - the data to update
+     * @returns Promise<any> - the updated course document
+     */
+    public updateLearningObjective = async (courseId: string, divisionId: string, contentId: string, objectiveId: string, updateData: any) => {
+        const result = await this.getCourseCollection().findOneAndUpdate(
+            { 
+                id: courseId,
+                'divisions.id': divisionId,
+                'divisions.items.id': contentId,
+                'divisions.items.learningObjectives.id': objectiveId
+            },
+            { 
+                $set: { 
+                    'divisions.$[division].items.$[item].learningObjectives.$[objective].subcontentTitle': updateData.subcontentTitle,
+                    'divisions.$[division].items.$[item].learningObjectives.$[objective].content': updateData.content,
+                    'divisions.$[division].items.$[item].learningObjectives.$[objective].updatedAt': new Date(),
+                    updatedAt: new Date()
+                }
+            },
+            { 
+                arrayFilters: [
+                    { 'division.id': divisionId },
+                    { 'item.id': contentId },
+                    { 'objective.id': objectiveId }
+                ],
+                returnDocument: 'after' 
+            }
+        );
+        return result;
+    }
+
+    /**
+     * Delete a learning objective from a specific course item
+     * @param courseId - the course ID
+     * @param divisionId - the division ID
+     * @param contentId - the content item ID
+     * @param objectiveId - the learning objective ID
+     * @returns Promise<any> - the updated course document
+     */
+    public deleteLearningObjective = async (courseId: string, divisionId: string, contentId: string, objectiveId: string) => {
+        const result = await this.getCourseCollection().findOneAndUpdate(
+            { 
+                id: courseId,
+                'divisions.id': divisionId,
+                'divisions.items.id': contentId
+            },
+            { 
+                $pull: { 
+                    'divisions.$[division].items.$[item].learningObjectives': { id: objectiveId }
+                } as any,
+                $set: { updatedAt: new Date() }
+            },
+            { 
+                arrayFilters: [
+                    { 'division.id': divisionId },
+                    { 'item.id': contentId }
+                ],
+                returnDocument: 'after' 
+            }
+        );
+        return result;
+    }
+
 }
 
 /**
@@ -631,6 +732,94 @@ router.delete('/courses/:id', asyncHandler(async (req: Request, res: Response) =
         message: 'Course deleted successfully'
     });
 }));
+
+// POST /api/mongodb/learning-objectives - Add a learning objective
+router.post('/learning-objectives', asyncHandler(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, divisionId, contentId, learningObjective } = req.body;
+        
+        if (!courseId || !divisionId || !contentId || !learningObjective) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: courseId, divisionId, contentId, learningObjective'
+            });
+        }
+        
+        const result = await instance.addLearningObjective(courseId, divisionId, contentId, learningObjective);
+        
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'Learning objective added successfully'
+        });
+    } catch (error) {
+        console.error('Error adding learning objective:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to add learning objective'
+        });
+    }
+}));
+
+// PUT /api/mongodb/learning-objectives - Update a learning objective
+router.put('/learning-objectives', asyncHandler(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, divisionId, contentId, objectiveId, updateData } = req.body;
+        
+        if (!courseId || !divisionId || !contentId || !objectiveId || !updateData) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: courseId, divisionId, contentId, objectiveId, updateData'
+            });
+        }
+        
+        const result = await instance.updateLearningObjective(courseId, divisionId, contentId, objectiveId, updateData);
+        
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'Learning objective updated successfully'
+        });
+    } catch (error) {
+        console.error('Error updating learning objective:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update learning objective'
+        });
+    }
+}));
+
+// DELETE /api/mongodb/learning-objectives - Delete a learning objective
+router.delete('/learning-objectives', asyncHandler(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, divisionId, contentId, objectiveId } = req.body;
+        
+        if (!courseId || !divisionId || !contentId || !objectiveId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: courseId, divisionId, contentId, objectiveId'
+            });
+        }
+        
+        const result = await instance.deleteLearningObjective(courseId, divisionId, contentId, objectiveId);
+        
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'Learning objective deleted successfully'
+        });
+    } catch (error) {
+        console.error('Error deleting learning objective:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to delete learning objective'
+        });
+    }
+}));
+
 
 // Health check endpoint
 router.get('/health', asyncHandler(async (req: Request, res: Response) => {

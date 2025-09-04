@@ -360,7 +360,7 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
      * @param contentId the id of the content item
      * @returns null
      */
-    function addObjective(divisionId: string, contentId: string) {
+    async function addObjective(divisionId: string, contentId: string) {
         const titleInput = document.getElementById(`new-title-${divisionId}-${contentId}`) as HTMLInputElement | null;
         const descriptionInput = document.getElementById(`new-description-${divisionId}-${contentId}`) as HTMLTextAreaElement | null;
         if (!titleInput || !descriptionInput) return;
@@ -376,22 +376,49 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
         // find the division and the content item
         const division = courseData.find(d => d.id === divisionId);
         const content = division?.items.find(c => c.id === contentId);
-        if (content) {
-            const newObjective = {
-                id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // change later once the database is setup
-                content: description,
-                courseName: currentClass.courseName,
-                divisionTitle: division?.title || '',
-                itemTitle: content.title,
-                subcontentTitle: title,
-                createdAt: new Date(),
-                updatedAt: new Date()
-            };
-            content.learningObjectives.push(newObjective);
-            titleInput.value = '';
-            descriptionInput.value = '';
-            // Re-render only the affected content item for efficiency
-            refreshContentItem(divisionId, contentId);
+        if (!content || !currentClass) return;
+
+        const newObjective = {
+            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            content: description,
+            courseName: currentClass.courseName,
+            divisionTitle: division?.title || '',
+            itemTitle: content.title,
+            subcontentTitle: title,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
+
+        try {
+            // Call backend API to add learning objective
+            const response = await fetch('/api/mongodb/learning-objectives', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    courseId: currentClass.id,
+                    divisionId: divisionId,
+                    contentId: contentId,
+                    learningObjective: newObjective
+                })
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                // Add to local data
+                content.learningObjectives.push(newObjective);
+                titleInput.value = '';
+                descriptionInput.value = '';
+                // Re-render only the affected content item for efficiency
+                refreshContentItem(divisionId, contentId);
+            } else {
+                alert('Failed to add learning objective: ' + result.error);
+            }
+        } catch (error) {
+            console.error('Error adding learning objective:', error);
+            alert('An error occurred while adding the learning objective. Please try again.');
         }
     }
 
@@ -463,7 +490,7 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
      * @param index the index of the objective item
      * @returns null
      */
-    function saveObjective(divisionId: string, contentId: string, index: number) {
+    async function saveObjective(divisionId: string, contentId: string, index: number) {
         const title = (document.getElementById(`edit-title-${divisionId}-${contentId}-${index}`) as HTMLInputElement).value.trim();
         const description = (document.getElementById(`edit-desc-${divisionId}-${contentId}-${index}`) as HTMLTextAreaElement).value.trim();
 
@@ -471,13 +498,47 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
             alert('Title and description cannot be empty.');
             return;
         }
+
         const objective = courseData.find(d => d.id === divisionId)
                                     ?.items.find(c => c.id === contentId)
                                     ?.learningObjectives[index];
-        if (objective) {
-            objective.subcontentTitle = title;
-            objective.content = description;
-            refreshContentItem(divisionId, contentId);
+        if (!objective || !currentClass) return;
+
+        const updateData = {
+            subcontentTitle: title,
+            content: description
+        };
+
+        try {
+            // Call backend API to update learning objective
+            const response = await fetch('/api/mongodb/learning-objectives', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    courseId: currentClass.id,
+                    divisionId: divisionId,
+                    contentId: contentId,
+                    objectiveId: objective.id,
+                    updateData: updateData
+                })
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                // Update local data
+                objective.subcontentTitle = title;
+                objective.content = description;
+                objective.updatedAt = new Date();
+                refreshContentItem(divisionId, contentId);
+            } else {
+                alert('Failed to update learning objective: ' + result.error);
+            }
+        } catch (error) {
+            console.error('Error updating learning objective:', error);
+            alert('An error occurred while updating the learning objective. Please try again.');
         }
     }
 
@@ -492,13 +553,41 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
         refreshContentItem(divisionId, contentId);
     }
 
-    function deleteObjective(divisionId: string, contentId: string, index: number) {
+    async function deleteObjective(divisionId: string, contentId: string, index: number) {
         if (confirm('Are you sure you want to delete this objective?')) {
             const content = courseData.find(d => d.id === divisionId)
                                         ?.items.find(c => c.id === contentId);
-            if (content) {
-                content.learningObjectives.splice(index, 1);
-                refreshContentItem(divisionId, contentId);
+            const objective = content?.learningObjectives[index];
+            
+            if (!content || !objective || !currentClass) return;
+
+            try {
+                // Call backend API to delete learning objective
+                const response = await fetch('/api/mongodb/learning-objectives', {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        courseId: currentClass.id,
+                        divisionId: divisionId,
+                        contentId: contentId,
+                        objectiveId: objective.id
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Remove from local data
+                    content.learningObjectives.splice(index, 1);
+                    refreshContentItem(divisionId, contentId);
+                } else {
+                    alert('Failed to delete learning objective: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error deleting learning objective:', error);
+                alert('An error occurred while deleting the learning objective. Please try again.');
             }
         }
     }
@@ -636,13 +725,9 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
         uploadWrap.className = 'document-upload';
         const uploadArea = document.createElement('div');
         uploadArea.className = 'upload-area';
-        const uploadIcon = document.createElement('div');
-        uploadIcon.className = 'upload-icon';
-        uploadIcon.textContent = '📁';
         const uploadText = document.createElement('div');
         uploadText.className = 'upload-text';
-        uploadText.textContent = 'Upload your document here';
-        uploadArea.appendChild(uploadIcon);
+        uploadText.textContent = ' + Upload your document here';
         uploadArea.appendChild(uploadText);
         uploadWrap.appendChild(uploadArea);
 
