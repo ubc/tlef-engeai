@@ -301,6 +301,7 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
                 const divisionId = ids[2] || '0';
                 const contentId = ids[3] || '0';
                 if (!divisionId || !contentId) return;
+                console.log('Upload area clicked!', divisionId, contentId);
                 openUploadModal(divisionId, contentId);
                     return;
             }
@@ -858,6 +859,8 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
      * @returns null
      */
     function openUploadModal(divisionId: string, contentId: string) {
+
+        console.log('Open upload modal called for divisionId: ', divisionId, ' and contentId: ', contentId);
         // get the mount point for the modal
         const mount = document.getElementById('upload-modal-mount');
         if (!mount) return;
