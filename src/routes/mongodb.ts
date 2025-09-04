@@ -149,7 +149,26 @@ export class EngEAI_MongoDB {
      * @returns Promise<any> - the course document or null if not found
      */
     public getCourseByName = async (name: string) => {
-        return await this.getCourseCollection().findOne({ name: name });
+
+        if (name === 'CHBE241') {
+            return await this.getCourseCollection().findOne({ courseName: 'CHBE 241' });
+        }
+        else {
+            
+            // Try exact match first
+            let course = await this.getCourseCollection().findOne({ courseName: name });
+            
+            // If no exact match, try case-insensitive search
+            if (!course) {
+                course = await this.getCourseCollection().findOne({ 
+                    courseName: { $regex: new RegExp(`^${name.replace(/\s+/g, '\\s*')}$`, 'i') }
+                });
+            }
+            
+        
+            
+            return course;
+        }
     }
 
     /**
@@ -345,9 +364,6 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
 router.post('/courses', validateNewCourse, asyncHandler(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-
-        //print the body
-        console.log("body: ", req.body);
 
         //creating id - ensure date is a Date object for ID generation
         const tempActiveClass = {
@@ -551,7 +567,11 @@ router.get('/courses/:id', asyncHandler(async (req: Request, res: Response) => {
 // GET /api/mongodb/courses/name/:name - Get course by name
 router.get('/courses/name/:name', asyncHandler(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
+
+    console.log("req.params.name: ", req.params.name, "YUHU");
     const course = await instance.getCourseByName(req.params.name);
+
+    console.log("course: ", course); // this is not printed
     
     if (!course) {
         return res.status(404).json({

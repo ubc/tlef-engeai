@@ -1,225 +1,40 @@
 {
-    "id": "3453053",
-    "date": "2025-01-15T08:00:00.000Z",
-    "onBoarded": false,
-    "name": "CHBE 241",
+    "id": "16a6990f961d",
+    "date": "2025-09-04T05:20:24.516+00:00",
+    "onBoarded": true,
+    "courseName": "CHBE 241",
     "instructors": [
-      "Killian Azhar",
-      "Thamuz"
+      "Dr. Jane Smith"
     ],
     "teachingAssistants": [
-      "Charisma"
+      "Henry Anderson"
     ],
     "frameType": "byTopic",
-    "tilesNumber": 13,
-    "content": [
+    "tilesNumber": 1,
+    "divisions": [
       {
-        "id": "1756157775976",
-        "date": "2025-01-15T08:00:00.000Z",
+        "id": "40f2da9e01e4",
+        "date": "2025-09-04T05:20:24.516+00:00",
         "title": "Topic 1",
+        "courseName": null,
         "published": false,
-        "content": [
+        "items": [
           {
-            "id": "1756157775976",
-            "date": "2025-01-15T08:00:00.000Z",
+            "id": "65c61fc5aded",
+            "date": "2025-09-04T05:20:24.516+00:00",
             "title": "Topic 1",
+            "courseName": null,
+            "divisionTitle": "Topic 1",
+            "itemTitle": "Topic 1",
             "completed": false,
             "learningObjectives": [],
-            "additionalMaterials": []
+            "additionalMaterials": [],
+            "createdAt": "2025-09-04T05:20:24.567+00:00",
+            "updatedAt": "2025-09-04T05:20:24.567+00:00"
           }
-        ]
-      },
-      {
-        "id": "1756157775977",
-        "date": "2025-01-15T08:00:00.000Z",
-        "title": "Topic 2",
-        "published": false,
-        "content": [
-          {
-            "id": "1756157775977",
-            "date": "2025-01-15T08:00:00.000Z",
-            "title": "Topic 2",
-            "completed": false,
-            "learningObjectives": [],
-            "additionalMaterials": []
-          }
-        ]
-      },
-      {
-        "id": "1756157775978",
-        "date": "2025-01-15T08:00:00.000Z",
-        "title": "Topic 3",
-        "published": false,
-        "content": [
-          {
-            "id": "1756157775978",
-            "date": "2025-01-15T08:00:00.000Z",
-            "title": "Topic 3",
-            "completed": false,
-            "learningObjectives": [],
-            "additionalMaterials": []
-          }
-        ]
-      },
-      {
-        "id": "1756157775979",
-        "date": "2025-01-15T08:00:00.000Z",
-        "title": "Topic 4",
-        "published": false,
-        "content": [
-          {
-            "id": "1756157775979",
-            "date": "2025-01-15T08:00:00.000Z",
-            "title": "Topic 4",
-            "completed": false,
-            "learningObjectives": [],
-            "additionalMaterials": []
-          }
-        ]
-      },
-      {
-        "id": "1756157775980",
-        "date": "2025-01-15T08:00:00.000Z",
-        "title": "Topic 5",
-        "published": false,
-        "content": [
-          {
-            "id": "1756157775980",
-            "date": "2025-01-15T08:00:00.000Z",
-            "title": "Topic 5",
-            "completed": false,
-            "learningObjectives": [],
-            "additionalMaterials": []
-          }
-        ]
-      },
-      {
-        "id": "1756157775981",
-        "date": "2025-01-15T08:00:00.000Z",
-        "title": "Topic 6",
-        "published": false,
-        "content": [
-          {
-            "id": "1756157775981",
-            "date": "2025-01-15T08:00:00.000Z",
-            "title": "Topic 6",
-            "completed": false,
-            "learningObjectives": [],
-            "additionalMaterials": []
-          }
-        ]
-      },
-      {
-        "id": "1756157775982",
-        "date": "2025-01-15T08:00:00.000Z",
-        "title": "Topic 7",
-        "published": false,
-        "content": [
-          {
-            "id": "1756157775982",
-            "date": "2025-01-15T08:00:00.000Z",
-            "title": "Topic 7",
-            "completed": false,
-            "learningObjectives": [],
-            "additionalMaterials": []
-          }
-        ]
-      },
-      {
-        "id": "1756157775983",
-        "date": "2025-01-15T08:00:00.000Z",
-        "title": "Topic 8",
-        "published": false,
-        "content": [
-          {
-            "id": "1756157775983",
-            "date": "2025-01-15T08:00:00.000Z",
-            "title": "Topic 8",
-            "completed": false,
-            "learningObjectives": [],
-            "additionalMaterials": []
-          }
-        ]
-      },
-      {
-        "id": "1756157775984",
-        "date": "2025-01-15T08:00:00.000Z",
-        "title": "Topic 9",
-        "published": false,
-        "content": [
-          {
-            "id": "1756157775984",
-            "date": "2025-01-15T08:00:00.000Z",
-            "title": "Topic 9",
-            "completed": false,
-            "learningObjectives": [],
-            "additionalMaterials": []
-          }
-        ]
-      },
-      {
-        "id": "1756157775985",
-        "date": "2025-01-15T08:00:00.000Z",
-        "title": "Topic 10",
-        "published": false,
-        "content": [
-          {
-            "id": "1756157775985",
-            "date": "2025-01-15T08:00:00.000Z",
-            "title": "Topic 10",
-            "completed": false,
-            "learningObjectives": [],
-            "additionalMaterials": []
-          }
-        ]
-      },
-      {
-        "id": "1756157775986",
-        "date": "2025-01-15T08:00:00.000Z",
-        "title": "Topic 11",
-        "published": false,
-        "content": [
-          {
-            "id": "1756157775986",
-            "date": "2025-01-15T08:00:00.000Z",
-            "title": "Topic 11",
-            "completed": false,
-            "learningObjectives": [],
-            "additionalMaterials": []
-          }
-        ]
-      },
-      {
-        "id": "1756157775987",
-        "date": "2025-01-15T08:00:00.000Z",
-        "title": "Topic 12",
-        "published": false,
-        "content": [
-          {
-            "id": "1756157775987",
-            "date": "2025-01-15T08:00:00.000Z",
-            "title": "Topic 12",
-            "completed": false,
-            "learningObjectives": [],
-            "additionalMaterials": []
-          }
-        ]
-      },
-      {
-        "id": "1756157775988",
-        "date": "2025-01-15T08:00:00.000Z",
-        "title": "Topic 13",
-        "published": false,
-        "content": [
-          {
-            "id": "1756157775988",
-            "date": "2025-01-15T08:00:00.000Z",
-            "title": "Topic 13",
-            "completed": false,
-            "learningObjectives": [],
-            "additionalMaterials": []
-          }
-        ]
+        ],
+        "createdAt": "2025-09-04T05:20:24.567+00:00",
+        "updatedAt": "2025-09-04T05:20:24.567+00:00"
       }
     ]
 }

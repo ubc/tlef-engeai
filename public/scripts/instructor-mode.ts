@@ -22,7 +22,7 @@ let currentClass : activeCourse =
     teachingAssistants: [
     ],
     frameType: 'byTopic',
-    tilesNumber: 52,
+    tilesNumber: 12,
     divisions: [
     ]
 }
@@ -227,18 +227,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Attempt to load CHBE220 class data from JSON and assign to state
     console.log("Attempting to load class data");
-    // fetch('/data/MTRL251.json')
+
+
+
+    // //make a get request for course
+    getCourse('CHBE241').then((data: activeCourse) => {
+        console.log("data: ", data);
+        currentClass = data;
+        document.body.classList.remove('onboarding-active');
+        updateUI();
+    }).catch(() => {
+        console.log("Error loading class data");
+        updateUI();
+    });
+
+
+    // fetch('/api/mongodb/courses/CHBE241')
     //     .then(r => r.json())
-    //     .then((data: activeClass) => {
+    //     .then((data: activeCourse) => {
     //         currentClass = data;
-    //         // console.log("currentClass is : ", JSON.stringify(currentClass));
     //         updateUI();
     //     })
     //     .catch(() => {
-    //         // Fallback to default currentClass defined above
     //         console.log("Error loading class data");
     //         updateUI();
     //     });
+
+    // make fucntio that makes a get request given a coursename
+    async function getCourse (courseName: string){
+        const response = await fetch(`/api/mongodb/courses/name/${courseName}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.error || 'Failed to fetch course');
+        }
+        
+        return result.data; // Return only the course data, not the wrapper object
+    }
+
+
     
     
     

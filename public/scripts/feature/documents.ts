@@ -904,12 +904,12 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
         let selectedFile: File | null = null;
         uploadFileBtn.addEventListener('click', () => hiddenInput.click());
         // Make entire upload card act as the trigger
-        uploadCard.addEventListener('click', (e) => {
-            // Avoid double-trigger from inner button
-            if ((e.target as HTMLElement).id !== 'hidden-file-input') {
-                hiddenInput.click();
-            }
-        });
+        // uploadCard.addEventListener('click', (e) => {
+        //     // Avoid double-trigger from inner button
+        //     if ((e.target as HTMLElement).id !== 'hidden-file-input') {
+        //         hiddenInput.click();
+        //     }
+        // });
         hiddenInput.addEventListener('change', () => {
             const f = hiddenInput.files && hiddenInput.files[0] ? hiddenInput.files[0] : null;
             selectedFile = f;
@@ -1121,7 +1121,7 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
         // create the title label for the add objective form
         const titleLabel = document.createElement('div');
         titleLabel.className = 'input-label';
-        titleLabel.textContent = 'Objective Title:';
+        titleLabel.textContent = 'Learning Objective Title:';
 
         // create the title input for the add objective form
         const titleInput = document.createElement('input');
@@ -1133,7 +1133,7 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
         // create the description label for the add objective form
         const descLabel = document.createElement('div');
         descLabel.className = 'input-label';
-        descLabel.textContent = 'Objective Description:';
+        descLabel.textContent = 'Learning Objective Description:';
 
         // create the description input for the add objective form
         const descInput = document.createElement('textarea');
