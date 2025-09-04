@@ -239,6 +239,47 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
                 return;
             }
 
+            // Handle actions on buttons FIRST (before header clicks)
+            const button = target.closest('button') as HTMLButtonElement | null;
+            if (button) {
+                const action = button.dataset.action;
+                if (action) {
+                    const objectiveItem = button.closest('.objective-item');
+                    const headerElement = objectiveItem?.querySelector('.objective-header') as HTMLElement | null;
+                    const divisionId = button.dataset.week || headerElement?.dataset.division || '0';
+                    const contentId = button.dataset.content || headerElement?.dataset.content || '0';
+                    const objectiveIndex = parseInt(headerElement?.dataset.objective || '-1', 10);
+
+                    switch (action) {
+                        case 'add':
+                            addObjective(divisionId, contentId);
+                            return; // Prevent further event handling
+                        case 'edit':
+                            event.stopPropagation();
+                            editObjective(divisionId, contentId, objectiveIndex);
+                            return; // Prevent further event handling
+                        case 'delete':
+                            event.stopPropagation();
+                            deleteObjective(divisionId, contentId, objectiveIndex);
+                            return; // Prevent further event handling
+                        case 'save':
+                            event.stopPropagation();
+                            saveObjective(divisionId, contentId, objectiveIndex);
+                            return; // Prevent further event handling
+                        case 'cancel':
+                            event.stopPropagation();
+                            cancelEdit(divisionId, contentId);
+                            return; // Prevent further event handling
+                        case 'delete-material':
+                            event.stopPropagation();
+                            //print the divisionId, contentId, and materialId
+                            console.log('DEBUG #13: divisionId : ', divisionId, ' ; contentId : ', contentId, ' ; materialId : ', button.dataset.materialId);
+                            deleteAdditionalMaterial(divisionId, contentId, button.dataset.materialId || '');
+                            return; // Prevent further event handling
+                    }
+                }
+            }
+
             // Individual objective item toggles
             const objectiveHeader = target.closest('.objective-header') as HTMLElement | null;
             if (objectiveHeader) {
@@ -261,47 +302,6 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
                 if (!divisionId || !contentId) return;
                 openUploadModal(divisionId, contentId);
                     return;
-            }
-            
-            // Handle actions on buttons
-            const button = target.closest('button') as HTMLButtonElement | null;
-            if (!button) return;
-
-            const action = button.dataset.action;
-            if (!action) return;
-            
-            const objectiveItem = button.closest('.objective-item');
-            const headerElement = objectiveItem?.querySelector('.objective-header') as HTMLElement | null;
-            const divisionId = button.dataset.week || headerElement?.dataset.division || '0';
-            const contentId = button.dataset.content || headerElement?.dataset.content || '0';
-            const objectiveIndex = parseInt(headerElement?.dataset.objective || '-1', 10);
-
-            switch (action) {
-                case 'add':
-                    addObjective(divisionId, contentId);
-                    break;
-                case 'edit':
-                    event.stopPropagation();
-                    editObjective(divisionId, contentId, objectiveIndex);
-                    break;
-                case 'delete':
-                    event.stopPropagation();
-                    deleteObjective(divisionId, contentId, objectiveIndex);
-                    break;
-                case 'save':
-                    event.stopPropagation();
-                    saveObjective(divisionId, contentId, objectiveIndex);
-                    break;
-                case 'cancel':
-                    event.stopPropagation();
-                    cancelEdit(divisionId, contentId);
-                    break;
-                case 'delete-material':
-                    event.stopPropagation();
-                    //print the divisionId, contentId, and materialId
-                    console.log('DEBUG #13: divisionId : ', divisionId, ' ; contentId : ', contentId, ' ; materialId : ', button.dataset.materialId);
-                    deleteAdditionalMaterial(divisionId, contentId, button.dataset.materialId || '');
-                    break;
             }
         });
     }
