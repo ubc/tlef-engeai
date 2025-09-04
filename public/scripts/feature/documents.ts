@@ -515,11 +515,26 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
         const content = division?.items.find(c => c.id === contentId);
         const itemContainer = document.getElementById(`content-item-${divisionId}-${contentId}`);
         if (!division || !content || !itemContainer) return;
+        
+        // Preserve accordion state before rebuilding
+        const objectivesContent = document.getElementById(`objectives-${divisionId}-${contentId}`);
+        const wasExpanded = objectivesContent?.classList.contains('expanded') || false;
+        
         // Rebuild via DOM and replace
         const built = buildContentItemDOM(divisionId, content);
         const parent = itemContainer.parentElement;
         if (!parent) return;
         parent.replaceChild(built, itemContainer);
+        
+        // Restore accordion state after rebuilding
+        if (wasExpanded) {
+            const newObjectivesContent = document.getElementById(`objectives-${divisionId}-${contentId}`);
+            const newIcon = document.getElementById(`obj-icon-${divisionId}-${contentId}`);
+            if (newObjectivesContent && newIcon) {
+                newObjectivesContent.classList.add('expanded');
+                newIcon.style.transform = 'rotate(180deg)';
+            }
+        }
     }
 
     /**
