@@ -26,6 +26,7 @@
  * 
  */
 
+import dotenv from 'dotenv';
 import express from 'express';
 import { Router, Request, Response } from 'express';
 import fetch from 'node-fetch';
@@ -36,6 +37,9 @@ import { ChunkingModule, ChunkingConfig } from 'ubc-genai-toolkit-chunking';
 import { EmbeddingsModule, EmbeddingsConfig, EmbeddingProviderType } from 'ubc-genai-toolkit-embeddings';
 import { ConsoleLogger } from 'ubc-genai-toolkit-core';
 import { LLMConfig, ProviderType } from 'ubc-genai-toolkit-llm';
+
+// Load environment variables
+dotenv.config();
 
 const router: Router = express.Router();
 
@@ -60,6 +64,11 @@ let defaultOption = { // data type : partial<chunkingConfig>
 };
 
 let corpusModule = new ChunkingModule(defaultOption as Partial<ChunkingConfig>);
+
+// Debug environment variables
+console.log('🔍 Qdrant Config Debug:');
+console.log('  QDRANT_URL:', process.env.QDRANT_URL);
+console.log('  QDRANT_API_KEY:', process.env.QDRANT_API_KEY ? 'Set' : 'Not set');
 
 const qdrantClient = new QdrantClient({
     url: process.env.QDRANT_URL,
@@ -181,6 +190,35 @@ class QdrantUpload {
             text: uploadContent.text, // Include the actual text content
         };
 
+        // Debug the payload
+        console.log('🔍 Upload Payload Debug:');
+        console.log('  ID:', payload.id, 'Type:', typeof payload.id);
+        console.log('  Text length:', payload.text?.length || 0);
+        console.log('  Vector length:', vector.length);
+
+        // Generate a proper Qdrant ID (integer or UUID)
+        let qdrantId: number | string;
+        if (typeof payload.id === 'number') {
+            qdrantId = payload.id;
+        } else if (typeof payload.id === 'string') {
+            // Try to convert string to number, or generate a hash-based ID
+            const numericId = parseInt(payload.id);
+            if (!isNaN(numericId)) {
+                qdrantId = numericId;
+            } else {
+                // Generate a hash-based integer ID from the string
+                qdrantId = Math.abs(payload.id.split('').reduce((a, b) => {
+                    a = ((a << 5) - a) + b.charCodeAt(0);
+                    return a & a;
+                }, 0));
+            }
+        } else {
+            // Generate a random integer ID
+            qdrantId = Math.floor(Math.random() * 1000000);
+        }
+
+        console.log('  Qdrant ID:', qdrantId, 'Type:', typeof qdrantId);
+
         // Use the global collection name instead of course-specific collections
         // This allows for better cross-course similarity search
         const targetCollectionName = collectionName;
@@ -189,7 +227,7 @@ class QdrantUpload {
         const result = await this.qdrantClient.upsert(targetCollectionName, {
             points: [
                 {
-                    id: payload.id,
+                    id: qdrantId,
                     payload: payload,
                     vector: vector,
                 }
