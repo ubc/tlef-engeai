@@ -116,10 +116,6 @@ export class EngEAI_MongoDB {
             const messagesCollection = `${courseName}_messages`;
             await this.db.createCollection(messagesCollection);
     
-            //create documents collection
-            const learningObjectivesCollection = `${courseName}_learningObjectives`;
-            await this.db.createCollection(learningObjectivesCollection);
-    
             //create flags collection
             const flagsCollection = `${courseName}_flags`;
             await this.db.createCollection(flagsCollection);
@@ -281,16 +277,19 @@ const validateCourse = (req: Request, res: Response, next: Function) => {
 
 // Validation middleware for new course creation (doesn't require ID)
 const validateNewCourse = (req: Request, res: Response, next: Function) => {
-    const course = req.body;
+    const course = req.body as activeCourse;
     
     if (!course) {
+        console.log("🔴 Request body is required");
         return res.status(400).json({
             success: false,
             error: 'Request body is required'
         });
     }
 
-    if (!course.name || typeof course.name !== 'string' || course.name.trim() === '') {
+    if (!course.courseName || typeof course.courseName !== 'string' || course.courseName.trim() === '') {
+        console.log("🔴 Course name is required and must be a non-empty string");
+        console.log("course: ", course);
         return res.status(400).json({
             success: false,
             error: 'Course name is required and must be a non-empty string'
@@ -298,6 +297,7 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
     }
 
     if (!course.frameType || !['byWeek', 'byTopic'].includes(course.frameType)) {
+        console.log("🔴 Frame type is required and must be either \"byWeek\" or \"byTopic\"");
         return res.status(400).json({
             success: false,
             error: 'Frame type is required and must be either "byWeek" or "byTopic"'
@@ -305,6 +305,7 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
     }
 
     if (!course.tilesNumber || typeof course.tilesNumber !== 'number' || course.tilesNumber <= 0) {
+        console.log("🔴 Tiles number is required and must be a positive number");
         return res.status(400).json({
             success: false,
             error: 'Tiles number is required and must be a positive number'
@@ -312,6 +313,7 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
     }
 
     if (!course.instructors || !Array.isArray(course.instructors) || course.instructors.length === 0) {
+        console.log("🔴 Instructors array is required and must contain at least one instructor");
         return res.status(400).json({
             success: false,
             error: 'Instructors array is required and must contain at least one instructor'
@@ -319,6 +321,7 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
     }
 
     if (!course.teachingAssistants || !Array.isArray(course.teachingAssistants)) {
+        console.log("🔴 Teaching assistants array is required");
         return res.status(400).json({
             success: false,
             error: 'Teaching assistants array is required'
@@ -326,6 +329,7 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
     }
 
     if (!course.date) {
+        console.log("🔴 Date is required");
         return res.status(400).json({
             success: false,
             error: 'Date is required'
@@ -425,7 +429,7 @@ router.post('/courses', validateNewCourse, asyncHandler(async (req: Request, res
                     date: new Date(req.body.date),
                     title: `Week ${i + 1}`,
                     courseName: req.body.name,
-                    published: true,
+                    published: false,
                     items: [courseContentLecture1, courseContentLecture2, courseContentLecture3],
                     createdAt: new Date(),
                     updatedAt: new Date(),
@@ -455,7 +459,7 @@ router.post('/courses', validateNewCourse, asyncHandler(async (req: Request, res
                     date: new Date(req.body.date),
                     title: `Topic ${i + 1}`,
                     courseName: req.body.name,
-                    published: true,
+                    published: false,
                     items: [courseContentTopic1],
                     createdAt: new Date(),
                     updatedAt: new Date(),
@@ -469,7 +473,7 @@ router.post('/courses', validateNewCourse, asyncHandler(async (req: Request, res
                     date: new Date(req.body.date),
                     title: `Topic ${i + 1}`,
                     courseName: req.body.name,
-                    published: true,
+                    published: false,
                     items: [courseContentTopic1],
                     createdAt: new Date(),
                     updatedAt: new Date(),
@@ -484,7 +488,7 @@ router.post('/courses', validateNewCourse, asyncHandler(async (req: Request, res
             ...req.body, //spread the properties of the body first
             id: id, // use the generated id
             date: new Date(req.body.date),
-            onBoarded: false, // default to false for new courses
+            onBoarded: true, // default to false for new courses
             instructors: req.body.instructors || [],
             teachingAssistants: req.body.teachingAssistants || [],
             tilesNumber: req.body.tilesNumber || 0
@@ -501,6 +505,7 @@ router.post('/courses', validateNewCourse, asyncHandler(async (req: Request, res
             data: activeClassData,
             message: 'Course created successfully'
         });
+
     } catch (error) {
         if (error instanceof Error && error.message.includes('duplicate')) {
             res.status(409).json({

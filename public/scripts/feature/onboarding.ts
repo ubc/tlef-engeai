@@ -986,12 +986,16 @@ async function handleFinalSubmission(state: OnboardingState, onBoardingCourse: a
  * @returns Promise<activeCourse>
  */
 async function postCourseToDatabase(courseData: activeCourse): Promise<activeCourse> {
+
+        console.log("🎯 Posting course data to database...");
+        console.log("courseData: ", courseData);
+
         const response = await fetch('/api/mongodb/courses', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-        body: JSON.stringify(courseData)
+            body: JSON.stringify(courseData) 
         });
         
         if (!response.ok) {

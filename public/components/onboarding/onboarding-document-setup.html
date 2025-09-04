@@ -1,0 +1,468 @@
+<div class="onboarding">
+    <link rel="stylesheet" href="/styles/instructor-components/onboarding.css">
+    <link rel="stylesheet" href="/styles/modal-overlay.css">
+    
+    <!-- Left Steps Panel -->
+    <div class="onboarding-steps-panel">
+        
+        <div class="steps-header">
+            <div class="logo-box">
+                <i data-feather="box"></i>
+                <div class="logo-text">
+                    <span>EngE-AI</span>
+                    <p>Instructor Mode: Document Setup</p>
+                </div>
+            </div>
+        </div>
+
+        <h2>Learn how to manage your course content</h2>
+        
+        <div class="steps-list">
+            <!-- Step 1: Document Upload Overview -->
+            <div class="step-item" data-step="1">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">1</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Document Upload Overview</h3>
+                    <p>Understanding the content structure</p>
+                </div>
+            </div>
+
+            <!-- Step 2: Learning Objectives -->
+            <div class="step-item" data-step="2">
+                <div class="step-indicator">
+                    <div class="step-circle">
+                        <span class="step-number">2</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Learning Objectives</h3>
+                    <p>How to add and manage objectives</p>
+                </div>
+            </div>
+
+            <!-- Step 3: Additional Materials -->
+            <div class="step-item" data-step="3">
+                <div class="step-indicator">
+                    <div class="step-circle">
+                        <span class="step-number">3</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Additional Materials</h3>
+                    <p>Upload files, text, and URLs</p>
+                </div>
+            </div>
+
+            <!-- Step 4: Complete Setup -->
+            <div class="step-item" data-step="4">
+                <div class="step-indicator">
+                    <div class="step-circle">
+                        <span class="step-number">4</span>
+                    </div>
+                </div>
+                <div class="step-content">
+                    <h3>Complete Setup</h3>
+                    <p>Ready to start managing content</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Content Area -->
+    <div class="onboarding-content">
+        <div class="content-container">
+            
+            <!-- Step 1: Document Upload Overview -->
+            <div class="step-content-panel" id="step-1">
+                <div class="step-header">
+                    <h1>Document Upload Overview</h1>
+                    <p>Understanding your course content structure</p>
+                </div>
+
+                <div class="step-body">
+                    <div class="info-section">
+                        <h3>Course Content Structure</h3>
+                        <p>Your course is organized into content divisions and sessions:</p>
+                        
+                        <div class="structure-diagram">
+                            <div class="structure-item">
+                                <div class="structure-icon">📚</div>
+                                <div class="structure-content">
+                                    <h4>Content Divisions</h4>
+                                    <p>These are your main course sections - either organized by week or by topic</p>
+                                    <ul>
+                                        <li><strong>By Week:</strong> Week 1, Week 2, Week 3...</li>
+                                        <li><strong>By Topic:</strong> Topic 1, Topic 2, Topic 3...</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            
+                            <div class="structure-item">
+                                <div class="structure-icon">🎯</div>
+                                <div class="structure-content">
+                                    <h4>Content Items (Sessions)</h4>
+                                    <p>Each division contains one or more sessions (lectures, tutorials, labs)</p>
+                                    <ul>
+                                        <li>Lecture 1, Lecture 2, Tutorial 1...</li>
+                                        <li>Each session can have learning objectives and materials</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            
+                            <div class="structure-item">
+                                <div class="structure-icon">📋</div>
+                                <div class="structure-content">
+                                    <h4>Learning Objectives</h4>
+                                    <p>Define what students will learn in each session</p>
+                                    <ul>
+                                        <li>Clear, measurable learning goals</li>
+                                        <li>Organized by session</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            
+                            <div class="structure-item">
+                                <div class="structure-icon">📎</div>
+                                <div class="structure-content">
+                                    <h4>Additional Materials</h4>
+                                    <p>Upload supporting content for each session</p>
+                                    <ul>
+                                        <li>Text content (notes, descriptions)</li>
+                                        <li>File uploads (markdown files)</li>
+                                        <li>External URLs</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="info-section">
+                        <h3>Key Features</h3>
+                        <div class="features-grid">
+                            <div class="feature-card">
+                                <div class="feature-icon">➕</div>
+                                <h4>Add Sessions</h4>
+                                <p>Easily add new sessions to any division</p>
+                            </div>
+                            <div class="feature-card">
+                                <div class="feature-icon">📝</div>
+                                <h4>Manage Objectives</h4>
+                                <p>Create, edit, and organize learning objectives</p>
+                            </div>
+                            <div class="feature-card">
+                                <div class="feature-icon">📤</div>
+                                <h4>Upload Materials</h4>
+                                <p>Upload files, text, or URLs for each session</p>
+                            </div>
+                            <div class="feature-card">
+                                <div class="feature-icon">👁️</div>
+                                <h4>Preview & Publish</h4>
+                                <p>Preview content before publishing to students</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: Learning Objectives -->
+            <div class="step-content-panel" id="step-2" style="display: none;">
+                <div class="step-header">
+                    <h1>Learning Objectives</h1>
+                    <p>How to create and manage learning objectives for your sessions</p>
+                </div>
+
+                <div class="step-body">
+                    <div class="tutorial-section">
+                        <h3>What are Learning Objectives?</h3>
+                        <p>Learning objectives are clear, measurable statements that describe what students will be able to do after completing a session. They help guide both teaching and learning.</p>
+                        
+                        <div class="example-box">
+                            <h4>Example Learning Objectives:</h4>
+                            <ul>
+                                <li><strong>Understand:</strong> "Students will understand the principles of thermodynamics"</li>
+                                <li><strong>Apply:</strong> "Students will be able to apply the first law of thermodynamics to solve problems"</li>
+                                <li><strong>Analyze:</strong> "Students will analyze the efficiency of different heat engines"</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="tutorial-section">
+                        <h3>How to Add Learning Objectives</h3>
+                        <div class="tutorial-steps">
+                            <div class="tutorial-step">
+                                <div class="step-number">1</div>
+                                <div class="step-content">
+                                    <h4>Navigate to a Session</h4>
+                                    <p>Click on any division (week/topic) to expand it and see the sessions</p>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">2</div>
+                                <div class="step-content">
+                                    <h4>Find the Learning Objectives Section</h4>
+                                    <p>Each session has a "Learning Objectives" section with a count of current objectives</p>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">3</div>
+                                <div class="step-content">
+                                    <h4>Click to Expand</h4>
+                                    <p>Click on the "Learning Objectives" header to expand the section</p>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">4</div>
+                                <div class="step-content">
+                                    <h4>Add New Objective</h4>
+                                    <p>Fill in the "Objective Title" and "Objective Description" fields, then click "Add Objective"</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tutorial-section">
+                        <h3>Managing Objectives</h3>
+                        <div class="management-features">
+                            <div class="feature-item">
+                                <div class="feature-icon">✏️</div>
+                                <div class="feature-text">
+                                    <h4>Edit Objectives</h4>
+                                    <p>Click the "Edit" button next to any objective to modify its title or description</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <div class="feature-icon">🗑️</div>
+                                <div class="feature-text">
+                                    <h4>Delete Objectives</h4>
+                                    <p>Click the "Delete" button to remove objectives you no longer need</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <div class="feature-icon">👁️</div>
+                                <div class="feature-text">
+                                    <h4>Expand/Collapse</h4>
+                                    <p>Click on individual objectives to expand and view their full descriptions</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tips-section">
+                        <h3>💡 Tips for Writing Good Learning Objectives</h3>
+                        <ul>
+                            <li>Use action verbs (understand, apply, analyze, evaluate, create)</li>
+                            <li>Be specific and measurable</li>
+                            <li>Focus on what students will be able to do, not what you will teach</li>
+                            <li>Keep them concise but clear</li>
+                            <li>Align with your course learning outcomes</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Additional Materials -->
+            <div class="step-content-panel" id="step-3" style="display: none;">
+                <div class="step-header">
+                    <h1>Additional Materials</h1>
+                    <p>How to upload and manage supporting materials for your sessions</p>
+                </div>
+
+                <div class="step-body">
+                    <div class="tutorial-section">
+                        <h3>Types of Additional Materials</h3>
+                        <p>You can add three types of supporting materials to each session:</p>
+                        
+                        <div class="material-types">
+                            <div class="material-type">
+                                <div class="type-icon">📄</div>
+                                <h4>Text Content</h4>
+                                <p>Direct text input for notes, descriptions, or any written content</p>
+                                <div class="type-example">
+                                    <strong>Example:</strong> Lecture notes, reading summaries, problem descriptions
+                                </div>
+                            </div>
+                            
+                            <div class="material-type">
+                                <div class="type-icon">📁</div>
+                                <h4>File Upload</h4>
+                                <p>Upload markdown (.md) files with your content</p>
+                                <div class="type-example">
+                                    <strong>Example:</strong> Detailed lecture notes, lab instructions, assignment descriptions
+                                </div>
+                            </div>
+                            
+                            <div class="material-type">
+                                <div class="type-icon">🔗</div>
+                                <h4>External URLs</h4>
+                                <p>Link to external resources (coming soon)</p>
+                                <div class="type-example">
+                                    <strong>Example:</strong> Online textbooks, video lectures, interactive simulations
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tutorial-section">
+                        <h3>How to Upload Materials</h3>
+                        <div class="tutorial-steps">
+                            <div class="tutorial-step">
+                                <div class="step-number">1</div>
+                                <div class="step-content">
+                                    <h4>Find the Upload Area</h4>
+                                    <p>In each session, look for the "Upload your document here" area with a folder icon</p>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">2</div>
+                                <div class="step-content">
+                                    <h4>Click to Open Modal</h4>
+                                    <p>Click anywhere on the upload area to open the upload modal</p>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">3</div>
+                                <div class="step-content">
+                                    <h4>Fill in Details</h4>
+                                    <p>Enter a title for your material in the "Content Title" field</p>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">4</div>
+                                <div class="step-content">
+                                    <h4>Choose Content Type</h4>
+                                    <p>Either paste text in the text area OR click "Upload Content" to select a file</p>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">5</div>
+                                <div class="step-content">
+                                    <h4>Upload</h4>
+                                    <p>Click the "Upload" button to save your material to the session</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tutorial-section">
+                        <h3>Managing Uploaded Materials</h3>
+                        <div class="management-features">
+                            <div class="feature-item">
+                                <div class="feature-icon">👁️</div>
+                                <div class="feature-text">
+                                    <h4>View Materials</h4>
+                                    <p>All uploaded materials appear below the upload area with their titles and types</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <div class="feature-icon">🗑️</div>
+                                <div class="feature-text">
+                                    <h4>Delete Materials</h4>
+                                    <p>Click the "Delete" button next to any material to remove it from the session</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <div class="feature-icon">✅</div>
+                                <div class="feature-text">
+                                    <h4>Upload Status</h4>
+                                    <p>Materials are automatically processed and uploaded to the AI system for student queries</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tips-section">
+                        <h3>💡 Tips for Effective Materials</h3>
+                        <ul>
+                            <li><strong>Use descriptive titles</strong> that clearly identify the content</li>
+                            <li><strong>Organize by session</strong> - keep materials relevant to specific learning objectives</li>
+                            <li><strong>Use markdown formatting</strong> in files for better readability</li>
+                            <li><strong>Keep content focused</strong> - break large materials into smaller, specific pieces</li>
+                            <li><strong>Test uploads</strong> to ensure they process correctly</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 4: Complete Setup -->
+            <div class="step-content-panel" id="step-4" style="display: none;">
+                <div class="step-header">
+                    <h1>Complete Setup</h1>
+                    <p>You're ready to start managing your course content!</p>
+                </div>
+
+                <div class="step-body">
+                    <div class="completion-section">
+                        <div class="success-icon">🎉</div>
+                        <h3>Congratulations!</h3>
+                        <p>You now understand how to manage your course content effectively. Here's a quick summary of what you can do:</p>
+                        
+                        <div class="summary-grid">
+                            <div class="summary-item">
+                                <div class="summary-icon">📚</div>
+                                <h4>Content Divisions</h4>
+                                <p>Organize your course by weeks or topics</p>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-icon">🎯</div>
+                                <h4>Learning Objectives</h4>
+                                <p>Define clear learning goals for each session</p>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-icon">📎</div>
+                                <h4>Additional Materials</h4>
+                                <p>Upload supporting content and resources</p>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-icon">👁️</div>
+                                <h4>Preview & Publish</h4>
+                                <p>Review content before making it available to students</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="next-steps">
+                        <h3>Next Steps</h3>
+                        <ol>
+                            <li><strong>Start with your first session</strong> - Add learning objectives and materials</li>
+                            <li><strong>Test the upload process</strong> - Try uploading a sample file or text</li>
+                            <li><strong>Organize your content</strong> - Use clear, descriptive titles and structure</li>
+                            <li><strong>Preview before publishing</strong> - Make sure everything looks correct</li>
+                            <li><strong>Publish when ready</strong> - Make content available to students</li>
+                        </ol>
+                    </div>
+
+                    <div class="help-section">
+                        <h3>Need Help?</h3>
+                        <p>If you need assistance at any time:</p>
+                        <ul>
+                            <li>Use the help button (?) in the top-right corner</li>
+                            <li>Refer back to this onboarding guide</li>
+                            <li>Contact support if you encounter technical issues</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Buttons -->
+        <div class="onboarding-navigation">
+            <button class="btn btn-secondary" id="prev-btn" disabled>Previous</button>
+            <button class="btn btn-primary" id="next-btn">Next</button>
+            <button class="btn btn-success" id="complete-btn" style="display: none;">Complete Setup</button>
+        </div>
+    </div>
+</div>
