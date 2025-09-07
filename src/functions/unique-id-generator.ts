@@ -130,7 +130,7 @@ export class IDGenerator {
      * @returns A 12-character hexadecimal string representing the unique learning objective ID
      */
     learningObjectiveID(learningObjective: LearningObjective, subContentTitle: string, contentTitle: string, courseName: string): string {
-        const learningObjectiveTitle = learningObjective.content;
+        const learningObjectiveTitle = learningObjective.LearningObjectiveTitle;
         const learningObjectiveDate = learningObjective.createdAt.toISOString().split('T')[0];
         const hashInput = learningObjectiveTitle + "-" + subContentTitle + "-" + contentTitle + "-" + courseName + "-" + learningObjectiveDate;
 

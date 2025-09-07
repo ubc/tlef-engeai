@@ -684,6 +684,366 @@
     outline: none;
 }
 
+/* ===========================================
+   DOCUMENT SETUP SPECIFIC STYLES
+   =========================================== */
+
+/* Feature list styling */
+.feature-list {
+    list-style: none;
+    padding: 0;
+    margin: 1.5rem 0;
+}
+
+.feature-list li {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #e9ecef;
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+.feature-list li:last-child {
+    border-bottom: none;
+}
+
+/* Demo section styling */
+.demo-section {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    width: 100%;
+}
+
+.demo-explanation {
+    background-color: #f8f9fa;
+    padding: 1.5rem;
+    border-radius: 12px;
+    border-left: 4px solid var(--color-chbe-green);
+}
+
+.demo-explanation h3 {
+    color: #2c3e50;
+    margin: 0 0 1rem 0;
+    font-size: 1.25rem;
+}
+
+.demo-explanation h4 {
+    color: #495057;
+    margin: 1rem 0 0.5rem 0;
+    font-size: 1rem;
+}
+
+.objective-structure,
+.upload-types {
+    margin-top: 1rem;
+}
+
+.structure-item,
+.type-item {
+    padding: 0.5rem 0;
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+
+.demo-interactive {
+    background-color: white;
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 2px solid #e9ecef;
+}
+
+.demo-interactive h3 {
+    color: #2c3e50;
+    margin: 0 0 1.5rem 0;
+    font-size: 1.25rem;
+}
+
+.demo-actions {
+    display: flex;
+    gap: 1rem;
+    margin: 1.5rem 0;
+}
+
+.demo-btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background-color: var(--color-chbe-green);
+    color: white;
+}
+
+.demo-btn:hover {
+    background-color: #4a6f2e;
+    transform: translateY(-1px);
+}
+
+.demo-btn.secondary {
+    background-color: #6c757d;
+}
+
+.demo-btn.secondary:hover {
+    background-color: #5a6268;
+}
+
+/* Demo objectives list */
+.demo-objectives-list {
+    margin-top: 2rem;
+}
+
+.demo-objectives-list h4 {
+    color: #2c3e50;
+    margin: 0 0 1rem 0;
+    font-size: 1.1rem;
+}
+
+.objectives-container {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 1rem;
+    background-color: #f8f9fa;
+}
+
+.no-objectives,
+.no-files {
+    color: #6c757d;
+    font-style: italic;
+    text-align: center;
+    margin: 2rem 0;
+}
+
+.demo-objective-item {
+    background-color: white;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    position: relative;
+}
+
+.demo-objective-item:last-child {
+    margin-bottom: 0;
+}
+
+.objective-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.objective-header h5 {
+    margin: 0;
+    color: #2c3e50;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.delete-demo-btn {
+    background: none;
+    border: none;
+    color: #dc3545;
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 0.25rem;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.delete-demo-btn:hover {
+    background-color: rgba(220, 53, 69, 0.1);
+}
+
+.objective-description {
+    color: #495057;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+/* Upload demo area */
+.upload-demo-area {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.demo-upload-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    border: 1px solid #dee2e6;
+    border-radius: 12px;
+    padding: 2rem;
+    text-align: center;
+    background-color: #f8f9fa;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    align-items: center;
+    width: 100%;
+}
+
+.demo-upload-card:hover {
+    border-color: var(--color-chbe-green);
+    background-color: rgba(92, 138, 58, 0.05);
+}
+
+.upload-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+
+.demo-upload-card h4 {
+    color: #2c3e50;
+    margin: 0 0 0.5rem 0;
+    font-size: 1rem;
+    font-weight: 550;
+}
+
+.demo-upload-card p {
+    color: #6c757d;
+    margin: 0 0 1.5rem 0;
+}
+
+.uploaded-files h4 {
+    color: #2c3e50;
+    margin: 0 0 1rem 0;
+    font-size: 1.1rem;
+}
+
+.files-container {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 1rem;
+    background-color: #f8f9fa;
+}
+
+.demo-file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: white;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.demo-file-item:last-child {
+    margin-bottom: 0;
+}
+
+.file-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.file-name {
+    font-weight: 500;
+    color: #2c3e50;
+    font-size: 0.9rem;
+}
+
+.file-size {
+    color: #6c757d;
+    font-size: 0.8rem;
+}
+
+.delete-file-btn {
+    background: none;
+    border: none;
+    color: #dc3545;
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 0.25rem;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.delete-file-btn:hover {
+    background-color: rgba(220, 53, 69, 0.1);
+}
+
+/* Completion content */
+.completion-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    max-width: 600px;
+}
+
+.completion-message {
+    text-align: center;
+    padding: 2rem;
+    background-color: #f8f9fa;
+    border-radius: 12px;
+    border-left: 4px solid var(--color-chbe-green);
+}
+
+.success-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+
+.completion-message h3 {
+    color: #2c3e50;
+    margin: 0 0 1rem 0;
+    font-size: 1.5rem;
+}
+
+.completion-list {
+    text-align: left;
+    margin: 1.5rem 0;
+    padding: 0;
+    list-style: none;
+}
+
+.completion-list li {
+    padding: 0.5rem 0;
+    position: relative;
+    padding-left: 1.5rem;
+}
+
+.completion-list li::before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    color: var(--color-chbe-green);
+    font-weight: bold;
+}
+
+.next-steps {
+    background-color: white;
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid #e9ecef;
+}
+
+.next-steps h4 {
+    color: #2c3e50;
+    margin: 0 0 1rem 0;
+    font-size: 1.25rem;
+}
+
+.next-steps ul {
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+.next-steps li {
+    margin-bottom: 0.5rem;
+    color: #495057;
+    line-height: 1.4;
+}
+
 /* High contrast mode support */
 @media (prefers-contrast: high) {
     .step-circle.completed {

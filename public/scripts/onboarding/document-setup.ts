@@ -1,129 +1,92 @@
 /**
- * DOCUMENT SETUP ONBOARDING MODULE - REVISED VERSION
+ * DOCUMENT SETUP MODULE - ONBOARDING VERSION
  * 
- * This module handles the complete onboarding flow for instructors learning how to manage
- * course content, including learning objectives and additional materials.
+ * This module handles the document setup onboarding flow for instructors.
+ * It provides a step-by-step tutorial on how to add learning objectives and upload documents.
  * 
  * FEATURES:
- * - Two-column layout with left steps panel and right content area
- * - Step-by-step tutorial for document management
- * - Interactive examples and demonstrations
- * - Clear explanations of content structure
- * - Tips and best practices
- * - Comprehensive validation and error handling
- * - Clean, maintainable code structure
+ * - 4-step onboarding process with navigation
+ * - Learning objectives demo with add/delete functionality
+ * - Document upload demo with file handling
+ * - Backend integration placeholders (unimplemented)
+ * - Data structure initialization and validation
  * 
  * ONBOARDING STEPS:
- * 1. Document Upload Overview - Understanding content structure
- * 2. Learning Objectives - How to add and manage objectives
- * 3. Additional Materials - Upload files, text, and URLs
- * 4. Complete Setup - Ready to start managing content
+ * 1. Welcome - Overview of document setup process
+ * 2. Learning Objectives - Demo how to add learning objectives
+ * 3. Document Upload - Demo how to upload course materials
+ * 4. Completion - Summary and next steps
  * 
  * @author: gatahcha (revised)
  * @date: 2025-01-27
- * @version: 2.0.0
+ * @version: 1.0.0
  */
 
 import { loadComponentHTML } from "../functions/api.js";
-import { activeCourse, ContentDivision, courseItem, onBoardingScreen } from "../../../src/functions/types.js";
-import { showErrorModal, showHelpModal } from "../modal-overlay.js";
+import { activeCourse, LearningObjective, AdditionalMaterial } from "../../../src/functions/types.js";
+import { showErrorModal, showHelpModal, showConfirmModal, openUploadModal } from "../modal-overlay.js";
 
 // ===========================================
 // TYPE DEFINITIONS
 // ===========================================
 
 /**
- * Represents the current state of the document onboarding process
+ * Represents the current state of the document setup onboarding process
  */
-interface DocumentOnboardingState {
+interface DocumentSetupState {
     currentStep: number;
     totalSteps: number;
     isValid: boolean;
 }
 
 /**
- * Document onboarding step configuration
+ * Demo learning objective for the tutorial
  */
-interface DocumentOnboardingStep {
-    id: number;
+interface DemoObjective {
+    id: string;
     title: string;
     description: string;
-    content: string;
 }
 
-// ===========================================
-// ONBOARDING STEPS CONFIGURATION
-// ===========================================
-
-const DOCUMENT_ONBOARDING_STEPS: DocumentOnboardingStep[] = [
-    {
-        id: 1,
-        title: "Document Upload Overview",
-        description: "Understanding the content structure",
-        content: "step-1"
-    },
-    {
-        id: 2,
-        title: "Learning Objectives",
-        description: "How to add and manage objectives",
-        content: "step-2"
-    },
-    {
-        id: 3,
-        title: "Additional Materials",
-        description: "Upload files, text, and URLs",
-        content: "step-3"
-    },
-    {
-        id: 4,
-        title: "Complete Setup",
-        description: "Ready to start managing content",
-        content: "step-4"
-    }
-];
-
-// ===========================================
-// GLOBAL STATE
-// ===========================================
-
-let documentOnboardingState: DocumentOnboardingState = {
-    currentStep: 1,
-    totalSteps: DOCUMENT_ONBOARDING_STEPS.length,
-    isValid: true
-};
+/**
+ * Demo uploaded file for the tutorial
+ */
+interface DemoFile {
+    id: string;
+    name: string;
+    size: number;
+    type: string;
+}
 
 // ===========================================
 // MAIN EXPORT FUNCTION
 // ===========================================
 
 /**
- * Renders the document setup onboarding page and orchestrates the complete onboarding flow.
+ * Renders the document setup onboarding page and orchestrates the complete flow.
  * 
  * This function:
- * 1. Loads the onboarding HTML component
+ * 1. Loads the document setup HTML component
  * 2. Initializes the onboarding state
  * 3. Sets up event listeners for all interactions
  * 4. Manages step navigation and validation
- * 5. Handles final completion
+ * 5. Handles demo functionality for learning objectives and file uploads
  * 
  * @param instructorCourse - The instructor's course object to be populated
  * @returns Promise<void>
  */
-export const renderDocumentOnboarding = async (instructorCourse: activeCourse): Promise<void> => {
-    console.log("🚀 Starting document setup onboarding process...");
+export const renderDocumentSetup = async (instructorCourse: activeCourse): Promise<void> => {
+    console.log("🚀 Starting document setup onboarding...");
     
     try {
-        // Create a copy of the instructor course for temporary state management
-        const onBoardingCourse: activeCourse = { ...instructorCourse };
-        
-        // Initialize onboarding state
-        const state: DocumentOnboardingState = {
+        // Initialize document setup state
+        const state: DocumentSetupState = {
             currentStep: 1,
             totalSteps: 4,
             isValid: false
         };
 
-        // Load the onboarding component
+        // Load the document setup component
         const container = document.getElementById('main-content-area');
         if (!container) {
             throw new Error("Main content area not found");
@@ -132,7 +95,7 @@ export const renderDocumentOnboarding = async (instructorCourse: activeCourse): 
         // Add onboarding-active class to hide instructor sidebar
         document.body.classList.add('onboarding-active');
 
-        const html = await loadComponentHTML('onboarding');
+        const html = await loadComponentHTML('document-setup');
         container.innerHTML = html;
 
         // Wait for DOM to be ready
@@ -142,93 +105,91 @@ export const renderDocumentOnboarding = async (instructorCourse: activeCourse): 
             (window as any).feather.replace();
         }
 
-        // Initialize the onboarding interface
-        await initializeDocumentOnboarding(state, onBoardingCourse, instructorCourse);
+        // Initialize the document setup interface
+        await initializeDocumentSetup(state, instructorCourse);
 
     } catch (error) {
-        console.error("❌ Error during document onboarding initialization:", error);
-        await showErrorModal("Initialization Error", "Failed to initialize document setup onboarding. Please refresh the page and try again.");
+        console.error("❌ Error during document setup initialization:", error);
+        await showErrorModal("Initialization Error", "Failed to initialize document setup. Please refresh the page and try again.");
     }
 };
-
-/**
- * Initialize the document setup onboarding process
- * 
- * @param containerId - The ID of the container to render the onboarding
- * @returns Promise<void>
- */
-export async function initializeDocumentSetupOnboarding(containerId: string): Promise<void> {
-    try {
-        console.log('Initializing document setup onboarding...');
-        
-        // Load the onboarding HTML
-        const onboardingHTML = await loadComponentHTML('onboarding');
-        
-        // Render the onboarding
-        renderDocumentOnboardingHTML(containerId, onboardingHTML);
-        
-        // Setup event listeners
-        setupDocumentOnboardingEventListeners();
-        
-        // Initialize the first step
-        updateDocumentOnboardingStep(1);
-        
-        console.log('Document setup onboarding initialized successfully');
-        
-    } catch (error) {
-        console.error('Error initializing document setup onboarding:', error);
-        showErrorModal('Error', 'Failed to load document setup onboarding. Please try again.');
-    }
-}
 
 // ===========================================
 // INITIALIZATION FUNCTIONS
 // ===========================================
 
 /**
- * Initializes the document onboarding interface with event listeners and initial state
+ * Initializes the document setup interface with event listeners and initial state
  * 
- * @param state - The document onboarding state object
- * @param onBoardingCourse - The onboarding course object for temporary state management
- * @param instructorCourse - The original instructor course object (only modified when database is set)
+ * @param state - The document setup state object
+ * @param instructorCourse - The instructor course object
  */
-async function initializeDocumentOnboarding(state: DocumentOnboardingState, onBoardingCourse: activeCourse, instructorCourse: activeCourse): Promise<void> {
-    console.log("🔧 Initializing document onboarding interface...");
+async function initializeDocumentSetup(state: DocumentSetupState, instructorCourse: activeCourse): Promise<void> {
+    console.log("🔧 Initializing document setup interface...");
+
+    // Initialize data structures if needed
+    initializeCourseData(instructorCourse);
 
     // Set up navigation event listeners
-    setupDocumentNavigationListeners(state, onBoardingCourse, instructorCourse);
+    setupNavigationListeners(state, instructorCourse);
+    
+    // Set up demo event listeners
+    setupDemoListeners(state);
     
     // Set up help button listener
-    setupDocumentHelpListener(state);
+    setupHelpListener(state);
     
     // Set up window resize listener for responsive justify-content
-    setupDocumentResizeListener(state, onBoardingCourse);
+    setupResizeListener(state);
     
     // Initialize the first step
-    updateDocumentStepDisplay(state, onBoardingCourse);
+    updateStepDisplay(state);
     
     // Set up step indicators
-    updateDocumentStepIndicators(state, onBoardingCourse);
+    updateStepIndicators(state);
     
-    console.log("✅ Document onboarding interface initialized successfully");
+    console.log("✅ Document setup interface initialized successfully");
+}
+
+/**
+ * Initialize course data structures if they don't exist
+ * 
+ * @param instructorCourse - The instructor course object
+ */
+function initializeCourseData(instructorCourse: activeCourse): void {
+    // Initialize divisions array if it doesn't exist
+    if (!instructorCourse.divisions) {
+        instructorCourse.divisions = [];
+    }
+
+    // Initialize learning objectives for each division if they don't exist
+    instructorCourse.divisions.forEach(division => {
+        division.items.forEach(item => {
+            if (!item.learningObjectives) {
+                item.learningObjectives = [];
+            }
+            if (!item.additionalMaterials) {
+                item.additionalMaterials = [];
+            }
+        });
+    });
 }
 
 /**
  * Sets up window resize listener to recalculate content justification
  * 
- * @param state - The document onboarding state object
- * @param onBoardingCourse - The document onboarding course object for state synchronization
+ * @param state - The document setup state object
  */
-function setupDocumentResizeListener(state: DocumentOnboardingState, onBoardingCourse: activeCourse): void {
+function setupResizeListener(state: DocumentSetupState): void {
     let resizeTimeout: number;
     
     window.addEventListener('resize', () => {
         // Debounce resize events to avoid excessive calculations
         clearTimeout(resizeTimeout);
         resizeTimeout = window.setTimeout(() => {
-            const currentStepElement = document.getElementById(`step-${state.currentStep}`);
+            const currentStepElement = document.getElementById(`content-step-${state.currentStep}`);
             if (currentStepElement && currentStepElement.classList.contains('active')) {
-                adjustDocumentContentJustification(currentStepElement);
+                adjustContentJustification(currentStepElement);
             }
         }, 100);
     });
@@ -237,38 +198,76 @@ function setupDocumentResizeListener(state: DocumentOnboardingState, onBoardingC
 /**
  * Sets up navigation button event listeners
  * 
- * @param state - The document onboarding state object
- * @param onBoardingCourse - The document onboarding course object for temporary state management
- * @param instructorCourse - The original instructor course object (only modified when database is set)
+ * @param state - The document setup state object
+ * @param instructorCourse - The instructor course object
  */
-function setupDocumentNavigationListeners(state: DocumentOnboardingState, onBoardingCourse: activeCourse, instructorCourse: activeCourse): void {
-    const prevBtn = document.getElementById('prev-btn') as HTMLButtonElement;
-    const nextBtn = document.getElementById('next-btn') as HTMLButtonElement;
-    const completeBtn = document.getElementById('complete-btn') as HTMLButtonElement;
+function setupNavigationListeners(state: DocumentSetupState, instructorCourse: activeCourse): void {
+    const backBtn = document.getElementById('backBtn') as HTMLButtonElement;
+    const nextBtn = document.getElementById('nextBtn') as HTMLButtonElement;
 
-    if (prevBtn) {
-        prevBtn.addEventListener('click', () => handleDocumentBackNavigation(state, onBoardingCourse));
+    if (backBtn) {
+        backBtn.addEventListener('click', () => handleBackNavigation(state));
     }
 
     if (nextBtn) {
-        nextBtn.addEventListener('click', () => handleDocumentNextNavigation(state, onBoardingCourse, instructorCourse));
+        nextBtn.addEventListener('click', () => handleNextNavigation(state, instructorCourse));
+    }
+}
+
+/**
+ * Sets up demo functionality event listeners
+ * 
+ * @param state - The document setup state object
+ */
+function setupDemoListeners(state: DocumentSetupState): void {
+    // Learning objectives demo
+    const addDemoObjectiveBtn = document.getElementById('addDemoObjective') as HTMLButtonElement;
+    const clearDemoBtn = document.getElementById('clearDemo') as HTMLButtonElement;
+    
+    if (addDemoObjectiveBtn) {
+        addDemoObjectiveBtn.addEventListener('click', () => addDemoObjective());
+    }
+    
+    if (clearDemoBtn) {
+        clearDemoBtn.addEventListener('click', () => clearDemoObjectives());
     }
 
-    if (completeBtn) {
-        completeBtn.addEventListener('click', () => handleDocumentFinalSubmission(state, onBoardingCourse, instructorCourse));
+    // File upload demo
+    const demoUploadBtn = document.getElementById('demoUploadBtn') as HTMLButtonElement;
+    const processDemoFilesBtn = document.getElementById('processDemoFiles') as HTMLButtonElement;
+    const clearDemoFilesBtn = document.getElementById('clearDemoFiles') as HTMLButtonElement;
+    
+    if (demoUploadBtn) {
+        console.log('DEBUG #15: Setting up demoUploadBtn event listener');
+        demoUploadBtn.addEventListener('click', () => {
+            console.log('DEBUG #14: demoUploadBtn clicked');
+            openDemoUploadModal().catch(error => {
+                console.error('Error opening demo upload modal:', error);
+            });
+        });
+    } else {
+        console.error('DEBUG #16: demoUploadBtn not found!');
+    }
+    
+    if (processDemoFilesBtn) {
+        processDemoFilesBtn.addEventListener('click', () => processDemoFiles());
+    }
+    
+    if (clearDemoFilesBtn) {
+        clearDemoFilesBtn.addEventListener('click', () => clearDemoFiles());
     }
 }
 
 /**
  * Sets up the help button event listener
  * 
- * @param state - The document onboarding state object
+ * @param state - The document setup state object
  */
-function setupDocumentHelpListener(state: DocumentOnboardingState): void {
+function setupHelpListener(state: DocumentSetupState): void {
     const helpBtn = document.getElementById('helpBtn') as HTMLButtonElement;
     if (helpBtn) {
         helpBtn.addEventListener('click', () => {
-            showDocumentStepHelp(state.currentStep);
+            showStepHelp(state.currentStep);
         });
     }
 }
@@ -278,8 +277,8 @@ function setupDocumentHelpListener(state: DocumentOnboardingState): void {
  * 
  * @param stepNumber - The current step number
  */
-async function showDocumentStepHelp(stepNumber: number): Promise<void> {
-    const helpContent = getDocumentStepHelpContent(stepNumber);
+async function showStepHelp(stepNumber: number): Promise<void> {
+    const helpContent = getStepHelpContent(stepNumber);
     await showHelpModal(stepNumber, helpContent.title, helpContent.content);
 }
 
@@ -289,12 +288,12 @@ async function showDocumentStepHelp(stepNumber: number): Promise<void> {
  * @param stepNumber - The step number
  * @returns Object with title and content
  */
-function getDocumentStepHelpContent(stepNumber: number): { title: string; content: string } {
+function getStepHelpContent(stepNumber: number): { title: string; content: string } {
     const stepTitles = {
-        1: "Document Upload Overview",
+        1: "Welcome to Document Setup",
         2: "Learning Objectives", 
-        3: "Additional Materials",
-        4: "Complete Setup"
+        3: "Document Upload",
+        4: "Setup Complete"
     };
 
     // Get content from HTML template
@@ -308,93 +307,68 @@ function getDocumentStepHelpContent(stepNumber: number): { title: string; conten
 }
 
 // ===========================================
-// RENDERING FUNCTIONS
-// ===========================================
-
-/**
- * Render the document onboarding HTML into the specified container
- * 
- * @param containerId - The ID of the container element
- * @param html - The HTML content to render
- */
-function renderDocumentOnboardingHTML(containerId: string, html: string): void {
-    const container = document.getElementById(containerId);
-    if (!container) {
-        throw new Error(`Container with ID '${containerId}' not found`);
-    }
-    
-    container.innerHTML = html;
-    
-    // Initialize Feather icons if available
-    if (typeof (window as any).feather !== 'undefined') {
-        (window as any).feather.replace();
-    }
-}
-
-// ===========================================
 // NAVIGATION FUNCTIONS
 // ===========================================
 
 /**
  * Handles back navigation between steps
  * 
- * @param state - The document onboarding state object
+ * @param state - The document setup state object
  */
-function handleDocumentBackNavigation(state: DocumentOnboardingState, onBoardingCourse: activeCourse): void {
+function handleBackNavigation(state: DocumentSetupState): void {
     if (state.currentStep > 1) {
         state.currentStep--;
-        updateDocumentStepDisplay(state, onBoardingCourse);
-        updateDocumentStepIndicators(state, onBoardingCourse);
-        updateDocumentNavigationButtons(state);
+        updateStepDisplay(state);
+        updateStepIndicators(state);
+        updateNavigationButtons(state);
         console.log(`⬅️ Navigated to step ${state.currentStep}`);
     }
 }
 
 /**
- * Handles next navigation and final submission
+ * Handles next navigation and final completion
  * 
- * @param state - The document onboarding state object
- * @param onBoardingCourse - The document onboarding course object for temporary state management
- * @param instructorCourse - The original instructor course object (only modified when database is set)
+ * @param state - The document setup state object
+ * @param instructorCourse - The instructor course object
  */
-async function handleDocumentNextNavigation(state: DocumentOnboardingState, onBoardingCourse: activeCourse, instructorCourse: activeCourse): Promise<void> {
+async function handleNextNavigation(state: DocumentSetupState, instructorCourse: activeCourse): Promise<void> {
     // Validate current step before proceeding
-    if (!(await validateDocumentCurrentStep(state, onBoardingCourse))) {
+    if (!(await validateCurrentStep(state))) {
         return;
-    } 
+    }
 
     if (state.currentStep < state.totalSteps) {
         // Move to next step
         state.currentStep++; 
-        updateDocumentStepDisplay(state, onBoardingCourse);
-        updateDocumentStepIndicators(state, onBoardingCourse);
-        updateDocumentNavigationButtons(state);
+        updateStepDisplay(state);
+        updateStepIndicators(state);
+        updateNavigationButtons(state);
         
         console.log(`➡️ Navigated to step ${state.currentStep}`);
     } else {
-        // Final submission
-        await handleDocumentFinalSubmission(state, onBoardingCourse, instructorCourse);
+        // Final completion
+        await handleFinalCompletion(state, instructorCourse);
     }
 }
 
 /**
  * Validates the current step before allowing navigation
  * 
- * @param state - The document onboarding state object
+ * @param state - The document setup state object
  * @returns Promise<boolean> indicating if validation passed
  */
-async function validateDocumentCurrentStep(state: DocumentOnboardingState, onBoardingCourse: activeCourse): Promise<boolean> {
+async function validateCurrentStep(state: DocumentSetupState): Promise<boolean> {
     switch (state.currentStep) {
-        case 1: // Document Upload Overview - always valid
+        case 1: // Welcome - always valid
             return true;
             
-        case 2: // Learning Objectives - always valid (tutorial)
-            return true;
+        case 2: // Learning Objectives Demo
+            return await validateLearningObjectivesStep();
             
-        case 3: // Additional Materials - always valid (tutorial)
-            return true;
+        case 3: // Document Upload Demo
+            return await validateDocumentUploadStep();
             
-        case 4: // Complete Setup - always valid
+        case 4: // Completion - always valid
             return true;
             
         default:
@@ -402,68 +376,74 @@ async function validateDocumentCurrentStep(state: DocumentOnboardingState, onBoa
     }
 }
 
-// ===========================================
-// EVENT LISTENERS
-// ===========================================
-
 /**
- * Setup all event listeners for the document onboarding
+ * Validates the learning objectives step
+ * 
+ * @returns Promise<boolean> indicating if validation passed
  */
-function setupDocumentOnboardingEventListeners(): void {
-    // Step navigation
-    const stepItems = document.querySelectorAll('.step-item');
-    stepItems.forEach((item, index) => {
-        item.addEventListener('click', () => {
-            const stepNumber = index + 1;
-            if (stepNumber <= documentOnboardingState.currentStep) {
-                updateDocumentOnboardingStep(stepNumber);
-            }
-        });
-    });
+async function validateLearningObjectivesStep(): Promise<boolean> {
+    const demoObjectives = document.querySelectorAll('.demo-objective-item');
     
-    // Navigation buttons
-    const prevBtn = document.getElementById('prev-btn') as HTMLButtonElement;
-    const nextBtn = document.getElementById('next-btn') as HTMLButtonElement;
-    const completeBtn = document.getElementById('complete-btn') as HTMLButtonElement;
-    
-    if (prevBtn) {
-        prevBtn.addEventListener('click', () => {
-            if (documentOnboardingState.currentStep > 1) {
-                updateDocumentOnboardingStep(documentOnboardingState.currentStep - 1);
-            }
-        });
+    if (demoObjectives.length === 0) {
+        const result = await showConfirmModal(
+            "Learning Objectives Required",
+            "You haven't added any learning objectives yet. Learning objectives are essential for guiding student learning and ensuring course alignment with educational goals.\n\nAre you sure you want to proceed without adding any learning objectives?",
+            "Proceed Anyway",
+            "Add Objectives"
+        );
+        
+        return result.action === 'proceed-anyway';
     }
     
-    if (nextBtn) {
-        nextBtn.addEventListener('click', () => {
-            if (documentOnboardingState.currentStep < documentOnboardingState.totalSteps) {
-                updateDocumentOnboardingStep(documentOnboardingState.currentStep + 1);
-            }
-        });
-    }
-    
-    if (completeBtn) {
-        completeBtn.addEventListener('click', () => {
-            completeDocumentOnboarding();
-        });
-    }
-    
-    // Keyboard navigation
-    document.addEventListener('keydown', handleDocumentOnboardingKeyboard);
+    return true;
 }
 
 /**
- * Handle keyboard navigation for the document onboarding
+ * Validates the document upload step
  * 
- * @param event - The keyboard event
+ * @returns Promise<boolean> indicating if validation passed
  */
-function handleDocumentOnboardingKeyboard(event: KeyboardEvent): void {
-    if (event.key === 'ArrowLeft' && documentOnboardingState.currentStep > 1) {
-        updateDocumentOnboardingStep(documentOnboardingState.currentStep - 1);
-    } else if (event.key === 'ArrowRight' && documentOnboardingState.currentStep < documentOnboardingState.totalSteps) {
-        updateDocumentOnboardingStep(documentOnboardingState.currentStep + 1);
-    } else if (event.key === 'Enter' && documentOnboardingState.currentStep === documentOnboardingState.totalSteps) {
-        completeDocumentOnboarding();
+async function validateDocumentUploadStep(): Promise<boolean> {
+    const demoFiles = document.querySelectorAll('.demo-file-item');
+    
+    if (demoFiles.length === 0) {
+        const result = await showConfirmModal(
+            "Course Materials Required",
+            "You haven't uploaded any course materials yet. Course materials provide essential content for student learning and enable the AI tutor to provide contextually relevant assistance.\n\nAre you sure you want to proceed without uploading any materials?",
+            "Proceed Anyway",
+            "Upload Materials"
+        );
+        
+        return result.action === 'proceed-anyway';
+    }
+    
+    return true;
+}
+
+/**
+ * Handles the final completion of document setup
+ * 
+ * @param state - The document setup state object
+ * @param instructorCourse - The instructor course object
+ */
+async function handleFinalCompletion(state: DocumentSetupState, instructorCourse: activeCourse): Promise<void> {
+    console.log("🎯 Completing document setup...");
+    
+    try {
+        // Mark content setup as complete
+        instructorCourse.contentSetup = true;
+        
+        // Remove onboarding-active class to show instructor sidebar
+        document.body.classList.remove('onboarding-active');
+        
+        // Dispatch completion event
+        window.dispatchEvent(new CustomEvent('documentSetupComplete'));
+        
+        console.log("✅ Document setup completed successfully!");
+        
+    } catch (error) {
+        console.error("❌ Error during final completion:", error);
+        await showErrorModal("Completion Error", "Failed to complete document setup. Please try again.");
     }
 }
 
@@ -472,23 +452,22 @@ function handleDocumentOnboardingKeyboard(event: KeyboardEvent): void {
 // ===========================================
 
 /**
- * Updates the display to show the current step and synchronizes all form values
+ * Updates the display to show the current step
  * 
- * @param state - The document onboarding state object
- * @param onBoardingCourse - The document onboarding course object for state synchronization
+ * @param state - The document setup state object
  */
-function updateDocumentStepDisplay(state: DocumentOnboardingState, onBoardingCourse: activeCourse): void {
+function updateStepDisplay(state: DocumentSetupState): void {
     // Hide all content steps
-    const contentSteps = document.querySelectorAll('.step-content-panel');
+    const contentSteps = document.querySelectorAll('.content-step');
     contentSteps.forEach(step => step.classList.remove('active'));
     
     // Show current step
-    const currentStepElement = document.getElementById(`step-${state.currentStep}`);
+    const currentStepElement = document.getElementById(`content-step-${state.currentStep}`);
     if (currentStepElement) {
         currentStepElement.classList.add('active');
         
         // Check if content overflows and adjust justify-content accordingly
-        setTimeout(() => adjustDocumentContentJustification(currentStepElement), 10);
+        setTimeout(() => adjustContentJustification(currentStepElement), 10);
     }
 }
 
@@ -497,8 +476,8 @@ function updateDocumentStepDisplay(state: DocumentOnboardingState, onBoardingCou
  * 
  * @param contentStepElement - The content step element to adjust
  */
-function adjustDocumentContentJustification(contentStepElement: HTMLElement): void {
-    const contentStepInner = contentStepElement.querySelector('.step-body') as HTMLElement;
+function adjustContentJustification(contentStepElement: HTMLElement): void {
+    const contentStepInner = contentStepElement.querySelector('.content-step-inner') as HTMLElement;
     if (!contentStepInner) return;
     
     // Get the available height (viewport height minus navigation and padding)
@@ -521,9 +500,9 @@ function adjustDocumentContentJustification(contentStepElement: HTMLElement): vo
 /**
  * Updates the step indicators in the left panel
  * 
- * @param state - The document onboarding state object
+ * @param state - The document setup state object
  */
-function updateDocumentStepIndicators(state: DocumentOnboardingState, onBoardingCourse: activeCourse): void {
+function updateStepIndicators(state: DocumentSetupState): void {
     const stepItems = document.querySelectorAll('.step-item');
     
     stepItems.forEach((item, index) => {
@@ -552,316 +531,322 @@ function updateDocumentStepIndicators(state: DocumentOnboardingState, onBoarding
 /**
  * Updates the navigation buttons based on current step
  * 
- * @param state - The document onboarding state object
+ * @param state - The document setup state object
  */
-function updateDocumentNavigationButtons(state: DocumentOnboardingState): void {
-    const prevBtn = document.getElementById('prev-btn') as HTMLButtonElement;
-    const nextBtn = document.getElementById('next-btn') as HTMLButtonElement;
-    const completeBtn = document.getElementById('complete-btn') as HTMLButtonElement;
+function updateNavigationButtons(state: DocumentSetupState): void {
+    const backBtn = document.getElementById('backBtn') as HTMLButtonElement;
+    const nextBtn = document.getElementById('nextBtn') as HTMLButtonElement;
     
-    if (prevBtn) {
-        prevBtn.style.display = state.currentStep > 1 ? 'flex' : 'none';
+    if (backBtn) {
+        backBtn.style.display = state.currentStep > 1 ? 'flex' : 'none';
     }
     
     if (nextBtn) {
         if (state.currentStep === state.totalSteps) {
-            nextBtn.style.display = 'none';
+            nextBtn.textContent = 'Complete Setup';
         } else {
-            nextBtn.style.display = 'flex';
-        }
-    }
-
-    if (completeBtn) {
-        if (state.currentStep === state.totalSteps) {
-            completeBtn.style.display = 'flex';
-        } else {
-            completeBtn.style.display = 'none';
+            nextBtn.textContent = 'Next';
         }
     }
 }
 
 // ===========================================
-// STEP MANAGEMENT
+// DEMO FUNCTIONALITY
 // ===========================================
 
+// Demo data storage
+let demoObjectives: DemoObjective[] = [];
+let demoFiles: DemoFile[] = [];
+
 /**
- * Update the current step of the document onboarding
- * 
- * @param stepNumber - The step number to navigate to
+ * Adds a demo learning objective
  */
-function updateDocumentOnboardingStep(stepNumber: number): void {
-    if (stepNumber < 1 || stepNumber > documentOnboardingState.totalSteps) {
-        console.warn(`Invalid step number: ${stepNumber}`);
+function addDemoObjective(): void {
+    const titleInput = document.getElementById('demoObjectiveTitle') as HTMLInputElement;
+    const descriptionInput = document.getElementById('demoObjectiveDescription') as HTMLTextAreaElement;
+    
+    if (!titleInput || !descriptionInput) return;
+    
+    const title = titleInput.value.trim();
+    const description = descriptionInput.value.trim();
+    
+    if (!title || !description) {
+        alert('Please fill in both title and description.');
         return;
     }
     
-    console.log(`Updating document onboarding to step ${stepNumber}`);
+    const newObjective: DemoObjective = {
+        id: `demo-obj-${Date.now()}`,
+        title: title,
+        description: description
+    };
     
-    // Update state
-    documentOnboardingState.currentStep = stepNumber;
+    demoObjectives.push(newObjective);
+    updateDemoObjectivesDisplay();
     
-    // Update step indicators
-    updateDocumentOnboardingStepIndicators();
+    // Clear inputs
+    titleInput.value = '';
+    descriptionInput.value = '';
     
-    // Update content panels
-    updateDocumentOnboardingContentPanels();
-    
-    // Update navigation buttons
-    updateDocumentOnboardingNavigationButtons();
-    
-    // Scroll to top of content
-    const contentContainer = document.querySelector('.content-container');
-    if (contentContainer) {
-        contentContainer.scrollTop = 0;
-    }
+    console.log('Added demo objective:', newObjective);
 }
 
 /**
- * Update the step indicators in the left panel
+ * Clears all demo learning objectives
  */
-function updateDocumentOnboardingStepIndicators(): void {
-    const stepItems = document.querySelectorAll('.step-item');
+function clearDemoObjectives(): void {
+    demoObjectives = [];
+    updateDemoObjectivesDisplay();
     
-    stepItems.forEach((item, index) => {
-        const stepNumber = index + 1;
-        const stepCircle = item.querySelector('.step-circle') as HTMLElement;
-        const stepLine = item.querySelector('.step-line') as HTMLElement;
+    // Clear inputs
+    const titleInput = document.getElementById('demoObjectiveTitle') as HTMLInputElement;
+    const descriptionInput = document.getElementById('demoObjectiveDescription') as HTMLTextAreaElement;
+    
+    if (titleInput) titleInput.value = '';
+    if (descriptionInput) descriptionInput.value = '';
+    
+    console.log('Cleared demo objectives');
+}
+
+/**
+ * Updates the demo objectives display
+ */
+function updateDemoObjectivesDisplay(): void {
+    const container = document.getElementById('objectivesContainer');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    if (demoObjectives.length === 0) {
+        const noObjectives = document.createElement('p');
+        noObjectives.className = 'no-objectives';
+        noObjectives.textContent = 'No learning objectives added yet. Try adding one above!';
+        container.appendChild(noObjectives);
+        return;
+    }
+    
+    demoObjectives.forEach((objective, index) => {
+        const objectiveElement = document.createElement('div');
+        objectiveElement.className = 'demo-objective-item';
+        objectiveElement.innerHTML = `
+            <div class="objective-header">
+                <h5>${objective.title}</h5>
+                <button class="delete-demo-btn" data-index="${index}">×</button>
+            </div>
+            <div class="objective-description">${objective.description}</div>
+        `;
         
-        if (!stepCircle) return;
-        
-        // Remove all classes
-        stepCircle.classList.remove('completed', 'current', 'pending');
-        item.classList.remove('active');
-        
-        if (stepNumber < documentOnboardingState.currentStep) {
-            // Completed step
-            stepCircle.classList.add('completed');
-            stepCircle.innerHTML = '<span class="step-number">✓</span>';
-        } else if (stepNumber === documentOnboardingState.currentStep) {
-            // Current step
-            stepCircle.classList.add('current');
-            stepCircle.innerHTML = `<span class="step-number">${stepNumber}</span>`;
-            item.classList.add('active');
-        } else {
-            // Pending step
-            stepCircle.classList.add('pending');
-            stepCircle.innerHTML = `<span class="step-number">${stepNumber}</span>`;
+        // Add delete functionality
+        const deleteBtn = objectiveElement.querySelector('.delete-demo-btn') as HTMLButtonElement;
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', () => {
+                demoObjectives.splice(index, 1);
+                updateDemoObjectivesDisplay();
+            });
         }
         
-        // Update step line
-        if (stepLine) {
-            if (stepNumber < documentOnboardingState.currentStep) {
-                stepLine.style.background = 'var(--success-color)';
-            } else {
-                stepLine.style.background = '#dee2e6';
-            }
-        }
+        container.appendChild(objectiveElement);
     });
 }
 
 /**
- * Update the content panels to show the current step
+ * Opens the demo upload modal using the openUploadModal function
  */
-function updateDocumentOnboardingContentPanels(): void {
-    const contentPanels = document.querySelectorAll('.step-content-panel');
+async function openDemoUploadModal() {
+    // Use demo IDs for the modal
+    const divisionId = 'demo-division';
+    const contentId = 'demo-content';
     
-    contentPanels.forEach((panel, index) => {
-        const stepNumber = index + 1;
-        const panelElement = panel as HTMLElement;
-        
-        if (stepNumber === documentOnboardingState.currentStep) {
-            panelElement.style.display = 'block';
-        } else {
-            panelElement.style.display = 'none';
-        }
-    });
+    await openUploadModal(divisionId, contentId, handleDemoUpload);
 }
 
 /**
- * Update the navigation buttons based on current step
- */
-function updateDocumentOnboardingNavigationButtons(): void {
-    const prevBtn = document.getElementById('prev-btn') as HTMLButtonElement;
-    const nextBtn = document.getElementById('next-btn') as HTMLButtonElement;
-    const completeBtn = document.getElementById('complete-btn') as HTMLButtonElement;
-    
-    // Update previous button
-    if (prevBtn) {
-        prevBtn.disabled = documentOnboardingState.currentStep === 1;
-    }
-    
-    // Update next/complete buttons
-    if (documentOnboardingState.currentStep === documentOnboardingState.totalSteps) {
-        // Last step - show complete button
-        if (nextBtn) nextBtn.style.display = 'none';
-        if (completeBtn) completeBtn.style.display = 'inline-flex';
-    } else {
-        // Not last step - show next button
-        if (nextBtn) nextBtn.style.display = 'inline-flex';
-        if (completeBtn) completeBtn.style.display = 'none';
-    }
-}
-
-// ===========================================
-// COMPLETION HANDLING
-// ===========================================
-
-/**
- * Handles the final submission of the document onboarding data
+ * Handles demo upload from the modal
  * 
- * @param state - The document onboarding state object
- * @param onBoardingCourse - The document onboarding course object for temporary state management
- * @param instructorCourse - The original instructor course object (only modified when database is set)
- * @returns Promise<void>
+ * @param material - The material object from the upload modal
  */
-async function handleDocumentFinalSubmission(state: DocumentOnboardingState, onBoardingCourse: activeCourse, instructorCourse: activeCourse): Promise<void> {
-    console.log("🎯 Processing document onboarding final submission...");
+function handleDemoUpload(material: any) {
+    const demoFile: DemoFile = {
+        id: `demo-file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        name: material.fileName || material.name || 'Text Content',
+        size: material.file ? material.file.size : 0,
+        type: material.sourceType === 'file' ? (material.file ? material.file.type : 'file') : 'text'
+    };
     
+    demoFiles.push(demoFile);
+    updateDemoFilesDisplay();
+    console.log('Added demo file:', demoFile);
+}
+
+/**
+ * Updates the demo files display
+ */
+function updateDemoFilesDisplay(): void {
+    const container = document.getElementById('filesContainer');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    if (demoFiles.length === 0) {
+        const noFiles = document.createElement('p');
+        noFiles.className = 'no-files';
+        noFiles.textContent = 'No files uploaded yet. Try uploading some materials!';
+        container.appendChild(noFiles);
+        return;
+    }
+    
+    demoFiles.forEach((file, index) => {
+        const fileElement = document.createElement('div');
+        fileElement.className = 'demo-file-item';
+        fileElement.innerHTML = `
+            <div class="file-info">
+                <span class="file-name">${file.name}</span>
+                <span class="file-size">${formatFileSize(file.size)}</span>
+            </div>
+            <button class="delete-file-btn" data-index="${index}">×</button>
+        `;
+        
+        // Add delete functionality
+        const deleteBtn = fileElement.querySelector('.delete-file-btn') as HTMLButtonElement;
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', () => {
+                demoFiles.splice(index, 1);
+                updateDemoFilesDisplay();
+            });
+        }
+        
+        container.appendChild(fileElement);
+    });
+}
+
+/**
+ * Processes demo files (placeholder for backend integration)
+ */
+async function processDemoFiles(): Promise<void> {
+    if (demoFiles.length === 0) {
+        alert('No files to process. Please upload some files first.');
+        return;
+    }
+    
+    console.log('Processing demo files:', demoFiles);
+    
+    // Simulate backend processing
     try {
-        // Remove onboarding-active class to show instructor sidebar
-        document.body.classList.remove('onboarding-active');
-        
-        // Dispatch completion event
-        window.dispatchEvent(new CustomEvent('documentOnboardingComplete'));
-        
-        console.log("✅ Document onboarding completed successfully!");
-        
+        // TODO: Implement actual backend integration
+        const result = await simulateBackendProcessing(demoFiles);
+        console.log('Files processed successfully:', result);
+        alert(`Successfully processed ${demoFiles.length} files! (This is a demo)`);
     } catch (error) {
-        console.error("❌ Error during document onboarding final submission:", error);
-        await showErrorModal("Submission Error", "Failed to complete document setup onboarding. Please try again.");
+        console.error('Error processing files:', error);
+        alert('Error processing files. Please try again.');
     }
 }
 
 /**
- * Complete the document onboarding process
+ * Clears all demo files
  */
-function completeDocumentOnboarding(): void {
-    console.log('Completing document setup onboarding...');
+function clearDemoFiles(): void {
+    demoFiles = [];
+    updateDemoFilesDisplay();
     
-    try {
-        // Show completion message
-        showDocumentOnboardingCompletionMessage();
-        
-        // Dispatch completion event
-        const completionEvent = new CustomEvent('documentOnboardingCompleted', {
-            detail: {
-                completedAt: new Date(),
-                stepsCompleted: documentOnboardingState.totalSteps
-            }
-        });
-        document.dispatchEvent(completionEvent);
-        
-        // Close onboarding after a delay
-        setTimeout(() => {
-            closeDocumentOnboarding();
-        }, 2000);
-        
-    } catch (error) {
-        console.error('Error completing document onboarding:', error);
-        showErrorModal('Error', 'Failed to complete onboarding. Please try again.');
-    }
+    // Clear file input
+    const fileInput = document.getElementById('demoFileInput') as HTMLInputElement;
+    if (fileInput) fileInput.value = '';
+    
+    console.log('Cleared demo files');
 }
 
 /**
- * Show a completion message for the document onboarding
- */
-function showDocumentOnboardingCompletionMessage(): void {
-    // Create a temporary success message
-    const message = document.createElement('div');
-    message.className = 'onboarding-completion-message';
-    message.innerHTML = `
-        <div style="
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            padding: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-            text-align: center;
-            z-index: 1000;
-            max-width: 400px;
-        ">
-            <div style="font-size: 3rem; margin-bottom: 1rem;">🎉</div>
-            <h3 style="color: var(--success-color); margin-bottom: 1rem;">Document Setup Complete!</h3>
-            <p style="color: #666; margin: 0;">You're ready to start managing your course content.</p>
-        </div>
-    `;
-    
-    document.body.appendChild(message);
-    
-    // Remove message after 3 seconds
-    setTimeout(() => {
-        if (message.parentNode) {
-            message.parentNode.removeChild(message);
-        }
-    }, 3000);
-}
-
-/**
- * Close the document onboarding
- */
-function closeDocumentOnboarding(): void {
-    // Dispatch close event
-    const closeEvent = new CustomEvent('documentOnboardingClosed', {
-        detail: {
-            closedAt: new Date(),
-            finalStep: documentOnboardingState.currentStep
-        }
-    });
-    document.dispatchEvent(closeEvent);
-    
-    // Clear the container
-    const container = document.querySelector('.onboarding');
-    if (container && container.parentNode) {
-        container.parentNode.removeChild(container);
-    }
-}
-
-// ===========================================
-// UTILITY FUNCTIONS
-// ===========================================
-
-/**
- * Get the current document onboarding state
+ * Formats file size for display
  * 
- * @returns The current onboarding state
+ * @param bytes - File size in bytes
+ * @returns Formatted file size string
  */
-export function getDocumentOnboardingState(): DocumentOnboardingState {
-    return { ...documentOnboardingState };
+function formatFileSize(bytes: number): string {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-/**
- * Reset the document onboarding to the first step
- */
-export function resetDocumentOnboarding(): void {
-    documentOnboardingState.currentStep = 1;
-    updateDocumentOnboardingStep(1);
-}
+// ===========================================
+// BACKEND INTEGRATION PLACEHOLDERS
+// ===========================================
 
 /**
- * Skip to a specific step in the document onboarding
+ * Simulates backend processing of files
  * 
- * @param stepNumber - The step number to skip to
+ * @param files - Array of demo files to process
+ * @returns Promise with processing result
  */
-export function skipToDocumentOnboardingStep(stepNumber: number): void {
-    if (stepNumber >= 1 && stepNumber <= documentOnboardingState.totalSteps) {
-        updateDocumentOnboardingStep(stepNumber);
-    } else {
-        console.warn(`Invalid step number for skip: ${stepNumber}`);
-    }
+async function simulateBackendProcessing(files: DemoFile[]): Promise<{ success: boolean; processed: number }> {
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // TODO: Replace with actual backend API calls
+    console.log('Simulating backend processing for files:', files);
+    
+    return {
+        success: true,
+        processed: files.length
+    };
 }
 
-// ===========================================
-// EXPORT FOR GLOBAL ACCESS
-// ===========================================
+/**
+ * Placeholder function for adding learning objective to backend
+ * 
+ * @param objective - Learning objective to add
+ * @returns Promise with result
+ */
+async function addLearningObjectiveToBackend(objective: LearningObjective): Promise<{ success: boolean; id?: string }> {
+    // TODO: Implement actual backend API call
+    console.log('Adding learning objective to backend:', objective);
+    
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    return {
+        success: true,
+        id: `backend-obj-${Date.now()}`
+    };
+}
 
-// Make functions available globally if needed
-(window as any).DocumentOnboarding = {
-    initialize: initializeDocumentSetupOnboarding,
-    render: renderDocumentOnboarding,
-    getState: getDocumentOnboardingState,
-    reset: resetDocumentOnboarding,
-    skipTo: skipToDocumentOnboardingStep
-};
+/**
+ * Placeholder function for deleting learning objective from backend
+ * 
+ * @param objectiveId - ID of objective to delete
+ * @returns Promise with result
+ */
+async function deleteLearningObjectiveFromBackend(objectiveId: string): Promise<{ success: boolean }> {
+    // TODO: Implement actual backend API call
+    console.log('Deleting learning objective from backend:', objectiveId);
+    
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    return {
+        success: true
+    };
+}
+
+/**
+ * Placeholder function for uploading file to backend
+ * 
+ * @param file - File to upload
+ * @returns Promise with result
+ */
+async function uploadFileToBackend(file: File): Promise<{ success: boolean; id?: string }> {
+    // TODO: Implement actual backend API call
+    console.log('Uploading file to backend:', file);
+    
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    return {
+        success: true,
+        id: `backend-file-${Date.now()}`
+    };
+}

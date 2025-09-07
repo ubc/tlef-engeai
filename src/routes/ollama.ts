@@ -45,9 +45,9 @@ dotenv.config();
 const router = express.Router();
 
 // Configuration
-const OLLAMA_API_URL = 'http://localhost:11434/api/chat';
+const OLLAMA_API_URL = 'http://localhost:11434/api/chat'; // ollama chat endpoint
 const QDRANT_HOST = process.env.QDRANT_URL || 'http://localhost:6333';
-const COLLECTION_NAME = 'engeai-documents';
+const COLLECTION_NAME = 'tlef_documents';
 
 // Debug logging
 console.log('🔧 Ollama RAG Configuration:');
@@ -68,10 +68,10 @@ let embeddingsModule: EmbeddingsModule;
 async function initializeEmbeddings() {
     const llmConfig: Partial<LLMConfig> = {
         provider: 'ollama' as any,
-        apiKey: process.env.OLLAMA_API_KEY || '',
-        endpoint: 'http://localhost:11434',
-        defaultModel: 'llama3.1:latest',
-        embeddingModel: 'nomic-embed-text',
+        apiKey: process.env.LLM_API_KEY || '', // fix later
+        endpoint: process.env.LLM_ENDPOINT || '',
+        defaultModel: process.env.LLM_DEFAULT_MODEL || '',
+        embeddingModel: process.env.LLM_EMBEDDING_MODEL || '',
     };
 
     const config: Partial<EmbeddingsConfig> = {
@@ -127,6 +127,7 @@ async function generateQueryEmbedding(query: string): Promise<number[]> {
         }
         
         const embeddings = await embeddingsModule.embed(query);
+
         return embeddings[0]; // embed returns number[][], we need the first array
     } catch (error) {
         console.error('Error generating query embedding:', error);
@@ -152,14 +153,17 @@ async function retrieveSimilarDocuments(
             filter.courseName = courseName;
         }
 
+        console.log("Debugging #27 : ", queryVector.length);
         // Search for similar vectors
         const result = await qdrantClient.search(COLLECTION_NAME, {
             vector: queryVector,
-            filter: Object.keys(filter).length > 0 ? filter : undefined,
+            // filter: Object.keys(filter).length > 0 ? filter : undefined,
             limit: limit,
             with_payload: true,
-            score_threshold: scoreThreshold,
+            // score_threshold: scoreThreshold,
         });
+
+        console.log("Debugging #28 : ", result.length);
 
         return result.map((hit: any) => ({
             id: hit.id,
@@ -275,6 +279,7 @@ ${contextText}`
                 }
             }
         }
+
 
         console.log("Debugging #28 : ", enhancedMessages);
 

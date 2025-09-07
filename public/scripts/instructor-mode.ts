@@ -1,7 +1,8 @@
 import { loadComponentHTML, renderFeatherIcons, sendMessageToServer } from "./functions/api.js";
 import { activeCourse, Chat, ChatMessage } from "../../src/functions/types.js";
 import { initializeDocumentsPage } from "./feature/documents.js";
-import { renderOnboarding } from "./feature/onboarding.js";
+import { renderOnCourseSetup } from "./onboarding/course-setup.js";
+import { renderDocumentSetup } from "./onboarding/document-setup.js";
 import { initializeFlagReports } from "./feature/reports.js";
 
 const enum StateEvent {
@@ -15,7 +16,8 @@ let currentClass : activeCourse =
 {
     id: '',
     date: new Date(),
-    onBoarded : false,
+    courseSetup : true,
+    contentSetup : false,
     courseName:'',
     instructors: [
     ],
@@ -142,6 +144,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         | 'documents-instructor' 
                         | 'report-history' 
                         | 'disclaimer'
+                        | 'course-setup'
+                        | 'document-setup'
         ) => {
         if (!mainContentAreaEl) return;
         try {
@@ -161,6 +165,12 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (componentName === 'report-instructor') {
                 initializeFlagReports();
             }
+            else if (componentName === 'course-setup') {
+                // Course setup component - handled by renderOnCourseSetup
+            }
+            else if (componentName === 'document-setup') {
+                //course setup component - handled by renderDocumentSetup
+            }
             renderFeatherIcons();
         }
         catch (error) {
@@ -177,8 +187,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // console.log("current state is : " + currentState.toString());
         // console.log("currentClass is : ", JSON.stringify(currentClass));
 
-        if (!currentClass.onBoarded) {
-            renderOnboarding(currentClass);
+        if (!currentClass.courseSetup) {
+            renderOnCourseSetup(currentClass);
+            return;
+        }
+        if (!currentClass.contentSetup) {
+            renderDocumentSetup(currentClass); // change this to renderOnContentSetup later
             return;
         }
 
@@ -231,15 +245,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // //make a get request for course
-    getCourse('CHBE241').then((data: activeCourse) => {
-        console.log("data: ", JSON.stringify(data));
-        currentClass = data;
-        document.body.classList.remove('onboarding-active');
-        updateUI();
-    }).catch(() => {
-        console.log("Error loading class data");
-        updateUI();
-    });
+    // getCourse('CHBE241').then((data: activeCourse) => {
+    //     console.log("data: ", JSON.stringify(data));
+    //     currentClass = data;
+    //     document.body.classList.remove('onboarding-active');
+    //     updateUI();
+    // }).catch(() => {
+    //     console.log("Error loading class data");
+    //     updateUI();
+    // });
 
 
     // fetch('/api/mongodb/courses/CHBE241')

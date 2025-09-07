@@ -36,6 +36,7 @@
     "ubc-genai-toolkit-chunking": "^0.1.0",
     "ubc-genai-toolkit-core": "^0.1.0",
     "ubc-genai-toolkit-embeddings": "^0.1.0",
+    "ubc-genai-toolkit-rag": "^0.1.2",
     "xxhashjs": "^0.2.2"
   },
   "devDependencies": {

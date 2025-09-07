@@ -1,15 +1,19 @@
 /**
  * Service for interacting with the Qdrant backend
+/**
+ * Service for interacting with the Qdrant backend
  */
 
-const BACKEND_ENDPOINT = 'http://localhost:8020/api/qdrant/documents';
+import { AdditionalMaterial } from '../../../src/functions/types';
+
+const BACKEND_ENDPOINT = `/api/qdrant/documents`;
 
 /**
  * Uploads text content to Qdrant through the backend
  * @param content - The text content to upload
  * @returns Promise with the upload result
  */
-export async function uploadTextToQdrant(content: string): Promise<any> {
+export async function uploadRAGContent(content: AdditionalMaterial): Promise<any> {
 
     console.log('DEBUG #23 : Uploading text to Qdrant');
     try {
@@ -19,7 +23,7 @@ export async function uploadTextToQdrant(content: string): Promise<any> {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                text: content
+                content: content
             })
         });
 

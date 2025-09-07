@@ -58,7 +58,8 @@ export enum onBoardingScreen {
 export interface activeCourse {
     id : string,
     date : Date,
-    onBoarded : boolean, 
+    courseSetup : boolean, 
+    contentSetup : boolean,
     courseName: string,
     instructors: string[],
     teachingAssistants: string[],
@@ -113,11 +114,11 @@ export interface courseItem {
  */
 export interface LearningObjective {
     id: string;
-    content: string;
+    LearningObjectiveTitle: string;
+    LearningObjectiveDescription: string;
     courseName: string;
     divisionTitle: string;
     itemTitle: string;
-    subcontentTitle: string;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -143,11 +144,9 @@ export interface AdditionalMaterial {
     sourceType: AdditionalMaterialSource;
     file?: File;
     text?: string;
-    uploaded: boolean;
-    qdrantId?: string;
-    chunkNumber?: number;
-    createdAt: Date;
-    updatedAt: Date;
+    fileName?: string; // Store the actual filename for display
+    uploaded?: boolean; // Track if successfully uploaded to Qdrant
+    qdrantId?: string; // Store Qdrant document ID
 }
 
 /**

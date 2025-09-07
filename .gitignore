@@ -42,3 +42,4 @@ node_modules/
 # tasks/ 
 
 /trial.ts
+src/test-scripts/

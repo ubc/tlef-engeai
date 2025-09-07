@@ -25,8 +25,8 @@ import {
     AdditionalMaterial, 
     activeCourse 
 } from '../../../src/functions/types';
-import { uploadTextToQdrant } from '../services/QdrantService.js';
-import { showConfirmModal } from '../modal-overlay.js';
+import { uploadRAGContent } from '../services/RAGService.js';
+import { showConfirmModal, openUploadModal } from '../modal-overlay.js';
 
 // In-memory store for the course data
 let courseData: ContentDivision[] = [];
@@ -302,13 +302,67 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
                 const contentId = ids[3] || '0';
                 if (!divisionId || !contentId) return;
                 console.log('Upload area clicked!', divisionId, contentId);
-                openUploadModal(divisionId, contentId);
+                openUploadModal(divisionId, contentId, handleUploadMaterial);
                     return;
             }
         });
     }
 
     // --- Event Handler Functions ---
+
+    /**
+     * Handles the upload of additional materials
+     * 
+     * @param material - The material object from the upload modal
+     * @returns Promise<void>
+     */
+    async function handleUploadMaterial(material: any): Promise<void> {
+        try {
+            // Get the division and the content item
+            const division = courseData.find(d => d.id === material.divisionId);
+            const contentItem = division?.items.find(c => c.id === material.contentId);
+            if (!contentItem) return;
+            if (!contentItem.additionalMaterials) contentItem.additionalMaterials = [];
+
+            // Create the additional material object
+            const additionalMaterial: AdditionalMaterial = {
+                id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                name: material.name,
+                courseName: currentClass.courseName,
+                divisionTitle: division?.title || 'Unknown Content',
+                itemTitle: contentItem.title,
+                sourceType: material.sourceType,
+                file: material.file,
+                text: material.text,
+                fileName: material.fileName,
+                date: new Date(),
+            };
+
+            // Upload to Qdrant if we have content
+            if (material.text || material.file) {
+                try {
+                    const qdrantResult: AdditionalMaterial[] = await uploadRAGContent(additionalMaterial);
+                    console.log('Successfully uploaded to Qdrant:', qdrantResult);
+                    additionalMaterial.uploaded = true;
+                } catch (error) {
+                    console.error('Failed to upload to Qdrant:', error);
+                    alert('Failed to upload content to Qdrant. Please try again.');
+                    return;
+                }
+            }
+
+            // Add the material to the content item
+            contentItem.additionalMaterials.push(additionalMaterial);
+
+            // Refresh the content item
+            refreshContentItem(material.divisionId, material.contentId);
+
+            console.log('Material uploaded successfully:', additionalMaterial);
+        } catch (error) {
+            console.error('Error in upload process:', error);
+            alert('An error occurred during upload. Please try again.');
+        }
+    }
 
     /**
      * Toggle the expansion state of a division
@@ -382,11 +436,11 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
 
         const newObjective = {
             id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            content: description,
+            LearningObjectiveDescription: description,
             courseName: currentClass.courseName,
             divisionTitle: division?.title || '',
             itemTitle: content.title,
-            subcontentTitle: title,
+            LearningObjectiveTitle: title,
             createdAt: new Date(),
             updatedAt: new Date()
         };
@@ -451,12 +505,12 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
         titleInput.type = 'text';
         titleInput.className = 'edit-input';
         titleInput.id = `edit-title-${divisionId}-${contentId}-${index}`;
-        titleInput.value = objective.subcontentTitle;
+        titleInput.value = objective.LearningObjectiveTitle;
 
         const descInput = document.createElement('textarea');
         descInput.className = 'edit-input';
         descInput.id = `edit-desc-${divisionId}-${contentId}-${index}`;
-        descInput.value = objective.content;
+        descInput.value = objective.LearningObjectiveDescription;
 
         const actions = document.createElement('div');
         actions.className = 'edit-actions';
@@ -507,8 +561,8 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
         if (!objective || !currentClass) return;
 
         const updateData = {
-            subcontentTitle: title,
-            content: description
+            LearningObjectiveTitle: title,
+            LearningObjectiveDescription: description
         };
 
         try {
@@ -531,8 +585,8 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
             
             if (result.success) {
                 // Update local data
-                objective.subcontentTitle = title;
-                objective.content = description;
+                objective.LearningObjectiveTitle = title;
+                objective.LearningObjectiveDescription = description;
                 objective.updatedAt = new Date();
                 refreshContentItem(divisionId, contentId);
             } else {
@@ -829,6 +883,18 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
             title.className = 'am-title';
             title.textContent = m.name;
 
+            // Show actual filename if it's a file upload
+            const fileName = document.createElement('div');
+            fileName.className = 'am-filename';
+            if (m.sourceType === 'file' && m.fileName) {
+                fileName.textContent = `📄 ${m.fileName}`;
+                fileName.style.fontSize = '0.9em';
+                fileName.style.color = '#666';
+                fileName.style.marginTop = '2px';
+            } else {
+                fileName.style.display = 'none';
+            }
+
             const meta = document.createElement('div');
             meta.className = 'am-meta';
             meta.textContent = m.sourceType === 'file' ? 'File' : m.sourceType === 'url' ? 'URL' : 'Text';
@@ -843,6 +909,7 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
             actions.appendChild(del);
 
             row.appendChild(title);
+            row.appendChild(fileName);
             row.appendChild(meta);
             row.appendChild(actions);
             wrap.appendChild(row);
@@ -851,269 +918,50 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
         return wrap;
     }
 
+
     /**
-     * Open the upload modal
+     * Delete an additional material
      * 
      * @param divisionId the id of the division
      * @param contentId the id of the content item
+     * @param materialId the id of the material to delete
      * @returns null
      */
-    function openUploadModal(divisionId: string, contentId: string) {
+    // function deleteAdditionalMaterial(
+    //     divisionId: string,
+    //     contentId: string,
+    //     materialId: string
+    // ) {
 
-        console.log('Open upload modal called for divisionId: ', divisionId, ' and contentId: ', contentId);
-        // get the mount point for the modal
-        const mount = document.getElementById('upload-modal-mount');
-        if (!mount) return;
+    //             // Upload to Qdrant if we have content
+    //             if (contentToUpload) {
+    //                 try {
+    //                     const qdrantResult = await uploadRAGContent(contentToUpload);
+    //                     console.log('Successfully uploaded to Qdrant:', qdrantResult);
+    //                     material.uploaded = true;
+    //                     // Store the Qdrant document ID in the material
+    //                     material.qdrantId = qdrantResult.id;
+    //                 } catch (error) {
+    //                     console.error('Failed to upload to Qdrant:', error);
+    //                     alert('Failed to upload content to Qdrant. Please try again.');
+    //                     return;
+    //                 }
+    //             }
 
-        // create the overlay for the modal
-        const overlay = document.createElement('div');
-        overlay.className = 'modal-overlay upload-modal-overlay';
-        mount.innerHTML = '';
-        mount.appendChild(overlay);
-        document.body.classList.add('modal-open');
+    //             // add the material to the content item
+    //             contentItem.additionalMaterials.push(material);
 
-        // create the modal
-        const modal = document.createElement('div');
-        modal.className = 'modal';
-        overlay.appendChild(modal);
+    //             // refresh the content item
+    //             refreshContentItem(divisionId, contentId);
 
-        // create the header for the modal
-        const header = document.createElement('div');
-        header.className = 'modal-header';
-        const spacer = document.createElement('div');
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'upload-close-btn';
-        closeBtn.setAttribute('aria-label', 'Close');
-        closeBtn.textContent = '×';
-        header.appendChild(spacer);
-        header.appendChild(closeBtn);
-
-        // create the content for the modal
-        const content = document.createElement('div');
-        content.className = 'modal-content';
-
-        // create the first section for the modal
-        const section1 = document.createElement('div');
-        section1.className = 'form-section';
-
-        // create the label for the first section
-        const label1 = document.createElement('label');
-        label1.className = 'section-label';
-        label1.setAttribute('for', 'mat-name');
-        label1.textContent = 'Content Title';
-
-        // create the input for the first section
-        const nameInput = document.createElement('input');
-        nameInput.id = 'mat-name';
-        nameInput.type = 'text';
-        nameInput.className = 'text-input';
-        nameInput.placeholder = 'Enter a name for this additional material...';
-        section1.appendChild(label1);
-        section1.appendChild(nameInput);
-
-
-
-        // create the second section for the modal
-        const section2 = document.createElement('div');
-        section2.className = 'form-section';
-
-        // create the label for the second section
-        const label2 = document.createElement('label');
-        label2.className = 'section-label';
-        label2.setAttribute('for', 'mat-text');
-        label2.textContent = 'Text Area';
-
-        // create the textarea for the second section
-        const textArea = document.createElement('textarea');
-        textArea.id = 'mat-text';
-        textArea.className = 'text-area';
-        textArea.placeholder = 'Enter or paste your content directly here...';
-        section2.appendChild(label2);
-        section2.appendChild(textArea);
-
-        // create the third section for the modal
-
-        // create the upload card for the modal
-        const uploadCard = document.createElement('div');
-        uploadCard.className = 'upload-card';
-
-        // create the button for the upload card (kept for semantics, but entire card is clickable)
-        const uploadFileBtn = document.createElement('button');
-        uploadFileBtn.id = 'upload-file-btn';
-        uploadFileBtn.className = 'upload-file-btn';
-        uploadFileBtn.textContent = '📁 Upload Content';
-
-        // create the hidden input for the upload card
-        const hiddenInput = document.createElement('input');
-        hiddenInput.id = 'hidden-file-input';
-        hiddenInput.type = 'file';
-        hiddenInput.style.display = 'none';
-
-        // create the file selected for the upload card
-        const fileSelected = document.createElement('div');
-        fileSelected.className = 'file-selected';
-        const selectedFileName = document.createElement('span');
-        selectedFileName.id = 'selected-file-name';
-        selectedFileName.textContent = 'No file selected';
-        fileSelected.appendChild(selectedFileName);
-        uploadCard.appendChild(uploadFileBtn);
-        uploadCard.appendChild(hiddenInput);
-        uploadCard.appendChild(fileSelected);
-
-        // append the sections to the content
-        content.appendChild(section1);
-        content.appendChild(section2);
-        content.appendChild(uploadCard);
-
-
-
-        // create the footer for the modal
-        const footer = document.createElement('div');
-        footer.className = 'modal-footer';
-
-        // create the cancel button for the footer
-        const cancelBtn = document.createElement('button');
-        cancelBtn.id = 'upload-cancel-btn';
-        cancelBtn.className = 'cancel-btn';
-        cancelBtn.textContent = 'Cancel';
-
-        // create the upload button for the footer
-        const uploadBtn = document.createElement('button');
-        uploadBtn.id = 'upload-submit-btn';
-        uploadBtn.className = 'save-btn';
-        uploadBtn.textContent = 'Upload';
-        footer.appendChild(cancelBtn);
-        footer.appendChild(uploadBtn);
-
-        // append the header, content, and footer to the modal
-        modal.appendChild(header);
-        modal.appendChild(content);
-        modal.appendChild(footer);
-
-
-
-        // create the close function for the modal
-        const close = () => {
-            mount.innerHTML = '';
-            document.body.classList.remove('modal-open');
-        };
-
-        // add the event listeners to the modal
-        closeBtn.addEventListener('click', close);
-        cancelBtn.addEventListener('click', close);
-        overlay.addEventListener('click', (e) => {
-             if (e.target === overlay) close(); 
-        });
-
-        // create the event listener for the escape key
-        window.addEventListener('keydown', function esc(e) { 
-            if (e.key === 'Escape') { 
-                close(); window.removeEventListener('keydown', esc); 
-            } 
-        });
-
-        // create the event listener for the upload file button
-        let selectedFile: File | null = null;
-        uploadFileBtn.addEventListener('click', () => hiddenInput.click());
-        // Make entire upload card act as the trigger
-        // uploadCard.addEventListener('click', (e) => {
-        //     // Avoid double-trigger from inner button
-        //     if ((e.target as HTMLElement).id !== 'hidden-file-input') {
-        //         hiddenInput.click();
-        //     }
-        // });
-        hiddenInput.addEventListener('change', () => {
-            const f = hiddenInput.files && hiddenInput.files[0] ? hiddenInput.files[0] : null;
-            selectedFile = f;
-            selectedFileName.textContent = f ? f.name : 'No file selected';
-        });
-
-        // create the event listener for the upload button
-        uploadBtn.addEventListener('click', async () => {
-            const name = nameInput.value.trim();
-            const text = textArea.value.trim();
-            const url = '';
-            if (!name) { alert('Please enter a material name.'); return; }
-            if (!selectedFile && !url && !text) { alert('Provide a file, URL, or text content.'); return; }
-
-            try {
-                // get the division and the content item
-                const division = courseData.find(d => d.id === divisionId);
-                const contentItem = division?.items.find(c => c.id === contentId);
-                if (!contentItem) return;
-                if (!contentItem.additionalMaterials) contentItem.additionalMaterials = [];
-
-                // create the id for the material
-                const id = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-                const material: AdditionalMaterial = {
-                    id,
-                    name,
-                    courseName: currentClass.courseName,
-                    divisionTitle: division?.title || 'Unknown Content',
-                    itemTitle: contentItem.title,
-                    sourceType: 'text',
-                    date: new Date(),
-                    uploaded: false,
-                    createdAt: new Date(),
-                    updatedAt: new Date()
-                };
-
-                let contentToUpload: string | null = null;
-
-                // Handle different content sources
-                if (selectedFile) {
-                    // For now, only handle markdown files
-                    if (selectedFile.name.toLowerCase().endsWith('.md')) {
-                        const reader = new FileReader();
-                        contentToUpload = await new Promise((resolve, reject) => {
-                            reader.onload = () => resolve(reader.result as string);
-                            reader.onerror = () => reject(reader.error);
-                            if (selectedFile) {
-                            reader.readAsText(selectedFile);
-                        }
-                        });
-                        material.sourceType = 'file';
-                        material.file = selectedFile;
-                        // Note: previewUrl is not part of the AdditionalMaterial interface
-                    } else {
-                        alert('Currently only supporting markdown (.md) files');
-                        return;
-                    }
-                } else if (text) {
-                    contentToUpload = text;
-                    material.sourceType = 'text';
-                    material.text = text;
-                }
-
-                // Upload to Qdrant if we have content
-                if (contentToUpload) {
-                    try {
-                        const qdrantResult = await uploadTextToQdrant(contentToUpload);
-                        console.log('Successfully uploaded to Qdrant:', qdrantResult);
-                        material.uploaded = true;
-                        // Store the Qdrant document ID in the material
-                        material.qdrantId = qdrantResult.id;
-                    } catch (error) {
-                        console.error('Failed to upload to Qdrant:', error);
-                        alert('Failed to upload content to Qdrant. Please try again.');
-                        return;
-                    }
-                }
-
-                // add the material to the content item
-                contentItem.additionalMaterials.push(material);
-
-                // refresh the content item
-                refreshContentItem(divisionId, contentId);
-
-                // close the modal
-                close();
-            } catch (error) {
-                console.error('Error in upload process:', error);
-                alert('An error occurred during upload. Please try again.');
-            }
-        });
-    }
+    //             // close the modal
+    //             close();
+    //         } catch (error) {
+    //             console.error('Error in upload process:', error);
+    //             alert('An error occurred during upload. Please try again.');
+    //         }
+    //     });
+    // }
 
     /**
      * Delete an additional material
@@ -1174,7 +1022,7 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
             // create the title for the objective
             const title = document.createElement('div');
             title.className = 'objective-title';
-            title.textContent = obj.subcontentTitle;
+            title.textContent = obj.LearningObjectiveTitle;
 
             const actions = document.createElement('div');
             actions.className = 'objective-actions';
@@ -1211,7 +1059,7 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
             // create the description for the objective
             const desc = document.createElement('div');
             desc.className = 'objective-description';
-            desc.textContent = obj.content;
+            desc.textContent = obj.LearningObjectiveDescription;
 
             // append the description to the body
             body.appendChild(desc);
@@ -1273,23 +1121,3 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
         return wrapper;
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

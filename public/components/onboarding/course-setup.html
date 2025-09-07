@@ -1,4 +1,4 @@
-<div class="onboarding">
+<div class="onboarding course-setup">
     <link rel="stylesheet" href="/styles/instructor-components/onboarding.css">
     <link rel="stylesheet" href="/styles/modal-overlay.css">
     
@@ -105,13 +105,27 @@
             <!-- Step 7: Finalization -->
             <div class="step-item" data-step="7">
                 <div class="step-indicator">
-                    <div class="step-circle current">
+                    <div class="step-circle completed">
                         <span class="step-number">7</span>
                     </div>
+                    <div class="step-line"></div>
                 </div>
                 <div class="step-content">
                     <h3>Finalization</h3>
                     <p>Review and complete</p>
+                </div>
+            </div>
+
+            <!-- Step 8: Congratulations -->
+            <div class="step-item" data-step="8">
+                <div class="step-indicator">
+                    <div class="step-circle current">
+                        <span class="step-number">8</span>
+                    </div>
+                </div>
+                <div class="step-content">
+                    <h3>Complete</h3>
+                    <p>Course setup finished</p>
                 </div>
             </div>
         </div>
@@ -306,6 +320,42 @@
             </div>
         </div>
 
+        <!-- Step 8: Congratulations -->
+        <div class="content-step" id="content-step-8">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Course Setup Complete!</h1>
+                    <p>You've successfully set up your course structure</p>
+                </div>
+                
+                <div class="completion-content">
+                    <div class="completion-message">
+                        <div class="success-icon">🎉</div>
+                        <h3>Congratulations!</h3>
+                        <p>You have successfully completed the course setup process. Your course is now ready for the next step!</p>
+                        <ul class="completion-list">
+                            <li>Course name and structure configured</li>
+                            <li>Instructors and teaching assistants assigned</li>
+                            <li>Content organization method selected</li>
+                            <li>Number of sections determined</li>
+                        </ul>
+                        <p>You can now proceed to set up your course content and learning materials.</p>
+                    </div>
+                    
+                    <div class="next-steps">
+                        <h4>What's Next?</h4>
+                        <p>Your next steps are:</p>
+                        <ul>
+                            <li>Add learning objectives for each course session</li>
+                            <li>Upload course materials and documents</li>
+                            <li>Customize your course content further</li>
+                            <li>Begin using the instructor dashboard to manage your course</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Navigation -->
         <div class="onboarding-navigation">
             <button class="nav-btn btn-back" id="backBtn" style="display: none;">
@@ -399,6 +449,19 @@
             </ul>
             <p>Click "Complete Setup" to finish the onboarding process.</p>
         </div>
+
+        <!-- Step 8 Help -->
+        <div id="help-step-8">
+            <p><strong>Course Setup Complete!</strong></p>
+            <p>Congratulations! You have successfully completed the course setup process.</p>
+            <p><strong>What you've accomplished:</strong></p>
+            <ul>
+                <li>Configured your course name and structure</li>
+                <li>Assigned instructors and teaching assistants</li>
+                <li>Selected your content organization method</li>
+                <li>Determined the number of course sections</li>
+            </ul>
+            <p>You're now ready to proceed to the next step: setting up your course content and learning materials.</p>
+        </div>
     </div>
 </div>
-
