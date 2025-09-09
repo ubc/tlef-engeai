@@ -1,0 +1,315 @@
+<div class="onboarding document-setup">
+    <link rel="stylesheet" href="/styles/instructor-components/onboarding.css">
+    <link rel="stylesheet" href="/styles/modal-overlay.css">
+    
+    <!-- Left Steps Panel -->
+    <div class="onboarding-steps-panel">
+        <div class="steps-header">
+            <div class="logo-box">
+                <i data-feather="file-text"></i>
+                <div class="logo-text">
+                    <span>EngE-AI</span>
+                    <p>Instructor Mode: Document Setup</p>
+                </div>
+            </div>
+        </div>
+
+        <h2>Complete these steps to set up your course content</h2>
+        
+        <div class="steps-list">
+            <!-- Step 1: Welcome -->
+            <div class="step-item" data-step="1">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">1</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Welcome</h3>
+                    <p>Document setup overview</p>
+                </div>
+            </div>
+
+            <!-- Step 2: Learning Objectives -->
+            <div class="step-item" data-step="2">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">2</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Learning Objectives</h3>
+                    <p>Add course learning goals</p>
+                </div>
+            </div>
+
+            <!-- Step 3: Document Upload -->
+            <div class="step-item" data-step="3">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">3</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Document Upload</h3>
+                    <p>Upload course materials</p>
+                </div>
+            </div>
+
+            <!-- Step 4: Completion -->
+            <div class="step-item" data-step="4">
+                <div class="step-indicator">
+                    <div class="step-circle current">
+                        <span class="step-number">4</span>
+                    </div>
+                </div>
+                <div class="step-content">
+                    <h3>Complete</h3>
+                    <p>Finish document setup</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Content Area -->
+    <div class="onboarding-content-area">
+        <!-- Help Menu -->
+        <div class="help-menu">
+            <button class="help-btn" id="helpBtn">
+                <i data-feather="info"></i>
+                <span>Help</span>
+            </button>
+        </div>
+
+        <!-- Step 1: Welcome -->
+        <div class="content-step active" id="content-step-1">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Welcome to Document Setup</h1>
+                    <p>Let's set up your course content and learning materials</p>
+                </div>
+                
+                <div class="welcome-content">
+                    <div class="welcome-message">
+                        <h3>Ready to add your course content?</h3>
+                        <p>In this next step of the onboarding session, you'll learn how to:</p>
+                        <ul class="feature-list">
+                            <li><strong>Add Learning Objectives:</strong> Define what students will learn in each session</li>
+                            <li><strong>Upload Documents:</strong> Add course materials, readings, and resources</li>
+                        </ul>
+                        <p>This process will help you create a comprehensive course structure that students can easily navigate and learn from.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: Learning Objectives Demo -->
+        <div class="content-step" id="content-step-2">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Learning Objectives</h1>
+                </div>
+                
+                <div class="demo-section">
+                    <div class="demo-explanation">
+                        <h3>What are Learning Objectives?</h3>
+                        <p>Learning objectives are clear, measurable statements that describe what students will be able to do after completing a lesson or session. The learning objective is used to guide AI to create better socratic flow in the conversation with the AI.</p>
+                        
+                        <div class="objective-structure">
+                            <h4>Learning Objective Structure:</h4>
+                            <div class="structure-item">
+                                <strong>Title:</strong> A brief, descriptive title for the objective
+                            </div>
+                            <div class="structure-item">
+                                <strong>Description:</strong> A detailed explanation of what students will learn
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="demo-interactive">
+                        <h3>Try it out:</h3>
+                        <div class="form-group">
+                            <label for="demoObjectiveTitle">Learning Objective Title</label>
+                            <input type="text" id="demoObjectiveTitle" class="form-input" placeholder="e.g., Understand basic thermodynamics principles">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="demoObjectiveDescription">Learning Objective Description</label>
+                            <textarea id="demoObjectiveDescription" class="form-input" rows="3" placeholder="e.g., Students will be able to apply the first law of thermodynamics to analyze energy transfer in closed systems and calculate work done by or on the system."></textarea>
+                        </div>
+                        
+                        <div class="demo-actions">
+                            <button class="demo-btn" id="addDemoObjective">Add Learning Objective</button>
+                            <button class="demo-btn secondary" id="clearDemo">Clear</button>
+                        </div>
+                        
+                        <div class="demo-objectives-list" id="demoObjectivesList">
+                            <h4>Your Learning Objectives:</h4>
+                            <div class="objectives-container" id="objectivesContainer">
+                                <p class="no-objectives">No learning objectives added yet. Try adding one above!</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3: Document Upload Demo -->
+        <div class="content-step" id="content-step-3">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Document Upload</h1>
+                    <p>Learn how to upload and manage course materials</p>
+                </div>
+                
+                <div class="demo-section">
+                    <div class="demo-explanation">
+                        <h3>Upload Course Materials</h3>
+                        <p>You can upload various types of course materials to enhance your students' learning experience. These materials will be processed and made searchable for the AI tutor.</p>
+                        
+                        <div class="upload-types">
+                            <h4>Supported Material Types:</h4>
+                            <div class="type-item">
+                                <strong>📄 Documents:</strong> PDFs, Word docs, PowerPoint presentations
+                            </div>
+                            <div class="type-item">
+                                <strong>🔗 URLs:</strong> Links to online resources, videos, articles
+                            </div>
+                            <div class="type-item">
+                                <strong>📝 Text:</strong> Direct text input for notes, summaries, or instructions
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="demo-interactive">
+                        <h3>Upload Demo:</h3>
+                        <div class="upload-demo-area">
+                            <button class="upload-card demo-upload-card" id="demoUploadBtn">
+                                <h4>+Upload Your Materials</h4>
+                            </button>
+                            
+                            <div class="uploaded-files" id="demoUploadedFiles">
+                                <h4>Uploaded Files:</h4>
+                                <div class="files-container" id="filesContainer">
+                                    <p class="no-files">No files uploaded yet. Try uploading some materials!</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="demo-actions">
+                            <button class="demo-btn" id="processDemoFiles">Process Files (Demo)</button>
+                            <button class="demo-btn secondary" id="clearDemoFiles">Clear All</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 4: Completion -->
+        <div class="content-step" id="content-step-4">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Document Setup Complete!</h1>
+                    <p>You've successfully learned how to set up your course content</p>
+                </div>
+                
+                <div class="completion-content">
+                    <div class="completion-message">
+                        <div class="success-icon">✅</div>
+                        <h3>Congratulations!</h3>
+                        <p>You now know how to:</p>
+                        <ul class="completion-list">
+                            <li>Add learning objectives to define course goals</li>
+                            <li>Upload and organize course materials</li>
+                            <li>Structure content for optimal student learning</li>
+                        </ul>
+                        <p>Your course is now ready for students to start learning with the AI tutor!</p>
+                    </div>
+                    
+                    <div class="next-steps">
+                        <h4>What's Next?</h4>
+                        <p>You can now:</p>
+                        <ul>
+                            <li>Start adding actual learning objectives to your course sessions</li>
+                            <li>Upload real course materials and documents</li>
+                            <li>Customize your course structure further</li>
+                            <li>Begin using the instructor dashboard to manage your course</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="onboarding-navigation">
+            <button class="nav-btn btn-back" id="backBtn" style="display: none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15,18 9,12 15,6"></polyline>
+                </svg>
+                Back
+            </button>
+            <button class="nav-btn btn-next" id="nextBtn">
+                Next
+                <i data-feather="chevron-right"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Help Content Templates (Hidden) -->
+    <div id="help-templates" style="display: none;">
+        <!-- Step 1 Help -->
+        <div id="help-step-1">
+            <p><strong>Welcome to Document Setup!</strong></p>
+            <p>This onboarding process will teach you how to add learning objectives and upload course materials for your EngE-AI course.</p>
+            <p><strong>What you'll learn:</strong></p>
+            <ul>
+                <li>How to create effective learning objectives</li>
+                <li>How to upload and organize course materials</li>
+            </ul>
+        </div>
+
+        <!-- Step 2 Help -->
+        <div id="help-step-2">
+            <p><strong>Learning Objectives Guide</strong></p>
+            <p>Learning objectives should be:</p>
+            <ul>
+                <li><strong>Specific:</strong> Clearly state what students will learn</li>
+                <li><strong>Measurable:</strong> Include observable outcomes</li>
+                <li><strong>Achievable:</strong> Realistic for the time and resources available</li>
+                <li><strong>Relevant:</strong> Aligned with course goals and student needs</li>
+            </ul>
+            <p><strong>Example:</strong> "Students will be able to calculate the heat transfer coefficient for a given system using Fourier's law."</p>
+        </div>
+
+        <!-- Step 3 Help -->
+        <div id="help-step-3">
+            <p><strong>Document Upload Guide</strong></p>
+            <p>You can upload various types of materials:</p>
+            <ul>
+                <li><strong>PDFs:</strong> Lecture notes, readings, assignments</li>
+                <li><strong>Presentations:</strong> PowerPoint slides, lecture materials</li>
+                <li><strong>Documents:</strong> Word docs, text files, handouts</li>
+                <li><strong>URLs:</strong> Links to videos, articles, online resources</li>
+            </ul>
+            <p>All materials will be processed and made searchable for the AI tutor.</p>
+        </div>
+
+        <!-- Step 4 Help -->
+        <div id="help-step-4">
+            <p><strong>Setup Complete!</strong></p>
+            <p>You've successfully learned how to set up your course content. You can now:</p>
+            <ul>
+                <li>Add learning objectives to your actual course sessions</li>
+                <li>Upload real course materials</li>
+                <li>Start using the full instructor dashboard</li>
+            </ul>
+            <p>Remember: You can always return to modify your course content as needed.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Upload Modal Mount Point -->
+<div id="upload-modal-mount"></div>

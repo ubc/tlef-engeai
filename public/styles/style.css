@@ -5,7 +5,7 @@
     --color-ubc-blue: #2F5F8F;
     --color-navy-blue: #1B365D;
     --color-eng-red: #8B0000;
-    --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
 
 *, *::before, *::after {
@@ -35,4 +35,72 @@ a {
 
 a:hover {
     color: var(--color-navy-blue);
+}
+
+@keyframes fadeIn {to {opacity: 1;}}
+
+@keyframes slideInUp { 
+    from { 
+        transform: translateY(30px); 
+        opacity: 0; 
+    } 
+    to { 
+        transform: translateY(0); 
+        opacity: 1; 
+    } 
+}
+
+@keyframes slideInDown { 
+    from { 
+        transform: translateY(-30px); 
+        opacity: 0; 
+    } 
+    to { 
+        transform: translateY(0); 
+        opacity: 1; 
+    } 
+}
+
+@keyframes slideInLeft {
+    from { 
+        transform: translateX(-30px); 
+        opacity: 0; 
+    } 
+    to { 
+        transform: translateX(0); 
+        opacity: 1; 
+    } 
+}
+
+@keyframes slideInRight {
+    from { 
+        transform: translateX(30px); 
+        opacity: 0; 
+    } 
+    to { 
+        transform: translateX(0px); 
+        opacity: 1; 
+    } 
+}
+
+@keyframes slideOutLeft {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(-30px);
+        opacity: 0;
+    }
+}
+
+@keyframes slideOutRight {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translate(30px);
+        opacity: 0;
+    }
 }

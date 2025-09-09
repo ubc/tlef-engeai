@@ -1,0 +1,526 @@
+:root {
+    --sidebar-bg: #f7f7f7;
+    --chat-bg: #fcfcfc;
+    --border-color: #b8b8b8;
+    --hover-bg: #efefef;
+    --text-primary: #333333;
+    --text-secondary: #6c757d;
+    --gingham-color: rgba(92, 138, 58, 0.1);
+    --user-message-bg: #002145;
+    --bot-message-bg: #f1f1f1;
+    --pinned-color: #5c8a3a;
+    --background-2: #ECE5DD;
+    --footer-height: 110px;
+}
+
+.container {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+/* Main Content */
+.main-content {
+    width: 100%;
+    overflow-y: auto;
+}
+
+.document-header {
+    background: var(--color-chbe-green);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid var(--border-color);
+    box-shadow: 
+        0px 2px 8px rgba(0, 0, 0, 0.1),
+        0px 0px 0px 20px white;
+    animation: slideInDown 0.5s 0.1s forwards;
+    position: sticky;
+    z-index: 10;
+    top: 0;
+}
+
+.document-header h1 {
+    color: white;
+    margin: 0;
+}
+
+
+
+/* Documents Content */
+.documents-container {
+    background: var(--chat-bg);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    /* animation: slideInUp 0.3s 0.1s forwads; */
+}
+
+.content-session {
+    border-bottom: 1px solid var(--border-color);
+    margin: 10px;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.content-session:last-child {
+    border-bottom: none;
+}
+
+.week-header {
+    padding: 10px 20px;
+    background: var(--background-2);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.week-header:hover {
+    background: var(--hover-bg);
+}
+
+.week-title {
+    color: var(--text-primary);
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.week-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.completion-status {
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.expand-icon {
+    color: var(--text-primary);
+    font-size: 20px;
+    transition: transform 0.3s ease;
+}
+
+.division-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.division-content.expanded {
+    max-height: 2000px;
+}
+
+.content-item {
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--chat-bg);
+}
+
+.content-item:last-child {
+    border-bottom: none;
+}
+
+.content-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.content-title {
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.content-status {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.status-completed {
+    background: rgba(76, 175, 80, 0.1);
+    color: var(--pinned-color);
+    border: 1px solid var(--pinned-color);
+}
+
+.status-add-session {
+    background: rgba(76, 86, 175, 0.1);
+    color: var(--color-navy-blue);
+    border: 1px solid var(--color-navy-blue);
+}
+
+.status-delete-section {
+    background: rgba(175, 76, 76, 0.1);
+    color: var(--color-eng-red);
+    border: 1px solid var(--color-eng-red);
+}
+
+
+.content-status-row {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+}
+
+.status-published {
+    background: rgba(76, 175, 80, 0.1);
+    color: var(--pinned-color);
+    border: 1px solid var(--pinned-color);
+}
+
+
+.status-draft {
+    background: rgba(255, 152, 0, 0.1);
+    color: #e67e22;
+    border: 1px solid #e67e22;
+}
+
+.learning-objectives {
+    margin: 10px 0;
+}
+
+.objectives-accordion {
+    background: var(--gingham-color);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+}
+
+.objectives-header {
+    padding: 12px 15px;
+    background: var(--hover-bg);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.3s ease;
+}
+
+.objectives-header:hover {
+    background: var(--gingham-color);
+}
+
+.objectives-title {
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.objectives-count {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.objectives-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    padding: 0 15px;
+}
+
+.objectives-content.expanded {
+    max-height: 1000px;
+    padding: 15px;
+}
+
+.objective-item {
+    margin-bottom: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.objective-header {
+    padding: 10px 12px;
+    background: var(--chat-bg);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.3s ease;
+}
+
+.objective-header:hover {
+    background: var(--hover-bg);
+}
+
+.objective-title {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 500;
+    flex: 1;
+}
+
+.objective-actions {
+    display: flex;
+    gap: 5px;
+    margin-left: 10px;
+}
+
+.action-btn {
+    padding: 4px 8px;
+    border: none;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.edit-btn {
+    background: var(--pinned-color);
+    color: white;
+}
+
+.edit-btn:hover {
+    background: #4a6b2f;
+}
+
+.delete-btn {
+    background: #dc3545;
+    color: white;
+}
+
+.delete-btn:hover {
+    background: #c82333;
+}
+
+.objective-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    background: var(--gingham-color);
+}
+
+.objective-content.expanded {
+    max-height: 300px;
+    padding: 12px;
+}
+
+.objective-description {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.add-objective {
+    margin-top: 15px;
+    padding: 15px;
+    background: var(--chat-bg);
+    border-radius: 6px;
+    border: 2px dashed var(--border-color);
+}
+
+.add-objective-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.objective-title-input {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.objective-description-input {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 13px;
+    resize: vertical;
+    min-height: 60px;
+}
+
+.objective-title-input:focus,
+.objective-description-input:focus {
+    outline: none;
+    border-color: var(--pinned-color);
+}
+
+.input-label {
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: -5px;
+}
+
+.add-btn {
+    padding: 8px 16px;
+    background: var(--pinned-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    align-self: flex-start;
+}
+
+.add-btn:hover {
+    background: #4a6b2f;
+}
+
+.form-section { margin-bottom: 14px; }
+
+.edit-form {
+    padding: 12px;
+    background: var(--gingham-color);
+}
+
+.edit-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 12px;
+    resize: vertical;
+    min-height: 50px;
+    margin-bottom: 10px;
+}
+
+.edit-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.save-btn {
+    padding: 6px 12px;
+    background: var(--pinned-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.cancel-btn {
+    padding: 6px 12px;
+    background: var(--text-secondary);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.document-upload {
+    margin-top: 10px;
+    padding: 10px;
+    background: var(--gingham-color);
+    border-radius: 8px;
+    border: 2px dashed var(--border-color);
+}
+
+.upload-area {
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.upload-area:hover {
+    background: var(--hover-bg);
+    border-color: var(--pinned-color);
+}
+
+.upload-icon {
+    color: var(--text-secondary);
+    font-size: 24px;
+    margin-bottom: 5px;
+}
+
+.upload-text {
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.missing-content {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-style: italic;
+    margin-top: 10px;
+}
+
+/* Additional Materials list */
+.additional-materials {
+    margin-top: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.additional-material {
+    display: grid;
+    grid-template-columns: 1fr auto 100px;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 12px;
+    background: var(--chat-bg);
+    border-top: 1px solid var(--border-color);
+}
+
+.additional-material:first-child { border-top: none; }
+.additional-material .am-title { font-size: 14px; color: var(--text-primary); font-weight: 500; }
+.additional-material .am-meta { font-size: 12px; color: var(--text-secondary); }
+
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 22px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background-color: #ccc;
+    transition: 0.3s ease;
+    border-radius: 30px;
+}
+
+.toggle-slider::before{
+    position: absolute;
+    content: "";
+    height: 15px;
+    width: 15px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+input:checked + .toggle-slider {
+    background-color: var(--color-chbe-green);
+}
+
+input:checked + .toggle-slider::before {
+    transform: translateX(20px);
+}
+
+.toggle-slider:hover {
+    box-shadow: 0 0 8px rgba(0,0,0,0.1);
+}
+
+
+
+

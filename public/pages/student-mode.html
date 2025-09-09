@@ -9,19 +9,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     
     <link rel="stylesheet" href="/styles/style.css" />
-    <link rel="stylesheet" href="/styles/message-menu.css" />
-    <link rel="stylesheet" href="/styles/artefact.css" />
-    <link rel="stylesheet" href="/styles/chat-window.css" />
-    <link rel="stylesheet" href="/styles/report-history.css" />
-    <link rel="stylesheet" href="/styles/welcome-screen.css" />
-    <link rel="stylesheet" href="/styles/flag-message.css" />
-    <link rel="stylesheet" href="/styles/disclaimer-modal.css" />
+    <link rel="stylesheet" href="/styles/chat-components/report-history.css" />
+    <link rel="stylesheet" href="/styles/chat-components/flag-message.css" />
+    <link rel="stylesheet" href="/styles/chat-components/disclaimer.css" />
     <link rel="stylesheet" href="/styles/student-mode.css" />
     <script src="https://unpkg.com/feather-icons"></script>
 
 </head>
 <body>
-    <div class="chat-dashboard">
+    <div class="main-dashboard">
         <aside class="sidebar">
             <div>
                 <div class="sidebar-header">
@@ -31,6 +27,9 @@
                             <span>EngE-AI</span>
                             <p>Engineering companion</p>
                         </div>
+                        <!-- <button class="collapse-sidebar-btn" id="collapse-sidebar-btn" title="Collapse sidebar">
+                            <i data-feather="chevrons-left"></i>
+                        </button> -->
                     </div>
                 </div>
                 <nav class="chat-list">
@@ -54,6 +53,7 @@
         <!-- The main content area where components will be loaded -->
         <main id="main-content-area">
             <!-- This will be populated by student-mode.ts -->
+
         </main>
 
         <!-- Artefact panel (hidden by default, slides from right) -->
@@ -70,7 +70,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>mermaid.initialize({ startOnLoad: true, theme: 'default' });</script>
-    <script src="/dist/student-mode.js"></script>
+    <script type="module" src="/dist/public/scripts/student-mode.js"></script>
     <script>
         feather.replace(); // Initialize Feather Icons
     </script>

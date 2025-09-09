@@ -1,13 +1,19 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import path from 'path';
-import exampleRoutes from './routes/example/hello';
-import chatRoutes from './routes/chat'; // Import the new chat routes
+import cors from 'cors';
+import chatRoutes from './routes/chat';
+import ollamaRoutes from './routes/ollama';
+// import qdrantRoutes from './routes/RAGapp';  // Import Qdrant routes
+import mongodbRoutes from './routes/mongodb';  // Import MongoDB routes
 
 dotenv.config();
 
 const app = express();
 const port = process.env.TLEF_ENGE_AI_PORT || 8020;
+
+// Enable CORS for all routes
+app.use(cors());
 
 // Middleware to parse JSON bodies
 app.use(express.json());
@@ -22,14 +28,16 @@ app.use(express.static(publicPath));
 
 // Page routes
 app.get('/settings', (req: any, res: any) => {
-	res.sendFile(path.join(publicPath, 'pages/settings.html'));
+    res.sendFile(path.join(publicPath, 'pages/settings.html'));
 });
 
 // API endpoints
-app.use('/api/example', exampleRoutes);
-app.use('/api/chat', chatRoutes); // Use the new chat routes
+app.use('/api/chat', chatRoutes);
+app.use('/api/ollama', ollamaRoutes);
+// app.use('/api/qdrant', qdrantRoutes);  // Add Qdrant routes
+app.use('/api/mongodb', mongodbRoutes);  // Add MongoDB routes
 
 app.listen(port, () => {
-	console.log(`Server is running on http://localhost:${port}`);
-	console.log('ENGE-AI Test');
+    console.log(`Server is running on http://localhost:${port}`);
+    console.log('ENGE-AI Test');
 });

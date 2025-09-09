@@ -40,3 +40,6 @@ node_modules/
 # Task files
 # tasks.json
 # tasks/ 
+
+/trial.ts
+src/test-scripts/

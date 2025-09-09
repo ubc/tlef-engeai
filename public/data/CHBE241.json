@@ -1,0 +1,40 @@
+{
+    "id": "16a6990f961d",
+    "date": "2025-09-04T05:20:24.516+00:00",
+    "onBoarded": true,
+    "courseName": "CHBE 241",
+    "instructors": [
+      "Dr. Jane Smith"
+    ],
+    "teachingAssistants": [
+      "Henry Anderson"
+    ],
+    "frameType": "byTopic",
+    "tilesNumber": 1,
+    "divisions": [
+      {
+        "id": "40f2da9e01e4",
+        "date": "2025-09-04T05:20:24.516+00:00",
+        "title": "Topic 1",
+        "courseName": null,
+        "published": false,
+        "items": [
+          {
+            "id": "65c61fc5aded",
+            "date": "2025-09-04T05:20:24.516+00:00",
+            "title": "Topic 1",
+            "courseName": null,
+            "divisionTitle": "Topic 1",
+            "itemTitle": "Topic 1",
+            "completed": false,
+            "learningObjectives": [],
+            "additionalMaterials": [],
+            "createdAt": "2025-09-04T05:20:24.567+00:00",
+            "updatedAt": "2025-09-04T05:20:24.567+00:00"
+          }
+        ],
+        "createdAt": "2025-09-04T05:20:24.567+00:00",
+        "updatedAt": "2025-09-04T05:20:24.567+00:00"
+      }
+    ]
+}

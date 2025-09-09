@@ -1,28 +1,7 @@
 // public/scripts/student-mode.ts
 
-declare const feather: {
-    replace: () => void;
-};
-
-interface ChatMessage {
-    id: number;
-    sender: 'user' | 'bot';
-    text: string;
-    timestamp: number;
-    artefact?: {
-        type: 'mermaid';
-        source: string;
-        title?: string;
-    };
-}
-
-interface Chat {
-    id: number;
-    title: string;
-    messages: ChatMessage[];
-    isPinned: boolean;
-    pinnedMessageId?: number | null;
-}
+import type { Chat, ChatMessage } from '../../src/functions/types.js';
+import { loadComponentHTML, sendMessageToServer, renderFeatherIcons } from './functions/api.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- STATE MANAGEMENT ---
@@ -37,16 +16,39 @@ document.addEventListener('DOMContentLoaded', () => {
     const sidebarHeaderEl = document.querySelector('.sidebar-header') as HTMLElement | null;
     const artefactCloseBtn = document.getElementById('close-artefact-btn');
 
+    // --- ESC KEY LISTENER FOR ARTEFACT PANEL ---
+    let artefactEscListener: ((e: KeyboardEvent) => void) | null = null;
+
+    const addArtefactEscListener = () => {
+        if (artefactEscListener) return; // Already added
+        
+        artefactEscListener = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                const panel = document.getElementById('artefact-panel');
+                if (panel && panel.classList.contains('open')) {
+                    toggleArtefactPanel();
+                }
+            }
+        };
+        
+        document.addEventListener('keydown', artefactEscListener);
+    };
+
+    const removeArtefactEscListener = () => {
+        if (artefactEscListener) {
+            document.removeEventListener('keydown', artefactEscListener);
+            artefactEscListener = null;
+        }
+    };
+
     // --- COMPONENT LOADING ---
     const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'report-history') => {
         if (!mainContentArea) return;
         
         try {
-            const response = await fetch(`/components/${componentName}.html`);
-            if (!response.ok) throw new Error('Network response was not ok');
-            console.log('Response:', response);
-            mainContentArea.innerHTML = await response.text();
-            feather.replace();
+            const html = await loadComponentHTML(componentName);
+            mainContentArea.innerHTML = html;
+            renderFeatherIcons();
             
             // After loading, attach necessary event listeners
             if (componentName === 'chat-window') {
@@ -121,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Ensure artefact close button always closes the panel
     artefactCloseBtn?.addEventListener('click', () => {
         const panel = document.getElementById('artefact-panel');
-        const dashboard = document.querySelector('.chat-dashboard') as HTMLElement | null;
+        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
         if (!panel) return;
         if (panel.classList.contains('open')) {
             panel.classList.add('closing');
@@ -145,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Render Feather icons for newly injected buttons
-        feather.replace();
+        renderFeatherIcons();
     };
 
     const handlePinClickForChat = (targetChatId: number): void => {
@@ -183,7 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
         li.style.alignItems = 'center';
 
         const titleSpan = document.createElement('span');
-        titleSpan.textContent = chat.title;
+        titleSpan.textContent = chat.itemTitle;
         titleSpan.style.flex = '1';
         titleSpan.style.minWidth = '0';
 
@@ -261,6 +263,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Selecting a chat when clicking anywhere except buttons
         li.addEventListener('click', () => {
+
+            // Close artifact panel when switching chats
+            const panel = document.getElementById('artefact-panel');
+            const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
+            if (panel && panel.classList.contains('open')) {
+                panel.classList.add('closing');
+                setTimeout(() => {
+                    panel.classList.remove('open');
+                    panel.setAttribute('aria-hidden', 'true');
+                    panel.classList.remove('closing');
+                    if (dashboard) dashboard.classList.remove('artefact-open');
+                    removeArtefactEscListener();
+                }, 180);
+            }
+
             activeChatId = chat.id;
             renderChatList();
             renderActiveChat();
@@ -281,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         ensureChatHeaderStructure();
 
-        chatTitleEl.textContent = activeChat.title;
+        chatTitleEl.textContent = activeChat.itemTitle;
         pinBtn.classList.toggle('pinned', activeChat.isPinned);
 
         messageAreaEl.innerHTML = '';
@@ -307,7 +324,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Always scroll to newest message on the scroll container (chat-window)
         scrollToBottom();
         renderPinnedBanner(activeChat);
-        feather.replace();
+        renderFeatherIcons();
         // In case icon rendering changes layout, scroll again next frame
         scrollToBottom();
     };
@@ -345,7 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chat.pinnedMessageId = null;
         renderActiveChat();
         renderChatList();
-        feather.replace();
+        renderFeatherIcons();
     };
 
     const renderPinnedBanner = (chat: Chat) => {
@@ -472,13 +489,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const toggleArtefactPanel = () => {
         const panel = document.getElementById('artefact-panel');
         const closeBtn = document.getElementById('close-artefact-btn');
-        const dashboard = document.querySelector('.chat-dashboard') as HTMLElement | null;
+        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
         if (!panel) return;
         const willOpen = !panel.classList.contains('open');
         if (willOpen) {
             panel.classList.remove('closing');
             panel.classList.add('open');
             panel.setAttribute('aria-hidden', 'false');
+            // Add ESC listener when panel opens
+            addArtefactEscListener();
         } else {
             // add a brief closing class so content fades, then remove .open
             panel.classList.add('closing');
@@ -487,6 +506,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 panel.classList.remove('open');
                 panel.setAttribute('aria-hidden', 'true');
                 panel.classList.remove('closing');
+                // Remove ESC listener when panel closes
+                removeArtefactEscListener();
             }, 180);
         }
         // mark dashboard state so CSS can split widths evenly
@@ -501,6 +522,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Lazy-load artefact content on open
         if (willOpen) {
+
             const container = panel.querySelector('.artefact-content') as HTMLElement | null;
             if (container && container.childElementCount === 0) {
                 fetch('/components/artefact.html')
@@ -526,15 +548,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- EVENT HANDLERS ---
     const createNewChat = () => {
+
+        // Close artifact panel when deleting active chat
+        const panel = document.getElementById('artefact-panel');
+        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
+        if (panel && panel.classList.contains('open')) {
+            panel.classList.add('closing');
+            setTimeout(() => {
+                panel.classList.remove('open');
+                panel.setAttribute('aria-hidden', 'true');
+                panel.classList.remove('closing');
+                if (dashboard) dashboard.classList.remove('artefact-open');
+                removeArtefactEscListener();
+            }, 180);
+        }
+
         const newChat: Chat = { id: Date.now(), 
-                                title: 'no title', 
+                                courseName: 'Default Course',
+                                divisionTitle: 'Default Division',
+                                itemTitle: 'no title', 
                                 messages: [], 
                                 isPinned: false };
         chats.push(newChat);
 
         // Delay the message to ensure the chat window is rendered
         setTimeout(() => {
-            newChat.messages.push({ id: Date.now(), sender: 'bot', text: 
+            newChat.messages.push({ id: Date.now(), sender: 'bot', userId: 1, courseName: 'Default Course', text: 
                     'Hello! I am EngE-AI, your AI companion for chemical, environmental, and materials engineering.' + 
                     ' As this is week 2, in lectures this week we have learned about PID control and Fluid Dynamics. ' + 
                     'What would you like to discuss? ' + 
@@ -555,30 +594,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (text === '') return;
         const activeChat = chats.find(c => c.id === activeChatId);
         if (!activeChat) return;
-        activeChat.messages.push({ id: Date.now(), sender: 'user', text, timestamp: Date.now() });
+        activeChat.messages.push({ id: Date.now(), sender: 'user', userId: 1, courseName: activeChat.courseName, text, timestamp: Date.now() });
         renderActiveChat();
         inputEl.value = '';
         inputEl.style.height = 'auto';
 
-        fetch('/api/chat/message', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text })
-        })
-        .then(res => res.json())
-        .then(data => {
-            const serverTimestamp = typeof data.timestamp === 'number' ? data.timestamp : Date.now();
-            const artefact = (data.artefact && data.artefact.type === 'mermaid' && typeof data.artefact.source === 'string')
-                ? ({ type: 'mermaid' as const, source: data.artefact.source as string, title: (data.artefact.title as string | undefined) })
-                : undefined;
-            const botMsg: ChatMessage = { id: Date.now() + 1, sender: 'bot', text: data.reply, timestamp: serverTimestamp, artefact };
-            activeChat.messages.push(botMsg);
-            renderActiveChat();
-            // Auto-open artefact when present
-            if (artefact) {
-                openArtefactFromMessage(botMsg);
-            }
-        });
+        sendMessageToServer(text)
+            .then(({ reply, timestamp }) => {
+                const botMsg: ChatMessage = { id: Date.now() + 1, sender: 'bot', userId: 1, courseName: activeChat.courseName, text: reply, timestamp };
+                activeChat.messages.push(botMsg);
+                renderActiveChat();
+            });
     };
 
     const togglePin = () => {
@@ -590,6 +616,21 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const deleteActiveChat = () => {
+
+        // Close artifact panel when deleting active chat
+        const panel = document.getElementById('artefact-panel');
+        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
+        if (panel && panel.classList.contains('open')) {
+            panel.classList.add('closing');
+            setTimeout(() => {
+                panel.classList.remove('open');
+                panel.setAttribute('aria-hidden', 'true');
+                panel.classList.remove('closing');
+                if (dashboard) dashboard.classList.remove('artefact-open');
+                removeArtefactEscListener();
+            }, 180);
+        }
+
         chats = chats.filter(c => c.id !== activeChatId);
         if (chats.length > 0) {
             const lastPinned = chats.filter(c => c.isPinned).pop();
@@ -614,9 +655,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.appendChild(overlay);
 
         try {
-            const response = await fetch('/components/disclaimer.html');
-            if (!response.ok) throw new Error('Failed to load disclaimer');
-            overlay.innerHTML = await response.text();
+            overlay.innerHTML = await loadComponentHTML('disclaimer');
         } catch (err) {
             overlay.innerHTML = '<div class="modal"><div class="modal-header"><h2>Disclaimer</h2></div><div class="modal-content"><p>Unable to load content.</p></div></div>';
         }
@@ -624,7 +663,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show overlay and lock background
         overlay.classList.add('show');
         document.body.classList.add('modal-open');
-        feather.replace();
+        renderFeatherIcons();
 
         const closeBtn = overlay.querySelector('.close-modal') as HTMLButtonElement | null;
         const onKeyDown = (e: KeyboardEvent) => {
@@ -677,12 +716,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const collapsed = sidebarEl.classList.toggle('collapsed');
             const i = btn.querySelector('i');
             if (i) i.setAttribute('data-feather', collapsed ? 'chevrons-right' : 'chevrons-left');
-            feather.replace();
+            renderFeatherIcons();
         });
 
         // Place the button at the end of the header area
         sidebarHeaderEl.appendChild(btn);
-        feather.replace();
+        renderFeatherIcons();
     };
     ensureSidebarCollapseButton();
 
@@ -703,20 +742,7 @@ document.addEventListener('DOMContentLoaded', () => {
         contentEl.textContent = text;
         messageWrapper.appendChild(contentEl);
 
-        // Append artefact chip for bot messages that carry artefacts
-        const chat = chats.find(c => c.id === activeChatId);
-        const thisMsg = chat?.messages.find(m => (m as any).id === messageId) as ChatMessage | undefined;
-        if (sender === 'bot' && thisMsg && thisMsg.artefact) {
-            const chip = document.createElement('button');
-            chip.className = 'open-artefact-chip';
-            chip.title = 'Open artefact';
-            chip.innerHTML = `<i data-feather="monitor"></i><span>Open artefact</span>`;
-            chip.addEventListener('click', (e) => {
-                e.stopPropagation();
-                openArtefactFromMessage(thisMsg);
-            });
-            messageWrapper.appendChild(chip);
-        }
+        // Artefact functionality disabled for now
 
         // Timestamp footer with inline icon actions (Pin, Flag)
         const timeEl = document.createElement('div');
@@ -820,100 +846,8 @@ document.addEventListener('DOMContentLoaded', () => {
         messageWrapper.appendChild(actions);
         return messageWrapper;
     };
-    // Seed predefined chats with distinct Mermaid diagrams (reset every load)
-    const seedPredefinedChats = () => {
-        const samples: Array<{title: string; text: string; mermaid: string}> = [
-            {
-                title: 'Process Overview',
-                text: 'Here is a high-level process overview. Click to view the artefact.',
-                mermaid: `flowchart TD\n  Start --> A[Collect Input]\n  A --> B{Valid?}\n  B -- Yes --> C[Analyze]\n  B -- No --> D[Request Fix]\n  C --> E[Generate]\n  E --> End`
-            },
-            {
-                title: 'Sequence Demo',
-                text: 'A simple sequence between client and server.',
-                mermaid: `sequenceDiagram\n  participant C as Client\n  participant S as Server\n  C->>S: Request data\n  S-->>C: Respond with JSON\n  C->>S: ACK`
-            },
-            {
-                title: 'State Machine',
-                text: 'A small state machine example.',
-                mermaid: `stateDiagram-v2\n  [*] --> Idle\n  Idle --> Loading: fetch\n  Loading --> Success: ok\n  Loading --> Error: fail\n  Success --> [*]\n  Error --> Idle`
-            },
-            {
-                title: 'Class Diagram',
-                text: 'A mini class diagram sample.',
-                mermaid: `classDiagram\n  class User {\n    +id: number\n    +name: string\n    +login() void\n  }\n  class Session {\n    +token: string\n    +expiresAt: Date\n  }\n  User "1" -- "*" Session`
-            },
-            {
-                title: 'ER Diagram',
-                text: 'An ER-style entity relation sample.',
-                mermaid: `erDiagram\n  USER ||--o{ ORDER : places\n  ORDER ||--|{ LINE_ITEM : contains\n  USER {\n    string id\n    string name\n  }\n  ORDER {\n    string id\n    date created\n  }\n  LINE_ITEM {\n    string sku\n    int quantity\n  }`
-            }
-        ];
 
-        chats = samples.map((s, idx) => ({
-            id: Date.now() + idx,
-            title: s.title,
-            isPinned: idx === 0,
-            messages: [
-                { id: Date.now() + idx * 10 + 1, sender: 'bot', text: s.text, timestamp: Date.now(), artefact: { type: 'mermaid', source: s.mermaid } }
-            ]
-        }));
-        activeChatId = chats[0].id;
-    };
-
-    // Open artefact from a specific message
-    const openArtefactFromMessage = (msg: ChatMessage) => {
-        if (!msg.artefact) return;
-        const panel = document.getElementById('artefact-panel');
-        const dashboard = document.querySelector('.chat-dashboard') as HTMLElement | null;
-        if (!panel) return;
-
-        // Close then open for the requested behaviour
-        const wasOpen = panel.classList.contains('open');
-        if (wasOpen) {
-            panel.classList.add('closing');
-            setTimeout(() => {
-                panel.classList.remove('open');
-                panel.setAttribute('aria-hidden', 'true');
-                panel.classList.remove('closing');
-                if (dashboard) dashboard.classList.remove('artefact-open');
-                // after closed, proceed to open with new content
-                setTimeout(() => showMermaidInPanel(msg), 10);
-            }, 180);
-        } else {
-            showMermaidInPanel(msg);
-        }
-    };
-
-    const showMermaidInPanel = (msg: ChatMessage) => {
-        const panel = document.getElementById('artefact-panel');
-        const dashboard = document.querySelector('.chat-dashboard') as HTMLElement | null;
-        if (!panel || !msg.artefact) return;
-        const container = panel.querySelector('.artefact-content') as HTMLElement | null;
-        if (!container) return;
-
-        // Replace body content but keep outer template
-        const body = document.createElement('div');
-        body.className = 'artefact-body';
-        body.innerHTML = `<pre class="mermaid">${msg.artefact.source}</pre>`;
-        container.innerHTML = '';
-        container.appendChild(body);
-
-        // open panel
-        panel.classList.remove('closing');
-        panel.classList.add('open');
-        panel.setAttribute('aria-hidden', 'false');
-        if (dashboard) dashboard.classList.add('artefact-open');
-
-        // init mermaid on new content
-        try {
-            // @ts-ignore
-            if (window.mermaid && typeof window.mermaid.init === 'function') {
-                // @ts-ignore
-                window.mermaid.init(undefined, container.querySelectorAll('.mermaid'));
-            }
-        } catch {}
-    };
+    // Artefact functionality disabled for now
 
     // --- FLAGGING SUPPORT ---
     const openFlagDialog = (messageId: number) => {
@@ -923,7 +857,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!msg || msg.sender !== 'bot') return; // Only bot messages can be flagged
 
         const panel = document.getElementById('artefact-panel');
-        const dashboard = document.querySelector('.chat-dashboard') as HTMLElement | null;
+        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
         if (!panel) return;
 
         const proceed = () => {
@@ -958,6 +892,9 @@ document.addEventListener('DOMContentLoaded', () => {
             panel.classList.add('open');
             panel.setAttribute('aria-hidden', 'false');
             if (dashboard) dashboard.classList.add('artefact-open');
+            
+            // Add ESC listener when opening
+            addArtefactEscListener();
         };
 
         // If already open, close first for consistent animation, then open
@@ -969,6 +906,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 panel.setAttribute('aria-hidden', 'true');
                 panel.classList.remove('closing');
                 if (dashboard) dashboard.classList.remove('artefact-open');
+                // Remove ESC listener when closing
+                removeArtefactEscListener();
                 setTimeout(proceed, 10);
             }, 180);
         } else {
@@ -993,7 +932,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const closeArtefactPanel = () => {
         const panel = document.getElementById('artefact-panel');
-        const dashboard = document.querySelector('.chat-dashboard') as HTMLElement | null;
+        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
         if (!panel) return;
         if (panel.classList.contains('open')) {
             panel.classList.add('closing');
@@ -1002,6 +941,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 panel.setAttribute('aria-hidden', 'true');
                 panel.classList.remove('closing');
                 if (dashboard) dashboard.classList.remove('artefact-open');
+                // Remove ESC listener when closing
+                removeArtefactEscListener();
             }, 180);
         }
     };
