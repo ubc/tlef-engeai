@@ -1,9 +1,10 @@
-import { loadComponentHTML, renderFeatherIcons, sendMessageToServer } from "./functions/api.js";
+import { loadComponentHTML, renderFeatherIcons, sendMessageToServer, createNewChat, CreateChatRequest } from "./functions/api.js";
 import { activeCourse, Chat, ChatMessage } from "../../src/functions/types.js";
 import { initializeDocumentsPage } from "./feature/documents.js";
 import { renderOnCourseSetup } from "./onboarding/course-setup.js";
 import { renderDocumentSetup } from "./onboarding/document-setup.js";
 import { initializeFlagReports } from "./feature/reports.js";
+import { showChatCreationErrorModal } from "./modal-overlay.js";
 
 const enum StateEvent {
     Chat,
@@ -16,7 +17,7 @@ let currentClass : activeCourse =
 {
     id: '',
     date: new Date(),
-    courseSetup : true,
+    courseSetup : false,
     contentSetup : false,
     courseName:'',
     instructors: [
@@ -34,6 +35,97 @@ document.addEventListener('DOMContentLoaded', () => {
 
     console.log("DOMContentLoaded is called");
 
+    // Check for debug course in sessionStorage
+    const debugCourseData = sessionStorage.getItem('debugCourse');
+    if (debugCourseData) {
+        try {
+            const debugCourse = JSON.parse(debugCourseData);
+            currentClass = debugCourse;
+            console.log('Loaded debug course:', debugCourse.courseName);
+            
+            // Clear the debug course from sessionStorage after loading
+            sessionStorage.removeItem('debugCourse');
+        } catch (error) {
+            console.error('Error parsing debug course data:', error);
+        }
+    }
+
+    // Listen for document setup completion event
+    window.addEventListener('documentSetupComplete', () => {
+        console.log('📋 Document setup completed, redirecting to documents page...');
+        
+        // Redirect to documents page
+        redirectToDocumentsPage();
+    });
+
+    /**
+     * Redirect to documents page after document setup completion
+     */
+    function redirectToDocumentsPage(): void {
+        console.log('🔄 Document setup completed, redirecting to documents page...');
+        
+        // Remove onboarding-active class from body
+        document.body.classList.remove('onboarding-active');
+        
+        // Show the main instructor interface
+        const mainContentArea = document.getElementById('main-content-area');
+        if (mainContentArea) {
+            mainContentArea.style.display = 'block';
+        }
+        
+        // Show the sidebar
+        const sidebar = document.querySelector('.instructor-sidebar');
+        if (sidebar) {
+            (sidebar as HTMLElement).style.display = 'block';
+        }
+        
+        // Switch to documents view
+        currentState = StateEvent.Documents;
+        
+        // Update the UI to switch to documents page
+        updateUI();
+        
+        // Update the UI to reflect the completed setup
+        updateUIAfterDocumentSetup();
+        
+        console.log('✅ Successfully redirected to documents page');
+    }
+
+    /**
+     * Update UI elements after document setup completion
+     */
+    function updateUIAfterDocumentSetup(): void {
+        // Update course status indicators
+        const courseStatusElements = document.querySelectorAll('.course-status');
+        courseStatusElements.forEach(element => {
+            element.textContent = 'Setup Complete';
+            element.classList.add('status-complete');
+        });
+        
+        // Show success message
+        const successMessage = document.createElement('div');
+        successMessage.className = 'setup-complete-message';
+        successMessage.innerHTML = `
+            <div class="success-banner">
+                <h3>✅ Document Setup Complete!</h3>
+                <p>Your course materials have been successfully configured. You can now manage your course content.</p>
+            </div>
+        `;
+        
+        // Insert the success message at the top of the main content
+        const mainContent = document.getElementById('main-content-area');
+        if (mainContent && mainContent.firstChild) {
+            mainContent.insertBefore(successMessage, mainContent.firstChild);
+            
+            // Remove the success message after 5 seconds
+            setTimeout(() => {
+                if (successMessage.parentNode) {
+                    successMessage.parentNode.removeChild(successMessage);
+                }
+            }, 5000);
+        }
+    }
+
     // --- DOM ELEMNET SELECTORS ---
     const sidebarEl = document.querySelector('.instructor-sidebar');
     const logoBox = document.querySelector('.logo-box');
@@ -50,7 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- STATE MANAGEMENT ----
     let chats: Chat[] = []
-    let activeChatId: number | null = null;
+    let activeChatId: string | null = null;
     const chatStateEl = document.getElementById('chat-state');
     const reportStateEl = document.getElementById('report-state');
     const monitorStateEl = document.getElementById('monitor-state');
@@ -128,8 +220,18 @@ document.addEventListener('DOMContentLoaded', () => {
             sidebarEl.classList.toggle('collapsed');
             if(!logoBox) return;
             logoBox.classList.toggle('collapsed');
-            if(!sidebarMenuListEl) return;
-            if (!sidebarMenuListEl.classList.contains('collapsed')){
+            if (currentState === StateEvent.Chat) {
+                const chatMenu = getChatMenu();
+                if(!chatMenu) return;
+                if (chatMenu.style.visibility === 'hidden') {
+                    chatMenu.style.visibility = 'visible';
+                }
+                else {
+                    chatMenu.style.visibility = 'hidden';
+                }
+            }
+            else {
+                if(!sidebarMenuListEl) return;
                 sidebarMenuListEl.classList.toggle('collapsed');
             }
         } );
@@ -245,7 +347,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // //make a get request for course
-    // getCourse('CHBE241').then((data: activeCourse) => {
+    // getCourse('CHBE251').then((data: activeCourse) => {
     //     console.log("data: ", JSON.stringify(data));
     //     currentClass = data;
     //     document.body.classList.remove('onboarding-active');
@@ -320,7 +422,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const welcomeBtn = document.getElementById('welcome-add-chat-btn');
         if (!welcomeBtn) return;
         welcomeBtn.addEventListener('click', () => {
-            createNewChat();
+            handleCreateNewChat();
         });
     };
 
@@ -371,7 +473,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const sideBarAddChatListeners = () => {
         if (!sideBarAddChatBtn) return;
-        sideBarAddChatBtn.addEventListener('click', createNewChat);
+        sideBarAddChatBtn.addEventListener('click', handleCreateNewChat);
     }
 
 
@@ -431,45 +533,58 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // // --- EVENT HANDLERS --- 
-    const createNewChat = () => {
+    const handleCreateNewChat = async () => {
+        try {
+            // Close artifact panel when creating new chat
+            const panel = document.getElementById('artefact-panel');
+            const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
+            if (panel && panel.classList.contains('open')) {
+                panel.classList.add('closing');
+                setTimeout(() => {
+                    panel.classList.remove('open');
+                    panel.setAttribute('aria-hidden', 'true');
+                    panel.classList.remove('closing');
+                    if (dashboard) dashboard.classList.remove('artefact-open');
+                    removeArtefactEscListener();
+                }, 180);
+            }
 
-        // Close artifact panel when deleting active chat
-        const panel = document.getElementById('artefact-panel');
-        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
-        if (panel && panel.classList.contains('open')) {
-            panel.classList.add('closing');
-            setTimeout(() => {
-                panel.classList.remove('open');
-                panel.setAttribute('aria-hidden', 'true');
-                panel.classList.remove('closing');
-                if (dashboard) dashboard.classList.remove('artefact-open');
-                removeArtefactEscListener();
-            }, 180);
-        }
+            // Prepare chat creation request
+            const chatRequest: CreateChatRequest = {
+                userID: 'instructor', // You might want to get this from user context
+                courseName: currentClass.courseName,
+                date: new Date().toISOString().split('T')[0] // YYYY-MM-DD format
+            };
 
-        const newChat : Chat = {id: Date.now(),
-                                courseName: currentClass.courseName,
-                                divisionTitle: 'General',
-                                itemTitle: 'Chat',
-                                messages: [],
-                                isPinned: false};
-        chats.push(newChat);
+            // Call the API to create a new chat
+            const response = await createNewChat(chatRequest);
 
-        //Delay the message to ensure the chat window is rendered
-        setTimeout(() => {
-            newChat.messages.push({ id: Date.now(), sender: 'bot', userId: 0, courseName: currentClass.courseName, text: 
-                    'Hello! I am EngE-AI, your AI companion for chemical, environmental, and materials engineering.' + 
-                    ' As this is week 2, in lectures this week we have learned about PID control and Fluid Dynamics. ' + 
-                    'What would you like to discuss? ' + 
-                    ' Remember: I am designed to enhance your learning, not replace it, always verify important information.', 
-                    timestamp: Date.now() });
-            // Re-render the active chat so the new message appears immediately
+            if (!response.success) {
+                // Show error modal if chat creation failed
+                await showChatCreationErrorModal(response.error || 'Unknown error occurred');
+                return;
+            }
+
+            // Create the new chat object with the server-generated chatId
+            const newChat: Chat = {
+                id: response.chatId || Date.now().toString(),
+                courseName: currentClass.courseName,
+                divisionTitle: 'General',
+                itemTitle: 'Chat',
+                messages: [],
+                isPinned: false
+            };
+            chats.push(newChat);
+
             renderActiveChat();
             renderChatList();
             scrollToBottom();
-        }, 400);
-        activeChatId = newChat.id;
-        updateUI();
+            activeChatId = newChat.id;
+            updateUI();
+        } catch (error) {
+            console.error('Error creating new chat:', error);
+            await showChatCreationErrorModal('Network error occurred while creating chat');
+        }
     }
 
     const sendMessage = () => {
@@ -478,13 +593,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (text === '') return;
         const activeChat = chats.find(c => c.id === activeChatId);
         if (!activeChat) return;
-        activeChat.messages.push({ id: Date.now(), sender: 'user', userId: 0, courseName: currentClass.courseName, text, timestamp: Date.now() });
+        activeChat.messages.push({ id: Date.now().toString(), sender: 'user', userId: 0, courseName: currentClass.courseName, text, timestamp: Date.now() });
         renderActiveChat();
         inputEl.value = '';
         inputEl.style.height = 'auto';
 
         // Create a placeholder for the bot's message
-        const botMessageId = Date.now() + 1;
+        const botMessageId = (Date.now() + 1).toString();
         const botMessage: ChatMessage = {
             id: botMessageId,
             sender: 'bot',
@@ -581,7 +696,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderChatList();
     };
 
-    const handleDeleteClickForChat = (targetChatId: number): void => {
+    const handleDeleteClickForChat = (targetChatId: string): void => {
         
         if (activeChatId === targetChatId) {
             deleteActiveChat();
@@ -593,7 +708,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderActiveChat();
     };
 
-    const handlePinClickForChat = (targetChatId: number): void => {
+    const handlePinClickForChat = (targetChatId: string): void => {
         const targetChat = chats.find(c => c.id === targetChatId);
         if (!targetChat) return;
         targetChat.isPinned = !targetChat.isPinned;
@@ -630,7 +745,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
 
-    const deleteChatById = (targetChatId: number): void => {
+    const deleteChatById = (targetChatId: string): void => {
         chats = chats.filter(c => c.id !== targetChatId);
         // Do not change activeChatId here unless we deleted the active one
         renderChatList();
@@ -979,7 +1094,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     const createMessageElement = (
-        messageId: number,
+        messageId: string,
         sender: 'user' | 'bot',
         text: string,
         timestamp: number | undefined,
@@ -1179,7 +1294,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // --- FLAGGING SUPPORT ---
-    const openFlagDialog = (messageId: number) => {
+    const openFlagDialog = (messageId: string) => {
         const chat = chats.find(c => c.id === activeChatId);
         if (!chat) return;
         const msg = chat.messages.find(m => m.id === messageId);
@@ -1315,7 +1430,7 @@ document.addEventListener('DOMContentLoaded', () => {
         isPinned: boolean,
         onTogglePin: () => void,
         sender: 'user' | 'bot',
-        messageId: number
+        messageId: string
     ) => {
         await ensureMessageMenu();
         const menu = document.getElementById('message-context-menu') as HTMLElement | null;

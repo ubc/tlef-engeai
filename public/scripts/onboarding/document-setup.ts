@@ -24,7 +24,7 @@
 
 import { loadComponentHTML } from "../functions/api.js";
 import { activeCourse, LearningObjective, AdditionalMaterial } from "../../../src/functions/types.js";
-import { showErrorModal, showHelpModal, showConfirmModal, openUploadModal } from "../modal-overlay.js";
+import { showErrorModal, showHelpModal, showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal } from "../modal-overlay.js";
 
 // ===========================================
 // TYPE DEFINITIONS
@@ -44,8 +44,7 @@ interface DocumentSetupState {
  */
 interface DemoObjective {
     id: string;
-    title: string;
-    description: string;
+    learningObjective: string;
 }
 
 /**
@@ -126,6 +125,9 @@ export const renderDocumentSetup = async (instructorCourse: activeCourse): Promi
  */
 async function initializeDocumentSetup(state: DocumentSetupState, instructorCourse: activeCourse): Promise<void> {
     console.log("🔧 Initializing document setup interface...");
+
+    // Set the current course for demo operations
+    currentCourse = instructorCourse;
 
     // Initialize data structures if needed
     initializeCourseData(instructorCourse);
@@ -225,11 +227,11 @@ function setupDemoListeners(state: DocumentSetupState): void {
     const clearDemoBtn = document.getElementById('clearDemo') as HTMLButtonElement;
     
     if (addDemoObjectiveBtn) {
-        addDemoObjectiveBtn.addEventListener('click', () => addDemoObjective());
+        addDemoObjectiveBtn.addEventListener('click', async () => await addDemoObjective());
     }
     
     if (clearDemoBtn) {
-        clearDemoBtn.addEventListener('click', () => clearDemoObjectives());
+        clearDemoBtn.addEventListener('click', async () => await clearDemoObjectives());
     }
 
     // File upload demo
@@ -558,54 +560,204 @@ function updateNavigationButtons(state: DocumentSetupState): void {
 let demoObjectives: DemoObjective[] = [];
 let demoFiles: DemoFile[] = [];
 
+// Current course reference for demo operations
+let currentCourse: activeCourse | null = null;
+
 /**
- * Adds a demo learning objective
+ * Get the current course for demo operations
  */
-function addDemoObjective(): void {
-    const titleInput = document.getElementById('demoObjectiveTitle') as HTMLInputElement;
-    const descriptionInput = document.getElementById('demoObjectiveDescription') as HTMLTextAreaElement;
+function getCurrentCourse(): activeCourse | null {
+    return currentCourse;
+}
+
+/**
+ * Adds a demo learning objective to the real course data (first division, first item)
+ */
+async function addDemoObjective(): Promise<void> {
+    const objectiveInput = document.getElementById('demoObjectiveTitle') as HTMLInputElement;
     
-    if (!titleInput || !descriptionInput) return;
+    if (!objectiveInput) return;
     
-    const title = titleInput.value.trim();
-    const description = descriptionInput.value.trim();
+    const learningObjective = objectiveInput.value.trim();
     
-    if (!title || !description) {
-        alert('Please fill in both title and description.');
+    if (!learningObjective) {
+        alert('Please fill in the learning objective.');
         return;
     }
     
-    const newObjective: DemoObjective = {
-        id: `demo-obj-${Date.now()}`,
-        title: title,
-        description: description
+    // Get the current course from the global state
+    const currentCourse = getCurrentCourse();
+    if (!currentCourse) {
+        console.error('No current course found');
+        return;
+    }
+    
+    // Get the first division and first item
+    const firstDivision = currentCourse.divisions?.[0];
+    const firstItem = firstDivision?.items?.[0];
+    
+    if (!firstDivision || !firstItem) {
+        console.error('No first division or first item found');
+        return;
+    }
+    
+    // Create a real LearningObjective object
+    const newObjective: LearningObjective = {
+        id: `obj-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        LearningObjective: learningObjective,
+        courseName: currentCourse.courseName,
+        divisionTitle: firstDivision.title,
+        itemTitle: firstItem.title,
+        createdAt: new Date(),
+        updatedAt: new Date()
     };
     
-    demoObjectives.push(newObjective);
+    // Add to demo display
+    const demoObjective: DemoObjective = {
+        id: newObjective.id,
+        learningObjective: learningObjective
+    };
+    
+    demoObjectives.push(demoObjective);
     updateDemoObjectivesDisplay();
     
-    // Clear inputs
-    titleInput.value = '';
-    descriptionInput.value = '';
+    // Add to real course data
+    if (!firstItem.learningObjectives) {
+        firstItem.learningObjectives = [];
+    }
+    firstItem.learningObjectives.push(newObjective);
     
-    console.log('Added demo objective:', newObjective);
+    // Save to database
+    try {
+        const result = await addLearningObjectiveToBackend(
+            newObjective, 
+            currentCourse.id, 
+            firstDivision.id, 
+            firstItem.id
+        );
+        
+        if (result.success) {
+            console.log('Learning objective added to real course data:', newObjective);
+        } else {
+            await showSimpleErrorModal('Failed to save learning objective to database', 'Save Learning Objective Error');
+        }
+    } catch (error) {
+        console.error('Error saving learning objective:', error);
+        await showSimpleErrorModal('An error occurred while saving the learning objective. Please try again.', 'Save Learning Objective Error');
+    }
+    
+    // Clear input
+    objectiveInput.value = '';
+}
+
+/**
+ * Removes a specific demo learning objective from both demo and real course data
+ * 
+ * @param index - The index of the objective to remove
+ */
+async function removeDemoObjective(index: number): Promise<void> {
+    if (index < 0 || index >= demoObjectives.length) {
+        await showSimpleErrorModal('Invalid objective index', 'Remove Learning Objective Error');
+        return;
+    }
+    
+    const objectiveToRemove = demoObjectives[index];
+    if (!objectiveToRemove) {
+        await showSimpleErrorModal('Objective not found', 'Remove Learning Objective Error');
+        return;
+    }
+    
+    // Show confirmation modal
+    const result = await showDeleteConfirmationModal(
+        'Learning Objective',
+        objectiveToRemove.learningObjective
+    );
+    
+    if (result.action !== 'Delete') {
+        return; // User cancelled
+    }
+    
+    // Remove from demo display
+    demoObjectives.splice(index, 1);
+    updateDemoObjectivesDisplay();
+    
+    // Remove from real course data (first division, first item)
+    const course = getCurrentCourse();
+    if (course?.divisions?.[0]?.items?.[0]) {
+        const firstItem = course.divisions[0].items[0];
+        if (firstItem.learningObjectives) {
+            // Find and remove the objective from real data
+            const realObjectiveIndex = firstItem.learningObjectives.findIndex(obj => obj.id === objectiveToRemove.id);
+            if (realObjectiveIndex !== -1) {
+                try {
+                    // Delete from database
+                    await deleteLearningObjectiveFromBackend(
+                        objectiveToRemove.id,
+                        course.id,
+                        course.divisions[0].id,
+                        firstItem.id
+                    );
+                    
+                    // Remove from local data
+                    firstItem.learningObjectives.splice(realObjectiveIndex, 1);
+                    
+                    console.log('Learning objective removed from real course data:', objectiveToRemove.id);
+                } catch (error) {
+                    console.error('Error removing learning objective from database:', error);
+                    await showSimpleErrorModal('An error occurred while removing the learning objective from the database.', 'Remove Learning Objective Error');
+                }
+            }
+        }
+    }
+    
+    console.log('Removed demo objective:', objectiveToRemove);
 }
 
 /**
  * Clears all demo learning objectives
  */
-function clearDemoObjectives(): void {
+async function clearDemoObjectives(): Promise<void> {
+    // Show confirmation modal
+    const result = await showDeleteConfirmationModal('All Learning Objectives');
+    
+    if (result.action !== 'Delete') {
+        return; // User cancelled
+    }
+    
+    // Clear demo display
     demoObjectives = [];
     updateDemoObjectivesDisplay();
     
-    // Clear inputs
-    const titleInput = document.getElementById('demoObjectiveTitle') as HTMLInputElement;
-    const descriptionInput = document.getElementById('demoObjectiveDescription') as HTMLTextAreaElement;
+    // Clear input
+    const objectiveInput = document.getElementById('demoObjectiveTitle') as HTMLInputElement;
     
-    if (titleInput) titleInput.value = '';
-    if (descriptionInput) descriptionInput.value = '';
+    if (objectiveInput) objectiveInput.value = '';
     
-    console.log('Cleared demo objectives');
+    // Clear from real course data (first division, first item)
+    const course = getCurrentCourse();
+    if (course?.divisions?.[0]?.items?.[0]) {
+        const firstItem = course.divisions[0].items[0];
+        if (firstItem.learningObjectives) {
+            // Delete each learning objective from database
+            for (const objective of firstItem.learningObjectives) {
+                try {
+                    await deleteLearningObjectiveFromBackend(
+                        objective.id,
+                        course.id,
+                        course.divisions[0].id,
+                        firstItem.id
+                    );
+                } catch (error) {
+                    console.error('Error deleting learning objective:', error);
+                    await showSimpleErrorModal('An error occurred while clearing learning objectives.', 'Clear Learning Objectives Error');
+                }
+            }
+            // Clear from local data
+            firstItem.learningObjectives = [];
+        }
+    }
+    
+    console.log('Cleared all demo objectives from both demo and real course data');
 }
 
 /**
@@ -630,18 +782,16 @@ function updateDemoObjectivesDisplay(): void {
         objectiveElement.className = 'demo-objective-item';
         objectiveElement.innerHTML = `
             <div class="objective-header">
-                <h5>${objective.title}</h5>
+                <h5>${objective.learningObjective}</h5>
                 <button class="delete-demo-btn" data-index="${index}">×</button>
             </div>
-            <div class="objective-description">${objective.description}</div>
         `;
         
         // Add delete functionality
         const deleteBtn = objectiveElement.querySelector('.delete-demo-btn') as HTMLButtonElement;
         if (deleteBtn) {
-            deleteBtn.addEventListener('click', () => {
-                demoObjectives.splice(index, 1);
-                updateDemoObjectivesDisplay();
+            deleteBtn.addEventListener('click', async () => {
+                await removeDemoObjective(index);
             });
         }
         
@@ -796,40 +946,92 @@ async function simulateBackendProcessing(files: DemoFile[]): Promise<{ success: 
 }
 
 /**
- * Placeholder function for adding learning objective to backend
+ * Add learning objective to backend
  * 
  * @param objective - Learning objective to add
+ * @param courseId - Course ID
+ * @param divisionId - Division ID
+ * @param contentId - Content ID
  * @returns Promise with result
  */
-async function addLearningObjectiveToBackend(objective: LearningObjective): Promise<{ success: boolean; id?: string }> {
-    // TODO: Implement actual backend API call
-    console.log('Adding learning objective to backend:', objective);
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    return {
-        success: true,
-        id: `backend-obj-${Date.now()}`
-    };
+async function addLearningObjectiveToBackend(objective: LearningObjective, courseId: string, divisionId: string, contentId: string): Promise<{ success: boolean; id?: string }> {
+    try {
+        const response = await fetch('/api/mongodb/learning-objectives', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                courseId: courseId,
+                divisionId: divisionId,
+                contentId: contentId,
+                learningObjective: objective
+            })
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+            return {
+                success: true,
+                id: objective.id
+            };
+        } else {
+            console.error('Failed to add learning objective:', result.error);
+            return {
+                success: false
+            };
+        }
+    } catch (error) {
+        console.error('Error adding learning objective to backend:', error);
+        return {
+            success: false
+        };
+    }
 }
 
 /**
- * Placeholder function for deleting learning objective from backend
+ * Delete learning objective from backend
  * 
  * @param objectiveId - ID of objective to delete
+ * @param courseId - Course ID
+ * @param divisionId - Division ID
+ * @param contentId - Content ID
  * @returns Promise with result
  */
-async function deleteLearningObjectiveFromBackend(objectiveId: string): Promise<{ success: boolean }> {
-    // TODO: Implement actual backend API call
-    console.log('Deleting learning objective from backend:', objectiveId);
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    return {
-        success: true
-    };
+async function deleteLearningObjectiveFromBackend(objectiveId: string, courseId: string, divisionId: string, contentId: string): Promise<{ success: boolean }> {
+    try {
+        const response = await fetch('/api/mongodb/learning-objectives', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                courseId: courseId,
+                divisionId: divisionId,
+                contentId: contentId,
+                objectiveId: objectiveId
+            })
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+            return {
+                success: true
+            };
+        } else {
+            console.error('Failed to delete learning objective:', result.error);
+            return {
+                success: false
+            };
+        }
+    } catch (error) {
+        console.error('Error deleting learning objective from backend:', error);
+        return {
+            success: false
+        };
+    }
 }
 
 /**

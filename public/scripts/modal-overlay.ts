@@ -587,6 +587,71 @@ export async function showCustomModal(config: ModalConfig): Promise<ModalResult>
 }
 
 /**
+ * Shows a simple error modal for general errors
+ * 
+ * @param message - Error message to display
+ * @param title - Optional custom title (defaults to "Error")
+ * @returns Promise that resolves when modal is closed
+ */
+export async function showSimpleErrorModal(message: string, title: string = "Error"): Promise<ModalResult> {
+    return showErrorModal(title, message);
+}
+
+/**
+ * Shows a confirmation modal for deletion operations
+ * 
+ * @param itemType - Type of item being deleted (e.g., "Learning Objective", "Instructor", "TA", "Additional Material")
+ * @param itemName - Optional name of the specific item
+ * @returns Promise that resolves with user's choice
+ */
+export async function showDeleteConfirmationModal(itemType: string, itemName?: string): Promise<ModalResult> {
+    const message = itemName 
+        ? `Are you sure you want to delete this ${itemType.toLowerCase()} "${itemName}"? This action cannot be undone.`
+        : `Are you sure you want to delete this ${itemType.toLowerCase()}? This action cannot be undone.`;
+    
+    const modal = getModal();
+    return modal.show({
+        type: 'warning',
+        title: `Delete ${itemType}`,
+        content: message,
+        buttons: [
+            { text: 'Cancel', type: 'secondary', closeOnClick: true },
+            { text: 'Delete', type: 'danger', closeOnClick: true }
+        ]
+    });
+}
+
+/**
+ * Shows a chat creation error modal
+ * 
+ * @param errorMessage - The error message to display
+ * @returns Promise that resolves when modal is closed
+ */
+export async function showChatCreationErrorModal(errorMessage: string): Promise<ModalResult> {
+    const modal = getModal();
+    return modal.show({
+        type: 'error',
+        title: 'Failed to Create Chat',
+        content: `
+            <div style="text-align: center; padding: 20px;">
+                <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+                <p style="margin-bottom: 16px; color: var(--text-primary);">
+                    ${errorMessage}
+                </p>
+                <p style="color: var(--text-secondary); font-size: 14px;">
+                    Please try again or contact support if the problem persists.
+                </p>
+            </div>
+        `,
+        buttons: [
+            { text: 'Try Again', type: 'primary', closeOnClick: true },
+            { text: 'Cancel', type: 'secondary', closeOnClick: true }
+        ],
+        maxWidth: '400px'
+    });
+}
+
+/**
  * Closes the currently open modal
  * 
  * @param action - Action that triggered the close
@@ -855,6 +920,9 @@ export async function openUploadModal(
     const selectedFileNameElement = overlay.querySelector('#selected-file-name') as HTMLElement;
     const textAreaElement = overlay.querySelector('#mat-text') as HTMLTextAreaElement;
     
+    // Set up file input with supported file types
+    hiddenInputElement.accept = '.pdf,.docx,.html,.htm,.md,.txt';
+    
     // Toggle method functionality
     toggleButtons.forEach(button => {
         button.addEventListener('click', () => {
@@ -958,6 +1026,9 @@ export default {
     showDisclaimerModal,
     showHelpModal,
     showCustomModal,
+    showSimpleErrorModal,
+    showDeleteConfirmationModal,
+    showChatCreationErrorModal,
     openUploadModal,
     closeModal
 };

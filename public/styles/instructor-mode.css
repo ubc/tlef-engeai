@@ -32,8 +32,6 @@ body {
 
 .instructor-sidebar {
     width: 270px;
-    flex: 0 0 270px;
-    min-width: 270px;
     margin: 10px 5px 10px 10px;
     padding: 0.75rem;
     background-color: var(--background-2);
@@ -97,11 +95,14 @@ body {
 
 .instructor-sidebar .sidebar-collapse-icon {
     background-color: transparent;
-    margin:10px 0px 0px 10px ;
+    margin:10px 0px 0px 0px ;
     color: var(--text-secondary) ;
     cursor: pointer;
     border: none;
+    display: flex;
+    justify-content : left;
 }
+
 
 .instructor-sidebar.collapsed .sidebar-collapse-icon{
     margin:10px 0px 0px 5px ;
@@ -110,6 +111,7 @@ body {
 .sidebar-collapse-icon .feather {
     width: 16px;
     height: 16px;
+    margin:0px 0px 0px 0px ;
 
 }
 
@@ -121,12 +123,12 @@ body {
     background-color: var(--color-chbe-green);
     margin-top: 0.75rem;
     flex-shrink: 0;
+    display: none;
 }
 
 .sidebar-content {
     border-top: 1px solid var(--border-color);
     margin-top: 10px;
-    padding-top: 10px;
     display: flex;
     flex-direction: row;
     flex: 1;
@@ -135,6 +137,7 @@ body {
 
 .sidebar-menu-list{
     /* Give the left menu a real column width so its <li> can fill it */
+    margin:10px 0px 0px 0px;
     flex: 0 0 100%;
     width: 100%;
 }
@@ -178,6 +181,8 @@ body {
     transition: background-color 0.1s ease-in-out;
 }
 
+
+
 .sidebar-menu-list .menu-list-item .feather {
     width: 20px;
     height: 20px;
@@ -199,7 +204,10 @@ body {
     padding: 0px 0px 0px 0px;
     justify-content: center;
 }
-.sidebar-menu-list.collapsed .menu-list-item p {display: none;}
+
+.sidebar-menu-list.collapsed .menu-list-item p {
+    display: none;
+}
 
 .sidebar-content .chat-menu {
     flex: 1;
@@ -215,6 +223,7 @@ body {
     height: 100%;
 
 }
+
 
 .sidebar-content .chat-menu .add-chat-box {
     display: flex;
@@ -304,7 +313,50 @@ body {
     width: 100vw;
 }
 
+/* ===========================================
+   DOCUMENT SETUP COMPLETION STYLES
+   =========================================== */
 
+.setup-complete-message {
+    margin-bottom: 2rem;
+    animation: slideInFromTop 0.5s ease-out;
+}
 
+.success-banner {
+    background: linear-gradient(135deg, #28a745, #20c997);
+    color: white;
+    padding: 1.5rem 2rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+    text-align: center;
+    margin-bottom: 1rem;
+}
 
+.success-banner h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.success-banner p {
+    margin: 0;
+    font-size: 1rem;
+    opacity: 0.9;
+}
+
+.status-complete {
+    color: #28a745 !important;
+    font-weight: 600;
+}
+
+@keyframes slideInFromTop {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
 

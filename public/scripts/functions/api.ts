@@ -17,6 +17,18 @@ export interface ChatResponse {
     timestamp: number;
 }
 
+export interface CreateChatRequest {
+    userID: string;
+    courseName: string;
+    date: string;
+}
+
+export interface CreateChatResponse {
+    success: boolean;
+    chatId?: string;
+    error?: string;
+}
+
 /**
  * Send a message to the server and return the response
  * @param text - The message to send to the server
@@ -84,6 +96,38 @@ export async function loadComponentHTML(
     return await response.text();
 }
 
+
+/**
+ * Create a new chat session
+ * @param request - The chat creation request
+ * @returns The response from the server
+ */
+export async function createNewChat(request: CreateChatRequest): Promise<CreateChatResponse> {
+    try {
+        const res = await fetch('/api/chat/newchat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request)
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+            return {
+                success: false,
+                error: data.error || 'Failed to create chat'
+            };
+        }
+        
+        return data;
+    } catch (error) {
+        console.error('Error creating new chat:', error);
+        return {
+            success: false,
+            error: 'Network error occurred while creating chat'
+        };
+    }
+}
 
 /**
  * Render Feather icons

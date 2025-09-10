@@ -26,16 +26,20 @@ import {
     activeCourse 
 } from '../../../src/functions/types';
 import { uploadRAGContent } from '../services/RAGService.js';
-import { showConfirmModal, openUploadModal } from '../modal-overlay.js';
+import { DocumentUploadModule, UploadResult } from '../services/DocumentUploadModule.js';
+import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal } from '../modal-overlay.js';
 
 // In-memory store for the course data
 let courseData: ContentDivision[] = [];
 
 // Function to initialize the documents page
-export function initializeDocumentsPage( currentClass : activeCourse) {
+export async function initializeDocumentsPage( currentClass : activeCourse) {
 
-    // Build initial in-memory data from onboarding selections
-    loadClassroomData(currentClass);
+        // Build initial in-memory data from onboarding selections
+        loadClassroomData(currentClass);
+        
+        // Load learning objectives from database for all content items
+        await loadAllLearningObjectives();
     // Render DOM using safe DOM APIs (no string concatenation)
     renderDocumentsPage();
     setupEventListeners();
@@ -311,7 +315,7 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
     // --- Event Handler Functions ---
 
     /**
-     * Handles the upload of additional materials
+     * Handles the upload of additional materials using DocumentUploadModule
      * 
      * @param material - The material object from the upload modal
      * @returns Promise<void>
@@ -338,26 +342,36 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
                 date: new Date(),
             };
 
-            // Upload to Qdrant if we have content
-            if (material.text || material.file) {
-                try {
-                    const qdrantResult: AdditionalMaterial[] = await uploadRAGContent(additionalMaterial);
-                    console.log('Successfully uploaded to Qdrant:', qdrantResult);
-                    additionalMaterial.uploaded = true;
-                } catch (error) {
-                    console.error('Failed to upload to Qdrant:', error);
-                    alert('Failed to upload content to Qdrant. Please try again.');
-                    return;
-                }
+            // Use DocumentUploadModule for upload
+            const uploadModule = new DocumentUploadModule((progress, stage) => {
+                console.log(`Upload progress: ${progress}% - ${stage}`);
+                // You could update a progress bar here if needed
+            });
+
+            const uploadResult: UploadResult = await uploadModule.uploadDocument(additionalMaterial);
+            
+            if (!uploadResult.success) {
+                console.error('Upload failed:', uploadResult.error);
+                alert(`Failed to upload content: ${uploadResult.error}`);
+                return;
             }
 
-            // Add the material to the content item
-            contentItem.additionalMaterials.push(additionalMaterial);
+            if (!uploadResult.document) {
+                console.error('Upload succeeded but no document returned');
+                alert('Upload succeeded but no document was returned. Please try again.');
+                return;
+            }
+
+            // Add the uploaded document to the content item
+            contentItem.additionalMaterials.push(uploadResult.document);
 
             // Refresh the content item
             refreshContentItem(material.divisionId, material.contentId);
 
-            console.log('Material uploaded successfully:', additionalMaterial);
+            console.log('Material uploaded successfully:', uploadResult.document);
+            console.log(`Generated ${uploadResult.chunksGenerated} chunks in Qdrant`);
+            alert(`Document uploaded successfully! Generated ${uploadResult.chunksGenerated} searchable chunks.`);
+            
         } catch (error) {
             console.error('Error in upload process:', error);
             alert('An error occurred during upload. Please try again.');
@@ -410,6 +424,61 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     /**
+     * Load learning objectives from database for all content items
+     * 
+     * @returns Promise<void>
+     */
+    async function loadAllLearningObjectives(): Promise<void> {
+        if (!currentClass) return;
+
+        try {
+            // Load learning objectives for each division and content item
+            for (const division of courseData) {
+                for (const contentItem of division.items) {
+                    await loadLearningObjectives(division.id, contentItem.id);
+                }
+            }
+        } catch (error) {
+            console.error('Error loading all learning objectives:', error);
+        }
+    }
+
+    /**
+     * Load learning objectives from database for a specific content item
+     * 
+     * @param divisionId the id of the division
+     * @param contentId the id of the content item
+     * @returns Promise<void>
+     */
+    async function loadLearningObjectives(divisionId: string, contentId: string): Promise<void> {
+        if (!currentClass) return;
+
+        try {
+            const response = await fetch(`/api/mongodb/learning-objectives?courseId=${currentClass.id}&divisionId=${divisionId}&contentId=${contentId}`);
+            const result = await response.json();
+            
+            if (result.success) {
+                // Find the division and content item
+                const division = courseData.find(d => d.id === divisionId);
+                const content = division?.items.find(c => c.id === contentId);
+                
+                if (content) {
+                    // Update the learning objectives in local data
+                    content.learningObjectives = result.data || [];
+                    // Refresh the UI
+                    refreshContentItem(divisionId, contentId);
+                }
+            } else {
+                console.error('Failed to load learning objectives:', result.error);
+                await showSimpleErrorModal('Failed to load learning objectives: ' + result.error, 'Load Learning Objectives Error');
+            }
+        } catch (error) {
+            console.error('Error loading learning objectives:', error);
+            await showSimpleErrorModal('An error occurred while loading learning objectives. Please try again.', 'Load Learning Objectives Error');
+        }
+    }
+
+    /**
      * Add a new objective to a content item
      * 
      * @param divisionId the id of the division
@@ -417,15 +486,13 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
      * @returns null
      */
     async function addObjective(divisionId: string, contentId: string) {
-        const titleInput = document.getElementById(`new-title-${divisionId}-${contentId}`) as HTMLInputElement | null;
-        const descriptionInput = document.getElementById(`new-description-${divisionId}-${contentId}`) as HTMLTextAreaElement | null;
-        if (!titleInput || !descriptionInput) return;
+        const objectiveInput = document.getElementById(`new-title-${divisionId}-${contentId}`) as HTMLInputElement | null;
+        if (!objectiveInput) return;
 
-        // get the title and description from the input fields
-        const title = titleInput.value.trim();
-        const description = descriptionInput.value.trim();
-        if (!title || !description) {
-            alert('Please fill in both title and description.');
+        // get the learning objective from the input field
+        const learningObjective = objectiveInput.value.trim();
+        if (!learningObjective) {
+            alert('Please fill in the learning objective.');
             return;
         }
 
@@ -436,11 +503,10 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
 
         const newObjective = {
             id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            LearningObjectiveDescription: description,
+            LearningObjective: learningObjective,
             courseName: currentClass.courseName,
             divisionTitle: division?.title || '',
             itemTitle: content.title,
-            LearningObjectiveTitle: title,
             createdAt: new Date(),
             updatedAt: new Date()
         };
@@ -463,18 +529,17 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
             const result = await response.json();
             
             if (result.success) {
-                // Add to local data
-                content.learningObjectives.push(newObjective);
-                titleInput.value = '';
-                descriptionInput.value = '';
-                // Re-render only the affected content item for efficiency
-                refreshContentItem(divisionId, contentId);
+                // Clear the input field
+                objectiveInput.value = '';
+                // Reload learning objectives from database to ensure consistency
+                await loadLearningObjectives(divisionId, contentId);
+                console.log('Learning objective added successfully');
             } else {
-                alert('Failed to add learning objective: ' + result.error);
+                await showSimpleErrorModal('Failed to add learning objective: ' + result.error, 'Add Learning Objective Error');
             }
         } catch (error) {
             console.error('Error adding learning objective:', error);
-            alert('An error occurred while adding the learning objective. Please try again.');
+            await showSimpleErrorModal('An error occurred while adding the learning objective. Please try again.', 'Add Learning Objective Error');
         }
     }
 
@@ -501,16 +566,11 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
         const form = document.createElement('div');
         form.className = 'edit-form';
 
-        const titleInput = document.createElement('input');
-        titleInput.type = 'text';
-        titleInput.className = 'edit-input';
-        titleInput.id = `edit-title-${divisionId}-${contentId}-${index}`;
-        titleInput.value = objective.LearningObjectiveTitle;
-
-        const descInput = document.createElement('textarea');
-        descInput.className = 'edit-input';
-        descInput.id = `edit-desc-${divisionId}-${contentId}-${index}`;
-        descInput.value = objective.LearningObjectiveDescription;
+        const objectiveInput = document.createElement('input');
+        objectiveInput.type = 'text';
+        objectiveInput.className = 'edit-input';
+        objectiveInput.id = `edit-title-${divisionId}-${contentId}-${index}`;
+        objectiveInput.value = objective.LearningObjective;
 
         const actions = document.createElement('div');
         actions.className = 'edit-actions';
@@ -530,8 +590,7 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
         actions.appendChild(saveBtn);
         actions.appendChild(cancelBtn);
 
-        form.appendChild(titleInput);
-        form.appendChild(descInput);
+        form.appendChild(objectiveInput);
         form.appendChild(actions);
 
         contentDiv.appendChild(form);
@@ -547,11 +606,10 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
      * @returns null
      */
     async function saveObjective(divisionId: string, contentId: string, index: number) {
-        const title = (document.getElementById(`edit-title-${divisionId}-${contentId}-${index}`) as HTMLInputElement).value.trim();
-        const description = (document.getElementById(`edit-desc-${divisionId}-${contentId}-${index}`) as HTMLTextAreaElement).value.trim();
+        const learningObjective = (document.getElementById(`edit-title-${divisionId}-${contentId}-${index}`) as HTMLInputElement).value.trim();
 
-        if (!title || !description) {
-            alert('Title and description cannot be empty.');
+        if (!learningObjective) {
+            alert('Learning objective cannot be empty.');
             return;
         }
 
@@ -561,8 +619,7 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
         if (!objective || !currentClass) return;
 
         const updateData = {
-            LearningObjectiveTitle: title,
-            LearningObjectiveDescription: description
+            LearningObjective: learningObjective
         };
 
         try {
@@ -584,17 +641,15 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
             const result = await response.json();
             
             if (result.success) {
-                // Update local data
-                objective.LearningObjectiveTitle = title;
-                objective.LearningObjectiveDescription = description;
-                objective.updatedAt = new Date();
-                refreshContentItem(divisionId, contentId);
+                // Reload learning objectives from database to ensure consistency
+                await loadLearningObjectives(divisionId, contentId);
+                console.log('Learning objective updated successfully');
             } else {
-                alert('Failed to update learning objective: ' + result.error);
+                await showSimpleErrorModal('Failed to update learning objective: ' + result.error, 'Update Learning Objective Error');
             }
         } catch (error) {
             console.error('Error updating learning objective:', error);
-            alert('An error occurred while updating the learning objective. Please try again.');
+            await showSimpleErrorModal('An error occurred while updating the learning objective. Please try again.', 'Update Learning Objective Error');
         }
     }
 
@@ -610,15 +665,18 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     async function deleteObjective(divisionId: string, contentId: string, index: number) {
+        // Get the objective to show its name in confirmation
+        const content = courseData.find(d => d.id === divisionId)
+                                        ?.items.find(c => c.id === contentId);
+        const objective = content?.learningObjectives[index];
+        
         // Show confirmation modal
-        const result = await showConfirmModal(
-            'Delete Learning Objective',
-            'Are you sure you want to delete this learning objective? This action cannot be undone.',
-            'Delete',
-            'Cancel'
+        const result = await showDeleteConfirmationModal(
+            'Learning Objective',
+            objective?.LearningObjective
         );
 
-        if (result.action === 'delete') {
+        if (result.action === 'Delete') {
             const content = courseData.find(d => d.id === divisionId)
                                         ?.items.find(c => c.id === contentId);
             const objective = content?.learningObjectives[index];
@@ -643,15 +701,15 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
                 const result = await response.json();
                 
                 if (result.success) {
-                    // Remove from local data
-                    content.learningObjectives.splice(index, 1);
-                    refreshContentItem(divisionId, contentId);
+                    // Reload learning objectives from database to ensure consistency
+                    await loadLearningObjectives(divisionId, contentId);
+                    console.log('Learning objective deleted successfully');
                 } else {
-                    alert('Failed to delete learning objective: ' + result.error);
+                    await showSimpleErrorModal('Failed to delete learning objective: ' + result.error, 'Delete Learning Objective Error');
                 }
             } catch (error) {
                 console.error('Error deleting learning objective:', error);
-                alert('An error occurred while deleting the learning objective. Please try again.');
+                await showSimpleErrorModal('An error occurred while deleting the learning objective. Please try again.', 'Delete Learning Objective Error');
             }
         }
     }
@@ -1022,7 +1080,7 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
             // create the title for the objective
             const title = document.createElement('div');
             title.className = 'objective-title';
-            title.textContent = obj.LearningObjectiveTitle;
+            title.textContent = obj.LearningObjective;
 
             const actions = document.createElement('div');
             actions.className = 'objective-actions';
@@ -1051,22 +1109,8 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
             header.appendChild(title);
             header.appendChild(actions);
 
-            // create the body for the objective
-            const body = document.createElement('div');
-            body.className = 'objective-content';
-            body.id = `objective-content-${divisionId}-${contentId}-${index}`;
-
-            // create the description for the objective
-            const desc = document.createElement('div');
-            desc.className = 'objective-description';
-            desc.textContent = obj.LearningObjectiveDescription;
-
-            // append the description to the body
-            body.appendChild(desc);
-
-            // append the header and body to the item
+            // append the header to the item
             item.appendChild(header);
-            item.appendChild(body);
             wrapper.appendChild(item);
         });
 
@@ -1078,28 +1122,17 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
         const addForm = document.createElement('div');
         addForm.className = 'add-objective-form';
 
-        // create the title label for the add objective form
-        const titleLabel = document.createElement('div');
-        titleLabel.className = 'input-label';
-        titleLabel.textContent = 'Learning Objective Title:';
+        // create the objective label for the add objective form
+        const objectiveLabel = document.createElement('div');
+        objectiveLabel.className = 'input-label';
+        objectiveLabel.textContent = 'Learning Objective:';
 
-        // create the title input for the add objective form
-        const titleInput = document.createElement('input');
-        titleInput.type = 'text';
-        titleInput.className = 'objective-title-input';
-        titleInput.id = `new-title-${divisionId}-${contentId}`;
-        titleInput.placeholder = 'Enter the learning objective title...';
-
-        // create the description label for the add objective form
-        const descLabel = document.createElement('div');
-        descLabel.className = 'input-label';
-        descLabel.textContent = 'Learning Objective Description:';
-
-        // create the description input for the add objective form
-        const descInput = document.createElement('textarea');
-        descInput.className = 'objective-description-input';
-        descInput.id = `new-description-${divisionId}-${contentId}`;
-        descInput.placeholder = 'Enter a detailed description of what students will learn...';
+        // create the objective input for the add objective form
+        const objectiveInput = document.createElement('input');
+        objectiveInput.type = 'text';
+        objectiveInput.className = 'objective-title-input';
+        objectiveInput.id = `new-title-${divisionId}-${contentId}`;
+        objectiveInput.placeholder = 'Enter the learning objective...';
 
         // create the add button for the add objective form
         const addBtn = document.createElement('button');
@@ -1109,11 +1142,9 @@ export function initializeDocumentsPage( currentClass : activeCourse) {
         addBtn.dataset.content = String(contentId);
         addBtn.textContent = 'Add Objective';
 
-        // append the title, description, and add button to the form
-        addForm.appendChild(titleLabel);
-        addForm.appendChild(titleInput);
-        addForm.appendChild(descLabel);
-        addForm.appendChild(descInput);
+        // append the objective input and add button to the form
+        addForm.appendChild(objectiveLabel);
+        addForm.appendChild(objectiveInput);
         addForm.appendChild(addBtn);
         addWrap.appendChild(addForm);
         wrapper.appendChild(addWrap);
