@@ -41,7 +41,8 @@ body {
     border-radius: 10px;
     border: 1px solid var(--border-color);
     transition: width 0.25s, padding 0.25s;
-    height: calc(100vh - 20px) /* account for the margin */;
+    height: calc(100vh - 20px) ; 
+    /* account for the margin */
 }
 
 .sidebar-main-content {

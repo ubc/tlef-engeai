@@ -717,6 +717,10 @@ export async function openUploadModal(
     const content = document.createElement('div');
     content.className = 'modal-content';
 
+    // Create the header section (Content Title + Upload Method)
+    const headerSection = document.createElement('div');
+    headerSection.className = 'upload-header-section';
+
     // Create the first section for the modal (Content Title)
     const section1 = document.createElement('div');
     section1.className = 'form-section';
@@ -789,9 +793,18 @@ export async function openUploadModal(
     toggleSection.appendChild(toggleLabel);
     toggleSection.appendChild(toggleContainer);
 
+    // Add sections to header
+    headerSection.appendChild(section1);
+    headerSection.appendChild(toggleSection);
+
+    // Create the upload method content container
+    const uploadMethodContent = document.createElement('div');
+    uploadMethodContent.className = 'upload-method-content active';
+    uploadMethodContent.id = 'upload-method-content';
+    
     // Create the file upload section
     const fileUploadSection = document.createElement('div');
-    fileUploadSection.className = 'form-section upload-method-content active';
+    fileUploadSection.className = 'form-section';
     fileUploadSection.id = 'file-upload-section';
     
     // Create modal upload card (different from document-setup upload-card)
@@ -839,7 +852,7 @@ export async function openUploadModal(
 
     // Create the text input section
     const textInputSection = document.createElement('div');
-    textInputSection.className = 'form-section upload-method-content';
+    textInputSection.className = 'form-section';
     textInputSection.id = 'text-input-section';
     
     // Create text label
@@ -858,11 +871,13 @@ export async function openUploadModal(
     textInputSection.appendChild(textLabel);
     textInputSection.appendChild(textArea);
 
+    // Add sections to upload method content
+    uploadMethodContent.appendChild(fileUploadSection);
+    uploadMethodContent.appendChild(textInputSection);
+
     // Append the sections to the content
-    content.appendChild(section1);
-    content.appendChild(toggleSection);
-    content.appendChild(fileUploadSection);
-    content.appendChild(textInputSection);
+    content.appendChild(headerSection);
+    content.appendChild(uploadMethodContent);
 
     // Create the footer for the modal
     const footer = document.createElement('div');
@@ -913,6 +928,7 @@ export async function openUploadModal(
     
     // Get references to the toggle buttons and content sections
     const toggleButtons = overlay.querySelectorAll('.toggle-option');
+    const uploadMethodContentElement = overlay.querySelector('#upload-method-content') as HTMLElement;
     const fileSectionElement = overlay.querySelector('#file-upload-section') as HTMLElement;
     const textSectionElement = overlay.querySelector('#text-input-section') as HTMLElement;
     const uploadFileBtnElement = overlay.querySelector('#upload-file-btn') as HTMLButtonElement;
@@ -932,7 +948,7 @@ export async function openUploadModal(
             toggleButtons.forEach(btn => btn.classList.remove('active'));
             button.classList.add('active');
             
-            // Clear previous data
+            // Clear previous data when switching methods
             if (currentMethod === 'file') {
                 selectedFile = null;
                 hiddenInputElement.value = '';
@@ -941,12 +957,12 @@ export async function openUploadModal(
                 textAreaElement.value = '';
             }
             
-            // Show/hide sections
+            // Show/hide sections within the upload method content
             if (method === 'file') {
-                fileSectionElement.classList.add('active');
+                fileSectionElement.style.display = 'flex';
                 textSectionElement.classList.remove('active');
             } else {
-                fileSectionElement.classList.remove('active');
+                fileSectionElement.style.display = 'none';
                 textSectionElement.classList.add('active');
             }
             
