@@ -41,7 +41,6 @@ import { LLMConfig, LLMModule, Message, ProviderType } from 'ubc-genai-toolkit-l
 import { AppConfig, loadConfig } from './config';
 import { RAGModule } from 'ubc-genai-toolkit-rag';
 import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
-import { EngEAI_MongoDB } from './mongodb';
 import { IDGenerator } from '../functions/unique-id-generator';
 import { ChatMessage } from '../functions/types';
 

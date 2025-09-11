@@ -42,7 +42,17 @@ export class DocumentUploadModule {
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
         'text/html': ['.html', '.htm'],
         'text/markdown': ['.md'],
-        'text/plain': ['.txt'],
+        'text/plain': ['.md'], // Allow .md files even when MIME type is text/plain
+    };
+
+    // File extension to MIME type mapping for better detection
+    private static readonly EXTENSION_TO_MIME: Record<string, string> = {
+        '.pdf': 'application/pdf',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.html': 'text/html',
+        '.htm': 'text/html',
+        '.md': 'text/markdown',
+        '.txt': 'text/plain',
     };
 
     // File size limits
@@ -59,6 +69,15 @@ export class DocumentUploadModule {
      * Get supported file types as a string for HTML accept attribute
      */
     public getSupportedFileTypes(): string {
+        // Return file extensions for better browser compatibility
+        const supportedExtensions = Object.values(DocumentUploadModule.SUPPORTED_FILE_TYPES).flat();
+        return supportedExtensions.join(',');
+    }
+
+    /**
+     * Get supported MIME types as a string for HTML accept attribute
+     */
+    public getSupportedMimeTypes(): string {
         return Object.keys(DocumentUploadModule.SUPPORTED_FILE_TYPES).join(',');
     }
 
@@ -74,17 +93,44 @@ export class DocumentUploadModule {
             };
         }
 
-        // Check file type
-        const isValidType = Object.keys(DocumentUploadModule.SUPPORTED_FILE_TYPES).includes(file.type);
-        if (!isValidType) {
-            const supportedExtensions = Object.values(DocumentUploadModule.SUPPORTED_FILE_TYPES).flat();
+        // Get file extension
+        const fileExtension = this.getFileExtension(file.name);
+        if (!fileExtension) {
+            return {
+                isValid: false,
+                error: 'File must have a valid extension'
+            };
+        }
+
+        // Check if extension is supported
+        const supportedExtensions = Object.values(DocumentUploadModule.SUPPORTED_FILE_TYPES).flat();
+        if (!supportedExtensions.includes(fileExtension)) {
             return {
                 isValid: false,
                 error: `Unsupported file type. Supported types: ${supportedExtensions.join(', ')}`
             };
         }
 
+        // For .md files, also check if MIME type is acceptable
+        if (fileExtension === '.md') {
+            const validMimeTypes = ['text/markdown', 'text/plain', 'application/octet-stream'];
+            if (!validMimeTypes.includes(file.type)) {
+                console.warn(`MD file detected with unexpected MIME type: ${file.type}. Proceeding anyway.`);
+            }
+        }
+
         return { isValid: true };
+    }
+
+    /**
+     * Get file extension from filename
+     */
+    private getFileExtension(filename: string): string {
+        const lastDotIndex = filename.lastIndexOf('.');
+        if (lastDotIndex === -1 || lastDotIndex === filename.length - 1) {
+            return '';
+        }
+        return filename.substring(lastDotIndex).toLowerCase();
     }
 
     /**
@@ -161,7 +207,19 @@ export class DocumentUploadModule {
 
             // Create FormData for file upload
             const formData = new FormData();
-            formData.append('file', file);
+            
+            // For .md files, create a new File object with correct MIME type
+            let fileToUpload = file;
+            const fileExtension = this.getFileExtension(file.name);
+            if (fileExtension === '.md' && file.type !== 'text/markdown') {
+                // Create a new File object with the correct MIME type
+                fileToUpload = new File([file], file.name, { 
+                    type: 'text/markdown',
+                    lastModified: file.lastModified 
+                });
+            }
+            
+            formData.append('file', fileToUpload);
             formData.append('name', metadata.name);
             formData.append('courseName', metadata.courseName);
             formData.append('divisionTitle', metadata.divisionTitle);

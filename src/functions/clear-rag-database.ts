@@ -23,7 +23,7 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 
 // Load environment variables
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 /**
  * Configuration for the RAG module
@@ -155,18 +155,32 @@ async function clearRAGDatabase(): Promise<void> {
             logger.warn('⚠️  Could not retrieve document count (this is normal if collection is empty)');
         }
         
-        // Method 1: Try to delete by metadata (safer approach)
-        logger.info('🗑️  Attempting to delete documents by metadata filter...');
+        // Method 1: Get all document IDs and delete by IDs
+        logger.info('🗑️  Attempting to delete documents by IDs...');
         try {
-            await ragModule.deleteDocumentsByMetadata({});
-            logger.info('✅ Documents deleted by metadata filter');
+            // Get all documents first to extract their IDs
+            const allDocuments = await ragModule.getDocumentsByMetadata({});
+            const allIds = allDocuments.map(doc => doc.id);
+            
+            if (allIds.length === 0) {
+                logger.info('✅ No documents found to delete');
+            } else {
+                logger.info(`📋 Found ${allIds.length} document IDs to delete`);
+                await ragModule.deleteDocumentsByIds(allIds);
+                logger.info('✅ Documents deleted by IDs successfully');
+            }
         } catch (error) {
-            logger.warn('⚠️  Metadata deletion failed, trying alternative method...');
+            logger.warn('⚠️  ID-based deletion failed, trying storage deletion...');
             
             // Method 2: Delete entire storage (nuclear option)
             logger.info('💥 Attempting to delete entire storage container...');
-            await ragModule.deleteStorage();
-            logger.info('✅ Storage container deleted successfully');
+            try {
+                await ragModule.deleteStorage();
+                logger.info('✅ Storage container deleted successfully');
+            } catch (storageError) {
+                logger.error('❌ Storage deletion also failed:', { error: storageError });
+                throw storageError;
+            }
         }
         
         // Verify deletion

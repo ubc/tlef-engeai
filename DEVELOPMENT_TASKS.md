@@ -47,6 +47,13 @@ YOu can access the terminal only to see if the file is properly compiled
   - Make sure that all method in this dummy example is done in one file an in the database, the document is a singleton, meaning it only can be created once. 
   - Make sure you edit the index.html that follows this newly created classes and its description, you know the description should shows : "course onboarding view" (APSC 080), "Setteled COurse" (APSC 099), so that my PI has access to see the interface. 
   - Make sure you have a reset button where this button is cabale to reset the value for both APSC 080 and APSC 099 to its original value (the thing that I expain to you for subpoint 1 and subpoint 2). So this reset button also located in the index.html and it should be able to remove APSC 080 and APSC 099 and upload again with the origin value that we have discuss. 
+
+
+ - [] **IMPLEMENT RAG from UBC-genai-toolkit-rag**
+   - Look at the UBC-genai-toolkit-rag module, we knwo that i have made the tempfiles, so essentially after you write the file in the tempfiles, I want you to upload that file to the rag, using the module that has been decalared in the UBC-genai-toolkit-rag module
+   - before you make the implementation, please make a proper workflow so that the implementation can be done in the least itteration.
+   - Eventually, you obviously need to remove the file from the tempfiles. So I need you to make a fucntion that remove this file in the temp files, and I want the line where you demove that file is commented out as easier for me to debug the file. 
+   - Make sure you state the datastructure properly.
    
 
 ## Medium Priority Tasks

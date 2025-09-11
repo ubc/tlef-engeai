@@ -37,7 +37,7 @@ import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 import dotenv from 'dotenv';
 import { activeCourse, AdditionalMaterial, ContentDivision, courseItem } from '../functions/types';
 import { IDGenerator } from '../functions/unique-id-generator';
-import { getDummyCourses, resetDummyCourses } from '../debug/dummy-courses.js';
+import { getDummyCourses, resetDummyCourses } from '../debug/dummy-courses';
 
 dotenv.config();
 

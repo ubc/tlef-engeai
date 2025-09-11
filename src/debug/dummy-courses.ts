@@ -11,9 +11,9 @@
  * @since: 2025-01-27
  */
 
-import { EngEAI_MongoDB } from '../routes/mongodb.js';
-import { IDGenerator } from '../functions/unique-id-generator.js';
-import { activeCourse, ContentDivision, LearningObjective, AdditionalMaterial } from '../functions/types.js';
+import { EngEAI_MongoDB } from '../routes/mongodb';
+import { IDGenerator } from '../functions/unique-id-generator';
+import { activeCourse, ContentDivision, LearningObjective, AdditionalMaterial } from '../functions/types';
 
 const idGenerator = IDGenerator.getInstance();
 

@@ -27,7 +27,7 @@ const router = express.Router();
  * QDRANT upload using RAGModule from UBC GenAI Toolkit
  */
 
-class RAGApp {
+export class RAGApp {
     
     private rag: RAGModule;
     private llm: LLMModule;
@@ -49,7 +49,8 @@ class RAGApp {
     }
 
     async initialize() {
-        if (RAGApp.instance) {
+        // Check if this instance is already initialized (not just if an instance exists)
+        if (this.rag && typeof this.rag.addDocument === 'function') {
             this.logger.info('✅ RAGApp already initialized');
             return;
         }
@@ -59,8 +60,15 @@ class RAGApp {
             this.logger.info(`Using LLM Provider: ${this.config.llmConfig.provider}`);
             
             // Initialize RAG module
-            this.rag = await RAGModule.create(this.config.ragConfig);
-            this.logger.info('✅ RAGModule initialized successfully');
+            this.logger.info('🔧 Creating RAG module...');
+            try {
+                this.rag = await RAGModule.create(this.config.ragConfig);
+                this.logger.info('✅ RAGModule initialized successfully');
+                this.logger.info('🔍 RAG module methods:', Object.getOwnPropertyNames(this.rag.constructor.prototype));
+            } catch (error) {
+                this.logger.error('❌ Failed to create RAG module:', { error: error });
+                throw error;
+            }
             
             // Initialize MongoDB
             this.mongoDB = await EngEAI_MongoDB.getInstance();
@@ -116,6 +124,26 @@ class RAGApp {
 
                 documentText = document.text;
 
+                // Create temp directory if it doesn't exist
+                const tempDir = path.join(__dirname, '..', 'tempfiles');
+                if (!fs.existsSync(tempDir)) {
+                    fs.mkdirSync(tempDir, { recursive: true });
+                }
+                
+                this.logger.info(`📂 Temp directory: ${tempDir}`);
+
+                // Create a .txt file from the text content
+                const textFileName = `${document.name.replace(/[^a-zA-Z0-9]/g, '_')}.txt`;
+                const tempFileName = `${Date.now()}-${textFileName}`;
+                const filePath = path.join(tempDir, tempFileName);
+                
+                // Write text content to file
+                fs.writeFileSync(filePath, document.text, 'utf8');
+                
+                this.logger.info(`📝 Text file saved to tempfiles: ${filePath}`);
+                // Create temp directory if it doesn't exist
+                
+
                 // Create full instance of the document
                 fullDocument = {
                     id: this.idGenerator.uploadContentID(document, document.itemTitle, document.divisionTitle, document.courseName),
@@ -124,8 +152,9 @@ class RAGApp {
                     courseName: document.courseName,
                     divisionTitle: document.divisionTitle,
                     itemTitle: document.itemTitle,
-                    sourceType: document.sourceType,
+                    sourceType: 'file', // Change to 'file' since we created a file
                     text: document.text,
+                    fileName: textFileName,
                     uploaded: false,
                     qdrantId: undefined,
                 };
@@ -136,7 +165,11 @@ class RAGApp {
                 }
 
                 // Validate file extension
-                const fileExtension = document.file.name.split('.').pop()?.toLowerCase();
+                const documentFileName = document.fileName || '';
+                if (!documentFileName) {
+                    throw new Error('File name is required for file source type');
+                }
+                const fileExtension = documentFileName.split('.').pop()?.toLowerCase();
                 const supportedExtensions = ['docx', 'md', 'pdf', 'html', 'htm', 'txt'];
                 
                 if (!fileExtension || !supportedExtensions.includes(fileExtension)) {
@@ -144,7 +177,7 @@ class RAGApp {
                 }
 
                 // Create temp directory if it doesn't exist
-                const tempDir = path.join(__dirname, 'tempfiles');
+                const tempDir = path.join(__dirname, '..', 'tempfiles');
                 if (!fs.existsSync(tempDir)) {
                     fs.mkdirSync(tempDir, { recursive: true });
                 }
@@ -152,8 +185,8 @@ class RAGApp {
                 this.logger.info(`📂 Temp directory: ${tempDir}`);
 
                 // Save file to temp directory
-                const fileName = `${Date.now()}-${document.file.name}`;
-                const filePath = path.join(tempDir, fileName);
+                const tempFileName = `${Date.now()}-${document.fileName}`;
+                const filePath = path.join(tempDir, tempFileName);
                 // For multer files, use buffer property
                 fs.writeFileSync(filePath, (document.file as any).buffer);
                 
@@ -184,37 +217,38 @@ class RAGApp {
                     };
 
                 } finally {
-                    // Clean up temp file - COMMENTED OUT FOR TESTING
-                    // if (fs.existsSync(filePath)) {
-                    //     fs.unlinkSync(filePath);
-                    // }
+                    // Clean up temp file - COMMENTED OUT FOR DEBUGGING
+                    // this.cleanupTempFile(filePath);
                 }
 
             } else {
                 throw new Error(`Unsupported source type: ${document.sourceType}`);
             }
 
-            // Upload to RAG with metadata - COMMENTED OUT FOR TESTING
-            // const metadata = {
-            //     id: fullDocument.id,
-            //     date: fullDocument.date.toISOString(),
-            //     name: fullDocument.name,
-            //     courseName: fullDocument.courseName,
-            //     divisionTitle: fullDocument.divisionTitle,
-            //     itemTitle: fullDocument.itemTitle,
-            //     sourceType: fullDocument.sourceType,
-            //     uploadedAt: new Date().toISOString(),
-            // };
+            // Upload to RAG with metadata
+            const metadata = {
+                id: fullDocument.id,
+                date: fullDocument.date.toISOString(),
+                name: fullDocument.name,
+                courseName: fullDocument.courseName,
+                divisionTitle: fullDocument.divisionTitle,
+                itemTitle: fullDocument.itemTitle,
+                sourceType: fullDocument.sourceType,
+                uploadedAt: new Date().toISOString(),
+            };
 
-            // qdrantIds = await this.rag.addDocument(documentText, metadata);
+            this.logger.info(`📤 Uploading document to RAG: ${fullDocument.name}`);
+            const qdrantIds = await this.rag.addDocument(documentText, metadata);
+            this.logger.info(`✅ Document uploaded to RAG successfully. Generated ${qdrantIds.length} chunks`);
 
-            // Update document with upload results - COMMENTED OUT FOR TESTING
-            // fullDocument.uploaded = true;
-            // fullDocument.qdrantId = qdrantIds[0]; // Store the first chunk ID as reference
-            // fullDocument.chunksGenerated = qdrantIds.length; // Add actual chunk count
+            // Update document with upload results
+            fullDocument.uploaded = true;
+            fullDocument.qdrantId = qdrantIds[0]; // Store the first chunk ID as reference
+            fullDocument.chunksGenerated = qdrantIds.length; // Add actual chunk count
 
             this.logger.info(`✅ Document uploaded successfully: ${fullDocument.name} (ID: ${fullDocument.id})`);
-            this.logger.info(`📊 File saved to tempfiles directory for testing`);
+            this.logger.info(`📊 Generated ${fullDocument.chunksGenerated} chunks in RAG system`);
+            this.logger.info(`📁 File saved to tempfiles directory for debugging`);
 
             return fullDocument;
 
@@ -258,14 +292,30 @@ class RAGApp {
         return ;
     }
     
-     /**
-      * getDocument by id
-      * 
-      * @param id - The id of the document to get
-      * @returns The result of the get
-      */
+    /**
+     * getDocument by id
+     * 
+     * @param id - The id of the document to get
+     * @returns The result of the get
+     */
     async getDocumentById(id: string) : Promise<any> {
         return ;
+    }
+
+    /**
+     * Clean up temporary file after processing
+     * 
+     * @param filePath - Path to the temporary file to delete
+     */
+    private cleanupTempFile(filePath: string): void {
+        try {
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+                this.logger.info(`🗑️ Cleaned up temp file: ${filePath}`);
+            }
+        } catch (error) {
+            this.logger.warn(`⚠️ Failed to clean up temp file ${filePath}:`, { error: error });
+        }
     }
     
     
@@ -382,7 +432,14 @@ const validateFileDocument = (req: MulterRequest, res: Response, next: Function)
     }
 
     // Validate file extension as additional check
-    const fileExtension = req.file.originalname.split('.').pop()?.toLowerCase();
+    const originalName = req.file.originalname || '';
+    if (!originalName) {
+        return res.status(400).json({
+            status: 400,
+            message: 'File original name is required'
+        });
+    }
+    const fileExtension = originalName.split('.').pop()?.toLowerCase();
     const supportedExtensions = ['pdf', 'docx', 'html', 'htm', 'md', 'txt'];
     
     if (!fileExtension || !supportedExtensions.includes(fileExtension)) {

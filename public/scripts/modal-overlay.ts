@@ -960,9 +960,11 @@ export async function openUploadModal(
             // Show/hide sections within the upload method content
             if (method === 'file') {
                 fileSectionElement.style.display = 'flex';
+                textSectionElement.style.display = 'none';
                 textSectionElement.classList.remove('active');
             } else {
                 fileSectionElement.style.display = 'none';
+                textSectionElement.style.display = 'flex';
                 textSectionElement.classList.add('active');
             }
             
@@ -1014,13 +1016,22 @@ export async function openUploadModal(
                 date: new Date(),
             };
 
-            // Call the upload callback if provided
+            // Call the upload callback if provided and wait for completion
             if (onUpload) {
-                await onUpload(material);
+                try {
+                    await onUpload(material);
+                    // Only close modal after successful upload
+                    close();
+                } catch (error) {
+                    console.error('Upload failed:', error);
+                    alert('Upload failed. Please try again.');
+                    // Don't close modal on error - let user try again
+                    return;
+                }
+            } else {
+                // Close the modal if no upload callback
+                close();
             }
-
-            // Close the modal
-            close();
         } catch (error) {
             console.error('Error in upload process:', error);
             alert('An error occurred during upload. Please try again.');

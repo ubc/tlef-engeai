@@ -11,7 +11,7 @@ import { EmbeddingsConfig, EmbeddingProviderType } from 'ubc-genai-toolkit-embed
 import { ConsoleLogger, LoggerInterface } from 'ubc-genai-toolkit-core';
 
 // Load environment variables from .env file
-dotenv.config({ path: require('path').resolve(__dirname, '../.env') });
+dotenv.config({ path: require('path').resolve(__dirname, '../../.env') });
 
 export interface AppConfig {
 	llmConfig: Partial<LLMConfig>;

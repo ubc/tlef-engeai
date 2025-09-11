@@ -502,14 +502,14 @@
 
 /* File section - shown by default */
 .upload-method-content #file-upload-section {
-    display: flex !important;
+    display: flex;
     align-items: center;
     justify-content: center;
 }
 
 /* Text section - hidden by default */
 .upload-method-content #text-input-section {
-    display: none !important;
+    display: none;
 }
 
 /* Text input section specific styling when active */

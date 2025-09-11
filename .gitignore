@@ -45,3 +45,5 @@ node_modules/
 src/test-scripts/
 
 queueTask.md
+./src/debug/*
+./src/tempfiles/*
