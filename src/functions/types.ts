@@ -16,7 +16,7 @@
  * The type of chat message
  */
 export interface ChatMessage {
-    id: number;
+    id: string;
     sender: 'user' | 'bot';
     userId: number;
     courseName: string;
@@ -28,13 +28,13 @@ export interface ChatMessage {
  * The type of chat
  */
 export interface Chat {
-    id: number;
+    id: string;
     courseName: string;
     divisionTitle: string;
     itemTitle: string;
     messages: ChatMessage[];
     isPinned: boolean;
-    pinnedMessageId?: number | null;
+    pinnedMessageId?: string | null;
 }
 
 // ===========================================
@@ -114,8 +114,7 @@ export interface courseItem {
  */
 export interface LearningObjective {
     id: string;
-    LearningObjectiveTitle: string;
-    LearningObjectiveDescription: string;
+    LearningObjective: string;
     courseName: string;
     divisionTitle: string;
     itemTitle: string;
@@ -147,6 +146,7 @@ export interface AdditionalMaterial {
     fileName?: string; // Store the actual filename for display
     uploaded?: boolean; // Track if successfully uploaded to Qdrant
     qdrantId?: string; // Store Qdrant document ID
+    chunksGenerated?: number; // Number of chunks generated in Qdrant
 }
 
 /**

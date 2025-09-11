@@ -293,23 +293,6 @@
     background: #c82333;
 }
 
-.objective-content {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s ease;
-    background: var(--gingham-color);
-}
-
-.objective-content.expanded {
-    max-height: 300px;
-    padding: 12px;
-}
-
-.objective-description {
-    color: var(--text-secondary);
-    font-size: 12px;
-    line-height: 1.4;
-}
 
 .add-objective {
     margin-top: 15px;
@@ -333,17 +316,8 @@
     font-weight: 500;
 }
 
-.objective-description-input {
-    padding: 8px 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    font-size: 13px;
-    resize: vertical;
-    min-height: 60px;
-}
 
-.objective-title-input:focus,
-.objective-description-input:focus {
+.objective-title-input:focus {
     outline: none;
     border-color: var(--pinned-color);
 }

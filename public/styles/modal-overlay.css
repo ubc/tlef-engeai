@@ -422,6 +422,9 @@
 .upload-modal-overlay .modal-content {
     padding: 16px 18px;
     overflow: auto;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 }
 
 /* Upload Method Toggle */
@@ -471,14 +474,53 @@
     font-size: 14px;
 }
 
+/* Upload Header Section */
+.upload-header-section {
+    flex-shrink: 0; /* Don't shrink */
+    margin-bottom: 1rem;
+}
+
 /* Upload Method Content */
 .upload-method-content {
     display: none;
     transition: all 0.3s ease;
+    flex: 1; /* Take remaining space */
+    min-height: 0; /* Allow flex item to shrink */
 }
 
 .upload-method-content.active {
-    display: block;
+    display: flex;
+    flex-direction: column;
+}
+
+/* File and Text sections within upload method content */
+.upload-method-content .form-section {
+    display: none;
+    flex: 1; /* Take remaining space */
+    min-height: 0; /* Allow flex item to shrink */
+}
+
+/* File section - shown by default */
+.upload-method-content #file-upload-section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Text section - hidden by default */
+.upload-method-content #text-input-section {
+    display: none;
+}
+
+/* Text input section specific styling when active */
+.upload-method-content #text-input-section.active {
+    display: flex !important;
+    flex-direction: column;
+}
+
+.upload-method-content #text-input-section .text-area {
+    flex: 1; /* Fill remaining space */
+    min-height: 200px; /* Minimum height */
 }
 
 /* Modal Upload Card (different from document-setup upload-card) */
@@ -494,6 +536,7 @@
     background: #fafbfc;
     transition: all 0.2s ease;
     min-height: 120px;
+    width: 100%;
 }
 
 .modal-upload-card:hover {
@@ -557,7 +600,8 @@
 
 /* Form Sections */
 .form-section {
-    margin-bottom: 1rem;
+    display: flex;
+    flex-direction: column;
 }
 
 .section-label { 
@@ -576,9 +620,11 @@
     font-size: 13px; 
 }
 
-.text-area { 
-    min-height: 120px; 
-    resize: vertical; 
+.text-area {
+    min-height: 120px;
+    resize: vertical;
+    flex: 1;
+    min-height: 0; /* Allow flex item to shrink below content size */
 }
 
 .text-input:focus, .text-area:focus { 
@@ -587,12 +633,14 @@
 }
 
 /* Upload Modal Footer */
-.upload-modal-overlay .modal-footer { 
-    display: flex; 
-    gap: 10px; 
-    justify-content: flex-end; 
-    padding: 12px 18px; 
-    border-top: 1px solid var(--border-color); 
+.upload-modal-overlay .modal-footer {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    padding: 12px 18px;
+    border-top: 1px solid var(--border-color);
+    margin-top: auto; /* Push footer to bottom */
+    flex-shrink: 0; /* Prevent footer from shrinking */
 }
 
 /* Body modal open state */

@@ -6,7 +6,7 @@ import { loadComponentHTML, sendMessageToServer, renderFeatherIcons } from './fu
 document.addEventListener('DOMContentLoaded', () => {
     // --- STATE MANAGEMENT ---
     let chats: Chat[] = []; // Start with no chats
-    let activeChatId: number | null = null;
+    let activeChatId: string | null = null;
 
     // --- DOM ELEMENT SELECTORS ---
     const mainContentArea = document.getElementById('main-content-area');
@@ -150,7 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderFeatherIcons();
     };
 
-    const handlePinClickForChat = (targetChatId: number): void => {
+    const handlePinClickForChat = (targetChatId: string): void => {
         const targetChat = chats.find(c => c.id === targetChatId);
         if (!targetChat) return;
         targetChat.isPinned = !targetChat.isPinned;
@@ -160,13 +160,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const deleteChatById = (targetChatId: number): void => {
+    const deleteChatById = (targetChatId: string): void => {
         chats = chats.filter(c => c.id !== targetChatId);
         // Do not change activeChatId here unless we deleted the active one
         renderChatList();
     };
 
-    const handleDeleteClickForChat = (targetChatId: number): void => {
+    const handleDeleteClickForChat = (targetChatId: string): void => {
         if (activeChatId === targetChatId) {
             deleteActiveChat();
         } else {
@@ -563,7 +563,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 180);
         }
 
-        const newChat: Chat = { id: Date.now(), 
+        const newChat: Chat = { id: Date.now().toString(), 
                                 courseName: 'Default Course',
                                 divisionTitle: 'Default Division',
                                 itemTitle: 'no title', 
@@ -573,7 +573,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Delay the message to ensure the chat window is rendered
         setTimeout(() => {
-            newChat.messages.push({ id: Date.now(), sender: 'bot', userId: 1, courseName: 'Default Course', text: 
+            newChat.messages.push({ id: Date.now().toString(), sender: 'bot', userId: 1, courseName: 'Default Course', text: 
                     'Hello! I am EngE-AI, your AI companion for chemical, environmental, and materials engineering.' + 
                     ' As this is week 2, in lectures this week we have learned about PID control and Fluid Dynamics. ' + 
                     'What would you like to discuss? ' + 
@@ -594,14 +594,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (text === '') return;
         const activeChat = chats.find(c => c.id === activeChatId);
         if (!activeChat) return;
-        activeChat.messages.push({ id: Date.now(), sender: 'user', userId: 1, courseName: activeChat.courseName, text, timestamp: Date.now() });
+        activeChat.messages.push({ id: Date.now().toString(), sender: 'user', userId: 1, courseName: activeChat.courseName, text, timestamp: Date.now() });
         renderActiveChat();
         inputEl.value = '';
         inputEl.style.height = 'auto';
 
         sendMessageToServer(text)
             .then(({ reply, timestamp }) => {
-                const botMsg: ChatMessage = { id: Date.now() + 1, sender: 'bot', userId: 1, courseName: activeChat.courseName, text: reply, timestamp };
+                const botMsg: ChatMessage = { id: (Date.now() + 1).toString(), sender: 'bot', userId: 1, courseName: activeChat.courseName, text: reply, timestamp };
                 activeChat.messages.push(botMsg);
                 renderActiveChat();
             });
@@ -690,7 +690,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const target = e.target as HTMLElement;
         const li = target.closest('.chat-item') as HTMLLIElement | null;
         if (li && !((target as HTMLElement).closest('button'))) {
-            activeChatId = Number(li.dataset.chatId);
+            activeChatId = li.dataset.chatId || null;
             renderChatList();
             renderActiveChat();
         }
@@ -726,7 +726,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ensureSidebarCollapseButton();
 
     const createMessageElement = (
-        messageId: number,
+        messageId: string,
         sender: 'user' | 'bot',
         text: string,
         timestamp: number | undefined,
@@ -850,7 +850,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Artefact functionality disabled for now
 
     // --- FLAGGING SUPPORT ---
-    const openFlagDialog = (messageId: number) => {
+    const openFlagDialog = (messageId: string) => {
         const chat = chats.find(c => c.id === activeChatId);
         if (!chat) return;
         const msg = chat.messages.find(m => m.id === messageId);
@@ -985,7 +985,7 @@ document.addEventListener('DOMContentLoaded', () => {
         isPinned: boolean,
         onTogglePin: () => void,
         sender: 'user' | 'bot',
-        messageId: number
+        messageId: string
     ) => {
         await ensureMessageMenu();
         const menu = document.getElementById('message-context-menu') as HTMLElement | null;

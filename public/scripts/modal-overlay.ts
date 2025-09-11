@@ -587,6 +587,71 @@ export async function showCustomModal(config: ModalConfig): Promise<ModalResult>
 }
 
 /**
+ * Shows a simple error modal for general errors
+ * 
+ * @param message - Error message to display
+ * @param title - Optional custom title (defaults to "Error")
+ * @returns Promise that resolves when modal is closed
+ */
+export async function showSimpleErrorModal(message: string, title: string = "Error"): Promise<ModalResult> {
+    return showErrorModal(title, message);
+}
+
+/**
+ * Shows a confirmation modal for deletion operations
+ * 
+ * @param itemType - Type of item being deleted (e.g., "Learning Objective", "Instructor", "TA", "Additional Material")
+ * @param itemName - Optional name of the specific item
+ * @returns Promise that resolves with user's choice
+ */
+export async function showDeleteConfirmationModal(itemType: string, itemName?: string): Promise<ModalResult> {
+    const message = itemName 
+        ? `Are you sure you want to delete this ${itemType.toLowerCase()} "${itemName}"? This action cannot be undone.`
+        : `Are you sure you want to delete this ${itemType.toLowerCase()}? This action cannot be undone.`;
+    
+    const modal = getModal();
+    return modal.show({
+        type: 'warning',
+        title: `Delete ${itemType}`,
+        content: message,
+        buttons: [
+            { text: 'Cancel', type: 'secondary', closeOnClick: true },
+            { text: 'Delete', type: 'danger', closeOnClick: true }
+        ]
+    });
+}
+
+/**
+ * Shows a chat creation error modal
+ * 
+ * @param errorMessage - The error message to display
+ * @returns Promise that resolves when modal is closed
+ */
+export async function showChatCreationErrorModal(errorMessage: string): Promise<ModalResult> {
+    const modal = getModal();
+    return modal.show({
+        type: 'error',
+        title: 'Failed to Create Chat',
+        content: `
+            <div style="text-align: center; padding: 20px;">
+                <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+                <p style="margin-bottom: 16px; color: var(--text-primary);">
+                    ${errorMessage}
+                </p>
+                <p style="color: var(--text-secondary); font-size: 14px;">
+                    Please try again or contact support if the problem persists.
+                </p>
+            </div>
+        `,
+        buttons: [
+            { text: 'Try Again', type: 'primary', closeOnClick: true },
+            { text: 'Cancel', type: 'secondary', closeOnClick: true }
+        ],
+        maxWidth: '400px'
+    });
+}
+
+/**
  * Closes the currently open modal
  * 
  * @param action - Action that triggered the close
@@ -651,6 +716,10 @@ export async function openUploadModal(
     // Create the content for the modal
     const content = document.createElement('div');
     content.className = 'modal-content';
+
+    // Create the header section (Content Title + Upload Method)
+    const headerSection = document.createElement('div');
+    headerSection.className = 'upload-header-section';
 
     // Create the first section for the modal (Content Title)
     const section1 = document.createElement('div');
@@ -724,9 +793,18 @@ export async function openUploadModal(
     toggleSection.appendChild(toggleLabel);
     toggleSection.appendChild(toggleContainer);
 
+    // Add sections to header
+    headerSection.appendChild(section1);
+    headerSection.appendChild(toggleSection);
+
+    // Create the upload method content container
+    const uploadMethodContent = document.createElement('div');
+    uploadMethodContent.className = 'upload-method-content active';
+    uploadMethodContent.id = 'upload-method-content';
+    
     // Create the file upload section
     const fileUploadSection = document.createElement('div');
-    fileUploadSection.className = 'form-section upload-method-content active';
+    fileUploadSection.className = 'form-section';
     fileUploadSection.id = 'file-upload-section';
     
     // Create modal upload card (different from document-setup upload-card)
@@ -774,7 +852,7 @@ export async function openUploadModal(
 
     // Create the text input section
     const textInputSection = document.createElement('div');
-    textInputSection.className = 'form-section upload-method-content';
+    textInputSection.className = 'form-section';
     textInputSection.id = 'text-input-section';
     
     // Create text label
@@ -793,11 +871,13 @@ export async function openUploadModal(
     textInputSection.appendChild(textLabel);
     textInputSection.appendChild(textArea);
 
+    // Add sections to upload method content
+    uploadMethodContent.appendChild(fileUploadSection);
+    uploadMethodContent.appendChild(textInputSection);
+
     // Append the sections to the content
-    content.appendChild(section1);
-    content.appendChild(toggleSection);
-    content.appendChild(fileUploadSection);
-    content.appendChild(textInputSection);
+    content.appendChild(headerSection);
+    content.appendChild(uploadMethodContent);
 
     // Create the footer for the modal
     const footer = document.createElement('div');
@@ -848,12 +928,16 @@ export async function openUploadModal(
     
     // Get references to the toggle buttons and content sections
     const toggleButtons = overlay.querySelectorAll('.toggle-option');
+    const uploadMethodContentElement = overlay.querySelector('#upload-method-content') as HTMLElement;
     const fileSectionElement = overlay.querySelector('#file-upload-section') as HTMLElement;
     const textSectionElement = overlay.querySelector('#text-input-section') as HTMLElement;
     const uploadFileBtnElement = overlay.querySelector('#upload-file-btn') as HTMLButtonElement;
     const hiddenInputElement = overlay.querySelector('#hidden-file-input') as HTMLInputElement;
     const selectedFileNameElement = overlay.querySelector('#selected-file-name') as HTMLElement;
     const textAreaElement = overlay.querySelector('#mat-text') as HTMLTextAreaElement;
+    
+    // Set up file input with supported file types
+    hiddenInputElement.accept = '.pdf,.docx,.html,.htm,.md,.txt';
     
     // Toggle method functionality
     toggleButtons.forEach(button => {
@@ -864,7 +948,7 @@ export async function openUploadModal(
             toggleButtons.forEach(btn => btn.classList.remove('active'));
             button.classList.add('active');
             
-            // Clear previous data
+            // Clear previous data when switching methods
             if (currentMethod === 'file') {
                 selectedFile = null;
                 hiddenInputElement.value = '';
@@ -873,12 +957,14 @@ export async function openUploadModal(
                 textAreaElement.value = '';
             }
             
-            // Show/hide sections
+            // Show/hide sections within the upload method content
             if (method === 'file') {
-                fileSectionElement.classList.add('active');
+                fileSectionElement.style.display = 'flex';
+                textSectionElement.style.display = 'none';
                 textSectionElement.classList.remove('active');
             } else {
-                fileSectionElement.classList.remove('active');
+                fileSectionElement.style.display = 'none';
+                textSectionElement.style.display = 'flex';
                 textSectionElement.classList.add('active');
             }
             
@@ -930,13 +1016,22 @@ export async function openUploadModal(
                 date: new Date(),
             };
 
-            // Call the upload callback if provided
+            // Call the upload callback if provided and wait for completion
             if (onUpload) {
-                await onUpload(material);
+                try {
+                    await onUpload(material);
+                    // Only close modal after successful upload
+                    close();
+                } catch (error) {
+                    console.error('Upload failed:', error);
+                    alert('Upload failed. Please try again.');
+                    // Don't close modal on error - let user try again
+                    return;
+                }
+            } else {
+                // Close the modal if no upload callback
+                close();
             }
-
-            // Close the modal
-            close();
         } catch (error) {
             console.error('Error in upload process:', error);
             alert('An error occurred during upload. Please try again.');
@@ -958,6 +1053,9 @@ export default {
     showDisclaimerModal,
     showHelpModal,
     showCustomModal,
+    showSimpleErrorModal,
+    showDeleteConfirmationModal,
+    showChatCreationErrorModal,
     openUploadModal,
     closeModal
 };

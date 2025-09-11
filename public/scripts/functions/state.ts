@@ -14,7 +14,7 @@ import type { Chat, ChatMessage } from '../../../src/functions/types';
  */
 export type State = {
     chats: Chat[];
-    activeChatId: number | null;
+    activeChatId: string | null;
 };
 
 /**
@@ -37,7 +37,7 @@ export function getActiveChat(): Chat | undefined {
  * Set the active chat
  * @param chatId - The id of the chat to set as active
  */
-export function setActiveChat(chatId: number): void {
+export function setActiveChat(chatId: string): void {
     state.activeChatId = chatId;
 }
 
@@ -46,7 +46,7 @@ export function setActiveChat(chatId: number): void {
  * @returns The new chat
  */
 export function createChat(): Chat {
-    const newChat: Chat = { id: Date.now(), courseName: 'Default Course', divisionTitle: 'Default Division', itemTitle: 'no title', messages: [], isPinned: false };
+    const newChat: Chat = { id: Date.now().toString(), courseName: 'Default Course', divisionTitle: 'Default Division', itemTitle: 'no title', messages: [], isPinned: false };
     state.chats.push(newChat);
     state.activeChatId = newChat.id;
     return newChat;
@@ -56,7 +56,7 @@ export function createChat(): Chat {
  * Delete a chat
  * @param chatId - The id of the chat to delete
  */
-export function deleteChat(chatId: number): void {
+export function deleteChat(chatId: string): void {
     state.chats = state.chats.filter(c => c.id !== chatId);
     if (state.chats.length > 0) {
         const lastPinned = state.chats.filter(c => c.isPinned).pop();
@@ -70,7 +70,7 @@ export function deleteChat(chatId: number): void {
  * Toggle the pinned state of a chat
  * @param chatId - The id of the chat to toggle the pinned state of
  */
-export function toggleChatPin(chatId: number): void {
+export function toggleChatPin(chatId: string): void {
     const chat = state.chats.find(c => c.id === chatId);
     if (!chat) return;
     chat.isPinned = !chat.isPinned;
@@ -81,7 +81,7 @@ export function toggleChatPin(chatId: number): void {
  * @param chatId - The id of the chat to add the message to
  * @param message - The message to add to the chat
  */
-export function addMessage(chatId: number, message: ChatMessage): void {
+export function addMessage(chatId: string, message: ChatMessage): void {
     const chat = state.chats.find(c => c.id === chatId);
     if (!chat) return;
     chat.messages.push(message);
@@ -92,7 +92,7 @@ export function addMessage(chatId: number, message: ChatMessage): void {
  * @param chatId - The id of the chat to toggle the pinned state of
  * @param messageId - The id of the message to toggle the pinned state of
  */
-export function togglePinnedMessage(chatId: number, messageId: number): void {
+export function togglePinnedMessage(chatId: string, messageId: string): void {
     const chat = state.chats.find(c => c.id === chatId);
     if (!chat) return;
     chat.pinnedMessageId = chat.pinnedMessageId === messageId ? null : messageId;

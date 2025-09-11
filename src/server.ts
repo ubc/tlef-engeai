@@ -2,10 +2,10 @@ import dotenv from 'dotenv';
 import express from 'express';
 import path from 'path';
 import cors from 'cors';
-import chatRoutes from './routes/chat';
-import ollamaRoutes from './routes/ollama';
-// import qdrantRoutes from './routes/RAGapp';  // Import Qdrant routes
+import chatAppRoutes from './routes/chat-app';
+import ragAppRoutes from './routes/RAG-App';
 import mongodbRoutes from './routes/mongodb';  // Import MongoDB routes
+import { initializeDummyCourses } from './debug/dummy-courses.js';
 
 dotenv.config();
 
@@ -32,12 +32,15 @@ app.get('/settings', (req: any, res: any) => {
 });
 
 // API endpoints
-app.use('/api/chat', chatRoutes);
-app.use('/api/ollama', ollamaRoutes);
-// app.use('/api/qdrant', qdrantRoutes);  // Add Qdrant routes
+app.use('/api/chat', chatAppRoutes);
+app.use('/api/ollama', chatAppRoutes);
+app.use('/api/rag', ragAppRoutes); // ragAppRoutes is not defined or imported, so this line is commented out
 app.use('/api/mongodb', mongodbRoutes);  // Add MongoDB routes
 
-app.listen(port, () => {
+app.listen(port, async () => {
     console.log(`Server is running on http://localhost:${port}`);
     console.log('ENGE-AI Test');
+    
+    // Initialize dummy courses on server startup
+    await initializeDummyCourses();
 });

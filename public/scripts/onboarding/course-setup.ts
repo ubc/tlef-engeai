@@ -541,6 +541,12 @@ async function handleNextNavigation(state: OnboardingState, onBoardingCourse: ac
     if (state.currentStep < state.totalSteps) {
         // Move to next step
         state.currentStep++; 
+        
+        // Handle database submission when moving from step 7 (finalization) to step 8 (complete)
+        if (state.currentStep === 8) {
+            await handleDatabaseSubmission(state, onBoardingCourse, instructorCourse);
+        }
+        
         updateStepDisplay(state, onBoardingCourse); //
         updateStepIndicators(state, onBoardingCourse);
         updateNavigationButtons(state); //
@@ -549,6 +555,7 @@ async function handleNextNavigation(state: OnboardingState, onBoardingCourse: ac
         if (state.currentStep === state.totalSteps) {
             updateReviewContent(state, onBoardingCourse);
         }
+        
         
         console.log(`➡️ Navigated to step ${state.currentStep}`);
     } else {
@@ -936,17 +943,16 @@ function updateReviewContentCountDescription(state: OnboardingState, onBoardingC
 // ===========================================
 
 /**
- * Handles the final submission of the onboarding data
+ * Handles database submission when moving from finalization to completion step
  * 
  * @param state - The onboarding state object
- * @param onBoardingCourse - The onboarding course object for temporary state management
- * @param instructorCourse - The original instructor course object (only modified when database is set)
- * @returns Promise<void>
+ * @param onBoardingCourse - The course data from onboarding
+ * @param instructorCourse - The global instructor course object
  */
-async function handleFinalSubmission(state: OnboardingState, onBoardingCourse: activeCourse, instructorCourse: activeCourse): Promise<void> {
-    console.log("🎯 Processing final submission...");
-    
+async function handleDatabaseSubmission(state: OnboardingState, onBoardingCourse: activeCourse, instructorCourse: activeCourse): Promise<void> {
     try {
+        console.log("🎯 Starting database submission...");
+        
         // Create the course object from onboarding data
         const courseData: activeCourse = {
             id: generateUniqueId(), // remove later
@@ -961,22 +967,61 @@ async function handleFinalSubmission(state: OnboardingState, onBoardingCourse: a
             divisions: []
         };
         
-        //TODO: Uncomment this later
-        // // Submit to database
-        // const submittedCourse = await postCourseToDatabase(courseData);
-        
-        // // Update the instructor course global variable (only modified when database is set)
-        // Object.assign(instructorCourse, submittedCourse);
+        // Submit to database
+        const submittedCourse = await postCourseToDatabase(courseData);
 
-        Object.assign(instructorCourse, courseData);
+        console.log("DEBUG #76submittedCourse: ", submittedCourse);
         
-        // Remove onboarding-active class to show instructor sidebar
-        document.body.classList.remove('onboarding-active');
+        // Update the instructor course global variable (only modified when database is set)
+        Object.assign(instructorCourse, submittedCourse);
         
-        // Dispatch completion event
-        window.dispatchEvent(new CustomEvent('onboardingComplete'));
+        console.log("✅ Database submission completed successfully!");
         
-        console.log("✅ Onboarding completed successfully!");
+    } catch (error) {
+        console.error("❌ Error during database submission:", error);
+        await showErrorModal("Submission Error", "Failed to save course data. Please try again.");
+        // Revert to previous step if database submission fails
+        state.currentStep = 7;
+        updateStepDisplay(state, onBoardingCourse);
+        updateStepIndicators(state, onBoardingCourse);
+        updateNavigationButtons(state);
+    }
+}
+
+/**
+ * Handles window reset when course setup is complete
+ */
+function handleWindowReset(): void {
+    console.log("🔄 Resetting window for course setup completion...");
+    
+    // Remove onboarding-active class to show instructor sidebar
+    document.body.classList.remove('onboarding-active');
+    
+    // Dispatch completion event
+    window.dispatchEvent(new CustomEvent('onboardingComplete'));
+    
+    console.log("✅ Window reset completed!");
+}
+
+/**
+ * Handles the final submission of the onboarding data
+ * 
+ * @param state - The onboarding state object
+ * @param onBoardingCourse - The onboarding course object for temporary state management
+ * @param instructorCourse - The original instructor course object (only modified when database is set)
+ * @returns Promise<void>
+ */
+async function handleFinalSubmission(state: OnboardingState, onBoardingCourse: activeCourse, instructorCourse: activeCourse): Promise<void> {
+    console.log("🎯 Processing final submission...");
+    
+    try {
+        // The database submission has already been handled in step 8
+        // This function now handles the final cleanup and window reset
+        
+        // Reset the window for course setup completion
+        handleWindowReset();
+        
+        console.log("✅ Final submission completed successfully!");
         
     } catch (error) {
         console.error("❌ Error during final submission:", error);
@@ -995,7 +1040,7 @@ async function postCourseToDatabase(courseData: activeCourse): Promise<activeCou
         console.log("🎯 Posting course data to database...");
         console.log("courseData: ", courseData);
 
-        const response = await fetch('/api/mongodb/courses', {
+        const response = await fetch('/api/mongodb/courses/newcourse', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'

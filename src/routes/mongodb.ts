@@ -35,8 +35,9 @@ const router = express.Router();
 export default router;
 import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 import dotenv from 'dotenv';
-import { activeCourse, ContentDivision, courseItem } from '../functions/types';
+import { activeCourse, AdditionalMaterial, ContentDivision, courseItem } from '../functions/types';
 import { IDGenerator } from '../functions/unique-id-generator';
+import { getDummyCourses, resetDummyCourses } from '../debug/dummy-courses';
 
 dotenv.config();
 
@@ -53,7 +54,7 @@ export class EngEAI_MongoDB {
     public idGenerator : IDGenerator; 
     
     constructor() {
-        this.idGenerator = new IDGenerator();
+        this.idGenerator = IDGenerator.getInstance();
         this.client = new MongoClient(EngEAI_MongoDB.MONGO_URL, {
             authSource: 'admin',
         });
@@ -150,8 +151,8 @@ export class EngEAI_MongoDB {
      */
     public getCourseByName = async (name: string) => {
 
-        if (name === 'CHBE241') {
-            return await this.getCourseCollection().findOne({ courseName: 'CHBE 241' });
+        if (name === 'CHBE251') {
+            return await this.getCourseCollection().findOne({ courseName: 'CHBE 251' });
         }
         else {
             
@@ -164,8 +165,6 @@ export class EngEAI_MongoDB {
                     courseName: { $regex: new RegExp(`^${name.replace(/\s+/g, '\\s*')}$`, 'i') }
                 });
             }
-            
-        
             
             return course;
         }
@@ -245,8 +244,7 @@ export class EngEAI_MongoDB {
             },
             { 
                 $set: { 
-                    'divisions.$[division].items.$[item].learningObjectives.$[objective].subcontentTitle': updateData.subcontentTitle,
-                    'divisions.$[division].items.$[item].learningObjectives.$[objective].content': updateData.content,
+                    'divisions.$[division].items.$[item].learningObjectives.$[objective].LearningObjective': updateData.LearningObjective,
                     'divisions.$[division].items.$[item].learningObjectives.$[objective].updatedAt': new Date(),
                     updatedAt: new Date()
                 }
@@ -294,6 +292,16 @@ export class EngEAI_MongoDB {
         );
         return result;
     }
+
+    /**
+     * add a document to the database
+     * @param document - the document to add
+     * @returns Promise<any> - the added document
+     */
+    public addDocument = async (document: AdditionalMaterial) => {
+        return await this.getCourseCollection().insertOne(document);
+    }
+    
 
 }
 
@@ -460,8 +468,8 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
 
 // Routes
 
-// POST /api/mongodb/courses - Create a new course
-router.post('/courses', validateNewCourse, asyncHandler(async (req: Request, res: Response) => {
+// POST /api/mongodb/courses/newcourse - Create a new course
+router.post('/courses/newcourse', validateNewCourse, asyncHandler(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
 
@@ -536,12 +544,12 @@ router.post('/courses', validateNewCourse, asyncHandler(async (req: Request, res
                 }
 
                 //initiate id for each lecture
-                courseContentLecture1.id = instance.idGenerator.subContentID(courseContentLecture1, contentMock.title, req.body.name);
-                courseContentLecture2.id = instance.idGenerator.subContentID(courseContentLecture2, contentMock.title, req.body.name);
-                courseContentLecture3.id = instance.idGenerator.subContentID(courseContentLecture3, contentMock.title, req.body.name);
+                courseContentLecture1.id = instance.idGenerator.itemID(courseContentLecture1, contentMock.title, req.body.name);
+                courseContentLecture2.id = instance.idGenerator.itemID(courseContentLecture2, contentMock.title, req.body.name);
+                courseContentLecture3.id = instance.idGenerator.itemID(courseContentLecture3, contentMock.title, req.body.name);
 
                 courseContent.push({
-                    id: instance.idGenerator.contentID(contentMock, req.body.name),
+                    id: instance.idGenerator.divisionID(contentMock, req.body.name),
                     date: new Date(req.body.date),
                     title: `Week ${i + 1}`,
                     courseName: req.body.name,
@@ -582,10 +590,10 @@ router.post('/courses', validateNewCourse, asyncHandler(async (req: Request, res
                 }
 
                 //initiate id for each lecture
-                courseContentTopic1.id = instance.idGenerator.subContentID(courseContentTopic1, contentMock.title, req.body.name);
+                courseContentTopic1.id = instance.idGenerator.itemID(courseContentTopic1, contentMock.title, req.body.name);
 
                 courseContent.push({
-                    id: instance.idGenerator.contentID(contentMock, req.body.name),
+                    id: instance.idGenerator.divisionID(contentMock, req.body.name),
                     date: new Date(req.body.date),
                     title: `Topic ${i + 1}`,
                     courseName: req.body.name,
@@ -730,6 +738,59 @@ router.delete('/courses/:id', asyncHandler(async (req: Request, res: Response) =
     });
 }));
 
+// GET /api/mongodb/learning-objectives - Get learning objectives for a course item
+router.get('/learning-objectives', asyncHandler(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, divisionId, contentId } = req.query;
+        
+        if (!courseId || !divisionId || !contentId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required query parameters: courseId, divisionId, contentId'
+            });
+        }
+        
+        const course = await instance.getActiveCourse(courseId as string);
+        
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        // Find the specific division and content item
+        const division = course.divisions?.find((d: any) => d.id === divisionId);
+        if (!division) {
+            return res.status(404).json({
+                success: false,
+                error: 'Division not found'
+            });
+        }
+        
+        const contentItem = division.items?.find((item: any) => item.id === contentId);
+        if (!contentItem) {
+            return res.status(404).json({
+                success: false,
+                error: 'Content item not found'
+            });
+        }
+        
+        res.status(200).json({
+            success: true,
+            data: contentItem.learningObjectives || [],
+            message: 'Learning objectives retrieved successfully'
+        });
+    } catch (error) {
+        console.error('Error getting learning objectives:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get learning objectives'
+        });
+    }
+}));
+
 // POST /api/mongodb/learning-objectives - Add a learning objective
 router.post('/learning-objectives', asyncHandler(async (req: Request, res: Response) => {
     try {
@@ -842,8 +903,53 @@ router.get('/health', asyncHandler(async (req: Request, res: Response) => {
     }
 }));
 
+// ===========================================
+// DUMMY COURSES DEBUG ENDPOINTS
+// ===========================================
 
+// GET /api/mongodb/debug/courses - Get dummy courses
+router.get('/debug/courses', asyncHandler(async (req: Request, res: Response) => {
+    try {
+        const courses = await getDummyCourses();
+        
+        res.status(200).json({
+            success: true,
+            data: courses,
+            message: 'Dummy courses retrieved successfully'
+        });
+    } catch (error) {
+        console.error('Error getting dummy courses:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get dummy courses'
+        });
+    }
+}));
 
+// POST /api/mongodb/debug/reset - Reset dummy courses
+router.post('/debug/reset', asyncHandler(async (req: Request, res: Response) => {
+    try {
+        const success = await resetDummyCourses();
+        
+        if (success) {
+            res.status(200).json({
+                success: true,
+                message: 'Dummy courses reset successfully'
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                error: 'Failed to reset dummy courses'
+            });
+        }
+    } catch (error) {
+        console.error('Error resetting dummy courses:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to reset dummy courses'
+        });
+    }
+}));
 
 
 
