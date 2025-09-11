@@ -96,7 +96,7 @@ class ChatApp {
     // private conversation : Conversation;
     // private mongoDB: EngEAI_MongoDB;
     private conversations : Map<string, Conversation>; // it maps chatId to conversation
-    private chatHistory : Map<string, ChatMessage[]>; // it maps chatId to chat history
+    private chatHistory : Map<string, ChatMessage[]>; // do not implement it for now // it maps chatId to chat history
     private chatID : string[];
     private chatIDGenerator: IDGenerator;
 
@@ -112,13 +112,99 @@ class ChatApp {
         this.chatIDGenerator = IDGenerator.getInstance();
     }
     /**
-     * it will send the whole conversation to the LLM
+     * Send a user message and get streaming response from LLM
      * 
-     * return a streamed response
+     * @param message - The user's message
+     * @param chatId - The chat ID
+     * @param userId - The user ID
+     * @returns Promise<ChatMessage> - The assistant's response message
      */
-    public async sendMessage(message: string, chatId: string) {
-        const response = await this.llmModule.sendMessage(message);
-        return response;
+    public async sendUserMessage(message: string, chatId: string, userId: string): Promise<ChatMessage> {
+        // Validate chat exists
+        if (!this.conversations.has(chatId)) {
+            throw new Error('Chat not found');
+        }
+
+        // Check rate limiting (50 messages per chat)
+        const chatHistory = this.chatHistory.get(chatId);
+        if (chatHistory && chatHistory.length >= 50) {
+            throw new Error('Rate limit exceeded: Maximum 50 messages per chat');
+        }
+
+        // Add user message to conversation and history
+        const userMessage = this.addUserMessage(chatId, message, userId);
+        
+        // Get conversation and send message
+        const conversation = this.conversations.get(chatId);
+        if (!conversation) {
+            throw new Error('Conversation not found');
+        }
+
+        // Send message to LLM and get response
+        const response = await conversation.send({
+            temperature: 0.7,
+            maxTokens: 1000
+        });
+
+        // Add assistant response to conversation and history
+        const assistantMessage = this.addAssistantMessage(chatId, response.content);
+        
+        return assistantMessage;
+    }
+
+    /**
+     * Send a user message and stream the response from LLM
+     * 
+     * @param message - The user's message
+     * @param chatId - The chat ID
+     * @param userId - The user ID
+     * @param onChunk - Callback function for each chunk of the stream
+     * @returns Promise<ChatMessage> - The complete assistant's response message
+     */
+    public async sendUserMessageStream(
+        message: string, 
+        chatId: string, 
+        userId: string, 
+        onChunk: (chunk: string) => void
+    ): Promise<ChatMessage> {
+        // Validate chat exists
+        if (!this.conversations.has(chatId)) {
+            throw new Error('Chat not found');
+        }
+
+        // Check rate limiting (50 messages per chat)
+        const chatHistory = this.chatHistory.get(chatId);
+        if (chatHistory && chatHistory.length >= 50) {
+            throw new Error('Rate limit exceeded: Maximum 50 messages per chat');
+        }
+
+        // Add user message to conversation and history
+        const userMessage = this.addUserMessage(chatId, message, userId);
+        
+        // Get conversation and stream response
+        const conversation = this.conversations.get(chatId);
+        if (!conversation) {
+            throw new Error('Conversation not found');
+        }
+
+        let fullResponse = '';
+        
+        // Stream the response
+        const response = await conversation.stream(
+            (chunk: string) => {
+                fullResponse += chunk;
+                onChunk(chunk);
+            },
+            {
+                temperature: 0.7,
+                maxTokens: 1000
+            }
+        );
+
+        // Add complete assistant response to conversation and history
+        const assistantMessage = this.addAssistantMessage(chatId, fullResponse);
+        
+        return assistantMessage;
     }
 
     public initializeConversation(userID: string, courseName: string, date: string): initChatRequest {
@@ -254,17 +340,131 @@ class ChatApp {
         return chatMessage;
     }
 
+    /**
+     * Add a user message to conversation and chat history
+     * 
+     * @param chatId - The chat ID
+     * @param message - The user's message
+     * @param userId - The user ID
+     * @returns ChatMessage - The created user message
+     */
+    private addUserMessage(chatId: string, message: string, userId: string): ChatMessage {
+        // Generate message ID
+        const currentDate = new Date().toISOString().split('T')[0];
+        const messageId = this.chatIDGenerator.messageID(message, chatId, currentDate);
+        
+        // Create the ChatMessage object
+        const chatMessage: ChatMessage = {
+            id: messageId,
+            sender: 'user',
+            userId: parseInt(userId) || 0,
+            courseName: '', // Will be set by the caller if needed
+            text: message,
+            timestamp: Date.now()
+        };
+        
+        try {
+            // Add message to conversation
+            if (this.conversations.has(chatId)) {
+                const conversation = this.conversations.get(chatId);
+                if (conversation) {
+                    conversation.addMessage('user', message);
+                }
+            }
+            
+            // Add message to chat history
+            if (this.chatHistory.has(chatId)) {
+                const existingHistory = this.chatHistory.get(chatId);
+                if (existingHistory) {
+                    existingHistory.push(chatMessage);
+                } else {
+                    this.chatHistory.set(chatId, [chatMessage]);
+                }
+            } else {
+                this.chatHistory.set(chatId, [chatMessage]);
+            }
+            
+        } catch (error) {
+            console.error('Error adding user message:', error);
+        }
+        
+        return chatMessage;
+    }
+
+    /**
+     * Add an assistant message to conversation and chat history
+     * 
+     * @param chatId - The chat ID
+     * @param message - The assistant's message
+     * @returns ChatMessage - The created assistant message
+     */
+    private addAssistantMessage(chatId: string, message: string): ChatMessage {
+        // Generate message ID
+        const currentDate = new Date().toISOString().split('T')[0];
+        const messageId = this.chatIDGenerator.messageID(message, chatId, currentDate);
+        
+        // Create the ChatMessage object
+        const chatMessage: ChatMessage = {
+            id: messageId,
+            sender: 'bot',
+            userId: 0,
+            courseName: '', // Will be set by the caller if needed
+            text: message,
+            timestamp: Date.now()
+        };
+        
+        try {
+            // Add message to conversation
+            if (this.conversations.has(chatId)) {
+                const conversation = this.conversations.get(chatId);
+                if (conversation) {
+                    conversation.addMessage('assistant', message);
+                }
+            }
+            
+            // Add message to chat history
+            if (this.chatHistory.has(chatId)) {
+                const existingHistory = this.chatHistory.get(chatId);
+                if (existingHistory) {
+                    existingHistory.push(chatMessage);
+                } else {
+                    this.chatHistory.set(chatId, [chatMessage]);
+                }
+            } else {
+                this.chatHistory.set(chatId, [chatMessage]);
+            }
+            
+        } catch (error) {
+            console.error('Error adding assistant message:', error);
+        }
+        
+        return chatMessage;
+    }
+
+    /**
+     * Get chat history for a specific chat
+     * 
+     * @param chatId - The chat ID
+     * @returns ChatMessage[] - Array of messages in the chat
+     */
+    public getChatHistory(chatId: string): ChatMessage[] {
+        return this.chatHistory.get(chatId) || [];
+    }
+
+    /**
+     * Validate if a chat exists
+     * 
+     * @param chatId - The chat ID to validate
+     * @returns boolean - True if chat exists, false otherwise
+     */
+    public validateChatExists(chatId: string): boolean {
+        return this.conversations.has(chatId);
+    }
+
 
 }
 
 const chatApp = new ChatApp(appConfig);
-
-/**
- * Enhanced chat endpoint with RAG functionality
- */
-router.post('/chat/:chatId', async (req: Request, res: Response) => {
-    
-});
 
 /**
  * create an new chat for user
@@ -274,7 +474,7 @@ router.post('/chat/:chatId', async (req: Request, res: Response) => {
  * @param date - The date of the chat
  * @returns The new chat ID
  */
-router.post('/chat/newchat', async (req: Request, res: Response) => {
+router.post('/newchat', async (req: Request, res: Response) => {
     try {
         const userID = req.body.userID;
         const courseName = req.body.courseName;
@@ -306,6 +506,174 @@ router.post('/chat/newchat', async (req: Request, res: Response) => {
             error: 'Failed to create new chat' 
         });
     }
+});
+
+/**
+ * Enhanced chat endpoint with streaming functionality
+ */
+router.post('/:chatId', async (req: Request, res: Response) => {
+    try {
+        const { chatId } = req.params;
+        const { message, userId } = req.body;
+        
+        // Validate input
+        if (!message || !userId) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Message and userId are required' 
+            });
+        }
+
+        // Validate chat exists
+        if (!chatApp.validateChatExists(chatId)) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Chat not found' 
+            });
+        }
+
+        // Set up Server-Sent Events for streaming
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Cache-Control'
+        });
+
+        // Send initial event to confirm connection
+        res.write(`data: ${JSON.stringify({ type: 'connected', message: 'Streaming started' })}\n\n`);
+
+        // Send user message and stream response
+        const assistantMessage = await chatApp.sendUserMessageStream(
+            message,
+            chatId,
+            userId,
+            (chunk: string) => {
+                // Send each chunk as a Server-Sent Event
+                res.write(`data: ${JSON.stringify({ 
+                    type: 'chunk', 
+                    content: chunk,
+                    messageId: assistantMessage.id 
+                })}\n\n`);
+            }
+        );
+
+        // Send completion event
+        res.write(`data: ${JSON.stringify({ 
+            type: 'complete', 
+            message: assistantMessage,
+            success: true 
+        })}\n\n`);
+
+        // Close the stream
+        res.end();
+
+    } catch (error) {
+        console.error('Error in chat endpoint:', error);
+        
+        // Send error event if streaming hasn't started
+        if (!res.headersSent) {
+            res.status(500).json({ 
+                success: false, 
+                error: error instanceof Error ? error.message : 'Failed to process message' 
+            });
+        } else {
+            // Send error event through stream
+            res.write(`data: ${JSON.stringify({ 
+                type: 'error', 
+                error: error instanceof Error ? error.message : 'Failed to process message',
+                success: false 
+            })}\n\n`);
+            res.end();
+        }
+    }
+});
+
+/**
+ * Get chat history for a specific chat
+ */
+router.get('/:chatId/history', async (req: Request, res: Response) => {
+    try {
+        const { chatId } = req.params;
+        
+        // Validate chat exists
+        if (!chatApp.validateChatExists(chatId)) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Chat not found' 
+            });
+        }
+
+        // Get chat history
+        const history = chatApp.getChatHistory(chatId);
+        
+        res.json({ 
+            success: true, 
+            chatId: chatId,
+            history: history,
+            messageCount: history.length
+        });
+        
+    } catch (error) {
+        console.error('Error getting chat history:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to get chat history' 
+        });
+    }
+});
+
+/**
+ * Get a specific message from a chat
+ */
+router.get('/:chatId/message/:messageId', async (req: Request, res: Response) => {
+    try {
+        const { chatId, messageId } = req.params;
+        
+        // Validate chat exists
+        if (!chatApp.validateChatExists(chatId)) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Chat not found' 
+            });
+        }
+
+        // Get chat history and find the specific message
+        const history = chatApp.getChatHistory(chatId);
+        const message = history.find(msg => msg.id === messageId);
+        
+        if (!message) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Message not found' 
+            });
+        }
+        
+        res.json({ 
+            success: true, 
+            message: message
+        });
+        
+    } catch (error) {
+        console.error('Error getting message:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to get message' 
+        });
+    }
+});
+
+/**
+ * Test endpoint for API validation
+ */
+router.get('/test', async (req: Request, res: Response) => {
+    res.json({ 
+        success: true, 
+        message: 'Chat API is working',
+        timestamp: new Date().toISOString(),
+        activeChats: chatApp['chatID'].length
+    });
 });
 
 

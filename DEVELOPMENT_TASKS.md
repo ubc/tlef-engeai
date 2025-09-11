@@ -49,11 +49,16 @@ YOu can access the terminal only to see if the file is properly compiled
   - Make sure you have a reset button where this button is cabale to reset the value for both APSC 080 and APSC 099 to its original value (the thing that I expain to you for subpoint 1 and subpoint 2). So this reset button also located in the index.html and it should be able to remove APSC 080 and APSC 099 and upload again with the origin value that we have discuss. 
 
 
- - [] **IMPLEMENT RAG from UBC-genai-toolkit-rag**
+ - [X] **IMPLEMENT RAG from UBC-genai-toolkit-rag**
    - Look at the UBC-genai-toolkit-rag module, we knwo that i have made the tempfiles, so essentially after you write the file in the tempfiles, I want you to upload that file to the rag, using the module that has been decalared in the UBC-genai-toolkit-rag module
    - before you make the implementation, please make a proper workflow so that the implementation can be done in the least itteration.
    - Eventually, you obviously need to remove the file from the tempfiles. So I need you to make a fucntion that remove this file in the temp files, and I want the line where you demove that file is commented out as easier for me to debug the file. 
    - Make sure you state the datastructure properly.
+
+
+  - [] Implement Chat conversation
+    - Now We are going to create the chat Interface. I want you to read the ubc-genai-toolkit-llm and chatapp.ts. Let me know What you see. Tell me what is your strategy.
+    - Right Now, I just want you to so that the chat is properly interact wiht the LLM (Do not implement RAG yet).
    
 
 ## Medium Priority Tasks
