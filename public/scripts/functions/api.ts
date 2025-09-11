@@ -27,6 +27,14 @@ export interface CreateChatResponse {
     success: boolean;
     chatId?: string;
     error?: string;
+    initAssistantMessage?: {
+        id: string;
+        sender: string;
+        userId: number;
+        courseName: string;
+        text: string;
+        timestamp: number;
+    };
 }
 
 /**
@@ -100,7 +108,7 @@ export async function loadComponentHTML(
 /**
  * Create a new chat session
  * @param request - The chat creation request
- * @returns The response from the server
+ * @returns Promise with chat creation result
  */
 export async function createNewChat(request: CreateChatRequest): Promise<CreateChatResponse> {
     try {

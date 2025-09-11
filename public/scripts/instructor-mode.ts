@@ -551,7 +551,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Prepare chat creation request
             const chatRequest: CreateChatRequest = {
-                userID: 'instructor', // You might want to get this from user context
+                userID: 'instructor', // You might want to get this from user context (True)
                 courseName: currentClass.courseName,
                 date: new Date().toISOString().split('T')[0] // YYYY-MM-DD format
             };
@@ -574,8 +574,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 messages: [],
                 isPinned: false
             };
-            chats.push(newChat);
 
+            // Add the default assistant message to the chat
+            if (response.initAssistantMessage) {
+                const defaultMessage: ChatMessage = {
+                    id: response.initAssistantMessage.id,
+                    sender: response.initAssistantMessage.sender as 'bot',
+                    userId: response.initAssistantMessage.userId,
+                    courseName: response.initAssistantMessage.courseName,
+                    text: response.initAssistantMessage.text,
+                    timestamp: response.initAssistantMessage.timestamp,
+                } as ChatMessage & { artefact?: any };
+                newChat.messages.push(defaultMessage);
+            }
+
+            chats.push(newChat);
             renderActiveChat();
             renderChatList();
             scrollToBottom();
@@ -617,24 +630,16 @@ document.addEventListener('DOMContentLoaded', () => {
             botContentElement.textContent = ''; // Clear placeholder text
         }
 
-        // Prepare messages for the Ollama API
-        const ollamaMessages = activeChat.messages.map(msg => ({
-            role: msg.sender === 'user' ? 'user' : 'assistant',
-            content: msg.text
-        }));
-
-        // Call the streaming endpoint
-        fetch('/api/ollama/chat/rag', {
+        // Call the new streaming chat endpoint with RAG
+        fetch(`/api/chat/${activeChatId}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                messages: ollamaMessages,
-                enableRAG: true,
-                courseName: currentClass.courseName,
-                maxDocuments: 3,
-                scoreThreshold: 0.7
+                message: text,
+                userId: 'instructor',
+                courseName: currentClass.courseName
             }),
         })
         .then(response => {
@@ -654,20 +659,27 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     const chunk = decoder.decode(value, { stream: true });
-                    // Ollama streams JSON objects separated by newlines
+                    // Process Server-Sent Events format
                     chunk.split('\n').forEach(line => {
-                        if (line.trim()) {
+                        if (line.startsWith('data: ')) {
                             try {
-                                const parsed = JSON.parse(line);
-                                if (parsed.message && parsed.message.content) {
-                                    accumulatedContent += parsed.message.content;
+                                const data = JSON.parse(line.slice(6));
+                                
+                                if (data.type === 'chunk' && data.content) {
+                                    accumulatedContent += data.content;
                                     if (botContentElement) {
                                         botContentElement.textContent = accumulatedContent;
                                         scrollToBottom();
                                     }
-                                }
-                                if (parsed.done) {
-                                    botMessage.text = accumulatedContent;
+                                } else if (data.type === 'complete' && data.message) {
+                                    // Update with the complete message
+                                    botMessage.text = data.message.text;
+                                    if (botContentElement) {
+                                        botContentElement.textContent = data.message.text;
+                                        scrollToBottom();
+                                    }
+                                } else if (data.type === 'error') {
+                                    throw new Error(data.error || 'Unknown error occurred');
                                 }
                             } catch (error) {
                                 console.error('Error parsing stream chunk:', error, 'Chunk:', line);
