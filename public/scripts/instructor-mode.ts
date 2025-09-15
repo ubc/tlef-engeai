@@ -143,6 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- STATE MANAGEMENT ----
     let chats: Chat[] = []
     let activeChatId: string | null = null;
+    let isSidebarCollapsed: boolean = false;
     const chatStateEl = document.getElementById('chat-state');
     const reportStateEl = document.getElementById('report-state');
     const monitorStateEl = document.getElementById('monitor-state');
@@ -220,14 +221,18 @@ document.addEventListener('DOMContentLoaded', () => {
             sidebarEl.classList.toggle('collapsed');
             if(!logoBox) return;
             logoBox.classList.toggle('collapsed');
+            
+            // Update the collapse state tracking
+            isSidebarCollapsed = sidebarEl.classList.contains('collapsed');
+            
             if (currentState === StateEvent.Chat) {
                 const chatMenu = getChatMenu();
                 if(!chatMenu) return;
-                if (chatMenu.style.visibility === 'hidden') {
-                    chatMenu.style.visibility = 'visible';
+                if (isSidebarCollapsed) {
+                    chatMenu.style.display = 'none';
                 }
                 else {
-                    chatMenu.style.visibility = 'hidden';
+                    chatMenu.style.display = 'block';
                 }
             }
             else {
@@ -301,8 +306,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if ( currentState === StateEvent.Chat ) {
 
             if (!sidebarMenuListEl) return;
-            if (!sidebarMenuListEl.classList.contains('collapsed')) {
+            // Only collapse the menu list if sidebar is not manually collapsed
+            if (!isSidebarCollapsed && !sidebarMenuListEl.classList.contains('collapsed')) {
                 sidebarMenuListEl.classList.toggle('collapsed');
+            } else if (isSidebarCollapsed) {
+                // Ensure menu list is collapsed if sidebar is manually collapsed
+                sidebarMenuListEl.classList.add('collapsed');
             }
             if (chats.length === 0) {
                 loadComponent('welcome-screen');
@@ -312,7 +321,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (sidebarContentEl && cm && !sidebarContentEl.contains(cm)) {
                     sidebarContentEl.appendChild(cm);
                 }
-                if (cm) cm.style.visibility = 'visible';
+                if (cm && !isSidebarCollapsed) cm.style.display = 'block';
             }
             else{
                 loadComponent('chat-window');
@@ -322,7 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (sidebarContentEl && cm && !sidebarContentEl.contains(cm)) {
                     sidebarContentEl.appendChild(cm);
                 }
-                if (cm) cm.style.visibility = 'visible';
+                if (cm) cm.style.display = 'block';
 
                 renderActiveChat();
             }
@@ -391,9 +400,15 @@ document.addEventListener('DOMContentLoaded', () => {
     
     
     const sidebarNoChat = () => {
-        if (sidebarMenuListEl) sidebarMenuListEl.classList.remove('collapsed');
+        if (sidebarMenuListEl) {
+            if (isSidebarCollapsed) {
+                sidebarMenuListEl.classList.add('collapsed');
+            } else {
+                sidebarMenuListEl.classList.remove('collapsed');
+            }
+        }
         const cm = getChatMenu();
-        if (cm) cm.style.visibility = 'hidden';
+        if (cm) cm.style.display = 'none';
         // Do not remove the chat-menu from the DOM; keep it mounted for quick return to Chat
     }
 

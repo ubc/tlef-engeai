@@ -272,7 +272,7 @@ class ChatApp {
         // Send message to LLM and get response
         const response = await conversation.send({
             temperature: 0.7,
-            maxTokens: 1000
+            num_ctx: 32768
         });
 
         // Add assistant response to conversation and history
@@ -342,7 +342,7 @@ class ChatApp {
 
         // Add RAG context as a system message if available (with shorter context)
         if (ragContext) {
-            conversation.addMessage('system', `Use these course materials to help answer: ${ragContext}`);
+            conversation.addMessage('assistant', `Use these course materials to help answer: ${ragContext}`);
         }
 
         let fullResponse = '';
