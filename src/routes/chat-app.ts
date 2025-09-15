@@ -119,7 +119,7 @@ class ChatApp {
     private async initializeRAG() {
         try {
             this.ragModule = await RAGModule.create(this.ragConfig);
-            this.logger.debug('RAG module initialized successfully');
+            // this.logger.debug('RAG module initialized successfully');
         } catch (error) {
             this.logger.error('Failed to initialize RAG module:', error as any);
             this.ragModule = null;
@@ -142,51 +142,51 @@ class ChatApp {
         scoreThreshold: number = 0.4
     ): Promise<RetrievedChunk[]> {
         if (!this.ragModule) {
-            this.logger.warn('RAG module not available, skipping document retrieval');
+            // this.logger.warn('RAG module not available, skipping document retrieval');
             return [];
         }
 
         try {
             // Add course context to the query for better retrieval
-            const contextualQuery = `${courseName} ${query}`;
+            const contextualQuery = ` ${query}`;
 
-            this.logger.debug(`🔍 RAG Query: "${contextualQuery}"`);
-            this.logger.debug(`🔍 RAG Options: limit=${limit}, scoreThreshold=${scoreThreshold}, courseName=${courseName}`);
+            // this.logger.debug(`🔍 RAG Query: "${contextualQuery}"`);
+            // this.logger.debug(`🔍 RAG Options: limit=${limit}, scoreThreshold=${scoreThreshold}, courseName=${courseName}`);
             
             const results = await this.ragModule.retrieveContext(contextualQuery, {
                 limit: limit,
                 scoreThreshold: scoreThreshold
             });
 
-            this.logger.debug(`📄 RAG Results: Retrieved ${results.length} documents`);
+            // this.logger.debug(`📄 RAG Results: Retrieved ${results.length} documents`);
             
             // Print each retrieved document
-            results.forEach((doc, index) => {
-                this.logger.debug(`\n--- Document ${index + 1} ---`);
-                this.logger.debug(`Score: ${(doc as any).score || 0}`);
-                
-                const title = (doc as any).payload?.contentTitle || 
-                             (doc as any).contentTitle || 
-                             (doc as any).title || 
-                             'Untitled';
-                this.logger.debug(`Title: ${title}`);
-                
-                const subTitle = (doc as any).payload?.subContentTitle || 
-                                (doc as any).subContentTitle || 
-                                (doc as any).section;
-                if (subTitle) {
-                    this.logger.debug(`Section: ${subTitle}`);
-                }
-                
-                const text = (doc as any).payload?.text || 
-                            (doc as any).text || 
-                            (doc as any).content || 
-                            '';
-                this.logger.debug(`Content Preview: ${text.substring(0, 200)}${text.length > 200 ? '...' : ''}`);
-                this.logger.debug(`Full Content Length: ${text.length} characters`);
-            });
+            // results.forEach((doc, index) => {
+            //     this.logger.debug(`\n--- Document ${index + 1} ---`);
+            //     this.logger.debug(`Score: ${(doc as any).score || 0}`);
+            //     
+            //     const title = (doc as any).payload?.contentTitle || 
+            //                  (doc as any).contentTitle || 
+            //                  (doc as any).title || 
+            //                  'Untitled';
+            //     this.logger.debug(`Title: ${title}`);
+            //     
+            //     const subTitle = (doc as any).payload?.subContentTitle || 
+            //                     (doc as any).subContentTitle || 
+            //                     (doc as any).section;
+            //     if (subTitle) {
+            //         this.logger.debug(`Section: ${subTitle}`);
+            //     }
+            //     
+            //     const text = (doc as any).payload?.text || 
+            //                 (doc as any).text || 
+            //                 (doc as any).content || 
+            //                 '';
+            //     this.logger.debug(`Content Preview: ${text.substring(0, 200)}${text.length > 200 ? '...' : ''}`);
+            //     this.logger.debug(`Full Content Length: ${text.length} characters`);
+            // });
 
-            this.logger.debug(`Retrieved ${results.length} documents for query: ${query}`);
+            // this.logger.debug(`Retrieved ${results.length} documents for query: ${query}`);
             return results;
         } catch (error) {
             this.logger.debug(`❌ RAG Error:`, error as any);
@@ -211,20 +211,6 @@ class ChatApp {
         documents.forEach((doc, index) => {
             context += `\n--- Document ${index + 1} ---\n`;
             
-            // // Handle different document structures safely
-            // const title = (doc as any).payload?.contentTitle || 
-            //              (doc as any).contentTitle || 
-            //              (doc as any).title || 
-            //              'Untitled';
-            // context += `Title: ${title}\n`;
-            
-            // const subTitle = (doc as any).payload?.subContentTitle || 
-            //                 (doc as any).subContentTitle || 
-            //                 (doc as any).section;
-            // if (subTitle) {
-            //     context += `Section: ${subTitle}\n`;
-            // }
-            
             const content = (doc as any).payload?.text || 
                            (doc as any).text || 
                            (doc as any).content || 
@@ -237,7 +223,7 @@ class ChatApp {
         
         context += '\n</course_materials>\n';
 
-        console.log(`DEBUG #287: Formatted documents for context: ${context}`);
+        // console.log(`DEBUG #287: Formatted documents for context: ${context}`);
         return context;
     }
     /**
@@ -309,10 +295,8 @@ class ChatApp {
             throw new Error('Rate limit exceeded: Maximum 50 messages per chat');
         }
 
-        // Add user message to conversation and history
-        const userMessage = this.addUserMessage(chatId, message, userId);
 
-        console.log(`DEBUG #286: User message added: ${userMessage}`);
+        // console.log(`DEBUG #286: User message added: ${userMessage}`);
         
         // Get conversation
         const conversation = this.conversations.get(chatId);
@@ -322,30 +306,30 @@ class ChatApp {
 
         // Retrieve relevant documents using RAG with limited context
         let ragContext = '';
+        let documentsLength = 0;
         try {
-            const documents = await this.retrieveRelevantDocuments(message, courseName, 2, 0.6); // Limit to 2 docs, higher threshold
+            const documents = await this.retrieveRelevantDocuments(message, courseName, 3, 0.6); // Limit to 2 docs, higher threshold
             ragContext = this.formatDocumentsForContext(documents);
-            
-            if (ragContext) {
-                console.log(`\n📝 RAG Context Generated:`);
-                console.log(`Length: ${ragContext.length} characters`);
-                console.log(`Content:\n${ragContext}`);
-                this.logger.debug(`Added RAG context with ${documents.length} documents`);
-            } else {
-                console.log(`\n⚠️  No RAG context generated - no documents found`);
-            }
+            documentsLength = documents.length;
         } catch (error) {
             console.log(`❌ RAG Context Error:`, error);
             this.logger.error('Error retrieving RAG documents:', error as any);
             // Continue without RAG context if retrieval fails
         }
 
-        // Add RAG context as a system message if available (with shorter context)
-        if (ragContext) {
-            conversation.addMessage('assistant', `Use these course materials to help answer: ${ragContext}`);
+        const userPromptHook = `, and in order to help respond to user's question, you can use the following course materials:`;
+
+        //construct the user full prompt
+        let userFullPrompt = '';
+        if (documentsLength > 0) {  
+            userFullPrompt = message + userPromptHook + ragContext;
+        }
+        else {
+            userFullPrompt = message;
         }
 
-        let fullResponse = '';
+        //send whole user prompt to the LLM
+        conversation.addMessage('user', userFullPrompt);
 
         // Print the entire conversation history for debugging
         console.log(`\n📋 CONVERSATION HISTORY DEBUG:`);
@@ -363,7 +347,7 @@ class ChatApp {
             console.log(`Message ${index + 1}:`);
             console.log(`  Role: ${msg.role}`);
             console.log(`  Content Length: ${charCount} characters (~${estimatedTokens} tokens)`);
-            console.log(`  Content Preview: "${msg.content.substring(0, 500)}${msg.content.length > 500 ? '...' : ''}"`);
+            console.log(`  Content Preview: "${msg.content}"`);
             console.log(`  Timestamp: ${msg.timestamp}`);
             console.log(`---`);
         });
@@ -377,10 +361,13 @@ class ChatApp {
         
         // Stream the response
         console.log(`\n🚀 Starting LLM streaming...`);
+
+        let assistantResponse = '';
+
         const response = await conversation.stream(
             (chunk: string) => {
-                console.log(`📦 Received chunk: "${chunk}"`);
-                fullResponse += chunk;
+                // console.log(`📦 Received chunk: "${chunk}"`);
+                assistantResponse += chunk;
                 onChunk(chunk);
             },
             {
@@ -389,11 +376,11 @@ class ChatApp {
             }
         );
         
-        console.log(`\n✅ Streaming completed. Full response length: ${fullResponse.length}`);
-        console.log(`Full response: "${fullResponse}"`);
+        // console.log(`\n✅ Streaming completed. Full response length: ${fullResponse.length}`);
+        // console.log(`Full response: "${fullResponse}"`);
 
         // Add complete assistant response to conversation and history
-        const assistantMessage = this.addAssistantMessage(chatId, fullResponse);
+        const assistantMessage = this.addAssistantMessage(chatId, assistantResponse);
         
         return assistantMessage;
     }
@@ -657,7 +644,7 @@ class ChatApp {
 
 const chatApp = new ChatApp(appConfig);
 
-console.log(`DEBUG #666: Chat exists: ${chatApp.validateChatExists('1234567890')}`);
+// console.log(`DEBUG #666: Chat exists: ${chatApp.validateChatExists('1234567890')}`);
 
 /**
  * create an new chat for user
@@ -674,16 +661,16 @@ router.post('/newchat', async (req: Request, res: Response) => {
         const date = req.body.date;
         
         // Debug: Print all incoming new chat input
-        console.log('\n🆕 NEW CHAT INPUT RECEIVED:');
-        console.log('='.repeat(50));
-        console.log(`User ID: ${userID}`);
-        console.log(`Course Name: ${courseName}`);
-        console.log(`Date: ${date}`);
-        console.log(`Timestamp: ${new Date().toISOString()}`);
-        console.log('='.repeat(50));
+        // console.log('\n🆕 NEW CHAT INPUT RECEIVED:');
+        // console.log('='.repeat(50));
+        // console.log(`User ID: ${userID}`);
+        // console.log(`Course Name: ${courseName}`);
+        // console.log(`Date: ${date}`);
+        // console.log(`Timestamp: ${new Date().toISOString()}`);
+        // console.log('='.repeat(50));
         
         if (!userID || !courseName || !date) {
-            console.log('❌ VALIDATION FAILED: Missing required fields for new chat');
+            // console.log('❌ VALIDATION FAILED: Missing required fields for new chat');
             return res.status(400).json({ 
                 success: false, 
                 error: 'Missing required fields: userID, courseName, and date are required' 
@@ -697,13 +684,13 @@ router.post('/newchat', async (req: Request, res: Response) => {
         const chatId = IDGenerator.getInstance().chatID(userID, courseName, date);
         
         // Debug: Print response being sent
-        console.log('\n📤 NEW CHAT RESPONSE SENT:');
-        console.log('='.repeat(50));
-        console.log(`Chat ID: ${chatId}`);
-        console.log(`Success: true`);
-        console.log(`Init Message: "${initResponse.initAssistantMessage.text}"`);
-        console.log(`Init Message Length: ${initResponse.initAssistantMessage.text.length} characters`);
-        console.log('='.repeat(50));
+        // console.log('\n📤 NEW CHAT RESPONSE SENT:');
+        // console.log('='.repeat(50));
+        // console.log(`Chat ID: ${chatId}`);
+        // console.log(`Success: true`);
+        // console.log(`Init Message: "${initResponse.initAssistantMessage.text}"`);
+        // console.log(`Init Message Length: ${initResponse.initAssistantMessage.text.length} characters`);
+        // console.log('='.repeat(50));
         
         // Return the complete response with the default message
         res.json({ 
@@ -713,7 +700,7 @@ router.post('/newchat', async (req: Request, res: Response) => {
         });
         
     } catch (error) {
-        console.error('Error creating new chat:', error);
+        // console.error('Error creating new chat:', error);
         res.status(500).json({ 
             success: false, 
             error: 'Failed to create new chat' 
@@ -730,19 +717,19 @@ router.post('/:chatId', async (req: Request, res: Response) => {
         const { message, userId, courseName } = req.body;
         
         // Debug: Print all incoming chat input
-        console.log('\n📨 CHAT INPUT RECEIVED:');
-        console.log('='.repeat(50));
-        console.log(`Chat ID: ${chatId}`);
-        console.log(`User ID: ${userId}`);
-        console.log(`Course Name: ${courseName || 'Not provided'}`);
-        console.log(`Message: "${message}"`);
-        console.log(`Message Length: ${message ? message.length : 0} characters`);
-        console.log(`Timestamp: ${new Date().toISOString()}`);
-        console.log('='.repeat(50));
+        // console.log('\n📨 CHAT INPUT RECEIVED:');
+        // console.log('='.repeat(50));
+        // console.log(`Chat ID: ${chatId}`);
+        // console.log(`User ID: ${userId}`);
+        // console.log(`Course Name: ${courseName || 'Not provided'}`);
+        // console.log(`Message: "${message}"`);
+        // console.log(`Message Length: ${message ? message.length : 0} characters`);
+        // console.log(`Timestamp: ${new Date().toISOString()}`);
+        // console.log('='.repeat(50));
         
         // Validate input
         if (!message || !userId) {
-            console.log('❌ VALIDATION FAILED: Missing required fields');
+            // console.log('❌ VALIDATION FAILED: Missing required fields');
             return res.status(400).json({ 
                 success: false, 
                 error: 'Message and userId are required' 
@@ -757,7 +744,7 @@ router.post('/:chatId', async (req: Request, res: Response) => {
             });
         }
 
-        console.log(`DEBUG #666: Chat exists: ${chatApp.validateChatExists(chatId)}`);
+        // console.log(`DEBUG #666: Chat exists: ${chatApp.validateChatExists(chatId)}`);
 
         // Set up Server-Sent Events for streaming
         res.writeHead(200, {
@@ -795,13 +782,13 @@ router.post('/:chatId', async (req: Request, res: Response) => {
         messageId = assistantMessage.id;
 
         // Debug: Print streaming response completion
-        console.log('\n📤 STREAMING RESPONSE COMPLETED:');
-        console.log('='.repeat(50));
-        console.log(`Message ID: ${assistantMessage.id}`);
-        console.log(`Response Length: ${assistantMessage.text.length} characters`);
-        console.log(`Response Preview: "${assistantMessage.text.substring(0, 100)}${assistantMessage.text.length > 100 ? '...' : ''}"`);
-        console.log(`Success: true`);
-        console.log('='.repeat(50));
+        // console.log('\n📤 STREAMING RESPONSE COMPLETED:');
+        // console.log('='.repeat(50));
+        // console.log(`Message ID: ${assistantMessage.id}`);
+        // console.log(`Response Length: ${assistantMessage.text.length} characters`);
+        // console.log(`Response Preview: "${assistantMessage.text.substring(0, 100)}${assistantMessage.text.length > 100 ? '...' : ''}"`);
+        // console.log(`Success: true`);
+        // console.log('='.repeat(50));
 
         // Send completion event
         res.write(`data: ${JSON.stringify({ 
@@ -814,7 +801,7 @@ router.post('/:chatId', async (req: Request, res: Response) => {
         res.end();
 
     } catch (error) {
-        console.error('Error in chat endpoint:', error);
+        // console.error('Error in chat endpoint:', error);
         
         // Send error event if streaming hasn't started
         if (!res.headersSent) {

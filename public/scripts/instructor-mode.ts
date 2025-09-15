@@ -233,7 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 else {
                     chatMenu.style.display = 'block';
-                }
+                }2
             }
             else {
                 if(!sidebarMenuListEl) return;
@@ -241,6 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } );
     }
+    
     sidebarCollapseToggle();
 
     const loadComponent = async (
