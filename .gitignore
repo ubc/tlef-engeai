@@ -47,3 +47,12 @@ src/test-scripts/
 queueTask.md
 ./src/debug/*
 ./src/tempfiles/*
+
+# Test files and documentation
+test-chat.js
+test-chat-comprehensive.js
+RAG-SETUP-GUIDE.md
+RAG-IMPLEMENTATION.md
+DEVELOPMENT_TASKS.md
+rag-test.ts
+dev.sh
