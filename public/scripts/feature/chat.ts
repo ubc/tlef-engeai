@@ -553,6 +553,7 @@ export class ChatManager {
      */
     public rebindMessageEvents(): void {
         this.bindMessageEvents();
+        this.bindChatListEvents();
     }
 
     public bindMessageEvents(): void {
@@ -560,6 +561,9 @@ export class ChatManager {
         const inputEl = document.getElementById('chat-input') as HTMLTextAreaElement;
         const pinBtn = document.getElementById('pin-chat-btn');
         const deleteBtn = document.getElementById('delete-chat-btn');
+        
+        // Debug logging for delete button binding
+        console.log('🔗 Binding message events - Delete button found:', !!deleteBtn);
 
         // Auto-grow textarea
         const autoGrow = () => {
@@ -581,7 +585,10 @@ export class ChatManager {
             }
         });
         pinBtn?.addEventListener('click', () => this.handleTogglePin());
-        deleteBtn?.addEventListener('click', () => this.handleDeleteActiveChat());
+        deleteBtn?.addEventListener('click', () => {
+            console.log('🗑️ Delete button clicked in chat header');
+            this.handleDeleteActiveChat();
+        });
     }
 
     private bindModalEvents(): void {
@@ -662,10 +669,15 @@ export class ChatManager {
     }
 
     private async handleDeleteActiveChat(): Promise<void> {
+        console.log('🗑️ handleDeleteActiveChat called');
         const activeChatId = this.getActiveChatId();
+        console.log('🗑️ Active chat ID:', activeChatId);
+        
         if (activeChatId) {
             try {
+                console.log('🗑️ Attempting to delete chat:', activeChatId);
                 await this.deleteChat(activeChatId);
+                console.log('🗑️ Chat deleted successfully');
             } catch (error) {
                 console.error('Failed to delete active chat:', error);
                 alert('Failed to delete chat. Please try again.');

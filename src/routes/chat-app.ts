@@ -643,6 +643,52 @@ class ChatApp {
         return this.conversations.has(chatId);
     }
 
+    /**
+     * Delete a chat and all its associated data
+     * 
+     * @param chatId - The chat ID to delete
+     * @returns boolean - True if deletion was successful, false otherwise
+     */
+    public deleteChat(chatId: string): boolean {
+        try {
+            // Validate chat exists before attempting deletion
+            if (!this.validateChatExists(chatId)) {
+                this.logger.warn(`Attempted to delete non-existent chat: ${chatId}`);
+                return false;
+            }
+
+            // Remove from conversations map
+            const conversationDeleted = this.conversations.delete(chatId);
+            
+            // Remove from chat history map
+            const historyDeleted = this.chatHistory.delete(chatId);
+            
+            // Remove from chatID array
+            const index = this.chatID.indexOf(chatId);
+            let arrayDeleted = false;
+            if (index > -1) {
+                this.chatID.splice(index, 1);
+                arrayDeleted = true;
+            }
+            
+            // Log the deletion
+            console.log(`🗑️ CHAT DELETION SUCCESSFUL:`);
+            console.log(`   Chat ID: ${chatId}`);
+            console.log(`   Conversation deleted: ${conversationDeleted}`);
+            console.log(`   History deleted: ${historyDeleted}`);
+            console.log(`   Array entry deleted: ${arrayDeleted}`);
+            console.log(`   Remaining active chats: ${this.chatID.length}`);
+            
+            this.logger.info(`Chat ${chatId} deleted successfully`);
+            return true;
+            
+        } catch (error) {
+            console.error(`🗑️ FAILED TO DELETE CHAT ${chatId}:`, error);
+            this.logger.error(`Failed to delete chat ${chatId}: ${error}`);
+            return false;
+        }
+    }
+
 
 }
 
@@ -887,6 +933,65 @@ router.get('/:chatId/message/:messageId', async (req: Request, res: Response) =>
         res.status(500).json({ 
             success: false, 
             error: 'Failed to get message' 
+        });
+    }
+});
+
+/**
+ * Delete a chat
+ * 
+ * @param chatId - The chat ID to delete
+ * @returns JSON response with deletion status
+ */
+router.delete('/:chatId', async (req: Request, res: Response) => {
+    try {
+        const { chatId } = req.params;
+        
+        console.log(`🗑️ DELETE CHAT REQUEST: ${chatId}`);
+        
+        // Validate input
+        if (!chatId) {
+            console.log(`🗑️ DELETE FAILED: Chat ID is required`);
+            return res.status(400).json({
+                success: false,
+                error: 'Chat ID is required'
+            });
+        }
+        
+        // Validate chat exists
+        if (!chatApp.validateChatExists(chatId)) {
+            console.log(`🗑️ DELETE FAILED: Chat ${chatId} not found`);
+            return res.status(404).json({
+                success: false,
+                error: 'Chat not found'
+            });
+        }
+        
+        console.log(`🗑️ Chat ${chatId} exists, proceeding with deletion`);
+        
+        // Delete the chat
+        const deleted = chatApp.deleteChat(chatId);
+        
+        if (deleted) {
+            console.log(`🗑️ DELETE SUCCESS: Chat ${chatId} deleted successfully`);
+            res.json({
+                success: true,
+                message: 'Chat deleted successfully',
+                chatId: chatId
+            });
+        } else {
+            console.log(`🗑️ DELETE FAILED: Failed to delete chat ${chatId}`);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to delete chat'
+            });
+        }
+        
+    } catch (error) {
+        console.error('🗑️ DELETE ERROR:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
         });
     }
 });
