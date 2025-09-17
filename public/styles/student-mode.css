@@ -67,10 +67,17 @@ body {
 }
 
 .sidebar.collapsed .logo-text,
-.sidebar.collapsed .add-chat-btn span,
 .sidebar.collapsed .report-history-btn span,
 .sidebar.collapsed .chat-item span {
     display: none; /* hide text when collapsed */
+}
+
+.sidebar.collapsed .add-chat-btn span {
+    display: none; /* hide the text when collapsed */
+}
+
+.sidebar.collapsed .add-chat-btn::before {
+    content: "+"; /* show just + when collapsed */
 }
 
 .sidebar.collapsed .add-chat-btn,
@@ -116,73 +123,7 @@ body {
     opacity: 0.8; 
 }
 
-.add-chat-btn {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem 0.8rem;
-    margin: 1rem 0 0.5rem;
-    background: none;
-    border: 1px solid var(--border-color);
-    color: var(--text-secondary);
-    font-weight: 600;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.add-chat-btn:hover {
-    background-color: var(--color-chbe-green);
-    color: white;
-    border-color: var(--color-chbe-green);
-}
-.add-chat-btn .feather { 
-    width: 18px; 
-    height: 18px; 
-}
-
-.chat-list ul { 
-    list-style: none; 
-    padding: 0; 
-    margin: 0; 
-}
-
-/* Make chat list fill the sidebar center area and scroll intuitively */
-.chat-list {
-    display: flex;
-    flex-direction: column;
-    min-height: 0; /* allows child flex to shrink properly */
-}
-.chat-list ul {
-    flex: 1 1 auto;
-    overflow-y: auto;
-    min-height: 0;
-}
-
-.chat-list .chat-item { 
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    min-height: 40px;            /* consistent, larger click target */
-    padding: 0 0.5rem;           /* vertical height driven by min-height */
-    border-radius: 8px; 
-    cursor: pointer; 
-    font-weight: 500; 
-    transition: background-color 0.2s, box-shadow 0.2s; 
-    font-size: 0.9rem; 
-}
-
-.chat-list .chat-item.active {
-    background-color: #e2d9cf;
-    color: rgb(103, 103, 103);
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18),
-                inset 0 -1px 0 rgba(255, 255, 255, 0.55);
-}
-
-.chat-list .chat-item:not(.active):hover { 
-    background-color: var(--hover-bg); 
-}
+/* Chat menu styles moved to chat-feature.css */
 
 .sidebar-footer { 
     padding-top: 0.75rem; 
@@ -220,36 +161,12 @@ body {
 
 /* Blocker above sticky header to ensure no content overlays header area */
 /* Blocker above sticky header */
-/* chat-header-blocker styles provided by chat-window.css */
+/* chat-header-blocker styles provided by chat-feature.css */
 
 /* Chat Header - Now sticky within message area */
-/* Use base chat-header from chat-window.css, only override bottom spacing */
+/* Use base chat-header from chat-feature.css, only override bottom spacing */
 .chat-header { margin-bottom: 15px; }
 
-/* chat-header-main provided by chat-window.css */
-
-
-
-/* chat-title provided by chat-window.css */
-
-/* chat-actions provided by chat-window.css */
-
-/* icon-btn variants provided by chat-window.css */
-
-/* open-artefact-chip provided by chat-window.css */
-
-
-/* moved: context menu styles now in styles/message-menu.css */
-
-/* user-message and bot-message provided by chat-window.css */
-
-/* Chat Footer - Now outside scrolling area, uses normal flow */
-/* chat footer and input-area provided by chat-window.css */
-
-/* Disclaimer - No changes needed */
-/* disclaimer styles provided by component stylesheet */
-
-/* welcome screen styles provided by component stylesheet */
 
 /* --- Modal --- */
 /* Overlay dims and subtly blurs the background (ChatGPT-like) */

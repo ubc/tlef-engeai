@@ -187,7 +187,7 @@ export class EngEAI_MongoDB {
     public updateActiveCourse = async (id: string, updateData: Partial<activeCourse>) => {
         const result = await this.getCourseCollection().findOneAndUpdate(
             { id: id },
-            { $set: { ...updateData, updatedAt: new Date() } },
+            { $set: { ...updateData, updatedAt: Date.now().toString() } },
             { returnDocument: 'after' }
         );
         return result;
@@ -212,7 +212,7 @@ export class EngEAI_MongoDB {
                 $push: { 
                     'divisions.$[division].items.$[item].learningObjectives': learningObjective
                 },
-                $set: { updatedAt: new Date() }
+                $set: { updatedAt: Date.now().toString() }
             },
             { 
                 arrayFilters: [
@@ -245,8 +245,8 @@ export class EngEAI_MongoDB {
             { 
                 $set: { 
                     'divisions.$[division].items.$[item].learningObjectives.$[objective].LearningObjective': updateData.LearningObjective,
-                    'divisions.$[division].items.$[item].learningObjectives.$[objective].updatedAt': new Date(),
-                    updatedAt: new Date()
+                    'divisions.$[division].items.$[item].learningObjectives.$[objective].updatedAt': Date.now().toString(),
+                    updatedAt: Date.now().toString()
                 }
             },
             { 
@@ -280,7 +280,7 @@ export class EngEAI_MongoDB {
                 $pull: { 
                     'divisions.$[division].items.$[item].learningObjectives': { id: objectiveId }
                 } as any,
-                $set: { updatedAt: new Date() }
+                $set: { updatedAt: Date.now().toString() }
             },
             { 
                 arrayFilters: [
@@ -364,10 +364,10 @@ const validateCourse = (req: Request, res: Response, next: Function) => {
         });
     }
 
-    if (!course.date || !(course.date instanceof Date) && !Date.parse(course.date)) {
+    if (!course.date || !(course.date instanceof Date)) {
         return res.status(400).json({
             success: false,
-            error: 'Date is required and must be a valid date'
+            error: 'Date is required and must be a Date object'
         });
     }
 
@@ -455,11 +455,11 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
         });
     }
 
-    if (!course.date) {
-        console.log("🔴 Date is required");
+    if (!course.date || !(course.date instanceof Date)) {
+        console.log("🔴 Date is required and must be a Date object");
         return res.status(400).json({
             success: false,
-            error: 'Date is required'
+            error: 'Date is required and must be a Date object'
         });
     }
 
@@ -476,7 +476,7 @@ router.post('/courses/newcourse', validateNewCourse, asyncHandler(async (req: Re
         //creating id - ensure date is a Date object for ID generation
         const tempActiveClass = {
             ...req.body,
-            date: new Date(req.body.date)
+            date: new Date()
         } as activeCourse;
         const id = instance.idGenerator.courseID(tempActiveClass);
 
@@ -534,7 +534,7 @@ router.post('/courses/newcourse', validateNewCourse, asyncHandler(async (req: Re
                 //mock content
                 const contentMock: ContentDivision = {
                     id: '',
-                    date: new Date(req.body.date),
+                    date: new Date(),
                     title: `Week ${i + 1}`,
                     courseName: req.body.name,
                     published: true,
@@ -550,7 +550,7 @@ router.post('/courses/newcourse', validateNewCourse, asyncHandler(async (req: Re
 
                 courseContent.push({
                     id: instance.idGenerator.divisionID(contentMock, req.body.name),
-                    date: new Date(req.body.date),
+                    date: new Date(),
                     title: `Week ${i + 1}`,
                     courseName: req.body.name,
                     published: false,
@@ -565,7 +565,7 @@ router.post('/courses/newcourse', validateNewCourse, asyncHandler(async (req: Re
                 //mock topic 1
                 const courseContentTopic1: courseItem = {
                     id: '',
-                    date: new Date(req.body.date),
+                    date: new Date(),
                     title: `Topic ${i + 1}`,
                     courseName: req.body.name,
                     divisionTitle: `Topic ${i + 1}`,
@@ -580,7 +580,7 @@ router.post('/courses/newcourse', validateNewCourse, asyncHandler(async (req: Re
                 //mock course division
                 const contentMock: ContentDivision = {
                     id: '',
-                    date: new Date(req.body.date),
+                    date: new Date(),
                     title: `Topic ${i + 1}`,
                     courseName: req.body.name,
                     published: false,
@@ -594,7 +594,7 @@ router.post('/courses/newcourse', validateNewCourse, asyncHandler(async (req: Re
 
                 courseContent.push({
                     id: instance.idGenerator.divisionID(contentMock, req.body.name),
-                    date: new Date(req.body.date),
+                    date: new Date(),
                     title: `Topic ${i + 1}`,
                     courseName: req.body.name,
                     published: false,
@@ -611,7 +611,7 @@ router.post('/courses/newcourse', validateNewCourse, asyncHandler(async (req: Re
         const courseData: activeCourse = {
             ...req.body, //spread the properties of the body first
             id: id, // use the generated id
-            date: new Date(req.body.date),
+            date: new Date(),
             onBoarded: true, // default to false for new courses
             instructors: req.body.instructors || [],
             teachingAssistants: req.body.teachingAssistants || [],
@@ -892,7 +892,7 @@ router.get('/health', asyncHandler(async (req: Request, res: Response) => {
                 status: 'healthy',
                 database: 'connected',
                 connectionState: 1,
-                timestamp: new Date().toISOString()
+                timestamp: Date.now().toString()
             }
         });
     } catch (error) {

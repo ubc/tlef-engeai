@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="/styles/chat-components/report-history.css" />
     <link rel="stylesheet" href="/styles/chat-components/flag-message.css" />
     <link rel="stylesheet" href="/styles/chat-components/disclaimer.css" />
+    <link rel="stylesheet" href="/styles/chat-components/chat-feature.css" />
     <link rel="stylesheet" href="/styles/student-mode.css" />
     <script src="https://unpkg.com/feather-icons"></script>
 
@@ -33,13 +34,7 @@
                     </div>
                 </div>
                 <nav class="chat-list">
-                    <button id="add-chat-btn" class="add-chat-btn">
-                        <i data-feather="plus"></i>
-                        <span>Add New Chat</span>
-                    </button>
-                    <ul id="chat-list-ul">
-                        <!-- Chat items will be rendered here -->
-                    </ul>
+                    <!-- Chat menu will be loaded dynamically by ChatManager -->
                 </nav>
             </div>
             <div class="sidebar-footer">
@@ -56,16 +51,7 @@
 
         </main>
 
-        <!-- Artefact panel (hidden by default, slides from right) -->
-        <aside id="artefact-panel" class="artefact-panel" aria-hidden="true">
-            <div class="artefact-header">
-                <h3>Artefact</h3>
-                <button id="close-artefact-btn" class="icon-btn" title="Close"><i data-feather="x"></i></button>
-            </div>
-            <div class="artefact-content">
-                <!-- Content will be loaded from /components/artefact.html -->
-            </div>
-        </aside>
+        <!-- Artefact panel will be loaded dynamically by ChatManager -->
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>

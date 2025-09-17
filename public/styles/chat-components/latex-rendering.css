@@ -1,0 +1,76 @@
+/* LaTeX Math Rendering Styles for Chat Components */
+
+/* Base LaTeX styling */
+.message .message-content .katex {
+    font-size: 1em;
+    line-height: 1.2;
+    color: inherit;
+}
+
+/* Display math (block equations) */
+.message .message-content .katex-display {
+    margin: 0.5em 0;
+    text-align: center;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+/* Inline math styling */
+.message .message-content .katex-inline {
+    display: inline;
+    margin: 0 2px;
+    vertical-align: baseline;
+}
+
+/* Error styling for malformed LaTeX */
+.message .message-content .katex-error {
+    color: #cc0000;
+    background-color: #ffe6e6;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 0.9em;
+    border: 1px solid #ffcccc;
+}
+
+/* Ensure proper spacing around math expressions */
+.message .message-content .katex + .katex {
+    margin-left: 0.1em;
+}
+
+/* Responsive design for Canvas iframe */
+@media (max-width: 768px) {
+    .message .message-content .katex {
+        font-size: 0.9em;
+    }
+    
+    .message .message-content .katex-display {
+        margin: 0.3em 0;
+    }
+}
+
+/* Dark mode compatibility (if needed) */
+@media (prefers-color-scheme: dark) {
+    .message .message-content .katex-error {
+        color: #ff6666;
+        background-color: #330000;
+        border-color: #660000;
+    }
+}
+
+/* Ensure LaTeX doesn't break message layout */
+.message .message-content {
+    overflow-x: auto;
+    overflow-y: visible;
+}
+
+/* Specific styling for instructor mode messages */
+.instructor-message .message-content .katex {
+    color: var(--text-primary);
+}
+
+/* Ensure LaTeX expressions are properly contained within message bounds */
+.message .message-content .katex-display {
+    max-width: 100%;
+    word-wrap: break-word;
+}

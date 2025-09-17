@@ -83,14 +83,14 @@ export class IDGenerator {
 
     /**
      * Generates a unique Course ID using the formula:
-     * coursename + "-" + coursebuilddate -> uniqueIDGenerator
+     * coursename + "-" + coursebuilddate (full ISO string with milliseconds) -> uniqueIDGenerator
      *
      * @param activeCourse - The active course object containing name and date
      * @returns A 12-character hexadecimal string representing the unique course ID
      */
     courseID(activeCourse : activeCourse) : string {
         const courseName = activeCourse.courseName;
-        const courseDate = activeCourse.date.toISOString().split('T')[0];
+        const courseDate = activeCourse.date.toISOString(); // Full ISO string with milliseconds
 
         const hashInput = courseName + "-" + courseDate;
         console.log(hashInput);
@@ -101,7 +101,7 @@ export class IDGenerator {
 
     /**
      * Generates a unique Division ID using the formula:
-     * divisiontitle + "-" + coursename + "-" + divisionbuilddate -> uniqueIDGenerator
+     * divisiontitle + "-" + coursename + "-" + divisionbuilddate (full ISO string with milliseconds) -> uniqueIDGenerator
      *
      *
      * @param contentDivision - The content division object containing title and date information
@@ -110,7 +110,7 @@ export class IDGenerator {
      */
     divisionID(contentDivision: ContentDivision, courseName: string): string {
         const divisionTitle = contentDivision.title;
-        const divisionDate = contentDivision.date.toISOString().split('T')[0];
+        const divisionDate = contentDivision.date.toISOString(); // Full ISO string with milliseconds
         const hashInput = divisionTitle + "-" + courseName + "-" + divisionDate;
 
         return this.uniqueIDGenerator(hashInput);
@@ -118,7 +118,7 @@ export class IDGenerator {
 
     /**
      * Generates a unique Item ID using the formula:
-     * itemtitle + "-" + divisiontitle + "-" + coursename + "-" + itembuilddate -> uniqueIDGenerator
+     * itemtitle + "-" + divisiontitle + "-" + coursename + "-" + itembuilddate (full ISO string with milliseconds) -> uniqueIDGenerator
      *
      * @param courseItem - The course content object containing title and date information
      * @param divisionTitle - The title of the parent content division
@@ -127,7 +127,7 @@ export class IDGenerator {
      */
     itemID(courseItem: courseItem, divisionTitle: string, courseName: string): string {
         const itemTitle = courseItem.title;
-        const itemDate = courseItem.date.toISOString().split('T')[0];
+        const itemDate = courseItem.date.toISOString(); // Full ISO string with milliseconds
         const hashInput = itemTitle + "-" + divisionTitle + "-" + courseName + "-" + itemDate;
 
         return this.uniqueIDGenerator(hashInput);
@@ -135,7 +135,7 @@ export class IDGenerator {
 
     /**
      * Generates a unique Learning Objective ID using the formula:
-     * learningobjectivestitle + "-" + itemtitle + "-" + divisiontitle + "-" + coursename + "-" + learningobjectivebuilddate -> uniqueIDGenerator
+     * learningobjectivestitle + "-" + itemtitle + "-" + divisiontitle + "-" + coursename + "-" + learningobjectivebuilddate (full ISO string with milliseconds) -> uniqueIDGenerator
      *
      * @param learningObjective - The learning objective object containing title and date information
      * @param itemTitle - The title of the parent course item
@@ -145,7 +145,7 @@ export class IDGenerator {
      */
     learningObjectiveID(learningObjective: LearningObjective, itemTitle: string, divisionTitle: string, courseName: string): string {
         const learningObjectiveTitle = learningObjective.LearningObjective;
-        const learningObjectiveDate = learningObjective.createdAt.toISOString().split('T')[0];
+        const learningObjectiveDate = learningObjective.createdAt.toISOString(); // Full ISO string with milliseconds
         const hashInput = learningObjectiveTitle + "-" + itemTitle + "-" + divisionTitle + "-" + courseName + "-" + learningObjectiveDate;
 
         return this.uniqueIDGenerator(hashInput);
@@ -153,7 +153,7 @@ export class IDGenerator {
 
     /**
      * Generates a unique Upload Content ID using the formula:
-     * uploadcontenttitle + "-" + itemtitle + "-" + divisiontitle + "-" + coursename + "-" + uploadcontentdate -> uniqueIDGenerator
+     * uploadcontenttitle + "-" + itemtitle + "-" + divisiontitle + "-" + coursename + "-" + uploadcontentdate (full ISO string with milliseconds) -> uniqueIDGenerator
      *
      * @param additionalMaterial - The additional material/upload content object containing name and date information
      * @param itemTitle - The title of the parent course item
@@ -163,7 +163,7 @@ export class IDGenerator {
      */
     uploadContentID(additionalMaterial: AdditionalMaterial, itemTitle: string, divisionTitle: string, courseName: string): string {
         const uploadContentTitle = additionalMaterial.name;
-        const uploadContentDate = additionalMaterial.date.toISOString().split('T')[0];
+        const uploadContentDate = additionalMaterial.date.toISOString(); // Full ISO string with milliseconds
         const hashInput = uploadContentTitle + "-" + itemTitle + "-" + divisionTitle + "-" + courseName + "-" + uploadContentDate;
 
         return this.uniqueIDGenerator(hashInput);
@@ -174,11 +174,13 @@ export class IDGenerator {
      * 
      * @param userID - The user ID
      * @param courseName - The name of the course
-     * @param date - The date of the chat
+     * @param date - The date of the chat (full ISO string with milliseconds)
      * @returns A 12-character hexadecimal string representing the unique chat ID
      */
-    chatID(userID: string, courseName: string, date: string): string {
-        const hashInput = userID + "-" + courseName + "-" + date;
+    chatID(userID: string, courseName: string, date: Date): string {
+        const dateString = date.toISOString(); // Full ISO string with milliseconds
+        const hashInput = userID + "-" + courseName + "-" + dateString;
+
         return this.uniqueIDGenerator(hashInput);
     }
 
@@ -187,13 +189,14 @@ export class IDGenerator {
      * 
      * @param messageText - The message text to extract first 10 words from
      * @param chatID - The chat ID
-     * @param date - The date of the message
+     * @param date - The date of the message (full ISO string with milliseconds)
      * @returns A 12-character hexadecimal string representing the unique message ID
      */
-    messageID(messageText: string, chatID: string, date: string): string {
+    messageID(messageText: string, chatID: string, date: Date): string {
         // Extract first 10 words from message text
         const firstTenWords = messageText.split(' ').slice(0, 10).join(' ');
-        const hashInput = firstTenWords + "-" + chatID + "-" + date;
+        const dateString = date.toISOString(); // Full ISO string with milliseconds
+        const hashInput = firstTenWords + "-" + chatID + "-" + dateString;
         return this.uniqueIDGenerator(hashInput);
     }
 

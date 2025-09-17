@@ -210,88 +210,20 @@ body {
     display: none;
 }
 
-.sidebar-content .chat-menu {
-    flex: 1;
-    background-color: var(--color-chbe-green);
-    border-radius: 10px;
-    border: 1px solid var(--border-color);
-    margin: 0px 0px 0px 5px;
-    width: calc(100% - 38px);
-
-    display:flex;
-    flex-direction: column;
-    min-height: 0;
-    height: 100%;
-
+/* Chat menu collapsed state for instructor mode */
+.instructor-sidebar.collapsed .add-chat-btn span {
+    display: none; /* hide text when collapsed */
 }
 
-
-.sidebar-content .chat-menu .add-chat-box {
-    display: flex;
-    flex-direction: column;
-    padding: 10px 10px 10px 10px;
-    border-bottom: 1px solid var(--border-color);
-    flex-shrink: 0;
+.instructor-sidebar.collapsed .add-chat-btn::before {
+    content: "+"; /* show just + when collapsed */
 }
 
-.add-chat-box .add-chat-btn {
-    flex-direction: 1;
-    background-color: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    color: var(--border-color);
-    cursor: pointer;
-    height: 3rem;
+.instructor-sidebar.collapsed .add-chat-btn {
     justify-content: center;
-    align-items: center;
 }
 
-.add-chat-box .add-chat-btn p {
-    margin: 0;
-    padding: 0;
-}
-
-.add-chat-box .add-chat-btn:hover {
-    background-color: var(--background-2);
-    color: var(--text-primary);
-    font-size: 0.9rem;
-    transition: background-color 0.1s ease-in-out, color 0.1s ease-in-out, font-size 0.3s ease-in-out ;
-    
-}
-
-.chat-list-ul {
-    background-color: var(--background-2);
-    padding: 10px 10px 10px 10px;
-    margin: 10px 10px 10px 10px;
-    flex-direction: column;
-    gap: 10px;
-    flex: 1;
-    list-style-type: none;
-    border-radius: 5px;
-    border: 1px solid var(--border-color);
-    min-height: 0;
-    overflow-y: auto;
-}
-
-
-.chat-list-ul li {
-    margin: 0;
-    padding: 5px 0px 5px 5px;
-    font-size: 0.9rem;
-    font-weight: 500;
-    overflow-x:hidden;
-    border-radius: 5px;
-    width: calc(100% - 10px);
-    max-width: 100%;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-}
-
-.chat-list-ul li:hover{
-    background-color: var(--hover-bg);
-    transition: background-color 0.1s ease-in-out;
-    outline: 1px solid var(--border-color);
-}
+/* Chat menu styles moved to chat-feature.css */
 
 #main-content-area {
     flex-grow: 1;

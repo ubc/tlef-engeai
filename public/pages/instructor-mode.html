@@ -15,6 +15,11 @@
     <link rel="stylesheet" href="/styles/chat-components/artefact.css">
     <link rel="stylesheet" href="/styles/modal-overlay.css">
     <link rel="stylesheet" href="/styles/instructor-components/documents.css">
+    <link rel="stylesheet" href="/styles/chat-components/latex-rendering.css">
+    
+    <!-- KaTeX CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    
     <script src="https://unpkg.com/feather-icons"></script>
 </head>
 <body>
@@ -52,16 +57,7 @@
                             </li>
                         </ul>
                     </div>
-                    <div class="chat-menu" id="chat-menu">
-                        <div class="add-chat-box">
-                            <button class="add-chat-btn" id="add-chat-btn">
-                                <p>+ add new chat</p>
-                            </button>
-                        </div>
-                        <ul id="chat-list-ul" class="chat-list-ul">
-                            <!-- Chat items will be rendered here -->
-                        </ul>
-                    </div>
+                    <!-- Chat menu will be loaded dynamically by ChatManager -->
                 </div>
             </div>
             <div class="empty-footer">
@@ -79,6 +75,11 @@
     
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>mermaid.initialize({ startOnLoad: true, theme: 'default' });</script>
+    
+    <!-- KaTeX JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+    
     <script type="module" src="/dist/public/scripts/instructor-mode.js"></script>
     <script>
         feather.replace(); // Initialize Feather Icons

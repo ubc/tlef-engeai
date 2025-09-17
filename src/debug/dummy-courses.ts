@@ -11,7 +11,7 @@
  * @since: 2025-01-27
  */
 
-import { EngEAI_MongoDB } from '../routes/mongodb';
+import { EngEAI_MongoDB } from '../routes/mongoApp';
 import { IDGenerator } from '../functions/unique-id-generator';
 import { activeCourse, ContentDivision, LearningObjective, AdditionalMaterial } from '../functions/types';
 

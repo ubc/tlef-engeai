@@ -5,7 +5,7 @@ import { LoggerInterface } from "ubc-genai-toolkit-core";
 import { LLMModule } from "ubc-genai-toolkit-llm";
 import { DocumentParsingModule } from "ubc-genai-toolkit-document-parsing";
 import { AdditionalMaterial } from "../functions/types";
-import { EngEAI_MongoDB } from "./mongodb";
+import { EngEAI_MongoDB } from "./mongoApp";
 import { IDGenerator } from "../functions/unique-id-generator";
 import path from "path";
 import fs from "fs";

@@ -96,7 +96,7 @@ export interface ContentDivision {
  */
 export interface courseItem {
     id: string;
-    date: Date,
+    date: Date;
     title: string;
     courseName: string;
     divisionTitle: string;
@@ -150,6 +150,17 @@ export interface AdditionalMaterial {
 }
 
 /**
+ * Student data structure for chat integration
+ * TODO: Replace with proper user authentication system when backend user mechanism is implemented
+ */
+export interface Student {
+    id: string;
+    name: string;
+    courseAttended: string; // Default: "APSC 099" - can be changed when user system is implemented
+    userId: number; // Hardcoded for now - will be replaced with proper user authentication
+}
+
+/**
  * user in the database
  */
 export interface UserDB {
@@ -176,7 +187,7 @@ export interface Artefact {
 // Types for flag reports
 export interface FlagReport {
     id: string;
-    timestamp: string;
+    timestamp: Date;
     flagType: 'safety' | 'harassment' | 'inappropriate' | 'dishonesty' | 'interface bug' | 'other';
     reportType: string;
     chatContent: string;

@@ -81,7 +81,7 @@ interface RetrievedDocument {
 interface initChatRequest {
     userID: string;
     courseName: string;
-    date: string;
+    date: Date;
     initAssistantMessage: ChatMessage;
 }
 
@@ -385,7 +385,7 @@ class ChatApp {
         return assistantMessage;
     }
 
-    public initializeConversation(userID: string, courseName: string, date: string): initChatRequest {
+    public initializeConversation(userID: string, courseName: string, date: Date): initChatRequest {
         //create chatID from the user ID
         const chatId = this.chatIDGenerator.chatID(userID, courseName, date);
 
@@ -430,7 +430,11 @@ class ChatApp {
               - The lecture notes explain that...
             3. If the materials don't contain relevant information, indicate this (by saying things like “I was unable to find anything specifically relevant to this in the course materials, but I can still help based on my own knowledge.”) and ask contextually relevant socratic questions based on your general knowledge.
 
-            If as part of your questions you need to include equations, please use LaTEX notation. If you need to output engineering flow diagrams, use MERMAID notation.
+            If as part of your questions you need to include equations, please use LaTeX notation. The system now supports LaTeX rendering, so you can use:
+            - Inline math: $E = mc^2$ for simple equations within text
+            - Block math: $$\int_0^\infty e^{-x} dx = 1$$ for centered equations
+            - Complex expressions: $$\frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u$$ for advanced mathematics
+            If you need to output engineering flow diagrams, use MERMAID notation.
         `;
 
         try {
@@ -467,7 +471,7 @@ class ChatApp {
         const defaultMessageText = "Hello! I am EngE-AI, your AI companion for chemical, environmental, and materials engineering. As this is week 2, in lectures this week we have learned about Thermodynamics in Electrochemistry. What would you like to discuss? Remember: I am designed to enhance your learning, not replace it, always verify important information.";
         
         // Generate message ID using the first 10 words, chatID, and current date
-        const currentDate = new Date().toISOString().split('T')[0];
+        const currentDate = new Date();
         const messageId = this.chatIDGenerator.messageID(defaultMessageText, chatId, currentDate);
         
         // Create the ChatMessage object
@@ -528,7 +532,7 @@ class ChatApp {
      */
     private addUserMessage(chatId: string, message: string, userId: string): ChatMessage {
         // Generate message ID
-        const currentDate = new Date().toISOString().split('T')[0];
+        const currentDate = new Date();
         const messageId = this.chatIDGenerator.messageID(message, chatId, currentDate);
         
         // Create the ChatMessage object
@@ -578,7 +582,7 @@ class ChatApp {
      */
     private addAssistantMessage(chatId: string, message: string): ChatMessage {
         // Generate message ID
-        const currentDate = new Date().toISOString().split('T')[0];
+        const currentDate = new Date();
         const messageId = this.chatIDGenerator.messageID(message, chatId, currentDate);
         
         // Create the ChatMessage object
@@ -658,19 +662,21 @@ router.post('/newchat', async (req: Request, res: Response) => {
     try {
         const userID = req.body.userID;
         const courseName = req.body.courseName;
-        const date = req.body.date;
+        const date = new Date(); // the date is the current date inside the backend
         
-        // Debug: Print all incoming new chat input
-        // console.log('\n🆕 NEW CHAT INPUT RECEIVED:');
-        // console.log('='.repeat(50));
-        // console.log(`User ID: ${userID}`);
-        // console.log(`Course Name: ${courseName}`);
-        // console.log(`Date: ${date}`);
-        // console.log(`Timestamp: ${new Date().toISOString()}`);
-        // console.log('='.repeat(50));
+        // Remove later : removeCode(001) - Logging new chat creation
+        console.log('\n🆕 NEW CHAT CREATION REQUEST:');
+        console.log('='.repeat(50));
+        console.log(`User ID: ${userID}`);
+        console.log(`Course Name: ${courseName}`);
+        console.log(`Date: ${date}`);
+        console.log(`Timestamp: ${new Date().toISOString()}`);
+        console.log('='.repeat(50));
+    
         
         if (!userID || !courseName || !date) {
-            // console.log('❌ VALIDATION FAILED: Missing required fields for new chat');
+            // Remove later : removeCode(001) - Logging validation failure
+            console.log('❌ VALIDATION FAILED: Missing required fields for new chat');
             return res.status(400).json({ 
                 success: false, 
                 error: 'Missing required fields: userID, courseName, and date are required' 
@@ -683,14 +689,14 @@ router.post('/newchat', async (req: Request, res: Response) => {
         // Generate the actual chatId using the IDGenerator singleton
         const chatId = IDGenerator.getInstance().chatID(userID, courseName, date);
         
-        // Debug: Print response being sent
-        // console.log('\n📤 NEW CHAT RESPONSE SENT:');
-        // console.log('='.repeat(50));
-        // console.log(`Chat ID: ${chatId}`);
-        // console.log(`Success: true`);
-        // console.log(`Init Message: "${initResponse.initAssistantMessage.text}"`);
-        // console.log(`Init Message Length: ${initResponse.initAssistantMessage.text.length} characters`);
-        // console.log('='.repeat(50));
+        // Remove later : removeCode(001) - Logging successful chat creation
+        console.log('\n✅ NEW CHAT CREATED SUCCESSFULLY:');
+        console.log('='.repeat(50));
+        console.log(`Generated Chat ID: ${chatId}`);
+        console.log(`Assistant Message ID: ${initResponse.initAssistantMessage.id}`);
+        console.log(`Assistant Message Preview: "${initResponse.initAssistantMessage.text.substring(0, 100)}..."`);
+        console.log(`Total Active Chats: ${chatApp['chatID'].length}`);
+        console.log('='.repeat(50));
         
         // Return the complete response with the default message
         res.json({ 
@@ -700,7 +706,8 @@ router.post('/newchat', async (req: Request, res: Response) => {
         });
         
     } catch (error) {
-        // console.error('Error creating new chat:', error);
+        // Remove later : removeCode(001) - Logging error
+        console.error('❌ ERROR CREATING NEW CHAT:', error);
         res.status(500).json({ 
             success: false, 
             error: 'Failed to create new chat' 
@@ -715,17 +722,6 @@ router.post('/:chatId', async (req: Request, res: Response) => {
     try {
         const { chatId } = req.params;
         const { message, userId, courseName } = req.body;
-        
-        // Debug: Print all incoming chat input
-        // console.log('\n📨 CHAT INPUT RECEIVED:');
-        // console.log('='.repeat(50));
-        // console.log(`Chat ID: ${chatId}`);
-        // console.log(`User ID: ${userId}`);
-        // console.log(`Course Name: ${courseName || 'Not provided'}`);
-        // console.log(`Message: "${message}"`);
-        // console.log(`Message Length: ${message ? message.length : 0} characters`);
-        // console.log(`Timestamp: ${new Date().toISOString()}`);
-        // console.log('='.repeat(50));
         
         // Validate input
         if (!message || !userId) {

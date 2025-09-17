@@ -1,7 +1,8 @@
 /* styles/artefact.css */
 
-/* Artefact Panel (slide-in from right) */
+/* Artefact Panel (slide-in from right) - DISABLED FOR NOW */
 .artefact-panel {
+  display: none; /* Temporarily disabled - will be worked on later */
   position: relative;
   width: 0;
   flex: 0 0 0;
