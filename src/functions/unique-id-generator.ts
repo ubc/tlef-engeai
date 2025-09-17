@@ -228,6 +228,21 @@ export class IDGenerator {
     }
 
     /**
+     * Generates a unique flag ID using the formula:
+     * flag_timestamp_randomsuffix_userId -> uniqueIDGenerator
+     * 
+     * @param userId - The user ID
+     * @param courseName - The name of the course
+     * @param date - The date of the flag (full ISO string with milliseconds)
+     * @returns A 12-character hexadecimal string representing the unique flag ID
+     */
+    flagIDGenerator(userId: string, courseName: string, date: Date): string {
+        const dateString = date.toISOString(); // Full ISO string with milliseconds
+        const hashInput = "flag_" + userId + "-" + courseName + "-" + dateString;
+        return this.uniqueIDGenerator(hashInput);
+    }
+
+    /**
      * 48-bit non-cryptographic hash in TypeScript
      * @param input - The string to be hashed
      * @returns A 12-character hexadecimal string (collision-resistant ID)

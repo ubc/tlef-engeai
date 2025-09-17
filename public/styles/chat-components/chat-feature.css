@@ -225,6 +225,11 @@
     gap: 5px;
 }
 
+.message .message-timestamp .feather {
+    width: 12px;
+    height: 12px;
+}
+
 .message.user-message .message-timestamp {
     color: #ffffff;
 }

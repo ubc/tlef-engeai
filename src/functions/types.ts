@@ -60,6 +60,8 @@ export interface activeCourse {
     date : Date,
     courseSetup : boolean, 
     contentSetup : boolean,
+    flagSetup : boolean,
+    monitorSetup : boolean,
     courseName: string,
     instructors: string[],
     teachingAssistants: string[],
@@ -187,9 +189,10 @@ export interface Artefact {
 // Types for flag reports
 export interface FlagReport {
     id: string;
-    timestamp: Date;
-    flagType: 'safety' | 'harassment' | 'inappropriate' | 'dishonesty' | 'interface bug' | 'other';
-    reportType: string;
+    courseName: string; // Added to support course-specific flag collections
+    date: Date;
+    flagType: 'innacurate_response' | 'harassment' | 'inappropriate' | 'dishonesty' | 'interface bug' | 'other';
+    reportType: string; // store the long explanation of the flag type
     chatContent: string;
     userId: number;
     status: 'unresolved' | 'resolved';

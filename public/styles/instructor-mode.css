@@ -330,7 +330,7 @@ body {
 }
 
 /* Hide instructor sidebar during onboarding */
-.onboarding-active .instructor-feature-sidebar {
+.onboarding-active .instructor-sidebar {
     display: none;
 }
 

@@ -35,7 +35,7 @@ const router = express.Router();
 export default router;
 import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 import dotenv from 'dotenv';
-import { activeCourse, AdditionalMaterial, ContentDivision, courseItem } from '../functions/types';
+import { activeCourse, AdditionalMaterial, ContentDivision, courseItem, FlagReport } from '../functions/types';
 import { IDGenerator } from '../functions/unique-id-generator';
 import { getDummyCourses, resetDummyCourses } from '../debug/dummy-courses';
 
@@ -301,7 +301,144 @@ export class EngEAI_MongoDB {
     public addDocument = async (document: AdditionalMaterial) => {
         return await this.getCourseCollection().insertOne(document);
     }
-    
+
+    // ===========================================
+    // ========= FLAG REPORT METHODS ============
+    // ===========================================
+
+    /**
+     * Get the flags collection for a specific course
+     * @param courseName - the name of the course
+     * @returns the flags collection
+     */
+    private getFlagsCollection = (courseName: string): Collection => {
+        const flagsCollectionName = `${courseName}_flags`;
+        return this.db.collection(flagsCollectionName);
+    }
+
+    /**
+     * Create a new flag report
+     * @param flagReport - the flag report to create
+     * @returns the result of the insert operation
+     */
+    public createFlagReport = async (flagReport: FlagReport) => {
+        //START DEBUG LOG : DEBUG-CODE(001)
+        console.log('🏴 Creating flag report:', flagReport.id, 'for course:', flagReport.courseName);
+        //END DEBUG LOG : DEBUG-CODE(001)
+        
+        try {
+            const flagsCollection = this.getFlagsCollection(flagReport.courseName);
+            
+            const result = await flagsCollection.insertOne(flagReport);
+            
+            //START DEBUG LOG : DEBUG-CODE(009)
+            console.log('🏴 Flag report created successfully:', flagReport.id, 'MongoDB ID:', result.insertedId);
+            //END DEBUG LOG : DEBUG-CODE(009)
+            
+            return result;
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(010)
+            console.error('🏴 Error creating flag report:', flagReport.id, 'Error:', error);
+            //END DEBUG LOG : DEBUG-CODE(010)
+            
+            throw new Error(`Failed to create flag report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    /**
+     * Get all flag reports for a specific course
+     * @param courseName - the name of the course
+     * @returns array of flag reports
+     */
+    public getFlagReports = async (courseName: string): Promise<FlagReport[]> => {
+        //START DEBUG LOG : DEBUG-CODE(002)
+        console.log('🏴 Getting flag reports for course:', courseName);
+        //END DEBUG LOG : DEBUG-CODE(002)
+        
+        const flagsCollection = this.getFlagsCollection(courseName);
+        return await flagsCollection.find({}).toArray() as unknown as FlagReport[];
+    }
+
+    /**
+     * Get a specific flag report by ID
+     * @param courseName - the name of the course
+     * @param flagId - the ID of the flag report
+     * @returns the flag report or null if not found
+     */
+    public getFlagReport = async (courseName: string, flagId: string): Promise<FlagReport | null> => {
+        //START DEBUG LOG : DEBUG-CODE(003)
+        console.log('🏴 Getting flag report:', flagId, 'for course:', courseName);
+        //END DEBUG LOG : DEBUG-CODE(003)
+        
+        const flagsCollection = this.getFlagsCollection(courseName);
+        return await flagsCollection.findOne({ id: flagId }) as FlagReport | null;
+    }
+
+    /**
+     * Update a flag report (status and response)
+     * @param courseName - the name of the course
+     * @param flagId - the ID of the flag report
+     * @param updateData - the data to update
+     * @returns the result of the update operation
+     */
+    public updateFlagReport = async (courseName: string, flagId: string, updateData: Partial<FlagReport>) => {
+        //START DEBUG LOG : DEBUG-CODE(004)
+        console.log('🏴 Updating flag report:', flagId, 'for course:', courseName, 'with data:', updateData);
+        //END DEBUG LOG : DEBUG-CODE(004)
+        
+        try {
+            const flagsCollection = this.getFlagsCollection(courseName);
+            
+            // Add updatedAt timestamp
+            const updateWithTimestamp = {
+                ...updateData,
+                updatedAt: new Date()
+            };
+
+            // If response is undefined/null, set it to empty string
+            if (updateData.response === undefined || updateData.response === null) {
+                updateWithTimestamp.response = '';
+            }
+
+            //START DEBUG LOG : DEBUG-CODE(011)
+            console.log('🏴 About to update with query:', { id: flagId });
+            console.log('🏴 About to update with data:', { $set: updateWithTimestamp });
+            //END DEBUG LOG : DEBUG-CODE(011)
+
+            const result = await flagsCollection.findOneAndUpdate(
+                { id: flagId },
+                { $set: updateWithTimestamp },
+                { returnDocument: 'after' }
+            );
+
+            //START DEBUG LOG : DEBUG-CODE(012)
+            console.log('🏴 Update result:', result);
+            //END DEBUG LOG : DEBUG-CODE(012)
+
+            return result;
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(013)
+            console.error('🏴 Error updating flag report:', flagId, 'Error:', error);
+            //END DEBUG LOG : DEBUG-CODE(013)
+            
+            throw new Error(`Failed to update flag report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    /**
+     * Delete a flag report
+     * @param courseName - the name of the course
+     * @param flagId - the ID of the flag report
+     * @returns the result of the delete operation
+     */
+    public deleteFlagReport = async (courseName: string, flagId: string) => {
+        //START DEBUG LOG : DEBUG-CODE(005)
+        console.log('🏴 Deleting flag report:', flagId, 'for course:', courseName);
+        //END DEBUG LOG : DEBUG-CODE(005)
+        
+        const flagsCollection = this.getFlagsCollection(courseName);
+        return await flagsCollection.deleteOne({ id: flagId });
+    }
 
 }
 
@@ -947,6 +1084,244 @@ router.post('/debug/reset', asyncHandler(async (req: Request, res: Response) => 
         res.status(500).json({
             success: false,
             error: 'Failed to reset dummy courses'
+        });
+    }
+}));
+
+// ===========================================
+// ========= FLAG REPORT ROUTES ============
+// ===========================================
+
+// POST /api/mongodb/flag-reports - Create a new flag report
+router.post('/flag-reports', asyncHandler(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseName, flagType, reportType, chatContent, userId } = req.body;
+        
+        // Validate required fields
+        if (!courseName || !flagType || !reportType || !chatContent || userId === undefined) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: courseName, flagType, reportType, chatContent, userId'
+            });
+        }
+
+        // Validate flagType
+        const validFlagTypes = ['innacurate_response', 'harassment', 'inappropriate', 'dishonesty', 'interface bug', 'other'];
+        if (!validFlagTypes.includes(flagType)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid flagType. Must be one of: ' + validFlagTypes.join(', ')
+            });
+        }
+
+        // Create flag report object with unique ID using IDGenerator
+        const idGenerator = IDGenerator.getInstance();
+        const flagDate = new Date();
+        const uniqueId = idGenerator.flagIDGenerator(userId.toString(), courseName, flagDate);
+        
+        const flagReport: FlagReport = {
+            id: uniqueId,
+            courseName: courseName,
+            date: flagDate,
+            flagType: flagType,
+            reportType: reportType,
+            chatContent: chatContent,
+            userId: userId,
+            status: 'unresolved',
+            response: '', // Initialize as empty string
+            createdAt: flagDate,
+            updatedAt: flagDate
+        };
+
+        //START DEBUG LOG : DEBUG-CODE(006)
+        console.log('🏴 Creating flag report with ID:', flagReport.id);
+        //END DEBUG LOG : DEBUG-CODE(006)
+
+        const result = await instance.createFlagReport(flagReport);
+        
+        res.status(201).json({
+            success: true,
+            message: 'Flag report created successfully',
+            data: {
+                id: flagReport.id,
+                insertedId: result.insertedId
+            }
+        });
+    } catch (error) {
+        console.error('Error creating flag report:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to create flag report'
+        });
+    }
+}));
+
+// GET /api/mongodb/flag-reports/:courseName - Get all flag reports for a course
+router.get('/flag-reports/:courseName', asyncHandler(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseName } = req.params;
+        
+        if (!courseName) {
+            return res.status(400).json({
+                success: false,
+                error: 'Course name is required'
+            });
+        }
+
+        const flagReports = await instance.getFlagReports(courseName);
+        
+        res.json({
+            success: true,
+            data: flagReports,
+            count: flagReports.length
+        });
+    } catch (error) {
+        console.error('Error getting flag reports:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get flag reports'
+        });
+    }
+}));
+
+// GET /api/mongodb/flag-reports/:courseName/:flagId - Get a specific flag report
+router.get('/flag-reports/:courseName/:flagId', asyncHandler(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseName, flagId } = req.params;
+        
+        if (!courseName || !flagId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Course name and flag ID are required'
+            });
+        }
+
+        const flagReport = await instance.getFlagReport(courseName, flagId);
+        
+        if (!flagReport) {
+            return res.status(404).json({
+                success: false,
+                error: 'Flag report not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: flagReport
+        });
+    } catch (error) {
+        console.error('Error getting flag report:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get flag report'
+        });
+    }
+}));
+
+// PUT /api/mongodb/flag-reports/:courseName/:flagId - Update a flag report
+router.put('/flag-reports/:courseName/:flagId', asyncHandler(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseName, flagId } = req.params;
+        const { status, response } = req.body;
+        
+        if (!courseName || !flagId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Course name and flag ID are required'
+            });
+        }
+
+        // Validate status if provided
+        if (status && !['unresolved', 'resolved'].includes(status)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid status. Must be "unresolved" or "resolved"'
+            });
+        }
+
+        // Prepare update data
+        const updateData: Partial<FlagReport> = {};
+        if (status !== undefined) updateData.status = status;
+        if (response !== undefined) updateData.response = response;
+
+        if (Object.keys(updateData).length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'No valid fields to update'
+            });
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(007)
+        console.log('🏴 Updating flag report:', flagId, 'with data:', updateData);
+        //END DEBUG LOG : DEBUG-CODE(007)
+
+        const result = await instance.updateFlagReport(courseName, flagId, updateData);
+        
+        if (!result) {
+            return res.status(404).json({
+                success: false,
+                error: 'Flag report not found'
+            });
+        }
+
+        console.log('='.repeat(60));
+        console.log('🏴 Result:', JSON.stringify(result, null, 2));
+        console.log('='.repeat(60));
+        
+        res.json({
+            success: true,
+            message: 'Flag report updated successfully',
+            data: result
+        });
+    } catch (error) {
+        console.error('Error updating flag report:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update flag report'
+        });
+    }
+}));
+
+// DELETE /api/mongodb/flag-reports/:courseName/:flagId - Delete a flag report
+router.delete('/flag-reports/:courseName/:flagId', asyncHandler(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseName, flagId } = req.params;
+        
+        if (!courseName || !flagId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Course name and flag ID are required'
+            });
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(008)
+        console.log('🏴 Deleting flag report:', flagId, 'from course:', courseName);
+        //END DEBUG LOG : DEBUG-CODE(008)
+
+        const result = await instance.deleteFlagReport(courseName, flagId);
+        
+        if (result.deletedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Flag report not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: 'Flag report deleted successfully',
+            deletedCount: result.deletedCount
+        });
+    } catch (error) {
+        console.error('Error deleting flag report:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to delete flag report'
         });
     }
 }));

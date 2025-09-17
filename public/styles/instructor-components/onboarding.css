@@ -1053,6 +1053,349 @@
     line-height: 1.4;
 }
 
+/* ===========================================
+   FLAG SETUP SPECIFIC STYLES
+   =========================================== */
+
+/* Accordion styles for flag types */
+.flag-types-accordion {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+}
+
+.accordion-item {
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: white;
+}
+
+.accordion-header {
+    width: 100%;
+    padding: 1rem 1.25rem;
+    background-color: #f8f9fa;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    transition: background-color 0.2s ease;
+    font-family: inherit;
+}
+
+.accordion-header:hover {
+    background-color: #e9ecef;
+}
+
+.accordion-icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.accordion-title {
+    flex: 1;
+    font-weight: 600;
+    color: #2c3e50;
+    font-size: 1rem;
+}
+
+.accordion-chevron {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.accordion-item.active .accordion-chevron {
+    transform: rotate(180deg);
+}
+
+.accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    background-color: white;
+}
+
+.accordion-item.active .accordion-content {
+    max-height: 200px;
+}
+
+.accordion-content p {
+    padding: 1rem 1.25rem;
+    margin: 0;
+    color: #495057;
+    line-height: 1.5;
+}
+
+.accordion-content p:first-child {
+    padding-top: 0.5rem;
+}
+
+.accordion-content p:last-child {
+    padding-bottom: 1.5rem;
+}
+
+/* Demo flag resolution interface */
+.flag-resolution-demo {
+    width: 100%;
+    margin-top: 1.5rem;
+}
+
+.demo-flag-message {
+    border: 1px solid #e9ecef;
+    border-radius: 12px;
+    overflow: hidden;
+    background-color: white;
+}
+
+.demo-flag-reason {
+    margin-top: 1rem;
+    padding: 0.75rem;
+    background-color: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.demo-response-area {
+    padding: 1rem;
+}
+
+.demo-response-input {
+    width: 100%;
+    min-height: 100px;
+    padding: 0.75rem;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    resize: vertical;
+    margin-bottom: 1rem;
+}
+
+.demo-response-input:focus {
+    outline: none;
+    border-color: var(--color-chbe-green);
+    box-shadow: 0 0 0 3px rgba(92, 138, 58, 0.1);
+}
+
+.demo-response-actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+/* Flag Card Accordion Styles */
+.flag-card {
+    border: 1px solid #e9ecef;
+    border-radius: 12px;
+    margin-bottom: 1rem;
+    background-color: white;
+    overflow: hidden;
+    transition: box-shadow 0.2s ease;
+}
+
+.flag-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.flag-card.unresolved {
+    border-left: 4px solid #ffc107;
+}
+
+.flag-card.resolved {
+    border-left: 4px solid var(--color-chbe-green);
+}
+
+.flag-card-header {
+    padding: 1rem 1.25rem;
+    background-color: #f8f9fa;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background-color 0.2s ease;
+}
+
+.flag-card-header:hover {
+    background-color: #e9ecef;
+}
+
+.flag-info {
+    flex: 1;
+}
+
+.flag-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.flag-type {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.flag-status {
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.flag-status.unresolved {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeaa7;
+}
+
+.flag-status.resolved {
+    background-color: rgba(92, 138, 58, 0.1);
+    color: var(--color-chbe-green);
+    border: 1px solid rgba(92, 138, 58, 0.3);
+}
+
+.flag-preview {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.flag-toggle {
+    margin-left: 1rem;
+    color: var(--text-secondary);
+}
+
+.chevron-icon {
+    width: 16px;
+    height: 16px;
+    transition: transform 0.2s ease;
+}
+
+.flag-card.active .chevron-icon {
+    transform: rotate(180deg);
+}
+
+.flag-card-content {
+    border-top: 1px solid #e9ecef;
+    background-color: white;
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+    }
+    to {
+        opacity: 1;
+        max-height: 1000px;
+    }
+}
+
+.flag-reason-box {
+    margin: 1rem 0;
+    padding: 1rem;
+    background-color: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 8px;
+}
+
+.flag-reason-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.flag-reason-title {
+    font-weight: 600;
+    color: #856404;
+}
+
+.flag-reason-content {
+    color: #856404;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.resolved-response {
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 1rem;
+    color: var(--text-primary);
+    font-style: italic;
+    margin-bottom: 1rem;
+    line-height: 1.5;
+}
+
+/* Demo edit interface */
+.demo-edit-interface {
+    width: 100%;
+    margin-top: 1.5rem;
+}
+
+.demo-resolved-flag {
+    border: 1px solid #e9ecef;
+    border-radius: 12px;
+    padding: 1.5rem;
+    background-color: #f8f9fa;
+}
+
+.demo-flag-summary {
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+    color: #495057;
+}
+
+.status-resolved {
+    color: var(--color-chbe-green);
+    font-weight: 600;
+}
+
+.demo-original-response {
+    background-color: white;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 1rem;
+    margin: 1rem 0;
+    font-style: italic;
+    color: #6c757d;
+}
+
+.demo-edit-actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.demo-edit-form {
+    margin-top: 1.5rem;
+    padding: 1.5rem;
+    background-color: white;
+    border: 1px solid #e9ecef;
+    border-radius: 12px;
+}
+
+.demo-edit-form h4 {
+    margin: 0 0 1rem 0;
+    color: #2c3e50;
+    font-size: 1.1rem;
+}
+
 /* High contrast mode support */
 @media (prefers-contrast: high) {
     .step-circle.completed {
@@ -1068,5 +1411,15 @@
     .btn-next {
         background-color: #000;
         color: #fff;
+    }
+    
+    .accordion-header {
+        background-color: #fff;
+        border: 2px solid #000;
+    }
+    
+    .accordion-content {
+        background-color: #fff;
+        border: 2px solid #000;
     }
 }

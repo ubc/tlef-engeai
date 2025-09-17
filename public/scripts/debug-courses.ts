@@ -14,6 +14,7 @@ console.log('🚀 DEBUG COURSES SCRIPT LOADING...');
 interface DebugCourses {
     apsc099: any | null;
     apsc080: any | null;
+    apsc060: any | null;
 }
 
 class DebugCoursesManager {
@@ -46,6 +47,9 @@ class DebugCoursesManager {
         
         console.log('Setting up APSC 080 button...');
         this.addClickHandler('apsc080', () => this.loadDebugCourse('apsc080'));
+        
+        console.log('Setting up APSC 060 button...');
+        this.addClickHandler('apsc060', () => this.loadDebugCourse('apsc060'));
         
         console.log('Setting up Reset button...');
         this.addClickHandler('reset', () => this.resetDebugCourses());
@@ -112,6 +116,10 @@ class DebugCoursesManager {
         // Update APSC 080 status
         this.updateCourseStatus('apsc080', this.debugCourses.apsc080, 
             'Course Onboarding View - Ready for document setup');
+
+        // Update APSC 060 status
+        this.updateCourseStatus('apsc060', this.debugCourses.apsc060, 
+            'Flag Setup View - Ready for flag onboarding');
     }
 
     /**
@@ -152,6 +160,9 @@ class DebugCoursesManager {
         } else if (courseType === 'apsc080' && this.debugCourses?.apsc080) {
             course = this.debugCourses.apsc080;
             console.log('✅ Found APSC 080 course:', course);
+        } else if (courseType === 'apsc060' && this.debugCourses?.apsc060) {
+            course = this.debugCourses.apsc060;
+            console.log('✅ Found APSC 060 course:', course);
         } else {
             console.log(`❌ Course ${courseType} not found in debugCourses`);
         }

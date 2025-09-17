@@ -3,6 +3,7 @@ import { activeCourse, Student } from "../../src/functions/types.js";
 import { initializeDocumentsPage } from "./feature/documents.js";
 import { renderOnCourseSetup } from "./onboarding/course-setup.js";
 import { renderDocumentSetup } from "./onboarding/document-setup.js";
+import { renderFlagSetup } from "./onboarding/flag-setup.js";
 import { initializeFlagReports } from "./feature/reports.js";
 import { ChatManager, createDefaultStudent } from "./feature/chat.js";
 
@@ -17,8 +18,10 @@ let currentClass : activeCourse =
 {
     id: '',
     date: new Date(),
-    courseSetup : true,
-    contentSetup : true,
+    courseSetup : false,
+    contentSetup : false,
+    flagSetup : false,
+    monitorSetup : false,
     courseName:'APSC 077',
     instructors: [
     ],
@@ -82,6 +85,14 @@ document.addEventListener('DOMContentLoaded', () => {
         redirectToDocumentsPage();
     });
 
+    // Listen for flag setup completion event
+    window.addEventListener('flagSetupComplete', () => {
+        console.log('🏁 Flag setup completed, redirecting to main interface...');
+        
+        // Redirect to main instructor interface
+        redirectToMainInterface();
+    });
+
     /**
      * Redirect to documents page after document setup completion
      */
@@ -113,6 +124,36 @@ document.addEventListener('DOMContentLoaded', () => {
         updateUIAfterDocumentSetup();
         
         console.log('✅ Successfully redirected to documents page');
+    }
+
+    /**
+     * Redirect to main interface after flag setup completion
+     */
+    function redirectToMainInterface(): void {
+        console.log('🔄 Flag setup completed, redirecting to main interface...');
+        
+        // Remove onboarding-active class from body
+        document.body.classList.remove('onboarding-active');
+        
+        // Show the main instructor interface
+        const mainContentArea = document.getElementById('main-content-area');
+        if (mainContentArea) {
+            mainContentArea.style.display = 'block';
+        }
+        
+        // Show the sidebar
+        const sidebar = document.querySelector('.instructor-sidebar');
+        if (sidebar) {
+            (sidebar as HTMLElement).style.display = 'block';
+        }
+        
+        // Switch to documents view (or default view)
+        currentState = StateEvent.Documents;
+        
+        // Update the UI
+        updateUI();
+        
+        console.log('✅ Successfully redirected to main interface');
     }
 
     /**
@@ -308,6 +349,10 @@ document.addEventListener('DOMContentLoaded', () => {
             renderDocumentSetup(currentClass); // change this to renderOnContentSetup later
             return;
         }
+        if (!currentClass.flagSetup) {
+            renderFlagSetup(currentClass);
+            return;
+        }
 
         if ( currentState === StateEvent.Report){
             loadComponent('report-instructor');
@@ -377,10 +422,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         return result.data; // Return only the course data, not the wrapper object
     }
-
-
-    
-    
     
     const updateSidebarState = () => {
         if (sidebarMenuListEl) {
