@@ -86,8 +86,6 @@ export class ChatManager {
     public async initialize(): Promise<void> {
         if (this.isInitialized) return;
 
-        // Load the standalone chat-menu component
-        await this.loadChatMenuComponent();
         
         // Artefact panel is now embedded in chat-window.html (disabled for now)
 
@@ -503,44 +501,6 @@ export class ChatManager {
         window.addEventListener('keydown', onKeyDown);
     }
 
-    /**
-     * Private helper methods
-     */
-    private async loadChatMenuComponent(): Promise<void> {
-        try {
-            const response = await fetch('/components/chat-menu.html');
-            if (!response.ok) {
-                throw new Error('Failed to load chat-menu component');
-            }
-            const html = await response.text();
-            
-            // Find the appropriate container based on mode
-            let container: HTMLElement | null = null;
-            if (this.config.isInstructor) {
-                // For instructor mode, append to sidebar-content
-                container = document.getElementById('sidebar-content');
-            } else {
-                // For student mode, append to the chat-list nav (before footer)
-                container = document.querySelector('.chat-list') as HTMLElement;
-            }
-            
-            if (container) {
-                // Check if chat-menu already exists
-                let chatMenu = document.getElementById('chat-menu');
-                if (!chatMenu) {
-                    // Create a temporary div to parse the HTML
-                    const tempDiv = document.createElement('div');
-                    tempDiv.innerHTML = html;
-                    chatMenu = tempDiv.firstElementChild as HTMLElement;
-                    if (chatMenu) {
-                        container.appendChild(chatMenu);
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('Error loading chat-menu component:', error);
-        }
-    }
 
     // Artefact panel loading removed - now embedded in chat-window.html
 
@@ -567,6 +527,9 @@ export class ChatManager {
                     this.renderActiveChat();
                     this.renderChatList();
                     this.scrollToBottom();
+                    
+                    // Notify instructor mode that a new chat was created
+                    this.callModeSpecificCallback('new-chat-created', { chat: result.chat });
                 }
             });
         });
@@ -583,6 +546,13 @@ export class ChatManager {
                 }
             }
         });
+    }
+
+    /**
+     * Public method to re-bind message events (useful after DOM changes)
+     */
+    public rebindMessageEvents(): void {
+        this.bindMessageEvents();
     }
 
     public bindMessageEvents(): void {

@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="/styles/modal-overlay.css">
     <link rel="stylesheet" href="/styles/instructor-components/documents.css">
     <link rel="stylesheet" href="/styles/chat-components/latex-rendering.css">
+    <link rel="stylesheet" href="/styles/chat-components/chat-feature.css">
     
     <!-- KaTeX CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
@@ -27,39 +28,54 @@
         <aside class="instructor-sidebar">
             <div class="instructor-feature-sidebar">
                 <div class="sidebar-main-content" >
-                <div class="logo-box">
-                    <i data-feather="box"></i>
-                    <div class="logo-text">
-                        <span>EngE-AI</span>
-                        <p>Instructor Mode</p>
+                    <div class="logo-box">
+                        <i data-feather="box"></i>
+                        <div class="logo-text">
+                            <span>EngE-AI</span>
+                            <p>Instructor Mode</p>
+                        </div>
                     </div>
-                </div>
-                <button class="sidebar-collapse-icon">
-                    <i data-feather="menu"></i>
-                </button>
-                <div class="sidebar-content" id="sidebar-content">
-                    <div class="sidebar-menu-list">
-                        <ul>
-                            <li id="documents-state" class="menu-list-item">
-                                <i data-feather="file-text"></i>
-                                <p>Document</p>
-                            </li>
-                            <li id="chat-state" class="menu-list-item">
-                                <i data-feather="message-circle"></i>
-                                <p>Chats</p>
-                            </li>
-                            <li id="report-state" class="menu-list-item">
-                                <i data-feather="alert-triangle"></i>
-                                <p>Reports</p>
-                            </li>
-                            <li id="monitor-state" class="menu-list-item">
-                                <i data-feather="monitor"></i>
-                                <p>Monitor</p>
-                            </li>
-                        </ul>
+                    <button class="sidebar-collapse-icon">
+                        <i data-feather="menu"></i>
+                    </button>
+                    <div class="sidebar-content" id="sidebar-content">
+                        <div class="sidebar-menu-list">
+                            <ul>
+                                <li id="documents-state" class="menu-list-item">
+                                    <i data-feather="file-text"></i>
+                                    <p>Document</p>
+                                </li>
+                                <li id="chat-state" class="menu-list-item">
+                                    <i data-feather="message-circle"></i>
+                                    <p>Chats</p>
+                                </li>
+                                <li id="report-state" class="menu-list-item">
+                                    <i data-feather="alert-triangle"></i>
+                                    <p>Reports</p>
+                                </li>
+                                <li id="monitor-state" class="menu-list-item">
+                                    <i data-feather="monitor"></i>
+                                    <p>Monitor</p>
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
             </div>
+
+            
+            <!-- Chat menu component - INSIDE instructor-sidebar, OUTSIDE instructor-feature-sidebar YUHUUUUU  -->
+            <div class="chat-list" id="chat-list">
+                <div class="add-chat-box">
+                    <button class="add-chat-btn" id="add-chat-btn">
+                        <span>+ add new chat</span>
+                    </button>
+                </div>
+                <ul id="chat-list-ul" class="chat-list-ul">
+                    <!-- Chat items will be rendered here by ChatManager -->
+                </ul>
+            </div>
+            
         </aside>
         <div id="main-content-area">
             <!-- content will be populated here -->

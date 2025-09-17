@@ -1,9 +1,10 @@
 import { loadComponentHTML, renderFeatherIcons } from "./functions/api.js";
-import { activeCourse } from "../../src/functions/types.js";
+import { activeCourse, Student } from "../../src/functions/types.js";
 import { initializeDocumentsPage } from "./feature/documents.js";
 import { renderOnCourseSetup } from "./onboarding/course-setup.js";
 import { renderDocumentSetup } from "./onboarding/document-setup.js";
 import { initializeFlagReports } from "./feature/reports.js";
+import { ChatManager, createDefaultStudent } from "./feature/chat.js";
 
 const enum StateEvent {
     Report,
@@ -18,7 +19,7 @@ let currentClass : activeCourse =
     date: new Date(),
     courseSetup : true,
     contentSetup : true,
-    courseName:'',
+    courseName:'APSC 077',
     instructors: [
     ],
     teachingAssistants: [
@@ -27,6 +28,30 @@ let currentClass : activeCourse =
     tilesNumber: 12,
     divisions: [
     ]
+}
+
+// ChatManager instance for instructor mode
+let chatManager: ChatManager | null = null;
+
+// Make chatManager and loadChatWindow globally accessible for fallback scenarios
+declare global {
+    interface Window {
+        chatManager: ChatManager | null;
+        loadChatWindow: () => Promise<void>;
+    }
+}
+
+/**
+ * Create a virtual student entity for instructor mode using active course context
+ * This ensures consistency with the existing ChatManager structure
+ */
+function createInstructorVirtualStudent(): Student {
+    return {
+        id: 'instructor-virtual',
+        name: 'Instructor User',
+        courseAttended: currentClass.courseName || 'APSC 080', // Fallback to default course
+        userId: 0 // Instructor ID
+    };
 }
 
 
@@ -133,6 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const sidebarContentEl = document.getElementById('sidebar-content');
     const mainContentAreaEl = document.getElementById('main-content-area');
     const instructorFeatureSidebarEl = document.querySelector('.instructor-feature-sidebar');
+    const chatListEl = document.getElementById('chat-list');
 
     // Current State
     let currentState : StateEvent = StateEvent.Documents;
@@ -145,15 +171,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const documentsStateEl = document.getElementById('documents-state');
     const chatStateEl = document.getElementById('chat-state');
 
-    chatStateEl?.addEventListener('click', () => {
-        // Show error message for chat feature
-        if (mainContentAreaEl) {
-            mainContentAreaEl.innerHTML = `
-                <div class="error-message">
-                    <h2>Feature Not Available</h2>
-                    <p>Chat feature is not available in instructor mode.</p>
-                </div>
-            `;
+    chatStateEl?.addEventListener('click', async () => {
+        if (currentState !== StateEvent.Chat) {
+            currentState = StateEvent.Chat;
+            await showChatContent(); // Use async showChatContent instead of updateUI
         }
     });
 
@@ -218,13 +239,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const sidebarCollapseToggle = () => {
         if (!sidebarCollapseButton) return;
         sidebarCollapseButton.addEventListener('click', () => {
-            if (!sidebarEl) return;
-            sidebarEl.classList.toggle('collapsed');
+            // Disable hamburger button when in chat mode
+            if (currentState === StateEvent.Chat) {
+                return; // Hamburger button is non-functional in chat mode
+            }
+            
+            // Toggle the instructor-feature-sidebar (not the entire instructor-sidebar)
+            if (!instructorFeatureSidebarEl) return;
+            instructorFeatureSidebarEl.classList.toggle('collapsed');
+            
             if(!logoBox) return;
             logoBox.classList.toggle('collapsed');
             
             // Update the collapse state tracking
-            isSidebarCollapsed = sidebarEl.classList.contains('collapsed');
+            isSidebarCollapsed = instructorFeatureSidebarEl.classList.contains('collapsed');
             
             if(!sidebarMenuListEl) return;
             sidebarMenuListEl.classList.toggle('collapsed');
@@ -284,14 +312,24 @@ document.addEventListener('DOMContentLoaded', () => {
         if ( currentState === StateEvent.Report){
             loadComponent('report-instructor');
             updateSidebarState();
+            expandFeatureSidebar();
+            hideChatList(); // Ensure chat list is hidden
         }
         else if ( currentState === StateEvent.Monitor){
             loadComponent('monitor-instructor');
             updateSidebarState();
+            expandFeatureSidebar();
+            hideChatList(); // Ensure chat list is hidden
         }
         else if ( currentState === StateEvent.Documents){
             loadComponent('documents-instructor');
             updateSidebarState();
+            expandFeatureSidebar();
+            hideChatList(); // Ensure chat list is hidden
+        }
+        else if ( currentState === StateEvent.Chat){
+            collapseFeatureSidebar();
+            // showChatContent is now handled by the click event listener
         }
     }
 
@@ -354,6 +392,253 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Helper functions for chat behavior
+    const hideChatList = () => {
+        if (chatListEl) {
+            chatListEl.classList.remove('active');
+            //START DEBUG LOG : DEBUG-CODE(013)
+            console.log('🚫 Chat list hidden (not in chat mode)');
+            //END DEBUG LOG : DEBUG-CODE(013)
+        }
+    }
+
+    const collapseFeatureSidebar = () => {
+        if (!instructorFeatureSidebarEl) return;
+        instructorFeatureSidebarEl.classList.add('collapsed');
+        
+        if(!logoBox) return;
+        logoBox.classList.add('collapsed');
+        
+        if(!sidebarMenuListEl) return;
+        sidebarMenuListEl.classList.add('collapsed');
+        
+        // Update the collapse state tracking
+        isSidebarCollapsed = true;
+    }
+
+    const expandFeatureSidebar = () => {
+        if (!instructorFeatureSidebarEl) return;
+        instructorFeatureSidebarEl.classList.remove('collapsed');
+        
+        if(!logoBox) return;
+        logoBox.classList.remove('collapsed');
+        
+        if(!sidebarMenuListEl) return;
+        sidebarMenuListEl.classList.remove('collapsed');
+        
+        // Hide chat list when expanding feature sidebar
+        hideChatList();
+        
+        // Update the collapse state tracking
+        isSidebarCollapsed = false;
+    }
+
+
+    /**
+     * Initialize ChatManager for instructor mode
+     */
+    const initializeChatManager = async (): Promise<void> => {
+        try {
+            //START DEBUG LOG : DEBUG-CODE(001)
+            console.log('🚀 Initializing ChatManager for instructor mode...');
+            console.log('📋 Current class:', currentClass.courseName);
+            //END DEBUG LOG : DEBUG-CODE(001)
+            
+            // Create virtual student entity for instructor
+            const virtualStudent = createInstructorVirtualStudent();
+            
+            //START DEBUG LOG : DEBUG-CODE(002)
+            console.log('👤 Virtual student created:', virtualStudent);
+            //END DEBUG LOG : DEBUG-CODE(002)
+            
+            // Initialize ChatManager with instructor context
+            chatManager = ChatManager.getInstance({
+                isInstructor: true,
+                userContext: currentClass, // Use activeCourse for instructor mode
+                onModeSpecificCallback: (action: string, data?: any) => {
+                    //START DEBUG LOG : DEBUG-CODE(003)
+                    console.log('📞 ChatManager callback:', action, data);
+                    //END DEBUG LOG : DEBUG-CODE(003)
+                    
+                    // Handle instructor-specific chat callbacks
+                    if (action === 'new-chat-created') {
+                        // Load chat window when a new chat is created from sidebar
+                        loadChatWindow();
+                        
+                        //START DEBUG LOG : DEBUG-CODE(015)
+                        console.log('🆕 New chat created from sidebar, loading chat window');
+                        //END DEBUG LOG : DEBUG-CODE(015)
+                    }
+                }
+            });
+            
+            // Initialize the chat manager
+            await chatManager.initialize();
+            
+            // Make chatManager globally accessible
+            window.chatManager = chatManager;
+            
+            // Make loadChatWindow globally accessible
+            window.loadChatWindow = loadChatWindow;
+            
+            //START DEBUG LOG : DEBUG-CODE(004)
+            console.log('✅ ChatManager initialized successfully for instructor mode');
+            //END DEBUG LOG : DEBUG-CODE(004)
+            
+            // Update UI after initialization
+            updateChatUI();
+            
+        } catch (error) {
+            console.error('❌ Error initializing ChatManager for instructor mode:', error);
+        }
+    };
+
+    /**
+     * Load chat window component in main content area
+     */
+    const loadChatWindow = async (): Promise<void> => {
+        if (!mainContentAreaEl) return;
+        
+        try {
+            // Load the chat-window component
+            const chatWindowHTML = await loadComponentHTML('chat-window');
+            mainContentAreaEl.innerHTML = chatWindowHTML;
+            
+            // Render the active chat in the loaded chat window
+            if (chatManager) {
+                chatManager.renderActiveChat();
+                
+                // Re-bind message events after chat window is loaded
+                chatManager.rebindMessageEvents();
+                
+                //START DEBUG LOG : DEBUG-CODE(014)
+                console.log('🔗 Message events re-bound after chat window load');
+                //END DEBUG LOG : DEBUG-CODE(014)
+            }
+            
+            renderFeatherIcons();
+            
+            //START DEBUG LOG : DEBUG-CODE(010)
+            console.log('💬 Chat window loaded in main content area');
+            //END DEBUG LOG : DEBUG-CODE(010)
+            
+        } catch (error) {
+            console.error('Error loading chat window:', error);
+            mainContentAreaEl.innerHTML = `
+                <div class="error-message">
+                    <h2>Chat Interface</h2>
+                    <p>Failed to load chat interface. Please try again.</p>
+                </div>
+            `;
+        }
+    };
+
+    /**
+     * Update chat UI after ChatManager initialization
+     */
+    const updateChatUI = (): void => {
+        if (!chatManager) return;
+        
+        //START DEBUG LOG : DEBUG-CODE(005)
+        console.log('🔄 Updating chat UI for instructor mode...');
+        //END DEBUG LOG : DEBUG-CODE(005)
+        
+        // Render chat list in the instructor's chat menu
+        chatManager.renderChatList();
+        
+        // Show welcome screen if no chats exist, otherwise load chat window
+        const chats = chatManager.getChats();
+        
+        //START DEBUG LOG : DEBUG-CODE(006)
+        console.log('📊 Chat count:', chats.length);
+        //END DEBUG LOG : DEBUG-CODE(006)
+        
+        if (chats.length === 0) {
+            //START DEBUG LOG : DEBUG-CODE(007)
+            console.log('📺 Showing welcome screen (no chats exist)');
+            //END DEBUG LOG : DEBUG-CODE(007)
+            showWelcomeScreen();
+        } else {
+            //START DEBUG LOG : DEBUG-CODE(008)
+            console.log('💬 Loading chat window with active chat');
+            //END DEBUG LOG : DEBUG-CODE(008)
+            loadChatWindow();
+        }
+    };
+
+    /**
+     * Show welcome screen when no chats exist
+     */
+    const showWelcomeScreen = async (): Promise<void> => {
+        if (!mainContentAreaEl) return;
+        
+        try {
+            // Load welcome screen component
+            const welcomeHTML = await loadComponentHTML('welcome-screen');
+            mainContentAreaEl.innerHTML = welcomeHTML;
+            
+            // Bind welcome screen events
+            const addChatBtn = mainContentAreaEl.querySelector('.welcome-add-btn');
+            addChatBtn?.addEventListener('click', async () => {
+                if (chatManager) {
+                    //START DEBUG LOG : DEBUG-CODE(011)
+                    console.log('🆕 Creating new chat from welcome screen...');
+                    //END DEBUG LOG : DEBUG-CODE(011)
+                    
+                    const result = await chatManager.createNewChat();
+                    if (result.success) {
+                        //START DEBUG LOG : DEBUG-CODE(012)
+                        console.log('✅ New chat created successfully, loading chat window');
+                        //END DEBUG LOG : DEBUG-CODE(012)
+                        
+                        // Load chat window in main content area after creating new chat
+                        await loadChatWindow();
+                        
+                        // Update chat list in sidebar
+                        chatManager.renderChatList();
+                        
+                        // Re-bind message events after creating new chat
+                        chatManager.rebindMessageEvents();
+                    }
+                }
+            });
+            
+            renderFeatherIcons();
+        } catch (error) {
+            console.error('Error loading welcome screen:', error);
+            mainContentAreaEl.innerHTML = `
+                <div class="error-message">
+                    <h2>Welcome to Instructor Chat</h2>
+                    <p>Click the button below to start a new chat session.</p>
+                    <button class="welcome-add-btn" onclick="if(window.chatManager) { window.chatManager.createNewChat().then(async result => { if(result.success) { await window.loadChatWindow(); window.chatManager.renderChatList(); } }); }">
+                        Start New Chat
+                    </button>
+                </div>
+            `;
+        }
+    };
+
+    const showChatContent = async () => {
+        // Ensure feature sidebar is collapsed when in chat mode
+        collapseFeatureSidebar();
+        
+        //START DEBUG LOG : DEBUG-CODE(009)
+        console.log('📱 Chat mode: Feature sidebar collapsed, chat list activated');
+        //END DEBUG LOG : DEBUG-CODE(009)
+        
+        // Show chat list (slides in from left to right)
+        if (chatListEl) {
+            chatListEl.classList.add('active');
+        }
+        
+        // Initialize ChatManager if not already done
+        if (!chatManager) {
+            await initializeChatManager();
+        } else {
+            // Update UI if ChatManager already exists
+            updateChatUI();
+        }
+    }
 
     //set custom windows listener on onboarding
     window.addEventListener('onboardingComplete', () => {

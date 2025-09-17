@@ -11,27 +11,6 @@
 
 /* ======== CHAT MENU STYLES ========== */
 
-/* Chat Menu - Instructor Mode */
-.sidebar-content .chat-menu {
-    flex: 1;
-    background-color: var(--color-chbe-green);
-    border-radius: 10px;
-    border: 1px solid var(--border-color);
-    margin: 0px 0px 0px 5px;
-    width: calc(100% - 38px);
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    height: 100%;
-}
-
-.sidebar-content .chat-menu .add-chat-box {
-    display: flex;
-    flex-direction: column;
-    padding: 10px;
-    border-bottom: 1px solid var(--border-color);
-    flex-shrink: 0;
-}
 
 .add-chat-box .add-chat-btn {
     background-color: transparent;
