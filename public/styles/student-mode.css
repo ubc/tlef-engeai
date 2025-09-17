@@ -44,26 +44,19 @@ body {
     border-radius: 10px;
     border: 1px solid var(--border-color);
     width: 270px;
-    flex: 0 0 270px;    /* prevent shrinking when content grows */
-    min-width: 270px;   /* keep intended width unless explicitly collapsed */
     background-color: var(--background-2);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
     padding: 0.75rem;
-    animation: slideInLeft 0.6s forwards;
-    opacity: 0;
-    transition: width 0.25s ease, padding 0.25s ease;
+    transition: width 0.25s, padding 0.25s;
     
 }
 
 /* Collapsed sidebar to widen main chat area while keeping message content max width constant */
 .sidebar.collapsed {
     width: 56px;
-    flex: 0 0 56px;     /* collapsed width fixed */
-    min-width: 56px;
     padding: 0.5rem;
-    transition: width 0.25s ease, padding 0.25s ease;
 }
 
 .sidebar.collapsed .logo-text,

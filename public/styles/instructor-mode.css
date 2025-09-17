@@ -31,33 +31,59 @@ body {
 }
 
 .instructor-sidebar {
-    width: 270px;
-    margin: 10px 5px 10px 10px;
-    padding: 0.75rem;
-    background-color: var(--background-2);
+    display: flex;
+    flex-direction: column;
+}
+
+.instructor-feature-sidebar {
     display: flex;
     flex-direction: column;
     animation: slideLeft 0.6s forwards;
+    padding: 0.75rem;
+    width: 270px;
+    margin: 10px 5px 10px 10px;
     border-radius: 10px;
     border: 1px solid var(--border-color);
+    background-color: var(--background-2);
     transition: width 0.25s, padding 0.25s;
-    height: calc(100vh - 20px) ; 
-    /* account for the margin */
+    height: calc(100% - 20px);
 }
 
 .sidebar-main-content {
-    flex: 1;
     display: flex;
     flex-direction: column;
     min-height: 0;
 }
 
-.instructor-sidebar.collapsed {
-    width: 56px;
+
+.instructor-feature-sidebar.collapsed {
     padding: 0.5rem;
 }
 
-.instructor-sidebar .logo-box {
+/* Error message styling */
+.error-message {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-color);
+}
+
+.error-message h2 {
+    color: var(--error-color, #e74c3c);
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+}
+
+.error-message p {
+    font-size: 1rem;
+    opacity: 0.8;
+}
+
+.instructor-feature-sidebar .logo-box {
     background-color: var(--color-chbe-green);
     color: white;
     padding: 0.75rem;
@@ -94,7 +120,7 @@ body {
     margin: 0;
 }
 
-.instructor-sidebar .sidebar-collapse-icon {
+.instructor-feature-sidebar .sidebar-collapse-icon {
     background-color: transparent;
     margin:10px 0px 0px 0px ;
     color: var(--text-secondary) ;
@@ -210,20 +236,6 @@ body {
     display: none;
 }
 
-/* Chat menu collapsed state for instructor mode */
-.instructor-sidebar.collapsed .add-chat-btn span {
-    display: none; /* hide text when collapsed */
-}
-
-.instructor-sidebar.collapsed .add-chat-btn::before {
-    content: "+"; /* show just + when collapsed */
-}
-
-.instructor-sidebar.collapsed .add-chat-btn {
-    justify-content: center;
-}
-
-/* Chat menu styles moved to chat-feature.css */
 
 #main-content-area {
     flex-grow: 1;
@@ -232,7 +244,7 @@ body {
 }
 
 /* Hide instructor sidebar during onboarding */
-.onboarding-active .instructor-sidebar {
+.onboarding-active .instructor-feature-sidebar {
     display: none;
 }
 

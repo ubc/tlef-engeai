@@ -4,24 +4,20 @@ import { initializeDocumentsPage } from "./feature/documents.js";
 import { renderOnCourseSetup } from "./onboarding/course-setup.js";
 import { renderDocumentSetup } from "./onboarding/document-setup.js";
 import { initializeFlagReports } from "./feature/reports.js";
-import { showChatCreationErrorModal } from "./modal-overlay.js";
-import { ChatManager } from "./feature/chat.js";
-
-// LaTeX rendering functions are now handled by ChatManager
 
 const enum StateEvent {
-    Chat,
     Report,
     Monitor,
-    Documents
+    Documents,
+    Chat
 }
 
 let currentClass : activeCourse =
 {
     id: '',
     date: new Date(),
-    courseSetup : false,
-    contentSetup : false,
+    courseSetup : true,
+    contentSetup : true,
     courseName:'',
     instructors: [
     ],
@@ -136,9 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const sidebarCollapseButton = document.querySelector('.sidebar-collapse-icon');
     const sidebarContentEl = document.getElementById('sidebar-content');
     const mainContentAreaEl = document.getElementById('main-content-area');
-    const sideBarAddChatBtn = document.getElementById('add-chat-btn');
-    const chatMenuEl = document.getElementById('chat-menu');
-    const chatListEl = document.getElementById('chat-list-ul');
+    const instructorFeatureSidebarEl = document.querySelector('.instructor-feature-sidebar');
 
     // Current State
     let currentState : StateEvent = StateEvent.Documents;
@@ -146,36 +140,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- STATE MANAGEMENT ----
     let isSidebarCollapsed: boolean = false;
     
-    // Initialize ChatManager
-    const chatManager = ChatManager.getInstance({
-        isInstructor: true,
-        userContext: currentClass,
-        onModeSpecificCallback: (action: string, data?: any) => {
-            if (action === 'sidebar-collapse') {
-                // Handle sidebar collapse logic for chat mode
-                const chatMenu = getChatMenu();
-                if (chatMenu) {
-                    if (isSidebarCollapsed) {
-                        chatMenu.style.display = 'none';
-                    } else {
-                        chatMenu.style.display = 'block';
-                    }
-                }
-            }
-        }
-    });
-    
-    // Initialize the chat manager
-    chatManager.initialize();
-    const chatStateEl = document.getElementById('chat-state');
     const reportStateEl = document.getElementById('report-state');
     const monitorStateEl = document.getElementById('monitor-state');
     const documentsStateEl = document.getElementById('documents-state');
+    const chatStateEl = document.getElementById('chat-state');
 
     chatStateEl?.addEventListener('click', () => {
-        if(currentState !== StateEvent.Chat) {
-            currentState = StateEvent.Chat;
-            updateUI();
+        // Show error message for chat feature
+        if (mainContentAreaEl) {
+            mainContentAreaEl.innerHTML = `
+                <div class="error-message">
+                    <h2>Feature Not Available</h2>
+                    <p>Chat feature is not available in instructor mode.</p>
+                </div>
+            `;
         }
     });
 
@@ -248,27 +226,19 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update the collapse state tracking
             isSidebarCollapsed = sidebarEl.classList.contains('collapsed');
             
-            if (currentState === StateEvent.Chat) {
-                // Use ChatManager callback for sidebar collapse handling
-                chatManager.callModeSpecificCallback('sidebar-collapse', { isCollapsed: isSidebarCollapsed });
-            }
-            else {
-                if(!sidebarMenuListEl) return;
-                sidebarMenuListEl.classList.toggle('collapsed');
-            }
+            if(!sidebarMenuListEl) return;
+            sidebarMenuListEl.classList.toggle('collapsed');
+            
         } );
     }
     
     sidebarCollapseToggle();
 
     const loadComponent = async (
-        componentName :'welcome-screen' 
-                        | 'chat-window' 
-                        | 'report-instructor' 
+        componentName :'report-instructor' 
                         | 'monitor-instructor' 
                         | 'documents-instructor' 
                         | 'report-history' 
-                        | 'disclaimer'
                         | 'course-setup'
                         | 'document-setup'
         ) => {
@@ -276,14 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const html = await loadComponentHTML(componentName);
             mainContentAreaEl.innerHTML = html;
-            if (componentName === 'welcome-screen') {
-                attachWelcomeScreenListeners();
-            }
-            else if (componentName === 'chat-window'){
-                // Rebind message events after chat window is loaded
-                chatManager.bindMessageEvents();
-            }
-            else if (componentName === 'documents-instructor') {
+            if (componentName === 'documents-instructor') {
                 initializeDocumentsPage(currentClass);
             }
             else if (componentName === 'report-instructor') {
@@ -303,8 +266,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const getChatMenu = () => document.getElementById('chat-menu');
-
     const updateUI = () => {
 
         // console.log("updateUI is called");
@@ -320,52 +281,17 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        if ( currentState === StateEvent.Chat ) {
-
-            if (!sidebarMenuListEl) return;
-            // Only collapse the menu list if sidebar is not manually collapsed
-            if (!isSidebarCollapsed && !sidebarMenuListEl.classList.contains('collapsed')) {
-                sidebarMenuListEl.classList.toggle('collapsed');
-            } else if (isSidebarCollapsed) {
-                // Ensure menu list is collapsed if sidebar is manually collapsed
-                sidebarMenuListEl.classList.add('collapsed');
-            }
-            
-            const chats = chatManager.getChats();
-            if (chats.length === 0) {
-                loadComponent('welcome-screen');
-
-                // Ensure chat menu is attached and visible
-                const cm = getChatMenu();
-                if (sidebarContentEl && cm && !sidebarContentEl.contains(cm)) {
-                    sidebarContentEl.appendChild(cm);
-                }
-                if (cm && !isSidebarCollapsed) cm.style.display = 'block';
-            }
-            else{
-                loadComponent('chat-window');
-
-                //activate chat menu when the state is at chat
-                const cm = getChatMenu();
-                if (sidebarContentEl && cm && !sidebarContentEl.contains(cm)) {
-                    sidebarContentEl.appendChild(cm);
-                }
-                if (cm) cm.style.display = 'block';
-
-                chatManager.renderActiveChat();
-            }
-        }
-        else if ( currentState === StateEvent.Report){
+        if ( currentState === StateEvent.Report){
             loadComponent('report-instructor');
-            sidebarNoChat();
+            updateSidebarState();
         }
         else if ( currentState === StateEvent.Monitor){
             loadComponent('monitor-instructor');
-            sidebarNoChat();
+            updateSidebarState();
         }
         else if ( currentState === StateEvent.Documents){
             loadComponent('documents-instructor');
-            sidebarNoChat();
+            updateSidebarState();
         }
     }
 
@@ -418,7 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     
     
-    const sidebarNoChat = () => {
+    const updateSidebarState = () => {
         if (sidebarMenuListEl) {
             if (isSidebarCollapsed) {
                 sidebarMenuListEl.classList.add('collapsed');
@@ -426,57 +352,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 sidebarMenuListEl.classList.remove('collapsed');
             }
         }
-        const cm = getChatMenu();
-        if (cm) cm.style.display = 'none';
-        // Do not remove the chat-menu from the DOM; keep it mounted for quick return to Chat
     }
 
-    // Scroll to bottom is now handled by ChatManager
-
-    // // --- EVENT LISTENER ATTACHMENT ---
 
     //set custom windows listener on onboarding
     window.addEventListener('onboardingComplete', () => {
         console.log('current class is : ', JSON.stringify(currentClass));
         updateUI();
     })
-
-    const attachWelcomeScreenListeners = () => {
-        const welcomeBtn = document.getElementById('welcome-add-chat-btn');
-        if (!welcomeBtn) return;
-        welcomeBtn.addEventListener('click', async () => {
-            const result = await chatManager.createNewChat();
-            if (result.success) {
-                chatManager.renderActiveChat();
-                chatManager.renderChatList();
-                chatManager.scrollToBottom();
-                updateUI();
-            } else {
-                await showChatCreationErrorModal(result.error || 'Unknown error occurred');
-            }
-        });
-    };
-
-    // Chat window listeners are now handled by ChatManager
-    const attachChatWindowListeners = () => {
-        // This function is kept for compatibility but ChatManager handles all chat events
-    };
-
-
-    const sideBarAddChatListeners = () => {
-        if (!sideBarAddChatBtn) return;
-        sideBarAddChatBtn.addEventListener('click', async () => {
-            const result = await chatManager.createNewChat();
-            if (result.success) {
-                chatManager.renderActiveChat();
-                chatManager.renderChatList();
-                chatManager.scrollToBottom();
-                updateUI();
-            } else {
-                await showChatCreationErrorModal(result.error || 'Unknown error occurred');
-            }
-        });
-    }
 
 
     const toggleArtefactPanel = () => {
