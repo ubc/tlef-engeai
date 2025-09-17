@@ -550,10 +550,12 @@ export class ChatManager {
 
     /**
      * Public method to re-bind message events (useful after DOM changes)
+     * Note: Only re-binds message events, not chat list events to prevent duplicate listeners
      */
     public rebindMessageEvents(): void {
         this.bindMessageEvents();
-        this.bindChatListEvents();
+        // Don't rebind chat list events to prevent duplicate event listeners
+        // Chat list events are bound once during initialization and don't need rebinding
     }
 
     public bindMessageEvents(): void {
@@ -684,8 +686,16 @@ export class ChatManager {
                 return; // Don't update UI if deletion failed
             }
         }
+        
+        // Update UI after deletion
         this.renderActiveChat();
         this.renderChatList();
+        
+        // Notify instructor mode that a chat was deleted
+        this.callModeSpecificCallback('chat-deleted', { 
+            remainingChats: this.chats.length,
+            hasChats: this.chats.length > 0 
+        });
     }
 
     private createChatListItem(chat: Chat): HTMLLIElement {
@@ -722,6 +732,12 @@ export class ChatManager {
             try {
                 await this.deleteChat(chat.id);
                 this.renderChatList();
+                
+                // Notify instructor mode that a chat was deleted from the list
+                this.callModeSpecificCallback('chat-deleted', { 
+                    remainingChats: this.chats.length,
+                    hasChats: this.chats.length > 0 
+                });
             } catch (error) {
                 console.error('Failed to delete chat:', error);
                 // Show user-friendly error message

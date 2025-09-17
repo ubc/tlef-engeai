@@ -90,7 +90,6 @@ body {
 .instructor-sidebar .chat-list .add-chat-box {
     display: flex;
     flex-direction: column;
-    border-bottom: 1px solid var(--border-color);
     flex-shrink: 0;
 }
 
@@ -105,6 +104,7 @@ body {
     justify-content: center;
     align-items: center;
     transition: all 0.1s ease-in-out;
+    margin: 0px 0px 10px 0px;
 }
 
 .instructor-sidebar .chat-list .add-chat-btn:hover {

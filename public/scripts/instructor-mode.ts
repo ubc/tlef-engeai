@@ -468,6 +468,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         //START DEBUG LOG : DEBUG-CODE(015)
                         console.log('🆕 New chat created from sidebar, loading chat window');
                         //END DEBUG LOG : DEBUG-CODE(015)
+                    } else if (action === 'chat-deleted') {
+                        // Handle chat deletion - update main content area
+                        console.log('🗑️ Chat deleted, updating main content area');
+                        loadChatWindow();
                     }
                 }
             });
@@ -498,6 +502,13 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     const loadChatWindow = async (): Promise<void> => {
         if (!mainContentAreaEl) return;
+        
+        // Check if there are actually chats to display
+        if (chatManager && chatManager.getChats().length === 0) {
+            console.log('🚫 No chats available, showing welcome screen instead of chat window');
+            showWelcomeScreen();
+            return;
+        }
         
         try {
             // Load the chat-window component

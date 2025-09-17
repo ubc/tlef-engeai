@@ -24,8 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- DOM ELEMENT SELECTORS ---
     const mainContentArea = document.getElementById('main-content-area');
-    const addChatBtn = document.getElementById('add-chat-btn');
-    const chatListEl = document.getElementById('chat-list-ul');
     const sidebarEl = document.querySelector('.sidebar') as HTMLElement | null;
     const sidebarHeaderEl = document.querySelector('.sidebar-header') as HTMLElement | null;
     const artefactCloseBtn = document.getElementById('close-artefact-btn');
