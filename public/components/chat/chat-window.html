@@ -1,41 +1,50 @@
 <!-- public/components/chat-window.html -->
-<div class="chat-window">
-    <link rel="stylesheet" href="/styles/chat-components/chat-window.css" />
-    <link rel="stylesheet" href="/styles/chat-components/message-menu.css" />
-    <link rel="stylesheet" href="/styles/chat-components/artefact.css" />
-    <div class="chat-header-blocker" aria-hidden="true"></div>
-    <header id="chat-header" class="chat-header">
-        <div id="chat-title" class="chat-title"></div>
-        <div class="chat-actions">
-            <button id="toggle-artefact-btn" class="icon-btn" title="Toggle Artefact (Whiteboard)" style="display:none"><i data-feather="monitor"></i></button>
-            <button id="pin-chat-btn" class="icon-btn" title="Star this chat"><i data-feather="star"></i></button>
-            <button id="delete-chat-btn" class="icon-btn" title="Delete this chat"><i data-feather="trash-2"></i></button>
+<div class="chat-window-container">
+    <div class="chat-window">
+        <link rel="stylesheet" href="/styles/chat-components/artefact.css" />
+        <div class="chat-header-blocker" aria-hidden="true"></div>
+        <header id="chat-header" class="chat-header">
+            <div id="chat-title" class="chat-title"></div>
+            <div class="chat-actions">
+                <button id="toggle-artefact-btn" class="icon-btn" title="Toggle Artefact (Whiteboard)" style="display:none"><i data-feather="monitor"></i></button>
+                <button id="pin-chat-btn" class="icon-btn" title="Star this chat"><i data-feather="star"></i></button>
+                <button id="delete-chat-btn" class="icon-btn" title="Delete this chat"><i data-feather="trash-2"></i></button>
+            </div>
+        </header>
+        <div id="message-area" class="message-area">
+            <!-- Messages will be injected here -->
         </div>
-    </header>
-    <div id="message-area" class="message-area">
-        <!-- Messages will be injected here -->
+
+        <footer id="chat-footer" class="chat-footer">
+            <div class="chat-footer-content">
+                <div class="input-area">
+                    <textarea id="chat-input" rows="1" placeholder="Enter your thoughts here!"></textarea>
+                    <button id="send-btn" class="send-btn"><i data-feather="arrow-up"></i></button>
+                </div>
+                <div id="disclaimer" class="disclaimer">
+                    EngE-AI can make mistakes. See usage <a href="#">information and policies</a>.
+                </div>
+            </div>
+        </footer>    
     </div>
-    
-    <!-- Artefact panel (hidden by default, slides from right) -->
+    <!-- Artefact panel (side-by-side with chat) -->
     <aside id="artefact-panel" class="artefact-panel" aria-hidden="true">
         <div class="artefact-header">
-            <h3>Artefact</h3>
-            <button id="close-artefact-btn" class="icon-btn" title="Close"><i data-feather="x"></i></button>
+            <h3>Diagram</h3>
+            <div class="artefact-header-actions">
+                <button id="download-artefact-btn" class="icon-btn" title="Download diagram"><i data-feather="download"></i></button>
+                <button id="close-artefact-btn" class="icon-btn" title="Close"><i data-feather="x"></i></button>
+            </div>
         </div>
         <div class="artefact-content">
-            <!-- Content will be loaded from /components/artefact.html -->
+            <div class="pan-zoom-container">
+                <div class="mermaid-viewport">
+                    <!-- Mermaid diagrams will be rendered here -->
+                </div>
+            </div>
         </div>
     </aside>
 
-    <footer id="chat-footer" class="chat-footer">
-        <div class="chat-footer-content">
-            <div class="input-area">
-                <textarea id="chat-input" rows="1" placeholder="Enter your thoughts here!"></textarea>
-                <button id="send-btn" class="send-btn"><i data-feather="arrow-up"></i></button>
-            </div>
-            <div id="disclaimer" class="disclaimer">
-                EngE-AI can make mistakes. See usage <a href="#">information and policies</a>.
-            </div>
-        </div>
-    </footer>    
 </div>
+
+

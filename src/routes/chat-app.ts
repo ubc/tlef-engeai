@@ -81,7 +81,8 @@ interface RetrievedDocument {
 interface initChatRequest {
     userID: string;
     courseName: string;
-    date: string;
+    date: Date;
+    chatId: string;
     initAssistantMessage: ChatMessage;
 }
 
@@ -385,7 +386,7 @@ class ChatApp {
         return assistantMessage;
     }
 
-    public initializeConversation(userID: string, courseName: string, date: string): initChatRequest {
+    public initializeConversation(userID: string, courseName: string, date: Date): initChatRequest {
         //create chatID from the user ID
         const chatId = this.chatIDGenerator.chatID(userID, courseName, date);
 
@@ -406,6 +407,7 @@ class ChatApp {
             userID: userID,
             courseName: courseName,
             date: date,
+            chatId: chatId,
             initAssistantMessage: initAssistantMessage
         }
         
@@ -422,15 +424,35 @@ class ChatApp {
             Your role is to help undergraduate university students understand course concepts by connecting their questions to the provided course materials. 
             Course materials will be provided to you within code blocks such as <course_materials>relevant materials here</course_materials>
 
-            When replying to student’s questions:
+            When replying to student's questions:
             1. Use the provided course materials to ask contextually relevant questions
             2. Reference the materials naturally using phrases like:
-              - In the module, it is discussed that...
-              - According to the course materials...
-              - The lecture notes explain that...
-            3. If the materials don't contain relevant information, indicate this (by saying things like “I was unable to find anything specifically relevant to this in the course materials, but I can still help based on my own knowledge.”) and ask contextually relevant socratic questions based on your general knowledge.
+                - In the module, it is discussed that...
+                - According to the course materials...
+                - The lecture notes explain that...
+            3. If the materials don't contain relevant information, indicate this (by saying things like "I was unable to find anything specifically relevant to this in the course materials, but I can still help based on my own knowledge.") and ask contextually relevant socratic questions based on your general knowledge.
 
-            If as part of your questions you need to include equations, please use LaTEX notation. If you need to output engineering flow diagrams, use MERMAID notation.
+            If as part of your questions you need to include equations, please use LaTeX notation. The system now supports LaTeX rendering, so you can use:
+            - Inline math: $E = mc^2$ for simple equations within text
+            - Block math: $$\int_0^\infty e^{-x} dx = 1$$ for centered equations
+            - Complex expressions: $$\frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u$$ for advanced mathematics
+
+            For engineering flow diagrams, process flows, or visual representations, use the following artefact format:
+            - Start with: <Artefact>
+            - Include your Mermaid diagram code
+            - End with: </Artefact>
+            - Continue with any additional text below the artefact
+
+            Example artefact usage:
+            <Artefact>
+            graph TD
+                A[Input] --> B[Process]
+                B --> C[Output]
+            </Artefact>
+            
+            The artefact will be displayed as an interactive diagram that students can view.
+
+            IMPORTANT: Never output the course materials tags <course_materials>...</course_materials> in your responses. Only use them internally for context.
         `;
 
         try {
@@ -467,7 +489,7 @@ class ChatApp {
         const defaultMessageText = "Hello! I am EngE-AI, your AI companion for chemical, environmental, and materials engineering. As this is week 2, in lectures this week we have learned about Thermodynamics in Electrochemistry. What would you like to discuss? Remember: I am designed to enhance your learning, not replace it, always verify important information.";
         
         // Generate message ID using the first 10 words, chatID, and current date
-        const currentDate = new Date().toISOString().split('T')[0];
+        const currentDate = new Date();
         const messageId = this.chatIDGenerator.messageID(defaultMessageText, chatId, currentDate);
         
         // Create the ChatMessage object
@@ -528,7 +550,7 @@ class ChatApp {
      */
     private addUserMessage(chatId: string, message: string, userId: string): ChatMessage {
         // Generate message ID
-        const currentDate = new Date().toISOString().split('T')[0];
+        const currentDate = new Date();
         const messageId = this.chatIDGenerator.messageID(message, chatId, currentDate);
         
         // Create the ChatMessage object
@@ -578,7 +600,7 @@ class ChatApp {
      */
     private addAssistantMessage(chatId: string, message: string): ChatMessage {
         // Generate message ID
-        const currentDate = new Date().toISOString().split('T')[0];
+        const currentDate = new Date();
         const messageId = this.chatIDGenerator.messageID(message, chatId, currentDate);
         
         // Create the ChatMessage object
@@ -639,6 +661,52 @@ class ChatApp {
         return this.conversations.has(chatId);
     }
 
+    /**
+     * Delete a chat and all its associated data
+     * 
+     * @param chatId - The chat ID to delete
+     * @returns boolean - True if deletion was successful, false otherwise
+     */
+    public deleteChat(chatId: string): boolean {
+        try {
+            // Validate chat exists before attempting deletion
+            if (!this.validateChatExists(chatId)) {
+                this.logger.warn(`Attempted to delete non-existent chat: ${chatId}`);
+                return false;
+            }
+
+            // Remove from conversations map
+            const conversationDeleted = this.conversations.delete(chatId);
+            
+            // Remove from chat history map
+            const historyDeleted = this.chatHistory.delete(chatId);
+            
+            // Remove from chatID array
+            const index = this.chatID.indexOf(chatId);
+            let arrayDeleted = false;
+            if (index > -1) {
+                this.chatID.splice(index, 1);
+                arrayDeleted = true;
+            }
+            
+            // Log the deletion
+            console.log(`🗑️ CHAT DELETION SUCCESSFUL:`);
+            console.log(`   Chat ID: ${chatId}`);
+            console.log(`   Conversation deleted: ${conversationDeleted}`);
+            console.log(`   History deleted: ${historyDeleted}`);
+            console.log(`   Array entry deleted: ${arrayDeleted}`);
+            console.log(`   Remaining active chats: ${this.chatID.length}`);
+            
+            this.logger.info(`Chat ${chatId} deleted successfully`);
+            return true;
+            
+        } catch (error) {
+            console.error(`🗑️ FAILED TO DELETE CHAT ${chatId}:`, error);
+            this.logger.error(`Failed to delete chat ${chatId}: ${error}`);
+            return false;
+        }
+    }
+
 
 }
 
@@ -658,49 +726,77 @@ router.post('/newchat', async (req: Request, res: Response) => {
     try {
         const userID = req.body.userID;
         const courseName = req.body.courseName;
-        const date = req.body.date;
+        const date = new Date(); // the date is the current date inside the backend
         
-        // Debug: Print all incoming new chat input
-        // console.log('\n🆕 NEW CHAT INPUT RECEIVED:');
-        // console.log('='.repeat(50));
-        // console.log(`User ID: ${userID}`);
-        // console.log(`Course Name: ${courseName}`);
-        // console.log(`Date: ${date}`);
-        // console.log(`Timestamp: ${new Date().toISOString()}`);
-        // console.log('='.repeat(50));
+        // Remove later : removeCode(001) - Logging new chat creation
+        console.log('\n🆕 NEW CHAT CREATION REQUEST:');
+        console.log('='.repeat(50));
+        console.log(`User ID: ${userID}`);
+        console.log(`Course Name: ${courseName}`);
+        console.log(`Date: ${date}`);
+        console.log(`Timestamp: ${new Date().toISOString()}`);
+        console.log('='.repeat(50));
+    
         
         if (!userID || !courseName || !date) {
-            // console.log('❌ VALIDATION FAILED: Missing required fields for new chat');
+            // Remove later : removeCode(001) - Logging validation failure
+            console.log('❌ VALIDATION FAILED: Missing required fields for new chat');
             return res.status(400).json({ 
                 success: false, 
                 error: 'Missing required fields: userID, courseName, and date are required' 
             });
         }
 
-        // Initialize conversation and get the response
-        const initResponse = chatApp.initializeConversation(userID, courseName, date);
+        // HARDCODED INITIAL MESSAGE FOR ARTEFACT TESTING
+        // TODO: Remove this when LLM integration is ready
+        const hardcodedInitialMessage = {
+            id: 'init-message-' + Date.now(),
+            sender: 'bot' as const,
+            userId: userID === 'instructor' ? 0 : parseInt(userID) || 1,
+            courseName: courseName,
+            text: `Hello! I'm EngE-AI, your AI companion for chemical, environmental, and materials engineering. 
+
+I can help you understand complex concepts through interactive diagrams and visual representations. For example, here's a process flow diagram:
+
+<Artefact>
+graph LR
+    A[Student Question] --> B[AI Analysis]
+    B --> C[Course Material Search]
+    C --> D[Diagram Generation]
+    D --> E[Interactive Response]
+    E --> F[Learning Enhancement]
+    
+    style A fill:#e3f2fd
+    style F fill:#e8f5e8
+    style D fill:#fff3e0
+</Artefact>
+
+This shows how I process your questions and provide visual learning aids. What would you like to explore today?`,
+            timestamp: Date.now()
+        };
         
-        // Generate the actual chatId using the IDGenerator singleton
-        const chatId = IDGenerator.getInstance().chatID(userID, courseName, date);
+        // Actually create the chat using the ChatApp class
+        const initRequest = chatApp.initializeConversation(userID, courseName, date);
+        const chatId = initRequest.chatId;
         
-        // Debug: Print response being sent
-        // console.log('\n📤 NEW CHAT RESPONSE SENT:');
-        // console.log('='.repeat(50));
-        // console.log(`Chat ID: ${chatId}`);
-        // console.log(`Success: true`);
-        // console.log(`Init Message: "${initResponse.initAssistantMessage.text}"`);
-        // console.log(`Init Message Length: ${initResponse.initAssistantMessage.text.length} characters`);
-        // console.log('='.repeat(50));
+        // Remove later : removeCode(001) - Logging successful chat creation
+        console.log('\n✅ NEW CHAT CREATED SUCCESSFULLY (HARDCODED):');
+        console.log('='.repeat(50));
+        console.log(`Generated Chat ID: ${chatId}`);
+        console.log(`Assistant Message ID: ${hardcodedInitialMessage.id}`);
+        console.log(`Assistant Message Preview: "${hardcodedInitialMessage.text.substring(0, 100)}..."`);
+        console.log('='.repeat(50));
         
-        // Return the complete response with the default message
+        // Return the complete response with the hardcoded message
         res.json({ 
             success: true, 
             chatId: chatId,
-            initAssistantMessage: initResponse.initAssistantMessage
+            initAssistantMessage: hardcodedInitialMessage
         });
         
     } catch (error) {
-        // console.error('Error creating new chat:', error);
+        // Remove later : removeCode(001) - Logging error
+        console.error('❌ ERROR CREATING NEW CHAT:', error);
         res.status(500).json({ 
             success: false, 
             error: 'Failed to create new chat' 
@@ -715,17 +811,6 @@ router.post('/:chatId', async (req: Request, res: Response) => {
     try {
         const { chatId } = req.params;
         const { message, userId, courseName } = req.body;
-        
-        // Debug: Print all incoming chat input
-        // console.log('\n📨 CHAT INPUT RECEIVED:');
-        // console.log('='.repeat(50));
-        // console.log(`Chat ID: ${chatId}`);
-        // console.log(`User ID: ${userId}`);
-        // console.log(`Course Name: ${courseName || 'Not provided'}`);
-        // console.log(`Message: "${message}"`);
-        // console.log(`Message Length: ${message ? message.length : 0} characters`);
-        // console.log(`Timestamp: ${new Date().toISOString()}`);
-        // console.log('='.repeat(50));
         
         // Validate input
         if (!message || !userId) {
@@ -757,45 +842,55 @@ router.post('/:chatId', async (req: Request, res: Response) => {
 
         // Send initial event to confirm connection
         res.write(`data: ${JSON.stringify({ type: 'connected', message: 'Streaming started' })}\n\n`);
-
-        // Send user message and stream response with RAG
-        let messageId = '';
-        let fullResponse = '';
         
-        const assistantMessage = await chatApp.sendUserMessageStream(
-            message,
-            chatId,
-            userId,
-            courseName || 'CHBE241', // Default course name if not provided
-            (chunk: string) => {
-                fullResponse += chunk;
-                // Send each chunk as a Server-Sent Event
-                res.write(`data: ${JSON.stringify({ 
-                    type: 'chunk', 
-                    content: chunk,
-                    messageId: messageId || 'pending'
-                })}\n\n`);
-            }
-        );
-        
-        // Set the messageId after the message is created
-        messageId = assistantMessage.id;
+        //START DEBUG LOG : DEBUG-CODE(018)
+        console.log('🚀 Starting AI streaming response for chat:', chatId);
+        console.log('📝 User message:', message);
+        console.log('👤 User ID:', userId);
+        console.log('📚 Course:', courseName);
+        //END DEBUG LOG : DEBUG-CODE(018)
 
-        // Debug: Print streaming response completion
-        // console.log('\n📤 STREAMING RESPONSE COMPLETED:');
-        // console.log('='.repeat(50));
-        // console.log(`Message ID: ${assistantMessage.id}`);
-        // console.log(`Response Length: ${assistantMessage.text.length} characters`);
-        // console.log(`Response Preview: "${assistantMessage.text.substring(0, 100)}${assistantMessage.text.length > 100 ? '...' : ''}"`);
-        // console.log(`Success: true`);
-        // console.log('='.repeat(50));
+        // REAL AI COMMUNICATION WITH STREAMING
+        try {
+            // Generate message ID for tracking
+            const messageId = 'ai-message-' + Date.now();
+            
+            // Use the ChatApp's streaming method for real AI communication
+            const assistantMessage = await chatApp.sendUserMessageStream(
+                message,
+                chatId,
+                userId,
+                courseName || 'CHBE241',
+                (chunk: string) => {
+                    // Stream each chunk to frontend in real-time
+                    res.write(`data: ${JSON.stringify({ 
+                        type: 'chunk', 
+                        content: chunk,
+                        messageId: messageId
+                    })}\n\n`);
+                }
+            );
 
-        // Send completion event
-        res.write(`data: ${JSON.stringify({ 
-            type: 'complete', 
-            message: assistantMessage,
-            success: true 
-        })}\n\n`);
+            // Send completion event with the full AI response
+            res.write(`data: ${JSON.stringify({ 
+                type: 'complete', 
+                message: assistantMessage,
+                success: true 
+            })}\n\n`);
+
+            console.log('✅ AI streaming completed successfully');
+            console.log('📊 Response length:', assistantMessage.text.length, 'characters');
+
+        } catch (aiError) {
+            console.error('❌ AI Communication Error:', aiError);
+            
+            // Send error event through stream
+            res.write(`data: ${JSON.stringify({ 
+                type: 'error', 
+                error: aiError instanceof Error ? aiError.message : 'AI communication failed',
+                success: false 
+            })}\n\n`);
+        }
 
         // Close the stream
         res.end();
@@ -891,6 +986,65 @@ router.get('/:chatId/message/:messageId', async (req: Request, res: Response) =>
         res.status(500).json({ 
             success: false, 
             error: 'Failed to get message' 
+        });
+    }
+});
+
+/**
+ * Delete a chat
+ * 
+ * @param chatId - The chat ID to delete
+ * @returns JSON response with deletion status
+ */
+router.delete('/:chatId', async (req: Request, res: Response) => {
+    try {
+        const { chatId } = req.params;
+        
+        console.log(`🗑️ DELETE CHAT REQUEST: ${chatId}`);
+        
+        // Validate input
+        if (!chatId) {
+            console.log(`🗑️ DELETE FAILED: Chat ID is required`);
+            return res.status(400).json({
+                success: false,
+                error: 'Chat ID is required'
+            });
+        }
+        
+        // Validate chat exists
+        if (!chatApp.validateChatExists(chatId)) {
+            console.log(`🗑️ DELETE FAILED: Chat ${chatId} not found`);
+            return res.status(404).json({
+                success: false,
+                error: 'Chat not found'
+            });
+        }
+        
+        console.log(`🗑️ Chat ${chatId} exists, proceeding with deletion`);
+        
+        // Delete the chat
+        const deleted = chatApp.deleteChat(chatId);
+        
+        if (deleted) {
+            console.log(`🗑️ DELETE SUCCESS: Chat ${chatId} deleted successfully`);
+            res.json({
+                success: true,
+                message: 'Chat deleted successfully',
+                chatId: chatId
+            });
+        } else {
+            console.log(`🗑️ DELETE FAILED: Failed to delete chat ${chatId}`);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to delete chat'
+            });
+        }
+        
+    } catch (error) {
+        console.error('🗑️ DELETE ERROR:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
         });
     }
 });

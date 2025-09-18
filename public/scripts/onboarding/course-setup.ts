@@ -959,6 +959,8 @@ async function handleDatabaseSubmission(state: OnboardingState, onBoardingCourse
             date: new Date(),
             courseSetup: true,
             contentSetup: false,
+            flagSetup: false,
+            monitorSetup: false,
             courseName: onBoardingCourse.courseName,
             instructors: onBoardingCourse.instructors,
             teachingAssistants: onBoardingCourse.teachingAssistants,

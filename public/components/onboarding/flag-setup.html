@@ -1,0 +1,531 @@
+<div class="onboarding flag-setup">
+    <link rel="stylesheet" href="/styles/instructor-components/onboarding.css">
+    <link rel="stylesheet" href="/styles/chat-components/flag-message.css">
+    <link rel="stylesheet" href="/styles/modal-overlay.css">
+    
+    <!-- Left Steps Panel -->
+    <div class="onboarding-steps-panel">
+        
+        <div class="steps-header">
+            <div class="logo-box">
+                <i data-feather="flag"></i>
+                <div class="logo-text">
+                    <span>EngE-AI</span>
+                    <p>Instructor Mode: Flag Management</p>
+                </div>
+            </div>
+        </div>
+
+        <h2>Learn how to manage student flags</h2>
+        
+        <div class="steps-list">
+            <!-- Step 1: Welcome -->
+            <div class="step-item" data-step="1">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">1</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Welcome</h3>
+                    <p>Introduction to flag management</p>
+                </div>
+            </div>
+
+            <!-- Step 2: Flag Types -->
+            <div class="step-item" data-step="2">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">2</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Flag Types</h3>
+                    <p>Understanding different flag categories</p>
+                </div>
+            </div>
+
+            <!-- Step 3: Resolving Flags -->
+            <div class="step-item" data-step="3">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">3</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Resolving Flags</h3>
+                    <p>How to resolve student flags</p>
+                </div>
+            </div>
+
+            <!-- Step 4: Editing Comments -->
+            <div class="step-item" data-step="4">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">4</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Edit Comments</h3>
+                    <p>How to edit flag responses</p>
+                </div>
+            </div>
+
+            <!-- Step 5: Congratulations -->
+            <div class="step-item" data-step="5">
+                <div class="step-indicator">
+                    <div class="step-circle current">
+                        <span class="step-number">5</span>
+                    </div>
+                </div>
+                <div class="step-content">
+                    <h3>Complete</h3>
+                    <p>Flag management setup finished</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Content Area -->
+    <div class="onboarding-content-area">
+        <!-- Help Menu -->
+        <div class="help-menu">
+            <button class="help-btn" id="helpBtn">
+                <i data-feather="info"></i>
+                <span>Help</span>
+            </button>
+        </div>
+
+        <!-- Step 1: Welcome -->
+        <div class="content-step active" id="content-step-1">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Welcome to Flag Management</h1>
+                    <p>Learn how to effectively manage and respond to student flags</p>
+                </div>
+                
+                <div class="welcome-content">
+                    <div class="welcome-message">
+                        <h3>Welcome, Professor! Let's enhance your teaching toolkit</h3>
+                        <p>As an instructor, you play a crucial role in maintaining the quality and accuracy of the AI tutor. This brief tutorial will help you master the flag management system, enabling you to provide valuable feedback that directly improves the learning experience for your students.</p>
+                        
+                        <div class="demo-explanation">
+                            <h4>Your instructor capabilities:</h4>
+                            <ul class="feature-list">
+                                <li>Review and respond to student concerns about AI responses</li>
+                                <li>Maintain academic integrity and engineering accuracy</li>
+                                <li>Provide guidance that improves the AI tutor's performance</li>
+                                <li>Edit and refine your responses for maximum impact</li>
+                                <li>Ensure a safe, inclusive, and educationally sound environment</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="demo-explanation" style="margin-top: 2rem; background: rgba(92, 138, 58, 0.05); border-left: 4px solid var(--color-chbe-green);">
+                            <h4>💡 Pro Tip:</h4>
+                            <p>Your responses to flagged messages directly influence the AI tutor's learning. Thoughtful feedback helps create a more accurate and helpful assistant for all your students.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: Flag Types -->
+        <div class="content-step" id="content-step-2">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Understanding Flag Types</h1>
+                    <p>Learn about the different categories of flags students can report</p>
+                </div>
+                
+                <div class="demo-section">
+                    <div class="demo-explanation">
+                        <h3>Flag Categories</h3>
+                        <p>Students can flag messages for various reasons. Understanding these categories helps you provide appropriate responses and improve the AI tutor's performance.</p>
+                    </div>
+                    
+                    <div class="demo-interactive">
+                        <h3>Flag Types Accordion</h3>
+                        
+                        <!-- Accordion for flag types -->
+                        <div class="flag-types-accordion">
+                            <div class="accordion-item">
+                                <button class="accordion-header" data-target="safety-incorrect">
+                                    <span class="accordion-icon">⚠️</span>
+                                    <span class="accordion-title">Safety & Incorrect Engineering</span>
+                                    <i data-feather="chevron-down" class="accordion-chevron"></i>
+                                </button>
+                                <div class="accordion-content" id="safety-incorrect">
+                                    <p>Students flag messages that contain wrong calculations, formulas, or engineering principles that could lead to safety issues or incorrect designs.</p>
+                                    <p><strong>Example:</strong> Incorrect stress calculations, wrong material properties, or unsafe design recommendations.</p>
+                                </div>
+                            </div>
+                            
+                            <div class="accordion-item">
+                                <button class="accordion-header" data-target="harassment-edi">
+                                    <span class="accordion-icon">🚫</span>
+                                    <span class="accordion-title">Harassment & EDI Violations</span>
+                                    <i data-feather="chevron-down" class="accordion-chevron"></i>
+                                </button>
+                                <div class="accordion-content" id="harassment-edi">
+                                    <p>Students flag messages that contain harassment or content violating Equity, Diversity, and Inclusion (EDI) principles.</p>
+                                    <p><strong>Example:</strong> Discriminatory language, inappropriate comments, or content that creates an unwelcoming environment.</p>
+                                </div>
+                            </div>
+                            
+                            <div class="accordion-item">
+                                <button class="accordion-header" data-target="off-topic">
+                                    <span class="accordion-icon">📝</span>
+                                    <span class="accordion-title">Off-Topic & Inappropriate</span>
+                                    <i data-feather="chevron-down" class="accordion-chevron"></i>
+                                </button>
+                                <div class="accordion-content" id="off-topic">
+                                    <p>Students flag responses that veer into personal opinions, political views, or non-academic discussions inappropriate for engineering education.</p>
+                                    <p><strong>Example:</strong> Political commentary, personal anecdotes unrelated to coursework, or non-engineering topics.</p>
+                                </div>
+                            </div>
+                            
+                            <div class="accordion-item">
+                                <button class="accordion-header" data-target="academic-dishonesty">
+                                    <span class="accordion-icon">🎓</span>
+                                    <span class="accordion-title">Academic Dishonesty</span>
+                                    <i data-feather="chevron-down" class="accordion-chevron"></i>
+                                </button>
+                                <div class="accordion-content" id="academic-dishonesty">
+                                    <p>Students flag content that appears copied from sources without attribution or encourages academic dishonesty.</p>
+                                    <p><strong>Example:</strong> Plagiarized content, encouraging cheating, or providing complete assignment solutions.</p>
+                                </div>
+                            </div>
+                            
+                            <div class="accordion-item">
+                                <button class="accordion-header" data-target="interface-bug">
+                                    <span class="accordion-icon">🐛</span>
+                                    <span class="accordion-title">Interface Bug</span>
+                                    <i data-feather="chevron-down" class="accordion-chevron"></i>
+                                </button>
+                                <div class="accordion-content" id="interface-bug">
+                                    <p>Students flag technical issues with the interface, broken functionality, or system errors.</p>
+                                    <p><strong>Example:</strong> Buttons not working, display issues, or system crashes during use.</p>
+                                </div>
+                            </div>
+                            
+                            <div class="accordion-item">
+                                <button class="accordion-header" data-target="other">
+                                    <span class="accordion-icon">💬</span>
+                                    <span class="accordion-title">Other Issues</span>
+                                    <i data-feather="chevron-down" class="accordion-chevron"></i>
+                                </button>
+                                <div class="accordion-content" id="other">
+                                    <p>Students can flag for other reasons not covered by the above categories, with space to provide specific details.</p>
+                                    <p><strong>Example:</strong> General feedback, suggestions for improvement, or concerns not fitting other categories.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3: Resolving Flags -->
+        <div class="content-step" id="content-step-3">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Resolving Student Flags</h1>
+                    <p>Learn how to review and resolve flagged messages</p>
+                </div>
+                
+                <div class="demo-section">
+                    <div class="demo-explanation">
+                        <h3>Flag Resolution Process</h3>
+                        <p>When students flag messages, they appear in your "Unresolved" section. You can review the flagged content and provide appropriate responses to help improve the AI tutor's performance.</p>
+                    </div>
+                    
+                    <div class="demo-interactive">
+                        <h3>Demo: Flag Resolution Interface</h3>
+                        
+                        <!-- Demo flag resolution interface with accordion style -->
+                        <div class="flag-resolution-demo">
+                            <!-- Unresolved Flag Example -->
+                            <div class="flag-card unresolved">
+                                <div class="flag-card-header" onclick="toggleFlagCard(this)">
+                                    <div class="flag-info">
+                                        <div class="flag-meta">
+                                            <span class="flag-type">⚠️ Safety & Incorrect Engineering</span>
+                                            <span class="flag-status unresolved">Unresolved</span>
+                                        </div>
+                                        <div class="flag-preview">
+                                            "The stress in a beam under bending is calculated as σ = M*y/I, where M is the moment..."
+                                        </div>
+                                    </div>
+                                    <div class="flag-toggle">
+                                        <i data-feather="chevron-down" class="chevron-icon"></i>
+                                    </div>
+                                </div>
+                                
+                                <div class="flag-card-content" style="display: none;">
+                                    <div class="flag-message">
+                                        <div class="flag-top">
+                                            <div class="flag-top-header">Original AI Response</div>
+                                            <div class="flag-message-content">
+                                                "The stress in a beam under bending is calculated as σ = M*y/I, where M is the moment, y is the distance from neutral axis, and I is the moment of inertia. For a rectangular beam, I = b³h/12."
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="flag-reason-box">
+                                            <div class="flag-reason-header">
+                                                <span class="flag-icon">🚩</span>
+                                                <span class="flag-reason-title">Student Flag Reason</span>
+                                            </div>
+                                            <div class="flag-reason-content">
+                                                <strong>Flag Type:</strong> Safety & Incorrect Engineering<br>
+                                                <strong>Student Comment:</strong> "The formula for moment of inertia of a rectangular beam is incorrect. It should be I = bh³/12, not I = b³h/12."
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="flag-bottom">
+                                            <div class="flag-bottom-header">Your Response</div>
+                                            <div class="flag-form">
+                                                <textarea class="demo-response-input" placeholder="Write your response to address this flag...">Thank you for catching this error! You're absolutely correct. The moment of inertia for a rectangular beam is indeed I = bh³/12, not I = b³h/12. This is an important correction as incorrect moment of inertia calculations can lead to serious structural safety issues. I've noted this for improvement.</textarea>
+                                                <div class="flag-actions">
+                                                    <button class="flag-submit">Mark as Resolved</button>
+                                                    <button class="flag-cancel">Save Draft</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Resolved Flag Example -->
+                            <div class="flag-card resolved">
+                                <div class="flag-card-header" onclick="toggleFlagCard(this)">
+                                    <div class="flag-info">
+                                        <div class="flag-meta">
+                                            <span class="flag-type">📝 Off-Topic & Inappropriate</span>
+                                            <span class="flag-status resolved">Resolved</span>
+                                        </div>
+                                        <div class="flag-preview">
+                                            "Right, well, like I said, most of this is political theater, but if you really need numbers..."
+                                        </div>
+                                    </div>
+                                    <div class="flag-toggle">
+                                        <i data-feather="chevron-down" class="chevron-icon"></i>
+                                    </div>
+                                </div>
+                                
+                                <div class="flag-card-content" style="display: none;">
+                                    <div class="flag-message">
+                                        <div class="flag-top">
+                                            <div class="flag-top-header">Original AI Response</div>
+                                            <div class="flag-message-content">
+                                                "Right, well, like I said, most of this is political theater, but if you really need numbers for your assignment, post-combustion capture typically costs around $50-100 per ton of CO2. The politicians love to talk about "green energy" and "carbon neutral" but honestly, it's mostly virtue signaling. The real issue is that these environmental regulations are hurting our economy and making engineering projects unnecessarily expensive. If you want my opinion, focus on practical solutions rather than following the latest climate change trends."
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="flag-reason-box">
+                                            <div class="flag-reason-header">
+                                                <span class="flag-icon">🚩</span>
+                                                <span class="flag-reason-title">Student Flag Reason</span>
+                                            </div>
+                                            <div class="flag-reason-content">
+                                                <strong>Flag Type:</strong> Off-Topic & Inappropriate<br>
+                                                <strong>Student Comment:</strong> "The response includes political opinions and personal views that are inappropriate for an engineering education context."
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="flag-bottom">
+                                            <div class="flag-bottom-header">Your Response</div>
+                                            <div class="flag-form">
+                                                <div class="resolved-response">
+                                                    "You're absolutely right to flag this response. The AI should focus on the technical aspects of carbon capture costs ($50-100 per ton of CO2 for post-combustion capture) without including political commentary. Engineering education should remain objective and focused on technical knowledge. Thank you for helping maintain the academic integrity of our platform."
+                                                </div>
+                                                <div class="flag-actions">
+                                                    <button class="flag-cancel">Edit Response</button>
+                                                    <button class="flag-submit">View Full Context</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 4: Editing Comments -->
+        <div class="content-step" id="content-step-4">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Editing Your Responses</h1>
+                    <p>Learn how to modify and update your flag responses</p>
+                </div>
+                
+                <div class="demo-section">
+                    <div class="demo-explanation">
+                        <h3>Response Management</h3>
+                        <p>You can edit your responses to flagged messages even after they've been resolved. This allows you to refine your feedback or add additional information as needed.</p>
+                    </div>
+                    
+                    <div class="demo-interactive">
+                        <h3>Demo: Editing Responses</h3>
+                        
+                        <div class="demo-edit-interface">
+                            <div class="demo-resolved-flag">
+                                <div class="demo-flag-summary">
+                                    <strong>Flag Type:</strong> Safety & Incorrect Engineering
+                                    <br><strong>Status:</strong> <span class="status-resolved">Resolved</span>
+                                    <br><strong>Original Response:</strong>
+                                </div>
+                                <div class="demo-original-response">
+                                    "Thank you for catching this error! You're absolutely correct about the moment of inertia formula."
+                                </div>
+                                <div class="demo-edit-actions">
+                                    <button class="demo-btn">Edit Response</button>
+                                    <button class="demo-btn secondary">View Full Context</button>
+                                </div>
+                            </div>
+                            
+                            <div class="demo-edit-form" style="display: none;">
+                                <h4>Edit Your Response</h4>
+                                <textarea class="demo-response-input">Thank you for catching this error! You're absolutely correct. The moment of inertia for a rectangular beam is indeed I = bh³/12, not I = b³h/12. This is an important correction as incorrect moment of inertia calculations can lead to serious structural safety issues. I've noted this for improvement.</textarea>
+                                <div class="demo-edit-actions">
+                                    <button class="demo-btn">Save Changes</button>
+                                    <button class="demo-btn secondary">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 5: Congratulations -->
+        <div class="content-step" id="content-step-5">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Flag Management Complete!</h1>
+                    <p>You're now ready to effectively manage student flags</p>
+                </div>
+                
+                <div class="completion-content">
+                    <div class="completion-message">
+                        <div class="success-icon">🏁</div>
+                        <h3>Congratulations!</h3>
+                        <p>You have successfully completed the flag management tutorial. You now understand how to effectively manage and respond to student flags in EngE-AI!</p>
+                        <ul class="completion-list">
+                            <li>Learned about different flag categories and their meanings</li>
+                            <li>Understood how to resolve flagged messages with appropriate responses</li>
+                            <li>Discovered how to edit and update your responses</li>
+                            <li>Gained insight into best practices for flag management</li>
+                        </ul>
+                        <p>You can now confidently manage student flags and help improve the AI tutor's performance through your feedback.</p>
+                    </div>
+                    
+                    <div class="next-steps">
+                        <h4>What's Next?</h4>
+                        <p>Your flag management capabilities are now active:</p>
+                        <ul>
+                            <li>Monitor the "Unresolved" section for new student flags</li>
+                            <li>Provide thoughtful responses to help improve AI performance</li>
+                            <li>Use flag data to identify patterns and areas for improvement</li>
+                            <li>Edit your responses as needed to provide better feedback</li>
+                            <li>Continue using the instructor dashboard to manage your course</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="onboarding-navigation">
+            <button class="nav-btn btn-back" id="backBtn" style="display: none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15,18 9,12 15,6"></polyline>
+                </svg>
+                Back
+            </button>
+            <button class="nav-btn btn-next" id="nextBtn">
+                Next
+                <i data-feather="chevron-right"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Help Content Templates (Hidden) -->
+    <div id="help-templates" style="display: none;">
+        <!-- Step 1 Help -->
+        <div id="help-step-1">
+            <p><strong>Welcome to Flag Management!</strong></p>
+            <p>This tutorial will teach you how to effectively manage student flags in EngE-AI. Flags help improve the AI tutor's performance by identifying areas that need attention.</p>
+            <p><strong>What you'll learn:</strong></p>
+            <ul>
+                <li>Understanding different types of student flags</li>
+                <li>How to resolve flags with appropriate responses</li>
+                <li>Editing and updating your responses</li>
+                <li>Best practices for flag management</li>
+            </ul>
+        </div>
+
+        <!-- Step 2 Help -->
+        <div id="help-step-2">
+            <p><strong>Understanding Flag Types</strong></p>
+            <p>Students can flag messages for various reasons. Each flag type helps identify different issues that need attention:</p>
+            <ul>
+                <li><strong>Safety & Incorrect Engineering:</strong> Wrong calculations or unsafe recommendations</li>
+                <li><strong>Harassment & EDI:</strong> Inappropriate or discriminatory content</li>
+                <li><strong>Off-Topic:</strong> Non-academic or inappropriate discussions</li>
+                <li><strong>Academic Dishonesty:</strong> Plagiarism or cheating encouragement</li>
+                <li><strong>Interface Bug:</strong> Technical issues with the system</li>
+                <li><strong>Other:</strong> Issues not covered by other categories</li>
+            </ul>
+        </div>
+
+        <!-- Step 3 Help -->
+        <div id="help-step-3">
+            <p><strong>Resolving Student Flags</strong></p>
+            <p>When students flag messages, they appear in your "Unresolved" section. To resolve a flag:</p>
+            <ol>
+                <li>Review the flagged message and the student's reason</li>
+                <li>Provide a thoughtful response addressing the issue</li>
+                <li>Click "Mark as Resolved" to complete the process</li>
+            </ol>
+            <p><strong>Tips for good responses:</strong></p>
+            <ul>
+                <li>Acknowledge the student's concern</li>
+                <li>Provide clear explanation or correction</li>
+                <li>Thank them for helping improve the system</li>
+            </ul>
+        </div>
+
+        <!-- Step 4 Help -->
+        <div id="help-step-4">
+            <p><strong>Editing Your Responses</strong></p>
+            <p>You can edit your responses even after they've been resolved:</p>
+            <ul>
+                <li>Find the resolved flag in your flag history</li>
+                <li>Click "Edit Response" to modify your feedback</li>
+                <li>Save your changes to update the response</li>
+            </ul>
+            <p>This is useful for refining your feedback or adding additional information as you learn more about the issue.</p>
+        </div>
+
+        <!-- Step 5 Help -->
+        <div id="help-step-5">
+            <p><strong>Flag Management Complete!</strong></p>
+            <p>Congratulations! You now have all the knowledge needed to effectively manage student flags.</p>
+            <p><strong>Remember:</strong></p>
+            <ul>
+                <li>Check your "Unresolved" section regularly</li>
+                <li>Provide thoughtful, constructive responses</li>
+                <li>Use flag data to identify improvement areas</li>
+                <li>Edit responses as needed to provide better feedback</li>
+            </ul>
+            <p>Your feedback helps continuously improve the AI tutor's performance for all students.</p>
+        </div>
+    </div>
+</div>

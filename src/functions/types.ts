@@ -60,6 +60,8 @@ export interface activeCourse {
     date : Date,
     courseSetup : boolean, 
     contentSetup : boolean,
+    flagSetup : boolean,
+    monitorSetup : boolean,
     courseName: string,
     instructors: string[],
     teachingAssistants: string[],
@@ -96,7 +98,7 @@ export interface ContentDivision {
  */
 export interface courseItem {
     id: string;
-    date: Date,
+    date: Date;
     title: string;
     courseName: string;
     divisionTitle: string;
@@ -150,6 +152,17 @@ export interface AdditionalMaterial {
 }
 
 /**
+ * Student data structure for chat integration
+ * TODO: Replace with proper user authentication system when backend user mechanism is implemented
+ */
+export interface Student {
+    id: string;
+    name: string;
+    courseAttended: string; // Default: "APSC 099" - can be changed when user system is implemented
+    userId: number; // Hardcoded for now - will be replaced with proper user authentication
+}
+
+/**
  * user in the database
  */
 export interface UserDB {
@@ -166,19 +179,14 @@ export interface UserDB {
     updatedAt: Date;
 }
 
-// Types for artefacts
-export interface Artefact {
-    type: 'mermaid';
-    source: string;
-    title?: string;
-}
 
 // Types for flag reports
 export interface FlagReport {
     id: string;
-    timestamp: string;
-    flagType: 'safety' | 'harassment' | 'inappropriate' | 'dishonesty' | 'interface bug' | 'other';
-    reportType: string;
+    courseName: string; // Added to support course-specific flag collections
+    date: Date;
+    flagType: 'innacurate_response' | 'harassment' | 'inappropriate' | 'dishonesty' | 'interface bug' | 'other';
+    reportType: string; // store the long explanation of the flag type
     chatContent: string;
     userId: number;
     status: 'unresolved' | 'resolved';

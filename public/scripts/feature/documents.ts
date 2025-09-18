@@ -874,7 +874,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const newContent: courseItem = {
             id: String(next),
             title: `New Session ${division.items.length + 1}`,
-            date: new Date(),
+                            date: new Date(),
             courseName: currentClass.courseName,
             divisionTitle: division.title,
             itemTitle: `New Session ${division.items.length + 1}`,

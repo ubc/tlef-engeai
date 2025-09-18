@@ -4,7 +4,7 @@ import path from 'path';
 import cors from 'cors';
 import chatAppRoutes from './routes/chat-app';
 import ragAppRoutes from './routes/RAG-App';
-import mongodbRoutes from './routes/mongodb';  // Import MongoDB routes
+import mongodbRoutes from './routes/mongo-app';  // Import MongoDB routes
 import { initializeDummyCourses } from './debug/dummy-courses.js';
 
 dotenv.config();

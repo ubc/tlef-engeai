@@ -15,57 +15,67 @@
     <link rel="stylesheet" href="/styles/chat-components/artefact.css">
     <link rel="stylesheet" href="/styles/modal-overlay.css">
     <link rel="stylesheet" href="/styles/instructor-components/documents.css">
+    <link rel="stylesheet" href="/styles/chat-components/latex-rendering.css">
+    <link rel="stylesheet" href="/styles/chat-components/chat-feature.css">
+    
+    <!-- KaTeX CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    
     <script src="https://unpkg.com/feather-icons"></script>
 </head>
 <body>
     <div class="main-dashboard">
         <aside class="instructor-sidebar">
-            <div class="sidebar-main-content" >
-                <div class="logo-box">
-                    <i data-feather="box"></i>
-                    <div class="logo-text">
-                        <span>EngE-AI</span>
-                        <p>Instructor Mode</p>
-                    </div>
-                </div>
-                <button class="sidebar-collapse-icon">
-                    <i data-feather="menu"></i>
-                </button>
-                <div class="sidebar-content" id="sidebar-content">
-                    <div class="sidebar-menu-list">
-                        <ul>
-                            <li id="documents-state" class="menu-list-item">
-                                <i data-feather="file-text"></i>
-                                <p>Document</p>
-                            </li>
-                            <li id="chat-state" class="menu-list-item">
-                                <i data-feather="message-circle"></i>
-                                <p>Chats</p>
-                            </li>
-                            <li id="report-state" class="menu-list-item">
-                                <i data-feather="alert-triangle"></i>
-                                <p>Reports</p>
-                            </li>
-                            <li id="monitor-state" class="menu-list-item">
-                                <i data-feather="monitor"></i>
-                                <p>Monitor</p>
-                            </li>
-                        </ul>
-                    </div>
-                    <div class="chat-menu" id="chat-menu">
-                        <div class="add-chat-box">
-                            <button class="add-chat-btn" id="add-chat-btn">
-                                <p>+ add new chat</p>
-                            </button>
+            <div class="instructor-feature-sidebar">
+                <div class="sidebar-main-content" >
+                    <div class="logo-box">
+                        <i data-feather="box"></i>
+                        <div class="logo-text">
+                            <span>EngE-AI</span>
+                            <p>Instructor Mode</p>
                         </div>
-                        <ul id="chat-list-ul" class="chat-list-ul">
-                            <!-- Chat items will be rendered here -->
-                        </ul>
+                    </div>
+                    <button class="sidebar-collapse-icon">
+                        <i data-feather="menu"></i>
+                    </button>
+                    <div class="sidebar-content" id="sidebar-content">
+                        <div class="sidebar-menu-list">
+                            <ul>
+                                <li id="documents-state" class="menu-list-item">
+                                    <i data-feather="file-text"></i>
+                                    <p>Document</p>
+                                </li>
+                                <li id="chat-state" class="menu-list-item">
+                                    <i data-feather="message-circle"></i>
+                                    <p>Chat with EngE-AI</p>
+                                </li>
+                                <li id="report-state" class="menu-list-item">
+                                    <i data-feather="alert-triangle"></i>
+                                    <p>Reports</p>
+                                </li>
+                                <li id="monitor-state" class="menu-list-item">
+                                    <i data-feather="monitor"></i>
+                                    <p>Monitor</p>
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="empty-footer">
+
+            
+            <!-- Chat menu component - INSIDE instructor-sidebar, OUTSIDE instructor-feature-sidebar YUHUUUUU  -->
+            <div class="chat-list" id="chat-list">
+                <div class="add-chat-box">
+                    <button class="add-chat-btn" id="add-chat-btn">
+                        <span>+ add new chat</span>
+                    </button>
+                </div>
+                <ul id="chat-list-ul" class="chat-list-ul">
+                    <!-- Chat items will be rendered here by ChatManager -->
+                </ul>
             </div>
+            
         </aside>
         <div id="main-content-area">
             <!-- content will be populated here -->
@@ -78,7 +88,12 @@
 
     
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-    <script>mermaid.initialize({ startOnLoad: true, theme: 'default' });</script>
+    <script>mermaid.initialize({ startOnLoad: false, theme: 'default' });</script>
+    
+    <!-- KaTeX JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+    
     <script type="module" src="/dist/public/scripts/instructor-mode.js"></script>
     <script>
         feather.replace(); // Initialize Feather Icons

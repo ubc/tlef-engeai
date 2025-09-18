@@ -68,6 +68,7 @@ export async function loadComponentHTML(
                     | 'documents-instructor'
                     | 'course-setup'
                     | 'document-setup'
+                    | 'flag-setup'
 ): Promise<string> {
 
     let response: Response;
@@ -91,6 +92,7 @@ export async function loadComponentHTML(
             break;
         case 'course-setup':
         case 'document-setup':
+        case 'flag-setup':
             response = await fetch(`/components/onboarding/${componentName}.html`);
             break;
         default:

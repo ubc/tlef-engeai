@@ -1,37 +1,44 @@
 /* styles/artefact.css */
 
-/* Artefact Panel (slide-in from right) */
+/* Chat Window Container - Controls side-by-side layout */
+.chat-window-container {
+  display: flex;
+  gap: 10px;
+  height: 100%;
+  width: 100%;
+}
+
+/* Chat window - takes full space when artefact is closed */
+.chat-window {
+  flex: 1 1 0;
+  min-width: 0;
+  transition: flex 0.35s ease;
+}
+
+/* When artefact is open, chat window shares space */
+.chat-window-container.artefact-open .chat-window {
+  flex: 1 1 0;
+  min-width: 300px;
+}
+
+/* Artefact Panel - Hidden by default */
 .artefact-panel {
-  position: relative;
-  width: 0;
   flex: 0 0 0;
-  overflow: hidden; /* hide when closed */
+  overflow: hidden;
   border: 1px solid var(--border-color);
   background: var(--background-2);
-  margin: 10px 10px 10px 5px;
   border-radius: 10px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.07);
-  /* Smooth expand from right to left */
-  max-width: 0;                 /* start collapsed */
-  transition: max-width 0.35s ease, flex-grow 0.35s ease;
+  transition: flex 0.35s ease;
+  min-width: 0;
+  opacity: 0;
 }
 
+/* When artefact is open, panel takes equal space */
 .artefact-panel.open {
-  /* When open, share space equally with main content area */
-  width: auto;
   flex: 1 1 0;
-  max-width: 100%;            /* allow panel to grow to its flex share smoothly */
-}
-
-/* When artefact is open, make main content area share equal width */
-.main-dashboard.artefact-open #main-content-area {
-  flex: 1 1 0;
-  margin: 10px 5px 10px 10px; /* symmetric margins */
-}
-
-.main-dashboard.artefact-open #main-content-area {
-  flex: 1 1 0;
-  margin: 10px 5px 10px 10px; /* symmetric margins */
+  min-width: 300px;
+  opacity: 1;
 }
 
 
@@ -56,10 +63,45 @@
   color: var(--text-primary);
 }
 
+.artefact-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .artefact-content {
   height: calc(100% - 48px);
-  overflow: auto; /* independent scrolling */
-  padding: 0.8rem;
+  overflow: hidden; /* Hide scrollbars, pan/zoom handles overflow */
+  padding: 0;
+  position: relative;
+}
+
+/* Pan/Zoom Container */
+.pan-zoom-container {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: grab;
+  position: relative;
+  background-color: white;
+  background-size: 20px 20px;
+  background-position: 0 0, 0 0;
+}
+
+.pan-zoom-container:active {
+  cursor: grabbing;
+}
+
+.mermaid-viewport {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center center;
+  transition: transform 0.2s ease;
+  padding: 1rem;
+  box-sizing: border-box;
 }
 
 /* Prevent content from popping in before width grows */
@@ -78,6 +120,66 @@
 /* Mermaid sizing inside panel */
 .artefact-content .mermaid { 
   margin: 0; 
+}
+
+/* Artefact Button Styles */
+.artefact-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--background-2);
+  color: var(--color-chbe-green);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.2s ease, transform 0.2s ease, color 0.2s ease;
+  box-shadow: 0 4px 15px rgba(92, 138, 58, 0.2);
+}
+
+.artefact-button:hover {
+  color: white;
+  background: var(--color-chbe-green);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(92, 138, 58, 0.2);
+}
+
+.artefact-button i {
+  width: 16px;
+  height: 16px;
+}
+
+/* Mermaid diagram container */
+.mermaid-diagram {
+  width: 100%;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mermaid-diagram .mermaid {
+  width: 100%;
+  height: auto;
+}
+
+/* Error state for mermaid */
+.mermaid-error {
+  padding: 1rem;
+  background: var(--background-3);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+}
+
+.mermaid-error pre {
+  background: var(--background-1);
+  padding: 0.5rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
 }
 
 
