@@ -111,7 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show the sidebar
         const sidebar = document.querySelector('.instructor-sidebar');
         if (sidebar) {
-            (sidebar as HTMLElement).style.display = 'block';
+            (sidebar as HTMLElement).style.display = 'flex';
         }
         
         // Switch to documents view
@@ -144,7 +144,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show the sidebar
         const sidebar = document.querySelector('.instructor-sidebar');
         if (sidebar) {
-            (sidebar as HTMLElement).style.display = 'block';
+            (sidebar as HTMLElement).style.display = 'flex';
         }
         
         // Switch to documents view (or default view)
