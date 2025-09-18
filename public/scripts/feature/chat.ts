@@ -18,32 +18,96 @@ import { ArtefactHandler, ArtefactData, getArtefactHandler } from "./artefact.js
 export function renderLatexInElement(text: string, element: HTMLElement): void {
     element.textContent = text;
     
-    if (typeof (window as any).renderMathInElement !== 'undefined') {
-        (window as any).renderMathInElement(element, {
-            delimiters: [
-                {left: '$$', right: '$$', display: true},
-                {left: '$', right: '$', display: false}
-            ],
-            throwOnError: false,
-            errorColor: '#cc0000',
-            strict: false
-        });
-    }
+    // Wait for KaTeX to be available and render
+    const renderMath = () => {
+        if (typeof (window as any).renderMathInElement !== 'undefined') {
+            try {
+                console.log('🧮 Rendering LaTeX in element:', element);
+                (window as any).renderMathInElement(element, {
+                    delimiters: [
+                        {left: '$$', right: '$$', display: true},
+                        {left: '$', right: '$', display: false}
+                    ],
+                    throwOnError: false,
+                    errorColor: '#cc0000',
+                    strict: false
+                });
+                console.log('✅ LaTeX rendering completed');
+            } catch (error) {
+                console.warn('❌ LaTeX rendering error:', error);
+            }
+        } else {
+            console.log('⏳ KaTeX not ready yet, retrying...');
+            // Retry after a short delay if KaTeX isn't loaded yet
+            setTimeout(renderMath, 100);
+        }
+    };
+    
+    renderMath();
 }
 
 export function renderLatexInMessage(messageElement: HTMLElement): void {
     const contentEl = messageElement.querySelector('.message-content') as HTMLElement;
-    if (contentEl && typeof (window as any).renderMathInElement !== 'undefined') {
-        (window as any).renderMathInElement(contentEl, {
-            delimiters: [
-                {left: '$$', right: '$$', display: true},
-                {left: '$', right: '$', display: false}
-            ],
-            throwOnError: false,
-            errorColor: '#cc0000',
-            strict: false
-        });
-    }
+    if (!contentEl) return;
+    
+    // Wait for KaTeX to be available and render
+    const renderMath = () => {
+        if (typeof (window as any).renderMathInElement !== 'undefined') {
+            try {
+                (window as any).renderMathInElement(contentEl, {
+                    delimiters: [
+                        {left: '$$', right: '$$', display: true},
+                        {left: '$', right: '$', display: false}
+                    ],
+                    throwOnError: false,
+                    errorColor: '#cc0000',
+                    strict: false
+                });
+            } catch (error) {
+                console.warn('LaTeX rendering error:', error);
+            }
+        } else {
+            // Retry after a short delay if KaTeX isn't loaded yet
+            setTimeout(renderMath, 100);
+        }
+    };
+    
+    renderMath();
+}
+
+/**
+ * Render LaTeX in content that may contain HTML (like artefact buttons)
+ * This function safely renders LaTeX without affecting HTML elements
+ */
+export function renderLatexInHtmlContent(element: HTMLElement): void {
+    // Wait for KaTeX to be available and render
+    const renderMath = () => {
+        if (typeof (window as any).renderMathInElement !== 'undefined') {
+            try {
+                console.log('🧮 Rendering LaTeX in HTML content:', element);
+                (window as any).renderMathInElement(element, {
+                    delimiters: [
+                        {left: '$$', right: '$$', display: true},
+                        {left: '$', right: '$', display: false}
+                    ],
+                    throwOnError: false,
+                    errorColor: '#cc0000',
+                    strict: false,
+                    // Skip HTML elements to avoid breaking artefact buttons
+                    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'button']
+                });
+                console.log('✅ LaTeX rendering in HTML content completed');
+            } catch (error) {
+                console.warn('❌ LaTeX rendering error in HTML content:', error);
+            }
+        } else {
+            console.log('⏳ KaTeX not ready for HTML content, retrying...');
+            // Retry after a short delay if KaTeX isn't loaded yet
+            setTimeout(renderMath, 100);
+        }
+    };
+    
+    renderMath();
 }
 
 /**
@@ -648,8 +712,8 @@ export class ChatManager {
                         if (hasArtefacts) {
                             // Use innerHTML for content with artefacts (contains button HTML)
                             (botContentElement as HTMLElement).innerHTML = content;
-                            // Still render LaTeX in the text parts
-                            renderLatexInMessage(botMessageElement as HTMLElement);
+                            // Render LaTeX safely without breaking HTML elements
+                            renderLatexInHtmlContent(botContentElement as HTMLElement);
                         } else {
                             // Use text rendering for normal content
                             renderLatexInElement(content, botContentElement as HTMLElement);
@@ -670,8 +734,8 @@ export class ChatManager {
                     if (result.hasArtefacts) {
                         // Use innerHTML for content with artefacts
                         (botContentElement as HTMLElement).innerHTML = result.processedText;
-                        // Still render LaTeX in the text parts
-                        renderLatexInMessage(botMessageElement as HTMLElement);
+                        // Render LaTeX safely without breaking HTML elements
+                        renderLatexInHtmlContent(botContentElement as HTMLElement);
                     } else {
                         // Use text rendering for normal content
                         renderLatexInElement(message.text, botContentElement as HTMLElement);
@@ -869,6 +933,9 @@ export class ChatManager {
                 parsed.elements.forEach(element => {
                     contentEl.appendChild(element);
                 });
+                
+                // Render LaTeX safely in the content that may contain HTML
+                renderLatexInHtmlContent(contentEl);
                 
                 // Re-render icons for any buttons that were added
                 renderFeatherIcons();

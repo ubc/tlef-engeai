@@ -37,6 +37,7 @@ body {
     margin: 10px 5px 10px 10px;
     border: 1px solid var(--border-color);
     background-color: var(--background-2);
+    box-shadow: 0 4px 15px rgba(92, 138, 58, 0.2);
 }
 
 .instructor-feature-sidebar {
@@ -94,23 +95,25 @@ body {
 }
 
 .instructor-sidebar .chat-list .add-chat-btn {
-    background-color: transparent;
+    background: var(--background-2);
+    color: var(--color-chbe-green);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
-    color: var(--border-color);
+    border-radius: 6px;
     cursor: pointer;
     height: 3rem;
     display: flex;
     justify-content: center;
     align-items: center;
-    transition: all 0.1s ease-in-out;
+    font-size: 0.9rem;
+    font-weight: 580;
+    transition: background-color 0.2s ease, transform 0.2s ease, color 0.2s ease;
     margin: 0px 0px 10px 0px;
 }
 
 .instructor-sidebar .chat-list .add-chat-btn:hover {
-    background-color: var(--color-chbe-green);
     color: white;
-    border-color: var(--color-chbe-green);
+    background: var(--color-chbe-green);
+    transform: translateY(-2px);
 }
 
 .instructor-sidebar .chat-list .chat-list-ul {

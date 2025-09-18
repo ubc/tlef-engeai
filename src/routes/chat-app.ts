@@ -844,136 +844,53 @@ router.post('/:chatId', async (req: Request, res: Response) => {
         res.write(`data: ${JSON.stringify({ type: 'connected', message: 'Streaming started' })}\n\n`);
         
         //START DEBUG LOG : DEBUG-CODE(018)
-        console.log('🚀 Starting hardcoded streaming response for chat:', chatId);
+        console.log('🚀 Starting AI streaming response for chat:', chatId);
+        console.log('📝 User message:', message);
+        console.log('👤 User ID:', userId);
+        console.log('📚 Course:', courseName);
         //END DEBUG LOG : DEBUG-CODE(018)
 
-        // HARDCODED RESPONSE FOR ARTEFACT TESTING
-        // TODO: Remove this when LLM integration is ready
-        const hardcodedResponse = `Looking at the binary phase diagram, explain why alloys with compositions near the eutectic point solidify differently compared to alloys in other regions of the diagram.
-
-<Artefact>
-graph TB
-    subgraph "Binary Phase Diagram Regions"
-        A[Liquid Phase<br/>Single Phase<br/>Above Liquidus Line]
-        B[α + Liquid<br/>Two Phase Region<br/>Between Liquidus & Solidus]
-        C[β + Liquid<br/>Two Phase Region<br/>Between Liquidus & Solidus]
-        D[α + β<br/>Two Phase Region<br/>Below Solidus Line]
-        E[Eutectic Point<br/>Composition: 61.9% Sn<br/>Temperature: 183°C]
-    end
-    
-    subgraph "Solidification Behavior"
-        F[Eutectic Alloy<br/>Composition = 61.9% Sn<br/>• Solidifies at constant temperature<br/>• Forms lamellar structure<br/>• α and β phases grow simultaneously<br/>• No composition change during solidification]
-        G[Off-Eutectic Alloy<br/>Composition ≠ 61.9% Sn<br/>• Solidifies over temperature range<br/>• Primary phase forms first<br/>• Composition changes during cooling<br/>• Segregation occurs]
-    end
-    
-    subgraph "Microstructure Development"
-        H[Eutectic Microstructure<br/>• Lamellar structure<br/>• Alternating α and β layers<br/>• Fine, uniform distribution<br/>• No dendritic growth]
-        I[Off-Eutectic Microstructure<br/>• Dendritic primary phase<br/>• Eutectic in interdendritic regions<br/>• Composition gradients<br/>• Coarse structure]
-    end
-    
-    subgraph "Thermodynamic Explanation"
-        J[Eutectic Point Properties<br/>• Lowest melting temperature<br/>• Three phases in equilibrium<br/>• L ⇌ α + β<br/>• Gibbs free energy minimum]
-        K[Off-Eutectic Behavior<br/>• Higher melting temperature<br/>• Two phases in equilibrium<br/>• L ⇌ α or L ⇌ β<br/>• Composition-dependent melting]
-    end
-    
-    subgraph "Practical Implications"
-        L[Eutectic Advantages<br/>• Low melting point<br/>• Good castability<br/>• Fine microstructure<br/>• Uniform properties]
-        M[Off-Eutectic Challenges<br/>• Higher melting point<br/>• Segregation problems<br/>• Non-uniform properties<br/>• Requires heat treatment]
-    end
-    
-    A --> B
-    A --> C
-    B --> D
-    C --> D
-    E --> F
-    E --> G
-    
-    F --> H
-    G --> I
-    
-    E --> J
-    B --> K
-    C --> K
-    
-    H --> L
-    I --> M
-    
-    subgraph "Cooling Paths"
-        N[Eutectic Cooling<br/>T1: All liquid<br/>T2: Eutectic reaction starts<br/>T3: Complete solidification<br/>Constant composition]
-        O[Off-Eutectic Cooling<br/>T1: All liquid<br/>T2: Primary phase forms<br/>T3: Eutectic reaction<br/>T4: Complete solidification<br/>Composition changes]
-    end
-    
-    F --> N
-    G --> O
-</Artefact>
-
-The key difference lies in the **solidification mechanism**:
-
-**Eutectic Alloys (61.9% Sn in Pb-Sn system):**
-- Solidify at a **constant temperature** (183°C)
-- Undergo **eutectic reaction**: L → α + β simultaneously
-- Form **lamellar microstructure** with alternating α and β layers
-- **No composition change** during solidification
-- Achieve **lowest possible melting point** for the system
-
-**Off-Eutectic Alloys:**
-- Solidify over a **temperature range**
-- **Primary phase** (α or β) forms first, depleting the liquid
-- **Composition changes** as solidification proceeds
-- Form **dendritic microstructure** with eutectic in interdendritic regions
-- Experience **segregation** due to composition gradients
-
-This difference is crucial for casting applications, as eutectic alloys provide better castability and more uniform properties due to their unique solidification behavior.`;
-
-        // Simulate streaming by sending individual chunks
-        let messageId = 'test-message-' + Date.now();
-        let fullResponse = '';
-        
-        // Split the response into chunks for realistic streaming
-        const words = hardcodedResponse.split(' ');
-        let currentChunk = '';
-        
+        // REAL AI COMMUNICATION WITH STREAMING
         try {
-            for (let i = 0; i < words.length; i++) {
-                currentChunk += words[i] + ' ';
-                
-                // Send chunk every 3-5 words to simulate streaming
-                if (i % 4 === 0 || i === words.length - 1) {
-                    // Send individual chunk (not accumulated)
+            // Generate message ID for tracking
+            const messageId = 'ai-message-' + Date.now();
+            
+            // Use the ChatApp's streaming method for real AI communication
+            const assistantMessage = await chatApp.sendUserMessageStream(
+                message,
+                chatId,
+                userId,
+                courseName || 'CHBE241',
+                (chunk: string) => {
+                    // Stream each chunk to frontend in real-time
                     res.write(`data: ${JSON.stringify({ 
                         type: 'chunk', 
-                        content: currentChunk, // Send only the current chunk
+                        content: chunk,
                         messageId: messageId
                     })}\n\n`);
-                    
-                    fullResponse += currentChunk; // Keep track of full response for final message
-                    currentChunk = '';
-                    
-                    // Add small delay to simulate streaming
-                    await new Promise(resolve => setTimeout(resolve, 100));
                 }
-            }
-        } catch (streamError) {
-            console.error('Error in streaming loop:', streamError);
-            throw streamError;
-        }
-        
-        // Create a mock assistant message
-        const assistantMessage = {
-            id: messageId,
-            sender: 'bot' as const,
-            userId: parseInt(userId) || 0,
-            courseName: courseName || 'CHBE241',
-            text: fullResponse,
-            timestamp: Date.now()
-        };
+            );
 
-        // Send completion event
-        res.write(`data: ${JSON.stringify({ 
-            type: 'complete', 
-            message: assistantMessage,
-            success: true 
-        })}\n\n`);
+            // Send completion event with the full AI response
+            res.write(`data: ${JSON.stringify({ 
+                type: 'complete', 
+                message: assistantMessage,
+                success: true 
+            })}\n\n`);
+
+            console.log('✅ AI streaming completed successfully');
+            console.log('📊 Response length:', assistantMessage.text.length, 'characters');
+
+        } catch (aiError) {
+            console.error('❌ AI Communication Error:', aiError);
+            
+            // Send error event through stream
+            res.write(`data: ${JSON.stringify({ 
+                type: 'error', 
+                error: aiError instanceof Error ? aiError.message : 'AI communication failed',
+                success: false 
+            })}\n\n`);
+        }
 
         // Close the stream
         res.end();
