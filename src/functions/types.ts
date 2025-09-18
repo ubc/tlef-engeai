@@ -179,12 +179,6 @@ export interface UserDB {
     updatedAt: Date;
 }
 
-// Types for artefacts
-export interface Artefact {
-    type: 'mermaid';
-    source: string;
-    title?: string;
-}
 
 // Types for flag reports
 export interface FlagReport {

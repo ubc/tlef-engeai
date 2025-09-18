@@ -32,6 +32,9 @@ body {
 
 #main-content-area {
     flex-grow: 1;
+    display: flex;
+    gap: 10px;
+    padding: 10px;
 }
 
 /* moved: artefact styles now in styles/artefact.css */
@@ -51,7 +54,7 @@ body {
     justify-content: space-between;
     padding: 0.75rem;
     transition: width 0.25s, padding 0.25s;
-    
+    box-shadow: 0 4px 15px rgba(92, 138, 58, 0.2);
 }
 
 /* Collapsed sidebar to widen main chat area while keeping message content max width constant */

@@ -28,30 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const sidebarHeaderEl = document.querySelector('.sidebar-header') as HTMLElement | null;
     const artefactCloseBtn = document.getElementById('close-artefact-btn');
 
-    // --- ESC KEY LISTENER FOR ARTEFACT PANEL ---
-    let artefactEscListener: ((e: KeyboardEvent) => void) | null = null;
-
-    const addArtefactEscListener = () => {
-        if (artefactEscListener) return; // Already added
-        
-        artefactEscListener = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                const panel = document.getElementById('artefact-panel');
-                if (panel && panel.classList.contains('open')) {
-                    toggleArtefactPanel();
-                }
-            }
-        };
-        
-        document.addEventListener('keydown', artefactEscListener);
-    };
-
-    const removeArtefactEscListener = () => {
-        if (artefactEscListener) {
-            document.removeEventListener('keydown', artefactEscListener);
-            artefactEscListener = null;
-        }
-    };
+    // Artefact functionality moved to chat.ts
 
     // --- COMPONENT LOADING ---
     const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'report-history') => {
@@ -98,21 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Scroll to bottom is now handled by ChatManager
 
-    // Ensure artefact close button always closes the panel
-    artefactCloseBtn?.addEventListener('click', () => {
-        const panel = document.getElementById('artefact-panel');
-        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
-        if (!panel) return;
-        if (panel.classList.contains('open')) {
-            panel.classList.add('closing');
-            setTimeout(() => {
-                panel.classList.remove('open');
-                panel.setAttribute('aria-hidden', 'true');
-                panel.classList.remove('closing');
-                if (dashboard) dashboard.classList.remove('artefact-open');
-            }, 180);
-        }
-    });
+    // Artefact functionality moved to chat.ts
 
     // Chat list rendering is now handled by ChatManager
 
@@ -161,66 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    // --- ARTEFACT PANEL TOGGLE ---
-    const toggleArtefactPanel = () => {
-        const panel = document.getElementById('artefact-panel');
-        const closeBtn = document.getElementById('close-artefact-btn');
-        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
-        if (!panel) return;
-        const willOpen = !panel.classList.contains('open');
-        if (willOpen) {
-            panel.classList.remove('closing');
-            panel.classList.add('open');
-            panel.setAttribute('aria-hidden', 'false');
-            // Add ESC listener when panel opens
-            addArtefactEscListener();
-        } else {
-            // add a brief closing class so content fades, then remove .open
-            panel.classList.add('closing');
-            // allow fade-out to play before collapsing
-            setTimeout(() => {
-                panel.classList.remove('open');
-                panel.setAttribute('aria-hidden', 'true');
-                panel.classList.remove('closing');
-                // Remove ESC listener when panel closes
-                removeArtefactEscListener();
-            }, 180);
-        }
-        // mark dashboard state so CSS can split widths evenly
-        if (dashboard) {
-            dashboard.classList.toggle('artefact-open', willOpen);
-        }
-
-        // Bind close button when present
-        if (closeBtn) {
-            closeBtn.onclick = () => toggleArtefactPanel();
-        }
-
-        // Lazy-load artefact content on open
-        if (willOpen) {
-
-            const container = panel.querySelector('.artefact-content') as HTMLElement | null;
-            if (container && container.childElementCount === 0) {
-                fetch('/components/artefact.html')
-                    .then(res => res.text())
-                    .then(html => {
-                        container.innerHTML = html;
-                        // Re-initialize Mermaid after content injection
-                        try {
-                            // @ts-ignore
-                            if (window.mermaid && typeof window.mermaid.init === 'function') {
-                                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                                // @ts-ignore
-                                window.mermaid.init(undefined, container.querySelectorAll('.mermaid'));
-                            }
-                        } catch {}
-                    })
-                    .catch(() => {
-                        container.innerHTML = '<p style="padding:8px;color:var(--text-secondary)">Failed to load artefact.</p>';
-                    });
-            }
-        }
-    };
+    // Artefact functionality moved to chat.ts
 
     // --- EVENT HANDLERS ---
     // Chat creation is now handled by ChatManager

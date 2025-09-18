@@ -242,39 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-    // --- ESC KEY LISTENER FOR ARTEFACT PANEL ---
-    let artefactEscListener: ((e: KeyboardEvent) => void) | null = null;
-
-    const addArtefactEscListener = () => {
-        if (artefactEscListener) return; // Already added
-        
-        artefactEscListener = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                const panel = document.getElementById('artefact-panel');
-                if (panel && panel.classList.contains('open')) {
-                    toggleArtefactPanel();
-                }
-            }
-        };
-        
-        document.addEventListener('keydown', artefactEscListener);
-    };
-
-
-    const removeArtefactEscListener = () => {
-        if (artefactEscListener) {
-            document.removeEventListener('keydown', artefactEscListener);
-            artefactEscListener = null;
-        }
-    };
-
-    const setupCloseArtefactBtn = () => {
-        const closeArtefactBtn = document.getElementById('close-artefact-btn');
-        if (!closeArtefactBtn) return;
-        closeArtefactBtn.addEventListener('click', ()=> {
-            toggleArtefactPanel();
-        })
-    }
+    // Artefact functionality moved to chat.ts
 
     //Ensure sidebar collpase toggle
     const sidebarCollapseToggle = () => {
@@ -699,60 +667,7 @@ document.addEventListener('DOMContentLoaded', () => {
     })
 
 
-    const toggleArtefactPanel = () => {
-        const panel = document.getElementById('artefact-panel');
-        const dashboard = document.querySelector('.main-dashboard') as HTMLElement | null;
-        if (!panel) return;
-        const willOpen = !panel.classList.contains('open');
-        if (willOpen) {
-            panel.classList.remove('closing');
-            panel.classList.add('open');
-            panel.setAttribute('aria-hidden', 'false');
-            // Add ESC listener when panel opens
-            addArtefactEscListener();
-        } else {
-            // add a brief closing class so content fades, then remove .open
-            panel.classList.add('closing');
-            // allow fade-out to play before collapsing
-            setTimeout(() => {
-                panel.classList.remove('open');
-                panel.setAttribute('aria-hidden', 'true');
-                panel.classList.remove('closing');
-                // Remove ESC listener when panel closes
-                removeArtefactEscListener();
-            }, 180);
-        }
-        // mark dashboard state so CSS can split widths evenly
-        if (dashboard) {
-            dashboard.classList.toggle('artefact-open', willOpen);
-        }
-
-        // Lazy-load artefact content on open
-        if (willOpen) {
-
-            const container = panel.querySelector('.artefact-content') as HTMLElement | null;
-            if (container && container.childElementCount === 0) {
-                fetch('/components/artefact.html')
-                    .then(res => res.text())
-                    .then(html => {
-                        container.innerHTML = html;
-                        setupCloseArtefactBtn();
-                        // Re-initialize Mermaid after content injection
-                        try {
-                            // @ts-ignore
-                            if (window.mermaid && typeof window.mermaid.init === 'function') {
-                                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                                // @ts-ignore
-                                window.mermaid.init(undefined, container.querySelectorAll('.mermaid'));
-                            }
-                        } catch {}
-                    })
-                    .catch(() => {
-                        container.innerHTML = '<p style="padding:8px;color:var(--text-secondary)">Failed to load artefact.</p>';
-                    });
-            }
-        }
-    };
+    // Artefact functionality moved to chat.ts
 
     updateUI();
 

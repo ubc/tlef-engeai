@@ -82,6 +82,7 @@ interface initChatRequest {
     userID: string;
     courseName: string;
     date: Date;
+    chatId: string;
     initAssistantMessage: ChatMessage;
 }
 
@@ -406,6 +407,7 @@ class ChatApp {
             userID: userID,
             courseName: courseName,
             date: date,
+            chatId: chatId,
             initAssistantMessage: initAssistantMessage
         }
         
@@ -422,19 +424,35 @@ class ChatApp {
             Your role is to help undergraduate university students understand course concepts by connecting their questions to the provided course materials. 
             Course materials will be provided to you within code blocks such as <course_materials>relevant materials here</course_materials>
 
-            When replying to student’s questions:
+            When replying to student's questions:
             1. Use the provided course materials to ask contextually relevant questions
             2. Reference the materials naturally using phrases like:
-              - In the module, it is discussed that...
-              - According to the course materials...
-              - The lecture notes explain that...
-            3. If the materials don't contain relevant information, indicate this (by saying things like “I was unable to find anything specifically relevant to this in the course materials, but I can still help based on my own knowledge.”) and ask contextually relevant socratic questions based on your general knowledge.
+                - In the module, it is discussed that...
+                - According to the course materials...
+                - The lecture notes explain that...
+            3. If the materials don't contain relevant information, indicate this (by saying things like "I was unable to find anything specifically relevant to this in the course materials, but I can still help based on my own knowledge.") and ask contextually relevant socratic questions based on your general knowledge.
 
             If as part of your questions you need to include equations, please use LaTeX notation. The system now supports LaTeX rendering, so you can use:
             - Inline math: $E = mc^2$ for simple equations within text
             - Block math: $$\int_0^\infty e^{-x} dx = 1$$ for centered equations
             - Complex expressions: $$\frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u$$ for advanced mathematics
-            If you need to output engineering flow diagrams, use MERMAID notation.
+
+            For engineering flow diagrams, process flows, or visual representations, use the following artefact format:
+            - Start with: <Artefact>
+            - Include your Mermaid diagram code
+            - End with: </Artefact>
+            - Continue with any additional text below the artefact
+
+            Example artefact usage:
+            <Artefact>
+            graph TD
+                A[Input] --> B[Process]
+                B --> C[Output]
+            </Artefact>
+            
+            The artefact will be displayed as an interactive diagram that students can view.
+
+            IMPORTANT: Never output the course materials tags <course_materials>...</course_materials> in your responses. Only use them internally for context.
         `;
 
         try {
@@ -729,26 +747,51 @@ router.post('/newchat', async (req: Request, res: Response) => {
             });
         }
 
-        // Initialize conversation and get the response
-        const initResponse = chatApp.initializeConversation(userID, courseName, date);
+        // HARDCODED INITIAL MESSAGE FOR ARTEFACT TESTING
+        // TODO: Remove this when LLM integration is ready
+        const hardcodedInitialMessage = {
+            id: 'init-message-' + Date.now(),
+            sender: 'bot' as const,
+            userId: userID === 'instructor' ? 0 : parseInt(userID) || 1,
+            courseName: courseName,
+            text: `Hello! I'm EngE-AI, your AI companion for chemical, environmental, and materials engineering. 
+
+I can help you understand complex concepts through interactive diagrams and visual representations. For example, here's a process flow diagram:
+
+<Artefact>
+graph LR
+    A[Student Question] --> B[AI Analysis]
+    B --> C[Course Material Search]
+    C --> D[Diagram Generation]
+    D --> E[Interactive Response]
+    E --> F[Learning Enhancement]
+    
+    style A fill:#e3f2fd
+    style F fill:#e8f5e8
+    style D fill:#fff3e0
+</Artefact>
+
+This shows how I process your questions and provide visual learning aids. What would you like to explore today?`,
+            timestamp: Date.now()
+        };
         
-        // Generate the actual chatId using the IDGenerator singleton
-        const chatId = IDGenerator.getInstance().chatID(userID, courseName, date);
+        // Actually create the chat using the ChatApp class
+        const initRequest = chatApp.initializeConversation(userID, courseName, date);
+        const chatId = initRequest.chatId;
         
         // Remove later : removeCode(001) - Logging successful chat creation
-        console.log('\n✅ NEW CHAT CREATED SUCCESSFULLY:');
+        console.log('\n✅ NEW CHAT CREATED SUCCESSFULLY (HARDCODED):');
         console.log('='.repeat(50));
         console.log(`Generated Chat ID: ${chatId}`);
-        console.log(`Assistant Message ID: ${initResponse.initAssistantMessage.id}`);
-        console.log(`Assistant Message Preview: "${initResponse.initAssistantMessage.text.substring(0, 100)}..."`);
-        console.log(`Total Active Chats: ${chatApp['chatID'].length}`);
+        console.log(`Assistant Message ID: ${hardcodedInitialMessage.id}`);
+        console.log(`Assistant Message Preview: "${hardcodedInitialMessage.text.substring(0, 100)}..."`);
         console.log('='.repeat(50));
         
-        // Return the complete response with the default message
+        // Return the complete response with the hardcoded message
         res.json({ 
             success: true, 
             chatId: chatId,
-            initAssistantMessage: initResponse.initAssistantMessage
+            initAssistantMessage: hardcodedInitialMessage
         });
         
     } catch (error) {
@@ -799,38 +842,67 @@ router.post('/:chatId', async (req: Request, res: Response) => {
 
         // Send initial event to confirm connection
         res.write(`data: ${JSON.stringify({ type: 'connected', message: 'Streaming started' })}\n\n`);
+        
+        //START DEBUG LOG : DEBUG-CODE(018)
+        console.log('🚀 Starting hardcoded streaming response for chat:', chatId);
+        //END DEBUG LOG : DEBUG-CODE(018)
 
-        // Send user message and stream response with RAG
-        let messageId = '';
+        // HARDCODED RESPONSE FOR ARTEFACT TESTING
+        // TODO: Remove this when LLM integration is ready
+        const hardcodedResponse = `Hello! I received your message: "${message}". Let me create a simple diagram for you.
+
+<Artefact>
+graph LR
+    A[Your Message] --> B[AI Processing]
+    B --> C[Response Generation]
+    C --> D[Diagram Creation]
+    D --> E[Final Answer]
+</Artefact>
+
+This shows how I process your messages and create visual aids to help you learn!`;
+
+        // Simulate streaming by sending individual chunks
+        let messageId = 'test-message-' + Date.now();
         let fullResponse = '';
         
-        const assistantMessage = await chatApp.sendUserMessageStream(
-            message,
-            chatId,
-            userId,
-            courseName || 'CHBE241', // Default course name if not provided
-            (chunk: string) => {
-                fullResponse += chunk;
-                // Send each chunk as a Server-Sent Event
-                res.write(`data: ${JSON.stringify({ 
-                    type: 'chunk', 
-                    content: chunk,
-                    messageId: messageId || 'pending'
-                })}\n\n`);
-            }
-        );
+        // Split the response into chunks for realistic streaming
+        const words = hardcodedResponse.split(' ');
+        let currentChunk = '';
         
-        // Set the messageId after the message is created
-        messageId = assistantMessage.id;
-
-        // Debug: Print streaming response completion
-        // console.log('\n📤 STREAMING RESPONSE COMPLETED:');
-        // console.log('='.repeat(50));
-        // console.log(`Message ID: ${assistantMessage.id}`);
-        // console.log(`Response Length: ${assistantMessage.text.length} characters`);
-        // console.log(`Response Preview: "${assistantMessage.text.substring(0, 100)}${assistantMessage.text.length > 100 ? '...' : ''}"`);
-        // console.log(`Success: true`);
-        // console.log('='.repeat(50));
+        try {
+            for (let i = 0; i < words.length; i++) {
+                currentChunk += words[i] + ' ';
+                
+                // Send chunk every 3-5 words to simulate streaming
+                if (i % 4 === 0 || i === words.length - 1) {
+                    // Send individual chunk (not accumulated)
+                    res.write(`data: ${JSON.stringify({ 
+                        type: 'chunk', 
+                        content: currentChunk, // Send only the current chunk
+                        messageId: messageId
+                    })}\n\n`);
+                    
+                    fullResponse += currentChunk; // Keep track of full response for final message
+                    currentChunk = '';
+                    
+                    // Add small delay to simulate streaming
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+            }
+        } catch (streamError) {
+            console.error('Error in streaming loop:', streamError);
+            throw streamError;
+        }
+        
+        // Create a mock assistant message
+        const assistantMessage = {
+            id: messageId,
+            sender: 'bot' as const,
+            userId: parseInt(userId) || 0,
+            courseName: courseName || 'CHBE241',
+            text: fullResponse,
+            timestamp: Date.now()
+        };
 
         // Send completion event
         res.write(`data: ${JSON.stringify({ 

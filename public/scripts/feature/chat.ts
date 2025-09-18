@@ -10,6 +10,7 @@
 import { loadComponentHTML, renderFeatherIcons } from "../functions/api.js";
 import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, CreateChatRequest } from "../functions/chat-api.js";
 import { Chat, ChatMessage, Student, activeCourse } from "../../../src/functions/types.js";
+import { ArtefactHandler, ArtefactData, getArtefactHandler } from "./artefact.js";
 
 /**
  * LaTeX Rendering Utility Functions
@@ -65,9 +66,11 @@ export class ChatManager {
     private activeChatId: string | null = null;
     private config: ChatManagerConfig;
     private isInitialized: boolean = false;
+    private artefactHandler: ArtefactHandler;
 
     private constructor(config: ChatManagerConfig) {
         this.config = config;
+        this.artefactHandler = getArtefactHandler();
     }
 
     /**
@@ -217,7 +220,7 @@ export class ChatManager {
      */
     public async sendMessage(
         text: string, 
-        onChunk?: (content: string) => void,
+        onChunk?: (content: string, hasArtefacts?: boolean) => void,
         onComplete?: (message: ChatMessage) => void,
         onError?: (error: string) => void
     ): Promise<void> {
@@ -296,7 +299,21 @@ export class ChatManager {
                                 
                                 if (data.type === 'chunk' && data.content) {
                                     accumulatedContent += data.content;
-                                    onChunk?.(accumulatedContent);
+                                    
+                                    // Process artefacts in streaming content
+                                    try {
+                                        const result = this.artefactHandler.processStreamingText(
+                                            accumulatedContent,
+                                            botMessageId
+                                        );
+                                        
+                                        // Pass both the processed content and HTML flag to the chunk handler
+                                        onChunk?.(result.processedText, result.hasArtefacts);
+                                    } catch (artefactError) {
+                                        console.error('Error processing artefacts during streaming:', artefactError);
+                                        // Fallback to original content if artefact processing fails
+                                        onChunk?.(accumulatedContent, false);
+                                    }
                                 } else if (data.type === 'complete' && data.message) {
                                     botMessage.text = data.message.text;
                                     onComplete?.(data.message);
@@ -621,28 +638,47 @@ export class ChatManager {
         
         this.sendMessage(
             text,
-            (content: string) => {
+            (content: string, hasArtefacts?: boolean) => {
                 // Find the bot message element by looking for the last bot message
                 const botMessage = activeChat.messages[activeChat.messages.length - 1];
                 if (botMessage && botMessage.sender === 'bot') {
                     const botMessageElement = document.getElementById(`msg-${botMessage.id}`);
                     const botContentElement = botMessageElement?.querySelector('.message-content');
                     if (botContentElement) {
-                        renderLatexInElement(content, botContentElement as HTMLElement);
+                        if (hasArtefacts) {
+                            // Use innerHTML for content with artefacts (contains button HTML)
+                            (botContentElement as HTMLElement).innerHTML = content;
+                            // Still render LaTeX in the text parts
+                            renderLatexInMessage(botMessageElement as HTMLElement);
+                        } else {
+                            // Use text rendering for normal content
+                            renderLatexInElement(content, botContentElement as HTMLElement);
+                        }
                         this.scrollToBottom();
                     }
                 }
-                // Re-render icons after each chunk update
+                // Re-render icons after each chunk update (important for artefact buttons)
                 renderFeatherIcons();
             },
             (message: ChatMessage) => {
                 const botMessageElement = document.getElementById(`msg-${message.id}`);
                 const botContentElement = botMessageElement?.querySelector('.message-content');
                 if (botContentElement) {
-                    renderLatexInElement(message.text, botContentElement as HTMLElement);
+                    // Check if the final message has artefacts
+                    const result = this.artefactHandler.processStreamingText(message.text, message.id);
+                    
+                    if (result.hasArtefacts) {
+                        // Use innerHTML for content with artefacts
+                        (botContentElement as HTMLElement).innerHTML = result.processedText;
+                        // Still render LaTeX in the text parts
+                        renderLatexInMessage(botMessageElement as HTMLElement);
+                    } else {
+                        // Use text rendering for normal content
+                        renderLatexInElement(message.text, botContentElement as HTMLElement);
+                    }
                     this.scrollToBottom();
                 }
-                // Re-render icons after message completion
+                // Re-render icons after message completion (important for artefact buttons)
                 renderFeatherIcons();
             },
             (error: string) => {
@@ -819,7 +855,32 @@ export class ChatManager {
         
         const contentEl = document.createElement('div');
         contentEl.className = 'message-content';
-        renderLatexInElement(text, contentEl);
+        
+        // Process artefacts for all messages (including initial messages)
+        if (sender === 'bot') {
+            const parsed = this.artefactHandler.parseArtefacts(text, messageId);
+            
+            //START DEBUG LOG : DEBUG-CODE(022)
+            console.log('🎨 createMessageElement - Parsed artefacts:', parsed);
+            //END DEBUG LOG : DEBUG-CODE(022)
+            
+            if (parsed.hasArtefacts) {
+                // Add all elements (text + buttons) directly to content
+                parsed.elements.forEach(element => {
+                    contentEl.appendChild(element);
+                });
+                
+                // Re-render icons for any buttons that were added
+                renderFeatherIcons();
+            } else {
+                // No artefacts, render normally
+                renderLatexInElement(text, contentEl);
+            }
+        } else {
+            // User messages don't have artefacts
+            renderLatexInElement(text, contentEl);
+        }
+        
         messageWrapper.appendChild(contentEl);
 
         const timeEl = document.createElement('div');
@@ -1014,6 +1075,9 @@ export class ChatManager {
         overlay.classList.remove('show');
         overlay.remove();
     }
+
+
+
 }
 
 /**
