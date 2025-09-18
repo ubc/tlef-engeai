@@ -849,17 +849,81 @@ router.post('/:chatId', async (req: Request, res: Response) => {
 
         // HARDCODED RESPONSE FOR ARTEFACT TESTING
         // TODO: Remove this when LLM integration is ready
-        const hardcodedResponse = `Hello! I received your message: "${message}". Let me create a simple diagram for you.
+        const hardcodedResponse = `Looking at the binary phase diagram, explain why alloys with compositions near the eutectic point solidify differently compared to alloys in other regions of the diagram.
 
 <Artefact>
-graph LR
-    A[Your Message] --> B[AI Processing]
-    B --> C[Response Generation]
-    C --> D[Diagram Creation]
-    D --> E[Final Answer]
+graph TB
+    subgraph "Binary Phase Diagram Regions"
+        A[Liquid Phase<br/>Single Phase<br/>Above Liquidus Line]
+        B[α + Liquid<br/>Two Phase Region<br/>Between Liquidus & Solidus]
+        C[β + Liquid<br/>Two Phase Region<br/>Between Liquidus & Solidus]
+        D[α + β<br/>Two Phase Region<br/>Below Solidus Line]
+        E[Eutectic Point<br/>Composition: 61.9% Sn<br/>Temperature: 183°C]
+    end
+    
+    subgraph "Solidification Behavior"
+        F[Eutectic Alloy<br/>Composition = 61.9% Sn<br/>• Solidifies at constant temperature<br/>• Forms lamellar structure<br/>• α and β phases grow simultaneously<br/>• No composition change during solidification]
+        G[Off-Eutectic Alloy<br/>Composition ≠ 61.9% Sn<br/>• Solidifies over temperature range<br/>• Primary phase forms first<br/>• Composition changes during cooling<br/>• Segregation occurs]
+    end
+    
+    subgraph "Microstructure Development"
+        H[Eutectic Microstructure<br/>• Lamellar structure<br/>• Alternating α and β layers<br/>• Fine, uniform distribution<br/>• No dendritic growth]
+        I[Off-Eutectic Microstructure<br/>• Dendritic primary phase<br/>• Eutectic in interdendritic regions<br/>• Composition gradients<br/>• Coarse structure]
+    end
+    
+    subgraph "Thermodynamic Explanation"
+        J[Eutectic Point Properties<br/>• Lowest melting temperature<br/>• Three phases in equilibrium<br/>• L ⇌ α + β<br/>• Gibbs free energy minimum]
+        K[Off-Eutectic Behavior<br/>• Higher melting temperature<br/>• Two phases in equilibrium<br/>• L ⇌ α or L ⇌ β<br/>• Composition-dependent melting]
+    end
+    
+    subgraph "Practical Implications"
+        L[Eutectic Advantages<br/>• Low melting point<br/>• Good castability<br/>• Fine microstructure<br/>• Uniform properties]
+        M[Off-Eutectic Challenges<br/>• Higher melting point<br/>• Segregation problems<br/>• Non-uniform properties<br/>• Requires heat treatment]
+    end
+    
+    A --> B
+    A --> C
+    B --> D
+    C --> D
+    E --> F
+    E --> G
+    
+    F --> H
+    G --> I
+    
+    E --> J
+    B --> K
+    C --> K
+    
+    H --> L
+    I --> M
+    
+    subgraph "Cooling Paths"
+        N[Eutectic Cooling<br/>T1: All liquid<br/>T2: Eutectic reaction starts<br/>T3: Complete solidification<br/>Constant composition]
+        O[Off-Eutectic Cooling<br/>T1: All liquid<br/>T2: Primary phase forms<br/>T3: Eutectic reaction<br/>T4: Complete solidification<br/>Composition changes]
+    end
+    
+    F --> N
+    G --> O
 </Artefact>
 
-This shows how I process your messages and create visual aids to help you learn!`;
+The key difference lies in the **solidification mechanism**:
+
+**Eutectic Alloys (61.9% Sn in Pb-Sn system):**
+- Solidify at a **constant temperature** (183°C)
+- Undergo **eutectic reaction**: L → α + β simultaneously
+- Form **lamellar microstructure** with alternating α and β layers
+- **No composition change** during solidification
+- Achieve **lowest possible melting point** for the system
+
+**Off-Eutectic Alloys:**
+- Solidify over a **temperature range**
+- **Primary phase** (α or β) forms first, depleting the liquid
+- **Composition changes** as solidification proceeds
+- Form **dendritic microstructure** with eutectic in interdendritic regions
+- Experience **segregation** due to composition gradients
+
+This difference is crucial for casting applications, as eutectic alloys provide better castability and more uniform properties due to their unique solidification behavior.`;
 
         // Simulate streaming by sending individual chunks
         let messageId = 'test-message-' + Date.now();

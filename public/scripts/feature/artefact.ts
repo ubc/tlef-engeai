@@ -599,15 +599,18 @@ export class ArtefactHandler {
             const offsetX = mouseX - centerX;
             const offsetY = mouseY - centerY;
             
-            const zoomSpeed = 0.1;
+            // ZOOM CONFIGURATION - Modify these values as needed
+            const zoomSpeed = 0.1;        // Speed of zoom (0.05 = slower, 0.2 = faster)
+            const maxZoom = 5.0;          // Maximum zoom level (was 3.0)
+            const minZoom = 0.1;          // Minimum zoom level (was 0.2)
             const oldScale = scale;
             
             if (e.deltaY < 0) {
                 // Zoom in
-                scale = Math.min(scale + zoomSpeed, 3);
+                scale = Math.min(scale + zoomSpeed, maxZoom);
             } else {
                 // Zoom out
-                scale = Math.max(scale - zoomSpeed, 0.2);
+                scale = Math.max(scale - zoomSpeed, minZoom);
             }
             
             // Adjust translation to zoom towards mouse position
@@ -698,8 +701,13 @@ export class ArtefactHandler {
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 
                 if (lastTouchDistance > 0) {
-                    const scaleChange = (distance - lastTouchDistance) * 0.01;
-                    scale = Math.max(0.2, Math.min(3, scale + scaleChange));
+                    // TOUCH ZOOM CONFIGURATION - Modify these values as needed
+                    const touchSensitivity = 0.01;  // Touch zoom sensitivity (0.005 = slower, 0.02 = faster)
+                    const maxZoom = 5.0;            // Maximum zoom level (was 3.0)
+                    const minZoom = 0.1;            // Minimum zoom level (was 0.2)
+                    
+                    const scaleChange = (distance - lastTouchDistance) * touchSensitivity;
+                    scale = Math.max(minZoom, Math.min(maxZoom, scale + scaleChange));
                     updateTransform();
                 }
                 
