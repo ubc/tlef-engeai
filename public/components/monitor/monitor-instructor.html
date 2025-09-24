@@ -1,0 +1,96 @@
+<div class="monitor-instructor-container">
+    <link rel="stylesheet" href="/styles/instructor-components/monitor-instructor.css">
+    <main class="main-content">
+        <!-- Header Section - Matching report design -->
+                <header class="monitor-header">
+                    <div class="header-left">
+                        <h1>Monitor Dashboard</h1>
+                        <div class="current-date-display" id="current-date-display">Today</div>
+                    </div>
+                    <div class="header-right">
+                        <div class="time-filter-dropdown">
+                            <button class="choose-date-btn" id="choose-date-btn">
+                                <span class="button-text">Choose Date</span>
+                                <i data-feather="calendar"></i>
+                            </button>
+                        </div>
+                    </div>
+                </header>
+
+        <!-- Usage Statistics Section - Card-based design -->
+        <section class="usage-stats-section">
+                    <div class="usage-card today-usage">
+                        <div class="usage-card-header">
+                            <h3>Today Usage</h3>
+                            <div class="usage-trend" id="today-trend">↑ 12% from yesterday</div>
+                        </div>
+                        <div class="usage-card-content">
+                            <div class="usage-text">
+                                <p class="usage-percentage" id="today-percentage">6%</p>
+                                <p class="usage-label">of daily limit</p>
+                            </div>
+                        </div>
+                    </div>
+            
+            <div class="usage-card monthly-usage">
+                <div class="usage-card-header">
+                    <h3>Monthly Usage</h3>
+                    <div class="usage-trend" id="monthly-trend">1 days remaining</div>
+                </div>
+                <div class="usage-card-content">
+                    <div class="usage-text">
+                        <p class="usage-percentage" id="monthly-percentage">73%</p>
+                        <p class="usage-label">of the monthly budget</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Student List Section - Matching report list design -->
+        <section class="student-list-section">
+            <div class="student-list-header">
+                <h3>Student Activity <span class="student-count">(20)</span></h3>
+                <div class="sort-options">
+                    <button class="sort-btn active" id="sort-tokens" data-sort="tokens">
+                        Token Usage
+                    </button>
+                    <button class="sort-btn" id="sort-name" data-sort="name">
+                        Alphabetical
+                    </button>
+                </div>
+            </div>
+            
+            <div class="student-list" id="student-list">
+                <!-- Student accordion items will be populated by TypeScript -->
+            </div>
+        </section>
+    </main>
+</div>
+
+<!-- Calendar Modal -->
+<div class="calendar-modal" id="calendar-modal">
+    <div class="calendar-modal-content">
+        <div class="calendar-header">
+            <h3>Select Date Range</h3>
+            <button class="close-calendar-btn" id="close-calendar-btn">
+                <i data-feather="x"></i>
+            </button>
+        </div>
+        
+        <div class="calendar-container">
+            <div class="calendar" id="calendar">
+                <!-- Calendar will be populated by TypeScript -->
+            </div>
+        </div>
+        
+        <div class="calendar-footer">
+            <div class="selected-dates" id="selected-dates">
+                <!-- Selected dates will be displayed here -->
+            </div>
+            <button class="calendar-ok-btn" id="calendar-ok-btn">
+                OK
+            </button>
+        </div>
+    </div>
+</div>
+

@@ -5,6 +5,7 @@ import { renderOnCourseSetup } from "./onboarding/course-setup.js";
 import { renderDocumentSetup } from "./onboarding/document-setup.js";
 import { renderFlagSetup } from "./onboarding/flag-setup.js";
 import { initializeFlagReports } from "./feature/reports.js";
+import { initializeMonitorDashboard } from "./feature/monitor.js";
 import { ChatManager, createDefaultStudent } from "./feature/chat.js";
 
 const enum StateEvent {
@@ -288,6 +289,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             else if (componentName === 'report-instructor') {
                 initializeFlagReports();
+            }
+            else if (componentName === 'monitor-instructor') {
+                initializeMonitorDashboard();
             }
             else if (componentName === 'course-setup') {
                 // Course setup component - handled by renderOnCourseSetup
