@@ -38,6 +38,7 @@ interface FlagSetupState {
     currentStep: number;
     totalSteps: number;
     isValid: boolean;
+    completedSteps: Set<number>;
 }
 
 // ===========================================
@@ -65,8 +66,12 @@ export const renderFlagSetup = async (instructorCourse: activeCourse): Promise<v
         const state: FlagSetupState = {
             currentStep: 1,
             totalSteps: 5,
-            isValid: false
+            isValid: false,
+            completedSteps: new Set()
         };
+
+        // Store state globally for access by demo functions
+        (window as any).flagSetupState = state;
 
         // Load the flag setup component
         const container = document.getElementById('main-content-area');
@@ -229,12 +234,183 @@ function setupAccordionListeners(): void {
  * Sets up flag card toggle functionality for step 3
  */
 function setupFlagCardListeners(): void {
-    // Make toggleFlagCard function globally available
-    (window as any).toggleFlagCard = toggleFlagCard;
+    // Make demo functions globally available for tutorial
+    (window as any).toggleReportCard = toggleReportCard;
+    (window as any).handleDemoResolve = handleDemoResolve;
+    (window as any).toggleEditMode = toggleEditMode;
+    (window as any).saveEdit = saveEdit;
+    (window as any).handleDemoSave = handleDemoSave;
+    (window as any).markStepCompleted = markStepCompleted;
 }
 
 /**
- * Toggles the flag card content visibility
+ * Demo function to toggle report cards for tutorial purposes
+ * 
+ * @param card - The report card element that was clicked
+ */
+function toggleReportCard(card: HTMLElement): void {
+    // Check if click was inside response-section - if so, don't toggle
+    const responseSection = card.querySelector('.response-section');
+    if (responseSection && responseSection.contains(event?.target as Node)) {
+        return;
+    }
+    
+    card.classList.toggle('expanded');
+    const arrow = card.querySelector('.expand-arrow');
+    if (arrow) {
+        if (card.classList.contains('expanded')) {
+            arrow.textContent = '▲';
+        } else {
+            arrow.textContent = '▼';
+        }
+    }
+    
+    // Update expanded-content visibility
+    const expandedContent = card.querySelector('.expanded-content') as HTMLElement;
+    if (expandedContent) {
+        if (card.classList.contains('expanded')) {
+            expandedContent.style.display = 'block';
+        } else {
+            expandedContent.style.display = 'none';
+        }
+    }
+}
+
+/**
+ * Demo function to handle resolve button clicks in tutorial
+ * 
+ * @param button - The resolve button that was clicked
+ */
+function handleDemoResolve(button: HTMLElement): void {
+    // Stop event propagation to prevent card collapse
+    if (event) {
+        event.stopPropagation();
+    }
+    
+    const reportCard = button.closest('.report-card') as HTMLElement;
+    const emptyState = document.getElementById('demo-empty-state');
+    
+    if (reportCard && emptyState) {
+        // Get the actual response text that was submitted
+        const textarea = reportCard.querySelector('.response-textarea') as HTMLTextAreaElement;
+        const submittedResponse = textarea ? textarea.value : '';
+        
+        // Store the submitted response for Step 4
+        (window as any).submittedResponse = submittedResponse;
+        
+        // Hide the report card
+        reportCard.style.display = 'none';
+        
+        // Show the empty state explanation
+        emptyState.style.display = 'block';
+        
+        // Update button to show it was resolved
+        button.textContent = 'Resolved';
+        button.setAttribute('disabled', 'true');
+        button.style.background = '#6c757d';
+        
+        // Mark step 3 as completed
+        markStepCompleted(3);
+    }
+}
+
+/**
+ * Demo function to toggle edit mode for Step 4 tutorial
+ * 
+ * @param button - The edit button that was clicked
+ */
+function toggleEditMode(button: HTMLElement): void {
+    // Stop event propagation to prevent card collapse
+    if (event) {
+        event.stopPropagation();
+    }
+    
+    const responseContent = document.getElementById('editable-response');
+    const editButton = button;
+    const saveButton = button.nextElementSibling as HTMLElement;
+    
+    if (responseContent && editButton && saveButton) {
+        // Get current text and trim whitespace
+        const currentText = (responseContent.textContent || '').trim();
+        
+        // Replace with textarea
+        const textarea = document.createElement('textarea');
+        textarea.className = 'response-textarea';
+        textarea.id = 'demo-response-textarea';
+        textarea.name = 'demo-response';
+        textarea.value = currentText;
+        textarea.style.cssText = 'margin-bottom: 15px; width: 100%; min-height: 100px; resize: vertical; text-align: left;';
+        textarea.setAttribute('aria-label', 'Edit response text');
+        
+        responseContent.parentNode?.replaceChild(textarea, responseContent);
+        
+        // Switch buttons
+        editButton.style.display = 'none';
+        saveButton.style.display = 'inline-block';
+    }
+}
+
+/**
+ * Demo function to save edit for Step 4 tutorial
+ * 
+ * @param button - The save button that was clicked
+ */
+function saveEdit(button: HTMLElement): void {
+    // Stop event propagation to prevent card collapse
+    if (event) {
+        event.stopPropagation();
+    }
+    
+    const textarea = document.querySelector('.response-textarea') as HTMLTextAreaElement;
+    const saveButton = button;
+    const editButton = button.previousElementSibling as HTMLElement;
+    
+    if (textarea && editButton && saveButton) {
+        // Get new text
+        const newText = textarea.value;
+        
+        // Replace with div
+        const responseContent = document.createElement('div');
+        responseContent.className = 'full-chat-content';
+        responseContent.id = 'editable-response';
+        responseContent.textContent = newText;
+        
+        textarea.parentNode?.replaceChild(responseContent, textarea);
+        
+        // Switch buttons
+        saveButton.style.display = 'none';
+        editButton.style.display = 'inline-block';
+    }
+}
+
+/**
+ * Demo function to handle save button clicks in Step 4 tutorial
+ * 
+ * @param button - The save button that was clicked
+ */
+function handleDemoSave(button: HTMLElement): void {
+    // Stop event propagation to prevent card collapse
+    if (event) {
+        event.stopPropagation();
+    }
+    
+    const reportCard = button.closest('.report-card') as HTMLElement;
+    const emptyState = document.getElementById('demo-empty-state-step4');
+    
+    if (reportCard && emptyState) {
+        // Hide the report card
+        reportCard.style.display = 'none';
+        
+        // Show the empty state explanation
+        emptyState.style.display = 'block';
+        
+        // Mark step 4 as completed
+        markStepCompleted(4);
+    }
+}
+
+/**
+ * Legacy function - kept for compatibility but not used in new tutorial
  * 
  * @param headerElement - The flag card header element that was clicked
  */
@@ -490,6 +666,11 @@ function updateStepDisplay(state: FlagSetupState): void {
     if (currentStepElement) {
         currentStepElement.classList.add('active');
         
+        // Special handling for Step 4 - update with submitted response
+        if (state.currentStep === 4) {
+            updateStep4WithSubmittedResponse();
+        }
+        
         // Check if content overflows and adjust justify-content accordingly
         setTimeout(() => adjustContentJustification(currentStepElement), 10);
     }
@@ -571,5 +752,80 @@ function updateNavigationButtons(state: FlagSetupState): void {
         } else {
             nextBtn.textContent = 'Next';
         }
+        
+        // Check if next step requires completion of current step
+        const nextStepElement = document.getElementById(`content-step-${state.currentStep + 1}`);
+        if (nextStepElement) {
+            const requiresCompletion = nextStepElement.getAttribute('data-requires-completion');
+            if (requiresCompletion) {
+                const requiredStep = parseInt(requiresCompletion);
+                if (!state.completedSteps.has(requiredStep)) {
+                    nextBtn.disabled = true;
+                    nextBtn.textContent = 'Complete Previous Step First';
+                } else {
+                    nextBtn.disabled = false;
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Marks a step as completed and updates the UI
+ * 
+ * @param stepNumber - The step number to mark as completed
+ */
+function markStepCompleted(stepNumber: number): void {
+    // Get the current state from the global context
+    const state = (window as any).flagSetupState as FlagSetupState;
+    if (!state) return;
+    
+    // Add to completed steps
+    state.completedSteps.add(stepNumber);
+    
+    // Update step indicators to show completion
+    const stepItem = document.querySelector(`.step-item:nth-child(${stepNumber})`);
+    if (stepItem) {
+        const stepCircle = stepItem.querySelector('.step-circle');
+        if (stepCircle) {
+            stepCircle.classList.remove('current', 'pending');
+            stepCircle.classList.add('completed');
+        }
+    }
+    
+    // Enable navigation to next step if it was blocked
+    const nextBtn = document.getElementById('nextBtn') as HTMLButtonElement;
+    if (nextBtn && nextBtn.disabled) {
+        const currentStepElement = document.querySelector('.content-step.active');
+        if (currentStepElement) {
+            const currentStep = parseInt(currentStepElement.id.split('-')[2]);
+            const nextStepElement = document.getElementById(`content-step-${currentStep + 1}`);
+            if (nextStepElement) {
+                const requiresCompletion = nextStepElement.getAttribute('data-requires-completion');
+                if (requiresCompletion && parseInt(requiresCompletion) === stepNumber) {
+                    nextBtn.disabled = false;
+                    nextBtn.textContent = 'Next';
+                }
+            }
+        }
+    }
+    
+    console.log(`✅ Step ${stepNumber} marked as completed`);
+}
+
+/**
+ * Updates Step 4 with the response that was submitted in Step 3
+ */
+function updateStep4WithSubmittedResponse(): void {
+    const submittedResponse = (window as any).submittedResponse;
+    const placeholder = document.getElementById('submitted-response-placeholder');
+    
+    if (submittedResponse && placeholder) {
+        // Replace placeholder with actual submitted response
+        placeholder.textContent = submittedResponse;
+        console.log('✅ Step 4 updated with submitted response from Step 3');
+    } else if (placeholder) {
+        // Show placeholder message if no response was submitted yet
+        placeholder.textContent = 'Your submitted response will appear here after completing Step 3';
     }
 }
