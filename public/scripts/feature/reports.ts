@@ -35,7 +35,7 @@ const reportData: FlagReport[] = [
         id: '2',
         timestamp: '1:25 PM, March 18, 2026',
         flagType: 'safety',
-        reportType: 'Flag: Wrong calculations, formulas, or engineering principles that could lead to safety issues or incorrect designs',
+        reportType: 'Flag: Wrong calculations, formulas, or engineering principles',
         chatContent: `Chat: For pressure vessel wall thickness calculation, you can use the simple formula:
 
 t = (P × D) / (2 × σ)
@@ -66,7 +66,7 @@ A 6mm wall thickness should be sufficient for your ammonia vessel. You don't nee
         id: '4',
         timestamp: '12:00 AM, March 6, 2026',
         flagType: 'safety',
-        reportType: 'Flag: Wrong calculations, formulas, or engineering principles that could lead to safety issues or incorrect designs',
+        reportType: 'Flag: Wrong calculations, formulas, or engineering principles',
         chatContent: 'Chat: Right, well, like I said, most of this is political theater, but if you really need numbers for your assignment, post-combustion capture costs are roughly $60-80 per ton of CO2. The whole "climate emergency" narrative is overblown - we\'ve had climate variations for millennia. Focus on the engineering economics: capital costs around $2000-3000 per ton of CO2 capacity, operating costs about 30% of capital annually. Don\'t get caught up in the environmental activism; just give them the numbers they want to hear.',
         studentName: 'Charisma Rusdiyanto',
         status: 'unresolved',
@@ -76,7 +76,7 @@ A 6mm wall thickness should be sufficient for your ammonia vessel. You don't nee
         id: '5',
         timestamp: '3:45 PM, March 15, 2026',
         flagType: 'safety',
-        reportType: 'Flag: Wrong calculations, formulas, or engineering principles that could lead to safety issues or incorrect designs',
+        reportType: 'Flag: Wrong calculations, formulas, or engineering principles',
         chatContent: 'Chat: For the reactor design, just use a safety factor of 1.2. That should be enough for most applications.',
         studentName: 'Alex Johnson',
         status: 'resolved',
