@@ -15,6 +15,7 @@ interface DebugCourses {
     apsc099: any | null;
     apsc080: any | null;
     apsc060: any | null;
+    apsc091: any | null;
 }
 
 class DebugCoursesManager {
@@ -50,6 +51,9 @@ class DebugCoursesManager {
         
         console.log('Setting up APSC 060 button...');
         this.addClickHandler('apsc060', () => this.loadDebugCourse('apsc060'));
+        
+        console.log('Setting up APSC 091 button...');
+        this.addClickHandler('apsc091', () => this.loadDebugCourse('apsc091'));
         
         console.log('Setting up Reset button...');
         this.addClickHandler('reset', () => this.resetDebugCourses());
@@ -111,15 +115,19 @@ class DebugCoursesManager {
 
         // Update APSC 099 status
         this.updateCourseStatus('apsc099', this.debugCourses.apsc099, 
-            'Settled Course - Completed onboarding with learning objectives');
+            'Mock Course: APSC 099 - Engineering for Kindergarten<br>Settled Course - Completed onboarding with learning objectives');
 
         // Update APSC 080 status
         this.updateCourseStatus('apsc080', this.debugCourses.apsc080, 
-            'Course Onboarding View - Ready for document setup');
+            'Mock Course: APSC 080 - Introduction to Engineering<br>Course Onboarding View - Ready for document setup');
 
         // Update APSC 060 status
         this.updateCourseStatus('apsc060', this.debugCourses.apsc060, 
-            'Flag Setup View - Ready for flag onboarding');
+            'Mock Course: APSC 060 - Engineering Society<br>Flag Setup View - Ready for flag onboarding');
+
+        // Update APSC 091 status
+        this.updateCourseStatus('apsc091', this.debugCourses.apsc091, 
+            'Mock Course: APSC 091 - PID for Engineers<br>Monitor Setup View - Ready for monitor onboarding');
     }
 
     /**
@@ -134,10 +142,10 @@ class DebugCoursesManager {
 
         if (course) {
             courseElement.classList.add('course-loaded');
-            descriptionElement.textContent = `${baseDescription} ✅`;
+            descriptionElement.innerHTML = `${baseDescription} ✅`;
         } else {
             courseElement.classList.remove('course-loaded');
-            descriptionElement.textContent = `${baseDescription} - Not found in database ❌`;
+            descriptionElement.innerHTML = `${baseDescription} - Not found in database ❌`;
         }
     }
 
@@ -163,6 +171,9 @@ class DebugCoursesManager {
         } else if (courseType === 'apsc060' && this.debugCourses?.apsc060) {
             course = this.debugCourses.apsc060;
             console.log('✅ Found APSC 060 course:', course);
+        } else if (courseType === 'apsc091' && this.debugCourses?.apsc091) {
+            course = this.debugCourses.apsc091;
+            console.log('✅ Found APSC 091 course:', course);
         } else {
             console.log(`❌ Course ${courseType} not found in debugCourses`);
         }

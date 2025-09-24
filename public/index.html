@@ -19,40 +19,47 @@
 				<h1>EngE-AI</h1>
 				<p class="subtitle">AI-powered Engineering Education Assistant</p>
 
-				<h2>Select your role</h2>
+				<h2>Available Courses</h2>
 
-				<div class="role-selection">
-					<a href="/pages/student-mode.html" class="role-box role-student">
-						<h3>Student</h3>
-						<p>Ask questions about course materials</p>
-					</a>
-					<a href="/pages/instructor-mode.html" class="role-box role-instructor">
-						<h3>Instructor</h3>
-						<p>Upload and manage course materials</p>
-					</a>
+				<div class="course-selection">
+					<div class="course-box course-student">
+						<h3>Start Student Mode</h3>
+						<p>Enter the student mode dashboard</p>
+						<a href="/pages/student-mode.html" class="course-link">Enter Student Mode</a>
+					</div>
+					<div class="course-box course-instructor">
+						<h3>Start Instructor Mode</h3>
+						<p>Enter the instructor mode full onboarding steps and the dashboard once onboarding is complete</p>
+						<a href="/pages/instructor-mode.html" class="course-link">Enter Instructor Mode</a>
+					</div>
 				</div>
 
-				<!-- Debug Course Selection -->
-				<div class="debug-section">
-					<h2>Debug Courses (PI Access)</h2>
-					<div class="debug-courses">
-						<div class="debug-course" id="apsc099-course">
-							<h3>APSC 099: Engineering for Kindergarten</h3>
-							<p class="course-description">Settled Course - Completed onboarding with learning objectives</p>
-							<button class="debug-btn" id="apsc099-btn">Load Course</button>
+				<!-- APSC Course Selection -->
+				<div class="apsc-courses-section">
+					<h2>APSC Courses</h2>
+					<div class="apsc-courses">
+						<div class="apsc-course" id="apsc099-course">
+							<h3>Setup Complete Course</h3>
+							<p class="course-description">Mock Course: APSC 099 - Engineering for Kindergarten<br>Settled Course - Completed onboarding with learning objectives</p>
+							<button class="apsc-btn" id="apsc099-btn">Load Course</button>
 						</div>
-						<div class="debug-course" id="apsc080-course">
-							<h3>APSC 080: Introduction to Engineering</h3>
-							<p class="course-description">Course Onboarding View - Ready for document setup</p>
-							<button class="debug-btn" id="apsc080-btn">Load Course</button>
+						<div class="apsc-course" id="apsc080-course">
+							<h3>Setup Course Onboarding</h3>
+							<p class="course-description">Mock Course: APSC 080 - Introduction to Engineering<br>Course Onboarding View - Ready for document setup</p>
+							<button class="apsc-btn" id="apsc080-btn">Load Course</button>
 						</div>
-						<div class="debug-course" id="apsc060-course">
-							<h3>APSC 060: Engineering Society</h3>
-							<p class="course-description">Flag Setup View - Ready for flag onboarding</p>
-							<button class="debug-btn" id="apsc060-btn">Load Course</button>
+						<div class="apsc-course" id="apsc060-course">
+							<h3>Setup Flag Onboarding</h3>
+							<p class="course-description">Mock Course: APSC 060 - Engineering Society<br>Flag Setup View - Ready for flag onboarding</p>
+							<button class="apsc-btn" id="apsc060-btn">Load Course</button>
+						</div>
+						<div class="apsc-course" id="apsc091-course">
+							<h3>Setup Monitor Onboarding</h3>
+							<p class="course-description">Mock Course: APSC 091 - PID for Engineers<br>Monitor Setup View - Ready for monitor onboarding</p>
+							<button class="apsc-btn" id="apsc091-btn">Load Course</button>
 						</div>
 					</div>
-					<div class="debug-controls">
+					<div class="apsc-controls">
 						<button class="reset-btn" id="reset-btn">Reset All Courses</button>
 						<button class="refresh-btn" id="refresh-btn">Refresh Status</button>
 					</div>

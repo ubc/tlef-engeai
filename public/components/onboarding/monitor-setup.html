@@ -1,6 +1,5 @@
 <div class="onboarding monitor-setup">
     <link rel="stylesheet" href="/styles/instructor-components/onboarding.css">
-    <link rel="stylesheet" href="/styles/instructor-components/monitor-instructor.css">
     <link rel="stylesheet" href="/styles/modal-overlay.css">
     
     
@@ -322,39 +321,10 @@
                     <div class="demo-interactive">
                         <h3>Demo: Student Detail Expansion</h3>
                         
-                        <!-- Demo expanded student card -->
+                        <!-- Demo expanded student card - will be populated by TypeScript -->
                         <div class="student-list-section">
-                            <div class="student-item expanded" data-student-id="demo-student">
-                                <div class="student-header" onclick="toggleDemoStudentAccordion('demo-student')">
-                                    <div class="student-name">Rusdiyanto, Charisma</div>
-                                    <div class="student-tokens">1,351 tokens</div>
-                                    <i data-feather="chevron-down" class="expand-arrow"></i>
-                                </div>
-                                <div class="monitor-student-content">
-                                    <div class="chat-history-list">
-                                        <div class="chat-history-item">
-                                            <div class="chat-title">Thermodynamics Problem Set 3</div>
-                                            <button class="download-button" onclick="demoDownloadChat('demo-1')">
-                                                <i data-feather="download"></i>
-                                                Download
-                                            </button>
-                                        </div>
-                                        <div class="chat-history-item">
-                                            <div class="chat-title">Heat Transfer Calculations</div>
-                                            <button class="download-button" onclick="demoDownloadChat('demo-2')">
-                                                <i data-feather="download"></i>
-                                                Download
-                                            </button>
-                                        </div>
-                                        <div class="chat-history-item">
-                                            <div class="chat-title">Mass Balance Equations</div>
-                                            <button class="download-button" onclick="demoDownloadChat('demo-3')">
-                                                <i data-feather="download"></i>
-                                                Download
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
+                            <div id="demo-student-details-container">
+                                <!-- Student details will be dynamically loaded here -->
                             </div>
                         </div>
                         

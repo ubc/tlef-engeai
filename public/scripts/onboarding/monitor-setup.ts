@@ -30,6 +30,13 @@ import { loadComponentHTML } from "../functions/api.js";
 import { activeCourse } from "../../../src/functions/types.js";
 import { showErrorModal, showHelpModal } from "../modal-overlay.js";
 
+// Make currentClass globally accessible
+declare global {
+    interface Window {
+        currentClass: activeCourse;
+    }
+}
+
 // ===========================================
 // TYPE DEFINITIONS
 // ===========================================
@@ -161,6 +168,9 @@ async function initializeMonitorSetup(state: MonitorSetupState, instructorCourse
         // Set up demo functionality
         setupDemoFunctionality();
 
+        // Set up window resize listener for overflow detection
+        setupResizeListener(state);
+
         // Initialize step 1
         await showStep(state, 1);
 
@@ -184,32 +194,32 @@ function initializeDemoData(): void {
     const demoStudents: DemoStudentData[] = [
         {
             id: 'demo-1',
-            name: 'Rusdiyanto, Charisma',
-            tokens: 1351,
+            name: 'Maximoff, Wanda',
+            tokens: 2500,
             chatHistory: [
-                { id: 'demo-1-1', title: 'Thermodynamics Problem Set 3', date: new Date('2024-01-15'), tokensUsed: 450 },
-                { id: 'demo-1-2', title: 'Heat Transfer Calculations', date: new Date('2024-01-14'), tokensUsed: 320 },
-                { id: 'demo-1-3', title: 'Mass Balance Equations', date: new Date('2024-01-13'), tokensUsed: 280 }
+                { id: 'demo-1-1', title: 'Process Control Systems Design', date: new Date('2024-01-15'), tokensUsed: 800 },
+                { id: 'demo-1-2', title: 'PID Controller Tuning', date: new Date('2024-01-14'), tokensUsed: 700 },
+                { id: 'demo-1-3', title: 'Feedback Control Theory', date: new Date('2024-01-13'), tokensUsed: 500 }
             ]
         },
         {
             id: 'demo-2',
             name: 'Megury, Christian',
-            tokens: 2500,
+            tokens: 1351,
             chatHistory: [
-                { id: 'demo-2-1', title: 'Fluid Mechanics Lab Report', date: new Date('2024-01-15'), tokensUsed: 680 },
-                { id: 'demo-2-2', title: 'Bernoulli Equation Applications', date: new Date('2024-01-14'), tokensUsed: 520 },
-                { id: 'demo-2-3', title: 'Reynolds Number Calculations', date: new Date('2024-01-13'), tokensUsed: 410 }
+                { id: 'demo-2-1', title: 'Fluid Mechanics Lab Report', date: new Date('2024-01-15'), tokensUsed: 450 },
+                { id: 'demo-2-2', title: 'Bernoulli Equation Applications', date: new Date('2024-01-14'), tokensUsed: 400 },
+                { id: 'demo-2-3', title: 'Reynolds Number Calculations', date: new Date('2024-01-13'), tokensUsed: 300 }
             ]
         },
         {
             id: 'demo-3',
-            name: 'Maximoff, Wanda',
+            name: 'Rusdiyanto, Charisma',
             tokens: 5700,
             chatHistory: [
-                { id: 'demo-3-1', title: 'Process Control Systems Design', date: new Date('2024-01-15'), tokensUsed: 1200 },
-                { id: 'demo-3-2', title: 'PID Controller Tuning', date: new Date('2024-01-14'), tokensUsed: 980 },
-                { id: 'demo-3-3', title: 'Feedback Control Theory', date: new Date('2024-01-13'), tokensUsed: 750 }
+                { id: 'demo-3-1', title: 'Thermodynamics Problem Set 3', date: new Date('2024-01-15'), tokensUsed: 1900 },
+                { id: 'demo-3-2', title: 'Heat Transfer Calculations', date: new Date('2024-01-14'), tokensUsed: 1800 },
+                { id: 'demo-3-3', title: 'Mass Balance Equations', date: new Date('2024-01-13'), tokensUsed: 1500 }
             ]
         }
     ];
@@ -235,6 +245,9 @@ function setupNavigation(state: MonitorSetupState): void {
     nextBtn?.addEventListener('click', () => {
         if (state.currentStep < state.totalSteps) {
             showStep(state, state.currentStep + 1);
+        } else if (state.currentStep === state.totalSteps) {
+            // Complete the monitor setup onboarding
+            completeMonitorSetup();
         }
     });
 
@@ -285,6 +298,13 @@ async function showStep(state: MonitorSetupState, stepNumber: number): Promise<v
     if (typeof (window as any).feather !== 'undefined') {
         (window as any).feather.replace();
     }
+
+    // Check if content overflows and adjust justify-content accordingly
+    setTimeout(() => {
+        if (targetStep) {
+            adjustContentJustification(targetStep as HTMLElement);
+        }
+    }, 10);
 }
 
 /**
@@ -385,6 +405,17 @@ function initializeCalendarDemo(): void {
  * Initialize student list demo with sorting
  */
 function initializeStudentListDemo(): void {
+    // Ensure the initial sort state is set
+    (window as any).demoCurrentSort = 'tokens';
+    
+    // Set initial button state
+    const sortButtons = document.querySelectorAll('.student-list-section .sort-btn');
+    sortButtons.forEach(btn => btn.classList.remove('active'));
+    
+    const tokensBtn = document.getElementById('demo-sort-tokens');
+    tokensBtn?.classList.add('active');
+    
+    // Render the student list
     renderDemoStudentList();
 }
 
@@ -392,8 +423,60 @@ function initializeStudentListDemo(): void {
  * Initialize student details demo
  */
 function initializeStudentDetailsDemo(): void {
-    // Student details functionality is handled by global demo functions
-    // This is just a placeholder for any step-specific initialization
+    renderDemoStudentDetails();
+}
+
+/**
+ * Renders the demo student details (expanded view)
+ */
+function renderDemoStudentDetails(): void {
+    const container = document.getElementById('demo-student-details-container');
+    if (!container) return;
+
+    const students = (window as any).demoStudents as DemoStudentData[];
+    const currentSort = (window as any).demoCurrentSort as string;
+    
+    if (!students || students.length === 0) return;
+
+    // Sort students the same way as in the main list
+    const sortedStudents = [...students].sort((a, b) => {
+        if (currentSort === 'tokens') {
+            return b.tokens - a.tokens;
+        } else {
+            return a.name.localeCompare(b.name);
+        }
+    });
+
+    // Use the first student as the demo (highest token user or first alphabetically)
+    const demoStudent = sortedStudents[0];
+    
+    container.innerHTML = `
+        <div class="student-item expanded" data-student-id="${demoStudent.id}">
+            <div class="student-header" onclick="toggleDemoStudentAccordion('${demoStudent.id}')">
+                <div class="student-name">${demoStudent.name}</div>
+                <div class="student-tokens">${demoStudent.tokens.toLocaleString()} tokens</div>
+                <i data-feather="chevron-down" class="expand-arrow"></i>
+            </div>
+            <div class="monitor-student-content">
+                <div class="chat-history-list">
+                    ${demoStudent.chatHistory.map(chat => `
+                        <div class="chat-history-item">
+                            <div class="chat-title">${chat.title}</div>
+                            <button class="download-button" onclick="demoDownloadChat('${chat.id}')">
+                                <i data-feather="download"></i>
+                                Download
+                            </button>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Re-initialize Feather icons
+    if (typeof (window as any).feather !== 'undefined') {
+        (window as any).feather.replace();
+    }
 }
 
 // ===========================================
@@ -644,7 +727,7 @@ function demoSortStudents(sortType: 'tokens' | 'name'): void {
     (window as any).demoCurrentSort = sortType;
     
     // Update button states
-    const sortButtons = document.querySelectorAll('#demo-student-list-section .sort-btn');
+    const sortButtons = document.querySelectorAll('.student-list-section .sort-btn');
     sortButtons.forEach(btn => btn.classList.remove('active'));
     
     const activeBtn = document.getElementById(`demo-sort-${sortType}`);
@@ -652,6 +735,12 @@ function demoSortStudents(sortType: 'tokens' | 'name'): void {
     
     // Re-render student list
     renderDemoStudentList();
+    
+    // Also update student details if we're on step 5
+    const currentStep = (window as any).monitorSetupState?.currentStep;
+    if (currentStep === 5) {
+        renderDemoStudentDetails();
+    }
 }
 
 /**
@@ -709,6 +798,15 @@ function toggleDemoStudentAccordion(studentId: string): void {
     const studentItem = document.querySelector(`[data-student-id="${studentId}"]`);
     if (studentItem) {
         studentItem.classList.toggle('expanded');
+        
+        // Recalculate overflow after accordion state change
+        const state = (window as any).monitorSetupState as MonitorSetupState;
+        const currentStepElement = document.getElementById(`content-step-${state.currentStep}`);
+        if (currentStepElement) {
+            setTimeout(() => {
+                adjustContentJustification(currentStepElement as HTMLElement);
+            }, 100);
+        }
     }
 }
 
@@ -781,6 +879,54 @@ function isSameDay(date1: Date, date2: Date): boolean {
 }
 
 // ===========================================
+// COMPLETION FUNCTION
+// ===========================================
+
+/**
+ * Completes the monitor setup onboarding and updates the course status
+ */
+async function completeMonitorSetup(): Promise<void> {
+    try {
+        //START DEBUG LOG : DEBUG-CODE(010)
+        console.log("🎉 Completing monitor setup onboarding...");
+        //END DEBUG LOG : DEBUG-CODE(010)
+        
+        // Get the current course from the global state
+        const currentCourse = window.currentClass;
+        if (!currentCourse) {
+            throw new Error("Current course not found");
+        }
+        
+        // Update the course's monitorSetup status to true
+        currentCourse.monitorSetup = true;
+        
+        //START DEBUG LOG : DEBUG-CODE(011)
+        console.log("✅ Monitor setup status updated to true for course:", currentCourse.courseName);
+        //END DEBUG LOG : DEBUG-CODE(011)
+        
+        // Dispatch the completion event
+        const event = new CustomEvent('monitorSetupComplete', {
+            detail: {
+                course: currentCourse,
+                completedAt: new Date()
+            }
+        });
+        window.dispatchEvent(event);
+        
+        //START DEBUG LOG : DEBUG-CODE(012)
+        console.log("📡 Monitor setup completion event dispatched");
+        //END DEBUG LOG : DEBUG-CODE(012)
+        
+    } catch (error) {
+        //START DEBUG LOG : DEBUG-CODE(013)
+        console.error("❌ Error completing monitor setup:", error);
+        //END DEBUG LOG : DEBUG-CODE(013)
+        
+        await showErrorModal("Completion Error", "Failed to complete monitor setup. Please try again.");
+    }
+}
+
+// ===========================================
 // CLEANUP FUNCTION
 // ===========================================
 
@@ -813,3 +959,54 @@ export const cleanupMonitorSetup = (): void => {
     console.log("✅ Monitor setup cleanup completed");
     //END DEBUG LOG : DEBUG-CODE(009)
 };
+
+/**
+ * Adjusts content justification based on overflow detection
+ * If content exceeds available height, uses flex-start for scrolling
+ * Otherwise, uses center for better visual balance
+ * 
+ * @param contentStepElement - The content step element to adjust
+ */
+function adjustContentJustification(contentStepElement: HTMLElement): void {
+    const contentStepInner = contentStepElement.querySelector('.content-step-inner') as HTMLElement;
+    if (!contentStepInner) return;
+    
+    // Get the available height (viewport height minus navigation and padding)
+    const availableHeight = window.innerHeight - 200; // Account for navigation and margins
+    
+    // Get the content height
+    const contentHeight = contentStepInner.scrollHeight;
+    
+    // If content is taller than available space, use flex-start for scrolling
+    // Otherwise, use center for better visual balance
+    if (contentHeight > availableHeight) {
+        contentStepElement.classList.add('overflow-content');
+        contentStepElement.classList.remove('center-content');
+    } else {
+        contentStepElement.classList.add('center-content');
+        contentStepElement.classList.remove('overflow-content');
+    }
+}
+
+/**
+ * Sets up window resize listener for overflow detection
+ * 
+ * @param state - The monitor setup state object
+ */
+function setupResizeListener(state: MonitorSetupState): void {
+    let resizeTimeout: number;
+    
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = window.setTimeout(() => {
+            const currentStepElement = document.getElementById(`content-step-${state.currentStep}`);
+            if (currentStepElement && currentStepElement.classList.contains('active')) {
+                adjustContentJustification(currentStepElement);
+            }
+        }, 100);
+    });
+}
+
+// Additional imports for instructor-mode integration
+import { renderFeatherIcons } from "../functions/api.js";
+
