@@ -243,8 +243,8 @@ class MonitorDashboard {
             }
         ];
 
-        // Set default date range to today
-        this.selectedDateRange.start = new Date();
+        // Initialize with no dates selected
+        this.selectedDateRange.start = null;
         this.selectedDateRange.end = null;
     }
 
@@ -452,12 +452,17 @@ class MonitorDashboard {
             
             const isCurrentMonth = date.getMonth() === month;
             const isToday = this.isSameDay(date, today);
-            const isSelected = this.isDateSelected(date);
+            const selectionType = this.getDateSelectionType(date);
+            const isSelected = selectionType !== 'none';
+            
+            // Build CSS classes for different selection states
+            const selectionClass = isSelected ? `selected ${selectionType}` : '';
             
             days.push(`
                 <div class="calendar-day ${isCurrentMonth ? 'current-month' : 'other-month'} 
-                           ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''}" 
-                     data-date="${date.toISOString().split('T')[0]}">
+                           ${isToday ? 'today' : ''} ${selectionClass}" 
+                     data-date="${date.toISOString().split('T')[0]}"
+                     data-selection-type="${selectionType}">
                     ${date.getDate()}
                 </div>
             `);
@@ -476,6 +481,12 @@ class MonitorDashboard {
                 <h3>${monthNames[month]} ${year}</h3>
                 <button class="calendar-nav-btn" id="next-month">
                     <i data-feather="chevron-right"></i>
+                </button>
+            </div>
+            <div class="calendar-selection-info">
+                <div id="selection-status">No dates selected</div>
+                <button class="clear-selection-btn" id="clear-selection" style="display: none;">
+                    <i data-feather="x"></i> Clear
                 </button>
             </div>
             <div class="calendar-weekdays">
@@ -504,7 +515,8 @@ class MonitorDashboard {
                 const target = e.target as HTMLElement;
                 const dateStr = target.getAttribute('data-date');
                 if (dateStr) {
-                    this.selectDate(new Date(dateStr));
+                    // Fix timezone issue by ensuring local timezone interpretation
+                    this.selectDate(new Date(dateStr + 'T00:00:00'));
                 }
             });
         });
@@ -515,6 +527,10 @@ class MonitorDashboard {
         
         prevMonthBtn?.addEventListener('click', () => this.navigateMonth(-1));
         nextMonthBtn?.addEventListener('click', () => this.navigateMonth(1));
+
+        // Clear selection button
+        const clearBtn = document.getElementById('clear-selection');
+        clearBtn?.addEventListener('click', () => this.clearDateSelection());
 
         renderFeatherIcons();
     }
@@ -529,7 +545,7 @@ class MonitorDashboard {
     }
 
     /**
-     * Select a date in the calendar
+     * Select a date in the calendar with enhanced range handling
      */
     private selectDate(date: Date): void {
         if (!this.selectedDateRange.start) {
@@ -537,7 +553,7 @@ class MonitorDashboard {
             this.selectedDateRange.start = date;
             this.selectedDateRange.end = null;
         } else if (!this.selectedDateRange.end) {
-            // Second selection - determine if it's start or end
+            // Second selection - create range
             if (date < this.selectedDateRange.start) {
                 this.selectedDateRange.end = this.selectedDateRange.start;
                 this.selectedDateRange.start = date;
@@ -545,26 +561,74 @@ class MonitorDashboard {
                 this.selectedDateRange.end = date;
             }
         } else {
-            // New selection - reset
-            this.selectedDateRange.start = date;
-            this.selectedDateRange.end = null;
+            // Range exists - show confirmation dialog for clearing
+            this.showRangeClearConfirmation(date);
+            return;
         }
 
         this.updateSelectedDatesDisplay();
+        this.updateSelectionStatus();
         this.renderCalendar();
     }
 
     /**
-     * Check if a date is selected
+     * Shows confirmation dialog when trying to clear an existing range
      */
-    private isDateSelected(date: Date): boolean {
-        if (!this.selectedDateRange.start) return false;
+    private showRangeClearConfirmation(newDate: Date): void {
+        const startDate = this.formatDate(this.selectedDateRange.start!);
+        const endDate = this.formatDate(this.selectedDateRange.end!);
+        const newDateStr = this.formatDate(newDate);
+        
+        const confirmed = confirm(
+            `You have selected a date range from ${startDate} to ${endDate}.\n\n` +
+            `Clicking ${newDateStr} will clear this range and start a new selection.\n\n` +
+            `Do you want to continue?`
+        );
+        
+        if (confirmed) {
+            this.selectedDateRange.start = newDate;
+            this.selectedDateRange.end = null;
+            this.updateSelectedDatesDisplay();
+            this.updateSelectionStatus();
+            this.renderCalendar();
+        }
+    }
+
+    /**
+     * Checks if a date is selected and returns selection type
+     */
+    private getDateSelectionType(date: Date): 'none' | 'start' | 'end' | 'between' | 'single' {
+        if (!this.selectedDateRange.start) return 'none';
         
         if (!this.selectedDateRange.end) {
-            return this.isSameDay(date, this.selectedDateRange.start);
+            return this.isSameDay(date, this.selectedDateRange.start) ? 'single' : 'none';
         }
         
-        return date >= this.selectedDateRange.start && date <= this.selectedDateRange.end;
+        if (this.isSameDay(date, this.selectedDateRange.start)) return 'start';
+        if (this.isSameDay(date, this.selectedDateRange.end)) return 'end';
+        if (date > this.selectedDateRange.start && date < this.selectedDateRange.end) return 'between';
+        
+        return 'none';
+    }
+
+    /**
+     * Check if a date is selected (legacy function for compatibility)
+     */
+    private isDateSelected(date: Date): boolean {
+        const selectionType = this.getDateSelectionType(date);
+        return selectionType !== 'none';
+    }
+
+    /**
+     * Clears the date selection
+     */
+    private clearDateSelection(): void {
+        this.selectedDateRange.start = null;
+        this.selectedDateRange.end = null;
+        
+        this.updateSelectedDatesDisplay();
+        this.updateSelectionStatus();
+        this.renderCalendar();
     }
 
     /**
@@ -584,10 +648,32 @@ class MonitorDashboard {
     }
 
     /**
+     * Updates the selection status display in the calendar header
+     */
+    private updateSelectionStatus(): void {
+        const statusEl = document.getElementById('selection-status');
+        const clearBtn = document.getElementById('clear-selection');
+        
+        if (!statusEl || !clearBtn) return;
+
+        if (!this.selectedDateRange.start) {
+            statusEl.textContent = 'No dates selected';
+            clearBtn.style.display = 'none';
+        } else if (!this.selectedDateRange.end) {
+            statusEl.textContent = `Single date: ${this.formatDate(this.selectedDateRange.start)}`;
+            clearBtn.style.display = 'inline-flex';
+        } else {
+            statusEl.textContent = `Range: ${this.formatDate(this.selectedDateRange.start)} - ${this.formatDate(this.selectedDateRange.end)}`;
+            clearBtn.style.display = 'inline-flex';
+        }
+    }
+
+    /**
      * Apply date selection and close calendar
      */
     private applyDateSelection(): void {
         this.updateDateDisplay();
+        this.updateSelectionStatus();
         this.renderUsageStats();
         this.closeCalendar();
     }
