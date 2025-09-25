@@ -16,6 +16,7 @@ interface DebugCourses {
     apsc080: any | null;
     apsc060: any | null;
     apsc091: any | null;
+    newRegistration: any | null;
 }
 
 class DebugCoursesManager {
@@ -43,6 +44,9 @@ class DebugCoursesManager {
         console.log('🔧 Setting up click handlers for debug course buttons...');
         
         // Add click handlers for course buttons
+        console.log('Setting up newRegistration button...');
+        this.addClickHandler('newRegistration', () => this.loadDebugCourse('newRegistration'));
+        
         console.log('Setting up APSC 099 button...');
         this.addClickHandler('apsc099', () => this.loadDebugCourse('apsc099'));
         
@@ -108,10 +112,29 @@ class DebugCoursesManager {
     }
 
     /**
+     * Load debug courses without database interaction (for newRegistration)
+     */
+    public async loadDebugCoursesNoDB(): Promise<void> {
+        // Initialize with null data for all courses except newRegistration
+        this.debugCourses = {
+            apsc099: null,
+            apsc080: null,
+            apsc060: null,
+            apsc091: null,
+            newRegistration: null
+        };
+        this.updateDebugCourseStatus();
+    }
+
+    /**
      * Update the status display of debug courses
      */
     private updateDebugCourseStatus(): void {
         if (!this.debugCourses) return;
+
+        // Update newRegistration status (Mock Course Onboarding - always null in database)
+        this.updateCourseStatus('newRegistration', null, 
+            'Plain onboarding session with no database setup<br>Complete 4-step onboarding process from scratch');
 
         // Update APSC 099 status
         this.updateCourseStatus('apsc099', this.debugCourses.apsc099, 
@@ -137,8 +160,17 @@ class DebugCoursesManager {
         const courseElement = document.getElementById(`${courseId}-course`);
         if (!courseElement) return;
 
-        const descriptionElement = courseElement.querySelector('.course-description');
+        // Handle both old and new description class names
+        const descriptionElement = courseElement.querySelector('.course-description') || 
+                                 courseElement.querySelector('.step-description');
         if (!descriptionElement) return;
+
+        // Special exception for newRegistration - always show as available
+        if (courseId === 'newRegistration') {
+            courseElement.classList.add('course-loaded');
+            descriptionElement.innerHTML = `${baseDescription} ✅`;
+            return;
+        }
 
         if (course) {
             courseElement.classList.add('course-loaded');
@@ -156,8 +188,37 @@ class DebugCoursesManager {
         console.log(`🚀 loadDebugCourse called with courseType: ${courseType}`);
         console.log('Current debugCourses:', this.debugCourses);
         
+        // Handle newRegistration separately - no database interaction
+        if (courseType === 'newRegistration') {
+            console.log('✅ Mock Course Onboarding - no database interaction required');
+            
+            // Create a proper mock activeCourse object with all required properties
+            const mockCourse = {
+                id: 'mock-onboarding-' + Date.now(),
+                date: new Date(),
+                courseSetup: false,
+                contentSetup: false,
+                flagSetup: false,
+                monitorSetup: false,
+                courseName: 'Mock Course Onboarding',
+                instructors: [],
+                teachingAssistants: [],
+                frameType: 'byTopic' as const,
+                tilesNumber: 12,
+                divisions: []
+            };
+            
+            console.log('💾 Storing mock course in sessionStorage...');
+            sessionStorage.setItem('debugCourse', JSON.stringify(mockCourse));
+            
+            console.log('🧭 Navigating to instructor mode...');
+            window.location.href = '/pages/instructor-mode.html';
+            return;
+        }
+        
+        // For other courses, load from database
         if (!this.debugCourses) {
-            console.log('No debug courses loaded, fetching...');
+            console.log('No debug courses loaded, fetching from database...');
             await this.loadDebugCourses();
         }
 
@@ -193,12 +254,12 @@ class DebugCoursesManager {
     }
 
     /**
-     * Reset all debug courses to their original state
+     * Reset all debug courses to their original state (excluding newRegistration)
      */
     public async resetDebugCourses(): Promise<void> {
         console.log('🔄 resetDebugCourses called');
         
-        if (!confirm('Are you sure you want to reset all debug courses? This will delete and recreate them.')) {
+        if (!confirm('Are you sure you want to reset all debug courses? This will delete and recreate them. (Note: Mock Course Onboarding will not be affected)')) {
             console.log('❌ User cancelled reset operation');
             return;
         }
@@ -219,7 +280,7 @@ class DebugCoursesManager {
             
             if (result.success) {
                 console.log('✅ Reset successful, showing success message');
-                this.showSuccess('Debug courses reset successfully!');
+                this.showSuccess('Debug courses reset successfully! (Mock Course Onboarding unaffected)');
                 console.log('🔄 Reloading debug courses...');
                 await this.loadDebugCourses();
             } else {

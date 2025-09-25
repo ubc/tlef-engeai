@@ -12,7 +12,7 @@ import path from 'path';
 
 // Load SAML certificate
 const samlCert = fs.readFileSync(
-    path.resolve(process.env.SAML_CERT_PATH || '../../certs/server.crt'),
+    process.env.SAML_CERT_PATH || path.join(__dirname, '../../certs/server.crt'),
     'utf-8'
 );
 

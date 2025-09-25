@@ -32,6 +32,113 @@
     margin-bottom: 2.5rem;
 }
 
+/* ===========================================
+   AUTHENTICATION SECTION STYLES
+   =========================================== */
+
+.auth-section {
+    margin-bottom: 2.5rem;
+    padding: 1.5rem;
+    background-color: #f8f9fa;
+    border-radius: 12px;
+    border: 1px solid #e9ecef;
+}
+
+.login-prompt {
+    text-align: center;
+}
+
+.login-prompt h2 {
+    color: #dc3545;
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.login-prompt p {
+    color: #6c757d;
+    margin-bottom: 1.5rem;
+    font-size: 1rem;
+}
+
+.login-btn {
+    background-color: var(--color-ubc-blue);
+    color: white;
+    border: none;
+    padding: 1rem 2rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.login-btn:hover {
+    background-color: #0056b3;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 86, 179, 0.3);
+}
+
+.user-info {
+    text-align: center;
+}
+
+.user-info h2 {
+    color: var(--color-chbe-green);
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.user-details-content {
+    background-color: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    text-align: left;
+    border: 1px solid #e9ecef;
+}
+
+.user-details-content p {
+    margin: 0.5rem 0;
+    font-size: 0.95rem;
+    color: #495057;
+}
+
+.user-details-content strong {
+    color: #343a40;
+    font-weight: 600;
+}
+
+.logout-btn {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.logout-btn:hover {
+    background-color: #c82333;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+}
+
+.auth-loading {
+    text-align: center;
+    padding: 2rem;
+}
+
+.auth-loading p {
+    color: #6c757d;
+    font-size: 1rem;
+    margin: 0;
+}
+
 .login-box h2 {
     font-size: 1.25rem;
     font-weight: 600;
@@ -331,5 +438,158 @@
     
     .course-description {
         font-size: 0.85rem;
+    }
+}
+
+/* ===========================================
+   ONBOARDING SECTION STYLES
+   =========================================== */
+
+.onboarding-section {
+    margin-top: 2rem;
+    text-align: left;
+}
+
+.onboarding-section h2 {
+    text-align: center;
+    margin-bottom: 0.5rem;
+    color: var(--color-chbe-green);
+    font-size: 1.5rem;
+}
+
+.section-description {
+    text-align: center;
+    color: #6c757d;
+    margin-bottom: 2rem;
+    font-size: 0.95rem;
+}
+
+.onboarding-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.onboarding-step {
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 10px;
+    padding: 1.25rem;
+    transition: all 0.3s ease;
+}
+
+.onboarding-step:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: var(--color-chbe-green);
+}
+
+.onboarding-step h3 {
+    color: var(--color-chbe-green);
+    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
+}
+
+.onboarding-step .step-description {
+    font-size: 0.9rem;
+    color: #6c757d;
+    margin-bottom: 1rem;
+    line-height: 1.4;
+}
+
+.onboarding-btn {
+    background-color: var(--color-chbe-green);
+    color: white;
+    border: none;
+    padding: 0.6rem 1.2rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    width: 100%;
+}
+
+.onboarding-btn:hover {
+    background-color: #1e5f3f;
+    transform: translateY(-1px);
+}
+
+.onboarding-step.course-loaded {
+    border-color: var(--color-chbe-green);
+    background-color: #e8f5e8;
+}
+
+.onboarding-step.course-loaded .step-description {
+    color: var(--color-chbe-green);
+}
+
+.onboarding-controls {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e9ecef;
+}
+
+/* Update instructor button in course selection */
+.course-instructor .instructor-btn {
+    background-color: var(--color-ubc-blue);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    min-width: 150px;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.course-instructor .instructor-btn:hover {
+    background-color: #0056b3;
+    transform: translateY(-1px);
+}
+
+/* Update existing button styles to work with new structure */
+.reset-btn, .refresh-btn {
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.3s ease;
+}
+
+.reset-btn:hover {
+    background-color: #dc3545;
+}
+
+.refresh-btn:hover {
+    background-color: #007bff;
+}
+
+/* Responsive design for new structure */
+@media (max-width: 768px) {
+    .onboarding-steps {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .onboarding-controls {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .reset-btn,
+    .refresh-btn {
+        width: 100%;
+        max-width: 200px;
     }
 }
