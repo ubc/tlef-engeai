@@ -4,7 +4,9 @@ import { initializeDocumentsPage } from "./feature/documents.js";
 import { renderOnCourseSetup } from "./onboarding/course-setup.js";
 import { renderDocumentSetup } from "./onboarding/document-setup.js";
 import { renderFlagSetup } from "./onboarding/flag-setup.js";
+import { renderMonitorSetup } from "./onboarding/monitor-setup.js";
 import { initializeFlagReports } from "./feature/reports.js";
+import { initializeMonitorDashboard } from "./feature/monitor.js";
 import { ChatManager, createDefaultStudent } from "./feature/chat.js";
 
 const enum StateEvent {
@@ -36,11 +38,12 @@ let currentClass : activeCourse =
 // ChatManager instance for instructor mode
 let chatManager: ChatManager | null = null;
 
-// Make chatManager and loadChatWindow globally accessible for fallback scenarios
+// Make chatManager, loadChatWindow, and currentClass globally accessible for fallback scenarios
 declare global {
     interface Window {
         chatManager: ChatManager | null;
         loadChatWindow: () => Promise<void>;
+        currentClass: activeCourse;
     }
 }
 
@@ -77,6 +80,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Make currentClass globally accessible for onboarding completion
+    window.currentClass = currentClass;
+
     // Listen for document setup completion event
     window.addEventListener('documentSetupComplete', () => {
         console.log('📋 Document setup completed, redirecting to documents page...');
@@ -88,6 +94,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Listen for flag setup completion event
     window.addEventListener('flagSetupComplete', () => {
         console.log('🏁 Flag setup completed, redirecting to main interface...');
+        
+        // Redirect to main instructor interface
+        redirectToMainInterface();
+    });
+
+    // Listen for monitor setup completion event
+    window.addEventListener('monitorSetupComplete', () => {
+        console.log('📊 Monitor setup completed, redirecting to main interface...');
         
         // Redirect to main instructor interface
         redirectToMainInterface();
@@ -111,7 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show the sidebar
         const sidebar = document.querySelector('.instructor-sidebar');
         if (sidebar) {
-            (sidebar as HTMLElement).style.display = 'block';
+            (sidebar as HTMLElement).style.display = 'flex';
         }
         
         // Switch to documents view
@@ -144,7 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show the sidebar
         const sidebar = document.querySelector('.instructor-sidebar');
         if (sidebar) {
-            (sidebar as HTMLElement).style.display = 'block';
+            (sidebar as HTMLElement).style.display = 'flex';
         }
         
         // Switch to documents view (or default view)
@@ -289,6 +303,9 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (componentName === 'report-instructor') {
                 initializeFlagReports();
             }
+            else if (componentName === 'monitor-instructor') {
+                initializeMonitorDashboard();
+            }
             else if (componentName === 'course-setup') {
                 // Course setup component - handled by renderOnCourseSetup
             }
@@ -319,6 +336,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (!currentClass.flagSetup) {
             renderFlagSetup(currentClass);
+            return;
+        }
+        if (!currentClass.monitorSetup) {
+            renderMonitorSetup(currentClass);
             return;
         }
 

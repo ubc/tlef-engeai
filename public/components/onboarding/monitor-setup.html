@@ -1,0 +1,510 @@
+<div class="onboarding monitor-setup">
+    <link rel="stylesheet" href="/styles/instructor-components/onboarding.css">
+    <link rel="stylesheet" href="/styles/modal-overlay.css">
+    
+    
+    <!-- Left Steps Panel -->
+    <div class="onboarding-steps-panel">
+        
+        <div class="steps-header">
+            <div class="logo-box">
+                <i data-feather="monitor"></i>
+                <div class="logo-text">
+                    <span>EngE-AI</span>
+                    <p>Instructor Mode: Monitor Dashboard</p>
+                </div>
+            </div>
+        </div>
+
+        <h2>Learn how to monitor student activity</h2>
+        
+        <div class="steps-list">
+            <!-- Step 1: Welcome -->
+            <div class="step-item" data-step="1">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">1</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Welcome</h3>
+                    <p>Introduction to monitoring</p>
+                </div>
+            </div>
+
+            <!-- Step 2: Usage Statistics -->
+            <div class="step-item" data-step="2">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">2</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Usage Statistics</h3>
+                    <p>Understanding dashboard metrics</p>
+                </div>
+            </div>
+
+            <!-- Step 3: Date Filtering -->
+            <div class="step-item" data-step="3">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">3</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Date Filtering</h3>
+                    <p>Calendar selection and filtering</p>
+                </div>
+            </div>
+
+            <!-- Step 4: Student Overview -->
+            <div class="step-item" data-step="4">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">4</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Student Overview</h3>
+                    <p>Sorting and student list</p>
+                </div>
+            </div>
+
+            <!-- Step 5: Student Details -->
+            <div class="step-item" data-step="5">
+                <div class="step-indicator">
+                    <div class="step-circle completed">
+                        <span class="step-number">5</span>
+                    </div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-content">
+                    <h3>Student Details</h3>
+                    <p>Accessing chat history</p>
+                </div>
+            </div>
+
+            <!-- Step 6: Congratulations -->
+            <div class="step-item" data-step="6">
+                <div class="step-indicator">
+                    <div class="step-circle current">
+                        <span class="step-number">6</span>
+                    </div>
+                </div>
+                <div class="step-content">
+                    <h3>Complete</h3>
+                    <p>Monitor setup finished</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Content Area -->
+    <div class="onboarding-content-area">
+        <!-- Help Menu -->
+        <div class="help-menu">
+            <button class="help-btn" id="helpBtn">
+                <i data-feather="info"></i>
+                <span>Help</span>
+            </button>
+        </div>
+
+        <!-- Step 1: Welcome -->
+        <div class="content-step active" id="content-step-1">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Welcome to Monitor Dashboard</h1>
+                    <p>Learn how to effectively monitor and track student activity</p>
+                </div>
+                
+                <div class="welcome-content">
+                    <div class="welcome-message">
+                        <h3>Welcome, Professor! Let's explore your monitoring toolkit</h3>
+                        <p>As an instructor, you have powerful tools to monitor student engagement and track their learning progress. This tutorial will help you master the monitor dashboard, enabling you to gain valuable insights into how your students are using the AI tutor.</p>
+                        
+                        <div class="demo-explanation">
+                            <h4>Your monitoring capabilities:</h4>
+                            <ul class="feature-list">
+                                <li>Track real-time usage statistics and trends</li>
+                                <li>Monitor individual student activity and engagement</li>
+                                <li>Filter data by date ranges for detailed analysis</li>
+                                <li>Access complete chat histories for each student</li>
+                                <li>Download student interactions for record-keeping</li>
+                                <li>Identify patterns in student learning behavior</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="demo-explanation" style="margin-top: 2rem; background: rgba(92, 138, 58, 0.05); border-left: 4px solid var(--color-chbe-green);">
+                            <h4>💡 Pro Tip:</h4>
+                            <p>Regular monitoring helps you identify students who might need additional support and understand which topics are generating the most questions and engagement.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: Usage Statistics -->
+        <div class="content-step" id="content-step-2">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Understanding Usage Statistics</h1>
+                    <p>Learn about the dashboard metrics and what they tell you</p>
+                </div>
+                
+                <div class="demo-section">
+                    <div class="demo-explanation">
+                        <h3>Dashboard Metrics</h3>
+                        <p>The monitor dashboard provides two key metrics that help you understand overall usage patterns and resource consumption across your course.</p>
+                    </div>
+                    
+                    <div class="demo-interactive">
+                        <h3>Demo: Usage Statistics Cards</h3>
+                        
+                        <!-- Exact replication of monitor usage stats -->
+                        <div class="usage-stats-section">
+                            <div class="usage-card today-usage">
+                                <div class="usage-card-header">
+                                    <h3>Today Usage</h3>
+                                    <div class="usage-trend" id="demo-today-trend">↑ 12% from yesterday</div>
+                                </div>
+                                <div class="usage-card-content">
+                                    <div class="usage-text">
+                                        <p class="usage-percentage" id="demo-today-percentage">6%</p>
+                                        <p class="usage-label">of daily limit</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="usage-card monthly-usage">
+                                <div class="usage-card-header">
+                                    <h3>Monthly Usage</h3>
+                                    <div class="usage-trend" id="demo-monthly-trend">1 days remaining</div>
+                                </div>
+                                <div class="usage-card-content">
+                                    <div class="usage-text">
+                                        <p class="usage-percentage" id="demo-monthly-percentage">73%</p>
+                                        <p class="usage-label">of the monthly budget</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="demo-explanation" style="margin-top: 2rem;">
+                            <h4>Understanding the Metrics:</h4>
+                            <ul class="feature-list">
+                                <li><strong>Today Usage:</strong> Shows current day's AI token consumption as a percentage of daily limit</li>
+                                <li><strong>Monthly Usage:</strong> Displays month-to-date usage against your monthly budget</li>
+                                <li><strong>Trend Indicators:</strong> Arrows show whether usage is increasing or decreasing</li>
+                                <li><strong>Time Remaining:</strong> Helps you plan resource allocation for the rest of the month</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3: Date Filtering -->
+        <div class="content-step" id="content-step-3">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Date Filtering and Calendar Selection</h1>
+                    <p>Learn how to filter data by specific date ranges</p>
+                </div>
+                
+                <div class="demo-section">
+                    <div class="demo-explanation">
+                        <h3>Date Range Filtering</h3>
+                        <p>You can filter all dashboard data by selecting specific dates or date ranges. This helps you analyze student activity during particular time periods, such as before exams or during specific course modules.</p>
+                    </div>
+                    
+                    <div class="demo-interactive">
+                        <h3>Demo: Calendar Selection</h3>
+                        
+                        <!-- Demo header with date selection -->
+                        <div class="monitor-header" style="margin-bottom: 2rem;">
+                            <div class="header-left">
+                                <h1>Monitor Dashboard</h1>
+                                <div class="current-date-display" id="demo-current-date-display">Today</div>
+                            </div>
+                            <div class="header-right">
+                                <div class="time-filter-dropdown">
+                                    <button class="choose-date-btn" id="demo-choose-date-btn" onclick="openDemoCalendar()">
+                                        <span class="button-text">Choose Date</span>
+                                        <i data-feather="calendar"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="demo-explanation">
+                            <h4>How Date Filtering Works:</h4>
+                            <ol class="feature-list">
+                                <li>Click the "Choose Date" button to open the calendar</li>
+                                <li>Select a single date for that specific day's data</li>
+                                <li>Select a date range by clicking start and end dates</li>
+                                <li>Click "OK" to apply the filter and update all dashboard data</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 4: Student Overview -->
+        <div class="content-step" id="content-step-4">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Student Activity Overview</h1>
+                    <p>Learn how to sort and navigate the student list</p>
+                </div>
+                
+                <div class="demo-section">
+                    <div class="demo-explanation">
+                        <h3>Student List Management</h3>
+                        <p>The student list shows all enrolled students with their current token usage. You can sort this list to identify students who are most or least active with the AI tutor.</p>
+                    </div>
+                    
+                    <div class="demo-interactive">
+                        <h3>Demo: Student List with Sorting</h3>
+                        
+                        <!-- Demo student list header -->
+                        <div class="student-list-section">
+                            <div class="student-list-header">
+                                <h3>Student Activity <span class="student-count">(20)</span></h3>
+                                <div class="sort-options">
+                                    <button class="sort-btn active" id="demo-sort-tokens" onclick="demoSortStudents('tokens')">
+                                        Token Usage
+                                    </button>
+                                    <button class="sort-btn" id="demo-sort-name" onclick="demoSortStudents('name')">
+                                        Alphabetical
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="student-list" id="demo-student-list">
+                                <!-- Demo student items will be populated by TypeScript -->
+                            </div>
+                        </div>
+                        
+                        <div class="demo-explanation" style="margin-top: 2rem;">
+                            <h4>Sorting Options:</h4>
+                            <ul class="feature-list">
+                                <li><strong>Token Usage:</strong> Sort by highest to lowest token consumption (default)</li>
+                                <li><strong>Alphabetical:</strong> Sort by student name alphabetically</li>
+                                <li><strong>Active Indicator:</strong> The blue button shows which sort is currently active</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 5: Student Details -->
+        <div class="content-step" id="content-step-5">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Accessing Student Details</h1>
+                    <p>Learn how to expand student cards and access chat history</p>
+                </div>
+                
+                <div class="demo-section">
+                    <div class="demo-explanation">
+                        <h3>Student Detail View</h3>
+                        <p>Click on any student to expand their card and view their complete chat history. This allows you to see exactly what topics they've been discussing with the AI tutor.</p>
+                    </div>
+                    
+                    <div class="demo-interactive">
+                        <h3>Demo: Student Detail Expansion</h3>
+                        
+                        <!-- Demo expanded student card - will be populated by TypeScript -->
+                        <div class="student-list-section">
+                            <div id="demo-student-details-container">
+                                <!-- Student details will be dynamically loaded here -->
+                            </div>
+                        </div>
+                        
+                        <div class="demo-explanation" style="margin-top: 2rem;">
+                            <h4>Student Detail Features:</h4>
+                            <ul class="feature-list">
+                                <li><strong>Expandable Cards:</strong> Click any student name to expand their details</li>
+                                <li><strong>Chat History:</strong> View all chat sessions with titles and dates</li>
+                                <li><strong>Download Function:</strong> Download individual chat sessions for record-keeping</li>
+                                <li><strong>Token Tracking:</strong> See total tokens used by each student</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 6: Congratulations -->
+        <div class="content-step" id="content-step-6" data-requires-completion="5">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Monitor Dashboard Complete!</h1>
+                    <p>You're now ready to effectively monitor student activity</p>
+                </div>
+                
+                <div class="completion-content">
+                    <div class="completion-message">
+                        <div class="success-icon">🎉</div>
+                        <h3>Monitor Dashboard Tutorial Complete!</h3>
+                        <p>Congratulations! You have successfully completed the monitor dashboard onboarding session. You now have all the knowledge needed to effectively track and monitor student activity in EngE-AI!</p>
+                        <ul class="completion-list">
+                            <li>✅ Learned about usage statistics and dashboard metrics</li>
+                            <li>✅ Understood how to filter data by date ranges</li>
+                            <li>✅ Discovered how to sort and navigate student lists</li>
+                            <li>✅ Mastered accessing individual student chat histories</li>
+                            <li>✅ Gained insight into monitoring best practices</li>
+                        </ul>
+                        <div class="completion-note">
+                            <p><strong>You're all set!</strong> You can now confidently use the monitor dashboard to track student engagement and identify those who might need additional support.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="next-steps">
+                        <h4>Ready to Monitor!</h4>
+                        <p>Your monitor dashboard is now active and ready to use:</p>
+                        <ul>
+                            <li>📊 Check usage statistics regularly to track resource consumption</li>
+                            <li>📅 Use date filtering to analyze activity during specific periods</li>
+                            <li>👥 Sort students by activity to identify engagement patterns</li>
+                            <li>📋 Access individual chat histories to understand student needs</li>
+                            <li>💾 Download chat sessions for record-keeping and analysis</li>
+                            <li>🎯 Use insights to improve your teaching and student support</li>
+                        </ul>
+                        <div class="completion-cta">
+                            <p><strong>Happy monitoring! 📈</strong></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="onboarding-navigation">
+            <button class="nav-btn btn-back" id="backBtn" style="display: none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15,18 9,12 15,6"></polyline>
+                </svg>
+                Back
+            </button>
+            <button class="nav-btn btn-next" id="nextBtn">
+                Next
+                <i data-feather="chevron-right"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Demo Calendar Modal -->
+    <div class="calendar-modal" id="demo-calendar-modal">
+        <div class="calendar-modal-content">
+            <div class="calendar-header">
+                <h3>Select Date Range</h3>
+                <button class="close-calendar-btn" id="demo-close-calendar-btn">
+                    <i data-feather="x"></i>
+                </button>
+            </div>
+            
+            <div class="calendar-container">
+                <div class="calendar" id="demo-calendar">
+                    <!-- Calendar will be populated by TypeScript -->
+                </div>
+            </div>
+            
+            <div class="calendar-footer">
+                <div class="selected-dates" id="demo-selected-dates">
+                    <!-- Selected dates will be displayed here -->
+                </div>
+                <button class="calendar-ok-btn" id="demo-calendar-ok-btn">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Content Templates (Hidden) -->
+    <div id="help-templates" style="display: none;">
+        <!-- Step 1 Help -->
+        <div id="help-step-1">
+            <p><strong>Welcome to Monitor Dashboard!</strong></p>
+            <p>This tutorial will teach you how to effectively monitor student activity in EngE-AI. The monitor dashboard helps you track engagement and identify students who might need additional support.</p>
+            <p><strong>What you'll learn:</strong></p>
+            <ul>
+                <li>Understanding usage statistics and metrics</li>
+                <li>How to filter data by date ranges</li>
+                <li>Sorting and navigating student lists</li>
+                <li>Accessing individual student chat histories</li>
+                <li>Best practices for monitoring student activity</li>
+            </ul>
+        </div>
+
+        <!-- Step 2 Help -->
+        <div id="help-step-2">
+            <p><strong>Understanding Usage Statistics</strong></p>
+            <p>The dashboard provides two key metrics:</p>
+            <ul>
+                <li><strong>Today Usage:</strong> Current day's AI token consumption as percentage of daily limit</li>
+                <li><strong>Monthly Usage:</strong> Month-to-date usage against monthly budget</li>
+            </ul>
+            <p>Trend indicators show whether usage is increasing or decreasing, helping you plan resource allocation.</p>
+        </div>
+
+        <!-- Step 3 Help -->
+        <div id="help-step-3">
+            <p><strong>Date Filtering and Calendar Selection</strong></p>
+            <p>You can filter all dashboard data by selecting specific dates or date ranges:</p>
+            <ol>
+                <li>Click "Choose Date" to open the calendar</li>
+                <li>Select a single date for that day's data</li>
+                <li>Select a date range by clicking start and end dates</li>
+                <li>Click "OK" to apply the filter</li>
+            </ol>
+            <p>This is useful for analyzing activity during specific periods like exam weeks or course modules.</p>
+        </div>
+
+        <!-- Step 4 Help -->
+        <div id="help-step-4">
+            <p><strong>Student Activity Overview</strong></p>
+            <p>The student list shows all enrolled students with their token usage. You can sort by:</p>
+            <ul>
+                <li><strong>Token Usage:</strong> Highest to lowest consumption (default)</li>
+                <li><strong>Alphabetical:</strong> By student name</li>
+            </ul>
+            <p>The active sort option is highlighted in blue. This helps you quickly identify the most and least active students.</p>
+        </div>
+
+        <!-- Step 5 Help -->
+        <div id="help-step-5">
+            <p><strong>Accessing Student Details</strong></p>
+            <p>To view detailed student information:</p>
+            <ul>
+                <li>Click on any student name to expand their card</li>
+                <li>View their complete chat history with session titles</li>
+                <li>Download individual chat sessions for record-keeping</li>
+                <li>See total tokens used by each student</li>
+            </ul>
+            <p>This detailed view helps you understand what topics students are struggling with and how they're using the AI tutor.</p>
+        </div>
+
+        <!-- Step 6 Help -->
+        <div id="help-step-6">
+            <p><strong>Monitor Dashboard Complete!</strong></p>
+            <p>Congratulations! You now have all the knowledge needed to effectively monitor student activity.</p>
+            <p><strong>Remember:</strong></p>
+            <ul>
+                <li>Check usage statistics regularly to track resource consumption</li>
+                <li>Use date filtering to analyze activity during specific periods</li>
+                <li>Sort students by activity to identify engagement patterns</li>
+                <li>Access individual chat histories to understand student needs</li>
+                <li>Download chat sessions for record-keeping and analysis</li>
+            </ul>
+            <p>Regular monitoring helps you provide better support to your students and improve the learning experience.</p>
+        </div>
+    </div>
+</div>

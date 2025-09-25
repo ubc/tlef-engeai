@@ -453,6 +453,7 @@ class ChatApp {
             The artefact will be displayed as an interactive diagram that students can view.
 
             IMPORTANT: Never output the course materials tags <course_materials>...</course_materials> in your responses. Only use them internally for context.
+            Additional Instructions: If required to use an equation, use LaTEX notation. If a flow diagram is required, use Mermaid notation.
         `;
 
         try {

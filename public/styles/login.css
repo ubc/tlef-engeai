@@ -14,7 +14,7 @@
     border-radius: 16px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
     text-align: center;
-    max-width: 600px;
+    max-width: 1200px;
     width: 100%;
     transform: translateY(-20px);
 }
@@ -32,6 +32,113 @@
     margin-bottom: 2.5rem;
 }
 
+/* ===========================================
+   AUTHENTICATION SECTION STYLES
+   =========================================== */
+
+.auth-section {
+    margin-bottom: 2.5rem;
+    padding: 1.5rem;
+    background-color: #f8f9fa;
+    border-radius: 12px;
+    border: 1px solid #e9ecef;
+}
+
+.login-prompt {
+    text-align: center;
+}
+
+.login-prompt h2 {
+    color: #dc3545;
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.login-prompt p {
+    color: #6c757d;
+    margin-bottom: 1.5rem;
+    font-size: 1rem;
+}
+
+.login-btn {
+    background-color: var(--color-ubc-blue);
+    color: white;
+    border: none;
+    padding: 1rem 2rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.login-btn:hover {
+    background-color: #0056b3;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 86, 179, 0.3);
+}
+
+.user-info {
+    text-align: center;
+}
+
+.user-info h2 {
+    color: var(--color-chbe-green);
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.user-details-content {
+    background-color: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    text-align: left;
+    border: 1px solid #e9ecef;
+}
+
+.user-details-content p {
+    margin: 0.5rem 0;
+    font-size: 0.95rem;
+    color: #495057;
+}
+
+.user-details-content strong {
+    color: #343a40;
+    font-weight: 600;
+}
+
+.logout-btn {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.logout-btn:hover {
+    background-color: #c82333;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+}
+
+.auth-loading {
+    text-align: center;
+    padding: 2rem;
+}
+
+.auth-loading p {
+    color: #6c757d;
+    font-size: 1rem;
+    margin: 0;
+}
+
 .login-box h2 {
     font-size: 1.25rem;
     font-weight: 600;
@@ -39,14 +146,14 @@
     margin-bottom: 1.5rem;
 }
 
-.role-selection {
+.course-selection {
     display: flex;
     justify-content: center;
     gap: 1.5rem;
     margin-bottom: 2.5rem;
 }
 
-.role-box {
+.course-box {
     flex: 1;
     padding: 1.5rem;
     border: 1px solid #e9ecef;
@@ -55,34 +162,64 @@
     color: #212529;
     transition: all 0.3s ease;
     background-color: #f8f9fa;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
 }
 
-.role-box:hover {
+.course-box:hover {
     transform: translateY(-5px);
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
 }
 
-.role-student:hover {
+.course-student:hover {
     border-color: var(--color-chbe-green); /* Student is Green */
 }
 
-.role-student h3 {
+.course-student h3 {
     color: var(--color-chbe-green); /* Student is Green */
 }
 
-.role-instructor:hover {
+.course-instructor:hover {
     border-color: var(--color-ubc-blue); /* Instructor is Blue */
 }
 
-.role-instructor h3 {
+.course-instructor h3 {
     color: var(--color-ubc-blue); /* Instructor is Blue */
 }
 
-
-.role-box p {
+.course-box p {
     font-size: 0.9rem;
     color: #6c757d;
-    margin: 0;
+    margin: 0.5rem 0 1rem 0;
+}
+
+.course-link {
+    background-color: var(--color-chbe-green);
+    color: white;
+    text-decoration: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: background-color 0.3s ease;
+    display: inline-block;
+}
+
+.course-student .course-link {
+    background-color: var(--color-chbe-green);
+}
+
+.course-student .course-link:hover {
+    background-color: #1e7e34;
+}
+
+.course-instructor .course-link {
+    background-color: var(--color-ubc-blue);
+}
+
+.course-instructor .course-link:hover {
+    background-color: #0056b3;
 }
 
 .footer-text {
@@ -91,77 +228,127 @@
 }
 
 /* ===========================================
-   DEBUG SECTION STYLES
+   APSC COURSES SECTION STYLES
    =========================================== */
 
-.debug-section {
+.apsc-courses-section {
     margin-top: 3rem;
     padding-top: 2rem;
     border-top: 2px solid #e9ecef;
 }
 
-.debug-section h2 {
-    color: #dc3545;
-    font-size: 1.1rem;
+.apsc-courses-section h2 {
+    color: #343a40;
+    font-size: 1.25rem;
     margin-bottom: 1.5rem;
-    text-align: left;
+    text-align: center;
 }
 
-.debug-courses {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
+.apsc-courses {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
 }
 
-.debug-course {
+.apsc-course {
     background-color: #f8f9fa;
     border: 2px solid #e9ecef;
-    border-radius: 8px;
-    padding: 1.25rem;
-    text-align: left;
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
     transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
 }
 
-.debug-course.course-loaded {
+.apsc-course::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--color-chbe-green), var(--color-ubc-blue));
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.apsc-course:hover::before {
+    opacity: 1;
+}
+
+.apsc-course:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    border-color: var(--color-chbe-green);
+}
+
+.apsc-course.course-loaded {
     border-color: #28a745;
     background-color: #d4edda;
 }
 
-.debug-course h3 {
-    font-size: 1.1rem;
+.apsc-course.course-loaded::before {
+    background: #28a745;
+    opacity: 1;
+}
+
+.apsc-course h3 {
+    font-size: 1.2rem;
     font-weight: 600;
     color: #343a40;
-    margin: 0 0 0.5rem 0;
+    margin: 0 0 1rem 0;
 }
 
 .course-description {
     font-size: 0.9rem;
     color: #6c757d;
-    margin: 0 0 1rem 0;
-    font-style: italic;
+    margin: 0 0 1.5rem 0;
+    line-height: 1.5;
 }
 
-.debug-btn {
+.apsc-btn {
     background-color: var(--color-chbe-green);
     color: white;
     border: none;
-    padding: 0.5rem 1rem;
-    border-radius: 6px;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
     font-size: 0.9rem;
     font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.3s ease;
+    transition: all 0.3s ease;
+    width: 100%;
+    position: relative;
+    overflow: hidden;
 }
 
-.debug-btn:hover {
+.apsc-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.apsc-btn:hover::before {
+    left: 100%;
+}
+
+.apsc-btn:hover {
     background-color: #1e7e34;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.debug-controls {
+.apsc-controls {
     display: flex;
     gap: 1rem;
     justify-content: center;
+    flex-wrap: wrap;
 }
 
 .reset-btn {
@@ -169,15 +356,17 @@
     color: white;
     border: none;
     padding: 0.75rem 1.5rem;
-    border-radius: 6px;
+    border-radius: 8px;
     font-size: 0.9rem;
     font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.3s ease;
+    transition: all 0.3s ease;
 }
 
 .reset-btn:hover {
     background-color: #c82333;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
 }
 
 .refresh-btn {
@@ -185,13 +374,222 @@
     color: white;
     border: none;
     padding: 0.75rem 1.5rem;
-    border-radius: 6px;
+    border-radius: 8px;
     font-size: 0.9rem;
     font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.3s ease;
+    transition: all 0.3s ease;
 }
 
 .refresh-btn:hover {
     background-color: #5a6268;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
+}
+
+/* ===========================================
+   RESPONSIVE DESIGN
+   =========================================== */
+
+@media (max-width: 768px) {
+    .login-container {
+        padding: 1rem;
+    }
+    
+    .login-box {
+        padding: 2rem 1.5rem;
+        max-width: 100%;
+    }
+    
+    .course-selection {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .apsc-courses {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .apsc-controls {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .reset-btn,
+    .refresh-btn {
+        width: 100%;
+        max-width: 200px;
+    }
+}
+
+@media (max-width: 480px) {
+    .login-box h1 {
+        font-size: 2rem;
+    }
+    
+    .login-box h2 {
+        font-size: 1.1rem;
+    }
+    
+    .apsc-course h3 {
+        font-size: 1.1rem;
+    }
+    
+    .course-description {
+        font-size: 0.85rem;
+    }
+}
+
+/* ===========================================
+   ONBOARDING SECTION STYLES
+   =========================================== */
+
+.onboarding-section {
+    margin-top: 2rem;
+    text-align: left;
+}
+
+.onboarding-section h2 {
+    text-align: center;
+    margin-bottom: 0.5rem;
+    color: var(--color-chbe-green);
+    font-size: 1.5rem;
+}
+
+.section-description {
+    text-align: center;
+    color: #6c757d;
+    margin-bottom: 2rem;
+    font-size: 0.95rem;
+}
+
+.onboarding-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.onboarding-step {
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 10px;
+    padding: 1.25rem;
+    transition: all 0.3s ease;
+}
+
+.onboarding-step:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: var(--color-chbe-green);
+}
+
+.onboarding-step h3 {
+    color: var(--color-chbe-green);
+    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
+}
+
+.onboarding-step .step-description {
+    font-size: 0.9rem;
+    color: #6c757d;
+    margin-bottom: 1rem;
+    line-height: 1.4;
+}
+
+.onboarding-btn {
+    background-color: var(--color-chbe-green);
+    color: white;
+    border: none;
+    padding: 0.6rem 1.2rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    width: 100%;
+}
+
+.onboarding-btn:hover {
+    background-color: #1e5f3f;
+    transform: translateY(-1px);
+}
+
+.onboarding-step.course-loaded {
+    border-color: var(--color-chbe-green);
+    background-color: #e8f5e8;
+}
+
+.onboarding-step.course-loaded .step-description {
+    color: var(--color-chbe-green);
+}
+
+.onboarding-controls {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e9ecef;
+}
+
+/* Update instructor button in course selection */
+.course-instructor .instructor-btn {
+    background-color: var(--color-ubc-blue);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    min-width: 150px;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.course-instructor .instructor-btn:hover {
+    background-color: #0056b3;
+    transform: translateY(-1px);
+}
+
+/* Update existing button styles to work with new structure */
+.reset-btn, .refresh-btn {
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.3s ease;
+}
+
+.reset-btn:hover {
+    background-color: #dc3545;
+}
+
+.refresh-btn:hover {
+    background-color: #007bff;
+}
+
+/* Responsive design for new structure */
+@media (max-width: 768px) {
+    .onboarding-steps {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .onboarding-controls {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .reset-btn,
+    .refresh-btn {
+        width: 100%;
+        max-width: 200px;
+    }
 }

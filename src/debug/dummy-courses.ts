@@ -19,6 +19,181 @@ import { activeCourse, ContentDivision, LearningObjective, AdditionalMaterial } 
 const idGenerator = IDGenerator.getInstance();
 
 /**
+ * Creates APSC 091 - PID for Engineers (Monitor Setup Course)
+ * This course has completed course, content, and flag setup but needs monitor setup
+ */
+async function createAPSC091(): Promise<activeCourse> {
+    const courseId = idGenerator.uniqueIDGenerator('APSC091-PID-Engineers');
+    const now = new Date();
+    
+    const course: activeCourse = {
+        id: courseId,
+        date: now,
+        courseName: 'APSC 091: PID for Engineers',
+        courseSetup: true,
+        contentSetup: true, // Completed onboarding
+        flagSetup: true, // Completed flag setup
+        monitorSetup: false, // Needs monitor setup
+        instructors: [
+            'Dr. Maria Rodriguez',
+            'Prof. James Wilson'
+        ],
+        teachingAssistants: [
+            'Alex Chen',
+            'Sarah Thompson',
+            'David Kim'
+        ],
+        frameType: 'byWeek',
+        tilesNumber: 12,
+        divisions: []
+    };
+
+    // Create 12 weekly modules with learning objectives
+    const weeklyModules = [
+        {
+            title: 'Week 1: Introduction to Control Systems',
+            objectives: [
+                'Understand the basic concepts of control systems',
+                'Identify different types of control systems',
+                'Learn about open-loop vs closed-loop control'
+            ]
+        },
+        {
+            title: 'Week 2: Mathematical Foundations',
+            objectives: [
+                'Review Laplace transforms and their applications',
+                'Understand transfer functions and system dynamics',
+                'Learn about poles and zeros in control systems'
+            ]
+        },
+        {
+            title: 'Week 3: PID Controller Basics',
+            objectives: [
+                'Understand the three components of PID control',
+                'Learn about proportional, integral, and derivative actions',
+                'Analyze the effects of each PID component'
+            ]
+        },
+        {
+            title: 'Week 4: PID Controller Design',
+            objectives: [
+                'Learn systematic approaches to PID tuning',
+                'Understand Ziegler-Nichols tuning methods',
+                'Practice manual tuning techniques'
+            ]
+        },
+        {
+            title: 'Week 5: Stability Analysis',
+            objectives: [
+                'Understand system stability concepts',
+                'Learn about Routh-Hurwitz stability criterion',
+                'Analyze stability margins and phase/gain margins'
+            ]
+        },
+        {
+            title: 'Week 6: Frequency Response Analysis',
+            objectives: [
+                'Learn about Bode plots and frequency response',
+                'Understand Nyquist plots and stability analysis',
+                'Practice frequency domain design techniques'
+            ]
+        },
+        {
+            title: 'Week 7: Advanced PID Techniques',
+            objectives: [
+                'Learn about PID variations and modifications',
+                'Understand anti-windup techniques',
+                'Explore cascade and feedforward control'
+            ]
+        },
+        {
+            title: 'Week 8: Digital PID Implementation',
+            objectives: [
+                'Understand digital control system implementation',
+                'Learn about sampling and discretization',
+                'Practice digital PID controller design'
+            ]
+        },
+        {
+            title: 'Week 9: Process Control Applications',
+            objectives: [
+                'Apply PID control to industrial processes',
+                'Understand process dynamics and modeling',
+                'Learn about controller selection criteria'
+            ]
+        },
+        {
+            title: 'Week 10: Motion Control Systems',
+            objectives: [
+                'Apply PID control to motion systems',
+                'Understand servo control and positioning',
+                'Learn about velocity and position control loops'
+            ]
+        },
+        {
+            title: 'Week 11: PID in Modern Control Systems',
+            objectives: [
+                'Explore PID in modern control architectures',
+                'Understand integration with SCADA systems',
+                'Learn about adaptive and intelligent PID control'
+            ]
+        },
+        {
+            title: 'Week 12: Capstone Project - PID Design',
+            objectives: [
+                'Design a complete PID control system',
+                'Implement and test PID controller performance',
+                'Present PID design project to class'
+            ]
+        }
+    ];
+
+    // Create divisions and learning objectives
+    for (let i = 0; i < 12; i++) {
+        const module = weeklyModules[i];
+        const divisionId = idGenerator.uniqueIDGenerator(`division-${i + 1}`);
+        const itemId = idGenerator.uniqueIDGenerator(`item-${i + 1}`);
+        
+        const learningObjectives: LearningObjective[] = module.objectives.map((objective, index) => ({
+            id: idGenerator.uniqueIDGenerator(`objective-${i + 1}-${index + 1}`),
+            LearningObjective: objective,
+            courseName: course.courseName,
+            divisionTitle: module.title,
+            itemTitle: module.title,
+            createdAt: now,
+            updatedAt: now
+        }));
+
+        const division: ContentDivision = {
+            id: divisionId,
+            date: now,
+            title: module.title,
+            courseName: course.courseName,
+            published: true,
+            createdAt: now,
+            updatedAt: now,
+            items: [{
+                id: itemId,
+                date: now,
+                title: module.title,
+                courseName: course.courseName,
+                divisionTitle: module.title,
+                itemTitle: module.title,
+                learningObjectives: learningObjectives,
+                additionalMaterials: [],
+                completed: true,
+                createdAt: now,
+                updatedAt: now
+            }]
+        };
+
+        course.divisions.push(division);
+    }
+
+    return course;
+}
+
+/**
  * Creates APSC 060 - Engineering Society (Flag Setup Course)
  * This course has completed course and content setup but needs flag setup
  */
@@ -525,6 +700,10 @@ export async function initializeDummyCourses(): Promise<void> {
         const apsc060 = await createAPSC060();
         await createOrUpdateCourse(apsc060);
         
+        // Create APSC 091 (Monitor Setup Course)
+        const apsc091 = await createAPSC091();
+        await createOrUpdateCourse(apsc091);
+        
         console.log('✅ Dummy courses initialized successfully');
     } catch (error) {
         console.error('❌ Error initializing dummy courses:', error);
@@ -542,10 +721,12 @@ export async function resetDummyCourses(): Promise<boolean> {
         const apsc099Id = idGenerator.uniqueIDGenerator('APSC099-Engineering-Kindergarten');
         const apsc080Id = idGenerator.uniqueIDGenerator('APSC080-Introduction-Engineering');
         const apsc060Id = idGenerator.uniqueIDGenerator('APSC060-Engineering-Society');
+        const apsc091Id = idGenerator.uniqueIDGenerator('APSC091-PID-Engineers');
         
         await deleteCourse(apsc099Id);
         await deleteCourse(apsc080Id);
         await deleteCourse(apsc060Id);
+        await deleteCourse(apsc091Id);
         
         // Recreate courses
         await initializeDummyCourses();
@@ -561,21 +742,23 @@ export async function resetDummyCourses(): Promise<boolean> {
 /**
  * Gets all dummy courses for display
  */
-export async function getDummyCourses(): Promise<{ apsc099: activeCourse | null, apsc080: activeCourse | null, apsc060: activeCourse | null }> {
+export async function getDummyCourses(): Promise<{ apsc099: activeCourse | null, apsc080: activeCourse | null, apsc060: activeCourse | null, apsc091: activeCourse | null }> {
     try {
         const apsc099Id = idGenerator.uniqueIDGenerator('APSC099-Engineering-Kindergarten');
         const apsc080Id = idGenerator.uniqueIDGenerator('APSC080-Introduction-Engineering');
         const apsc060Id = idGenerator.uniqueIDGenerator('APSC060-Engineering-Society');
+        const apsc091Id = idGenerator.uniqueIDGenerator('APSC091-PID-Engineers');
         
         const instance = await EngEAI_MongoDB.getInstance();
         
         const apsc099 = await instance.getActiveCourse(apsc099Id) as activeCourse | null;
         const apsc080 = await instance.getActiveCourse(apsc080Id) as activeCourse | null;
         const apsc060 = await instance.getActiveCourse(apsc060Id) as activeCourse | null;
+        const apsc091 = await instance.getActiveCourse(apsc091Id) as activeCourse | null;
         
-        return { apsc099, apsc080, apsc060 };
+        return { apsc099, apsc080, apsc060, apsc091 };
     } catch (error) {
         console.error('Error getting dummy courses:', error);
-        return { apsc099: null, apsc080: null, apsc060: null };
+        return { apsc099: null, apsc080: null, apsc060: null, apsc091: null };
     }
 }

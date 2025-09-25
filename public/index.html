@@ -19,40 +19,70 @@
 				<h1>EngE-AI</h1>
 				<p class="subtitle">AI-powered Engineering Education Assistant</p>
 
-				<h2>Select your role</h2>
-
-				<div class="role-selection">
-					<a href="/pages/student-mode.html" class="role-box role-student">
-						<h3>Student</h3>
-						<p>Ask questions about course materials</p>
-					</a>
-					<a href="/pages/instructor-mode.html" class="role-box role-instructor">
-						<h3>Instructor</h3>
-						<p>Upload and manage course materials</p>
-					</a>
+				<!-- Authentication Section -->
+				<div id="auth-section" class="auth-section">
+					<div id="login-prompt" class="login-prompt">
+						<h2>Authentication Required</h2>
+						<p>Please log in with your CWL credentials to access EngE-AI</p>
+						<button id="login-btn" class="login-btn">Login with CWL</button>
+					</div>
+					<div id="user-info" class="user-info" style="display: none;">
+						<h2>Welcome!</h2>
+						<div id="user-details"></div>
+						<button id="logout-btn" class="logout-btn">Logout</button>
+					</div>
+					<div id="auth-loading" class="auth-loading" style="display: none;">
+						<p>Checking authentication...</p>
+					</div>
 				</div>
 
-				<!-- Debug Course Selection -->
-				<div class="debug-section">
-					<h2>Debug Courses (PI Access)</h2>
-					<div class="debug-courses">
-						<div class="debug-course" id="apsc099-course">
-							<h3>APSC 099: Engineering for Kindergarten</h3>
-							<p class="course-description">Settled Course - Completed onboarding with learning objectives</p>
-							<button class="debug-btn" id="apsc099-btn">Load Course</button>
+				<h2>Available Services</h2>
+
+				<div class="course-selection">
+					<div class="course-box course-student">
+						<h3>Start Student Mode</h3>
+						<p>Enter the student mode dashboard</p>
+						<a href="/pages/student-mode.html" class="course-link">Enter Student Mode</a>
+					</div>
+					<div class="course-box course-instructor">
+						<h3>Complete Instructor Mode</h3>
+						<p>Mock Course: APSC 099 - Engineering for Kindergarten</p>
+						<p>Access the complete instructor dashboard with all features</p>
+						<button class="instructor-btn" id="apsc099-btn">Enter Instructor Mode</button>
+					</div>
+				</div>
+
+				<!-- Onboarding Steps Section -->
+				<div class="onboarding-section">
+					<h2>Onboarding Steps</h2>
+					<p class="section-description">Complete these steps to set up your course and access instructor features</p>
+
+
+					
+					<div class="onboarding-steps">
+						<div class="onboarding-step" id="newRegistration-course">
+							<h3>Mock Course Onboarding</h3>
+							<p class="step-description">Plain onboarding session with no database setup<br>Complete 4-step onboarding process from scratch</p>
+							<button class="onboarding-btn" id="newRegistration-btn">Enter Mock Onboarding</button>
 						</div>
-						<div class="debug-course" id="apsc080-course">
-							<h3>APSC 080: Introduction to Engineering</h3>
-							<p class="course-description">Course Onboarding View - Ready for document setup</p>
-							<button class="debug-btn" id="apsc080-btn">Load Course</button>
+						<div class="onboarding-step" id="apsc080-course">
+							<h3>Setup Document Onboarding</h3>
+							<p class="step-description">Mock Course: APSC 080 - Introduction to Engineering<br>Course Onboarding View - Ready for document setup</p>
+							<button class="onboarding-btn" id="apsc080-btn">Enter Course Onboarding</button>
 						</div>
-						<div class="debug-course" id="apsc060-course">
-							<h3>APSC 060: Engineering Society</h3>
-							<p class="course-description">Flag Setup View - Ready for flag onboarding</p>
-							<button class="debug-btn" id="apsc060-btn">Load Course</button>
+						<div class="onboarding-step" id="apsc060-course">
+							<h3>Setup Flag Onboarding</h3>
+							<p class="step-description">Mock Course: APSC 060 - Engineering Society<br>Flag Setup View - Ready for flag onboarding</p>
+							<button class="onboarding-btn" id="apsc060-btn">Enter Flag Setup</button>
+						</div>
+						<div class="onboarding-step" id="apsc091-course">
+							<h3>Setup Monitor Onboarding</h3>
+							<p class="step-description">Mock Course: APSC 091 - PID for Engineers<br>Monitor Setup View - Ready for monitor onboarding</p>
+							<button class="onboarding-btn" id="apsc091-btn">Enter Monitor Setup</button>
 						</div>
 					</div>
-					<div class="debug-controls">
+
+					<div class="onboarding-controls">
 						<button class="reset-btn" id="reset-btn">Reset All Courses</button>
 						<button class="refresh-btn" id="refresh-btn">Refresh Status</button>
 					</div>
@@ -61,6 +91,7 @@
 				<p class="footer-text">University of British Columbia</p>
 			</div>
 		</div>
+        <script type="module" src="/dist/public/scripts/auth-manager.js"></script>
         <script type="module" src="/dist/public/scripts/debug-courses.js"></script>
 	</body>
 </html>
