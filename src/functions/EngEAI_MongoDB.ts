@@ -118,6 +118,8 @@ export class EngEAI_MongoDB {
 
     // Learning objectives methods
     public addLearningObjective = async (courseId: string, divisionId: string, contentId: string, learningObjective: any) => {
+        console.log('🎯 [MONGODB] addLearningObjective called with:', { courseId, divisionId, contentId, learningObjective });
+        
         const result = await this.getCourseCollection().findOneAndUpdate(
             { 
                 id: courseId,
@@ -138,6 +140,8 @@ export class EngEAI_MongoDB {
                 returnDocument: 'after' 
             }
         );
+        
+        console.log('✅ [MONGODB] addLearningObjective result:', result);
         return result;
     }
 
@@ -169,6 +173,8 @@ export class EngEAI_MongoDB {
     }
 
     public deleteLearningObjective = async (courseId: string, divisionId: string, contentId: string, objectiveId: string) => {
+        console.log('🗑️ [MONGODB] deleteLearningObjective called with:', { courseId, divisionId, contentId, objectiveId });
+        
         const result = await this.getCourseCollection().findOneAndUpdate(
             { 
                 id: courseId,
@@ -189,6 +195,8 @@ export class EngEAI_MongoDB {
                 returnDocument: 'after' 
             }
         );
+        
+        console.log('✅ [MONGODB] deleteLearningObjective result:', result);
         return result;
     }
 
@@ -296,6 +304,42 @@ export class EngEAI_MongoDB {
         
         const flagsCollection = this.getFlagsCollection(courseName);
         return await flagsCollection.deleteOne({ id: flagId });
+    }
+
+    public addContentItem = async (courseId: string, divisionId: string, contentItem: any) => {
+        try {
+            console.log('📝 Adding content item to course:', courseId, 'division:', divisionId);
+            
+            const course = await this.getActiveCourse(courseId);
+            if (!course) {
+                return { success: false, error: 'Course not found' };
+            }
+
+            const division = course.divisions?.find((d: any) => d.id === divisionId);
+            if (!division) {
+                return { success: false, error: 'Division not found' };
+            }
+
+            // Initialize items array if it doesn't exist
+            if (!division.items) {
+                division.items = [];
+            }
+
+            // Add the new content item
+            division.items.push(contentItem);
+
+            // Update the course in the database
+            const result = await this.updateActiveCourse(courseId, course as Partial<activeCourse>);
+            
+            if (result && result.ok) {
+                return { success: true, data: contentItem };
+            } else {
+                return { success: false, error: 'Failed to save content item to database' };
+            }
+        } catch (error) {
+            console.error('Error adding content item:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
     }
 
     public async close(): Promise<void> {

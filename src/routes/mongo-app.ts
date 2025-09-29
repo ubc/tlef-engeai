@@ -467,6 +467,43 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
     });
 }));
 
+// POST /api/courses/:courseId/divisions/:divisionId/items - Add a new content item (section) to a division
+router.post('/:courseId/divisions/:divisionId/items', asyncHandler(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, divisionId } = req.params;
+        const { contentItem } = req.body;
+        
+        if (!contentItem) {
+            return res.status(400).json({
+                success: false,
+                error: 'Content item data is required'
+            });
+        }
+        
+        const result = await instance.addContentItem(courseId, divisionId, contentItem);
+        
+        if (result.success) {
+            res.status(201).json({
+                success: true,
+                data: result.data,
+                message: 'Content item added successfully'
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                error: result.error || 'Failed to add content item'
+            });
+        }
+    } catch (error) {
+        console.error('Error adding content item:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to add content item'
+        });
+    }
+}));
+
 // GET /api/courses/:courseId/divisions/:divisionId/items/:itemId/objectives - Get learning objectives for a course item
 router.get('/:courseId/divisions/:divisionId/items/:itemId/objectives', asyncHandler(async (req: Request, res: Response) => {
     try {
@@ -516,6 +553,10 @@ router.get('/:courseId/divisions/:divisionId/items/:itemId/objectives', asyncHan
 // POST /api/courses/:courseId/divisions/:divisionId/items/:itemId/objectives - Add a learning objective
 router.post('/:courseId/divisions/:divisionId/items/:itemId/objectives', asyncHandler(async (req: Request, res: Response) => {
     try {
+        console.log('🎯 [BACKEND] Add learning objective request received');
+        console.log('🔍 [BACKEND] Request params:', req.params);
+        console.log('🔍 [BACKEND] Request body:', req.body);
+        
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, divisionId, itemId } = req.params;
         const { learningObjective } = req.body;
@@ -527,7 +568,11 @@ router.post('/:courseId/divisions/:divisionId/items/:itemId/objectives', asyncHa
             });
         }
         
+        console.log('📡 [BACKEND] Calling addLearningObjective with:', { courseId, divisionId, itemId, learningObjective });
+        
         const result = await instance.addLearningObjective(courseId, divisionId, itemId, learningObjective);
+        
+        console.log('✅ [BACKEND] Add learning objective result:', result);
         
         res.status(200).json({
             success: true,
@@ -576,10 +621,17 @@ router.put('/:courseId/divisions/:divisionId/items/:itemId/objectives/:objective
 // DELETE /api/courses/:courseId/divisions/:divisionId/items/:itemId/objectives/:objectiveId - Delete a learning objective
 router.delete('/:courseId/divisions/:divisionId/items/:itemId/objectives/:objectiveId', asyncHandler(async (req: Request, res: Response) => {
     try {
+        console.log('🗑️ [BACKEND] Delete learning objective request received');
+        console.log('🔍 [BACKEND] Request params:', req.params);
+        
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, divisionId, itemId, objectiveId } = req.params;
         
+        console.log('📡 [BACKEND] Calling deleteLearningObjective with:', { courseId, divisionId, itemId, objectiveId });
+        
         const result = await instance.deleteLearningObjective(courseId, divisionId, itemId, objectiveId);
+        
+        console.log('✅ [BACKEND] Delete learning objective result:', result);
         
         res.status(200).json({
             success: true,

@@ -673,7 +673,7 @@ async function removeDemoObjective(index: number): Promise<void> {
         objectiveToRemove.learningObjective
     );
     
-    if (result.action !== 'Delete') {
+    if (result.action !== 'delete') {
         return; // User cancelled
     }
     
@@ -720,7 +720,7 @@ async function clearDemoObjectives(): Promise<void> {
     // Show confirmation modal
     const result = await showDeleteConfirmationModal('All Learning Objectives');
     
-    if (result.action !== 'Delete') {
+    if (result.action !== 'delete') {
         return; // User cancelled
     }
     
