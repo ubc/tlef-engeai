@@ -152,26 +152,17 @@ export interface AdditionalMaterial {
 }
 
 /**
- * Student data structure for chat integration
- * TODO: Replace with proper user authentication system when backend user mechanism is implemented
+ * User data structure for authentication and chat integration
+ * Replaces the old Student interface with proper user authentication
  */
-export interface Student {
+export interface User {
     id: string;
     name: string;
-    courseAttended: string; // Default: "APSC 099" - can be changed when user system is implemented
-    userId: number; // Hardcoded for now - will be replaced with proper user authentication
-}
-
-/**
- * user in the database
- */
-export interface UserDB {
-    id: string;
-    name: string;
-    UBCID: string;
+    puid: string;
     userId: number;
     activeCourseId: string;
     activeCourseName: string;
+    userOnboarding: boolean; // this is only used for student mode
     role: 'instructor' | 'teaching assistant' | 'student';
     status: 'active' | 'inactive';
     chats: Chat[];

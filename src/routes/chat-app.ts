@@ -42,7 +42,9 @@ import { AppConfig, loadConfig } from './config';
 import { RAGModule, RetrievedChunk } from 'ubc-genai-toolkit-rag';
 import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
 import { IDGenerator } from '../functions/unique-id-generator';
-import { ChatMessage, } from '../functions/types';
+import { ChatMessage, Chat } from '../functions/types';
+import { asyncHandlerWithAuth } from '../middleware/asyncHandler';
+import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 
 // Load environment variables
 dotenv.config();
@@ -719,63 +721,117 @@ const chatApp = new ChatApp(appConfig);
 // console.log(`DEBUG #666: Chat exists: ${chatApp.validateChatExists('1234567890')}`);
 
 /**
- * create an new chat for user
+ * Load all chats for the authenticated user (REQUIRES AUTH)
+ * 
+ * @returns Array of user's chats from MongoDB
+ */
+router.get('/user/chats', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        // Get user from session
+        const user = (req as any).user;
+        const puid = user?.puid;
+        const courseName = user?.activeCourseName || 'APSC 099'; // Default to APSC 099 if not set
+        
+        //START DEBUG LOG : DEBUG-CODE(LOAD-CHATS-001)
+        console.log('\n📂 LOADING USER CHATS:');
+        console.log('='.repeat(50));
+        console.log(`PUID: ${puid}`);
+        console.log(`Course Name: ${courseName}`);
+        console.log('='.repeat(50));
+        //END DEBUG LOG : DEBUG-CODE(LOAD-CHATS-001)
+        
+        if (!puid) {
+            //START DEBUG LOG : DEBUG-CODE(LOAD-CHATS-002)
+            console.log('❌ VALIDATION FAILED: PUID not found in session');
+            //END DEBUG LOG : DEBUG-CODE(LOAD-CHATS-002)
+            return res.status(401).json({ 
+                success: false, 
+                error: 'User not authenticated' 
+            });
+        }
+        
+        // Load chats from MongoDB
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const chats = await mongoDB.getUserChats(courseName, puid);
+        
+        //START DEBUG LOG : DEBUG-CODE(LOAD-CHATS-003)
+        console.log(`✅ LOADED ${chats.length} CHATS FROM MONGODB`);
+        console.log('='.repeat(50));
+        //END DEBUG LOG : DEBUG-CODE(LOAD-CHATS-003)
+        
+        res.json({ 
+            success: true, 
+            chats: chats
+        });
+        
+    } catch (error) {
+        //START DEBUG LOG : DEBUG-CODE(LOAD-CHATS-004)
+        console.error('❌ ERROR LOADING USER CHATS:', error);
+        //END DEBUG LOG : DEBUG-CODE(LOAD-CHATS-004)
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to load user chats' 
+        });
+    }
+}));
+
+/**
+ * create an new chat for user (REQUIRES AUTH)
  * 
  * @param userID - The user ID
  * @param courseName - The name of the course
  * @param date - The date of the chat
  * @returns The new chat ID
  */
-router.post('/newchat', async (req: Request, res: Response) => {
+router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const userID = req.body.userID;
         const courseName = req.body.courseName;
         const date = new Date(); // the date is the current date inside the backend
         
-        // Remove later : removeCode(001) - Logging new chat creation
+        // Get user from session
+        const user = (req as any).user;
+        const puid = user?.puid;
+        
+        //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-001)
         console.log('\n🆕 NEW CHAT CREATION REQUEST:');
         console.log('='.repeat(50));
         console.log(`User ID: ${userID}`);
         console.log(`Course Name: ${courseName}`);
+        console.log(`PUID from session: ${puid}`);
         console.log(`Date: ${date}`);
         console.log(`Timestamp: ${new Date().toISOString()}`);
         console.log('='.repeat(50));
+        //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-001)
     
         
         if (!userID || !courseName || !date) {
-            // Remove later : removeCode(001) - Logging validation failure
+            //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-002)
             console.log('❌ VALIDATION FAILED: Missing required fields for new chat');
+            //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-002)
             return res.status(400).json({ 
                 success: false, 
                 error: 'Missing required fields: userID, courseName, and date are required' 
             });
         }
 
-        // HARDCODED INITIAL MESSAGE FOR ARTEFACT TESTING
-        // TODO: Remove this when LLM integration is ready
-        const hardcodedInitialMessage = {
+        if (!puid) {
+            //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-003)
+            console.log('❌ VALIDATION FAILED: PUID not found in session');
+            //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-003)
+            return res.status(401).json({ 
+                success: false, 
+                error: 'User not authenticated' 
+            });
+        }
+
+        // Simple initial message
+        const hardcodedInitialMessage: ChatMessage = {
             id: 'init-message-' + Date.now(),
             sender: 'bot' as const,
             userId: userID === 'instructor' ? 0 : parseInt(userID) || 1,
             courseName: courseName,
-            text: `Hello! I'm EngE-AI, your AI companion for chemical, environmental, and materials engineering. 
-
-I can help you understand complex concepts through interactive diagrams and visual representations. For example, here's a process flow diagram:
-
-<Artefact>
-graph LR
-    A[Student Question] --> B[AI Analysis]
-    B --> C[Course Material Search]
-    C --> D[Diagram Generation]
-    D --> E[Interactive Response]
-    E --> F[Learning Enhancement]
-    
-    style A fill:#e3f2fd
-    style F fill:#e8f5e8
-    style D fill:#fff3e0
-</Artefact>
-
-This shows how I process your questions and provide visual learning aids. What would you like to explore today?`,
+            text: `Hello! I'm EngE-AI, your AI companion for chemical, environmental, and materials engineering.`,
             timestamp: Date.now()
         };
         
@@ -783,147 +839,213 @@ This shows how I process your questions and provide visual learning aids. What w
         const initRequest = chatApp.initializeConversation(userID, courseName, date);
         const chatId = initRequest.chatId;
         
-        // Remove later : removeCode(001) - Logging successful chat creation
-        console.log('\n✅ NEW CHAT CREATED SUCCESSFULLY (HARDCODED):');
+        //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-004)
+        console.log('\n✅ NEW CHAT CREATED IN MEMORY:');
         console.log('='.repeat(50));
         console.log(`Generated Chat ID: ${chatId}`);
         console.log(`Assistant Message ID: ${hardcodedInitialMessage.id}`);
         console.log(`Assistant Message Preview: "${hardcodedInitialMessage.text.substring(0, 100)}..."`);
         console.log('='.repeat(50));
+        //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-004)
+        
+        // Create Chat object to save to MongoDB
+        const newChat: Chat = {
+            id: chatId,
+            courseName: courseName,
+            divisionTitle: '', // Empty for now, will be set by user later
+            itemTitle: '', // Empty for now, will be set by user later
+            messages: [hardcodedInitialMessage], // Start with initial message
+            isPinned: false,
+            pinnedMessageId: null
+        };
+        
+        // Save chat to MongoDB
+        try {
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            await mongoDB.addChatToUser(courseName, puid, newChat);
+            
+            //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-005)
+            console.log('✅ CHAT SAVED TO MONGODB SUCCESSFULLY');
+            //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-005)
+        } catch (dbError) {
+            //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-006)
+            console.error('⚠️ WARNING: Failed to save chat to MongoDB:', dbError);
+            console.log('Chat created in memory but not persisted to database');
+            //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-006)
+            // Continue execution - chat is still in memory
+        }
         
         // Return the complete response with the hardcoded message
         res.json({ 
             success: true, 
             chatId: chatId,
-            initAssistantMessage: hardcodedInitialMessage
+            initAssistantMessage: hardcodedInitialMessage,
+            chat: newChat // Return full chat object for frontend
         });
         
     } catch (error) {
-        // Remove later : removeCode(001) - Logging error
+        //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-007)
         console.error('❌ ERROR CREATING NEW CHAT:', error);
+        //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-007)
         res.status(500).json({ 
             success: false, 
             error: 'Failed to create new chat' 
         });
     }
-});
+}));
 
 /**
- * Enhanced chat endpoint with streaming functionality
+ * Send message endpoint (REQUIRES AUTH) - Simple request-response, no streaming
  */
-router.post('/:chatId', async (req: Request, res: Response) => {
+router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { chatId } = req.params;
         const { message, userId, courseName } = req.body;
         
+        // Get user from session
+        const user = (req as any).user;
+        const puid = user?.puid;
+        
+        //START DEBUG LOG : DEBUG-CODE(SEND-MSG-001)
+        console.log('\n💬 SENDING MESSAGE:');
+        console.log('='.repeat(50));
+        console.log(`Chat ID: ${chatId}`);
+        console.log(`User ID: ${userId}`);
+        console.log(`PUID: ${puid}`);
+        console.log(`Course: ${courseName}`);
+        console.log(`Message: ${message.substring(0, 100)}...`);
+        console.log('='.repeat(50));
+        //END DEBUG LOG : DEBUG-CODE(SEND-MSG-001)
+        
         // Validate input
         if (!message || !userId) {
-            // console.log('❌ VALIDATION FAILED: Missing required fields');
+            //START DEBUG LOG : DEBUG-CODE(SEND-MSG-002)
+            console.log('❌ VALIDATION FAILED: Missing required fields');
+            //END DEBUG LOG : DEBUG-CODE(SEND-MSG-002)
             return res.status(400).json({ 
                 success: false, 
                 error: 'Message and userId are required' 
             });
         }
 
+        if (!puid) {
+            //START DEBUG LOG : DEBUG-CODE(SEND-MSG-003)
+            console.log('❌ VALIDATION FAILED: PUID not found in session');
+            //END DEBUG LOG : DEBUG-CODE(SEND-MSG-003)
+            return res.status(401).json({ 
+                success: false, 
+                error: 'User not authenticated' 
+            });
+        }
+
         // Validate chat exists
         if (!chatApp.validateChatExists(chatId)) {
+            //START DEBUG LOG : DEBUG-CODE(SEND-MSG-004)
+            console.log('❌ VALIDATION FAILED: Chat not found in memory');
+            //END DEBUG LOG : DEBUG-CODE(SEND-MSG-004)
             return res.status(404).json({ 
                 success: false, 
                 error: 'Chat not found' 
             });
         }
 
-        // console.log(`DEBUG #666: Chat exists: ${chatApp.validateChatExists(chatId)}`);
-
-        // Set up Server-Sent Events for streaming
-        res.writeHead(200, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Cache-Control'
-        });
-
-        // Send initial event to confirm connection
-        res.write(`data: ${JSON.stringify({ type: 'connected', message: 'Streaming started' })}\n\n`);
-        
-        //START DEBUG LOG : DEBUG-CODE(018)
-        console.log('🚀 Starting AI streaming response for chat:', chatId);
-        console.log('📝 User message:', message);
-        console.log('👤 User ID:', userId);
-        console.log('📚 Course:', courseName);
-        //END DEBUG LOG : DEBUG-CODE(018)
-
-        // REAL AI COMMUNICATION WITH STREAMING
+        // REAL AI COMMUNICATION (NO STREAMING - WAIT FOR COMPLETE RESPONSE)
         try {
-            // Generate message ID for tracking
-            const messageId = 'ai-message-' + Date.now();
+            //START DEBUG LOG : DEBUG-CODE(SEND-MSG-005)
+            console.log('🤖 Waiting for AI response...');
+            //END DEBUG LOG : DEBUG-CODE(SEND-MSG-005)
             
-            // Use the ChatApp's streaming method for real AI communication
+            // Use the ChatApp's streaming method but don't stream to client - just wait for complete response
             const assistantMessage = await chatApp.sendUserMessageStream(
                 message,
                 chatId,
                 userId,
-                courseName || 'CHBE241',
-                (chunk: string) => {
-                    // Stream each chunk to frontend in real-time
-                    res.write(`data: ${JSON.stringify({ 
-                        type: 'chunk', 
-                        content: chunk,
-                        messageId: messageId
-                    })}\n\n`);
-                }
+                courseName || 'APSC 099',
+                () => {} // Empty callback - we don't stream to client
             );
 
-            // Send completion event with the full AI response
-            res.write(`data: ${JSON.stringify({ 
-                type: 'complete', 
-                message: assistantMessage,
-                success: true 
-            })}\n\n`);
-
-            console.log('✅ AI streaming completed successfully');
+            //START DEBUG LOG : DEBUG-CODE(SEND-MSG-006)
+            console.log('✅ AI response received');
             console.log('📊 Response length:', assistantMessage.text.length, 'characters');
+            //END DEBUG LOG : DEBUG-CODE(SEND-MSG-006)
+
+            // Create the user message object (sendUserMessageStream adds it internally but we need to save it to DB)
+            const currentDate = new Date();
+            const idGenerator = IDGenerator.getInstance();
+            const userMessageId = idGenerator.messageID(message, chatId, currentDate);
+            
+            const userMessage: ChatMessage = {
+                id: userMessageId,
+                sender: 'user',
+                userId: parseInt(userId) || 0,
+                courseName: courseName,
+                text: message,
+                timestamp: Date.now()
+            };
+
+            // Save both messages to MongoDB
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            
+            try {
+                // Save user message
+                await mongoDB.addMessageToChat(courseName, puid, chatId, userMessage);
+                
+                //START DEBUG LOG : DEBUG-CODE(SEND-MSG-007)
+                console.log('✅ User message saved to MongoDB');
+                console.log('   User message ID:', userMessage.id);
+                console.log('   Text:', userMessage.text.substring(0, 50) + '...');
+                //END DEBUG LOG : DEBUG-CODE(SEND-MSG-007)
+                
+                // Save assistant message
+                await mongoDB.addMessageToChat(courseName, puid, chatId, assistantMessage);
+                
+                //START DEBUG LOG : DEBUG-CODE(SEND-MSG-008)
+                console.log('✅ Assistant message saved to MongoDB');
+                console.log('   Assistant message ID:', assistantMessage.id);
+                console.log('   Text:', assistantMessage.text.substring(0, 50) + '...');
+                //END DEBUG LOG : DEBUG-CODE(SEND-MSG-008)
+                
+            } catch (dbError) {
+                //START DEBUG LOG : DEBUG-CODE(SEND-MSG-009)
+                console.error('⚠️ WARNING: Failed to save messages to MongoDB:', dbError);
+                console.log('Messages in memory but not persisted to database');
+                //END DEBUG LOG : DEBUG-CODE(SEND-MSG-009)
+                // Continue execution - messages are still in memory
+            }
+
+            // Return the complete response (no streaming)
+            res.json({ 
+                success: true, 
+                userMessage: userMessage,
+                assistantMessage: assistantMessage
+            });
 
         } catch (aiError) {
+            //START DEBUG LOG : DEBUG-CODE(SEND-MSG-010)
             console.error('❌ AI Communication Error:', aiError);
+            //END DEBUG LOG : DEBUG-CODE(SEND-MSG-010)
             
-            // Send error event through stream
-            res.write(`data: ${JSON.stringify({ 
-                type: 'error', 
-                error: aiError instanceof Error ? aiError.message : 'AI communication failed',
-                success: false 
-            })}\n\n`);
+            return res.status(500).json({ 
+                success: false, 
+                error: aiError instanceof Error ? aiError.message : 'AI communication failed'
+            });
         }
-
-        // Close the stream
-        res.end();
 
     } catch (error) {
-        // console.error('Error in chat endpoint:', error);
-        
-        // Send error event if streaming hasn't started
-        if (!res.headersSent) {
-            res.status(500).json({ 
-                success: false, 
-                error: error instanceof Error ? error.message : 'Failed to process message' 
-            });
-        } else {
-            // Send error event through stream
-            res.write(`data: ${JSON.stringify({ 
-                type: 'error', 
-                error: error instanceof Error ? error.message : 'Failed to process message',
-                success: false 
-            })}\n\n`);
-            res.end();
-        }
+        //START DEBUG LOG : DEBUG-CODE(SEND-MSG-011)
+        console.error('❌ ERROR IN SEND MESSAGE ENDPOINT:', error);
+        //END DEBUG LOG : DEBUG-CODE(SEND-MSG-011)
+        res.status(500).json({ 
+            success: false, 
+            error: error instanceof Error ? error.message : 'Failed to process message' 
+        });
     }
-});
+}));
 
 /**
- * Get chat history for a specific chat
+ * Get chat history for a specific chat (REQUIRES AUTH)
  */
-router.get('/:chatId/history', async (req: Request, res: Response) => {
+router.get('/:chatId/history', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { chatId } = req.params;
         
@@ -952,12 +1074,12 @@ router.get('/:chatId/history', async (req: Request, res: Response) => {
             error: 'Failed to get chat history' 
         });
     }
-});
+}));
 
 /**
- * Get a specific message from a chat
+ * Get a specific message from a chat (REQUIRES AUTH)
  */
-router.get('/:chatId/message/:messageId', async (req: Request, res: Response) => {
+router.get('/:chatId/message/:messageId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { chatId, messageId } = req.params;
         
@@ -992,52 +1114,101 @@ router.get('/:chatId/message/:messageId', async (req: Request, res: Response) =>
             error: 'Failed to get message' 
         });
     }
-});
+}));
 
 /**
- * Delete a chat
+ * Delete a chat (REQUIRES AUTH)
  * 
  * @param chatId - The chat ID to delete
  * @returns JSON response with deletion status
  */
-router.delete('/:chatId', async (req: Request, res: Response) => {
+router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { chatId } = req.params;
         
-        console.log(`🗑️ DELETE CHAT REQUEST: ${chatId}`);
+        // Get user from session
+        const user = (req as any).user;
+        const puid = user?.puid;
+        const courseName = user?.activeCourseName || 'APSC 099';
+        
+        //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-001)
+        console.log('\n🗑️ DELETE CHAT REQUEST:');
+        console.log('='.repeat(50));
+        console.log(`Chat ID: ${chatId}`);
+        console.log(`PUID: ${puid}`);
+        console.log(`Course: ${courseName}`);
+        console.log('='.repeat(50));
+        //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-001)
         
         // Validate input
         if (!chatId) {
-            console.log(`🗑️ DELETE FAILED: Chat ID is required`);
+            //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-002)
+            console.log('❌ DELETE FAILED: Chat ID is required');
+            //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-002)
             return res.status(400).json({
                 success: false,
                 error: 'Chat ID is required'
             });
         }
         
-        // Validate chat exists
+        if (!puid) {
+            //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-003)
+            console.log('❌ DELETE FAILED: PUID not found in session');
+            //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-003)
+            return res.status(401).json({
+                success: false,
+                error: 'User not authenticated'
+            });
+        }
+        
+        // Validate chat exists in memory
         if (!chatApp.validateChatExists(chatId)) {
-            console.log(`🗑️ DELETE FAILED: Chat ${chatId} not found`);
+            //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-004)
+            console.log(`❌ DELETE FAILED: Chat ${chatId} not found in memory`);
+            //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-004)
             return res.status(404).json({
                 success: false,
                 error: 'Chat not found'
             });
         }
         
-        console.log(`🗑️ Chat ${chatId} exists, proceeding with deletion`);
+        //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-005)
+        console.log(`✅ Chat ${chatId} exists, proceeding with deletion`);
+        //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-005)
         
-        // Delete the chat
+        // Delete from memory
         const deleted = chatApp.deleteChat(chatId);
         
         if (deleted) {
-            console.log(`🗑️ DELETE SUCCESS: Chat ${chatId} deleted successfully`);
+            //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-006)
+            console.log(`✅ Chat ${chatId} deleted from memory`);
+            //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-006)
+            
+            // Delete from MongoDB
+            try {
+                const mongoDB = await EngEAI_MongoDB.getInstance();
+                await mongoDB.deleteChatFromUser(courseName, puid, chatId);
+                
+                //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-007)
+                console.log(`✅ Chat ${chatId} deleted from MongoDB`);
+                //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-007)
+            } catch (dbError) {
+                //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-008)
+                console.error('⚠️ WARNING: Failed to delete chat from MongoDB:', dbError);
+                console.log('Chat deleted from memory but not from database');
+                //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-008)
+                // Continue execution - chat is deleted from memory
+            }
+            
             res.json({
                 success: true,
                 message: 'Chat deleted successfully',
                 chatId: chatId
             });
         } else {
-            console.log(`🗑️ DELETE FAILED: Failed to delete chat ${chatId}`);
+            //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-009)
+            console.log(`❌ DELETE FAILED: Failed to delete chat ${chatId} from memory`);
+            //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-009)
             res.status(500).json({
                 success: false,
                 error: 'Failed to delete chat'
@@ -1045,13 +1216,15 @@ router.delete('/:chatId', async (req: Request, res: Response) => {
         }
         
     } catch (error) {
-        console.error('🗑️ DELETE ERROR:', error);
+        //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-010)
+        console.error('❌ DELETE ERROR:', error);
+        //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-010)
         res.status(500).json({
             success: false,
             error: 'Internal server error'
         });
     }
-});
+}));
 
 /**
  * Test endpoint for API validation

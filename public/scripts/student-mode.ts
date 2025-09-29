@@ -1,15 +1,29 @@
 // public/scripts/student-mode.ts
 
 import { loadComponentHTML, renderFeatherIcons } from './functions/api.js';
-import { ChatManager, createDefaultStudent } from './feature/chat.js';
+import { ChatManager, createDefaultUser } from './feature/chat.js';
+import { authService } from './services/AuthService.js';
 
-document.addEventListener('DOMContentLoaded', () => {
+// Authentication check function
+async function checkAuthentication(): Promise<boolean> {
+    return await authService.checkAuthenticationAndRedirect('/pages/student-mode.html', 'STUDENT-MODE');
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    // Check authentication first
+    const isAuthenticated = await checkAuthentication();
+    if (!isAuthenticated) {
+        return; // Stop execution if not authenticated
+    }
+    
+    console.log('[STUDENT-MODE] 🚀 Loading student mode...');
+    
     // --- STATE MANAGEMENT ---
     // Initialize ChatManager for student mode
-    const student = createDefaultStudent();
+    const user = createDefaultUser();
     const chatManager = ChatManager.getInstance({
         isInstructor: false,
-        userContext: student,
+        userContext: user,
         onModeSpecificCallback: (action: string, data?: any) => {
             // Handle student-specific behaviors if needed
             if (action === 'ui-update-needed') {
@@ -88,6 +102,48 @@ document.addEventListener('DOMContentLoaded', () => {
     // Chat header structure and pinned message handling is now handled by ChatManager
 
     // Pinned banner rendering is now handled by ChatManager
+
+    // --- LOGOUT FUNCTIONALITY ---
+    const handleLogout = async (): Promise<void> => {
+        try {
+            // Show confirmation dialog
+            const confirmed = confirm('Are you sure you want to log out?');
+            if (!confirmed) {
+                console.log('[STUDENT-MODE] 🚫 Logout cancelled by user');
+                return;
+            }
+            
+            console.log('[STUDENT-MODE] 🚪 Initiating logout...');
+            
+            // Check current authentication status before logout
+            const authCheck = await fetch('/auth/me', {
+                method: 'GET',
+                credentials: 'include'
+            });
+            const authData = await authCheck.json();
+            console.log('[STUDENT-MODE] 📋 Current auth status before logout:', authData);
+            
+            // Call logout endpoint - let the browser follow the redirect naturally
+            console.log('[STUDENT-MODE] 🔄 Redirecting to logout endpoint...');
+            window.location.href = '/auth/logout';
+            
+        } catch (error) {
+            console.error('[STUDENT-MODE] 🚨 Logout error:', error);
+            // Fallback: redirect to login page
+            window.location.href = '/auth/login';
+        }
+    };
+
+    const attachLogoutListener = () => {
+        const logoutBtn = document.getElementById('logout-btn');
+        if (!logoutBtn) {
+            console.warn('[STUDENT-MODE] ⚠️ Logout button not found');
+            return;
+        }
+        
+        logoutBtn.addEventListener('click', handleLogout);
+        console.log('[STUDENT-MODE] ✅ Logout button listener attached');
+    };
 
     // --- EVENT LISTENERS ATTACHMENT ---
     const attachWelcomeScreenListeners = () => {
@@ -172,5 +228,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Message context menu is now handled by ChatManager
 
     // --- INITIALIZATION ---
+    attachLogoutListener(); // Attach logout button listener
     updateUI();
 });

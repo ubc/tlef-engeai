@@ -53,13 +53,24 @@ class AuthManager {
      * Setup event listeners
      */
     private setupEventListeners(): void {
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             //START DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-DOM-READY)
             console.log('[AUTH-MANAGER] 📄 DOM Content Loaded');
             //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-DOM-READY)
             
             this.setupClickHandlers();
+            await this.handlePostLoginRedirect();
         });
+    }
+
+    /**
+     * Handle post-login redirect to intended page
+     * NOTE: This method is now simplified - no longer handles redirects
+     * Users will need to manually navigate to protected pages after login
+     */
+    private async handlePostLoginRedirect(): Promise<void> {
+        // No longer handling redirects - following saml-example-app approach
+        console.log('[AUTH-MANAGER] 📄 Post-login redirect handling disabled - user should manually navigate to intended pages');
     }
 
     /**

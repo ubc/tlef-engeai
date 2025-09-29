@@ -9,7 +9,7 @@
 
 import { loadComponentHTML, renderFeatherIcons } from "../functions/api.js";
 import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, CreateChatRequest } from "../functions/chat-api.js";
-import { Chat, ChatMessage, Student, activeCourse } from "../../../src/functions/types.js";
+import { Chat, ChatMessage, User, activeCourse } from "../../../src/functions/types.js";
 import { ArtefactHandler, ArtefactData, getArtefactHandler } from "./artefact.js";
 
 /**
@@ -115,7 +115,7 @@ export function renderLatexInHtmlContent(element: HTMLElement): void {
  */
 export interface ChatManagerConfig {
     isInstructor: boolean;
-    userContext: Student | activeCourse;
+    userContext: User | activeCourse;
     onModeSpecificCallback?: (action: string, data?: any) => void;
 }
 
@@ -160,10 +160,16 @@ export class ChatManager {
         try {
             const courseName = this.config.isInstructor 
                 ? (this.config.userContext as activeCourse).courseName 
-                : (this.config.userContext as Student).courseAttended;
+                : (this.config.userContext as User).activeCourseName;
             
             const userId = this.config.isInstructor ? 'instructor' : 'student';
             this.chats = await this.loadChatsFromServer(userId, courseName);
+            
+            // Set the first chat as active if there are any chats
+            if (this.chats.length > 0) {
+                this.activeChatId = this.chats[0].id;
+                console.log('[CHAT-MANAGER] ✅ Set active chat:', this.activeChatId);
+            }
         } catch (error) {
             console.error('Error loading initial chats:', error);
             this.chats = [];
@@ -220,48 +226,50 @@ export class ChatManager {
      */
     public async createNewChat(): Promise<{ success: boolean; error?: string; chat?: Chat }> {
         try {
+            console.log('[CHAT-MANAGER] 🆕 Creating new chat...');
+            
             const chatRequest: CreateChatRequest = {
                 userID: this.config.isInstructor ? 'instructor' : 'student',
                 courseName: this.config.isInstructor 
                     ? (this.config.userContext as activeCourse).courseName 
-                    : (this.config.userContext as Student).courseAttended,
+                    : (this.config.userContext as User).activeCourseName,
                 date: new Date().toISOString().split('T')[0]
             };
 
             const response = await createNewChat(chatRequest);
 
             if (!response.success) {
+                console.error('[CHAT-MANAGER] ❌ Failed to create chat:', response.error);
                 return {
                     success: false,
                     error: response.error || 'Unknown error occurred'
                 };
             }
 
-            const newChat: Chat = {
+            // Backend now returns the complete chat object with initial message
+            // Use it directly if available
+            const newChat: Chat = (response as any).chat || {
                 id: response.chatId || Date.now().toString(),
                 courseName: this.config.isInstructor 
                     ? (this.config.userContext as activeCourse).courseName 
-                    : (this.config.userContext as Student).courseAttended,
-                divisionTitle: 'General',
-                itemTitle: 'Chat',
-                messages: [],
-                isPinned: false
-            };
-
-            if (response.initAssistantMessage) {
-                const defaultMessage: ChatMessage = {
+                    : (this.config.userContext as User).activeCourseName,
+                divisionTitle: '',
+                itemTitle: '',
+                messages: response.initAssistantMessage ? [{
                     id: response.initAssistantMessage.id,
                     sender: response.initAssistantMessage.sender as 'bot',
-                    userId: this.config.isInstructor ? 0 : (this.config.userContext as Student).userId,
+                    userId: this.config.isInstructor ? 0 : (this.config.userContext as User).userId,
                     courseName: response.initAssistantMessage.courseName,
                     text: response.initAssistantMessage.text,
                     timestamp: response.initAssistantMessage.timestamp,
-                } as ChatMessage & { artefact?: any };
-                newChat.messages.push(defaultMessage);
-            }
+                }] : [],
+                isPinned: false
+            };
 
             this.chats.push(newChat);
             this.activeChatId = newChat.id;
+
+            console.log('[CHAT-MANAGER] ✅ Chat created successfully:', newChat.id);
 
             // Notify UI update needed
             this.notifyUIUpdate();
@@ -271,7 +279,7 @@ export class ChatManager {
                 chat: newChat
             };
         } catch (error) {
-            console.error('Error creating new chat:', error);
+            console.error('[CHAT-MANAGER] 🚨 Error creating new chat:', error);
             return {
                 success: false,
                 error: 'Network error occurred while creating chat'
@@ -280,7 +288,7 @@ export class ChatManager {
     }
 
     /**
-     * Send a message with streaming
+     * Send a message (NO STREAMING - Simple request-response)
      */
     public async sendMessage(
         text: string, 
@@ -294,36 +302,42 @@ export class ChatManager {
             return;
         }
 
-        // Add user message
+        console.log('[CHAT-MANAGER] 💬 Sending message...');
+
+        // Add user message locally (will be replaced with server version)
         const userMessage: ChatMessage = {
             id: Date.now().toString(),
             sender: 'user',
-            userId: this.config.isInstructor ? 0 : (this.config.userContext as Student).userId,
+            userId: this.config.isInstructor ? 0 : (this.config.userContext as User).userId,
             courseName: this.config.isInstructor 
                 ? (this.config.userContext as activeCourse).courseName 
-                : (this.config.userContext as Student).courseAttended,
+                : (this.config.userContext as User).activeCourseName,
             text,
             timestamp: Date.now()
         };
         activeChat.messages.push(userMessage);
 
-        // Create bot message placeholder
+        // Create bot message placeholder for loading indicator
         const botMessageId = (Date.now() + 1).toString();
         const botMessage: ChatMessage = {
             id: botMessageId,
             sender: 'bot',
-            userId: this.config.isInstructor ? 0 : (this.config.userContext as Student).userId,
+            userId: this.config.isInstructor ? 0 : (this.config.userContext as User).userId,
             courseName: this.config.isInstructor 
                 ? (this.config.userContext as activeCourse).courseName 
-                : (this.config.userContext as Student).courseAttended,
-            text: '...',
+                : (this.config.userContext as User).activeCourseName,
+            text: 'Thinking...',
             timestamp: Date.now(),
         } as ChatMessage & { artefact?: any };
         activeChat.messages.push(botMessage);
 
+        // Show loading state immediately
+        onChunk?.('Thinking...', false);
+
         try {
             const response = await fetch(`/api/chat/${this.activeChatId}`, {
                 method: 'POST',
+                credentials: 'include', // Important for session cookies
                 headers: {
                     'Content-Type': 'application/json',
                 },
@@ -332,75 +346,64 @@ export class ChatManager {
                     userId: this.config.isInstructor ? 'instructor' : 'student',
                     courseName: this.config.isInstructor 
                         ? (this.config.userContext as activeCourse).courseName 
-                        : (this.config.userContext as Student).courseAttended
+                        : (this.config.userContext as User).activeCourseName
                 }),
             });
 
-            if (!response.ok || !response.body) {
-                throw new Error('Network response was not ok.');
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.statusText}`);
             }
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let accumulatedContent = '';
+            const data = await response.json();
 
-            const processStream = async () => {
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to send message');
+            }
+
+            console.log('[CHAT-MANAGER] ✅ Message sent successfully');
+
+            // Replace the placeholder messages with server response
+            // Remove last two messages (our placeholders)
+            activeChat.messages.pop(); // Remove bot placeholder
+            activeChat.messages.pop(); // Remove user placeholder
+
+            // Add the actual messages from server
+            if (data.userMessage) {
+                activeChat.messages.push(data.userMessage);
+            }
+            
+            if (data.assistantMessage) {
+                // Process artefacts in the complete response
                 try {
-                    const { done, value } = await reader.read();
+                    const result = this.artefactHandler.processStreamingText(
+                        data.assistantMessage.text,
+                        data.assistantMessage.id
+                    );
                     
-                    if (done) {
-                        console.log('Stream complete');
-                        botMessage.text = accumulatedContent;
-                        onComplete?.(botMessage);
-                        return;
-                    }
-
-                    const chunk = decoder.decode(value, { stream: true });
-                    chunk.split('\n').forEach(line => {
-                        if (line.startsWith('data: ')) {
-                            try {
-                                const data = JSON.parse(line.slice(6));
-                                
-                                if (data.type === 'chunk' && data.content) {
-                                    accumulatedContent += data.content;
-                                    
-                                    // Process artefacts in streaming content
-                                    try {
-                                        const result = this.artefactHandler.processStreamingText(
-                                            accumulatedContent,
-                                            botMessageId
-                                        );
-                                        
-                                        // Pass both the processed content and HTML flag to the chunk handler
-                                        onChunk?.(result.processedText, result.hasArtefacts);
-                                    } catch (artefactError) {
-                                        console.error('Error processing artefacts during streaming:', artefactError);
-                                        // Fallback to original content if artefact processing fails
-                                        onChunk?.(accumulatedContent, false);
-                                    }
-                                } else if (data.type === 'complete' && data.message) {
-                                    botMessage.text = data.message.text;
-                                    onComplete?.(data.message);
-                                } else if (data.type === 'error') {
-                                    throw new Error(data.error || 'Unknown error occurred');
-                                }
-                            } catch (error) {
-                                console.error('Error parsing stream chunk:', error, 'Chunk:', line);
-                            }
-                        }
-                    });
+                    // Update the assistant message with processed text
+                    const finalMessage = {
+                        ...data.assistantMessage,
+                        text: result.processedText
+                    };
                     
-                    processStream();
-                } catch (error) {
-                    console.error('Error in stream processing:', error);
-                    onError?.('Error processing stream');
+                    activeChat.messages.push(finalMessage);
+                    onComplete?.(finalMessage);
+                } catch (artefactError) {
+                    console.error('[CHAT-MANAGER] ⚠️ Error processing artefacts:', artefactError);
+                    // Fallback to original message if artefact processing fails
+                    activeChat.messages.push(data.assistantMessage);
+                    onComplete?.(data.assistantMessage);
                 }
-            };
+            }
 
-            processStream();
         } catch (error) {
-            console.error('Error sending message:', error);
-            onError?.('Sorry, I encountered an error. Please try again.');
+            console.error('[CHAT-MANAGER] 🚨 Error sending message:', error);
+            
+            // Remove placeholder messages
+            activeChat.messages.pop(); // Remove bot placeholder
+            activeChat.messages.pop(); // Remove user placeholder
+            
+            onError?.(error instanceof Error ? error.message : 'Sorry, I encountered an error. Please try again.');
         }
     }
 
@@ -586,9 +589,36 @@ export class ChatManager {
     // Artefact panel loading removed - now embedded in chat-window.html
 
     private async loadChatsFromServer(userId: string, courseName: string): Promise<Chat[]> {
-        // This would call the getChats API function
-        // For now, return empty array
-        return [];
+        try {
+            console.log('[CHAT-MANAGER] 📂 Loading chats from server...');
+            
+            const response = await fetch('/api/chat/user/chats', {
+                method: 'GET',
+                credentials: 'include', // Important for session cookies
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                console.error('[CHAT-MANAGER] ❌ Failed to load chats:', response.statusText);
+                return [];
+            }
+            
+            const data = await response.json();
+            
+            if (data.success && data.chats) {
+                console.log(`[CHAT-MANAGER] ✅ Loaded ${data.chats.length} chats from database`);
+                return data.chats;
+            }
+            
+            console.log('[CHAT-MANAGER] ⚠️ No chats found');
+            return [];
+            
+        } catch (error) {
+            console.error('[CHAT-MANAGER] 🚨 Error loading chats:', error);
+            return [];
+        }
     }
 
     private bindEvents(): void {
@@ -1148,13 +1178,21 @@ export class ChatManager {
 }
 
 /**
- * Utility function to create a default student context
+ * Utility function to create a default user context
  */
-export function createDefaultStudent(): Student {
+export function createDefaultUser(): User {
     return {
         id: 'student-001',
         name: 'Student User',
-        courseAttended: 'APSC 099',
-        userId: 1
+        puid: 'student-user',
+        userId: 1,
+        activeCourseId: 'default-course',
+        activeCourseName: 'APSC 099',
+        userOnboarding: false, // Student onboarding status
+        role: 'student',
+        status: 'active',
+        chats: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
     };
 }

@@ -7,6 +7,7 @@ import { DocumentParsingModule } from "ubc-genai-toolkit-document-parsing";
 import { AdditionalMaterial } from "../functions/types";
 import { EngEAI_MongoDB } from "../functions/EngEAI_MongoDB";
 import { IDGenerator } from "../functions/unique-id-generator";
+import { asyncHandler, asyncHandlerWithAuth } from "../middleware/asyncHandler";
 import path from "path";
 import fs from "fs";
 import multer from "multer";
@@ -321,19 +322,7 @@ export class RAGApp {
     
 }
 
-// Middleware for error handling
-const asyncHandler = (fn: (req: Request, res: Response) => Promise<any>) => 
-    (req: Request, res: Response) => {
-        Promise.resolve(fn(req, res))
-            .catch((error) => {
-                console.error('Error in Qdrant route:', error);
-                res.status(500).json({
-                    status: 500,
-                    message: 'Internal server error',
-                    details: error.message
-                });
-            });
-    };
+// Note: Using asyncHandlerWithAuth from middleware instead of local asyncHandler
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage();
@@ -464,8 +453,8 @@ const validateFileDocument = (req: MulterRequest, res: Response, next: Function)
 
 
 
-// POST /api/rag/documents/text - Upload a text document
-router.post('/documents/text', validateTextDocument, asyncHandler(async (req: Request, res: Response) => {
+// POST /api/rag/documents/text - Upload a text document (REQUIRES AUTH)
+router.post('/documents/text', validateTextDocument, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const ragApp = await RAGApp.getInstance();
         
@@ -504,8 +493,8 @@ router.post('/documents/text', validateTextDocument, asyncHandler(async (req: Re
     }
 }));
 
-// POST /api/rag/documents/file - Upload a file document
-router.post('/documents/file', upload.single('file'), validateFileDocument, asyncHandler(async (req: MulterRequest, res: Response) => {
+// POST /api/rag/documents/file - Upload a file document (REQUIRES AUTH)
+router.post('/documents/file', upload.single('file'), validateFileDocument, asyncHandlerWithAuth(async (req: MulterRequest, res: Response) => {
     try {
         const ragApp = await RAGApp.getInstance();
         
@@ -553,28 +542,34 @@ router.post('/documents/file', upload.single('file'), validateFileDocument, asyn
     }
 }));
 
-// GET /api/qdrant/documents/:courseName - Get all documents from Qdrant for a specific course
-router.get('/documents/:courseName', asyncHandler(async (req: Request, res: Response) => {
-
+// GET /api/rag/documents/:courseName - Get all documents from Qdrant for a specific course (REQUIRES AUTH)
+router.get('/documents/:courseName', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    // TODO: Implement document retrieval by course
+    res.status(501).json({ message: 'Not implemented yet' });
 }));
 
-// GET /api/qdrant/documents/:courseName/:contentTitle - Get all chunks from Qdrant for a specific content title
-router.get('/documents/:courseName/:contentTitle', asyncHandler(async (req: Request, res: Response) => {
-
+// GET /api/rag/documents/:courseName/:contentTitle - Get all chunks from Qdrant for a specific content title (REQUIRES AUTH)
+router.get('/documents/:courseName/:contentTitle', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    // TODO: Implement document retrieval by content title
+    res.status(501).json({ message: 'Not implemented yet' });
 }));
 
-// GET /api/qdrant/documents/:courseName/:contentTitle/:subContentTitle - Get all chunks from Qdrant for a specific subcontent title
-router.get('/documents/:courseName/:contentTitle/:subContentTitle', asyncHandler(async (req: Request, res: Response) => {
-
+// GET /api/rag/documents/:courseName/:contentTitle/:subContentTitle - Get all chunks from Qdrant for a specific subcontent title (REQUIRES AUTH)
+router.get('/documents/:courseName/:contentTitle/:subContentTitle', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    // TODO: Implement document retrieval by subcontent title
+    res.status(501).json({ message: 'Not implemented yet' });
 }));
 
-// GET /api/qdrant/documents/:courseName/:contentTitle/:subContentTitle/:chunkNumber - Get a specific chunk from Qdrant
-router.get('/documents/:courseName/:contentTitle/:subContentTitle/:chunkNumber', asyncHandler(async (req: Request, res: Response) => {
-
+// GET /api/rag/documents/:courseName/:contentTitle/:subContentTitle/:chunkNumber - Get a specific chunk from Qdrant (REQUIRES AUTH)
+router.get('/documents/:courseName/:contentTitle/:subContentTitle/:chunkNumber', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    // TODO: Implement specific chunk retrieval
+    res.status(501).json({ message: 'Not implemented yet' });
 }));
 
-// POST /api/qdrant/search - Search for similar documents using vector similarity
-router.post('/search', asyncHandler(async (req: Request, res: Response) => {
+// POST /api/rag/search - Search for similar documents using vector similarity (REQUIRES AUTH)
+router.post('/search', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    // TODO: Implement document search
+    res.status(501).json({ message: 'Not implemented yet' });
 }));
 
 // Note: Setup is now handled automatically in the QdrantUpload constructor

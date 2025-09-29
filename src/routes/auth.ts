@@ -7,6 +7,9 @@
 
 import express from 'express';
 import { passport, samlStrategy } from '../middleware/passport';
+import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
+import { User } from '../functions/types';
+import { IDGenerator } from '../functions/unique-id-generator';
 
 const router = express.Router();
 
@@ -32,13 +35,115 @@ router.post('/saml/callback', (req: express.Request, res: express.Response, next
         failureRedirect: '/auth/login-failed',
         failureFlash: false
     })(req, res, next);
-}, (req: express.Request, res: express.Response) => {
+}, async (req: express.Request, res: express.Response) => {
     //START DEBUG LOG : DEBUG-CODE(SAML-SUCCESS)
     console.log('Authentication successful for user:', (req as any).user?.username);
+    console.log('User data:', (req as any).user);
     //END DEBUG LOG : DEBUG-CODE(SAML-SUCCESS)
     
-    // Redirect to frontend after successful login
-    res.redirect('/');
+    try {
+        const user = (req as any).user;
+        const affiliation = user?.affiliation;
+        const puid = user?.puid;
+        
+        //START DEBUG LOG : DEBUG-CODE(STUDENT-CHECK)
+        console.log(`[AUTH] 🔍 Checking user affiliation: ${affiliation}`);
+        console.log(`[AUTH] 🆔 User PUID: ${puid}`);
+        //END DEBUG LOG : DEBUG-CODE(STUDENT-CHECK)
+        
+        // Check if user is a student
+        if (affiliation === 'student') {
+            //START DEBUG LOG : DEBUG-CODE(STUDENT-DETECTED)
+            console.log('[AUTH] 🎓 Student detected, checking APSC 099 database...');
+            //END DEBUG LOG : DEBUG-CODE(STUDENT-DETECTED)
+            
+            try {
+                const mongoDB = await EngEAI_MongoDB.getInstance();
+                
+                // Check if student exists in APSC 099
+                const existingStudent = await mongoDB.findStudentByPUID('APSC 099', puid);
+                
+                if (existingStudent) {
+                    //START DEBUG LOG : DEBUG-CODE(STUDENT-FOUND)
+                    console.log('[AUTH] ✅ Existing student found, redirecting to student dashboard');
+                    //END DEBUG LOG : DEBUG-CODE(STUDENT-FOUND)
+                    res.redirect('/pages/student-mode.html');
+                    return;
+                } else {
+                    //START DEBUG LOG : DEBUG-CODE(STUDENT-NOT-FOUND)
+                    console.log('[AUTH] 🆕 New student detected, creating student record...');
+                    //END DEBUG LOG : DEBUG-CODE(STUDENT-NOT-FOUND)
+                    
+                    // Create new student record
+                    const tempUserData: User = {
+                        id: 'temp', // Temporary ID for generation
+                        name: `${user.firstName} ${user.lastName}`,
+                        puid: puid,
+                        userId: 0, // Will be generated
+                        activeCourseId: 'apsc-099',
+                        activeCourseName: 'APSC 099',
+                        userOnboarding: false, // Skip onboarding for now
+                        role: 'student',
+                        status: 'active',
+                        chats: [],
+                        createdAt: new Date(),
+                        updatedAt: new Date()
+                    };
+                    
+                    // Generate unique userId using IDGenerator
+                    const idGenerator = IDGenerator.getInstance();
+                    const generatedUserId = parseInt(idGenerator.userID(tempUserData).substring(0, 8), 16);
+                    
+                    //START DEBUG LOG : DEBUG-CODE(USER-ID-GENERATION)
+                    console.log(`[AUTH] 🆔 Generated userId: ${generatedUserId} for student: ${user.firstName} ${user.lastName}`);
+                    //END DEBUG LOG : DEBUG-CODE(USER-ID-GENERATION)
+                    
+                    const newStudentData: Partial<User> = {
+                        name: `${user.firstName} ${user.lastName}`,
+                        puid: puid,
+                        userId: generatedUserId,
+                        activeCourseId: 'apsc-099',
+                        activeCourseName: 'APSC 099: Engineering for Kindergarten',
+                        userOnboarding: false, // Skip onboarding for now
+                        role: 'student',
+                        status: 'active',
+                        chats: []
+                    };
+                    
+                    await mongoDB.createStudent('APSC 099: Engineering for Kindergarten', newStudentData);
+                    
+                    //START DEBUG LOG : DEBUG-CODE(STUDENT-CREATED)
+                    console.log('[AUTH] ✅ New student created, redirecting to student dashboard');
+                    //END DEBUG LOG : DEBUG-CODE(STUDENT-CREATED)
+                    
+                    res.redirect('/pages/student-mode.html');
+                    return;
+                }
+            } catch (error) {
+                //START DEBUG LOG : DEBUG-CODE(STUDENT-DB-ERROR)
+                console.error('[AUTH] 🚨 Database error for student:', error);
+                //END DEBUG LOG : DEBUG-CODE(STUDENT-DB-ERROR)
+                
+                // On database error, redirect to index.html
+                res.redirect('/');
+                return;
+            }
+        } else {
+            //START DEBUG LOG : DEBUG-CODE(NON-STUDENT)
+            console.log('[AUTH] 👨‍🏫 Non-student user (instructor/other), redirecting to index');
+            //END DEBUG LOG : DEBUG-CODE(NON-STUDENT)
+            
+            // For instructors or other users, redirect to index
+            res.redirect('/');
+        }
+    } catch (error) {
+        //START DEBUG LOG : DEBUG-CODE(AUTH-ERROR)
+        console.error('[AUTH] 🚨 Authentication processing error:', error);
+        //END DEBUG LOG : DEBUG-CODE(AUTH-ERROR)
+        
+        // On any error, redirect to index.html
+        res.redirect('/');
+    }
 });
 
 // Login failed endpoint

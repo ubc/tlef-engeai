@@ -1,5 +1,5 @@
 import { loadComponentHTML, renderFeatherIcons } from "./functions/api.js";
-import { activeCourse, Student } from "../../src/functions/types.js";
+import { activeCourse, User } from "../../src/functions/types.js";
 import { initializeDocumentsPage } from "./feature/documents.js";
 import { renderOnCourseSetup } from "./onboarding/course-setup.js";
 import { renderDocumentSetup } from "./onboarding/document-setup.js";
@@ -7,7 +7,13 @@ import { renderFlagSetup } from "./onboarding/flag-setup.js";
 import { renderMonitorSetup } from "./onboarding/monitor-setup.js";
 import { initializeFlagReports } from "./feature/reports.js";
 import { initializeMonitorDashboard } from "./feature/monitor.js";
-import { ChatManager, createDefaultStudent } from "./feature/chat.js";
+import { ChatManager, createDefaultUser } from "./feature/chat.js";
+import { authService } from './services/AuthService.js';
+
+// Authentication check function
+async function checkAuthentication(): Promise<boolean> {
+    return await authService.checkAuthenticationAndRedirect('/pages/instructor-mode.html', 'INSTRUCTOR-MODE');
+}
 
 const enum StateEvent {
     Report,
@@ -51,19 +57,35 @@ declare global {
  * Create a virtual student entity for instructor mode using active course context
  * This ensures consistency with the existing ChatManager structure
  */
-function createInstructorVirtualStudent(): Student {
+function createInstructorVirtualUser(): User {
     return {
         id: 'instructor-virtual',
         name: 'Instructor User',
-        courseAttended: currentClass.courseName || 'APSC 080', // Fallback to default course
-        userId: 0 // Instructor ID
+        puid: 'instructor-virt',
+        userId: 0, // Instructor ID
+        activeCourseId: currentClass.id || 'current-course',
+        activeCourseName: currentClass.courseName || 'APSC 099', // Fallback to default course
+        userOnboarding: false, // Instructors don't need onboarding
+        role: 'instructor',
+        status: 'active',
+        chats: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
     };
 }
 
 
-document.addEventListener('DOMContentLoaded', () => {
-
+document.addEventListener('DOMContentLoaded', async () => {
     console.log("DOMContentLoaded is called");
+
+    // Check authentication first
+    const isAuthenticated = await checkAuthentication();
+    if (!isAuthenticated) {
+        console.log('[INSTRUCTOR-MODE] ❌ User not authenticated, redirecting to login...');
+        return; // Stop execution if not authenticated
+    }
+    
+    console.log('[INSTRUCTOR-MODE] 🚀 Loading instructor mode...');
 
     // Check for debug course in sessionStorage
     const debugCourseData = sessionStorage.getItem('debugCourse');
@@ -476,10 +498,10 @@ document.addEventListener('DOMContentLoaded', () => {
             //END DEBUG LOG : DEBUG-CODE(001)
             
             // Create virtual student entity for instructor
-            const virtualStudent = createInstructorVirtualStudent();
+            const virtualUser = createInstructorVirtualUser();
             
             //START DEBUG LOG : DEBUG-CODE(002)
-            console.log('👤 Virtual student created:', virtualStudent);
+            console.log('👤 Virtual user created:', virtualUser);
             //END DEBUG LOG : DEBUG-CODE(002)
             
             // Initialize ChatManager with instructor context

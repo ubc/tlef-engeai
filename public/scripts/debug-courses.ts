@@ -3,11 +3,14 @@
  * 
  * This module handles the debug course functionality for the index.html page.
  * It provides methods to load, display, and manage debug courses for testing.
+ * Includes authentication checking for onboarding functionality.
  * 
  * @author: EngE-AI Team
  * @version: 1.0.0
  * @since: 2025-01-27
  */
+
+import { authService } from './services/AuthService.js';
 
 console.log('🚀 DEBUG COURSES SCRIPT LOADING...');
 
@@ -47,22 +50,22 @@ class DebugCoursesManager {
         console.log('Setting up newRegistration button...');
         this.addClickHandler('newRegistration', () => this.loadDebugCourse('newRegistration'));
         
-        console.log('Setting up APSC 099 button...');
+        // console.log('Setting up APSC 099 button...');
         this.addClickHandler('apsc099', () => this.loadDebugCourse('apsc099'));
         
-        console.log('Setting up APSC 080 button...');
+        // console.log('Setting up APSC 080 button...');
         this.addClickHandler('apsc080', () => this.loadDebugCourse('apsc080'));
         
-        console.log('Setting up APSC 060 button...');
+        // console.log('Setting up APSC 060 button...');
         this.addClickHandler('apsc060', () => this.loadDebugCourse('apsc060'));
         
-        console.log('Setting up APSC 091 button...');
+        // console.log('Setting up APSC 091 button...');
         this.addClickHandler('apsc091', () => this.loadDebugCourse('apsc091'));
         
-        console.log('Setting up Reset button...');
+        // console.log('Setting up Reset button...');
         this.addClickHandler('reset', () => this.resetDebugCourses());
         
-        console.log('Setting up Refresh button...');
+        // console.log('Setting up Refresh button...');
         this.addClickHandler('refresh', () => this.refreshDebugCourses());
         
         console.log('✅ All click handlers setup complete');
@@ -75,8 +78,8 @@ class DebugCoursesManager {
         const buttonIdFull = `${buttonId}-btn`;
         const button = document.getElementById(buttonIdFull);
         
-        console.log(`Setting up click handler for button: ${buttonIdFull}`);
-        console.log(`Button element found:`, button);
+        // console.log(`Setting up click handler for button: ${buttonIdFull}`);
+        // console.log(`Button element found:`, button);
         
         if (button) {
             button.addEventListener('click', (event) => {
@@ -84,7 +87,7 @@ class DebugCoursesManager {
                 console.log('Click event:', event);
                 handler();
             });
-            console.log(`✅ Click handler successfully added to ${buttonIdFull}`);
+            // console.log(`✅ Click handler successfully added to ${buttonIdFull}`);
         } else {
             console.error(`❌ Button with ID ${buttonIdFull} not found!`);
         }
@@ -187,6 +190,17 @@ class DebugCoursesManager {
     public async loadDebugCourse(courseType: string): Promise<void> {
         console.log(`🚀 loadDebugCourse called with courseType: ${courseType}`);
         console.log('Current debugCourses:', this.debugCourses);
+        
+        // Check authentication before loading any course
+        console.log('[DEBUG-COURSES] 🔍 Checking authentication before loading course...');
+        
+        const isAuthenticated = await authService.checkAuthenticationAndRedirect('/pages/instructor-mode.html', 'DEBUG-COURSES');
+        if (!isAuthenticated) {
+            return; // User was redirected to login
+        }
+        
+        // Continue with course loading
+        console.log('[DEBUG-COURSES] 🚀 Proceeding with course loading...');
         
         // Handle newRegistration separately - no database interaction
         if (courseType === 'newRegistration') {

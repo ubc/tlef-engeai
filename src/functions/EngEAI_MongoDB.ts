@@ -1,6 +1,6 @@
 import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
-import dotenv from 'dotenv';
-import { activeCourse, AdditionalMaterial, ContentDivision, courseItem, FlagReport } from './types';
+import * as dotenv from 'dotenv';
+import { activeCourse, AdditionalMaterial, ContentDivision, courseItem, FlagReport, User, Chat, ChatMessage } from './types';
 import { IDGenerator } from './unique-id-generator';
 
 dotenv.config();
@@ -67,10 +67,6 @@ export class EngEAI_MongoDB {
             //create users collection
             const userCollection = `${courseName}_users`;
             await this.db.createCollection(userCollection);
-    
-            //create messages collection
-            const messagesCollection = `${courseName}_messages`;
-            await this.db.createCollection(messagesCollection);
     
             //create flags collection
             const flagsCollection = `${courseName}_flags`;
@@ -348,6 +344,286 @@ export class EngEAI_MongoDB {
             console.log('✅ MongoDB connection closed');
         } catch (error) {
             console.error('❌ Error closing MongoDB connection:', error);
+            throw error;
+        }
+    }
+
+    // =====================================
+    // ========= USER MANAGEMENT ===========
+    // =====================================
+
+    /**
+     * Get the user collection for a specific course
+     * @param courseName - The name of the course (e.g., "APSC 099")
+     * @returns Collection instance for the course users
+     */
+    private getUserCollection(courseName: string): Collection {
+        const collectionName = `${courseName}_users`;
+        return this.db.collection(collectionName);
+    }
+
+    /**
+     * Find a student by PUID in a specific course
+     * @param courseName - The name of the course (e.g., "APSC 099")
+     * @param puid - The PUID of the student
+     * @returns User object if found, null otherwise
+     */
+    public findStudentByPUID = async (courseName: string, puid: string) => {
+        //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT)
+        console.log(`[MONGODB] 🔍 Finding student with PUID: ${puid} in course: ${courseName}`);
+        //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT)
+        
+        try {
+            const userCollection = this.getUserCollection(courseName);
+            const student = await userCollection.findOne({ puid: puid });
+            
+            if (student) {
+                //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT-SUCCESS)
+                console.log(`[MONGODB] ✅ Found existing student:`, student);
+                //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT-SUCCESS)
+            } else {
+                //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT-NOT-FOUND)
+                console.log(`[MONGODB] ❌ Student with PUID ${puid} not found in course ${courseName}`);
+                //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT-NOT-FOUND)
+            }
+            
+            return student;
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT-ERROR)
+            console.error(`[MONGODB] 🚨 Error finding student with PUID ${puid}:`, error);
+            //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT-ERROR)
+            throw error;
+        }
+    }
+
+    /**
+     * Create a new student in a specific course
+     * @param courseName - The name of the course (e.g., "APSC 099")
+     * @param userData - The user data to create
+     * @returns Created user object
+     */
+    public createStudent = async (courseName: string, userData: Partial<User>) => {
+        //START DEBUG LOG : DEBUG-CODE(CREATE-STUDENT)
+        console.log(`[MONGODB] 🚀 Creating new student in course: ${courseName}`, userData);
+        //END DEBUG LOG : DEBUG-CODE(CREATE-STUDENT)
+        
+        try {
+            const userCollection = this.getUserCollection(courseName);
+            
+            // Generate unique ID for the student
+            const studentId = this.idGenerator.userID(userData as User);
+            
+            const newStudent = {
+                ...userData,
+                id: studentId,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+            
+            const result = await userCollection.insertOne(newStudent);
+            
+            //START DEBUG LOG : DEBUG-CODE(CREATE-STUDENT-SUCCESS)
+            console.log(`[MONGODB] ✅ Created new student with ID: ${studentId}`, result);
+            //END DEBUG LOG : DEBUG-CODE(CREATE-STUDENT-SUCCESS)
+            
+            return newStudent;
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(CREATE-STUDENT-ERROR)
+            console.error(`[MONGODB] 🚨 Error creating student:`, error);
+            //END DEBUG LOG : DEBUG-CODE(CREATE-STUDENT-ERROR)
+            throw error;
+        }
+    }
+
+    // =====================================
+    // ========= CHAT MANAGEMENT ===========
+    // =====================================
+
+    /**
+     * Get all chats for a specific user by PUID
+     * @param courseName - The name of the course
+     * @param puid - The PUID of the user
+     * @returns Array of Chat objects
+     */
+    public getUserChats = async (courseName: string, puid: string): Promise<Chat[]> => {
+        //START DEBUG LOG : DEBUG-CODE(GET-USER-CHATS)
+        console.log(`[MONGODB] 📋 Getting chats for user PUID: ${puid} in course: ${courseName}`);
+        //END DEBUG LOG : DEBUG-CODE(GET-USER-CHATS)
+        
+        try {
+            const userCollection = this.getUserCollection(courseName);
+            const user = await userCollection.findOne({ puid: puid });
+            
+            if (!user) {
+                //START DEBUG LOG : DEBUG-CODE(GET-USER-CHATS-NO-USER)
+                console.log(`[MONGODB] ⚠️ User not found with PUID: ${puid}`);
+                //END DEBUG LOG : DEBUG-CODE(GET-USER-CHATS-NO-USER)
+                return [];
+            }
+            
+            const chats = (user as any).chats || [];
+            
+            //START DEBUG LOG : DEBUG-CODE(GET-USER-CHATS-SUCCESS)
+            console.log(`[MONGODB] ✅ Found ${chats.length} chats for user`);
+            //END DEBUG LOG : DEBUG-CODE(GET-USER-CHATS-SUCCESS)
+            
+            return chats;
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(GET-USER-CHATS-ERROR)
+            console.error(`[MONGODB] 🚨 Error getting user chats:`, error);
+            //END DEBUG LOG : DEBUG-CODE(GET-USER-CHATS-ERROR)
+            throw error;
+        }
+    }
+
+    /**
+     * Add a new chat to a user's chats array
+     * @param courseName - The name of the course
+     * @param puid - The PUID of the user
+     * @param chat - The chat object to add
+     */
+    public addChatToUser = async (courseName: string, puid: string, chat: Chat): Promise<void> => {
+        //START DEBUG LOG : DEBUG-CODE(ADD-CHAT-TO-USER)
+        console.log(`[MONGODB] ➕ Adding chat ${chat.id} to user PUID: ${puid} in course: ${courseName}`);
+        //END DEBUG LOG : DEBUG-CODE(ADD-CHAT-TO-USER)
+        
+        try {
+            const userCollection = this.getUserCollection(courseName);
+            
+            const result = await userCollection.updateOne(
+                { puid: puid },
+                { 
+                    $push: { chats: chat } as any,
+                    $set: { updatedAt: new Date() }
+                } as any
+            );
+            
+            if (result.matchedCount === 0) {
+                throw new Error(`User not found with PUID: ${puid}`);
+            }
+            
+            //START DEBUG LOG : DEBUG-CODE(ADD-CHAT-TO-USER-SUCCESS)
+            console.log(`[MONGODB] ✅ Chat added successfully to user`);
+            //END DEBUG LOG : DEBUG-CODE(ADD-CHAT-TO-USER-SUCCESS)
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(ADD-CHAT-TO-USER-ERROR)
+            console.error(`[MONGODB] 🚨 Error adding chat to user:`, error);
+            //END DEBUG LOG : DEBUG-CODE(ADD-CHAT-TO-USER-ERROR)
+            throw error;
+        }
+    }
+
+    /**
+     * Update an existing chat in user's chats array
+     * @param courseName - The name of the course
+     * @param puid - The PUID of the user
+     * @param chatId - The ID of the chat to update
+     * @param chat - The updated chat object
+     */
+    public updateUserChat = async (courseName: string, puid: string, chatId: string, chat: Chat): Promise<void> => {
+        //START DEBUG LOG : DEBUG-CODE(UPDATE-USER-CHAT)
+        console.log(`[MONGODB] 🔄 Updating chat ${chatId} for user PUID: ${puid} in course: ${courseName}`);
+        //END DEBUG LOG : DEBUG-CODE(UPDATE-USER-CHAT)
+        
+        try {
+            const userCollection = this.getUserCollection(courseName);
+            
+            const result = await userCollection.updateOne(
+                { puid: puid, 'chats.id': chatId },
+                { 
+                    $set: { 
+                        'chats.$': chat,
+                        updatedAt: new Date()
+                    }
+                }
+            );
+            
+            if (result.matchedCount === 0) {
+                throw new Error(`Chat not found with ID: ${chatId} for user PUID: ${puid}`);
+            }
+            
+            //START DEBUG LOG : DEBUG-CODE(UPDATE-USER-CHAT-SUCCESS)
+            console.log(`[MONGODB] ✅ Chat updated successfully`);
+            //END DEBUG LOG : DEBUG-CODE(UPDATE-USER-CHAT-SUCCESS)
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(UPDATE-USER-CHAT-ERROR)
+            console.error(`[MONGODB] 🚨 Error updating user chat:`, error);
+            //END DEBUG LOG : DEBUG-CODE(UPDATE-USER-CHAT-ERROR)
+            throw error;
+        }
+    }
+
+    /**
+     * Add a message to a specific chat in user's chats array
+     * @param courseName - The name of the course
+     * @param puid - The PUID of the user
+     * @param chatId - The ID of the chat
+     * @param message - The message to add
+     */
+    public addMessageToChat = async (courseName: string, puid: string, chatId: string, message: ChatMessage): Promise<void> => {
+        //START DEBUG LOG : DEBUG-CODE(ADD-MESSAGE-TO-CHAT)
+        console.log(`[MONGODB] 💬 Adding message to chat ${chatId} for user PUID: ${puid}`);
+        //END DEBUG LOG : DEBUG-CODE(ADD-MESSAGE-TO-CHAT)
+        
+        try {
+            const userCollection = this.getUserCollection(courseName);
+            
+            const result = await userCollection.updateOne(
+                { puid: puid, 'chats.id': chatId },
+                { 
+                    $push: { 'chats.$.messages': message } as any,
+                    $set: { updatedAt: new Date() }
+                } as any
+            );
+            
+            if (result.matchedCount === 0) {
+                throw new Error(`Chat not found with ID: ${chatId} for user PUID: ${puid}`);
+            }
+            
+            //START DEBUG LOG : DEBUG-CODE(ADD-MESSAGE-TO-CHAT-SUCCESS)
+            console.log(`[MONGODB] ✅ Message added to chat successfully`);
+            //END DEBUG LOG : DEBUG-CODE(ADD-MESSAGE-TO-CHAT-SUCCESS)
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(ADD-MESSAGE-TO-CHAT-ERROR)
+            console.error(`[MONGODB] 🚨 Error adding message to chat:`, error);
+            //END DEBUG LOG : DEBUG-CODE(ADD-MESSAGE-TO-CHAT-ERROR)
+            throw error;
+        }
+    }
+
+    /**
+     * Delete a chat from user's chats array
+     * @param courseName - The name of the course
+     * @param puid - The PUID of the user
+     * @param chatId - The ID of the chat to delete
+     */
+    public deleteChatFromUser = async (courseName: string, puid: string, chatId: string): Promise<void> => {
+        //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER)
+        console.log(`[MONGODB] 🗑️ Deleting chat ${chatId} from user PUID: ${puid} in course: ${courseName}`);
+        //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER)
+        
+        try {
+            const userCollection = this.getUserCollection(courseName);
+            
+            const result = await userCollection.updateOne(
+                { puid: puid },
+                { 
+                    $pull: { chats: { id: chatId } } as any,
+                    $set: { updatedAt: new Date() }
+                } as any
+            );
+            
+            if (result.matchedCount === 0) {
+                throw new Error(`User not found with PUID: ${puid}`);
+            }
+            
+            //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER-SUCCESS)
+            console.log(`[MONGODB] ✅ Chat deleted successfully from user`);
+            //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER-SUCCESS)
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER-ERROR)
+            console.error(`[MONGODB] 🚨 Error deleting chat from user:`, error);
+            //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER-ERROR)
             throw error;
         }
     }
