@@ -283,3 +283,11 @@ Create complete, working code that integrates seamlessly into the EngE-AI pipeli
 - **LTI Compliance**: Follow Canvas LTI standards for tool registration and launch with proper typing
 
 **Remember**: This is an educational tool focused on developing critical thinking skills in engineering students. Every interaction should guide learning rather than provide shortcuts to answers. All code should follow modern frontend architecture patterns with proper TypeScript typing for maintainability and developer experience.
+
+## Chat System Configuration
+
+### Response Timeout Settings
+- **Chat Response Timeout**: 60 seconds (1 minute) for AI responses
+- **Typing Indicator Display**: Show typing indicator while waiting for complete AI response
+- **Fallback Behavior**: Display timeout error message if response exceeds 60 seconds
+- **Implementation**: Apply timeout in both frontend and backend chat processing

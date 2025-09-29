@@ -1042,7 +1042,7 @@ async function postCourseToDatabase(courseData: activeCourse): Promise<activeCou
         console.log("🎯 Posting course data to database...");
         console.log("courseData: ", courseData);
 
-        const response = await fetch('/api/mongodb/courses/newcourse', {
+        const response = await fetch('/api/courses', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'

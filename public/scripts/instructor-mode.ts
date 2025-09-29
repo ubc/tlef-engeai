@@ -385,7 +385,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // });
 
 
-    // fetch('/api/mongodb/courses/CHBE241')
+    // fetch('/api/courses/courses/CHBE241')
     //     .then(r => r.json())
     //     .then((data: activeCourse) => {
     //         currentClass = data;
@@ -398,7 +398,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // make fucntio that makes a get request given a coursename
     async function getCourse (courseName: string){
-        const response = await fetch(`/api/mongodb/courses/name/${courseName}`, {
+        const response = await fetch(`/api/courses?name=${courseName}`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json'

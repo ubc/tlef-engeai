@@ -95,7 +95,7 @@ class DebugCoursesManager {
      */
     public async loadDebugCourses(): Promise<void> {
         try {
-            const response = await fetch('/api/mongodb/debug/courses');
+            const response = await fetch('/api/debug/courses');
             const result = await response.json();
             
             if (result.success) {
@@ -268,7 +268,7 @@ class DebugCoursesManager {
         
         try {
             console.log('📡 Sending reset request to API...');
-            const response = await fetch('/api/mongodb/debug/reset', {
+            const response = await fetch('/api/debug/reset', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

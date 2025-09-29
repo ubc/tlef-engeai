@@ -454,7 +454,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         if (!currentClass) return;
 
         try {
-            const response = await fetch(`/api/mongodb/learning-objectives?courseId=${currentClass.id}&divisionId=${divisionId}&contentId=${contentId}`);
+            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives`, {
+                method: 'GET'
+            });
             const result = await response.json();
             
             if (result.success) {
@@ -513,15 +515,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
         try {
             // Call backend API to add learning objective
-            const response = await fetch('/api/mongodb/learning-objectives', {
+            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    courseId: currentClass.id,
-                    divisionId: divisionId,
-                    contentId: contentId,
                     learningObjective: newObjective
                 })
             });
@@ -624,16 +623,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
         try {
             // Call backend API to update learning objective
-            const response = await fetch('/api/mongodb/learning-objectives', {
+            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives/${objective.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    courseId: currentClass.id,
-                    divisionId: divisionId,
-                    contentId: contentId,
-                    objectiveId: objective.id,
                     updateData: updateData
                 })
             });
@@ -685,17 +680,11 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
             try {
                 // Call backend API to delete learning objective
-                const response = await fetch('/api/mongodb/learning-objectives', {
+                const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives/${objective.id}`, {
                     method: 'DELETE',
                     headers: {
                         'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        courseId: currentClass.id,
-                        divisionId: divisionId,
-                        contentId: contentId,
-                        objectiveId: objective.id
-                    })
+                    }
                 });
 
                 const result = await response.json();

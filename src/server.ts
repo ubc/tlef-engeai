@@ -4,7 +4,9 @@ import path from 'path';
 import cors from 'cors';
 import chatAppRoutes from './routes/chat-app';
 import ragAppRoutes from './routes/RAG-App';
-import mongodbRoutes from './routes/mongo-app';  // Import MongoDB routes
+import mongodbRoutes from './routes/mongo-app';
+import healthRoutes from './routes/health';
+import debugRoutes from './routes/debug';  // Import MongoDB routes
 import authRoutes from './routes/auth';  // Import authentication routes
 import { initializeDummyCourses } from './debug/dummy-courses.js';
 
@@ -63,7 +65,9 @@ app.get('/settings', (req: any, res: any) => {
 app.use('/api/chat', chatAppRoutes);
 app.use('/api/ollama', chatAppRoutes);
 app.use('/api/rag', ragAppRoutes);
-app.use('/api/mongodb', mongodbRoutes);  // Add MongoDB routes
+app.use('/api/courses', mongodbRoutes);  // Course management routes
+app.use('/api/health', healthRoutes);    // Health check routes
+app.use('/api/debug', debugRoutes);      // Debug routes
 
 // Final 404 handler for any requests that do not match a route
 app.use((req: express.Request, res: express.Response) => {
