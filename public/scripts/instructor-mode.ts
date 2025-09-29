@@ -93,10 +93,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Listen for flag setup completion event
     window.addEventListener('flagSetupComplete', () => {
-        console.log('🏁 Flag setup completed, redirecting to main interface...');
+        console.log('🏁 Flag setup completed, proceeding to monitor setup...');
         
-        // Redirect to main instructor interface
-        redirectToMainInterface();
+        // Proceed to monitor setup (keep onboarding-active class to hide sidebar)
+        // The updateUI() function will check currentClass.monitorSetup and show monitor setup
+        updateUI();
     });
 
     // Listen for monitor setup completion event

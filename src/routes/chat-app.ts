@@ -318,7 +318,10 @@ class ChatApp {
             // Continue without RAG context if retrieval fails
         }
 
-        const userPromptHook = `, and in order to help respond to user's question, you can use the following course materials:`;
+        const userPromptHook = `, 
+                                    # Extra Info
+                                    In order to help, here is some additional information in the form of course materials:
+                                `;
 
         //construct the user full prompt
         let userFullPrompt = '';
