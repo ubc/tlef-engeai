@@ -169,13 +169,13 @@ body {
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
-    color: var(--text-primary);
+    color: #000000;
 }
 
 .logout-btn:hover { 
-    background-color: #dc3545; 
+    background-color: var(--color-eng-red); 
     color: white; 
-    border-color: #dc3545; 
+    border-color: var(--color-eng-red); 
 }
 
 .logout-btn .feather { 

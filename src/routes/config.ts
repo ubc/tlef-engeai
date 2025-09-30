@@ -13,9 +13,17 @@ import { ConsoleLogger, LoggerInterface } from 'ubc-genai-toolkit-core';
 // Load environment variables from .env file
 dotenv.config({ path: require('path').resolve(__dirname, '../../.env') });
 
+export interface ChunkingConfig {
+	chunkSize: number;
+	overlapSize: number;
+	chunkingStrategy: string;
+	minChunkSize: number;
+}
+
 export interface AppConfig {
 	llmConfig: Partial<LLMConfig>;
 	ragConfig: RAGConfig;
+	chunkingConfig: ChunkingConfig;
 	logger: LoggerInterface;
 	debug: boolean;
 }
@@ -125,6 +133,38 @@ export function loadConfig(): AppConfig {
 	};
 	if (debug) logger.debug('Qdrant Specific Config:', qdrantConfig);
 
+	// --- RAG Chunking Configuration ---
+	const ragChunkSize = parseInt(process.env.RAG_CHUNK_SIZE || '1024');
+	const ragOverlapSize = parseInt(process.env.RAG_OVERLAP_SIZE || '200');
+	const ragChunkingStrategy = process.env.RAG_CHUNKING_STRATEGY || 'semantic';
+	const ragMinChunkSize = parseInt(process.env.RAG_MIN_CHUNK_SIZE || '200');
+
+	// Log RAG Chunking Configuration
+	logger.info('🔧 RAG Chunking Configuration:');
+	logger.info(`   📏 Chunk Size: ${ragChunkSize} characters`);
+	logger.info(`   🔄 Overlap Size: ${ragOverlapSize} characters`);
+	logger.info(`   📋 Chunking Strategy: ${ragChunkingStrategy}`);
+	logger.info(`   📐 Min Chunk Size: ${ragMinChunkSize} characters`);
+	logger.info(`   📊 Overlap Percentage: ${((ragOverlapSize / ragChunkSize) * 100).toFixed(1)}%`);
+
+	if (debug) {
+		logger.debug('RAG Chunking Config Details:', {
+			chunkSize: ragChunkSize,
+			overlapSize: ragOverlapSize,
+			chunkingStrategy: ragChunkingStrategy,
+			minChunkSize: ragMinChunkSize,
+			overlapPercentage: ((ragOverlapSize / ragChunkSize) * 100).toFixed(1) + '%'
+		});
+	}
+
+	// --- Assemble Chunking Config ---
+	const chunkingConfig: ChunkingConfig = {
+		chunkSize: ragChunkSize,
+		overlapSize: ragOverlapSize,
+		chunkingStrategy: ragChunkingStrategy,
+		minChunkSize: ragMinChunkSize,
+	};
+
 	// --- Assemble RAG Config ---
 	const ragConfig: RAGConfig = {
 		provider: ragProvider,
@@ -141,6 +181,7 @@ export function loadConfig(): AppConfig {
 	return {
 		llmConfig,
 		ragConfig,
+		chunkingConfig,
 		logger,
 		debug,
 	};

@@ -30,7 +30,7 @@ let currentClass : activeCourse =
     contentSetup : false,
     flagSetup : false,
     monitorSetup : false,
-    courseName:'APSC 077',
+    courseName:'APSC 099: Engineering for Kindergarten',
     instructors: [
     ],
     teachingAssistants: [

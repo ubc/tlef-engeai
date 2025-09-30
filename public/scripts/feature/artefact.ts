@@ -25,6 +25,7 @@ export class ArtefactHandler {
     private static instance: ArtefactHandler | null = null;
     private artefacts: Map<string, ArtefactData> = new Map();
     private artefactCounter: number = 0;
+    private currentlyOpenArtefactId: string | null = null;
 
     private constructor() {
         this.setupEventDelegation();
@@ -49,8 +50,8 @@ export class ArtefactHandler {
                     
                     console.log('🎨 Artefact button clicked via delegation:', artefactId);
                     
-                    // Open the artefact
-                    await this.openArtefact(artefactId);
+                    // Toggle the artefact (open if closed, close if open)
+                    await this.toggleArtefact(artefactId);
                 }
                 return;
             }
@@ -214,6 +215,8 @@ export class ArtefactHandler {
         const button = document.createElement('button');
         button.className = 'artefact-button';
         button.id = `artefact-btn-${artefactData.id}`;
+        
+        // Always show "View Diagram" text, but the functionality will toggle
         button.innerHTML = `
             <i data-feather="image"></i>
             <span>View Diagram</span>
@@ -223,6 +226,26 @@ export class ArtefactHandler {
         // This allows buttons injected via innerHTML to work properly
 
         return button;
+    }
+
+    /**
+     * Toggle artefact panel (open if closed, close if open)
+     * @param artefactId - The artefact ID to toggle
+     */
+    public async toggleArtefact(artefactId: string): Promise<void> {
+        const artefactData = this.artefacts.get(artefactId);
+        if (!artefactData) {
+            console.error('Artefact not found:', artefactId);
+            return;
+        }
+
+        if (this.currentlyOpenArtefactId === artefactId) {
+            // Currently open, so close it
+            this.closeArtefact();
+        } else {
+            // Not open, so open it
+            await this.openArtefact(artefactId);
+        }
     }
 
     /**
@@ -239,6 +262,12 @@ export class ArtefactHandler {
         // Update artefact state
         artefactData.isOpen = true;
         this.artefacts.set(artefactId, artefactData);
+        
+        // Track currently open artefact
+        this.currentlyOpenArtefactId = artefactId;
+        
+        // Update button appearance for this artefact
+        this.updateArtefactButton(artefactId);
 
         // Get artefact panel (now already in DOM)
         const panel = document.getElementById('artefact-panel');
@@ -274,6 +303,21 @@ export class ArtefactHandler {
         const panel = document.getElementById('artefact-panel');
         if (!panel) return;
 
+        // Update currently open artefact state
+        if (this.currentlyOpenArtefactId) {
+            const artefactData = this.artefacts.get(this.currentlyOpenArtefactId);
+            if (artefactData) {
+                artefactData.isOpen = false;
+                this.artefacts.set(this.currentlyOpenArtefactId, artefactData);
+            }
+            
+            // Update button appearance for the previously open artefact
+            this.updateArtefactButton(this.currentlyOpenArtefactId);
+            
+            // Clear currently open artefact
+            this.currentlyOpenArtefactId = null;
+        }
+
         // Get chat window container and remove artefact-open class
         const container = document.querySelector('.chat-window-container') as HTMLElement | null;
         if (container) {
@@ -288,6 +332,29 @@ export class ArtefactHandler {
 
         // Remove ESC listener
         this.removeEscListener();
+    }
+
+    /**
+     * Update artefact button appearance based on current state
+     * @param artefactId - The artefact ID to update
+     */
+    private updateArtefactButton(artefactId: string): void {
+        const button = document.getElementById(`artefact-btn-${artefactId}`) as HTMLButtonElement;
+        if (!button) return;
+
+        const artefactData = this.artefacts.get(artefactId);
+        if (!artefactData) return;
+
+        // Always show "View Diagram" text, but the functionality will toggle
+        button.innerHTML = `
+            <i data-feather="image"></i>
+            <span>View Diagram</span>
+        `;
+        
+        // Re-render feather icons for the updated button
+        if (typeof (window as any).feather !== 'undefined') {
+            (window as any).feather.replace();
+        }
     }
 
     /**

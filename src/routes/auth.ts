@@ -60,12 +60,14 @@ router.post('/saml/callback', (req: express.Request, res: express.Response, next
             try {
                 const mongoDB = await EngEAI_MongoDB.getInstance();
                 
-                // Check if student exists in APSC 099
-                const existingStudent = await mongoDB.findStudentByPUID('APSC 099', puid);
+                // Check if student exists in APSC 099: Engineering for Kindergarten
+                console.log(`[AUTH] 🔍 Looking for student with PUID: ${puid} in course: APSC 099: Engineering for Kindergarten`);
+                const existingStudent = await mongoDB.findStudentByPUID('APSC 099: Engineering for Kindergarten', puid);
                 
                 if (existingStudent) {
                     //START DEBUG LOG : DEBUG-CODE(STUDENT-FOUND)
                     console.log('[AUTH] ✅ Existing student found, redirecting to student dashboard');
+                    console.log(`[AUTH] 👤 Found student: ${existingStudent.name} (ID: ${existingStudent.userId})`);
                     //END DEBUG LOG : DEBUG-CODE(STUDENT-FOUND)
                     res.redirect('/pages/student-mode.html');
                     return;
@@ -81,7 +83,7 @@ router.post('/saml/callback', (req: express.Request, res: express.Response, next
                         puid: puid,
                         userId: 0, // Will be generated
                         activeCourseId: 'apsc-099',
-                        activeCourseName: 'APSC 099',
+                        activeCourseName: 'APSC 099: Engineering for Kindergarten',
                         userOnboarding: false, // Skip onboarding for now
                         role: 'student',
                         status: 'active',

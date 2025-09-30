@@ -492,7 +492,40 @@ class ChatApp {
      * return the message object, so this message can be passed to the client when initiate a chat
      */
     private addDefaultAssistantMessage(chatId: string): ChatMessage {
-        const defaultMessageText = "Hello! I am EngE-AI, your AI companion for chemical, environmental, and materials engineering. As this is week 2, in lectures this week we have learned about Thermodynamics in Electrochemistry. What would you like to discuss? Remember: I am designed to enhance your learning, not replace it, always verify important information.";
+        const defaultMessageText = `Hello! I am EngE-AI, your AI companion for chemical, environmental, and materials engineering. As this is week 2, in lectures this week we have learned about Thermodynamics in Electrochemistry. 
+
+Here's a diagram to help visualize the key concepts we've covered:
+
+<Artefact>
+graph TD
+    A[Thermodynamics in Electrochemistry] --> B[Gibbs Free Energy]
+    A --> C[Electrode Potentials]
+    A --> D[Electrochemical Cells]
+    
+    B --> E["ΔG = -nFE"]
+    C --> F["E = E° - (RT/nF)lnQ"]
+    D --> G[Anode: Oxidation]
+    D --> H[Cathode: Reduction]
+    
+    G --> I[Electrons Flow]
+    H --> I
+    I --> J[Current Generation]
+    
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#f3e5f5
+    style D fill:#f3e5f5
+    style E fill:#fff3e0
+    style F fill:#fff3e0
+</Artefact>
+
+What would you like to discuss? I can help you understand:
+- The relationship between thermodynamics and electrochemistry
+- How to calculate cell potentials
+- The Nernst equation and its applications
+- Electrochemical cell design and operation
+
+Remember: I am designed to enhance your learning, not replace it, always verify important information.`;
         
         // Generate message ID using the first 10 words, chatID, and current date
         const currentDate = new Date();
@@ -825,26 +858,19 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
             });
         }
 
-        // Simple initial message
-        const hardcodedInitialMessage: ChatMessage = {
-            id: 'init-message-' + Date.now(),
-            sender: 'bot' as const,
-            userId: userID === 'instructor' ? 0 : parseInt(userID) || 1,
-            courseName: courseName,
-            text: `Hello! I'm EngE-AI, your AI companion for chemical, environmental, and materials engineering.`,
-            timestamp: Date.now()
-        };
-        
-        // Actually create the chat using the ChatApp class
+        // Actually create the chat using the ChatApp class FIRST
         const initRequest = chatApp.initializeConversation(userID, courseName, date);
         const chatId = initRequest.chatId;
+        
+        // Use the proper welcome message from the backend (includes diagrams and course context)
+        const backendWelcomeMessage = initRequest.initAssistantMessage;
         
         //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-004)
         console.log('\n✅ NEW CHAT CREATED IN MEMORY:');
         console.log('='.repeat(50));
         console.log(`Generated Chat ID: ${chatId}`);
-        console.log(`Assistant Message ID: ${hardcodedInitialMessage.id}`);
-        console.log(`Assistant Message Preview: "${hardcodedInitialMessage.text.substring(0, 100)}..."`);
+        console.log(`Assistant Message ID: ${backendWelcomeMessage.id}`);
+        console.log(`Assistant Message Preview: "${backendWelcomeMessage.text.substring(0, 100)}..."`);
         console.log('='.repeat(50));
         //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-004)
         
@@ -854,7 +880,7 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
             courseName: courseName,
             divisionTitle: '', // Empty for now, will be set by user later
             itemTitle: '', // Empty for now, will be set by user later
-            messages: [hardcodedInitialMessage], // Start with initial message
+            messages: [backendWelcomeMessage], // Use the proper backend welcome message with diagrams
             isPinned: false,
             pinnedMessageId: null
         };
@@ -875,11 +901,11 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
             // Continue execution - chat is still in memory
         }
         
-        // Return the complete response with the hardcoded message
+        // Return the complete response with the proper backend welcome message
         res.json({ 
             success: true, 
             chatId: chatId,
-            initAssistantMessage: hardcodedInitialMessage,
+            initAssistantMessage: backendWelcomeMessage,
             chat: newChat // Return full chat object for frontend
         });
         

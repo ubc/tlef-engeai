@@ -57,6 +57,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (componentName === 'chat-window') {
                 // Rebind message events after chat window is loaded
                 chatManager.bindMessageEvents();
+                // Reset DOM tracking and render active chat
+                chatManager.resetDOMTracking();
                 chatManager.renderActiveChat();
             } else if (componentName === 'welcome-screen') {
                 attachWelcomeScreenListeners();

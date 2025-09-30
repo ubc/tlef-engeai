@@ -131,6 +131,10 @@ export class ChatManager {
     private config: ChatManagerConfig;
     private isInitialized: boolean = false;
     private artefactHandler: ArtefactHandler;
+    
+    // Incremental update tracking
+    private domMessageIds: Set<string> = new Set(); // Track which messages are in DOM
+    private lastRenderedMessageCount: number = 0; // Track last rendered count for active chat
 
     private constructor(config: ChatManagerConfig) {
         this.config = config;
@@ -331,6 +335,10 @@ export class ChatManager {
         } as ChatMessage & { artefact?: any };
         activeChat.messages.push(botMessage);
 
+        // Add messages to DOM incrementally
+        this.addMessageToDOM(userMessage, activeChat);
+        this.addMessageToDOM(botMessage, activeChat);
+
         // Show loading state immediately
         onChunk?.('Thinking...', false);
 
@@ -362,14 +370,17 @@ export class ChatManager {
 
             console.log('[CHAT-MANAGER] ✅ Message sent successfully');
 
-            // Replace the placeholder messages with server response
-            // Remove last two messages (our placeholders)
+            // Replace the placeholder messages with server response using incremental updates
+            // Remove placeholder messages from DOM and data
+            this.removeMessageFromDOM(botMessageId);
+            this.removeMessageFromDOM(userMessage.id);
             activeChat.messages.pop(); // Remove bot placeholder
             activeChat.messages.pop(); // Remove user placeholder
 
             // Add the actual messages from server
             if (data.userMessage) {
                 activeChat.messages.push(data.userMessage);
+                this.addMessageToDOM(data.userMessage, activeChat);
             }
             
             if (data.assistantMessage) {
@@ -387,11 +398,13 @@ export class ChatManager {
                     };
                     
                     activeChat.messages.push(finalMessage);
+                    this.addMessageToDOM(finalMessage, activeChat);
                     onComplete?.(finalMessage);
                 } catch (artefactError) {
                     console.error('[CHAT-MANAGER] ⚠️ Error processing artefacts:', artefactError);
                     // Fallback to original message if artefact processing fails
                     activeChat.messages.push(data.assistantMessage);
+                    this.addMessageToDOM(data.assistantMessage, activeChat);
                     onComplete?.(data.assistantMessage);
                 }
             }
@@ -399,7 +412,9 @@ export class ChatManager {
         } catch (error) {
             console.error('[CHAT-MANAGER] 🚨 Error sending message:', error);
             
-            // Remove placeholder messages
+            // Remove placeholder messages from DOM and data using incremental updates
+            this.removeMessageFromDOM(botMessageId);
+            this.removeMessageFromDOM(userMessage.id);
             activeChat.messages.pop(); // Remove bot placeholder
             activeChat.messages.pop(); // Remove user placeholder
             
@@ -484,7 +499,7 @@ export class ChatManager {
     }
 
     /**
-     * Render active chat
+     * Render active chat (Full render - for initial load or when switching chats)
      */
     public renderActiveChat(): void {
         const activeChat = this.getActiveChat();
@@ -499,30 +514,131 @@ export class ChatManager {
         chatTitleEl.textContent = activeChat.itemTitle;
         pinBtn.classList.toggle('pinned', activeChat.isPinned);
 
+        // Full render - clear everything and rebuild
         messageAreaEl.innerHTML = '';
+        this.domMessageIds.clear();
+        
         activeChat.messages.forEach(msg => {
-            const isPinnedMessage = activeChat.pinnedMessageId === msg.id;
-            const messageEl = this.createMessageElement(
-                msg.id,
-                msg.sender,
-                msg.text,
-                msg.timestamp,
-                isPinnedMessage,
-                () => {
-                    if (activeChat.pinnedMessageId === msg.id) {
-                        activeChat.pinnedMessageId = null;
-                    } else {
-                        activeChat.pinnedMessageId = msg.id;
-                    }
-                    this.renderActiveChat();
-                }
-            );
-            messageAreaEl.appendChild(messageEl);
+            this.addMessageToDOM(msg, activeChat);
         });
 
+        this.lastRenderedMessageCount = activeChat.messages.length;
         this.scrollToBottom();
         this.renderPinnedBanner(activeChat);
         renderFeatherIcons();
+    }
+
+    /**
+     * Render active chat with incremental updates (Optimized for new messages)
+     */
+    public renderActiveChatIncremental(): void {
+        const activeChat = this.getActiveChat();
+        const chatTitleEl = document.getElementById('chat-title');
+        const messageAreaEl = document.getElementById('message-area');
+        const pinBtn = document.getElementById('pin-chat-btn');
+        
+        if (!activeChat || !chatTitleEl || !messageAreaEl || !pinBtn) return;
+
+        this.ensureChatHeaderStructure();
+
+        chatTitleEl.textContent = activeChat.itemTitle;
+        pinBtn.classList.toggle('pinned', activeChat.isPinned);
+
+        // Check if we need incremental updates or full render
+        if (this.lastRenderedMessageCount === activeChat.messages.length && 
+            this.domMessageIds.size === activeChat.messages.length) {
+            // No new messages, just update UI elements
+            this.renderPinnedBanner(activeChat);
+            return;
+        }
+
+        // Add only new messages that aren't in DOM yet
+        const currentMessageIds = new Set(activeChat.messages.map(m => m.id));
+        
+        // Add missing messages
+        activeChat.messages.forEach(msg => {
+            if (!this.domMessageIds.has(msg.id)) {
+                this.addMessageToDOM(msg, activeChat);
+            }
+        });
+
+        // Remove messages that no longer exist (shouldn't happen in normal flow)
+        this.domMessageIds.forEach(msgId => {
+            if (!currentMessageIds.has(msgId)) {
+                this.removeMessageFromDOM(msgId);
+            }
+        });
+
+        this.lastRenderedMessageCount = activeChat.messages.length;
+        this.scrollToBottom();
+        this.renderPinnedBanner(activeChat);
+        renderFeatherIcons();
+    }
+
+    /**
+     * Add a single message to the DOM
+     */
+    private addMessageToDOM(msg: ChatMessage, activeChat: Chat): void {
+        const messageAreaEl = document.getElementById('message-area');
+        if (!messageAreaEl) return;
+
+        const isPinnedMessage = activeChat.pinnedMessageId === msg.id;
+        const messageEl = this.createMessageElement(
+            msg.id,
+            msg.sender,
+            msg.text,
+            msg.timestamp,
+            isPinnedMessage,
+            () => {
+                if (activeChat.pinnedMessageId === msg.id) {
+                    activeChat.pinnedMessageId = null;
+                } else {
+                    activeChat.pinnedMessageId = msg.id;
+                }
+                this.renderActiveChatIncremental();
+            }
+        );
+        
+        messageAreaEl.appendChild(messageEl);
+        this.domMessageIds.add(msg.id);
+    }
+
+    /**
+     * Remove a message from the DOM
+     */
+    private removeMessageFromDOM(messageId: string): void {
+        const messageEl = document.getElementById(`msg-${messageId}`);
+        if (messageEl) {
+            messageEl.remove();
+            this.domMessageIds.delete(messageId);
+        }
+    }
+
+    /**
+     * Update an existing message in the DOM
+     */
+    public updateMessageInDOM(messageId: string, newText: string): void {
+        const messageEl = document.getElementById(`msg-${messageId}`);
+        if (!messageEl) return;
+
+        const contentEl = messageEl.querySelector('.message-content') as HTMLElement;
+        if (!contentEl) return;
+
+        // Process artefacts and render
+        const result = this.artefactHandler.processStreamingText(newText, messageId);
+        
+        if (result.hasArtefacts) {
+            // Use innerHTML for content with artefacts (contains button HTML)
+            contentEl.innerHTML = result.processedText;
+            // Render LaTeX safely without breaking HTML elements
+            renderLatexInHtmlContent(contentEl);
+        } else {
+            // Simple text update
+            renderLatexInElement(newText, contentEl);
+        }
+        
+        renderFeatherIcons();
+        this.scrollToBottom();
     }
 
     /**
@@ -635,6 +751,11 @@ export class ChatManager {
         addChatBtn?.addEventListener('click', () => {
             this.createNewChat().then(result => {
                 if (result.success) {
+                    // Reset DOM tracking for new chat
+                    this.domMessageIds.clear();
+                    this.lastRenderedMessageCount = 0;
+                    
+                    // Use full render for new chat (no existing messages to preserve)
                     this.renderActiveChat();
                     this.renderChatList();
                     this.scrollToBottom();
@@ -652,8 +773,13 @@ export class ChatManager {
                 const chatId = li.dataset.chatId || null;
                 if (chatId) {
                     this.setActiveChatId(chatId);
+                    
+                    // Reset DOM tracking when switching chats
+                    this.domMessageIds.clear();
+                    this.lastRenderedMessageCount = 0;
+                    
                     this.renderChatList();
-                    this.renderActiveChat();
+                    this.renderActiveChat(); // Use full render when switching chats
                 }
             }
         });
@@ -667,6 +793,14 @@ export class ChatManager {
         this.bindMessageEvents();
         // Don't rebind chat list events to prevent duplicate event listeners
         // Chat list events are bound once during initialization and don't need rebinding
+    }
+
+    /**
+     * Reset DOM tracking (useful when switching contexts or initializing)
+     */
+    public resetDOMTracking(): void {
+        this.domMessageIds.clear();
+        this.lastRenderedMessageCount = 0;
     }
 
     public bindMessageEvents(): void {
@@ -787,16 +921,15 @@ export class ChatManager {
             }
         );
         
-        // Render the chat after adding the messages to ensure bot message element exists
-        this.renderActiveChat();
-        this.scrollToBottom();
+        // No need to render the chat - messages are added incrementally
+        // this.renderActiveChat(); // Removed - using incremental updates
     }
 
     private handleTogglePin(): void {
         const activeChatId = this.getActiveChatId();
         if (!activeChatId) return;
         this.togglePin(activeChatId);
-        this.renderActiveChat();
+        this.renderActiveChatIncremental(); // Use incremental updates for pin toggle
         this.renderChatList();
     }
 
@@ -817,8 +950,8 @@ export class ChatManager {
             }
         }
         
-        // Update UI after deletion
-        this.renderActiveChat();
+        // Update UI after deletion using incremental updates
+        this.renderActiveChatIncremental();
         this.renderChatList();
         
         // Notify instructor mode that a chat was deleted
@@ -1126,7 +1259,7 @@ export class ChatManager {
         if (!pinnedLine) return;
         pinnedLine.style.display = 'none';
         chat.pinnedMessageId = null;
-        this.renderActiveChat();
+        this.renderActiveChatIncremental(); // Use incremental updates for pinned message removal
         this.renderChatList();
         renderFeatherIcons();
     }
@@ -1187,7 +1320,7 @@ export function createDefaultUser(): User {
         puid: 'student-user',
         userId: 1,
         activeCourseId: 'default-course',
-        activeCourseName: 'APSC 099',
+        activeCourseName: 'APSC 099: Engineering for Kindergarten',
         userOnboarding: false, // Student onboarding status
         role: 'student',
         status: 'active',
