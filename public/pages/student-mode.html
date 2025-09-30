@@ -9,12 +9,12 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     
     <link rel="stylesheet" href="/styles/style.css" />
-    <link rel="stylesheet" href="/styles/chat-components/report-history.css" />
     <link rel="stylesheet" href="/styles/chat-components/flag-message.css" />
     <link rel="stylesheet" href="/styles/chat-components/disclaimer.css" />
     <link rel="stylesheet" href="/styles/chat-components/latex-rendering.css" />
     <link rel="stylesheet" href="/styles/chat-components/chat-feature.css" />
     <link rel="stylesheet" href="/styles/student-mode.css" />
+    <link rel="stylesheet" href="/styles/student-components/profile.css" />
     
     <!-- KaTeX CSS for LaTeX rendering -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css" integrity="sha384-GvrOXuhMATgEsSwCs4smul74iXGOixntILdUW9XmUC6+HX0sLNAK3q71HotJqlAn" crossorigin="anonymous">
@@ -54,9 +54,9 @@
                     <i data-feather="log-out"></i>
                     <span>Log Out</span>
                 </button>
-                <button class="report-history-btn">
-                    <i data-feather="alert-triangle"></i>
-                    <span>Report History</span>
+                <button class="report-history-btn" id="profile-btn">
+                    <i data-feather="user"></i>
+                    <span>Profile</span>
                 </button>
             </div>
         </aside>
