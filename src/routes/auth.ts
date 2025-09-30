@@ -78,7 +78,6 @@ router.post('/saml/callback', (req: express.Request, res: express.Response, next
                     
                     // Create new student record
                     const tempUserData: User = {
-                        id: 'temp', // Temporary ID for generation
                         name: `${user.firstName} ${user.lastName}`,
                         puid: puid,
                         userId: 0, // Will be generated

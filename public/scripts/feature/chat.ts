@@ -166,7 +166,9 @@ export class ChatManager {
                 ? (this.config.userContext as activeCourse).courseName 
                 : (this.config.userContext as User).activeCourseName;
             
-            const userId = this.config.isInstructor ? 'instructor' : 'student';
+            // Use real user PUID instead of hardcoded strings
+            const userId = this.config.isInstructor ? 'instructor' : (this.config.userContext as User).puid;
+            console.log('[CHAT-MANAGER] 📊 Loading chats with:', { userId, courseName });
             this.chats = await this.loadChatsFromServer(userId, courseName);
             
             // Set the first chat as active if there are any chats
@@ -205,6 +207,13 @@ export class ChatManager {
     }
 
     /**
+     * Check if ChatManager is initialized
+     */
+    public getInitializationStatus(): boolean {
+        return this.isInitialized;
+    }
+
+    /**
      * Get active chat
      */
     public getActiveChat(): Chat | undefined {
@@ -233,7 +242,7 @@ export class ChatManager {
             console.log('[CHAT-MANAGER] 🆕 Creating new chat...');
             
             const chatRequest: CreateChatRequest = {
-                userID: this.config.isInstructor ? 'instructor' : 'student',
+                userID: this.config.isInstructor ? 'instructor' : (this.config.userContext as User).puid,
                 courseName: this.config.isInstructor 
                     ? (this.config.userContext as activeCourse).courseName 
                     : (this.config.userContext as User).activeCourseName,
@@ -351,7 +360,7 @@ export class ChatManager {
                 },
                 body: JSON.stringify({
                     message: text,
-                    userId: this.config.isInstructor ? 'instructor' : 'student',
+                    userId: this.config.isInstructor ? 'instructor' : (this.config.userContext as User).puid,
                     courseName: this.config.isInstructor 
                         ? (this.config.userContext as activeCourse).courseName 
                         : (this.config.userContext as User).activeCourseName
@@ -707,6 +716,11 @@ export class ChatManager {
     private async loadChatsFromServer(userId: string, courseName: string): Promise<Chat[]> {
         try {
             console.log('[CHAT-MANAGER] 📂 Loading chats from server...');
+            console.log('[CHAT-MANAGER] 📊 Request context:', {
+                userId,
+                courseName,
+                endpoint: '/api/chat/user/chats'
+            });
             
             const response = await fetch('/api/chat/user/chats', {
                 method: 'GET',
@@ -716,23 +730,62 @@ export class ChatManager {
                 }
             });
             
+            console.log('[CHAT-MANAGER] 📡 Server response status:', response.status, response.statusText);
+            
             if (!response.ok) {
                 console.error('[CHAT-MANAGER] ❌ Failed to load chats:', response.statusText);
+                console.error('[CHAT-MANAGER] 🔍 Response details:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    url: response.url
+                });
+                
+                // Handle specific error cases
+                if (response.status === 401) {
+                    console.error('[CHAT-MANAGER] 🔐 Authentication failed - user may need to re-login');
+                } else if (response.status === 500) {
+                    console.error('[CHAT-MANAGER] 🚨 Server error - database or backend issue');
+                }
+                
                 return [];
             }
             
             const data = await response.json();
+            console.log('[CHAT-MANAGER] 📦 Response data:', {
+                success: data.success,
+                chatCount: data.chats ? data.chats.length : 0,
+                hasError: !!data.error
+            });
             
             if (data.success && data.chats) {
                 console.log(`[CHAT-MANAGER] ✅ Loaded ${data.chats.length} chats from database`);
+                if (data.chats.length > 0) {
+                    console.log('[CHAT-MANAGER] 📋 Chat details:', data.chats.map((chat: any) => ({
+                        id: chat.id,
+                        title: chat.itemTitle,
+                        messageCount: chat.messages ? chat.messages.length : 0
+                    })));
+                }
                 return data.chats;
             }
             
-            console.log('[CHAT-MANAGER] ⚠️ No chats found');
+            if (data.error) {
+                console.error('[CHAT-MANAGER] ❌ Server error:', data.error);
+            }
+            
+            console.log('[CHAT-MANAGER] ⚠️ No chats found or invalid response format');
             return [];
             
         } catch (error) {
             console.error('[CHAT-MANAGER] 🚨 Error loading chats:', error);
+            
+            // Handle specific error types
+            if (error instanceof TypeError && error.message.includes('fetch')) {
+                console.error('[CHAT-MANAGER] 🌐 Network error - check internet connection');
+            } else if (error instanceof SyntaxError) {
+                console.error('[CHAT-MANAGER] 📄 JSON parsing error - server response may be malformed');
+            }
+            
             return [];
         }
     }
@@ -1312,16 +1365,37 @@ export class ChatManager {
 
 /**
  * Utility function to create a default user context
+ * @deprecated Use createUserFromAuthData instead for real user data
  */
 export function createDefaultUser(): User {
     return {
-        id: 'student-001',
         name: 'Student User',
         puid: 'student-user',
         userId: 1,
         activeCourseId: 'default-course',
         activeCourseName: 'APSC 099: Engineering for Kindergarten',
         userOnboarding: false, // Student onboarding status
+        role: 'student',
+        status: 'active',
+        chats: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
+    };
+}
+
+/**
+ * Create User object from AuthService user data
+ * @param authUser - User data from AuthService
+ * @returns User object compatible with ChatManager
+ */
+export function createUserFromAuthData(authUser: any): User {
+    return {
+        name: `${authUser.firstName} ${authUser.lastName}`,
+        puid: authUser.puid,
+        userId: 0, // Will be generated by backend
+        activeCourseId: 'apsc-099',
+        activeCourseName: 'APSC 099: Engineering for Kindergarten', // Default course name
+        userOnboarding: false,
         role: 'student',
         status: 'active',
         chats: [],

@@ -1,7 +1,7 @@
 // public/scripts/student-mode.ts
 
 import { loadComponentHTML, renderFeatherIcons } from './functions/api.js';
-import { ChatManager, createDefaultUser } from './feature/chat.js';
+import { ChatManager, createUserFromAuthData } from './feature/chat.js';
 import { authService } from './services/AuthService.js';
 
 // Authentication check function
@@ -19,8 +19,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('[STUDENT-MODE] 🚀 Loading student mode...');
     
     // --- STATE MANAGEMENT ---
-    // Initialize ChatManager for student mode
-    const user = createDefaultUser();
+    // Get real user data from authentication
+    const authState = authService.getAuthState();
+    if (!authState.isAuthenticated || !authState.user) {
+        console.error('[STUDENT-MODE] ❌ No authenticated user found');
+        return;
+    }
+    
+    console.log('[STUDENT-MODE] 👤 Using authenticated user data:', {
+        puid: authState.user.puid,
+        name: `${authState.user.firstName} ${authState.user.lastName}`,
+        username: authState.user.username
+    });
+    
+    // Create user context from real authentication data
+    const user = createUserFromAuthData(authState.user);
     const chatManager = ChatManager.getInstance({
         isInstructor: false,
         userContext: user,
@@ -33,9 +46,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
     
-    // Initialize the chat manager
-    chatManager.initialize();
-
     // --- DOM ELEMENT SELECTORS ---
     const mainContentArea = document.getElementById('main-content-area');
     const sidebarEl = document.querySelector('.sidebar') as HTMLElement | null;
@@ -73,21 +83,93 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // All chat rendering functions are now handled by ChatManager
     
-    const updateUI = () => {
+    const updateUI = async () => {
+        console.log('[STUDENT-MODE] 🔄 Updating UI...');
+        
+        // Wait for chat manager to be fully initialized
+        if (!chatManager.getInitializationStatus()) {
+            console.log('[STUDENT-MODE] ⏳ ChatManager not yet initialized, waiting...');
+            return;
+        }
+        
         const chats = chatManager.getChats();
         const activeChatId = chatManager.getActiveChatId();
         
+        console.log(`[STUDENT-MODE] 📊 Chat status: ${chats.length} chats, active: ${activeChatId}`);
+        
         if (chats.length === 0) {
-            // No chats yet: show welcome screen
+            // No chats yet: show welcome screen for new users
+            console.log('[STUDENT-MODE] 👋 No chats found, showing welcome screen');
             loadComponent('welcome-screen');
         } else if (activeChatId) {
-            // Has chats and active chat: show chat window
-            loadComponent('chat-window');
+            // Has chats and active chat: show chat window with last conversation
+            console.log('[STUDENT-MODE] 💬 Has active chat, showing chat window');
+            await loadComponent('chat-window');
+            // Render the chat list in the sidebar after loading the component
+            console.log('[STUDENT-MODE] 📋 Rendering chat list in sidebar');
+            chatManager.renderChatList();
         } else {
-            // Has chats but no active chat: show welcome screen
-            loadComponent('welcome-screen');
+            // Has chats but no active chat: set most recent chat as active and show it
+            console.log('[STUDENT-MODE] 🔄 Has chats but no active chat, setting most recent as active');
+            const mostRecentChat = chats.sort((a, b) => {
+                // Use the timestamp of the last message in each chat
+                const aLastMessage = a.messages[a.messages.length - 1];
+                const bLastMessage = b.messages[b.messages.length - 1];
+                
+                const aTime = aLastMessage ? aLastMessage.timestamp : 0;
+                const bTime = bLastMessage ? bLastMessage.timestamp : 0;
+                
+                return bTime - aTime; // Most recent first
+            })[0];
+            
+            if (mostRecentChat) {
+                chatManager.setActiveChatId(mostRecentChat.id);
+                console.log(`[STUDENT-MODE] ✅ Set most recent chat as active: ${mostRecentChat.id}`);
+                await loadComponent('chat-window');
+                // Render the chat list in the sidebar after loading the component
+                console.log('[STUDENT-MODE] 📋 Rendering chat list in sidebar');
+                chatManager.renderChatList();
+            } else {
+                console.log('[STUDENT-MODE] ⚠️ No valid chat found, showing welcome screen');
+                loadComponent('welcome-screen');
+            }
         }
     };
+
+    // Initialize the chat manager and wait for it to complete
+    console.log('[STUDENT-MODE] 🚀 Initializing ChatManager with real user data...');
+    console.log('[STUDENT-MODE] 📊 User context:', {
+        puid: user.puid,
+        activeCourseName: user.activeCourseName,
+        role: user.role
+    });
+    
+    try {
+        await chatManager.initialize();
+        console.log('[STUDENT-MODE] ✅ ChatManager initialized successfully');
+        await updateUI();
+    } catch (error) {
+        console.error('[STUDENT-MODE] ❌ Failed to initialize ChatManager:', error);
+        // Show error message to user
+        if (mainContentArea) {
+            mainContentArea.innerHTML = `
+                <div style="text-align: center; padding: 2rem; color: #dc3545;">
+                    <h3>⚠️ Chat Initialization Failed</h3>
+                    <p>Unable to load chat interface. Please refresh the page or contact support.</p>
+                    <button onclick="window.location.reload()" style="
+                        background: #007bff;
+                        color: white;
+                        border: none;
+                        padding: 0.75rem 1.5rem;
+                        border-radius: 0.375rem;
+                        cursor: pointer;
+                        margin-top: 1rem;
+                    ">Refresh Page</button>
+                </div>
+            `;
+        }
+        return;
+    }
 
     // Scroll to bottom is now handled by ChatManager
 
@@ -204,15 +286,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         btn.className = 'icon-btn collapse-sidebar-btn';
         btn.title = 'Collapse sidebar';
         const icon = document.createElement('i');
-        icon.setAttribute('data-feather', 'chevrons-left');
+        icon.setAttribute('data-feather', 'menu');
         btn.appendChild(icon);
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             if (!sidebarEl) return;
             const collapsed = sidebarEl.classList.toggle('collapsed');
-            const i = btn.querySelector('i');
-            if (i) i.setAttribute('data-feather', collapsed ? 'chevrons-right' : 'chevrons-left');
-            renderFeatherIcons();
+            // Keep the menu icon - no need to change it
         });
 
         // Place the button at the end of the header area

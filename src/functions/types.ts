@@ -156,7 +156,6 @@ export interface AdditionalMaterial {
  * Replaces the old Student interface with proper user authentication
  */
 export interface User {
-    id: string;
     name: string;
     puid: string;
     userId: number;

@@ -59,7 +59,6 @@ declare global {
  */
 function createInstructorVirtualUser(): User {
     return {
-        id: 'instructor-virtual',
         name: 'Instructor User',
         puid: 'instructor-virt',
         userId: 0, // Instructor ID

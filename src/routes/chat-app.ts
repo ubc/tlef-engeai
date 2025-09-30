@@ -763,7 +763,7 @@ router.get('/user/chats', asyncHandlerWithAuth(async (req: Request, res: Respons
         // Get user from session
         const user = (req as any).user;
         const puid = user?.puid;
-        const courseName = user?.activeCourseName || 'APSC 099'; // Default to APSC 099 if not set
+        const courseName = user?.activeCourseName || 'APSC 099: Engineering for Kindergarten'; // Use full course name
         
         //START DEBUG LOG : DEBUG-CODE(LOAD-CHATS-001)
         console.log('\n📂 LOADING USER CHATS:');
@@ -1155,7 +1155,7 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
         // Get user from session
         const user = (req as any).user;
         const puid = user?.puid;
-        const courseName = user?.activeCourseName || 'APSC 099';
+        const courseName = user?.activeCourseName || 'APSC 099: Engineering for Kindergarten';
         
         //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-001)
         console.log('\n🗑️ DELETE CHAT REQUEST:');

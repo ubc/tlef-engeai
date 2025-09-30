@@ -305,9 +305,7 @@ Collapse button styling
     transition: all 0.2s;
 }
 
-.collapse-sidebar-btn:hover {
-    background: rgba(255, 255, 255, 0.3);
-}
+
 
 .collapse-sidebar-btn .feather {
     width: 16px;
