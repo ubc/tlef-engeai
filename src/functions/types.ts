@@ -184,3 +184,16 @@ export interface FlagReport {
     createdAt: Date;
     updatedAt: Date;
 }
+
+
+export interface Userx {
+    name: string;
+    puid: string;
+    userId: number;
+    courseName: string[]; // list of course names that the user is enrolled in
+    userOnboarding: boolean; // this is only used for student mode
+    affiliation: 'student' | 'faculty';
+    status: 'active' | 'inactive';
+    createdAt: Date;
+    updatedAt: Date;
+}

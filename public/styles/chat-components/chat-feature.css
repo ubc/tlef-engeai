@@ -610,7 +610,7 @@
     right: 0;
     bottom: 0;
     background-color: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
+    /* backdrop-filter: blur(4px); */ /* Removed blur effect */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -624,7 +624,7 @@
 }
 
 .flag-modal {
-    background: var(--chat-bg);
+    background: var(--chat-bg, #ffffff);
     border-radius: 12px;
     width: 80%;
     height: 80%;
@@ -635,6 +635,13 @@
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     transform: scale(0.95);
     transition: transform 0.3s ease;
+    /* Ensure crisp rendering */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    /* Ensure modal is above everything */
+    position: relative;
+    z-index: 1001;
 }
 
 .flag-modal-overlay.show .flag-modal {
@@ -687,12 +694,12 @@
     margin: 0;
     font-size: 0.9rem;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--text-primary, #333333);
 }
 
 .flagged-message-display {
-    background-color: var(--background-2);
-    border: 1px solid var(--border-color);
+    background-color: var(--background-2, #f8f9fa);
+    border: 1px solid var(--border-color, #e9ecef);
     border-radius: 12px;
     padding: 1rem;
     max-height: 200px;
@@ -700,10 +707,9 @@
 }
 
 .flagged-message-content {
-    color: var(--text-primary);
+    color: var(--text-primary, #333333);
     font-size: 0.85rem;
     line-height: 1.5;
-    white-space: pre-wrap;
     overflow-wrap: anywhere;
     word-break: break-word;
     margin-bottom: 0.5rem;
@@ -711,7 +717,7 @@
 
 .flagged-message-timestamp {
     font-size: 0.7rem;
-    color: var(--text-secondary);
+    color: var(--text-secondary, #666666);
     display: flex;
     align-items: center;
     gap: 4px;

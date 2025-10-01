@@ -98,23 +98,46 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transform-origin: center center;
-  transition: transform 0.2s ease;
   padding: 1rem;
   box-sizing: border-box;
 }
 
-/* Prevent content from popping in before width grows */
-.artefact-panel:not(.open) .artefact-content { 
-  opacity: 0; 
-}
-.artefact-panel.open .artefact-content { 
-  animation: fadeIn 0.2s 0.15s forwards; 
+/* Sliding animations for artefact panel */
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
-/* Fade-out animation for closing */
-.artefact-panel.closing .artefact-content { 
-  animation: fadeOut 0.2s forwards; 
+@keyframes slideOutToLeft {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+}
+
+/* Prevent content from popping in before width grows */
+.artefact-panel:not(.open)  { 
+  opacity: 0; 
+  transform: translateX(100%);
+}
+
+.artefact-panel.open  { 
+  animation: slideInFromRight 0.35s 0.15s forwards; 
+}
+
+/* Slide-out animation for closing */
+.artefact-panel.closing { 
+  animation: slideOutToLeft 0.35s forwards; 
 }
 
 /* Mermaid sizing inside panel */

@@ -71,6 +71,7 @@ export async function loadComponentHTML(
                     | 'document-setup'
                     | 'flag-setup'
                     | 'monitor-setup'
+                    | 'student-onboarding'
 ): Promise<string> {
 
     let response: Response;
@@ -99,6 +100,7 @@ export async function loadComponentHTML(
         case 'document-setup':
         case 'flag-setup':
         case 'monitor-setup':
+        case 'student-onboarding':
             response = await fetch(`/components/onboarding/${componentName}.html`);
             break;
         default:

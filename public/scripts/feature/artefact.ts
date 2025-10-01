@@ -45,8 +45,8 @@ export class ArtefactHandler {
             if (button) {
                 // Extract artefact ID from button ID
                 const buttonId = button.id;
-                if (buttonId && buttonId.startsWith('artefact-btn-')) {
-                    const artefactId = buttonId.replace('artefact-btn-', '');
+                if (buttonId && (buttonId.startsWith('artefact-btn-') || buttonId === 'demo-artefact-btn')) {
+                    const artefactId = buttonId === 'demo-artefact-btn' ? 'demo-artefact-onboarding' : buttonId.replace('artefact-btn-', '');
                     
                     console.log('🎨 Artefact button clicked via delegation:', artefactId);
                     
@@ -233,7 +233,44 @@ export class ArtefactHandler {
      * @param artefactId - The artefact ID to toggle
      */
     public async toggleArtefact(artefactId: string): Promise<void> {
-        const artefactData = this.artefacts.get(artefactId);
+        let artefactData = this.artefacts.get(artefactId);
+        
+        // Create demo artefact if it doesn't exist and this is the demo
+        if (!artefactData && artefactId === 'demo-artefact-onboarding') {
+            console.log('🎨 Creating demo artefact for onboarding');
+            const mermaidCode = `
+graph TD
+    A[Thermodynamics in Electrochemistry] --> B[Gibbs Free Energy]
+    A --> C[Electrode Potentials]
+    A --> D[Electrochemical Cells]
+    
+    B --> E["ΔG = -nFE"]
+    C --> F["E = E° - RT/nF lnQ"]
+    D --> G[Anode: Oxidation]
+    D --> H[Cathode: Reduction]
+    
+    G --> I[Electrons Flow]
+    H --> I
+    I --> J[Current Generation]
+    
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#f3e5f5
+    style D fill:#f3e5f5
+    style E fill:#fff3e0
+    style F fill:#fff3e0
+    `;
+            
+            artefactData = {
+                id: artefactId,
+                mermaidCode: mermaidCode,
+                isOpen: false,
+                messageId: 'demo-message'
+            };
+            
+            this.artefacts.set(artefactId, artefactData);
+        }
+        
         if (!artefactData) {
             console.error('Artefact not found:', artefactId);
             return;
@@ -276,8 +313,12 @@ export class ArtefactHandler {
             return;
         }
 
-        // Get chat window container and add artefact-open class
-        const container = document.querySelector('.chat-window-container') as HTMLElement | null;
+        // Get the appropriate container and add artefact-open class
+        // Check if we're in onboarding mode
+        const onboardingContainer = document.querySelector('.onboarding') as HTMLElement | null;
+        const chatContainer = document.querySelector('.chat-window-container') as HTMLElement | null;
+        
+        const container = onboardingContainer || chatContainer;
         if (container) {
             container.classList.add('artefact-open');
         }
@@ -318,8 +359,12 @@ export class ArtefactHandler {
             this.currentlyOpenArtefactId = null;
         }
 
-        // Get chat window container and remove artefact-open class
-        const container = document.querySelector('.chat-window-container') as HTMLElement | null;
+        // Get the appropriate container and remove artefact-open class
+        // Check if we're in onboarding mode
+        const onboardingContainer = document.querySelector('.onboarding') as HTMLElement | null;
+        const chatContainer = document.querySelector('.chat-window-container') as HTMLElement | null;
+        
+        const container = onboardingContainer || chatContainer;
         if (container) {
             container.classList.remove('artefact-open');
         }

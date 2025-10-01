@@ -1,0 +1,430 @@
+<!-- STUDENT ONBOARDING COMPONENT -->
+<!-- 4-step onboarding following instructor onboarding design patterns -->
+
+<div class="onboarding">
+    <!-- LEFT STEPS PANEL -->
+    <div class="onboarding-steps-panel">
+        <!-- Logo Box -->
+        <div class="logo-box">
+            <i data-feather="book-open" class="feather"></i>
+            <div class="logo-text">
+                <span>EngE-AI</span>
+                <p>Student Mode</p>
+            </div>
+        </div>
+
+        <!-- Steps Header -->
+        <div class="steps-header">
+            <h2>Getting Started</h2>
+            <p>Learn how to use your AI study assistant</p>
+        </div>
+
+        <!-- Steps List -->
+        <div class="steps-list">
+            <!-- Step 1: Welcome -->
+            <div class="step-item" data-step="1">
+                <div class="step-indicator">
+                    <div class="step-circle pending">
+                        <span class="step-number">1</span>
+                    </div>
+                </div>
+                <div class="step-content">
+                    <h3>Welcome</h3>
+                    <p>What is this about?</p>
+                </div>
+            </div>
+
+            <!-- Step 2: Engineering Focus -->
+            <div class="step-item" data-step="2">
+                <div class="step-indicator">
+                    <div class="step-circle pending">
+                        <span class="step-number">2</span>
+                    </div>
+                </div>
+                <div class="step-content">
+                    <h3>Engineering Focus</h3>
+                    <p>How to ask good questions</p>
+                </div>
+            </div>
+
+            <!-- Step 3: Important Information -->
+            <div class="step-item" data-step="3">
+                <div class="step-indicator">
+                    <div class="step-circle pending">
+                        <span class="step-number">3</span>
+                    </div>
+                </div>
+                <div class="step-content">
+                    <h3>Important Information</h3>
+                    <p>AI Assistant Disclaimer</p>
+                </div>
+            </div>
+
+            <!-- Step 4: Artefacts & Features -->
+            <div class="step-item" data-step="4">
+                <div class="step-indicator">
+                    <div class="step-circle pending">
+                        <span class="step-number">4</span>
+                    </div>
+                </div>
+                <div class="step-content">
+                    <h3>Artefacts & Features</h3>
+                    <p>Visual diagrams and tools</p>
+                </div>
+            </div>
+
+            <!-- Step 5: How to Report -->
+            <div class="step-item" data-step="5">
+                <div class="step-indicator">
+                    <div class="step-circle pending">
+                        <span class="step-number">5</span>
+                    </div>
+                </div>
+                <div class="step-content">
+                    <h3>How to Report</h3>
+                    <p>Flagging messages</p>
+                </div>
+            </div>
+
+            <!-- Step 6: You're Ready -->
+            <div class="step-item" data-step="6">
+                <div class="step-indicator">
+                    <div class="step-circle pending">
+                        <span class="step-number">6</span>
+                    </div>
+                </div>
+                <div class="step-content">
+                    <h3>You're Ready!</h3>
+                    <p>Start your learning journey</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT CONTENT AREA -->
+    <div class="onboarding-content-area">
+        <!-- Onboarding Content Steps -->
+        <div class="onboarding-content-steps">
+            <!-- Help Button -->
+            <div class="help-menu">
+                <button class="help-btn" id="help-btn">
+                    <i data-feather="help-circle" class="feather"></i>
+                    Help
+                </button>
+            </div>
+
+        <!-- Step 1: Welcome -->
+        <div class="content-step active" id="step-1">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Welcome to EngE-AI!</h1>
+                    <p>Your AI-powered study assistant for chemical and material engineering</p>
+                </div>
+
+                <div class="welcome-content">
+                    <div class="welcome-message">
+                        <h3>What is EngE-AI?</h3>
+                        <p>EngE-AI is your 24/7 virtual tutor designed specifically for chemical and material engineering students. It uses the Socratic method to guide your thinking and help you develop strong problem-solving skills.</p>
+                        
+                        <h3>How does it work?</h3>
+                        <p>Instead of giving you direct answers, EngE-AI asks you questions that guide your thinking process. This helps you:</p>
+                        <ul class="feature-list">
+                            <li>Develop critical thinking skills</li>
+                            <li>Understand engineering concepts deeply</li>
+                            <li>Learn how to approach complex problems</li>
+                            <li>Build confidence in your problem-solving abilities</li>
+                        </ul>
+
+                        <div class="course-info">
+                            <h3>Your Course</h3>
+                            <p id="course-name-display">Course will be displayed here once assigned</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: Engineering Focus -->
+        <div class="content-step" id="step-2">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Engineering Focus</h1>
+                    <p>Learn how to ask effective questions for chemical and material engineering</p>
+                </div>
+
+                <div class="demo-section">
+                    <div class="demo-explanation">
+                        <h3>What types of questions work best?</h3>
+                        <p>EngE-AI is specialized for chemical and material engineering topics. Here's what works well:</p>
+                        
+                        <h4>✅ Good Questions:</h4>
+                        <ul class="structure-item">
+                            <li>Engineering calculations and formulas</li>
+                            <li>Material properties and selection</li>
+                            <li>Process design and optimization</li>
+                            <li>Thermodynamics and kinetics</li>
+                            <li>Clarification on course concepts</li>
+                        </ul>
+
+                        <h4>❌ Avoid These:</h4>
+                        <ul class="structure-item">
+                            <li>Non-engineering topics</li>
+                            <li>Direct homework solutions</li>
+                            <li>General academic questions</li>
+                        </ul>
+                    </div>
+
+                    <div class="demo-interactive">
+                        <h3>Example Good Questions:</h3>
+                        <div class="example-questions">
+                            <div class="example-question">
+                                <strong>"How do I apply the first law of thermodynamics to analyze this heat exchanger system?"</strong>
+                                <p>This asks for guidance on applying engineering principles.</p>
+                            </div>
+                            <div class="example-question">
+                                <strong>"What factors should I consider when selecting materials for corrosion resistance in a chemical processing plant?"</strong>
+                                <p>This focuses on material engineering decision-making.</p>
+                            </div>
+                            <div class="example-question">
+                                <strong>"Can you help me understand the concept of heat transfer coefficients in different flow regimes?"</strong>
+                                <p>This seeks clarification on engineering concepts.</p>
+                            </div>
+                        </div>
+                        
+                        <div class="demo-note">
+                            <p><strong>Remember:</strong> EngE-AI will guide you to find the answer yourself, not give you the direct solution!</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3: Important Information (Disclaimer) -->
+        <div class="content-step" id="step-3">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Important Information</h1>
+                    <p>AI Assistant Disclaimer and Guidelines</p>
+                </div>
+
+                <div class="disclaimer-content">
+                    <div class="disclaimer-section">
+                        <h3><i data-feather="target" class="feather"></i> Purpose</h3>
+                        <p>This AI is designed as a study assistant to help you understand course materials. It is not a substitute for attending lectures, completing assignments, or your own critical thinking.</p>
+                    </div>
+
+                    <div class="disclaimer-section">
+                        <h3><i data-feather="alert-triangle" class="feather"></i> Accuracy</h3>
+                        <p>While we strive for accuracy, the AI can make mistakes, misunderstand context, or generate incorrect information. Always verify critical information against your course materials and lectures.</p>
+                    </div>
+
+                    <div class="disclaimer-section">
+                        <h3><i data-feather="shield" class="feather"></i> Academic Integrity</h3>
+                        <p>You are responsible for your own work. Do not submit AI-generated responses as your own. Use this tool to learn, not to cheat.</p>
+                    </div>
+
+                    <div class="disclaimer-section">
+                        <h3><i data-feather="lock" class="feather"></i> Privacy</h3>
+                        <p>Your conversations may be reviewed for quality assurance and to improve the system. Do not share personal or sensitive information.</p>
+                    </div>
+
+                    <div class="disclaimer-footer">
+                        <div class="disclaimer-note">
+                            <i data-feather="info" class="feather"></i>
+                            <p><strong>Remember:</strong> You'll also find a disclaimer at the bottom of the chat interface for ongoing reference.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 4: Artefacts & Features -->
+        <div class="content-step" id="step-4">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>Artefacts & Features</h1>
+                    <p>Learn about visual diagrams and interactive tools</p>
+                </div>
+
+                <div class="demo-section">
+                    <div class="demo-explanation">
+                        <h3>What are Artefacts?</h3>
+                        <p>Artefacts are visual diagrams, flowcharts, and engineering visualizations that EngE-AI can create to help explain complex concepts. They include:</p>
+                        
+                        <div class="objective-structure">
+                            <div class="structure-item">• Process flow diagrams</div>
+                            <div class="structure-item">• Material property charts</div>
+                            <div class="structure-item">• Thermodynamic cycles</div>
+                            <div class="structure-item">• Equipment schematics</div>
+                        </div>
+
+                        <h4>Interactive Features:</h4>
+                        <div class="structure-item">
+                            <div class="structure-item">• Mouse wheel to zoom in/out</div>
+                            <div class="structure-item">• Click and drag to pan around</div>
+                            <div class="structure-item">• Double-click to reset view</div>
+                            <div class="structure-item">• Download as PNG or SVG</div>
+                        </div>
+                    </div>
+
+                    <div class="demo-interactive">
+                        <p>Click the button below to see how interactive diagrams work:</p>
+                        <button class="artefact-button" id="demo-artefact-btn">
+                            <i data-feather="image"></i>
+                            <span>View Diagram</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 5: How to Report -->
+        <div class="content-step" id="step-5">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>How to Report Messages</h1>
+                    <p>Learn when and how to flag inappropriate or incorrect responses</p>
+                </div>
+
+                <div class="demo-section">
+                    <div class="demo-explanation">
+                        <h3>When should you flag a message?</h3>
+                        <p>Flag messages when you notice:</p>
+                        
+                        <div class="structure-item">
+                            <div class="structure-item">• Wrong calculations or engineering formulas</div>
+                            <div class="structure-item">• Inappropriate content or responses</div>
+                            <div class="structure-item">• Interface bugs or technical issues</div>
+                            <div class="structure-item">• Responses that violate EDI principles</div>
+                            <div class="structure-item">• Content that encourages academic dishonesty</div>
+                        </div>
+
+                        <div class="demo-note">
+                            <p><strong>Important:</strong> Your flags help improve the AI tutor for everyone. All flags are reviewed by your instructors.</p>
+                        </div>
+                    </div>
+
+                    <div class="demo-interactive">
+                        <h3>Try It Out:</h3>
+                        <div class="flag-demo-container">
+                            <div class="message bot-message">
+                                <div class="message-content">
+                                    <p>This is a sample message that might contain incorrect information. Notice the flag button below - you can use it to report any issues with AI responses.</p>
+                                </div>
+                                <div class="message-timestamp">
+                                    <i data-feather="clock" class="feather"></i>
+                                    <span class="timestamp-text">Just now</span>
+                                    <div class="timestamp-actions">
+                                        <button class="timestamp-action-btn pin-action-btn" title="Pin this message" disabled>
+                                            <i data-feather="star" class="feather"></i>
+                                        </button>
+                                        <button class="timestamp-action-btn flag-action-btn" id="demo-flag-btn" title="Flag this message">
+                                            <i data-feather="flag" class="feather"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="demo-tooltip">
+                                <p>💡 <em>Click the flag button above to see the flag modal in action!</em></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 6: You're Ready! -->
+        <div class="content-step" id="step-6">
+            <div class="content-step-inner">
+                <div class="step-header">
+                    <h1>You're Ready!</h1>
+                    <p>Congratulations! You've completed the onboarding</p>
+                </div>
+
+                <div class="completion-content">
+                    <div class="completion-summary">
+                        <h3>What you've learned:</h3>
+                        <div class="completion-checklist">
+                            <div class="completion-item">
+                                <i data-feather="check-circle" class="feather completed"></i>
+                                <span>How EngE-AI works and its purpose</span>
+                            </div>
+                            <div class="completion-item">
+                                <i data-feather="check-circle" class="feather completed"></i>
+                                <span>Best practices for asking engineering questions</span>
+                            </div>
+                            <div class="completion-item">
+                                <i data-feather="check-circle" class="feather completed"></i>
+                                <span>Important AI assistant disclaimers and guidelines</span>
+                            </div>
+                            <div class="completion-item">
+                                <i data-feather="check-circle" class="feather completed"></i>
+                                <span>How to use artefacts and visual tools</span>
+                            </div>
+                            <div class="completion-item">
+                                <i data-feather="check-circle" class="feather completed"></i>
+                                <span>How to report inappropriate content</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="completion-message">
+                        <h3>🎉 Ready to start learning!</h3>
+                        <p>You're now prepared to use EngE-AI effectively. Remember to:</p>
+                        <ul class="completion-tips">
+                            <li>Ask specific engineering questions</li>
+                            <li>Use the Socratic method to develop your thinking</li>
+                            <li>Verify important information independently</li>
+                            <li>Flag any inappropriate or incorrect responses</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="onboarding-navigation">
+            <button class="nav-btn btn-back" id="back-btn" style="display: none;">
+                <i data-feather="chevron-left" class="feather"></i>
+                Back
+            </button>
+            <button class="nav-btn btn-next" id="next-btn">
+                Next
+                <i data-feather="chevron-right" class="feather"></i>
+            </button>
+        </div>
+        </div>
+
+    </div>
+
+    <!-- Artefact Panel (sibling to sidebar and content area, inside onboarding-container) -->
+    <aside id="artefact-panel" class="artefact-panel artefact-onboarding" aria-hidden="true">
+        <div class="artefact-header">
+            <h3>Interactive Diagram</h3>
+            <div class="artefact-header-actions">
+                <button id="download-artefact-btn" class="icon-btn" title="Download diagram"><i data-feather="download"></i></button>
+                <button id="close-artefact-btn" class="icon-btn" title="Close"><i data-feather="x"></i></button>
+            </div>
+        </div>
+        <div class="artefact-content">
+            <div class="pan-zoom-container">
+                <div class="mermaid-viewport">
+                    <!-- Mermaid diagrams will be rendered here -->
+                </div>
+            </div>
+        </div>
+    </aside>
+</div>
+
+<!-- Help Modal (hidden by default) -->
+<div id="help-modal" class="help-modal" style="display: none;">
+    <div class="help-modal-content">
+        <div class="help-modal-header">
+            <h3 id="help-modal-title">Help</h3>
+            <button class="help-modal-close" id="help-modal-close">×</button>
+        </div>
+        <div class="help-modal-body" id="help-modal-body">
+            <p>Help content will be displayed here based on the current step.</p>
+        </div>
+    </div>
+</div>

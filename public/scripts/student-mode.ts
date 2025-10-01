@@ -3,6 +3,7 @@
 import { loadComponentHTML, renderFeatherIcons } from './functions/api.js';
 import { ChatManager, createUserFromAuthData } from './feature/chat.js';
 import { authService } from './services/AuthService.js';
+import { renderStudentOnboarding } from './onboarding/student-onboarding.js';
 
 // Authentication check function
 async function checkAuthentication(): Promise<boolean> {
@@ -34,6 +35,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Create user context from real authentication data
     const user = createUserFromAuthData(authState.user);
+    
+    // --- ONBOARDING CHECK ---
+    // Check if user needs to complete onboarding
+    if (!user.userOnboarding) {
+        console.log('[STUDENT-MODE] 🎓 User needs onboarding, loading student onboarding...');
+        try {
+            await renderStudentOnboarding(user);
+            
+            // Listen for onboarding completion event
+            window.addEventListener('onboarding-completed', (event: any) => {
+                console.log('[STUDENT-MODE] ✅ Onboarding completed, initializing chat interface...');
+                const completedUser = event.detail.user || user;
+                completedUser.userOnboarding = true;
+                initializeChatInterface(completedUser);
+            });
+            
+            return; // Stop execution here - onboarding will handle completion
+        } catch (error) {
+            console.error('[STUDENT-MODE] ❌ Failed to load student onboarding:', error);
+            // Fall through to normal chat interface if onboarding fails
+        }
+    } else {
+        console.log('[STUDENT-MODE] ✅ User has completed onboarding, proceeding to chat interface');
+    }
+    
+    // Initialize chat interface if user has completed onboarding
+    initializeChatInterface(user);
+});
+
+/**
+ * Initialize the chat interface for the student
+ */
+async function initializeChatInterface(user: any): Promise<void> {
+    console.log('[STUDENT-MODE] 🚀 Initializing chat interface for user:', user.name);
+    
     const chatManager = ChatManager.getInstance({
         isInstructor: false,
         userContext: user,
@@ -330,6 +366,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- PROFILE FUNCTIONALITY ---
     const populateUserProfile = () => {
+        const authState = authService.getAuthState();
         const profileName = document.getElementById('profile-name');
         const profileAffiliation = document.getElementById('profile-affiliation');
         const profileCourse = document.getElementById('profile-course');
@@ -342,7 +379,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             profileAffiliation.textContent = authState.user.affiliation || 'UBC Engineering Student';
         }
         
-        if (profileCourse && authState.user) {
+        if (profileCourse && user) {
             profileCourse.textContent = user.activeCourseName || 'APSC 099: Engineering for Kindergarten';
         }
     };
@@ -504,4 +541,4 @@ document.addEventListener('DOMContentLoaded', async () => {
     attachLogoutListener(); // Attach logout button listener
     attachProfileButtonListener(); // Attach profile button listener
     updateUI();
-});
+}

@@ -185,6 +185,16 @@ body {
     height: 16px; 
 }
 
+/* Hide sidebar during onboarding */
+.onboarding-active .sidebar {
+    display: none;
+}
+
+.onboarding-active #main-content-area {
+    width: 100%;
+    padding: 0;
+}
+
 /* Chat Window - Remove scrolling, let message area handle it */
 .chat-window { overflow-x: hidden; }
 
@@ -207,8 +217,8 @@ body {
     justify-content: center;
     padding: 1rem;
     background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    /* backdrop-filter: blur(4px); */ /* Removed blur effect */
+    /* -webkit-backdrop-filter: blur(4px); */ /* Removed blur effect */
     z-index: 1000;
 }
 
@@ -280,7 +290,8 @@ body {
 
 /* When modal is open, soften the app content */
 body.modal-open .main-dashboard {
-    filter: blur(2px) brightness(0.88);
+    /* filter: blur(2px) brightness(0.88); */ /* Removed blur effect */
+    filter: brightness(0.88); /* Keep brightness reduction only */
     pointer-events: none; /* prevent interactions behind overlay */
 }
 
