@@ -30,6 +30,7 @@
 import { loadComponentHTML } from "../functions/api.js";
 import { User } from "../../../src/functions/types.js";
 import { showErrorModal, showHelpModal } from "../modal-overlay.js";
+import { getArtefactHandler } from "../feature/artefact.js";
 
 // Declare feather for TypeScript
 declare const feather: any;
@@ -452,7 +453,14 @@ function handleDemoFlagClick(): void {
     }
 }
 
-// Demo artefact functionality is now handled entirely by ArtefactHandler
+    // Demo artefact functionality is now handled entirely by ArtefactHandler
+    // Debug the demo button setup
+    setTimeout(() => {
+        const artefactHandler = getArtefactHandler();
+        if (artefactHandler && typeof artefactHandler.debugDemoButton === 'function') {
+            artefactHandler.debugDemoButton();
+        }
+    }, 1000);
 
 /**
  * Handles flag form submission

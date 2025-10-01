@@ -26,6 +26,7 @@ export class ArtefactHandler {
     private artefacts: Map<string, ArtefactData> = new Map();
     private artefactCounter: number = 0;
     private currentlyOpenArtefactId: string | null = null;
+    private eventDelegationSetup: boolean = false;
 
     private constructor() {
         this.setupEventDelegation();
@@ -36,13 +37,27 @@ export class ArtefactHandler {
      * This handles clicks on buttons that are dynamically added via innerHTML
      */
     private setupEventDelegation(): void {
+        // Prevent multiple event listeners
+        if (this.eventDelegationSetup) {
+            console.log('🎨 Event delegation already set up, skipping...');
+            return;
+        }
+        
+        console.log('🎨 Setting up event delegation for ArtefactHandler');
+        this.eventDelegationSetup = true;
+        
         // Use event delegation on the document to catch clicks on artefact buttons
         document.addEventListener('click', async (event) => {
             const target = event.target as HTMLElement;
             
+            // Debug: Log all clicks to see what's being clicked
+            console.log('🎯 Click detected on:', target.tagName, target.className, target.id);
+            
             // Check if the clicked element is an artefact button or inside one
             const button = target.closest('.artefact-button') as HTMLButtonElement;
             if (button) {
+                console.log('🎨 Artefact button found:', button.id, button.className);
+                
                 // Extract artefact ID from button ID
                 const buttonId = button.id;
                 if (buttonId && (buttonId.startsWith('artefact-btn-') || buttonId === 'demo-artefact-btn')) {
@@ -50,8 +65,14 @@ export class ArtefactHandler {
                     
                     console.log('🎨 Artefact button clicked via delegation:', artefactId);
                     
+                    // Prevent event bubbling to avoid multiple handlers
+                    event.stopPropagation();
+                    event.preventDefault();
+                    
                     // Toggle the artefact (open if closed, close if open)
                     await this.toggleArtefact(artefactId);
+                } else {
+                    console.log('⚠️ Button found but ID not recognized:', buttonId);
                 }
                 return;
             }
@@ -94,6 +115,24 @@ export class ArtefactHandler {
             ArtefactHandler.instance = new ArtefactHandler();
         }
         return ArtefactHandler.instance;
+    }
+
+    /**
+     * Debug method to check if demo button exists and is properly set up
+     */
+    public debugDemoButton(): void {
+        const demoButton = document.getElementById('demo-artefact-btn');
+        if (demoButton) {
+            console.log('✅ Demo button found:', {
+                id: demoButton.id,
+                className: demoButton.className,
+                tagName: demoButton.tagName,
+                isVisible: demoButton.offsetParent !== null,
+                hasArtifactButtonClass: demoButton.classList.contains('artefact-button')
+            });
+        } else {
+            console.log('❌ Demo button not found in DOM');
+        }
     }
 
     /**

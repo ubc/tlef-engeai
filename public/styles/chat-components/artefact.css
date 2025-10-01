@@ -29,9 +29,10 @@
   background: var(--background-2);
   border-radius: 10px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.07);
-  transition: flex 0.35s ease;
+  /* Removed transition: flex - using animation instead for consistency */
   min-width: 0;
   opacity: 0;
+  transform: translateX(100%); /* Start off-screen to the right */
 }
 
 /* When artefact is open, panel takes equal space */
@@ -67,6 +68,8 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  position: relative;
+  z-index: 10; /* Ensure buttons are clickable above animations */
 }
 
 .artefact-content {
@@ -125,10 +128,21 @@
   }
 }
 
+@keyframes slideOutToRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
 /* Prevent content from popping in before width grows */
 .artefact-panel:not(.open)  { 
   opacity: 0; 
-  transform: translateX(100%);
+  /* transform already set in base .artefact-panel rule */
 }
 
 .artefact-panel.open  { 
@@ -137,7 +151,7 @@
 
 /* Slide-out animation for closing */
 .artefact-panel.closing { 
-  animation: slideOutToLeft 0.35s forwards; 
+  animation: slideOutToRight 0.35s forwards; 
 }
 
 /* Mermaid sizing inside panel */

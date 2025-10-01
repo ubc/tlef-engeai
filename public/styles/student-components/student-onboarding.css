@@ -429,6 +429,11 @@
     transform: translateX(0); /* Slide in from right */
 }
 
+/* Override closing animation for onboarding - slide out to right */
+.onboarding .artefact-panel.closing {
+    animation: slideOutToRight 0.35s forwards !important;
+}
+
 /* When artefact is open - content area shares space */
 .onboarding.artefact-open .onboarding-content-area {
     flex: 1;
