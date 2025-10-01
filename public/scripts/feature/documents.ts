@@ -147,11 +147,11 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // Add Session badge/button
         const addSessionBadge = document.createElement('div');
         addSessionBadge.className = 'content-status status-add-session';
-        addSessionBadge.textContent = 'Add Session';
-        // Prevent header toggle when clicking Add Session
+        addSessionBadge.textContent = 'Add Section';
+        // Prevent header toggle when clicking Add Section
         addSessionBadge.addEventListener('click', (e) => {
             e.stopPropagation();
-            addSession(division);
+            addSection(division);
         });
 
         // Toggle switch
@@ -242,6 +242,19 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 if (!divisionId || !contentId) return;
                 toggleObjectives(divisionId, contentId);
                 return;
+            }
+
+            // Handle delete section clicks FIRST (before other button handling)
+            const deleteSectionElement = target.closest('.status-delete-section') as HTMLElement | null;
+            if (deleteSectionElement && deleteSectionElement.dataset.action === 'delete-section') {
+                event.stopPropagation();
+                //START DEBUG LOG : DEBUG-CODE(014)
+                console.log('🗑️ Delete section clicked via event delegation');
+                //END DEBUG LOG : DEBUG-CODE(014)
+                const sectionDivisionId = deleteSectionElement.dataset.divisionId || '0';
+                const sectionContentId = deleteSectionElement.dataset.contentId || '0';
+                deleteSection(sectionDivisionId, sectionContentId);
+                return; // Prevent further event handling
             }
 
             // Handle actions on buttons FIRST (before header clicks)
@@ -454,7 +467,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         if (!currentClass) return;
 
         try {
-            const response = await fetch(`/api/mongodb/learning-objectives?courseId=${currentClass.id}&divisionId=${divisionId}&contentId=${contentId}`);
+            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives`, {
+                method: 'GET'
+            });
             const result = await response.json();
             
             if (result.success) {
@@ -486,8 +501,20 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @returns null
      */
     async function addObjective(divisionId: string, contentId: string) {
+        //START DEBUG LOG : DEBUG-CODE(015)
+        console.log('🎯 addObjective called with divisionId:', divisionId, 'contentId:', contentId);
+        console.log('🔍 Current class available:', !!currentClass);
+        console.log('🔍 Current class ID:', currentClass?.id);
+        console.log('🔍 Current class name:', currentClass?.courseName);
+        //END DEBUG LOG : DEBUG-CODE(015)
+        
         const objectiveInput = document.getElementById(`new-title-${divisionId}-${contentId}`) as HTMLInputElement | null;
-        if (!objectiveInput) return;
+        if (!objectiveInput) {
+            //START DEBUG LOG : DEBUG-CODE(016)
+            console.error('❌ Objective input element not found for divisionId:', divisionId, 'contentId:', contentId);
+            //END DEBUG LOG : DEBUG-CODE(016)
+            return;
+        }
 
         // get the learning objective from the input field
         const learningObjective = objectiveInput.value.trim();
@@ -496,10 +523,23 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             return;
         }
 
+        //START DEBUG LOG : DEBUG-CODE(017)
+        console.log('📝 Learning objective text:', learningObjective);
+        //END DEBUG LOG : DEBUG-CODE(017)
+
         // find the division and the content item
         const division = courseData.find(d => d.id === divisionId);
         const content = division?.items.find(c => c.id === contentId);
-        if (!content || !currentClass) return;
+        if (!content || !currentClass) {
+            //START DEBUG LOG : DEBUG-CODE(018)
+            console.error('❌ Content or currentClass not found - content:', !!content, 'currentClass:', !!currentClass);
+            //END DEBUG LOG : DEBUG-CODE(018)
+            return;
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(019)
+        console.log('✅ Found content item:', content.title, 'currentClass:', currentClass.courseName);
+        //END DEBUG LOG : DEBUG-CODE(019)
 
         const newObjective = {
             id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -512,32 +552,53 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         };
 
         try {
+            //START DEBUG LOG : DEBUG-CODE(020)
+            console.log('📡 Making API call to add learning objective...');
+            console.log('🌐 API URL:', `/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives`);
+            console.log('📦 Request body:', { learningObjective: newObjective });
+            //END DEBUG LOG : DEBUG-CODE(020)
+            
             // Call backend API to add learning objective
-            const response = await fetch('/api/mongodb/learning-objectives', {
+            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    courseId: currentClass.id,
-                    divisionId: divisionId,
-                    contentId: contentId,
                     learningObjective: newObjective
                 })
             });
 
+            //START DEBUG LOG : DEBUG-CODE(021)
+            console.log('📡 API Response status:', response.status, response.statusText);
+            //END DEBUG LOG : DEBUG-CODE(021)
+
             const result = await response.json();
             
+            //START DEBUG LOG : DEBUG-CODE(022)
+            console.log('📡 API Response body:', result);
+            //END DEBUG LOG : DEBUG-CODE(022)
+            
             if (result.success) {
+                //START DEBUG LOG : DEBUG-CODE(023)
+                console.log('✅ Learning objective added successfully to database');
+                //END DEBUG LOG : DEBUG-CODE(023)
+                
                 // Clear the input field
                 objectiveInput.value = '';
                 // Reload learning objectives from database to ensure consistency
                 await loadLearningObjectives(divisionId, contentId);
                 console.log('Learning objective added successfully');
             } else {
+                //START DEBUG LOG : DEBUG-CODE(024)
+                console.error('❌ API returned error:', result.error);
+                //END DEBUG LOG : DEBUG-CODE(024)
                 await showSimpleErrorModal('Failed to add learning objective: ' + result.error, 'Add Learning Objective Error');
             }
         } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(025)
+            console.error('❌ Exception caught while adding learning objective:', error);
+            //END DEBUG LOG : DEBUG-CODE(025)
             console.error('Error adding learning objective:', error);
             await showSimpleErrorModal('An error occurred while adding the learning objective. Please try again.', 'Add Learning Objective Error');
         }
@@ -552,13 +613,35 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @returns null
      */
     function editObjective(divisionId: string, contentId: string, index: number) {
+        //START DEBUG LOG : DEBUG-CODE(036)
+        console.log('✏️ editObjective called with divisionId:', divisionId, 'contentId:', contentId, 'index:', index);
+        //END DEBUG LOG : DEBUG-CODE(036)
+        
         const objective = courseData.find(d => d.id === divisionId)
                                     ?.items.find(c => c.id === contentId)
                                     ?.learningObjectives[index];
-        if (!objective) return;
+        if (!objective) {
+            //START DEBUG LOG : DEBUG-CODE(037)
+            console.error('❌ Objective not found for edit - divisionId:', divisionId, 'contentId:', contentId, 'index:', index);
+            //END DEBUG LOG : DEBUG-CODE(037)
+            return;
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(038)
+        console.log('✅ Found objective to edit:', objective.LearningObjective);
+        //END DEBUG LOG : DEBUG-CODE(038)
 
         const contentDiv = document.getElementById(`objective-content-${divisionId}-${contentId}-${index}`);
-        if (!contentDiv) return;
+        if (!contentDiv) {
+            //START DEBUG LOG : DEBUG-CODE(039)
+            console.error('❌ Content div not found for edit - ID:', `objective-content-${divisionId}-${contentId}-${index}`);
+            //END DEBUG LOG : DEBUG-CODE(039)
+            return;
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(040)
+        console.log('✅ Found content div, creating edit form...');
+        //END DEBUG LOG : DEBUG-CODE(040)
 
         // Clear and build edit form via DOM APIs
         while (contentDiv.firstChild) contentDiv.removeChild(contentDiv.firstChild);
@@ -595,6 +678,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
         contentDiv.appendChild(form);
         contentDiv.classList.add('expanded');
+        
+        //START DEBUG LOG : DEBUG-CODE(041)
+        console.log('✅ Edit form created and added to DOM successfully');
+        //END DEBUG LOG : DEBUG-CODE(041)
     }
 
     /**
@@ -606,6 +693,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @returns null
      */
     async function saveObjective(divisionId: string, contentId: string, index: number) {
+        //START DEBUG LOG : DEBUG-CODE(026)
+        console.log('💾 saveObjective called with divisionId:', divisionId, 'contentId:', contentId, 'index:', index);
+        //END DEBUG LOG : DEBUG-CODE(026)
+        
         const learningObjective = (document.getElementById(`edit-title-${divisionId}-${contentId}-${index}`) as HTMLInputElement).value.trim();
 
         if (!learningObjective) {
@@ -613,41 +704,74 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             return;
         }
 
+        //START DEBUG LOG : DEBUG-CODE(027)
+        console.log('📝 Updated learning objective text:', learningObjective);
+        //END DEBUG LOG : DEBUG-CODE(027)
+
         const objective = courseData.find(d => d.id === divisionId)
                                     ?.items.find(c => c.id === contentId)
                                     ?.learningObjectives[index];
-        if (!objective || !currentClass) return;
+        if (!objective || !currentClass) {
+            //START DEBUG LOG : DEBUG-CODE(028)
+            console.error('❌ Objective or currentClass not found - objective:', !!objective, 'currentClass:', !!currentClass);
+            //END DEBUG LOG : DEBUG-CODE(028)
+            return;
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(029)
+        console.log('✅ Found objective to update:', objective.id, 'currentClass:', currentClass.courseName);
+        //END DEBUG LOG : DEBUG-CODE(029)
 
         const updateData = {
             LearningObjective: learningObjective
         };
 
         try {
+            //START DEBUG LOG : DEBUG-CODE(030)
+            console.log('📡 Making API call to update learning objective...');
+            console.log('🌐 API URL:', `/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives/${objective.id}`);
+            console.log('📦 Request body:', { updateData: updateData });
+            //END DEBUG LOG : DEBUG-CODE(030)
+            
             // Call backend API to update learning objective
-            const response = await fetch('/api/mongodb/learning-objectives', {
+            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives/${objective.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    courseId: currentClass.id,
-                    divisionId: divisionId,
-                    contentId: contentId,
-                    objectiveId: objective.id,
                     updateData: updateData
                 })
             });
 
+            //START DEBUG LOG : DEBUG-CODE(031)
+            console.log('📡 API Response status:', response.status, response.statusText);
+            //END DEBUG LOG : DEBUG-CODE(031)
+
             const result = await response.json();
             
+            //START DEBUG LOG : DEBUG-CODE(032)
+            console.log('📡 API Response body:', result);
+            //END DEBUG LOG : DEBUG-CODE(032)
+            
             if (result.success) {
+                //START DEBUG LOG : DEBUG-CODE(033)
+                console.log('✅ Learning objective updated successfully in database');
+                //END DEBUG LOG : DEBUG-CODE(033)
+                
                 // Reload learning objectives from database to ensure consistency
                 await loadLearningObjectives(divisionId, contentId);
                 console.log('Learning objective updated successfully');
             } else {
+                //START DEBUG LOG : DEBUG-CODE(034)
+                console.error('❌ API returned error:', result.error);
+                //END DEBUG LOG : DEBUG-CODE(034)
                 await showSimpleErrorModal('Failed to update learning objective: ' + result.error, 'Update Learning Objective Error');
             }
         } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(035)
+            console.error('❌ Exception caught while updating learning objective:', error);
+            //END DEBUG LOG : DEBUG-CODE(035)
             console.error('Error updating learning objective:', error);
             await showSimpleErrorModal('An error occurred while updating the learning objective. Please try again.', 'Update Learning Objective Error');
         }
@@ -665,49 +789,97 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     async function deleteObjective(divisionId: string, contentId: string, index: number) {
+        //START DEBUG LOG : DEBUG-CODE(042)
+        console.log('🗑️ deleteObjective called with divisionId:', divisionId, 'contentId:', contentId, 'index:', index);
+        console.log('🔍 Current class available:', !!currentClass);
+        console.log('🔍 Current class ID:', currentClass?.id);
+        console.log('🔍 Current class name:', currentClass?.courseName);
+        //END DEBUG LOG : DEBUG-CODE(042)
+        
         // Get the objective to show its name in confirmation
         const content = courseData.find(d => d.id === divisionId)
                                         ?.items.find(c => c.id === contentId);
         const objective = content?.learningObjectives[index];
+        
+        if (!objective) {
+            //START DEBUG LOG : DEBUG-CODE(043)
+            console.error('❌ Objective not found for deletion - divisionId:', divisionId, 'contentId:', contentId, 'index:', index);
+            //END DEBUG LOG : DEBUG-CODE(043)
+            return;
+        }
+        
+        //START DEBUG LOG : DEBUG-CODE(044)
+        console.log('✅ Found objective to delete:', objective.LearningObjective);
+        //END DEBUG LOG : DEBUG-CODE(044)
         
         // Show confirmation modal
         const result = await showDeleteConfirmationModal(
             'Learning Objective',
             objective?.LearningObjective
         );
+        
+        //START DEBUG LOG : DEBUG-CODE(045)
+        console.log('📋 Delete confirmation result:', result);
+        //END DEBUG LOG : DEBUG-CODE(045)
 
-        if (result.action === 'Delete') {
+        if (result.action === 'delete') {
+            //START DEBUG LOG : DEBUG-CODE(046)
+            console.log('✅ User confirmed deletion, proceeding with API call...');
+            //END DEBUG LOG : DEBUG-CODE(046)
+            
             const content = courseData.find(d => d.id === divisionId)
                                         ?.items.find(c => c.id === contentId);
             const objective = content?.learningObjectives[index];
             
-            if (!content || !objective || !currentClass) return;
+            if (!content || !objective || !currentClass) {
+                //START DEBUG LOG : DEBUG-CODE(047)
+                console.error('❌ Missing data for deletion - content:', !!content, 'objective:', !!objective, 'currentClass:', !!currentClass);
+                //END DEBUG LOG : DEBUG-CODE(047)
+                return;
+            }
 
             try {
+                //START DEBUG LOG : DEBUG-CODE(048)
+                console.log('📡 Making API call to delete learning objective...');
+                console.log('🌐 API URL:', `/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives/${objective.id}`);
+                //END DEBUG LOG : DEBUG-CODE(048)
+                
                 // Call backend API to delete learning objective
-                const response = await fetch('/api/mongodb/learning-objectives', {
+                const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives/${objective.id}`, {
                     method: 'DELETE',
                     headers: {
                         'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        courseId: currentClass.id,
-                        divisionId: divisionId,
-                        contentId: contentId,
-                        objectiveId: objective.id
-                    })
+                    }
                 });
+
+                //START DEBUG LOG : DEBUG-CODE(049)
+                console.log('📡 Delete API Response status:', response.status, response.statusText);
+                //END DEBUG LOG : DEBUG-CODE(049)
 
                 const result = await response.json();
                 
+                //START DEBUG LOG : DEBUG-CODE(050)
+                console.log('📡 Delete API Response body:', result);
+                //END DEBUG LOG : DEBUG-CODE(050)
+                
                 if (result.success) {
+                    //START DEBUG LOG : DEBUG-CODE(051)
+                    console.log('✅ Learning objective deleted successfully from database');
+                    //END DEBUG LOG : DEBUG-CODE(051)
+                    
                     // Reload learning objectives from database to ensure consistency
                     await loadLearningObjectives(divisionId, contentId);
                     console.log('Learning objective deleted successfully');
                 } else {
+                    //START DEBUG LOG : DEBUG-CODE(052)
+                    console.error('❌ API returned error:', result.error);
+                    //END DEBUG LOG : DEBUG-CODE(052)
                     await showSimpleErrorModal('Failed to delete learning objective: ' + result.error, 'Delete Learning Objective Error');
                 }
             } catch (error) {
+                //START DEBUG LOG : DEBUG-CODE(053)
+                console.error('❌ Exception caught while deleting learning objective:', error);
+                //END DEBUG LOG : DEBUG-CODE(053)
                 console.error('Error deleting learning objective:', error);
                 await showSimpleErrorModal('An error occurred while deleting the learning objective. Please try again.', 'Delete Learning Objective Error');
             }
@@ -771,6 +943,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const deleteBadge = document.createElement('div');
         deleteBadge.className = 'content-status status-delete-section';
         deleteBadge.textContent = 'Delete Section';
+        deleteBadge.dataset.action = 'delete-section';
+        deleteBadge.dataset.divisionId = divisionId;
+        deleteBadge.dataset.contentId = content.id;
         const status = document.createElement('div');
         status.className = 'content-status status-completed';
         status.textContent = 'Completed';
@@ -779,11 +954,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         header.appendChild(title);
         header.appendChild(statusRow);
 
-        // Add event listener for delete badge
-        deleteBadge.addEventListener('click', (e) => {
-            e.stopPropagation();
-            deleteSection(divisionId, content.id);
-        });
+        // Delete badge will be handled by event delegation in setupEventListeners()
+        // No direct event listener needed - prevents double event listeners
 
         // Objectives
         const objectivesContainer = document.createElement('div');
@@ -863,8 +1035,19 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         return item;
     }
 
-    // ----- Sessions management -----
-    function addSession(division: ContentDivision) {
+    // ----- Sections management -----
+    async function addSection(division: ContentDivision) {
+        //START DEBUG LOG : DEBUG-CODE(054)
+        console.log('➕ addSection called for division:', division.id, division.title);
+        //END DEBUG LOG : DEBUG-CODE(054)
+        
+        if (!currentClass) {
+            //START DEBUG LOG : DEBUG-CODE(055)
+            console.error('❌ No current class found for adding section');
+            //END DEBUG LOG : DEBUG-CODE(055)
+            return;
+        }
+
         // Generate a new unique content id within this division
         const existingIds = division.items.map(c => c.id);
         const base = parseInt(division.id) * 100 + 1; // e.g., week 3 -> 301 base
@@ -873,25 +1056,77 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
         const newContent: courseItem = {
             id: String(next),
-            title: `New Session ${division.items.length + 1}`,
-                            date: new Date(),
+            title: `New Section ${division.items.length + 1}`,
+            date: new Date(),
             courseName: currentClass.courseName,
             divisionTitle: division.title,
-            itemTitle: `New Session ${division.items.length + 1}`,
+            itemTitle: `New Section ${division.items.length + 1}`,
             completed: false,
             learningObjectives: [],
             additionalMaterials: [],
             createdAt: new Date(),
             updatedAt: new Date()
         };
-        division.items.push(newContent);
-        // Append to DOM
-        const container = document.getElementById(`content-division-${division.id}`);
-        if (!container) return;
-        const built = buildContentItemDOM(division.id, newContent);
-        container.appendChild(built);
-        // Update header completion count
-        updateDivisionCompletion(division.id);
+
+        try {
+            //START DEBUG LOG : DEBUG-CODE(056)
+            console.log('📡 Making API call to add section...');
+            console.log('🌐 API URL:', `/api/courses/${currentClass.id}/divisions/${division.id}/items`);
+            console.log('📦 Request body:', { contentItem: newContent });
+            //END DEBUG LOG : DEBUG-CODE(056)
+            
+            // Call backend API to add the section
+            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${division.id}/items`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    contentItem: newContent
+                })
+            });
+
+            //START DEBUG LOG : DEBUG-CODE(057)
+            console.log('📡 Add Section API Response status:', response.status, response.statusText);
+            //END DEBUG LOG : DEBUG-CODE(057)
+
+            const result = await response.json();
+            
+            //START DEBUG LOG : DEBUG-CODE(058)
+            console.log('📡 Add Section API Response body:', result);
+            //END DEBUG LOG : DEBUG-CODE(058)
+            
+            if (result.success) {
+                //START DEBUG LOG : DEBUG-CODE(059)
+                console.log('✅ Section added successfully to database');
+                //END DEBUG LOG : DEBUG-CODE(059)
+                
+                // Add to local data only after successful database save
+                division.items.push(newContent);
+                
+                // Append to DOM
+                const container = document.getElementById(`content-division-${division.id}`);
+                if (!container) return;
+                const built = buildContentItemDOM(division.id, newContent);
+                container.appendChild(built);
+                
+                // Update header completion count
+                updateDivisionCompletion(division.id);
+                
+                console.log('Section added successfully');
+            } else {
+                //START DEBUG LOG : DEBUG-CODE(060)
+                console.error('❌ API returned error:', result.error);
+                //END DEBUG LOG : DEBUG-CODE(060)
+                await showSimpleErrorModal('Failed to add section: ' + result.error, 'Add Section Error');
+            }
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(061)
+            console.error('❌ Exception caught while adding section:', error);
+            //END DEBUG LOG : DEBUG-CODE(061)
+            console.error('Error adding section:', error);
+            await showSimpleErrorModal('An error occurred while adding the section. Please try again.', 'Add Section Error');
+        }
     }
 
     function deleteSection(divisionId: string, contentId: string) {

@@ -62,6 +62,7 @@ export async function loadComponentHTML(
     componentName:  | 'welcome-screen' 
                     | 'chat-window' 
                     | 'report-history'
+                    | 'profile'
                     | 'disclaimer'
                     | 'report-instructor'
                     | 'monitor-instructor'
@@ -70,6 +71,7 @@ export async function loadComponentHTML(
                     | 'document-setup'
                     | 'flag-setup'
                     | 'monitor-setup'
+                    | 'student-onboarding'
 ): Promise<string> {
 
     let response: Response;
@@ -81,6 +83,9 @@ export async function loadComponentHTML(
         case 'report-history':
         case 'disclaimer':
             response = await fetch(`/components/chat/${componentName}.html`);
+            break;
+        case 'profile':
+            response = await fetch(`/components/profile/${componentName}.html`);
             break;
         case 'report-instructor':
             response = await fetch(`/components/report/${componentName}.html`);
@@ -95,6 +100,7 @@ export async function loadComponentHTML(
         case 'document-setup':
         case 'flag-setup':
         case 'monitor-setup':
+        case 'student-onboarding':
             response = await fetch(`/components/onboarding/${componentName}.html`);
             break;
         default:

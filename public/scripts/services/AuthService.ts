@@ -37,7 +37,7 @@ export class AuthService {
     }
 
     /**
-     * Check authentication status from server
+     * Check authentication status from server with improved session handling
      */
     public async checkAuthStatus(): Promise<void> {
         this.setLoading(true);
@@ -46,6 +46,9 @@ export class AuthService {
             //START DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-CHECK)
             console.log('[FRONTEND-AUTH] 🔍 Checking authentication status...');
             //END DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-CHECK)
+            
+            // Wait for session to be established (especially after SAML callback)
+            await this.waitForSessionEstablishment();
             
             const response = await fetch('/auth/me');
             //START DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-RESPONSE)
@@ -95,6 +98,56 @@ export class AuthService {
     }
 
     /**
+     * Wait for session to be properly established
+     * This is especially important after SAML callback redirects
+     */
+    private async waitForSessionEstablishment(): Promise<void> {
+        // Check if we just came from a SAML callback by looking at the URL or referrer
+        const isPostLogin = window.location.search.includes('saml') || 
+                           document.referrer.includes('/auth/') || 
+                           window.location.pathname === '/';
+        
+        if (isPostLogin) {
+            console.log('[FRONTEND-AUTH] ⏳ Post-login detected, waiting for session establishment...');
+            
+            // Wait for session to be established with retry logic
+            const maxAttempts = 5;
+            let attempt = 0;
+            
+            while (attempt < maxAttempts) {
+                try {
+                    // Try a quick auth check to see if session is ready
+                    const testResponse = await fetch('/auth/me', { 
+                        method: 'HEAD', // Use HEAD to avoid parsing JSON
+                        cache: 'no-cache'
+                    });
+                    
+                    if (testResponse.ok) {
+                        console.log('[FRONTEND-AUTH] ✅ Session appears to be established');
+                        return;
+                    }
+                } catch (error) {
+                    console.log(`[FRONTEND-AUTH] ⏳ Session not ready yet (attempt ${attempt + 1}/${maxAttempts})`);
+                }
+                
+                attempt++;
+                if (attempt < maxAttempts) {
+                    await this.delay(200); // Wait 200ms between attempts
+                }
+            }
+            
+            console.log('[FRONTEND-AUTH] ⚠️ Session establishment timeout, proceeding anyway...');
+        }
+    }
+
+    /**
+     * Utility function to add delay
+     */
+    private delay(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /**
      * Initiate SAML login
      */
     public login(): void {
@@ -140,6 +193,48 @@ export class AuthService {
      */
     public isLoading(): boolean {
         return this.authState.isLoading;
+    }
+
+    /**
+     * Check authentication and handle redirect if not authenticated
+     * @param intendedPage - The page the user intended to visit
+     * @param pageName - Name of the page for logging purposes (e.g., 'STUDENT-MODE', 'INSTRUCTOR-MODE')
+     * @returns Promise<boolean> - true if authenticated, false if redirected to login
+     */
+    public async checkAuthenticationAndRedirect(intendedPage: string, pageName: string): Promise<boolean> {
+        console.log(`[${pageName}] 🔍 Checking authentication...`);
+        
+        try {
+            await this.checkAuthStatus();
+            const authState = this.getAuthState();
+            
+            if (authState.isAuthenticated && authState.user) {
+                console.log(`[${pageName}] ✅ User authenticated, logging SAML data:`);
+                console.log('=====================================');
+                console.log('🔐 Authentication Source: SAML/CWL');
+                console.log('👨‍💼 Full Name:', `${authState.user.firstName} ${authState.user.lastName}`);
+                console.log('📧 Username:', authState.user.username);
+                console.log('🏫 Affiliation:', authState.user.affiliation);
+                console.log('🆔 PUID (Personal University ID):', authState.user.puid);
+                console.log('⏰ Authentication Time:', new Date().toISOString());
+                console.log('🌐 Current Page:', window.location.pathname);
+                console.log('🔗 User Agent:', navigator.userAgent);
+                console.log('=====================================');
+                console.log(`[${pageName}] 📋 Complete User Object:`, authState.user);
+                
+                return true;
+            } else {
+                console.log(`[${pageName}] ❌ User not authenticated, redirecting to login...`);
+                window.location.href = '/auth/login';
+                return false;
+            }
+        } catch (error) {
+            console.error(`[${pageName}] 🚨 Authentication check failed:`, error);
+            // Show error and redirect to login
+            alert('Authentication check failed. Redirecting to login...');
+            window.location.href = '/auth/login';
+            return false;
+        }
     }
 
     /**

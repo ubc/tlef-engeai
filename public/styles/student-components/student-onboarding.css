@@ -1,0 +1,850 @@
+/* ===========================================
+   STUDENT ONBOARDING SPECIFIC OVERRIDES
+   =========================================== */
+
+/* This file contains student-specific overrides for the onboarding process.
+ * Most styling is inherited from instructor-components/onboarding.css
+ */
+
+/* ===========================================
+   CONTENT OVERFLOW HANDLING
+   =========================================== */
+
+/* When content overflows, use flex-start for scrolling */
+.content-step.overflow-content {
+    justify-content: flex-start;
+}
+
+/* When content fits, use center for better visual balance */
+.content-step.center-content {
+    justify-content: center;
+}
+
+/* ===========================================
+   DISCLAIMER CONTENT STYLES
+   =========================================== */
+
+.disclaimer-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.disclaimer-section {
+    background: var(--background-2);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.25rem;
+    transition: all 0.2s ease;
+}
+
+.disclaimer-section:hover {
+    border-color: var(--color-chbe-green);
+    box-shadow: 0 4px 12px rgba(92, 138, 58, 0.1);
+}
+
+.disclaimer-section h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0 0 0.75rem 0;
+    color: var(--color-chbe-green);
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.disclaimer-section h3 .feather {
+    width: 20px;
+    height: 20px;
+    color: var(--color-chbe-green);
+}
+
+.disclaimer-section p {
+    margin: 0;
+    line-height: 1.6;
+    color: var(--text-primary);
+}
+
+.disclaimer-footer {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.disclaimer-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    background: rgba(92, 138, 58, 0.1);
+    border: 1px solid rgba(92, 138, 58, 0.2);
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.disclaimer-note .feather {
+    width: 18px;
+    height: 18px;
+    color: var(--color-chbe-green);
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.disclaimer-note p {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+/* ===========================================
+   COMPLETION CONTENT STYLES
+   =========================================== */
+
+.completion-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.completion-summary {
+    background: var(--background-2);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.5rem;
+}
+
+.completion-summary h3 {
+    margin: 0 0 1rem 0;
+    color: var(--color-chbe-green);
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+.completion-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.completion-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+}
+
+.completion-item .feather {
+    width: 18px;
+    height: 18px;
+    color: var(--color-chbe-green);
+    flex-shrink: 0;
+}
+
+.completion-item span {
+    color: var(--text-primary);
+    font-size: 0.95rem;
+}
+
+.completion-message {
+    background: linear-gradient(135deg, rgba(92, 138, 58, 0.1), rgba(92, 138, 58, 0.05));
+    border: 1px solid rgba(92, 138, 58, 0.2);
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.completion-message h3 {
+    margin: 0 0 1rem 0;
+    color: var(--color-chbe-green);
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.completion-message > p {
+    margin: 0 0 1.5rem 0;
+    color: var(--text-primary);
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+.completion-tips {
+    text-align: left;
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+.completion-tips li {
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+    line-height: 1.4;
+}
+
+/* ===========================================
+   DEMO MESSAGE STYLES
+   =========================================== */
+
+.flag-demo-container {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+/* Ensure the demo message looks exactly like chat messages from chat-feature.css */
+.flag-demo-container .message {
+    font-size: 0.85rem;
+    padding: 0.5rem 1rem;
+    border-radius: 12px;
+    max-width: 100%;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    overflow-x: visible;
+    position: relative;
+    background-color: transparent;
+    color: var(--text-primary);
+    align-self: stretch;
+    margin-bottom: 1rem;
+}
+
+.flag-demo-container .message .message-content { 
+    white-space: pre-wrap; 
+}
+
+.flag-demo-container .message .message-content p {
+    margin: 0;
+    line-height: 1.5;
+    color: var(--text-primary);
+}
+
+.flag-demo-container .message .message-timestamp { 
+    margin-top: 4px; 
+    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    color: #346c09;
+    gap: 5px;
+}
+
+.flag-demo-container .message .message-timestamp .feather {
+    width: 12px;
+    height: 12px;
+}
+
+.flag-demo-container .message .timestamp-actions {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 5px;
+    color: inherit;
+    font-size: inherit;
+    gap: 5px;
+}
+
+.flag-demo-container .message .timestamp-action-btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+}
+
+.flag-demo-container .message .timestamp-action-btn:hover,
+.flag-demo-container .message .timestamp-action-btn:focus {
+    color: var(--color-eng-red);
+    outline: none;
+}
+
+.flag-demo-container .message .timestamp-action-btn .feather { 
+    width: 12px; 
+    height: 12px; 
+}
+
+.flag-demo-container .message .timestamp-action-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.demo-tooltip {
+    text-align: center;
+    padding: 0.5rem;
+    background: rgba(52, 108, 9, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(52, 108, 9, 0.2);
+    margin-top: 1rem;
+}
+
+.demo-tooltip p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--color-chbe-green);
+}
+
+/* ===========================================
+   DEMO ARTEFACT STYLES
+   =========================================== */
+
+.demo-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    background: var(--background-2);
+    border: 2px dashed var(--border-color);
+    border-radius: 8px;
+    text-align: center;
+    min-height: 200px;
+}
+
+.demo-placeholder .feather {
+    width: 48px;
+    height: 48px;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+.demo-placeholder p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.demo-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    text-align: center;
+    min-height: 200px;
+}
+
+.demo-loading .feather {
+    width: 32px;
+    height: 32px;
+    color: var(--color-chbe-green);
+    margin-bottom: 1rem;
+    animation: spin 1s linear infinite;
+}
+
+.demo-loading p {
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.demo-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    text-align: center;
+    min-height: 200px;
+    background: rgba(220, 53, 69, 0.1);
+    border: 1px solid rgba(220, 53, 69, 0.2);
+    border-radius: 8px;
+}
+
+.demo-error .feather {
+    width: 32px;
+    height: 32px;
+    color: var(--color-eng-red);
+    margin-bottom: 1rem;
+}
+
+.demo-error p {
+    margin: 0;
+    color: var(--color-eng-red);
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ===========================================
+   ONBOARDING-SPECIFIC ARTEFACT ADJUSTMENTS
+   =========================================== */
+
+/* Onboarding container - smooth flex layout */
+.onboarding {
+    display: flex;
+    gap: 10px;
+    height: 100vh;
+    transition: all 0.35s ease;
+}
+
+/* Onboarding content area - flex layout that adapts to artefact */
+.onboarding-content-area {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    transition: flex 0.35s ease;
+    min-width: 0;
+}
+
+/* Onboarding content steps - takes available space with proper scrolling */
+.onboarding-content-steps {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    transition: all 0.35s ease;
+    height: 100%;
+    overflow-y: auto; /* Enable vertical scrolling when content overflows */
+    overflow-x: hidden; /* Hide horizontal scroll */
+}
+
+/* Artefact panel - override chat styles for smooth onboarding transition */
+.onboarding .artefact-panel {
+    /* Override chat styles - use width instead of flex */
+    flex: none !important;
+    width: 0;
+    min-width: 0;
+    max-width: 0;
+    border: 1px solid var(--border-color);
+    background: var(--background-2);
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.07);
+    overflow: hidden;
+    transition: all 0.35s ease;
+    opacity: 0;
+    visibility: hidden; /* Use visibility instead of display for smooth transitions */
+    transform: translateX(100%); /* Start off-screen to the right */
+}
+
+/* When artefact is open - smooth expansion */
+.onboarding.artefact-open .artefact-panel {
+    visibility: visible; /* Show when open */
+    flex-direction: column;
+    width: auto;
+    min-width: 400px; /* Changed from 300px to 400px */
+    max-width: none;
+    opacity: 1;
+    transform: translateX(0); /* Slide in from right */
+}
+
+/* Override closing animation for onboarding - slide out to right */
+.onboarding .artefact-panel.closing {
+    animation: slideOutToRight 0.35s forwards !important;
+}
+
+/* When artefact is open - content area shares space */
+.onboarding.artefact-open .onboarding-content-area {
+    flex: 1;
+    min-width: 300px;
+}
+
+/* Artefact panel specific styling for onboarding */
+.artefact-onboarding {
+    margin: 10px;
+    transition: all 0.35s ease;
+}
+
+/* Ensure flag modal works properly during onboarding */
+.onboarding-active #flag-modal {
+    z-index: 10000; /* Ensure modal is above everything during onboarding */
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+}
+
+/* ===========================================
+   STUDENT-SPECIFIC LOGO AND BRANDING
+   =========================================== */
+
+.logo-box .logo-text p {
+    content: "Student Mode";
+}
+
+/* ===========================================
+   STUDENT-SPECIFIC CONTENT STYLING
+   =========================================== */
+
+/* Course information display */
+.course-info {
+    background: rgba(92, 138, 58, 0.05);
+    border: 1px solid rgba(92, 138, 58, 0.2);
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1.5rem 0;
+}
+
+.course-info h3 {
+    color: var(--color-chbe-green);
+    margin: 0 0 0.5rem 0;
+    font-size: 1.1rem;
+}
+
+.course-info p {
+    margin: 0;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+/* ===========================================
+   EXAMPLE QUESTIONS STYLING
+   =========================================== */
+
+.example-questions {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin: 1.5rem 0;
+}
+
+.example-question {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 1rem;
+    border-left: 4px solid var(--color-chbe-green);
+}
+
+.example-question strong {
+    color: var(--color-chbe-green);
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.example-question p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+/* ===========================================
+   DEMO ARTEFACT STYLING
+   =========================================== */
+
+.artefact-demo-container {
+    width: 100%;
+    margin: 1.5rem 0;
+}
+
+.demo-artefact-panel {
+    background: white;
+    border: 2px solid #e9ecef;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.demo-artefact-header {
+    background: #f8f9fa;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.demo-artefact-header h4 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 1.1rem;
+}
+
+.demo-view-btn {
+    background: var(--color-chbe-green);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: not-allowed;
+    opacity: 0.7;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.demo-view-btn .feather {
+    width: 14px;
+    height: 14px;
+}
+
+.demo-artefact-content {
+    padding: 1rem;
+    min-height: 300px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.demo-tooltip {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 6px;
+    padding: 0.75rem;
+    margin-top: 1rem;
+    text-align: center;
+}
+
+.demo-tooltip p {
+    margin: 0;
+    color: #856404;
+    font-size: 0.9rem;
+    font-style: italic;
+}
+
+/* ===========================================
+   FLAG MODAL DEMO STYLING
+   =========================================== */
+
+.flag-modal-demo {
+    width: 100%;
+    margin: 1.5rem 0;
+}
+
+.demo-flag-modal {
+    background: white;
+    border: 2px solid #e9ecef;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.demo-flag-header {
+    background: #f8f9fa;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.demo-flag-header h4 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 1.1rem;
+}
+
+.demo-close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: not-allowed;
+    opacity: 0.5;
+    color: var(--text-secondary);
+}
+
+.demo-flag-content {
+    padding: 1.5rem;
+}
+
+.demo-flagged-message {
+    background: #f8f9fa;
+    border: 1px dashed #e9ecef;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.demo-flagged-message p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.demo-flag-reasons {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.demo-flag-reasons h5 {
+    margin: 0 0 1rem 0;
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+
+.demo-checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+}
+
+.demo-checkbox input[type="radio"] {
+    margin: 0;
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.demo-checkbox label {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    color: var(--text-secondary);
+    cursor: not-allowed;
+}
+
+.demo-other-input {
+    margin-top: 0.5rem;
+}
+
+.demo-other-input input {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.demo-flag-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+    justify-content: flex-end;
+}
+
+.demo-submit-btn,
+.demo-cancel-btn {
+    padding: 0.5rem 1rem;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.demo-submit-btn {
+    background: var(--color-chbe-green);
+    color: white;
+}
+
+.demo-cancel-btn {
+    background: #f8f9fa;
+    color: var(--text-secondary);
+}
+
+/* ===========================================
+   DEMO NOTES AND TOOLTIPS
+   =========================================== */
+
+.demo-note {
+    background: rgba(92, 138, 58, 0.1);
+    border: 1px solid rgba(92, 138, 58, 0.3);
+    border-radius: 6px;
+    padding: 1rem;
+    margin: 1.5rem 0;
+}
+
+.demo-note p {
+    margin: 0;
+    color: var(--color-chbe-green);
+    font-weight: 500;
+}
+
+/* ===========================================
+   COMPLETION MESSAGE STYLING
+   =========================================== */
+
+.btn-finish {
+    background: var(--color-chbe-green);
+    color: white;
+}
+
+.btn-finish:hover {
+    background: #4a6f2e;
+    transform: translateY(-1px);
+}
+
+/* ===========================================
+   RESPONSIVE ADJUSTMENTS FOR STUDENT ONBOARDING
+   =========================================== */
+
+@media (max-width: 768px) {
+    .example-question {
+        padding: 0.75rem;
+    }
+    
+    .demo-artefact-header {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: flex-start;
+    }
+    
+    .demo-flag-header {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: flex-start;
+    }
+    
+    .demo-flag-actions {
+        justify-content: stretch;
+    }
+    
+    .demo-submit-btn,
+    .demo-cancel-btn {
+        flex: 1;
+    }
+}
+
+/* ===========================================
+   ACCESSIBILITY ENHANCEMENTS
+   =========================================== */
+
+.demo-checkbox input[type="radio"]:disabled + label {
+    opacity: 0.7;
+}
+
+.demo-view-btn:disabled,
+.demo-submit-btn:disabled,
+.demo-cancel-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* ===========================================
+   ANIMATION ENHANCEMENTS
+   =========================================== */
+
+.demo-artefact-panel,
+.demo-flag-modal {
+    animation: slideInUp 0.3s ease-out;
+}
+
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ===========================================
+   HIGH CONTRAST MODE SUPPORT
+   =========================================== */
+
+@media (prefers-contrast: high) {
+    .example-question {
+        border: 2px solid var(--color-chbe-green);
+    }
+    
+    .demo-artefact-panel,
+    .demo-flag-modal {
+        border: 2px solid #000;
+    }
+    
+    .demo-tooltip {
+        border: 2px solid #000;
+        background: #fff;
+    }
+}

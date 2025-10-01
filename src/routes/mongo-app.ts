@@ -31,416 +31,17 @@
  */
 
 import express, { Request, Response } from 'express';
-const router = express.Router();
-export default router;
-import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
-import dotenv from 'dotenv';
+import { asyncHandler, asyncHandlerWithAuth } from '../middleware/asyncHandler';
+import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { activeCourse, AdditionalMaterial, ContentDivision, courseItem, FlagReport } from '../functions/types';
 import { IDGenerator } from '../functions/unique-id-generator';
-import { getDummyCourses, resetDummyCourses } from '../debug/dummy-courses';
+import dotenv from 'dotenv';
+
+const router = express.Router();
+export default router;
 
 dotenv.config();
 
-
-export class EngEAI_MongoDB {
-
-    private static instance: EngEAI_MongoDB;
-    private static activeCourseListDatabase: string = 'TLEF-ENGEAI-DB';
-    private static activeCourseListCollection: string = 'active-course-list';
-    private static MONGO_URL = `mongodb://${process.env.MONGO_USERNAME}:${process.env.MONGO_PASSWORD}@localhost:27017`;
-    private client: MongoClient;
-    private db!: Db;
-    private activeCourses = [];
-    public idGenerator : IDGenerator; 
-    
-    constructor() {
-        this.idGenerator = IDGenerator.getInstance();
-        this.client = new MongoClient(EngEAI_MongoDB.MONGO_URL, {
-            authSource: 'admin',
-        });
-    }
-
-    /**
-     * Get the singleton instance of the EngEAI_MongoDB class
-     */
-    public static async getInstance(): Promise<EngEAI_MongoDB> {
-        if (!EngEAI_MongoDB.instance) {
-            EngEAI_MongoDB.instance = new EngEAI_MongoDB();
-            
-            // Connect to MongoDB if not already connected
-            try {
-                await EngEAI_MongoDB.instance.client.connect();
-                EngEAI_MongoDB.instance.db = EngEAI_MongoDB.instance.client.db(EngEAI_MongoDB.activeCourseListDatabase);
-            } catch (error) {
-                // Connection already exists or failed
-                if (!EngEAI_MongoDB.instance.db) {
-                    EngEAI_MongoDB.instance.db = EngEAI_MongoDB.instance.client.db(EngEAI_MongoDB.activeCourseListDatabase);
-                }
-            }
-        }
-        return EngEAI_MongoDB.instance;
-    }
-
-    /**
-     * Get the active course list collection
-     */
-    private getCourseCollection(): Collection {
-        return this.db.collection(EngEAI_MongoDB.activeCourseListCollection);
-    }
-
-    /**
-     * post active course, creates a database and collection for the course
-     * 
-     * it sets up the following collections and schemas:
-     * - users
-     * - messages
-     * - learning objectives
-     * - flag reports
-     * 
-     * @param course - the active course to post
-     * @returns void
-     */
-    public postActiveCourse = async (course: activeCourse) => {
-
-        try {
-        
-            await this.getCourseCollection().insertOne(course);
-
-            //use singleton's DB
-            const courseName = course.courseName;
-
-            //create users collection
-            const userCollection = `${courseName}_users`;
-            await this.db.createCollection(userCollection);
-    
-            //create messages collection
-            const messagesCollection = `${courseName}_messages`;
-            await this.db.createCollection(messagesCollection);
-    
-            //create flags collection
-            const flagsCollection = `${courseName}_flags`;
-            await this.db.createCollection(flagsCollection);
-        
-        } catch (error) {
-            console.error('Error creating collections and schemas:', error);
-        }
-    }
-        
-    /**
-     * Delete an active course from the database
-     * @param course - the course to delete
-     * @returns Promise<void>
-     */
-    public deleteActiveCourse = async (course: activeCourse) => {
-        await this.getCourseCollection().deleteOne({ id: course.id });
-    }
-
-    /**
-     * Get an active course by its ID
-     * @param id - the course ID to search for
-     * @returns Promise<any> - the course document or null if not found
-     */
-    public getActiveCourse = async (id: string) => {
-        return await this.getCourseCollection().findOne({ id: id });
-    }
-
-    /**
-     * Get a course by its name
-     * @param name - the course name to search for
-     * @returns Promise<any> - the course document or null if not found
-     */
-    public getCourseByName = async (name: string) => {
-
-        if (name === 'CHBE251') {
-            return await this.getCourseCollection().findOne({ courseName: 'CHBE 251' });
-        }
-        else {
-            
-            // Try exact match first
-            let course = await this.getCourseCollection().findOne({ courseName: name });
-            
-            // If no exact match, try case-insensitive search
-            if (!course) {
-                course = await this.getCourseCollection().findOne({ 
-                    courseName: { $regex: new RegExp(`^${name.replace(/\s+/g, '\\s*')}$`, 'i') }
-                });
-            }
-            
-            return course;
-        }
-    }
-
-    /**
-     * Get all active courses from the database
-     * @returns Promise<any[]> - array of all course documents
-     */
-    public getAllActiveCourses = async () => {
-        return await this.getCourseCollection().find({}).toArray();
-    }
-
-    /**
-     * Update an active course in the database
-     * @param id - the course ID to update
-     * @param updateData - the data to update
-     * @returns Promise<any> - the updated course document
-     */
-    public updateActiveCourse = async (id: string, updateData: Partial<activeCourse>) => {
-        const result = await this.getCourseCollection().findOneAndUpdate(
-            { id: id },
-            { $set: { ...updateData, updatedAt: Date.now().toString() } },
-            { returnDocument: 'after' }
-        );
-        return result;
-    }
-
-    /**
-     * Add a learning objective to a specific course item
-     * @param courseId - the course ID
-     * @param divisionId - the division ID
-     * @param contentId - the content item ID
-     * @param learningObjective - the learning objective to add
-     * @returns Promise<any> - the updated course document
-     */
-    public addLearningObjective = async (courseId: string, divisionId: string, contentId: string, learningObjective: any) => {
-        const result = await this.getCourseCollection().findOneAndUpdate(
-            { 
-                id: courseId,
-                'divisions.id': divisionId,
-                'divisions.items.id': contentId
-            },
-            { 
-                $push: { 
-                    'divisions.$[division].items.$[item].learningObjectives': learningObjective
-                },
-                $set: { updatedAt: Date.now().toString() }
-            },
-            { 
-                arrayFilters: [
-                    { 'division.id': divisionId },
-                    { 'item.id': contentId }
-                ],
-                returnDocument: 'after' 
-            }
-        );
-        return result;
-    }
-
-    /**
-     * Update a learning objective in a specific course item
-     * @param courseId - the course ID
-     * @param divisionId - the division ID
-     * @param contentId - the content item ID
-     * @param objectiveId - the learning objective ID
-     * @param updateData - the data to update
-     * @returns Promise<any> - the updated course document
-     */
-    public updateLearningObjective = async (courseId: string, divisionId: string, contentId: string, objectiveId: string, updateData: any) => {
-        const result = await this.getCourseCollection().findOneAndUpdate(
-            { 
-                id: courseId,
-                'divisions.id': divisionId,
-                'divisions.items.id': contentId,
-                'divisions.items.learningObjectives.id': objectiveId
-            },
-            { 
-                $set: { 
-                    'divisions.$[division].items.$[item].learningObjectives.$[objective].LearningObjective': updateData.LearningObjective,
-                    'divisions.$[division].items.$[item].learningObjectives.$[objective].updatedAt': Date.now().toString(),
-                    updatedAt: Date.now().toString()
-                }
-            },
-            { 
-                arrayFilters: [
-                    { 'division.id': divisionId },
-                    { 'item.id': contentId },
-                    { 'objective.id': objectiveId }
-                ],
-                returnDocument: 'after' 
-            }
-        );
-        return result;
-    }
-
-    /**
-     * Delete a learning objective from a specific course item
-     * @param courseId - the course ID
-     * @param divisionId - the division ID
-     * @param contentId - the content item ID
-     * @param objectiveId - the learning objective ID
-     * @returns Promise<any> - the updated course document
-     */
-    public deleteLearningObjective = async (courseId: string, divisionId: string, contentId: string, objectiveId: string) => {
-        const result = await this.getCourseCollection().findOneAndUpdate(
-            { 
-                id: courseId,
-                'divisions.id': divisionId,
-                'divisions.items.id': contentId
-            },
-            { 
-                $pull: { 
-                    'divisions.$[division].items.$[item].learningObjectives': { id: objectiveId }
-                } as any,
-                $set: { updatedAt: Date.now().toString() }
-            },
-            { 
-                arrayFilters: [
-                    { 'division.id': divisionId },
-                    { 'item.id': contentId }
-                ],
-                returnDocument: 'after' 
-            }
-        );
-        return result;
-    }
-
-    /**
-     * add a document to the database
-     * @param document - the document to add
-     * @returns Promise<any> - the added document
-     */
-    public addDocument = async (document: AdditionalMaterial) => {
-        return await this.getCourseCollection().insertOne(document);
-    }
-
-    // ===========================================
-    // ========= FLAG REPORT METHODS ============
-    // ===========================================
-
-    /**
-     * Get the flags collection for a specific course
-     * @param courseName - the name of the course
-     * @returns the flags collection
-     */
-    private getFlagsCollection = (courseName: string): Collection => {
-        const flagsCollectionName = `${courseName}_flags`;
-        return this.db.collection(flagsCollectionName);
-    }
-
-    /**
-     * Create a new flag report
-     * @param flagReport - the flag report to create
-     * @returns the result of the insert operation
-     */
-    public createFlagReport = async (flagReport: FlagReport) => {
-        //START DEBUG LOG : DEBUG-CODE(001)
-        console.log('🏴 Creating flag report:', flagReport.id, 'for course:', flagReport.courseName);
-        //END DEBUG LOG : DEBUG-CODE(001)
-        
-        try {
-            const flagsCollection = this.getFlagsCollection(flagReport.courseName);
-            
-            const result = await flagsCollection.insertOne(flagReport);
-            
-            //START DEBUG LOG : DEBUG-CODE(009)
-            console.log('🏴 Flag report created successfully:', flagReport.id, 'MongoDB ID:', result.insertedId);
-            //END DEBUG LOG : DEBUG-CODE(009)
-            
-            return result;
-        } catch (error) {
-            //START DEBUG LOG : DEBUG-CODE(010)
-            console.error('🏴 Error creating flag report:', flagReport.id, 'Error:', error);
-            //END DEBUG LOG : DEBUG-CODE(010)
-            
-            throw new Error(`Failed to create flag report: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-    }
-
-    /**
-     * Get all flag reports for a specific course
-     * @param courseName - the name of the course
-     * @returns array of flag reports
-     */
-    public getFlagReports = async (courseName: string): Promise<FlagReport[]> => {
-        //START DEBUG LOG : DEBUG-CODE(002)
-        console.log('🏴 Getting flag reports for course:', courseName);
-        //END DEBUG LOG : DEBUG-CODE(002)
-        
-        const flagsCollection = this.getFlagsCollection(courseName);
-        return await flagsCollection.find({}).toArray() as unknown as FlagReport[];
-    }
-
-    /**
-     * Get a specific flag report by ID
-     * @param courseName - the name of the course
-     * @param flagId - the ID of the flag report
-     * @returns the flag report or null if not found
-     */
-    public getFlagReport = async (courseName: string, flagId: string): Promise<FlagReport | null> => {
-        //START DEBUG LOG : DEBUG-CODE(003)
-        console.log('🏴 Getting flag report:', flagId, 'for course:', courseName);
-        //END DEBUG LOG : DEBUG-CODE(003)
-        
-        const flagsCollection = this.getFlagsCollection(courseName);
-        return await flagsCollection.findOne({ id: flagId }) as FlagReport | null;
-    }
-
-    /**
-     * Update a flag report (status and response)
-     * @param courseName - the name of the course
-     * @param flagId - the ID of the flag report
-     * @param updateData - the data to update
-     * @returns the result of the update operation
-     */
-    public updateFlagReport = async (courseName: string, flagId: string, updateData: Partial<FlagReport>) => {
-        //START DEBUG LOG : DEBUG-CODE(004)
-        console.log('🏴 Updating flag report:', flagId, 'for course:', courseName, 'with data:', updateData);
-        //END DEBUG LOG : DEBUG-CODE(004)
-        
-        try {
-            const flagsCollection = this.getFlagsCollection(courseName);
-            
-            // Add updatedAt timestamp
-            const updateWithTimestamp = {
-                ...updateData,
-                updatedAt: new Date()
-            };
-
-            // If response is undefined/null, set it to empty string
-            if (updateData.response === undefined || updateData.response === null) {
-                updateWithTimestamp.response = '';
-            }
-
-            //START DEBUG LOG : DEBUG-CODE(011)
-            console.log('🏴 About to update with query:', { id: flagId });
-            console.log('🏴 About to update with data:', { $set: updateWithTimestamp });
-            //END DEBUG LOG : DEBUG-CODE(011)
-
-            const result = await flagsCollection.findOneAndUpdate(
-                { id: flagId },
-                { $set: updateWithTimestamp },
-                { returnDocument: 'after' }
-            );
-
-            //START DEBUG LOG : DEBUG-CODE(012)
-            console.log('🏴 Update result:', result);
-            //END DEBUG LOG : DEBUG-CODE(012)
-
-            return result;
-        } catch (error) {
-            //START DEBUG LOG : DEBUG-CODE(013)
-            console.error('🏴 Error updating flag report:', flagId, 'Error:', error);
-            //END DEBUG LOG : DEBUG-CODE(013)
-            
-            throw new Error(`Failed to update flag report: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-    }
-
-    /**
-     * Delete a flag report
-     * @param courseName - the name of the course
-     * @param flagId - the ID of the flag report
-     * @returns the result of the delete operation
-     */
-    public deleteFlagReport = async (courseName: string, flagId: string) => {
-        //START DEBUG LOG : DEBUG-CODE(005)
-        console.log('🏴 Deleting flag report:', flagId, 'for course:', courseName);
-        //END DEBUG LOG : DEBUG-CODE(005)
-        
-        const flagsCollection = this.getFlagsCollection(courseName);
-        return await flagsCollection.deleteOne({ id: flagId });
-    }
-
-}
 
 /**
  * ===========================================
@@ -448,19 +49,6 @@ export class EngEAI_MongoDB {
  * ===========================================
  */
 
-// Middleware for error handling
-const asyncHandler = (fn: (req: Request, res: Response) => Promise<any>) => 
-    (req: Request, res: Response) => {
-        Promise.resolve(fn(req, res))
-            .catch((error) => {
-                console.error('Error in MongoDB route:', error);
-                res.status(500).json({
-                    success: false,
-                    error: 'Internal server error',
-                    details: error.message
-                });
-            });
-    };
 
 // Validation middleware for existing courses (requires ID)
 const validateCourse = (req: Request, res: Response, next: Function) => {
@@ -605,8 +193,8 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
 
 // Routes
 
-// POST /api/mongodb/courses/newcourse - Create a new course
-router.post('/courses/newcourse', validateNewCourse, asyncHandler(async (req: Request, res: Response) => {
+// POST /api/courses - Create a new course (REQUIRES AUTH - Instructors only)
+router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
 
@@ -779,20 +367,9 @@ router.post('/courses/newcourse', validateNewCourse, asyncHandler(async (req: Re
     }
 }));
 
-// GET /api/mongodb/courses - Get all courses
-router.get('/courses', asyncHandler(async (req: Request, res: Response) => {
-    const instance = await EngEAI_MongoDB.getInstance();
-    const courses = await instance.getAllActiveCourses();
-    
-    res.status(200).json({
-        success: true,
-        data: courses,
-        count: courses.length
-    });
-}));
 
-// GET /api/mongodb/courses/:id - Get course by ID
-router.get('/courses/:id', asyncHandler(async (req: Request, res: Response) => {
+// GET /api/courses/:id - Get course by ID
+router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
     const course = await instance.getActiveCourse(req.params.id);
     
@@ -809,28 +386,43 @@ router.get('/courses/:id', asyncHandler(async (req: Request, res: Response) => {
     });
 }));
 
-// GET /api/mongodb/courses/name/:name - Get course by name
-router.get('/courses/name/:name', asyncHandler(async (req: Request, res: Response) => {
+// GET /api/courses - Get all courses or course by name (query param)
+// GET /api/courses?name=CHBE241 - Get course by name
+router.get('/', asyncHandler(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
-
-
-    const course = await instance.getCourseByName(req.params.name);
     
-    if (!course) {
-        return res.status(404).json({
-            success: false,
-            error: 'Course not found'
+    // Check if name query parameter is provided
+    const courseName = req.query.name as string;
+    
+    if (courseName) {
+        // Get course by name
+        const course = await instance.getCourseByName(courseName);
+        
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        return res.status(200).json({
+            success: true,
+            data: course
+        });
+    } else {
+        // Get all courses
+        const courses = await instance.getAllActiveCourses();
+        
+        res.status(200).json({
+            success: true,
+            data: courses,
+            count: courses.length
         });
     }
-    
-    res.status(200).json({
-        success: true,
-        data: course
-    });
 }));
 
-// PUT /api/mongodb/courses/:id - Update course
-router.put('/courses/:id', asyncHandler(async (req: Request, res: Response) => {
+// PUT /api/courses/:id - Update course (REQUIRES AUTH - Instructors only)
+router.put('/:id', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
     
     // First check if course exists
@@ -853,8 +445,8 @@ router.put('/courses/:id', asyncHandler(async (req: Request, res: Response) => {
     });
 }));
 
-// DELETE /api/mongodb/courses/:id - Delete course
-router.delete('/courses/:id', asyncHandler(async (req: Request, res: Response) => {
+// DELETE /api/courses/:id - Delete course (REQUIRES AUTH - Instructors only)
+router.delete('/:id', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
     
     // First check if course exists
@@ -875,20 +467,50 @@ router.delete('/courses/:id', asyncHandler(async (req: Request, res: Response) =
     });
 }));
 
-// GET /api/mongodb/learning-objectives - Get learning objectives for a course item
-router.get('/learning-objectives', asyncHandler(async (req: Request, res: Response) => {
+// POST /api/courses/:courseId/divisions/:divisionId/items - Add a new content item (section) to a division (REQUIRES AUTH)
+router.post('/:courseId/divisions/:divisionId/items', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, divisionId, contentId } = req.query;
+        const { courseId, divisionId } = req.params;
+        const { contentItem } = req.body;
         
-        if (!courseId || !divisionId || !contentId) {
+        if (!contentItem) {
             return res.status(400).json({
                 success: false,
-                error: 'Missing required query parameters: courseId, divisionId, contentId'
+                error: 'Content item data is required'
             });
         }
         
-        const course = await instance.getActiveCourse(courseId as string);
+        const result = await instance.addContentItem(courseId, divisionId, contentItem);
+        
+        if (result.success) {
+            res.status(201).json({
+                success: true,
+                data: result.data,
+                message: 'Content item added successfully'
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                error: result.error || 'Failed to add content item'
+            });
+        }
+    } catch (error) {
+        console.error('Error adding content item:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to add content item'
+        });
+    }
+}));
+
+// GET /api/courses/:courseId/divisions/:divisionId/items/:itemId/objectives - Get learning objectives for a course item
+router.get('/:courseId/divisions/:divisionId/items/:itemId/objectives', asyncHandler(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, divisionId, itemId } = req.params;
+        
+        const course = await instance.getActiveCourse(courseId);
         
         if (!course) {
             return res.status(404).json({
@@ -906,7 +528,7 @@ router.get('/learning-objectives', asyncHandler(async (req: Request, res: Respon
             });
         }
         
-        const contentItem = division.items?.find((item: any) => item.id === contentId);
+        const contentItem = division.items?.find((item: any) => item.id === itemId);
         if (!contentItem) {
             return res.status(404).json({
                 success: false,
@@ -928,20 +550,29 @@ router.get('/learning-objectives', asyncHandler(async (req: Request, res: Respon
     }
 }));
 
-// POST /api/mongodb/learning-objectives - Add a learning objective
-router.post('/learning-objectives', asyncHandler(async (req: Request, res: Response) => {
+// POST /api/courses/:courseId/divisions/:divisionId/items/:itemId/objectives - Add a learning objective (REQUIRES AUTH)
+router.post('/:courseId/divisions/:divisionId/items/:itemId/objectives', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, divisionId, contentId, learningObjective } = req.body;
+        console.log('🎯 [BACKEND] Add learning objective request received');
+        console.log('🔍 [BACKEND] Request params:', req.params);
+        console.log('🔍 [BACKEND] Request body:', req.body);
         
-        if (!courseId || !divisionId || !contentId || !learningObjective) {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, divisionId, itemId } = req.params;
+        const { learningObjective } = req.body;
+        
+        if (!learningObjective) {
             return res.status(400).json({
                 success: false,
-                error: 'Missing required fields: courseId, divisionId, contentId, learningObjective'
+                error: 'Missing required field: learningObjective'
             });
         }
         
-        const result = await instance.addLearningObjective(courseId, divisionId, contentId, learningObjective);
+        console.log('📡 [BACKEND] Calling addLearningObjective with:', { courseId, divisionId, itemId, learningObjective });
+        
+        const result = await instance.addLearningObjective(courseId, divisionId, itemId, learningObjective);
+        
+        console.log('✅ [BACKEND] Add learning objective result:', result);
         
         res.status(200).json({
             success: true,
@@ -957,20 +588,21 @@ router.post('/learning-objectives', asyncHandler(async (req: Request, res: Respo
     }
 }));
 
-// PUT /api/mongodb/learning-objectives - Update a learning objective
-router.put('/learning-objectives', asyncHandler(async (req: Request, res: Response) => {
+// PUT /api/courses/:courseId/divisions/:divisionId/items/:itemId/objectives/:objectiveId - Update a learning objective (REQUIRES AUTH)
+router.put('/:courseId/divisions/:divisionId/items/:itemId/objectives/:objectiveId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, divisionId, contentId, objectiveId, updateData } = req.body;
+        const { courseId, divisionId, itemId, objectiveId } = req.params;
+        const { updateData } = req.body;
         
-        if (!courseId || !divisionId || !contentId || !objectiveId || !updateData) {
+        if (!updateData) {
             return res.status(400).json({
                 success: false,
-                error: 'Missing required fields: courseId, divisionId, contentId, objectiveId, updateData'
+                error: 'Missing required field: updateData'
             });
         }
         
-        const result = await instance.updateLearningObjective(courseId, divisionId, contentId, objectiveId, updateData);
+        const result = await instance.updateLearningObjective(courseId, divisionId, itemId, objectiveId, updateData);
         
         res.status(200).json({
             success: true,
@@ -986,20 +618,20 @@ router.put('/learning-objectives', asyncHandler(async (req: Request, res: Respon
     }
 }));
 
-// DELETE /api/mongodb/learning-objectives - Delete a learning objective
-router.delete('/learning-objectives', asyncHandler(async (req: Request, res: Response) => {
+// DELETE /api/courses/:courseId/divisions/:divisionId/items/:itemId/objectives/:objectiveId - Delete a learning objective (REQUIRES AUTH)
+router.delete('/:courseId/divisions/:divisionId/items/:itemId/objectives/:objectiveId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
+        console.log('🗑️ [BACKEND] Delete learning objective request received');
+        console.log('🔍 [BACKEND] Request params:', req.params);
+        
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, divisionId, contentId, objectiveId } = req.body;
+        const { courseId, divisionId, itemId, objectiveId } = req.params;
         
-        if (!courseId || !divisionId || !contentId || !objectiveId) {
-            return res.status(400).json({
-                success: false,
-                error: 'Missing required fields: courseId, divisionId, contentId, objectiveId'
-            });
-        }
+        console.log('📡 [BACKEND] Calling deleteLearningObjective with:', { courseId, divisionId, itemId, objectiveId });
         
-        const result = await instance.deleteLearningObjective(courseId, divisionId, contentId, objectiveId);
+        const result = await instance.deleteLearningObjective(courseId, divisionId, itemId, objectiveId);
+        
+        console.log('✅ [BACKEND] Delete learning objective result:', result);
         
         res.status(200).json({
             success: true,
@@ -1016,93 +648,24 @@ router.delete('/learning-objectives', asyncHandler(async (req: Request, res: Res
 }));
 
 
-// Health check endpoint
-router.get('/health', asyncHandler(async (req: Request, res: Response) => {
-    try {
-        const instance = await EngEAI_MongoDB.getInstance();
-        // Test the connection by pinging the database
-        await instance['db'].admin().ping();
-        
-        res.status(200).json({
-            success: true,
-            data: {
-                status: 'healthy',
-                database: 'connected',
-                connectionState: 1,
-                timestamp: Date.now().toString()
-            }
-        });
-    } catch (error) {
-        res.status(503).json({
-            success: false,
-            error: 'Database connection unhealthy'
-        });
-    }
-}));
 
-// ===========================================
-// DUMMY COURSES DEBUG ENDPOINTS
-// ===========================================
-
-// GET /api/mongodb/debug/courses - Get dummy courses
-router.get('/debug/courses', asyncHandler(async (req: Request, res: Response) => {
-    try {
-        const courses = await getDummyCourses();
-        
-        res.status(200).json({
-            success: true,
-            data: courses,
-            message: 'Dummy courses retrieved successfully'
-        });
-    } catch (error) {
-        console.error('Error getting dummy courses:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to get dummy courses'
-        });
-    }
-}));
-
-// POST /api/mongodb/debug/reset - Reset dummy courses
-router.post('/debug/reset', asyncHandler(async (req: Request, res: Response) => {
-    try {
-        const success = await resetDummyCourses();
-        
-        if (success) {
-            res.status(200).json({
-                success: true,
-                message: 'Dummy courses reset successfully'
-            });
-        } else {
-            res.status(500).json({
-                success: false,
-                error: 'Failed to reset dummy courses'
-            });
-        }
-    } catch (error) {
-        console.error('Error resetting dummy courses:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to reset dummy courses'
-        });
-    }
-}));
 
 // ===========================================
 // ========= FLAG REPORT ROUTES ============
 // ===========================================
 
-// POST /api/mongodb/flag-reports - Create a new flag report
-router.post('/flag-reports', asyncHandler(async (req: Request, res: Response) => {
+// POST /api/courses/:courseId/flags - Create a new flag report (REQUIRES AUTH)
+router.post('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseName, flagType, reportType, chatContent, userId } = req.body;
+        const { courseId } = req.params;
+        const { flagType, reportType, chatContent, userId } = req.body;
         
         // Validate required fields
-        if (!courseName || !flagType || !reportType || !chatContent || userId === undefined) {
+        if (!flagType || !reportType || !chatContent || userId === undefined) {
             return res.status(400).json({
                 success: false,
-                error: 'Missing required fields: courseName, flagType, reportType, chatContent, userId'
+                error: 'Missing required fields: flagType, reportType, chatContent, userId'
             });
         }
 
@@ -1115,14 +678,23 @@ router.post('/flag-reports', asyncHandler(async (req: Request, res: Response) =>
             });
         }
 
+        // Get course name from courseId for flag report creation
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
         // Create flag report object with unique ID using IDGenerator
         const idGenerator = IDGenerator.getInstance();
         const flagDate = new Date();
-        const uniqueId = idGenerator.flagIDGenerator(userId.toString(), courseName, flagDate);
+        const uniqueId = idGenerator.flagIDGenerator(userId.toString(), course.courseName, flagDate);
         
         const flagReport: FlagReport = {
             id: uniqueId,
-            courseName: courseName,
+            courseName: course.courseName,
             date: flagDate,
             flagType: flagType,
             reportType: reportType,
@@ -1157,20 +729,22 @@ router.post('/flag-reports', asyncHandler(async (req: Request, res: Response) =>
     }
 }));
 
-// GET /api/mongodb/flag-reports/:courseName - Get all flag reports for a course
-router.get('/flag-reports/:courseName', asyncHandler(async (req: Request, res: Response) => {
+// GET /api/courses/:courseId/flags - Get all flag reports for a course (REQUIRES AUTH - Instructors only)
+router.get('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseName } = req.params;
+        const { courseId } = req.params;
         
-        if (!courseName) {
-            return res.status(400).json({
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
                 success: false,
-                error: 'Course name is required'
+                error: 'Course not found'
             });
         }
 
-        const flagReports = await instance.getFlagReports(courseName);
+        const flagReports = await instance.getFlagReports(course.courseName);
         
         res.json({
             success: true,
@@ -1186,20 +760,22 @@ router.get('/flag-reports/:courseName', asyncHandler(async (req: Request, res: R
     }
 }));
 
-// GET /api/mongodb/flag-reports/:courseName/:flagId - Get a specific flag report
-router.get('/flag-reports/:courseName/:flagId', asyncHandler(async (req: Request, res: Response) => {
+// GET /api/courses/:courseId/flags/:flagId - Get a specific flag report (REQUIRES AUTH - Instructors only)
+router.get('/:courseId/flags/:flagId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseName, flagId } = req.params;
+        const { courseId, flagId } = req.params;
         
-        if (!courseName || !flagId) {
-            return res.status(400).json({
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
                 success: false,
-                error: 'Course name and flag ID are required'
+                error: 'Course not found'
             });
         }
 
-        const flagReport = await instance.getFlagReport(courseName, flagId);
+        const flagReport = await instance.getFlagReport(course.courseName, flagId);
         
         if (!flagReport) {
             return res.status(404).json({
@@ -1221,17 +797,19 @@ router.get('/flag-reports/:courseName/:flagId', asyncHandler(async (req: Request
     }
 }));
 
-// PUT /api/mongodb/flag-reports/:courseName/:flagId - Update a flag report
-router.put('/flag-reports/:courseName/:flagId', asyncHandler(async (req: Request, res: Response) => {
+// PUT /api/courses/:courseId/flags/:flagId - Update a flag report (REQUIRES AUTH - Instructors only)
+router.put('/:courseId/flags/:flagId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseName, flagId } = req.params;
+        const { courseId, flagId } = req.params;
         const { status, response } = req.body;
         
-        if (!courseName || !flagId) {
-            return res.status(400).json({
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
                 success: false,
-                error: 'Course name and flag ID are required'
+                error: 'Course not found'
             });
         }
 
@@ -1259,7 +837,7 @@ router.put('/flag-reports/:courseName/:flagId', asyncHandler(async (req: Request
         console.log('🏴 Updating flag report:', flagId, 'with data:', updateData);
         //END DEBUG LOG : DEBUG-CODE(007)
 
-        const result = await instance.updateFlagReport(courseName, flagId, updateData);
+        const result = await instance.updateFlagReport(course.courseName, flagId, updateData);
         
         if (!result) {
             return res.status(404).json({
@@ -1286,24 +864,26 @@ router.put('/flag-reports/:courseName/:flagId', asyncHandler(async (req: Request
     }
 }));
 
-// DELETE /api/mongodb/flag-reports/:courseName/:flagId - Delete a flag report
-router.delete('/flag-reports/:courseName/:flagId', asyncHandler(async (req: Request, res: Response) => {
+// DELETE /api/courses/:courseId/flags/:flagId - Delete a flag report (REQUIRES AUTH - Instructors only)
+router.delete('/:courseId/flags/:flagId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseName, flagId } = req.params;
+        const { courseId, flagId } = req.params;
         
-        if (!courseName || !flagId) {
-            return res.status(400).json({
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
                 success: false,
-                error: 'Course name and flag ID are required'
+                error: 'Course not found'
             });
         }
 
         //START DEBUG LOG : DEBUG-CODE(008)
-        console.log('🏴 Deleting flag report:', flagId, 'from course:', courseName);
+        console.log('🏴 Deleting flag report:', flagId, 'from course:', course.courseName);
         //END DEBUG LOG : DEBUG-CODE(008)
 
-        const result = await instance.deleteFlagReport(courseName, flagId);
+        const result = await instance.deleteFlagReport(course.courseName, flagId);
         
         if (result.deletedCount === 0) {
             return res.status(404).json({

@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../saml-example-app"
+		},
+		{
+			"path": "../../docker-simple-saml"
+		}
+	],
+	"settings": {}
+}

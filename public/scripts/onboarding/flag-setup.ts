@@ -633,10 +633,10 @@ async function handleFinalCompletion(state: FlagSetupState, instructorCourse: ac
         // Mark flag setup as complete
         instructorCourse.flagSetup = true;
         
-        // Remove onboarding-active class to show instructor sidebar
-        document.body.classList.remove('onboarding-active');
+        // DO NOT remove onboarding-active class - let instructor-mode.ts handle the flow
+        // DO NOT show instructor sidebar - we need to proceed to monitor setup
         
-        // Dispatch completion event
+        // Dispatch completion event - instructor-mode.ts will handle next steps
         window.dispatchEvent(new CustomEvent('flagSetupComplete'));
         
         console.log("✅ Flag setup completed successfully!");

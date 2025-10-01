@@ -5,8 +5,9 @@ import { LoggerInterface } from "ubc-genai-toolkit-core";
 import { LLMModule } from "ubc-genai-toolkit-llm";
 import { DocumentParsingModule } from "ubc-genai-toolkit-document-parsing";
 import { AdditionalMaterial } from "../functions/types";
-import { EngEAI_MongoDB } from "./mongo-app";
+import { EngEAI_MongoDB } from "../functions/EngEAI_MongoDB";
 import { IDGenerator } from "../functions/unique-id-generator";
+import { asyncHandler, asyncHandlerWithAuth } from "../middleware/asyncHandler";
 import path from "path";
 import fs from "fs";
 import multer from "multer";
@@ -238,8 +239,43 @@ export class RAGApp {
             };
 
             this.logger.info(`📤 Uploading document to RAG: ${fullDocument.name}`);
+            
+            // Log the ACTUAL chunking configuration being used
+            const documentLength = documentText.length;
+            const chunkingConfig = this.config.ragConfig.chunkingConfig;
+            
+            this.logger.info(`📄 Document Length: ${documentLength} characters`);
+            
+            // Log the full chunking config for debugging
+            this.logger.info(`🔧 Chunking Config Type: ${typeof chunkingConfig}`);
+            this.logger.info(`🔧 Chunking Config: ${JSON.stringify(chunkingConfig, null, 2)}`);
+            
+            if (chunkingConfig && typeof chunkingConfig === 'object' && 'defaultOptions' in chunkingConfig) {
+                const actualChunkSize = (chunkingConfig as any).defaultOptions?.chunkSize || 1024;
+                const actualOverlap = (chunkingConfig as any).defaultOptions?.chunkOverlap || 200;
+                const actualStrategy = (chunkingConfig as any).strategy || 'recursiveCharacter';
+                
+                this.logger.info(`🔧 ACTUAL Chunking Configuration:`);
+                this.logger.info(`   📏 Chunk Size: ${actualChunkSize} characters`);
+                this.logger.info(`   🔄 Overlap: ${actualOverlap} characters`);
+                this.logger.info(`   📋 Strategy: ${actualStrategy}`);
+                
+                const effectiveChunkSize = actualChunkSize - actualOverlap;
+                const expectedChunks = Math.ceil(documentLength / effectiveChunkSize);
+                this.logger.info(`   🧮 Expected Chunks: ~${expectedChunks} (effective chunk size: ${effectiveChunkSize})`);
+            } else {
+                this.logger.warn(`⚠️  No chunking configuration found - using default chunker`);
+            }
+            
             const qdrantIds = await this.rag.addDocument(documentText, metadata);
             this.logger.info(`✅ Document uploaded to RAG successfully. Generated ${qdrantIds.length} chunks`);
+            
+            // Analyze results
+            const actualChunks = qdrantIds.length;
+            const avgChunkSize = Math.round(documentLength / actualChunks);
+            this.logger.info(`📊 Results Analysis:`);
+            this.logger.info(`   🎯 Actual Chunks: ${actualChunks}`);
+            this.logger.info(`   📏 Average Chunk Size: ${avgChunkSize} characters`);
 
             // Update document with upload results
             fullDocument.uploaded = true;
@@ -321,19 +357,7 @@ export class RAGApp {
     
 }
 
-// Middleware for error handling
-const asyncHandler = (fn: (req: Request, res: Response) => Promise<any>) => 
-    (req: Request, res: Response) => {
-        Promise.resolve(fn(req, res))
-            .catch((error) => {
-                console.error('Error in Qdrant route:', error);
-                res.status(500).json({
-                    status: 500,
-                    message: 'Internal server error',
-                    details: error.message
-                });
-            });
-    };
+// Note: Using asyncHandlerWithAuth from middleware instead of local asyncHandler
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage();
@@ -464,8 +488,8 @@ const validateFileDocument = (req: MulterRequest, res: Response, next: Function)
 
 
 
-// POST /api/rag/documents/text - Upload a text document
-router.post('/documents/text', validateTextDocument, asyncHandler(async (req: Request, res: Response) => {
+// POST /api/rag/documents/text - Upload a text document (REQUIRES AUTH)
+router.post('/documents/text', validateTextDocument, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const ragApp = await RAGApp.getInstance();
         
@@ -504,8 +528,8 @@ router.post('/documents/text', validateTextDocument, asyncHandler(async (req: Re
     }
 }));
 
-// POST /api/rag/documents/file - Upload a file document
-router.post('/documents/file', upload.single('file'), validateFileDocument, asyncHandler(async (req: MulterRequest, res: Response) => {
+// POST /api/rag/documents/file - Upload a file document (REQUIRES AUTH)
+router.post('/documents/file', upload.single('file'), validateFileDocument, asyncHandlerWithAuth(async (req: MulterRequest, res: Response) => {
     try {
         const ragApp = await RAGApp.getInstance();
         
@@ -553,28 +577,34 @@ router.post('/documents/file', upload.single('file'), validateFileDocument, asyn
     }
 }));
 
-// GET /api/qdrant/documents/:courseName - Get all documents from Qdrant for a specific course
-router.get('/documents/:courseName', asyncHandler(async (req: Request, res: Response) => {
-
+// GET /api/rag/documents/:courseName - Get all documents from Qdrant for a specific course (REQUIRES AUTH)
+router.get('/documents/:courseName', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    // TODO: Implement document retrieval by course
+    res.status(501).json({ message: 'Not implemented yet' });
 }));
 
-// GET /api/qdrant/documents/:courseName/:contentTitle - Get all chunks from Qdrant for a specific content title
-router.get('/documents/:courseName/:contentTitle', asyncHandler(async (req: Request, res: Response) => {
-
+// GET /api/rag/documents/:courseName/:contentTitle - Get all chunks from Qdrant for a specific content title (REQUIRES AUTH)
+router.get('/documents/:courseName/:contentTitle', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    // TODO: Implement document retrieval by content title
+    res.status(501).json({ message: 'Not implemented yet' });
 }));
 
-// GET /api/qdrant/documents/:courseName/:contentTitle/:subContentTitle - Get all chunks from Qdrant for a specific subcontent title
-router.get('/documents/:courseName/:contentTitle/:subContentTitle', asyncHandler(async (req: Request, res: Response) => {
-
+// GET /api/rag/documents/:courseName/:contentTitle/:subContentTitle - Get all chunks from Qdrant for a specific subcontent title (REQUIRES AUTH)
+router.get('/documents/:courseName/:contentTitle/:subContentTitle', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    // TODO: Implement document retrieval by subcontent title
+    res.status(501).json({ message: 'Not implemented yet' });
 }));
 
-// GET /api/qdrant/documents/:courseName/:contentTitle/:subContentTitle/:chunkNumber - Get a specific chunk from Qdrant
-router.get('/documents/:courseName/:contentTitle/:subContentTitle/:chunkNumber', asyncHandler(async (req: Request, res: Response) => {
-
+// GET /api/rag/documents/:courseName/:contentTitle/:subContentTitle/:chunkNumber - Get a specific chunk from Qdrant (REQUIRES AUTH)
+router.get('/documents/:courseName/:contentTitle/:subContentTitle/:chunkNumber', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    // TODO: Implement specific chunk retrieval
+    res.status(501).json({ message: 'Not implemented yet' });
 }));
 
-// POST /api/qdrant/search - Search for similar documents using vector similarity
-router.post('/search', asyncHandler(async (req: Request, res: Response) => {
+// POST /api/rag/search - Search for similar documents using vector similarity (REQUIRES AUTH)
+router.post('/search', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    // TODO: Implement document search
+    res.status(501).json({ message: 'Not implemented yet' });
 }));
 
 // Note: Setup is now handled automatically in the QdrantUpload constructor

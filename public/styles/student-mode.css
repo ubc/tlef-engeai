@@ -65,6 +65,7 @@ body {
 
 .sidebar.collapsed .logo-text,
 .sidebar.collapsed .report-history-btn span,
+.sidebar.collapsed .logout-btn span,
 .sidebar.collapsed .chat-item span {
     display: none; /* hide text when collapsed */
 }
@@ -78,7 +79,8 @@ body {
 }
 
 .sidebar.collapsed .add-chat-btn,
-.sidebar.collapsed .report-history-btn {
+.sidebar.collapsed .report-history-btn,
+.sidebar.collapsed .logout-btn {
     justify-content: center;
 }
 
@@ -125,7 +127,9 @@ body {
 .sidebar-footer { 
     padding-top: 0.75rem; 
     border-top: 1px solid var(--border-color);
-
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
 }
 
 .report-history-btn {
@@ -153,6 +157,44 @@ body {
     height: 16px; 
 }
 
+/* Logout Button Styles */
+.logout-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    background-color: var(--background-2); 
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: #000000;
+}
+
+.logout-btn:hover { 
+    background-color: var(--color-eng-red); 
+    color: white; 
+    border-color: var(--color-eng-red); 
+}
+
+.logout-btn .feather { 
+    width: 16px; 
+    height: 16px; 
+}
+
+/* Hide sidebar during onboarding */
+.onboarding-active .sidebar {
+    display: none;
+}
+
+.onboarding-active #main-content-area {
+    width: 100%;
+    padding: 0;
+}
+
 /* Chat Window - Remove scrolling, let message area handle it */
 .chat-window { overflow-x: hidden; }
 
@@ -175,8 +217,8 @@ body {
     justify-content: center;
     padding: 1rem;
     background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    /* backdrop-filter: blur(4px); */ /* Removed blur effect */
+    /* -webkit-backdrop-filter: blur(4px); */ /* Removed blur effect */
     z-index: 1000;
 }
 
@@ -248,7 +290,8 @@ body {
 
 /* When modal is open, soften the app content */
 body.modal-open .main-dashboard {
-    filter: blur(2px) brightness(0.88);
+    /* filter: blur(2px) brightness(0.88); */ /* Removed blur effect */
+    filter: brightness(0.88); /* Keep brightness reduction only */
     pointer-events: none; /* prevent interactions behind overlay */
 }
 
@@ -275,9 +318,7 @@ Collapse button styling
     transition: all 0.2s;
 }
 
-.collapse-sidebar-btn:hover {
-    background: rgba(255, 255, 255, 0.3);
-}
+
 
 .collapse-sidebar-btn .feather {
     width: 16px;

@@ -1,5 +1,5 @@
 import { loadComponentHTML, renderFeatherIcons } from "./functions/api.js";
-import { activeCourse, Student } from "../../src/functions/types.js";
+import { activeCourse, User } from "../../src/functions/types.js";
 import { initializeDocumentsPage } from "./feature/documents.js";
 import { renderOnCourseSetup } from "./onboarding/course-setup.js";
 import { renderDocumentSetup } from "./onboarding/document-setup.js";
@@ -7,7 +7,13 @@ import { renderFlagSetup } from "./onboarding/flag-setup.js";
 import { renderMonitorSetup } from "./onboarding/monitor-setup.js";
 import { initializeFlagReports } from "./feature/reports.js";
 import { initializeMonitorDashboard } from "./feature/monitor.js";
-import { ChatManager, createDefaultStudent } from "./feature/chat.js";
+import { ChatManager, createDefaultUser } from "./feature/chat.js";
+import { authService } from './services/AuthService.js';
+
+// Authentication check function
+async function checkAuthentication(): Promise<boolean> {
+    return await authService.checkAuthenticationAndRedirect('/pages/instructor-mode.html', 'INSTRUCTOR-MODE');
+}
 
 const enum StateEvent {
     Report,
@@ -24,7 +30,7 @@ let currentClass : activeCourse =
     contentSetup : false,
     flagSetup : false,
     monitorSetup : false,
-    courseName:'APSC 077',
+    courseName:'APSC 099: Engineering for Kindergarten',
     instructors: [
     ],
     teachingAssistants: [
@@ -38,6 +44,9 @@ let currentClass : activeCourse =
 // ChatManager instance for instructor mode
 let chatManager: ChatManager | null = null;
 
+// Instructor User data (loaded from database)
+let instructorUser: User | null = null;
+
 // Make chatManager, loadChatWindow, and currentClass globally accessible for fallback scenarios
 declare global {
     interface Window {
@@ -50,20 +59,36 @@ declare global {
 /**
  * Create a virtual student entity for instructor mode using active course context
  * This ensures consistency with the existing ChatManager structure
+ * @deprecated No longer needed - using real instructor User from authentication
  */
-function createInstructorVirtualStudent(): Student {
+function createInstructorVirtualUser(): User {
     return {
-        id: 'instructor-virtual',
         name: 'Instructor User',
-        courseAttended: currentClass.courseName || 'APSC 080', // Fallback to default course
-        userId: 0 // Instructor ID
+        puid: 'instructor-virt',
+        userId: 0, // Instructor ID
+        activeCourseId: currentClass.id || 'current-course',
+        activeCourseName: currentClass.courseName || 'APSC 099', // Fallback to default course
+        userOnboarding: false, // Instructors don't need onboarding
+        affiliation: 'faculty',
+        status: 'active',
+        chats: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
     };
 }
 
 
-document.addEventListener('DOMContentLoaded', () => {
-
+document.addEventListener('DOMContentLoaded', async () => {
     console.log("DOMContentLoaded is called");
+
+    // Check authentication first
+    const isAuthenticated = await checkAuthentication();
+    if (!isAuthenticated) {
+        console.log('[INSTRUCTOR-MODE] ❌ User not authenticated, redirecting to login...');
+        return; // Stop execution if not authenticated
+    }
+    
+    console.log('[INSTRUCTOR-MODE] 🚀 Loading instructor mode...');
 
     // Check for debug course in sessionStorage
     const debugCourseData = sessionStorage.getItem('debugCourse');
@@ -77,6 +102,51 @@ document.addEventListener('DOMContentLoaded', () => {
             sessionStorage.removeItem('debugCourse');
         } catch (error) {
             console.error('Error parsing debug course data:', error);
+        }
+    } else {
+        // Load APSC 099 course from database (no debug course in session)
+        //START DEBUG LOG : DEBUG-CODE(INSTRUCTOR-LOAD-001)
+        console.log('[INSTRUCTOR-MODE] 📚 No debug course, loading APSC 099 from database...');
+        //END DEBUG LOG : DEBUG-CODE(INSTRUCTOR-LOAD-001)
+        
+        try {
+            const response = await fetch('/api/courses?name=APSC 099: Engineering for Kindergarten', {
+                method: 'GET',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Failed to load course: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            
+            if (result.success && result.data) {
+                currentClass = result.data;
+                
+                //START DEBUG LOG : DEBUG-CODE(INSTRUCTOR-LOAD-002)
+                console.log('[INSTRUCTOR-MODE] ✅ APSC 099 course loaded from database');
+                console.log('[INSTRUCTOR-MODE] 📊 Course Data:', {
+                    id: currentClass.id,
+                    courseName: currentClass.courseName,
+                    courseSetup: currentClass.courseSetup,
+                    contentSetup: currentClass.contentSetup,
+                    flagSetup: currentClass.flagSetup,
+                    monitorSetup: currentClass.monitorSetup
+                });
+                //END DEBUG LOG : DEBUG-CODE(INSTRUCTOR-LOAD-002)
+            } else {
+                //START DEBUG LOG : DEBUG-CODE(INSTRUCTOR-LOAD-003)
+                console.error('[INSTRUCTOR-MODE] ❌ Failed to load APSC 099 course:', result.error);
+                //END DEBUG LOG : DEBUG-CODE(INSTRUCTOR-LOAD-003)
+            }
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(INSTRUCTOR-LOAD-004)
+            console.error('[INSTRUCTOR-MODE] 🚨 Error loading course from database:', error);
+            //END DEBUG LOG : DEBUG-CODE(INSTRUCTOR-LOAD-004)
         }
     }
 
@@ -93,10 +163,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Listen for flag setup completion event
     window.addEventListener('flagSetupComplete', () => {
-        console.log('🏁 Flag setup completed, redirecting to main interface...');
+        console.log('🏁 Flag setup completed, proceeding to monitor setup...');
         
-        // Redirect to main instructor interface
-        redirectToMainInterface();
+        // Proceed to monitor setup (keep onboarding-active class to hide sidebar)
+        // The updateUI() function will check currentClass.monitorSetup and show monitor setup
+        updateUI();
     });
 
     // Listen for monitor setup completion event
@@ -384,7 +455,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // });
 
 
-    // fetch('/api/mongodb/courses/CHBE241')
+    // fetch('/api/courses/courses/CHBE241')
     //     .then(r => r.json())
     //     .then((data: activeCourse) => {
     //         currentClass = data;
@@ -397,7 +468,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // make fucntio that makes a get request given a coursename
     async function getCourse (courseName: string){
-        const response = await fetch(`/api/mongodb/courses/name/${courseName}`, {
+        const response = await fetch(`/api/courses?name=${courseName}`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json'
@@ -474,17 +545,40 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('📋 Current class:', currentClass.courseName);
             //END DEBUG LOG : DEBUG-CODE(001)
             
-            // Create virtual student entity for instructor
-            const virtualStudent = createInstructorVirtualStudent();
+            // Get instructor's real User data from authentication
+            const authState = authService.getAuthState();
+            if (!authState.isAuthenticated || !authState.user) {
+                console.error('[INSTRUCTOR-MODE] ❌ No authenticated user found');
+                return;
+            }
+            
+            // Create instructor User object from auth data
+            instructorUser = {
+                name: `${authState.user.firstName} ${authState.user.lastName}`,
+                puid: authState.user.puid,
+                userId: 0, // Will be fetched from database
+                activeCourseId: 'apsc-099',
+                activeCourseName: currentClass.courseName,
+                userOnboarding: false,
+                affiliation: 'faculty',
+                status: 'active',
+                chats: [],
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
             
             //START DEBUG LOG : DEBUG-CODE(002)
-            console.log('👤 Virtual student created:', virtualStudent);
+            console.log('👤 Instructor user data loaded:', {
+                name: instructorUser.name,
+                puid: instructorUser.puid,
+                activeCourseName: instructorUser.activeCourseName
+            });
             //END DEBUG LOG : DEBUG-CODE(002)
             
-            // Initialize ChatManager with instructor context
+            // Initialize ChatManager with instructor User context
             chatManager = ChatManager.getInstance({
                 isInstructor: true,
-                userContext: currentClass, // Use activeCourse for instructor mode
+                userContext: instructorUser, // Use instructor User object instead of activeCourse
                 onModeSpecificCallback: (action: string, data?: any) => {
                     //START DEBUG LOG : DEBUG-CODE(003)
                     console.log('📞 ChatManager callback:', action, data);
@@ -687,9 +781,53 @@ document.addEventListener('DOMContentLoaded', () => {
         updateUI();
     })
 
+    // --- LOGOUT FUNCTIONALITY ---
+    const handleInstructorLogout = async (): Promise<void> => {
+        try {
+            // Show confirmation dialog
+            const confirmed = confirm('Are you sure you want to log out?');
+            if (!confirmed) {
+                console.log('[INSTRUCTOR-MODE] 🚫 Logout cancelled by user');
+                return;
+            }
+            
+            console.log('[INSTRUCTOR-MODE] 🚪 Initiating logout...');
+            
+            // Check current authentication status before logout
+            const authCheck = await fetch('/auth/me', {
+                method: 'GET',
+                credentials: 'include'
+            });
+            const authData = await authCheck.json();
+            console.log('[INSTRUCTOR-MODE] 📋 Current auth status before logout:', authData);
+            
+            // Call logout endpoint - let the browser follow the redirect naturally
+            console.log('[INSTRUCTOR-MODE] 🔄 Redirecting to logout endpoint...');
+            window.location.href = '/auth/logout';
+            
+        } catch (error) {
+            console.error('[INSTRUCTOR-MODE] 🚨 Logout error:', error);
+            // Fallback: redirect to login page
+            window.location.href = '/auth/login';
+        }
+    };
+
+    const attachInstructorLogoutListener = () => {
+        const logoutBtn = document.getElementById('instructor-logout-btn');
+        if (!logoutBtn) {
+            console.warn('[INSTRUCTOR-MODE] ⚠️ Logout button not found');
+            return;
+        }
+        
+        logoutBtn.addEventListener('click', handleInstructorLogout);
+        console.log('[INSTRUCTOR-MODE] ✅ Logout button listener attached');
+    };
 
     // Artefact functionality moved to chat.ts
 
+    // Attach logout button listener
+    attachInstructorLogoutListener();
+    
     updateUI();
 
 });

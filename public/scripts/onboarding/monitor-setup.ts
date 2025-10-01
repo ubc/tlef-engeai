@@ -226,7 +226,7 @@ function initializeDemoData(): void {
 
     (window as any).demoStudents = demoStudents;
     (window as any).demoCurrentSort = 'tokens';
-    (window as any).demoDateRange = { start: new Date(), end: null };
+    (window as any).demoDateRange = { start: null, end: null };
 }
 
 // ===========================================
@@ -494,6 +494,7 @@ function setupDemoFunctionality(): void {
     (window as any).toggleDemoStudentAccordion = toggleDemoStudentAccordion;
     (window as any).demoDownloadChat = demoDownloadChat;
     (window as any).renderDemoStudentList = renderDemoStudentList;
+    (window as any).clearDemoDateSelection = clearDemoDateSelection;
 }
 
 /**
@@ -555,12 +556,17 @@ function generateDemoCalendarHTML(year: number, month: number): string {
         
         const isCurrentMonth = date.getMonth() === month;
         const isToday = isSameDay(date, today);
-        const isSelected = isDateSelected(date);
+        const selectionType = getDateSelectionType(date);
+        const isSelected = selectionType !== 'none';
+        
+        // Build CSS classes for different selection states
+        const selectionClass = isSelected ? `selected ${selectionType}` : '';
         
         days.push(`
             <div class="calendar-day ${isCurrentMonth ? 'current-month' : 'other-month'} 
-                       ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''}" 
-                 data-date="${date.toISOString().split('T')[0]}">
+                       ${isToday ? 'today' : ''} ${selectionClass}" 
+                 data-date="${date.toISOString().split('T')[0]}"
+                 data-selection-type="${selectionType}">
                 ${date.getDate()}
             </div>
         `);
@@ -579,6 +585,12 @@ function generateDemoCalendarHTML(year: number, month: number): string {
             <h3>${monthNames[month]} ${year}</h3>
             <button class="calendar-nav-btn" id="demo-next-month">
                 <i data-feather="chevron-right"></i>
+            </button>
+        </div>
+        <div class="calendar-selection-info">
+            <div id="demo-selection-status">No dates selected</div>
+            <button class="clear-selection-btn" id="demo-clear-selection" style="display: none;">
+                <i data-feather="x"></i> Clear
             </button>
         </div>
         <div class="calendar-weekdays">
@@ -607,7 +619,8 @@ function bindDemoCalendarEvents(): void {
             const target = e.target as HTMLElement;
             const dateStr = target.getAttribute('data-date');
             if (dateStr) {
-                selectDemoDate(new Date(dateStr));
+                // Fix timezone issue by ensuring local timezone interpretation
+                selectDemoDate(new Date(dateStr + 'T00:00:00'));
             }
         });
     });
@@ -631,6 +644,12 @@ function bindDemoCalendarEvents(): void {
         closeDemoCalendar();
     });
 
+    // Clear selection button
+    const clearBtn = document.getElementById('demo-clear-selection');
+    clearBtn?.addEventListener('click', () => {
+        clearDemoDateSelection();
+    });
+
     // Re-render feather icons
     if (typeof (window as any).feather !== 'undefined') {
         (window as any).feather.replace();
@@ -638,7 +657,7 @@ function bindDemoCalendarEvents(): void {
 }
 
 /**
- * Selects a date in the demo calendar
+ * Selects a date in the demo calendar with enhanced range handling
  */
 function selectDemoDate(date: Date): void {
     const dateRange = (window as any).demoDateRange as DemoDateRange;
@@ -648,7 +667,7 @@ function selectDemoDate(date: Date): void {
         dateRange.start = date;
         dateRange.end = null;
     } else if (!dateRange.end) {
-        // Second selection - determine if it's start or end
+        // Second selection - create range
         if (date < dateRange.start) {
             dateRange.end = dateRange.start;
             dateRange.start = date;
@@ -656,28 +675,78 @@ function selectDemoDate(date: Date): void {
             dateRange.end = date;
         }
     } else {
-        // New selection - reset
-        dateRange.start = date;
-        dateRange.end = null;
+        // Range exists - show confirmation dialog for clearing
+        showRangeClearConfirmation(date);
+        return;
     }
 
     updateDemoSelectedDatesDisplay();
+    updateDemoSelectionStatus();
     renderDemoCalendar();
 }
 
 /**
- * Checks if a date is selected in the demo calendar
+ * Shows confirmation dialog when trying to clear an existing range
  */
-function isDateSelected(date: Date): boolean {
+function showRangeClearConfirmation(newDate: Date): void {
+    const dateRange = (window as any).demoDateRange as DemoDateRange;
+    const startDate = formatDate(dateRange.start!);
+    const endDate = formatDate(dateRange.end!);
+    const newDateStr = formatDate(newDate);
+    
+    const confirmed = confirm(
+        `You have selected a date range from ${startDate} to ${endDate}.\n\n` +
+        `Clicking ${newDateStr} will clear this range and start a new selection.\n\n` +
+        `Do you want to continue?`
+    );
+    
+    if (confirmed) {
+        dateRange.start = newDate;
+        dateRange.end = null;
+        updateDemoSelectedDatesDisplay();
+        updateDemoSelectionStatus();
+        renderDemoCalendar();
+    }
+}
+
+/**
+ * Checks if a date is selected in the demo calendar and returns selection type
+ */
+function getDateSelectionType(date: Date): 'none' | 'start' | 'end' | 'between' | 'single' {
     const dateRange = (window as any).demoDateRange as DemoDateRange;
     
-    if (!dateRange.start) return false;
+    if (!dateRange.start) return 'none';
     
     if (!dateRange.end) {
-        return isSameDay(date, dateRange.start);
+        return isSameDay(date, dateRange.start) ? 'single' : 'none';
     }
     
-    return date >= dateRange.start && date <= dateRange.end;
+    if (isSameDay(date, dateRange.start)) return 'start';
+    if (isSameDay(date, dateRange.end)) return 'end';
+    if (date > dateRange.start && date < dateRange.end) return 'between';
+    
+    return 'none';
+}
+
+/**
+ * Checks if a date is selected in the demo calendar (legacy function for compatibility)
+ */
+function isDateSelected(date: Date): boolean {
+    const selectionType = getDateSelectionType(date);
+    return selectionType !== 'none';
+}
+
+/**
+ * Clears the demo date selection
+ */
+function clearDemoDateSelection(): void {
+    const dateRange = (window as any).demoDateRange as DemoDateRange;
+    dateRange.start = null;
+    dateRange.end = null;
+    
+    updateDemoSelectedDatesDisplay();
+    updateDemoSelectionStatus();
+    renderDemoCalendar();
 }
 
 /**
@@ -695,6 +764,29 @@ function updateDemoSelectedDatesDisplay(): void {
         selectedDatesEl.textContent = `Selected: ${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}`;
     } else {
         selectedDatesEl.textContent = '';
+    }
+}
+
+/**
+ * Updates the selection status display in the calendar header
+ */
+function updateDemoSelectionStatus(): void {
+    const statusEl = document.getElementById('demo-selection-status');
+    const clearBtn = document.getElementById('demo-clear-selection');
+    
+    if (!statusEl || !clearBtn) return;
+
+    const dateRange = (window as any).demoDateRange as DemoDateRange;
+
+    if (!dateRange.start) {
+        statusEl.textContent = 'No dates selected';
+        clearBtn.style.display = 'none';
+    } else if (!dateRange.end) {
+        statusEl.textContent = `Single date: ${formatDate(dateRange.start)}`;
+        clearBtn.style.display = 'inline-flex';
+    } else {
+        statusEl.textContent = `Range: ${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}`;
+        clearBtn.style.display = 'inline-flex';
     }
 }
 
@@ -954,6 +1046,7 @@ export const cleanupMonitorSetup = (): void => {
     delete (window as any).toggleDemoStudentAccordion;
     delete (window as any).demoDownloadChat;
     delete (window as any).renderDemoStudentList;
+    delete (window as any).clearDemoDateSelection;
     
     //START DEBUG LOG : DEBUG-CODE(009)
     console.log("✅ Monitor setup cleanup completed");

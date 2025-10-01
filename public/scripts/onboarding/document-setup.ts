@@ -673,7 +673,7 @@ async function removeDemoObjective(index: number): Promise<void> {
         objectiveToRemove.learningObjective
     );
     
-    if (result.action !== 'Delete') {
+    if (result.action !== 'delete') {
         return; // User cancelled
     }
     
@@ -720,7 +720,7 @@ async function clearDemoObjectives(): Promise<void> {
     // Show confirmation modal
     const result = await showDeleteConfirmationModal('All Learning Objectives');
     
-    if (result.action !== 'Delete') {
+    if (result.action !== 'delete') {
         return; // User cancelled
     }
     
@@ -956,15 +956,12 @@ async function simulateBackendProcessing(files: DemoFile[]): Promise<{ success: 
  */
 async function addLearningObjectiveToBackend(objective: LearningObjective, courseId: string, divisionId: string, contentId: string): Promise<{ success: boolean; id?: string }> {
     try {
-        const response = await fetch('/api/mongodb/learning-objectives', {
+        const response = await fetch(`/api/courses/${courseId}/divisions/${divisionId}/items/${contentId}/objectives`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                courseId: courseId,
-                divisionId: divisionId,
-                contentId: contentId,
                 learningObjective: objective
             })
         });
@@ -1001,17 +998,11 @@ async function addLearningObjectiveToBackend(objective: LearningObjective, cours
  */
 async function deleteLearningObjectiveFromBackend(objectiveId: string, courseId: string, divisionId: string, contentId: string): Promise<{ success: boolean }> {
     try {
-        const response = await fetch('/api/mongodb/learning-objectives', {
+        const response = await fetch(`/api/courses/${courseId}/divisions/${divisionId}/items/${contentId}/objectives/${objectiveId}`, {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                courseId: courseId,
-                divisionId: divisionId,
-                contentId: contentId,
-                objectiveId: objectiveId
-            })
+            }
         });
 
         const result = await response.json();

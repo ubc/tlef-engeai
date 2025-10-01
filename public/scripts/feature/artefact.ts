@@ -25,6 +25,8 @@ export class ArtefactHandler {
     private static instance: ArtefactHandler | null = null;
     private artefacts: Map<string, ArtefactData> = new Map();
     private artefactCounter: number = 0;
+    private currentlyOpenArtefactId: string | null = null;
+    private eventDelegationSetup: boolean = false;
 
     private constructor() {
         this.setupEventDelegation();
@@ -35,22 +37,42 @@ export class ArtefactHandler {
      * This handles clicks on buttons that are dynamically added via innerHTML
      */
     private setupEventDelegation(): void {
+        // Prevent multiple event listeners
+        if (this.eventDelegationSetup) {
+            console.log('🎨 Event delegation already set up, skipping...');
+            return;
+        }
+        
+        console.log('🎨 Setting up event delegation for ArtefactHandler');
+        this.eventDelegationSetup = true;
+        
         // Use event delegation on the document to catch clicks on artefact buttons
         document.addEventListener('click', async (event) => {
             const target = event.target as HTMLElement;
             
+            // Debug: Log all clicks to see what's being clicked
+            console.log('🎯 Click detected on:', target.tagName, target.className, target.id);
+            
             // Check if the clicked element is an artefact button or inside one
             const button = target.closest('.artefact-button') as HTMLButtonElement;
             if (button) {
+                console.log('🎨 Artefact button found:', button.id, button.className);
+                
                 // Extract artefact ID from button ID
                 const buttonId = button.id;
-                if (buttonId && buttonId.startsWith('artefact-btn-')) {
-                    const artefactId = buttonId.replace('artefact-btn-', '');
+                if (buttonId && (buttonId.startsWith('artefact-btn-') || buttonId === 'demo-artefact-btn')) {
+                    const artefactId = buttonId === 'demo-artefact-btn' ? 'demo-artefact-onboarding' : buttonId.replace('artefact-btn-', '');
                     
                     console.log('🎨 Artefact button clicked via delegation:', artefactId);
                     
-                    // Open the artefact
-                    await this.openArtefact(artefactId);
+                    // Prevent event bubbling to avoid multiple handlers
+                    event.stopPropagation();
+                    event.preventDefault();
+                    
+                    // Toggle the artefact (open if closed, close if open)
+                    await this.toggleArtefact(artefactId);
+                } else {
+                    console.log('⚠️ Button found but ID not recognized:', buttonId);
                 }
                 return;
             }
@@ -93,6 +115,24 @@ export class ArtefactHandler {
             ArtefactHandler.instance = new ArtefactHandler();
         }
         return ArtefactHandler.instance;
+    }
+
+    /**
+     * Debug method to check if demo button exists and is properly set up
+     */
+    public debugDemoButton(): void {
+        const demoButton = document.getElementById('demo-artefact-btn');
+        if (demoButton) {
+            console.log('✅ Demo button found:', {
+                id: demoButton.id,
+                className: demoButton.className,
+                tagName: demoButton.tagName,
+                isVisible: demoButton.offsetParent !== null,
+                hasArtifactButtonClass: demoButton.classList.contains('artefact-button')
+            });
+        } else {
+            console.log('❌ Demo button not found in DOM');
+        }
     }
 
     /**
@@ -214,6 +254,8 @@ export class ArtefactHandler {
         const button = document.createElement('button');
         button.className = 'artefact-button';
         button.id = `artefact-btn-${artefactData.id}`;
+        
+        // Always show "View Diagram" text, but the functionality will toggle
         button.innerHTML = `
             <i data-feather="image"></i>
             <span>View Diagram</span>
@@ -223,6 +265,63 @@ export class ArtefactHandler {
         // This allows buttons injected via innerHTML to work properly
 
         return button;
+    }
+
+    /**
+     * Toggle artefact panel (open if closed, close if open)
+     * @param artefactId - The artefact ID to toggle
+     */
+    public async toggleArtefact(artefactId: string): Promise<void> {
+        let artefactData = this.artefacts.get(artefactId);
+        
+        // Create demo artefact if it doesn't exist and this is the demo
+        if (!artefactData && artefactId === 'demo-artefact-onboarding') {
+            console.log('🎨 Creating demo artefact for onboarding');
+            const mermaidCode = `
+graph TD
+    A[Thermodynamics in Electrochemistry] --> B[Gibbs Free Energy]
+    A --> C[Electrode Potentials]
+    A --> D[Electrochemical Cells]
+    
+    B --> E["ΔG = -nFE"]
+    C --> F["E = E° - RT/nF lnQ"]
+    D --> G[Anode: Oxidation]
+    D --> H[Cathode: Reduction]
+    
+    G --> I[Electrons Flow]
+    H --> I
+    I --> J[Current Generation]
+    
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#f3e5f5
+    style D fill:#f3e5f5
+    style E fill:#fff3e0
+    style F fill:#fff3e0
+    `;
+            
+            artefactData = {
+                id: artefactId,
+                mermaidCode: mermaidCode,
+                isOpen: false,
+                messageId: 'demo-message'
+            };
+            
+            this.artefacts.set(artefactId, artefactData);
+        }
+        
+        if (!artefactData) {
+            console.error('Artefact not found:', artefactId);
+            return;
+        }
+
+        if (this.currentlyOpenArtefactId === artefactId) {
+            // Currently open, so close it
+            this.closeArtefact();
+        } else {
+            // Not open, so open it
+            await this.openArtefact(artefactId);
+        }
     }
 
     /**
@@ -239,6 +338,12 @@ export class ArtefactHandler {
         // Update artefact state
         artefactData.isOpen = true;
         this.artefacts.set(artefactId, artefactData);
+        
+        // Track currently open artefact
+        this.currentlyOpenArtefactId = artefactId;
+        
+        // Update button appearance for this artefact
+        this.updateArtefactButton(artefactId);
 
         // Get artefact panel (now already in DOM)
         const panel = document.getElementById('artefact-panel');
@@ -247,8 +352,12 @@ export class ArtefactHandler {
             return;
         }
 
-        // Get chat window container and add artefact-open class
-        const container = document.querySelector('.chat-window-container') as HTMLElement | null;
+        // Get the appropriate container and add artefact-open class
+        // Check if we're in onboarding mode
+        const onboardingContainer = document.querySelector('.onboarding') as HTMLElement | null;
+        const chatContainer = document.querySelector('.chat-window-container') as HTMLElement | null;
+        
+        const container = onboardingContainer || chatContainer;
         if (container) {
             container.classList.add('artefact-open');
         }
@@ -274,8 +383,27 @@ export class ArtefactHandler {
         const panel = document.getElementById('artefact-panel');
         if (!panel) return;
 
-        // Get chat window container and remove artefact-open class
-        const container = document.querySelector('.chat-window-container') as HTMLElement | null;
+        // Update currently open artefact state
+        if (this.currentlyOpenArtefactId) {
+            const artefactData = this.artefacts.get(this.currentlyOpenArtefactId);
+            if (artefactData) {
+                artefactData.isOpen = false;
+                this.artefacts.set(this.currentlyOpenArtefactId, artefactData);
+            }
+            
+            // Update button appearance for the previously open artefact
+            this.updateArtefactButton(this.currentlyOpenArtefactId);
+            
+            // Clear currently open artefact
+            this.currentlyOpenArtefactId = null;
+        }
+
+        // Get the appropriate container and remove artefact-open class
+        // Check if we're in onboarding mode
+        const onboardingContainer = document.querySelector('.onboarding') as HTMLElement | null;
+        const chatContainer = document.querySelector('.chat-window-container') as HTMLElement | null;
+        
+        const container = onboardingContainer || chatContainer;
         if (container) {
             container.classList.remove('artefact-open');
         }
@@ -288,6 +416,29 @@ export class ArtefactHandler {
 
         // Remove ESC listener
         this.removeEscListener();
+    }
+
+    /**
+     * Update artefact button appearance based on current state
+     * @param artefactId - The artefact ID to update
+     */
+    private updateArtefactButton(artefactId: string): void {
+        const button = document.getElementById(`artefact-btn-${artefactId}`) as HTMLButtonElement;
+        if (!button) return;
+
+        const artefactData = this.artefacts.get(artefactId);
+        if (!artefactData) return;
+
+        // Always show "View Diagram" text, but the functionality will toggle
+        button.innerHTML = `
+            <i data-feather="image"></i>
+            <span>View Diagram</span>
+        `;
+        
+        // Re-render feather icons for the updated button
+        if (typeof (window as any).feather !== 'undefined') {
+            (window as any).feather.replace();
+        }
     }
 
     /**

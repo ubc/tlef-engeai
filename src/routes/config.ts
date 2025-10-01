@@ -8,10 +8,13 @@ import dotenv from 'dotenv';
 import { LLMConfig, ProviderType as LLMProviderType } from 'ubc-genai-toolkit-llm';
 import { RAGConfig, RAGProviderType, QdrantDistanceMetric } from 'ubc-genai-toolkit-rag';
 import { EmbeddingsConfig, EmbeddingProviderType } from 'ubc-genai-toolkit-embeddings';
+import { ChunkingConfig, ChunkingStrategyType } from 'ubc-genai-toolkit-chunking';
 import { ConsoleLogger, LoggerInterface } from 'ubc-genai-toolkit-core';
 
 // Load environment variables from .env file
 dotenv.config({ path: require('path').resolve(__dirname, '../../.env') });
+
+
 
 export interface AppConfig {
 	llmConfig: Partial<LLMConfig>;
@@ -125,6 +128,39 @@ export function loadConfig(): AppConfig {
 	};
 	if (debug) logger.debug('Qdrant Specific Config:', qdrantConfig);
 
+	// --- RAG Chunking Configuration ---
+	const ragChunkSize = parseInt(process.env.RAG_CHUNK_SIZE || '1024');
+	const ragOverlapSize = parseInt(process.env.RAG_OVERLAP_SIZE || '200');
+	const ragChunkingStrategy = process.env.RAG_CHUNKING_STRATEGY || 'recursiveCharacter';
+	const ragMinChunkSize = parseInt(process.env.RAG_MIN_CHUNK_SIZE || '200');
+
+	// Log RAG Chunking Configuration
+	logger.info('🔧 RAG Chunking Configuration:');
+	logger.info(`   📏 Chunk Size: ${ragChunkSize} characters`);
+	logger.info(`   🔄 Overlap Size: ${ragOverlapSize} characters`);
+	logger.info(`   📋 Chunking Strategy: ${ragChunkingStrategy}`);
+	logger.info(`   📐 Min Chunk Size: ${ragMinChunkSize} characters`);
+	logger.info(`   📊 Overlap Percentage: ${((ragOverlapSize / ragChunkSize) * 100).toFixed(1)}%`);
+
+	if (debug) {
+		logger.debug('RAG Chunking Config Details:', {
+			chunkSize: ragChunkSize,
+			overlapSize: ragOverlapSize,
+			chunkingStrategy: ragChunkingStrategy,
+			minChunkSize: ragMinChunkSize,
+			overlapPercentage: ((ragOverlapSize / ragChunkSize) * 100).toFixed(1) + '%'
+		});
+	}
+
+	// --- Assemble Chunking Config ---
+	const chunkingConfig: ChunkingConfig = {
+		strategy: ragChunkingStrategy as ChunkingStrategyType, // Convert string to ChunkingStrategyType
+		defaultOptions: {
+			chunkSize: ragChunkSize,
+			chunkOverlap: ragOverlapSize,
+		}
+	};
+
 	// --- Assemble RAG Config ---
 	const ragConfig: RAGConfig = {
 		provider: ragProvider,
@@ -135,6 +171,8 @@ export function loadConfig(): AppConfig {
 		// Default retrieval options (can be overridden at query time)
 		defaultRetrievalLimit: 5,
 		defaultScoreThreshold: 0.7, // Example threshold, adjust as needed
+		// Chunking configuration - NOW USING PROPER ChunkingConfig!
+		chunkingConfig: chunkingConfig
 	};
 	if (debug) logger.debug('Assembled RAG Config:', ragConfig);
 

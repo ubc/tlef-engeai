@@ -9,12 +9,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     
     <link rel="stylesheet" href="/styles/style.css" />
-    <link rel="stylesheet" href="/styles/chat-components/report-history.css" />
     <link rel="stylesheet" href="/styles/chat-components/flag-message.css" />
     <link rel="stylesheet" href="/styles/chat-components/disclaimer.css" />
     <link rel="stylesheet" href="/styles/chat-components/latex-rendering.css" />
     <link rel="stylesheet" href="/styles/chat-components/chat-feature.css" />
+    <link rel="stylesheet" href="/styles/chat-components/artefact.css" />
     <link rel="stylesheet" href="/styles/student-mode.css" />
+    <link rel="stylesheet" href="/styles/student-components/profile.css" />
+    <link rel="stylesheet" href="/styles/instructor-components/onboarding.css" />
+    <link rel="stylesheet" href="/styles/student-components/student-onboarding.css" />
     
     <!-- KaTeX CSS for LaTeX rendering -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css" integrity="sha384-GvrOXuhMATgEsSwCs4smul74iXGOixntILdUW9XmUC6+HX0sLNAK3q71HotJqlAn" crossorigin="anonymous">
@@ -50,8 +53,12 @@
                 </nav>
             </div>
             <div class="sidebar-footer">
-                <button class="report-history-btn">
-                    <i data-feather="alert-triangle"></i>
+                <button class="logout-btn" id="logout-btn">
+                    <i data-feather="log-out"></i>
+                    <span>Log Out</span>
+                </button>
+                <button class="report-history-btn" id="profile-btn">
+                    <i data-feather="file-text"></i>
                     <span>Report History</span>
                 </button>
             </div>
@@ -70,6 +77,73 @@
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <!-- Flag Modal (outside all component containers) -->
+    <div id="flag-modal" class="modal-overlay flag-modal-overlay" style="display: none;">
+        <div class="flag-modal">
+            <!-- Modal Header -->
+            <div class="flag-modal-header">
+                <h2>Flag Message</h2>
+                <button class="close-modal icon-btn" id="flag-modal-close" aria-label="Close">
+                    <i data-feather="x"></i>
+                </button>
+            </div>
+            
+            <!-- Modal Content -->
+            <div class="flag-modal-content">
+                <!-- Message Display -->
+                <div class="flagged-message-container">
+                    <p class="flagged-message-label">Flagged Message:</p>
+                    <div class="flagged-message-display">
+                        <div class="flagged-message-content" id="flag-message-content">
+                            This is a sample message that might contain incorrect information. Notice the flag button below - you can use it to report any issues with AI responses.
+                        </div>
+                        <div class="flagged-message-timestamp">
+                            Today at 2:30 PM
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Flag Form -->
+                <form id="flag-form" class="flag-form">
+                    <p class="flag-form-label">Select reason for flagging (choose one):</p>
+                    <div class="flag-radio-group">
+                        <div class="flag-radio-item">
+                            <input type="radio" name="flagReason" value="innacurate_response" id="flag-reason-0" checked>
+                            <label for="flag-reason-0">Wrong calculations, formulas, or engineering principles</label>
+                        </div>
+                        <div class="flag-radio-item">
+                            <input type="radio" name="flagReason" value="harassment" id="flag-reason-1">
+                            <label for="flag-reason-1">Contains harassment, or content that violates EDI principles</label>
+                        </div>
+                        <div class="flag-radio-item">
+                            <input type="radio" name="flagReason" value="inappropriate" id="flag-reason-2">
+                            <label for="flag-reason-2">Response veers into personal opinions, political views, or non-academic discussions</label>
+                        </div>
+                        <div class="flag-radio-item">
+                            <input type="radio" name="flagReason" value="dishonesty" id="flag-reason-3">
+                            <label for="flag-reason-3">Provides content that appears copied from sources without attribution</label>
+                        </div>
+                        <div class="flag-radio-item">
+                            <input type="radio" name="flagReason" value="interface_bug" id="flag-reason-4">
+                            <label for="flag-reason-4">Interface bugs or usability issues</label>
+                        </div>
+                        <div class="flag-radio-item">
+                            <input type="radio" name="flagReason" value="other" id="flag-reason-5">
+                            <label for="flag-reason-5">Others (please specify below)</label>
+                        </div>
+                    </div>
+                    <textarea id="flag-other-input" class="flag-other-input" placeholder="Please provide additional details..." style="display: none;" rows="3"></textarea>
+                </form>
+            </div>
+            
+            <!-- Modal Footer -->
+            <div class="flag-modal-footer">
+                <div class="flag-status-message" style="display: none;"></div>
+                <button type="button" class="flag-submit-btn">Submit Flag</button>
+            </div>
+        </div>
+    </div>
+
     <script>mermaid.initialize({ startOnLoad: false, theme: 'default' });</script>
     <script type="module" src="/dist/public/scripts/student-mode.js"></script>
     <script>

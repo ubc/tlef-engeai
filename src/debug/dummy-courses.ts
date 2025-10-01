@@ -12,7 +12,7 @@
  * @since: 2025-01-27
  */
 
-import { EngEAI_MongoDB } from '../routes/mongo-app';
+import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { IDGenerator } from '../functions/unique-id-generator';
 import { activeCourse, ContentDivision, LearningObjective, AdditionalMaterial } from '../functions/types';
 
