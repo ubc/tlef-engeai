@@ -8,22 +8,17 @@ import dotenv from 'dotenv';
 import { LLMConfig, ProviderType as LLMProviderType } from 'ubc-genai-toolkit-llm';
 import { RAGConfig, RAGProviderType, QdrantDistanceMetric } from 'ubc-genai-toolkit-rag';
 import { EmbeddingsConfig, EmbeddingProviderType } from 'ubc-genai-toolkit-embeddings';
+import { ChunkingConfig, ChunkingStrategyType } from 'ubc-genai-toolkit-chunking';
 import { ConsoleLogger, LoggerInterface } from 'ubc-genai-toolkit-core';
 
 // Load environment variables from .env file
 dotenv.config({ path: require('path').resolve(__dirname, '../../.env') });
 
-export interface ChunkingConfig {
-	chunkSize: number;
-	overlapSize: number;
-	chunkingStrategy: string;
-	minChunkSize: number;
-}
+
 
 export interface AppConfig {
 	llmConfig: Partial<LLMConfig>;
 	ragConfig: RAGConfig;
-	chunkingConfig: ChunkingConfig;
 	logger: LoggerInterface;
 	debug: boolean;
 }
@@ -136,7 +131,7 @@ export function loadConfig(): AppConfig {
 	// --- RAG Chunking Configuration ---
 	const ragChunkSize = parseInt(process.env.RAG_CHUNK_SIZE || '1024');
 	const ragOverlapSize = parseInt(process.env.RAG_OVERLAP_SIZE || '200');
-	const ragChunkingStrategy = process.env.RAG_CHUNKING_STRATEGY || 'semantic';
+	const ragChunkingStrategy = process.env.RAG_CHUNKING_STRATEGY || 'recursiveCharacter';
 	const ragMinChunkSize = parseInt(process.env.RAG_MIN_CHUNK_SIZE || '200');
 
 	// Log RAG Chunking Configuration
@@ -159,10 +154,11 @@ export function loadConfig(): AppConfig {
 
 	// --- Assemble Chunking Config ---
 	const chunkingConfig: ChunkingConfig = {
-		chunkSize: ragChunkSize,
-		overlapSize: ragOverlapSize,
-		chunkingStrategy: ragChunkingStrategy,
-		minChunkSize: ragMinChunkSize,
+		strategy: ragChunkingStrategy as ChunkingStrategyType, // Convert string to ChunkingStrategyType
+		defaultOptions: {
+			chunkSize: ragChunkSize,
+			chunkOverlap: ragOverlapSize,
+		}
 	};
 
 	// --- Assemble RAG Config ---
@@ -175,13 +171,14 @@ export function loadConfig(): AppConfig {
 		// Default retrieval options (can be overridden at query time)
 		defaultRetrievalLimit: 5,
 		defaultScoreThreshold: 0.7, // Example threshold, adjust as needed
+		// Chunking configuration - NOW USING PROPER ChunkingConfig!
+		chunkingConfig: chunkingConfig
 	};
 	if (debug) logger.debug('Assembled RAG Config:', ragConfig);
 
 	return {
 		llmConfig,
 		ragConfig,
-		chunkingConfig,
 		logger,
 		debug,
 	};

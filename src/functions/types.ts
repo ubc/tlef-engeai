@@ -162,7 +162,7 @@ export interface User {
     activeCourseId: string;
     activeCourseName: string;
     userOnboarding: boolean; // this is only used for student mode
-    role: 'instructor' | 'teaching assistant' | 'student';
+    affiliation: 'student' | 'faculty';
     status: 'active' | 'inactive';
     chats: Chat[];
     createdAt: Date;

@@ -137,7 +137,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('[STUDENT-MODE] 📊 User context:', {
         puid: user.puid,
         activeCourseName: user.activeCourseName,
-        role: user.role
+        affiliation: user.affiliation
     });
     
     try {

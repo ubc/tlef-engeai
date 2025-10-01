@@ -59,6 +59,8 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    flex: 1; /* Take up available space, pushing footer to bottom */
+    overflow-y: auto; /* Allow scrolling if content is too long */
 }
 
 
@@ -147,6 +149,55 @@ body {
 
 .instructor-sidebar .chat-list .chat-item:not(.active):hover {
     background-color: var(--hover-bg);
+}
+
+/* Instructor Sidebar Footer Styles - INSIDE instructor-feature-sidebar */
+.instructor-feature-sidebar .instructor-sidebar-footer {
+    padding: 0.75rem 0rem 0.75rem 0rem;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: auto;
+}
+
+/* Instructor Logout Button Styles */
+.instructor-logout-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    background-color: var(--background-2); 
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: #000000;
+}
+
+.instructor-logout-btn:hover { 
+    background-color: var(--color-eng-red); 
+    color: white; 
+    border-color: var(--color-eng-red); 
+}
+
+.instructor-logout-btn i {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+/* Hide logout text when feature sidebar is collapsed */
+.instructor-feature-sidebar.collapsed .instructor-logout-btn span {
+    display: none;
+}
+
+.instructor-feature-sidebar.collapsed .instructor-logout-btn {
+    padding: 0.5rem;
+    justify-content: center;
 }
 
 /* Error message styling */

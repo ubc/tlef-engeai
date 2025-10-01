@@ -84,7 +84,7 @@ router.post('/saml/callback', (req: express.Request, res: express.Response, next
                         activeCourseId: 'apsc-099',
                         activeCourseName: 'APSC 099: Engineering for Kindergarten',
                         userOnboarding: false, // Skip onboarding for now
-                        role: 'student',
+                        affiliation: 'student',
                         status: 'active',
                         chats: [],
                         createdAt: new Date(),
@@ -106,7 +106,7 @@ router.post('/saml/callback', (req: express.Request, res: express.Response, next
                         activeCourseId: 'apsc-099',
                         activeCourseName: 'APSC 099: Engineering for Kindergarten',
                         userOnboarding: false, // Skip onboarding for now
-                        role: 'student',
+                        affiliation: 'student',
                         status: 'active',
                         chats: []
                     };
@@ -129,12 +129,155 @@ router.post('/saml/callback', (req: express.Request, res: express.Response, next
                 res.redirect('/');
                 return;
             }
-        } else {
-            //START DEBUG LOG : DEBUG-CODE(NON-STUDENT)
-            console.log('[AUTH] 👨‍🏫 Non-student user (instructor/other), redirecting to index');
-            //END DEBUG LOG : DEBUG-CODE(NON-STUDENT)
+        } else if (affiliation === 'faculty') {
+            //START DEBUG LOG : DEBUG-CODE(FACULTY-001)
+            console.log('[AUTH] 👨‍🏫 Faculty detected, checking database...');
+            //END DEBUG LOG : DEBUG-CODE(FACULTY-001)
             
-            // For instructors or other users, redirect to index
+            try {
+                const mongoDB = await EngEAI_MongoDB.getInstance();
+                const courseName = 'APSC 099: Engineering for Kindergarten';
+                
+                // STEP 1: Check if instructor exists in APSC 099 collection
+                //START DEBUG LOG : DEBUG-CODE(FACULTY-002)
+                console.log(`[AUTH] 🔍 Step 1: Looking for faculty with PUID: ${puid} in course: ${courseName}`);
+                //END DEBUG LOG : DEBUG-CODE(FACULTY-002)
+                
+                const existingInstructor = await mongoDB.findStudentByPUID(courseName, puid);
+                
+                if (existingInstructor) {
+                    //START DEBUG LOG : DEBUG-CODE(FACULTY-003)
+                    console.log('[AUTH] ✅ Existing faculty found!');
+                    console.log(`[AUTH] 👤 Faculty Name: ${existingInstructor.name}`);
+                    console.log(`[AUTH] 📊 Faculty Data:`, {
+                        userId: existingInstructor.userId,
+                        activeCourseId: existingInstructor.activeCourseId,
+                        activeCourseName: existingInstructor.activeCourseName,
+                        chatCount: existingInstructor.chats?.length || 0
+                    });
+                    //END DEBUG LOG : DEBUG-CODE(FACULTY-003)
+                    
+                    res.redirect('/pages/instructor-mode.html');
+                    return;
+                } else {
+                    //START DEBUG LOG : DEBUG-CODE(FACULTY-004)
+                    console.log('[AUTH] 🆕 New faculty detected, proceeding with account creation...');
+                    //END DEBUG LOG : DEBUG-CODE(FACULTY-004)
+                    
+                    // STEP 2: Load APSC 099 course from database by courseName
+                    //START DEBUG LOG : DEBUG-CODE(FACULTY-005)
+                    console.log(`[AUTH] 📚 Step 2: Loading APSC 099 course from database...`);
+                    //END DEBUG LOG : DEBUG-CODE(FACULTY-005)
+                    
+                    const apsc099Course = await mongoDB.getCourseByName(courseName) as any;
+                    
+                    if (!apsc099Course) {
+                        //START DEBUG LOG : DEBUG-CODE(FACULTY-006)
+                        console.error('[AUTH] ❌ CRITICAL ERROR: APSC 099 course not found in database!');
+                        console.error('[AUTH] 🔍 Searched for courseName:', courseName);
+                        //END DEBUG LOG : DEBUG-CODE(FACULTY-006)
+                        
+                        res.status(500).send(`
+                            <html>
+                                <body style="font-family: sans-serif; padding: 2rem; text-align: center;">
+                                    <h1 style="color: #dc3545;">System Configuration Error</h1>
+                                    <p>The required course was not found in the system.</p>
+                                    <p>Please contact the system administrator.</p>
+                                    <a href="/" style="color: #007bff;">Return to Home</a>
+                                </body>
+                            </html>
+                        `);
+                        return;
+                    }
+                    
+                    //START DEBUG LOG : DEBUG-CODE(FACULTY-007)
+                    console.log('[AUTH] ✅ APSC 099 course found!');
+                    console.log(`[AUTH] 📋 Course Details:`, {
+                        id: apsc099Course.id,
+                        courseName: apsc099Course.courseName,
+                        courseSetup: apsc099Course.courseSetup,
+                        contentSetup: apsc099Course.contentSetup,
+                        flagSetup: apsc099Course.flagSetup,
+                        monitorSetup: apsc099Course.monitorSetup,
+                        instructorCount: apsc099Course.instructors?.length || 0,
+                        taCount: apsc099Course.teachingAssistants?.length || 0
+                    });
+                    //END DEBUG LOG : DEBUG-CODE(FACULTY-007)
+                    
+                    // STEP 3: Create new instructor User document
+                    //START DEBUG LOG : DEBUG-CODE(FACULTY-008)
+                    console.log(`[AUTH] 👤 Step 3: Creating new instructor User document...`);
+                    //END DEBUG LOG : DEBUG-CODE(FACULTY-008)
+                    
+                    const tempUserData: User = {
+                        name: `${user.firstName} ${user.lastName}`,
+                        puid: puid,
+                        userId: 0, // Will be generated
+                        activeCourseId: apsc099Course.id,  // Use actual course ID from database
+                        activeCourseName: apsc099Course.courseName,  // Use actual courseName from database
+                        userOnboarding: false,
+                        affiliation: 'faculty',
+                        status: 'active',
+                        chats: [],
+                        createdAt: new Date(),
+                        updatedAt: new Date()
+                    };
+                    
+                    // Generate unique userId
+                    const idGenerator = IDGenerator.getInstance();
+                    const generatedUserId = parseInt(idGenerator.userID(tempUserData).substring(0, 8), 16);
+                    
+                    //START DEBUG LOG : DEBUG-CODE(FACULTY-009)
+                    console.log(`[AUTH] 🆔 Generated userId: ${generatedUserId} for faculty: ${user.firstName} ${user.lastName}`);
+                    //END DEBUG LOG : DEBUG-CODE(FACULTY-009)
+                    
+                    const newInstructorData: Partial<User> = {
+                        name: `${user.firstName} ${user.lastName}`,
+                        puid: puid,
+                        userId: generatedUserId,
+                        activeCourseId: apsc099Course.id,
+                        activeCourseName: apsc099Course.courseName,
+                        userOnboarding: false,
+                        affiliation: 'faculty',
+                        status: 'active',
+                        chats: []
+                    };
+                    
+                    await mongoDB.createStudent(courseName, newInstructorData);
+                    
+                    //START DEBUG LOG : DEBUG-CODE(FACULTY-010)
+                    console.log('[AUTH] ✅ New faculty User document created successfully!');
+                    console.log(`[AUTH] 📊 Instructor Info:`, {
+                        name: newInstructorData.name,
+                        puid: newInstructorData.puid,
+                        userId: newInstructorData.userId,
+                        activeCourseId: newInstructorData.activeCourseId,
+                        activeCourseName: newInstructorData.activeCourseName
+                    });
+                    //END DEBUG LOG : DEBUG-CODE(FACULTY-010)
+                    
+                    res.redirect('/pages/instructor-mode.html');
+                    return;
+                }
+            } catch (error) {
+                //START DEBUG LOG : DEBUG-CODE(FACULTY-011)
+                console.error('[AUTH] 🚨 Database error for faculty:', error);
+                console.error('[AUTH] 📋 Error details:', {
+                    message: error instanceof Error ? error.message : 'Unknown error',
+                    stack: error instanceof Error ? error.stack : undefined
+                });
+                //END DEBUG LOG : DEBUG-CODE(FACULTY-011)
+                
+                // On database error, redirect to index.html
+                res.redirect('/');
+                return;
+            }
+        } else {
+            //START DEBUG LOG : DEBUG-CODE(UNKNOWN-AFFILIATION)
+            console.log('[AUTH] ⚠️ Unknown affiliation, redirecting to index');
+            //END DEBUG LOG : DEBUG-CODE(UNKNOWN-AFFILIATION)
+            
+            // For unknown affiliations, redirect to index
             res.redirect('/');
         }
     } catch (error) {

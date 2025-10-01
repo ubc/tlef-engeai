@@ -115,7 +115,7 @@ export function renderLatexInHtmlContent(element: HTMLElement): void {
  */
 export interface ChatManagerConfig {
     isInstructor: boolean;
-    userContext: User | activeCourse;
+    userContext: User;  // Always use User for both students and instructors
     onModeSpecificCallback?: (action: string, data?: any) => void;
 }
 
@@ -162,13 +162,10 @@ export class ChatManager {
 
         // Load initial chats from server
         try {
-            const courseName = this.config.isInstructor 
-                ? (this.config.userContext as activeCourse).courseName 
-                : (this.config.userContext as User).activeCourseName;
+            const courseName = this.config.userContext.activeCourseName;
+            const userId = this.config.userContext.puid;
             
-            // Use real user PUID instead of hardcoded strings
-            const userId = this.config.isInstructor ? 'instructor' : (this.config.userContext as User).puid;
-            console.log('[CHAT-MANAGER] 📊 Loading chats with:', { userId, courseName });
+            console.log('[CHAT-MANAGER] 📊 Loading chats with:', { userId, courseName, isInstructor: this.config.isInstructor });
             this.chats = await this.loadChatsFromServer(userId, courseName);
             
             // Set the first chat as active if there are any chats
@@ -242,10 +239,8 @@ export class ChatManager {
             console.log('[CHAT-MANAGER] 🆕 Creating new chat...');
             
             const chatRequest: CreateChatRequest = {
-                userID: this.config.isInstructor ? 'instructor' : (this.config.userContext as User).puid,
-                courseName: this.config.isInstructor 
-                    ? (this.config.userContext as activeCourse).courseName 
-                    : (this.config.userContext as User).activeCourseName,
+                userID: this.config.userContext.puid,
+                courseName: this.config.userContext.activeCourseName,
                 date: new Date().toISOString().split('T')[0]
             };
 
@@ -263,15 +258,13 @@ export class ChatManager {
             // Use it directly if available
             const newChat: Chat = (response as any).chat || {
                 id: response.chatId || Date.now().toString(),
-                courseName: this.config.isInstructor 
-                    ? (this.config.userContext as activeCourse).courseName 
-                    : (this.config.userContext as User).activeCourseName,
+                courseName: this.config.userContext.activeCourseName,
                 divisionTitle: '',
                 itemTitle: '',
                 messages: response.initAssistantMessage ? [{
                     id: response.initAssistantMessage.id,
                     sender: response.initAssistantMessage.sender as 'bot',
-                    userId: this.config.isInstructor ? 0 : (this.config.userContext as User).userId,
+                    userId: this.config.userContext.userId,
                     courseName: response.initAssistantMessage.courseName,
                     text: response.initAssistantMessage.text,
                     timestamp: response.initAssistantMessage.timestamp,
@@ -321,10 +314,8 @@ export class ChatManager {
         const userMessage: ChatMessage = {
             id: Date.now().toString(),
             sender: 'user',
-            userId: this.config.isInstructor ? 0 : (this.config.userContext as User).userId,
-            courseName: this.config.isInstructor 
-                ? (this.config.userContext as activeCourse).courseName 
-                : (this.config.userContext as User).activeCourseName,
+            userId: this.config.userContext.userId,
+            courseName: this.config.userContext.activeCourseName,
             text,
             timestamp: Date.now()
         };
@@ -335,10 +326,8 @@ export class ChatManager {
         const botMessage: ChatMessage = {
             id: botMessageId,
             sender: 'bot',
-            userId: this.config.isInstructor ? 0 : (this.config.userContext as User).userId,
-            courseName: this.config.isInstructor 
-                ? (this.config.userContext as activeCourse).courseName 
-                : (this.config.userContext as User).activeCourseName,
+            userId: this.config.userContext.userId,
+            courseName: this.config.userContext.activeCourseName,
             text: 'Thinking...',
             timestamp: Date.now(),
         } as ChatMessage & { artefact?: any };
@@ -360,10 +349,8 @@ export class ChatManager {
                 },
                 body: JSON.stringify({
                     message: text,
-                    userId: this.config.isInstructor ? 'instructor' : (this.config.userContext as User).puid,
-                    courseName: this.config.isInstructor 
-                        ? (this.config.userContext as activeCourse).courseName 
-                        : (this.config.userContext as User).activeCourseName
+                    userId: this.config.userContext.puid,
+                    courseName: this.config.userContext.activeCourseName
                 }),
             });
 
@@ -1375,7 +1362,7 @@ export function createDefaultUser(): User {
         activeCourseId: 'default-course',
         activeCourseName: 'APSC 099: Engineering for Kindergarten',
         userOnboarding: false, // Student onboarding status
-        role: 'student',
+        affiliation: 'student',
         status: 'active',
         chats: [],
         createdAt: new Date(),
@@ -1396,7 +1383,7 @@ export function createUserFromAuthData(authUser: any): User {
         activeCourseId: 'apsc-099',
         activeCourseName: 'APSC 099: Engineering for Kindergarten', // Default course name
         userOnboarding: false,
-        role: 'student',
+        affiliation: 'student',
         status: 'active',
         chats: [],
         createdAt: new Date(),

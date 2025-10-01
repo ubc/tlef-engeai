@@ -286,7 +286,7 @@ export class IDGenerator {
      * @returns A 12-character hexadecimal string representing the unique user ID
      */
     userID(userDB: User): string {
-        const hashInput = userDB.puid + "-" + userDB.name + "-" + userDB.role + "-" + userDB.activeCourseName;
+        const hashInput = userDB.puid + "-" + userDB.name + "-" + userDB.affiliation + "-" + userDB.activeCourseName;
         return this.uniqueIDGenerator(hashInput);
     }
       

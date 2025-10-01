@@ -65,6 +65,7 @@ body {
 
 .sidebar.collapsed .logo-text,
 .sidebar.collapsed .report-history-btn span,
+.sidebar.collapsed .logout-btn span,
 .sidebar.collapsed .chat-item span {
     display: none; /* hide text when collapsed */
 }
@@ -78,7 +79,8 @@ body {
 }
 
 .sidebar.collapsed .add-chat-btn,
-.sidebar.collapsed .report-history-btn {
+.sidebar.collapsed .report-history-btn,
+.sidebar.collapsed .logout-btn {
     justify-content: center;
 }
 

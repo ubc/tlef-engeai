@@ -239,8 +239,43 @@ export class RAGApp {
             };
 
             this.logger.info(`📤 Uploading document to RAG: ${fullDocument.name}`);
+            
+            // Log the ACTUAL chunking configuration being used
+            const documentLength = documentText.length;
+            const chunkingConfig = this.config.ragConfig.chunkingConfig;
+            
+            this.logger.info(`📄 Document Length: ${documentLength} characters`);
+            
+            // Log the full chunking config for debugging
+            this.logger.info(`🔧 Chunking Config Type: ${typeof chunkingConfig}`);
+            this.logger.info(`🔧 Chunking Config: ${JSON.stringify(chunkingConfig, null, 2)}`);
+            
+            if (chunkingConfig && typeof chunkingConfig === 'object' && 'defaultOptions' in chunkingConfig) {
+                const actualChunkSize = (chunkingConfig as any).defaultOptions?.chunkSize || 1024;
+                const actualOverlap = (chunkingConfig as any).defaultOptions?.chunkOverlap || 200;
+                const actualStrategy = (chunkingConfig as any).strategy || 'recursiveCharacter';
+                
+                this.logger.info(`🔧 ACTUAL Chunking Configuration:`);
+                this.logger.info(`   📏 Chunk Size: ${actualChunkSize} characters`);
+                this.logger.info(`   🔄 Overlap: ${actualOverlap} characters`);
+                this.logger.info(`   📋 Strategy: ${actualStrategy}`);
+                
+                const effectiveChunkSize = actualChunkSize - actualOverlap;
+                const expectedChunks = Math.ceil(documentLength / effectiveChunkSize);
+                this.logger.info(`   🧮 Expected Chunks: ~${expectedChunks} (effective chunk size: ${effectiveChunkSize})`);
+            } else {
+                this.logger.warn(`⚠️  No chunking configuration found - using default chunker`);
+            }
+            
             const qdrantIds = await this.rag.addDocument(documentText, metadata);
             this.logger.info(`✅ Document uploaded to RAG successfully. Generated ${qdrantIds.length} chunks`);
+            
+            // Analyze results
+            const actualChunks = qdrantIds.length;
+            const avgChunkSize = Math.round(documentLength / actualChunks);
+            this.logger.info(`📊 Results Analysis:`);
+            this.logger.info(`   🎯 Actual Chunks: ${actualChunks}`);
+            this.logger.info(`   📏 Average Chunk Size: ${avgChunkSize} characters`);
 
             // Update document with upload results
             fullDocument.uploaded = true;
