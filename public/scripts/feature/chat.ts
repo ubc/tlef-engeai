@@ -1335,9 +1335,288 @@ export class ChatManager {
         return `${hours}:${minutes} ${dateLabel}`;
     }
 
-    private openFlagDialog(messageId: string): void {
-        // Flag dialog implementation
-        console.log('Flag dialog for message:', messageId);
+    /**
+     * Open flag dialog modal
+     * Displays the flagged message and a form to report issues
+     */
+    private async openFlagDialog(messageId: string): Promise<void> {
+        const activeChat = this.getActiveChat();
+        if (!activeChat) return;
+
+        // Find the message being flagged
+        const message = activeChat.messages.find(m => m.id === messageId);
+        if (!message || message.sender !== 'bot') {
+            console.error('Message not found or not a bot message');
+            return;
+        }
+
+        // Create modal overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay flag-modal-overlay';
+        document.body.appendChild(overlay);
+
+        // Create modal structure
+        const modal = document.createElement('div');
+        modal.className = 'flag-modal';
+        
+        // Modal Header
+        const header = document.createElement('div');
+        header.className = 'flag-modal-header';
+        
+        const title = document.createElement('h2');
+        title.textContent = 'Flag Message';
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'close-modal icon-btn';
+        closeBtn.setAttribute('aria-label', 'Close');
+        const closeIcon = document.createElement('i');
+        closeIcon.setAttribute('data-feather', 'x');
+        closeBtn.appendChild(closeIcon);
+        
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+        
+        // Modal Content - Message Display
+        const content = document.createElement('div');
+        content.className = 'flag-modal-content';
+        
+        const messageContainer = document.createElement('div');
+        messageContainer.className = 'flagged-message-container';
+        
+        const messageLabel = document.createElement('p');
+        messageLabel.className = 'flagged-message-label';
+        messageLabel.textContent = 'Flagged Message:';
+        
+        const messageDisplay = document.createElement('div');
+        messageDisplay.className = 'flagged-message-display';
+        
+        const messageContent = document.createElement('div');
+        messageContent.className = 'flagged-message-content';
+        
+        // Render message with LaTeX
+        renderLatexInElement(message.text, messageContent);
+        
+        const messageTimestamp = document.createElement('div');
+        messageTimestamp.className = 'flagged-message-timestamp';
+        messageTimestamp.textContent = this.formatFullTimestamp(message.timestamp);
+        
+        messageDisplay.appendChild(messageContent);
+        messageDisplay.appendChild(messageTimestamp);
+        messageContainer.appendChild(messageLabel);
+        messageContainer.appendChild(messageDisplay);
+        
+        // Flag Form
+        const form = document.createElement('form');
+        form.className = 'flag-form';
+        form.id = 'flag-form';
+        
+        const formLabel = document.createElement('p');
+        formLabel.className = 'flag-form-label';
+        formLabel.textContent = 'Select reason for flagging (choose one):';
+        
+        const flagOptions = [
+            { value: 'innacurate_response', label: 'Wrong calculations, formulas, or engineering principles' },
+            { value: 'harassment', label: 'Contains harassment, or content that violates EDI principles' },
+            { value: 'inappropriate', label: 'Response veers into personal opinions, political views, or non-academic discussions' },
+            { value: 'dishonesty', label: 'Provides content that appears copied from sources without attribution' },
+            { value: 'interface bug', label: 'Interface bugs or usability issues' },
+            { value: 'other', label: 'Others (please specify below)' }
+        ];
+        
+        const radioGroup = document.createElement('div');
+        radioGroup.className = 'flag-radio-group';
+        
+        flagOptions.forEach((option, index) => {
+            const radioWrapper = document.createElement('div');
+            radioWrapper.className = 'flag-radio-item';
+            
+            const radioInput = document.createElement('input');
+            radioInput.type = 'radio';
+            radioInput.name = 'flagReason';
+            radioInput.value = option.value;
+            radioInput.id = `flag-reason-${index}`;
+            if (index === 0) radioInput.checked = true; // Default to first option
+            
+            const radioLabel = document.createElement('label');
+            radioLabel.htmlFor = `flag-reason-${index}`;
+            radioLabel.textContent = option.label;
+            
+            radioWrapper.appendChild(radioInput);
+            radioWrapper.appendChild(radioLabel);
+            radioGroup.appendChild(radioWrapper);
+            
+            // Show/hide "Other" text input based on selection
+            if (option.value === 'other') {
+                radioInput.addEventListener('change', () => {
+                    otherInput.style.display = 'block';
+                    otherInput.focus();
+                });
+            } else {
+                radioInput.addEventListener('change', () => {
+                    otherInput.style.display = 'none';
+                });
+            }
+        });
+        
+        // "Other" text input (hidden by default)
+        const otherInput = document.createElement('textarea');
+        otherInput.className = 'flag-other-input';
+        otherInput.id = 'flag-other-input';
+        otherInput.placeholder = 'Please provide additional details...';
+        otherInput.style.display = 'none';
+        otherInput.rows = 3;
+        
+        form.appendChild(formLabel);
+        form.appendChild(radioGroup);
+        form.appendChild(otherInput);
+        
+        content.appendChild(messageContainer);
+        content.appendChild(form);
+        
+        // Modal Footer
+        const footer = document.createElement('div');
+        footer.className = 'flag-modal-footer';
+        
+        const submitBtn = document.createElement('button');
+        submitBtn.type = 'button';
+        submitBtn.className = 'flag-submit-btn';
+        submitBtn.textContent = 'Submit Flag';
+        
+        const statusMessage = document.createElement('div');
+        statusMessage.className = 'flag-status-message';
+        statusMessage.style.display = 'none';
+        
+        footer.appendChild(statusMessage);
+        footer.appendChild(submitBtn);
+        
+        // Assemble modal
+        modal.appendChild(header);
+        modal.appendChild(content);
+        modal.appendChild(footer);
+        overlay.appendChild(modal);
+        
+        // Show modal with animation
+        requestAnimationFrame(() => {
+            overlay.classList.add('show');
+            document.body.classList.add('modal-open');
+        });
+        
+        // Render feather icons
+        renderFeatherIcons();
+        
+        // Close modal function
+        const closeModal = () => {
+            document.body.classList.remove('modal-open');
+            overlay.classList.remove('show');
+            setTimeout(() => overlay.remove(), 300);
+        };
+        
+        // Event Listeners
+        closeBtn.addEventListener('click', closeModal);
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeModal();
+        });
+        
+        // ESC key handler
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                window.removeEventListener('keydown', handleEscape);
+            }
+        };
+        window.addEventListener('keydown', handleEscape);
+        
+        // Submit handler
+        submitBtn.addEventListener('click', async () => {
+            // Get selected flag reason
+            const selectedReason = form.querySelector('input[name="flagReason"]:checked') as HTMLInputElement;
+            if (!selectedReason) {
+                this.showFlagStatus(statusMessage, 'Please select a reason for flagging', 'error');
+                return;
+            }
+            
+            const flagType = selectedReason.value;
+            const otherDetails = otherInput.value.trim();
+            
+            // Validate "Other" option
+            if (flagType === 'other' && !otherDetails) {
+                this.showFlagStatus(statusMessage, 'Please provide details for "Other" reason', 'error');
+                otherInput.focus();
+                return;
+            }
+            
+            // Show loading state
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+            submitBtn.classList.add('loading');
+            
+            try {
+                // TODO: IMPLEMENT BACKEND API CALL
+                // Backend API endpoint: POST /api/courses/:courseId/flags or POST /api/chat/flags
+                // Request body should match FlagReport interface from types.ts:
+                // {
+                //     courseName: this.config.userContext.activeCourseName,
+                //     flagType: flagType as FlagReport['flagType'],
+                //     reportType: flagType === 'other' ? otherDetails : selectedReason.labels[0].textContent,
+                //     chatContent: message.text,
+                //     userId: this.config.userContext.userId,
+                //     chatId: activeChat.id,
+                //     messageId: message.id,
+                //     timestamp: message.timestamp
+                // }
+                // Expected response: { success: boolean, error?: string, flagId?: string }
+                // Implementation location: src/routes/chat.ts or src/routes/flags.ts
+                
+                // Simulate API call (REMOVE THIS AFTER BACKEND IMPLEMENTATION)
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                const simulatedResponse = { success: true };
+                
+                if (simulatedResponse.success) {
+                    // Show success message
+                    this.showFlagStatus(statusMessage, 'Flag submitted successfully! Thank you for your feedback.', 'success');
+                    submitBtn.style.display = 'none';
+                    
+                    // Auto-close after 2 seconds
+                    setTimeout(() => {
+                        closeModal();
+                        window.removeEventListener('keydown', handleEscape);
+                    }, 2000);
+                } else {
+                    throw new Error('Failed to submit flag');
+                }
+                
+            } catch (error) {
+                console.error('Error submitting flag:', error);
+                this.showFlagStatus(
+                    statusMessage, 
+                    'Failed to submit flag. Please try again.', 
+                    'error'
+                );
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit Flag';
+                submitBtn.classList.remove('loading');
+            }
+        });
+        
+        // Focus on first radio button
+        const firstRadio = radioGroup.querySelector('input[type="radio"]') as HTMLInputElement;
+        firstRadio?.focus();
+    }
+    
+    /**
+     * Show status message in flag modal
+     */
+    private showFlagStatus(statusElement: HTMLElement, message: string, type: 'success' | 'error'): void {
+        statusElement.textContent = message;
+        statusElement.className = `flag-status-message ${type}`;
+        statusElement.style.display = 'block';
+        
+        // Auto-hide error messages after 5 seconds
+        if (type === 'error') {
+            setTimeout(() => {
+                statusElement.style.display = 'none';
+            }, 5000);
+        }
     }
 
     private closeDisclaimerModal(overlay: HTMLElement): void {
