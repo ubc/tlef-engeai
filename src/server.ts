@@ -10,10 +10,6 @@ import debugRoutes from './routes/debug';  // Import MongoDB routes
 import authRoutes from './routes/auth';  // Import authentication routes
 import { initializeDummyCourses } from './debug/dummy-courses.js';
 
-// Import SAML authentication middleware
-import sessionMiddleware from './middleware/session';
-import { passport } from './middleware/passport';
-
 dotenv.config();
 
 const app = express();
@@ -22,16 +18,9 @@ const port = process.env.TLEF_ENGE_AI_PORT || 8020;
 // Enable CORS for all routes
 app.use(cors());
 
-// Body parsing middleware (needed for SAML POST)
+// Body parsing middleware
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
-
-// Session middleware - must be before passport
-app.use(sessionMiddleware);
-
-// Passport middleware
-app.use(passport.initialize());
-app.use(passport.session());
 
 // When running from src/server.ts, __dirname is .../src
 // When running from dist/server.js, __dirname is .../dist
@@ -83,7 +72,7 @@ app.listen(port, async () => {
     console.log(`[ENGE-AI] Server running on http://localhost:${port}`);
     console.log(`[ENGE-AI] Health check: http://localhost:${port}/api/health`);
     console.log(`[ENGE-AI] Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`[ENGE-AI] SAML Authentication: ${process.env.SAML_ENTRY_POINT ? 'Configured' : 'Not configured'}`);
+    console.log(`[ENGE-AI] Authentication: Demo Mode (No SAML)`);
     console.log('--------------------------------');
     
     // Initialize dummy courses on server startup

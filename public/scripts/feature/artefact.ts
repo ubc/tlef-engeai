@@ -1026,41 +1026,28 @@ graph TD
         onArtefactDetected?: (artefactData: ArtefactData) => void
     ): { processedText: string; hasArtefacts: boolean } {
         try {
-            // Check if we have a complete artefact (both opening and closing tags)
-            const artefactStart = text.lastIndexOf('<Artefact>');
-            const artefactEnd = text.lastIndexOf('</Artefact>');
+            // Use the same parsing logic as parseArtefacts for consistency
+            const parsed = this.parseArtefacts(text, messageId);
             
-            if (artefactStart !== -1 && artefactEnd !== -1 && artefactEnd > artefactStart) {
-                // We have a complete artefact, extract it
-                const mermaidCode = text.substring(artefactStart + '<Artefact>'.length, artefactEnd).trim();
-                const artefactId = `artefact-${messageId}-streaming-${Date.now()}`;
+            if (parsed.hasArtefacts) {
+                // Convert DOM elements back to HTML string for streaming updates
+                let processedText = '';
+                parsed.elements.forEach(element => {
+                    if (element.tagName === 'BR') {
+                        processedText += '\n';
+                    } else if (element.tagName === 'BUTTON') {
+                        processedText += element.outerHTML + '\n';
+                    } else {
+                        processedText += element.textContent || '';
+                    }
+                });
                 
-                const artefactData: ArtefactData = {
-                    id: artefactId,
-                    mermaidCode: mermaidCode,
-                    isOpen: false,
-                    messageId: messageId
-                };
-
-                // Store the artefact
-                this.artefacts.set(artefactId, artefactData);
-                
-                // Create the actual button HTML immediately
-                const buttonElement = this.createArtefactButton(artefactData);
-                const buttonHTML = buttonElement.outerHTML;
-                
-                // Replace the artefact tags with the actual button HTML
-                const beforeArtefact = text.substring(0, artefactStart);
-                const afterArtefact = text.substring(artefactEnd + '</Artefact>'.length);
-                
-                const processedText = beforeArtefact + '\n' + buttonHTML + '\n' + afterArtefact;
-                
-                // Notify that an artefact was detected
+                // Notify that artefacts were detected
                 if (onArtefactDetected) {
-                    onArtefactDetected(artefactData);
+                    parsed.artefacts.forEach(artefact => onArtefactDetected(artefact));
                 }
                 
-                console.log('🎨 Artefact detected during streaming - button created immediately:', artefactId);
+                console.log('🎨 Artefact detected during streaming - processed with parseArtefacts:', parsed.artefacts.length);
                 return { processedText, hasArtefacts: true };
             }
             

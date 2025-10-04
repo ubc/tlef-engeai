@@ -10,31 +10,20 @@ export const asyncHandler = (fn: Function) => {
 // Combined async handler with authentication requirement
 export const asyncHandlerWithAuth = (fn: Function) => {
     return (req: Request, res: Response, next: NextFunction) => {
-        // Check authentication first
-        if (!(req as any).isAuthenticated()) {
-            //START DEBUG LOG : DEBUG-CODE(ASYNC-AUTH-CHECK)
-            console.log('[ASYNC-AUTH] ❌ Authentication required but user not authenticated for route:', req.path);
-            //END DEBUG LOG : DEBUG-CODE(ASYNC-AUTH-CHECK)
-            
-            // For API routes, return JSON error
-            if (req.path.startsWith('/api/')) {
-                res.status(401).json({ 
-                    error: 'Authentication required',
-                    message: 'Please log in to access this resource'
-                });
-                return;
-            }
-            
-            // For page routes, redirect to login
-            res.redirect('/auth/login');
-            return;
-        }
+        // DEMO MODE: Always treat user as authenticated
+        console.log('[ASYNC-AUTH] 🎭 DEMO MODE: Treating user as authenticated for route:', req.path);
         
-        //START DEBUG LOG : DEBUG-CODE(ASYNC-AUTH-SUCCESS)
-        console.log('[ASYNC-AUTH] ✅ User authenticated, proceeding with async handler for route:', req.path);
-        //END DEBUG LOG : DEBUG-CODE(ASYNC-AUTH-SUCCESS)
+        // Set demo user in request object for compatibility
+        (req as any).user = {
+            username: 'demo_instructor',
+            firstName: 'Demo',
+            lastName: 'Instructor',
+            affiliation: 'instructor',
+            puid: 'demo123',
+            activeCourseName: 'APSC 099: Engineering for Kindergarten'
+        };
         
-        // User is authenticated, proceed with async handler
+        // Proceed with async handler
         Promise.resolve(fn(req, res, next)).catch(next);
     };
 };

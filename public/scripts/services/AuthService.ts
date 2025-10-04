@@ -148,23 +148,23 @@ export class AuthService {
     }
 
     /**
-     * Initiate SAML login
+     * Initiate login (now goes directly to instructor mode)
      */
     public login(): void {
         //START DEBUG LOG : DEBUG-CODE(FRONTEND-LOGIN)
-        console.log('[FRONTEND-AUTH] 🚀 Initiating SAML login...');
+        console.log('[FRONTEND-AUTH] 🚀 Going directly to instructor mode...');
         //END DEBUG LOG : DEBUG-CODE(FRONTEND-LOGIN)
-        window.location.href = '/auth/login';
+        window.location.href = '/pages/instructor-mode.html';
     }
 
     /**
-     * Logout user
+     * Logout user (now goes back to home)
      */
     public logout(): void {
         //START DEBUG LOG : DEBUG-CODE(FRONTEND-LOGOUT)
-        console.log('[FRONTEND-AUTH] 🚪 Logging out user...');
+        console.log('[FRONTEND-AUTH] 🚪 Going back to home...');
         //END DEBUG LOG : DEBUG-CODE(FRONTEND-LOGOUT)
-        window.location.href = '/auth/logout';
+        window.location.href = '/';
     }
 
     /**
@@ -199,41 +199,32 @@ export class AuthService {
      * Check authentication and handle redirect if not authenticated
      * @param intendedPage - The page the user intended to visit
      * @param pageName - Name of the page for logging purposes (e.g., 'STUDENT-MODE', 'INSTRUCTOR-MODE')
-     * @returns Promise<boolean> - true if authenticated, false if redirected to login
+     * @returns Promise<boolean> - always returns true in demo mode
      */
     public async checkAuthenticationAndRedirect(intendedPage: string, pageName: string): Promise<boolean> {
-        console.log(`[${pageName}] 🔍 Checking authentication...`);
+        console.log(`[${pageName}] 🎭 DEMO MODE: No authentication required`);
         
         try {
             await this.checkAuthStatus();
             const authState = this.getAuthState();
             
-            if (authState.isAuthenticated && authState.user) {
-                console.log(`[${pageName}] ✅ User authenticated, logging SAML data:`);
-                console.log('=====================================');
-                console.log('🔐 Authentication Source: SAML/CWL');
-                console.log('👨‍💼 Full Name:', `${authState.user.firstName} ${authState.user.lastName}`);
-                console.log('📧 Username:', authState.user.username);
-                console.log('🏫 Affiliation:', authState.user.affiliation);
-                console.log('🆔 PUID (Personal University ID):', authState.user.puid);
-                console.log('⏰ Authentication Time:', new Date().toISOString());
-                console.log('🌐 Current Page:', window.location.pathname);
-                console.log('🔗 User Agent:', navigator.userAgent);
-                console.log('=====================================');
-                console.log(`[${pageName}] 📋 Complete User Object:`, authState.user);
-                
-                return true;
-            } else {
-                console.log(`[${pageName}] ❌ User not authenticated, redirecting to login...`);
-                window.location.href = '/auth/login';
-                return false;
-            }
+            console.log(`[${pageName}] ✅ Demo mode - user always authenticated`);
+            console.log('=====================================');
+            console.log('🔐 Authentication Source: Demo Mode');
+            console.log('👨‍💼 Full Name:', `${authState.user?.firstName} ${authState.user?.lastName}`);
+            console.log('📧 Username:', authState.user?.username);
+            console.log('🏫 Affiliation:', authState.user?.affiliation);
+            console.log('🆔 PUID (Personal University ID):', authState.user?.puid);
+            console.log('⏰ Authentication Time:', new Date().toISOString());
+            console.log('🌐 Current Page:', window.location.pathname);
+            console.log('🔗 User Agent:', navigator.userAgent);
+            console.log('=====================================');
+            console.log(`[${pageName}] 📋 Complete User Object:`, authState.user);
+            
+            return true;
         } catch (error) {
-            console.error(`[${pageName}] 🚨 Authentication check failed:`, error);
-            // Show error and redirect to login
-            alert('Authentication check failed. Redirecting to login...');
-            window.location.href = '/auth/login';
-            return false;
+            console.error(`[${pageName}] 🚨 Demo mode - authentication check failed but continuing anyway:`, error);
+            return true; // Always allow access in demo mode
         }
     }
 

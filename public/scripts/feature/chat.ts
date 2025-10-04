@@ -380,22 +380,33 @@ export class ChatManager {
             }
             
             if (data.assistantMessage) {
-                // Process artefacts in the complete response
+                // Process artefacts using parseArtefacts directly (no streaming)
                 try {
-                    const result = this.artefactHandler.processStreamingText(
+                    const parsed = this.artefactHandler.parseArtefacts(
                         data.assistantMessage.text,
                         data.assistantMessage.id
                     );
                     
-                    // Update the assistant message with processed text
-                    const finalMessage = {
-                        ...data.assistantMessage,
-                        text: result.processedText
-                    };
-                    
-                    activeChat.messages.push(finalMessage);
-                    this.addMessageToDOM(finalMessage, activeChat);
-                    onComplete?.(finalMessage);
+                    if (parsed.hasArtefacts) {
+                        console.log('[CHAT-MANAGER] 🎨 Artefacts detected, creating message with DOM elements');
+                        
+                        // Create a special message object that indicates it has artefacts
+                        const finalMessage = {
+                            ...data.assistantMessage,
+                            text: data.assistantMessage.text, // Keep original text
+                            _hasArtefacts: true,
+                            _artefactElements: parsed.elements // Store DOM elements
+                        };
+                        
+                        activeChat.messages.push(finalMessage);
+                        this.addMessageToDOM(finalMessage, activeChat);
+                        onComplete?.(finalMessage);
+                    } else {
+                        // No artefacts, process normally
+                        activeChat.messages.push(data.assistantMessage);
+                        this.addMessageToDOM(data.assistantMessage, activeChat);
+                        onComplete?.(data.assistantMessage);
+                    }
                 } catch (artefactError) {
                     console.error('[CHAT-MANAGER] ⚠️ Error processing artefacts:', artefactError);
                     // Fallback to original message if artefact processing fails
@@ -403,6 +414,13 @@ export class ChatManager {
                     this.addMessageToDOM(data.assistantMessage, activeChat);
                     onComplete?.(data.assistantMessage);
                 }
+            }
+
+            // Update chat title if this was the first message
+            if (data.updatedTitle) {
+                console.log('[CHAT-MANAGER] 🔄 Updating chat title to:', data.updatedTitle);
+                activeChat.itemTitle = data.updatedTitle;
+                this.renderChatList(); // Refresh the chat list to show new title
             }
 
         } catch (error) {
@@ -592,7 +610,8 @@ export class ChatManager {
                     activeChat.pinnedMessageId = msg.id;
                 }
                 this.renderActiveChatIncremental();
-            }
+            },
+            msg // Pass the full message object
         );
         
         messageAreaEl.appendChild(messageEl);
@@ -1114,7 +1133,8 @@ export class ChatManager {
         text: string,
         timestamp: number | undefined,
         isPinned: boolean,
-        onTogglePin: () => void
+        onTogglePin: () => void,
+        messageObject?: any
     ): HTMLElement {
         const messageWrapper = document.createElement('div');
         messageWrapper.classList.add('message', `${sender}-message`);
@@ -1125,15 +1145,12 @@ export class ChatManager {
         
         // Process artefacts for all messages (including initial messages)
         if (sender === 'bot') {
-            const parsed = this.artefactHandler.parseArtefacts(text, messageId);
-            
-            //START DEBUG LOG : DEBUG-CODE(022)
-            console.log('🎨 createMessageElement - Parsed artefacts:', parsed);
-            //END DEBUG LOG : DEBUG-CODE(022)
-            
-            if (parsed.hasArtefacts) {
-                // Add all elements (text + buttons) directly to content
-                parsed.elements.forEach(element => {
+            // Check if this message already has pre-processed artefact elements
+            if (messageObject && messageObject._hasArtefacts && messageObject._artefactElements) {
+                console.log('🎨 createMessageElement - Using pre-processed artefact elements');
+                
+                // Use the pre-processed DOM elements
+                messageObject._artefactElements.forEach((element: HTMLElement) => {
                     contentEl.appendChild(element);
                 });
                 
@@ -1143,8 +1160,28 @@ export class ChatManager {
                 // Re-render icons for any buttons that were added
                 renderFeatherIcons();
             } else {
-                // No artefacts, render normally
-                renderLatexInElement(text, contentEl);
+                // Process artefacts normally for initial messages
+                const parsed = this.artefactHandler.parseArtefacts(text, messageId);
+                
+                //START DEBUG LOG : DEBUG-CODE(022)
+                console.log('🎨 createMessageElement - Parsed artefacts:', parsed);
+                //END DEBUG LOG : DEBUG-CODE(022)
+                
+                if (parsed.hasArtefacts) {
+                    // Add all elements (text + buttons) directly to content
+                    parsed.elements.forEach(element => {
+                        contentEl.appendChild(element);
+                    });
+                    
+                    // Render LaTeX safely in the content that may contain HTML
+                    renderLatexInHtmlContent(contentEl);
+                    
+                    // Re-render icons for any buttons that were added
+                    renderFeatherIcons();
+                } else {
+                    // No artefacts, render normally
+                    renderLatexInElement(text, contentEl);
+                }
             }
         } else {
             // User messages don't have artefacts

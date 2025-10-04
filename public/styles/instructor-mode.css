@@ -140,6 +140,15 @@ body {
     font-size: 0.9rem;
 }
 
+.instructor-sidebar .chat-list .chat-item span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    flex: 1;
+    min-width: 0;
+}
+
 .instructor-sidebar .chat-list .chat-item.active {
     background-color: #e2d9cf;
     color: rgb(103, 103, 103);
