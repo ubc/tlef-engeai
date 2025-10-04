@@ -185,8 +185,8 @@ async function initializeStudentOnboarding(state: StudentOnboardingState, user: 
 function updateCourseDisplay(user: User): void {
     const courseDisplay = document.getElementById('course-name-display');
     if (courseDisplay) {
-        if (user.activeCourseName && user.activeCourseName.trim() !== '') {
-            courseDisplay.textContent = `You're enrolled in: ${user.activeCourseName}`;
+        if (user.courseName && user.courseName.trim() !== '') {
+            courseDisplay.textContent = `You're enrolled in: ${user.courseName}`;
         } else {
             courseDisplay.textContent = 'Your course will be displayed here once assigned by your instructor.';
         }
@@ -741,8 +741,24 @@ async function handleOnboardingCompletion(user: User): Promise<void> {
         // Mark onboarding as complete
         user.userOnboarding = true;
 
-        // TODO: Update user in database
-        // await updateUserOnboardingStatus(user.userId, true);
+        // Update user in database
+        const response = await fetch('/api/user/update-onboarding', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                puid: user.puid,
+                courseName: user.courseName,
+                userOnboarding: true
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error('Failed to update onboarding status');
+        }
+        
+        console.log("✅ Onboarding status updated in database");
 
         // Show completion message
         await showCompletionMessage();

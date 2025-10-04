@@ -41,6 +41,38 @@ body {
 
 /* moved: flag component styles now in styles/flag-message.css (component exists as HTML) */
 
+
+.course-option {
+    padding: 0.75rem;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.2s ease;
+}
+
+.course-option:last-child {
+    border-bottom: none;
+}
+
+.course-option:hover {
+    background-color: var(--hover-bg);
+}
+
+.course-option.active {
+    background-color: var(--color-ubc-blue);
+    color: white;
+}
+
+.course-option-name {
+    font-weight: 500;
+    font-size: 0.9rem;
+    margin-bottom: 0.25rem;
+}
+
+.course-option-id {
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
+
 /* --- Sidebar --- */
 .sidebar {
     margin: 10px 5px 10px 10px;
@@ -120,6 +152,10 @@ body {
     font-size: 0.75rem; 
     margin: 0; 
     opacity: 0.8; 
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
 }
 
 /* Chat menu styles moved to chat-feature.css */

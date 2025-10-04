@@ -30,7 +30,7 @@ import {
     courseItem, 
     LearningObjective, 
     AdditionalMaterial, 
-    User
+    CourseUser
 } from "./types";
 
 /**
@@ -285,8 +285,8 @@ export class IDGenerator {
      * @param userDB - The user object containing puid, name, role, and active course name
      * @returns A 12-character hexadecimal string representing the unique user ID
      */
-    userID(userDB: User): string {
-        const hashInput = userDB.puid + "-" + userDB.name + "-" + userDB.affiliation + "-" + userDB.activeCourseName;
+    userID(userDB: CourseUser): string {
+        const hashInput = userDB.puid + "-" + userDB.name + "-" + userDB.affiliation + "-" + userDB.courseName;
         return this.uniqueIDGenerator(hashInput);
     }
       

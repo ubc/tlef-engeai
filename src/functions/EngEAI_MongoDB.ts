@@ -1,6 +1,6 @@
 import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 import * as dotenv from 'dotenv';
-import { activeCourse, AdditionalMaterial, ContentDivision, courseItem, FlagReport, User, Chat, ChatMessage } from './types';
+import { activeCourse, AdditionalMaterial, ContentDivision, courseItem, FlagReport, User, Chat, ChatMessage, GlobalUser, CourseUser } from './types';
 import { IDGenerator } from './unique-id-generator';
 
 dotenv.config();
@@ -9,6 +9,7 @@ export class EngEAI_MongoDB {
     private static instance: EngEAI_MongoDB;
     private static activeCourseListDatabase: string = 'TLEF-ENGEAI-DB';
     private static activeCourseListCollection: string = 'active-course-list';
+    private static activeUsersCollection: string = 'active-users';
     private static MONGO_URL = `mongodb://${process.env.MONGO_USERNAME}:${process.env.MONGO_PASSWORD}@localhost:27017`;
     
     private client: MongoClient;
@@ -59,7 +60,7 @@ export class EngEAI_MongoDB {
     // Course management methods
     public postActiveCourse = async (course: activeCourse) => {
         try {
-            await this.getCourseCollection().insertOne(course);
+            await this.getCourseCollection().insertOne(course as any);
 
             //use singleton's DB
             const courseName = course.courseName;
@@ -215,7 +216,7 @@ export class EngEAI_MongoDB {
         try {
             const flagsCollection = this.getFlagsCollection(flagReport.courseName);
             
-            const result = await flagsCollection.insertOne(flagReport);
+            const result = await flagsCollection.insertOne(flagReport as any);
             
             //START DEBUG LOG : DEBUG-CODE(009)
             console.log('🏴 Flag report created successfully:', flagReport.id, 'MongoDB ID:', result.insertedId);
@@ -402,7 +403,7 @@ export class EngEAI_MongoDB {
      * @param userData - The user data to create
      * @returns Created user object
      */
-    public createStudent = async (courseName: string, userData: Partial<User>) => {
+    public createStudent = async (courseName: string, userData: Partial<User>): Promise<User> => {
         //START DEBUG LOG : DEBUG-CODE(CREATE-STUDENT)
         console.log(`[MONGODB] 🚀 Creating new student in course: ${courseName}`, userData);
         //END DEBUG LOG : DEBUG-CODE(CREATE-STUDENT)
@@ -413,14 +414,14 @@ export class EngEAI_MongoDB {
             // Generate unique ID for the student
             const studentId = this.idGenerator.userID(userData as User);
             
-            const newStudent = {
+            const newStudent: User = {
                 ...userData,
                 id: studentId,
                 createdAt: new Date(),
                 updatedAt: new Date()
-            };
+            } as User;
             
-            const result = await userCollection.insertOne(newStudent);
+            const result = await userCollection.insertOne(newStudent as any);
             
             //START DEBUG LOG : DEBUG-CODE(CREATE-STUDENT-SUCCESS)
             console.log(`[MONGODB] ✅ Created new student with ID: ${studentId}`, result);
@@ -666,5 +667,80 @@ export class EngEAI_MongoDB {
             //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER-ERROR)
             throw error;
         }
+    }
+
+    // ===========================================
+    // ========= GLOBAL USER MANAGEMENT =========
+    // ===========================================
+
+    /**
+     * Get the global users collection
+     */
+    private getGlobalUserCollection(): Collection {
+        return this.db.collection(EngEAI_MongoDB.activeUsersCollection);
+    }
+
+    /**
+     * Find a global user by PUID
+     */
+    public findGlobalUserByPUID = async (puid: string): Promise<GlobalUser | null> => {
+        const collection = this.getGlobalUserCollection();
+        return await collection.findOne({ puid: puid }) as GlobalUser | null;
+    }
+
+    /**
+     * Create a new global user
+     */
+    public createGlobalUser = async (userData: Partial<GlobalUser>): Promise<GlobalUser> => {
+        const collection = this.getGlobalUserCollection();
+        
+        const newUser: GlobalUser = {
+            name: userData.name!,
+            puid: userData.puid!,
+            userId: userData.userId!,
+            coursesEnrolled: userData.coursesEnrolled || [],
+            affiliation: userData.affiliation!,
+            status: userData.status || 'active',
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
+        
+        await collection.insertOne(newUser as any);
+        return newUser;
+    }
+
+    /**
+     * Add a course to global user's enrolled courses
+     */
+    public addCourseToGlobalUser = async (puid: string, courseId: string): Promise<void> => {
+        const collection = this.getGlobalUserCollection();
+        
+        await collection.updateOne(
+            { puid: puid },
+            { 
+                $addToSet: { coursesEnrolled: courseId },
+                $set: { updatedAt: new Date() }
+            }
+        );
+    }
+
+    /**
+     * Update global user
+     */
+    public updateGlobalUser = async (puid: string, updateData: Partial<GlobalUser>): Promise<GlobalUser> => {
+        const collection = this.getGlobalUserCollection();
+        
+        const result = await collection.findOneAndUpdate(
+            { puid: puid },
+            { 
+                $set: { 
+                    ...updateData, 
+                    updatedAt: new Date() 
+                }
+            },
+            { returnDocument: 'after' }
+        );
+        
+        return result as unknown as GlobalUser;
     }
 }

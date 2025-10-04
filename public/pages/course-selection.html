@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EngE-AI - Course Selection</title>
+    <link rel="stylesheet" href="/styles/style.css">
+    <link rel="stylesheet" href="/styles/course-selection.css">
+</head>
+<body>
+    <div class="course-selection-container">
+        <header class="course-selection-header">
+            <h1>EngE-AI - Course Selection</h1>
+            <p class="welcome-message">Welcome, <span id="user-name"></span>!</p>
+            <p class="instruction">Select a course to enter:</p>
+        </header>
+        
+        <div class="course-cards-container" id="course-cards">
+            <!-- Course cards will be dynamically loaded here -->
+        </div>
+        
+        <div class="loading-message" id="loading-message">
+            <div class="spinner"></div>
+            <p>Loading available courses...</p>
+        </div>
+        
+        <div class="error-message" id="error-message" style="display: none;">
+            <p>Unable to load courses. Please try again.</p>
+            <button id="retry-btn" class="retry-btn">Retry</button>
+        </div>
+    </div>
+    
+    <script type="module" src="/dist/course-selection.js"></script>
+</body>
+</html>
+
