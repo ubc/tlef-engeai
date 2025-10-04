@@ -130,6 +130,105 @@ class ChatApp {
     }
 
     /**
+     * Generate chat title from AI response text
+     * Extracts first 10 words from the response, cleaning up special characters
+     * 
+     * @param responseText - The AI response text
+     * @returns Clean title string with first 10 words
+     */
+    private generateChatTitleFromResponse(responseText: string): string {
+        //START DEBUG LOG : DEBUG-CODE(GENERATE-TITLE)
+        console.log(`[CHAT-APP] 📝 Generating title from response: "${responseText.substring(0, 100)}..."`);
+        //END DEBUG LOG : DEBUG-CODE(GENERATE-TITLE)
+        
+        try {
+            // Remove LaTeX delimiters ($ and $$)
+            let cleanText = responseText.replace(/\$\$.*?\$\$/g, ''); // Remove block math
+            cleanText = cleanText.replace(/\$.*?\$/g, ''); // Remove inline math
+            
+            // Remove HTML tags and special characters
+            cleanText = cleanText.replace(/<[^>]*>/g, ''); // Remove HTML tags
+            cleanText = cleanText.replace(/[^\w\s]/g, ' '); // Replace special chars with spaces
+            
+            // Clean up multiple spaces and trim
+            cleanText = cleanText.replace(/\s+/g, ' ').trim();
+            
+            // Split into words and take first 10
+            const words = cleanText.split(' ').filter(word => word.length > 0);
+            const title = words.slice(0, 10).join(' ');
+            
+            //START DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-SUCCESS)
+            console.log(`[CHAT-APP] ✅ Generated title: "${title}"`);
+            //END DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-SUCCESS)
+            
+            return title || 'New Chat'; // Fallback to "New Chat" if empty
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-ERROR)
+            console.error(`[CHAT-APP] 🚨 Error generating title:`, error);
+            //END DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-ERROR)
+            return 'New Chat'; // Fallback to "New Chat" on error
+        }
+    }
+
+    /**
+     * Update chat title if this is the first user-AI exchange
+     * Only updates title if current title is "New Chat" or empty
+     * 
+     * @param chatId - The chat ID
+     * @param assistantResponse - The AI response text
+     * @param courseName - The course name
+     * @param userId - The user ID
+     */
+    public async updateChatTitleIfNeeded(chatId: string, assistantResponse: string, courseName: string, userId: string): Promise<void> {
+        //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-CHECK)
+        console.log(`[CHAT-APP] 🔍 Checking if title needs update for chat ${chatId}`);
+        //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-CHECK)
+        
+        try {
+            // Get current chat from MongoDB to check title
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const userChats = await mongoDB.getUserChats(courseName, userId);
+            const currentChat = userChats.find(chat => chat.id === chatId);
+            
+            if (!currentChat) {
+                //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-NO-CHAT)
+                console.log(`[CHAT-APP] ⚠️ Chat ${chatId} not found in MongoDB`);
+                //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-NO-CHAT)
+                return;
+            }
+            
+            // Check if title needs updating (is "New Chat" or empty)
+            const currentTitle = currentChat.itemTitle || '';
+            const needsUpdate = currentTitle === 'New Chat' || currentTitle === '';
+            
+            //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-DECISION)
+            console.log(`[CHAT-APP] 📊 Title update decision: current="${currentTitle}", needsUpdate=${needsUpdate}`);
+            //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-DECISION)
+            
+            if (needsUpdate) {
+                // Generate new title from AI response
+                const newTitle = this.generateChatTitleFromResponse(assistantResponse);
+                
+                // Update title in MongoDB
+                await mongoDB.updateChatTitle(courseName, userId, chatId, newTitle);
+                
+                //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-SUCCESS)
+                console.log(`[CHAT-APP] ✅ Chat title updated from "${currentTitle}" to "${newTitle}"`);
+                //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-SUCCESS)
+            } else {
+                //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-SKIP)
+                console.log(`[CHAT-APP] ⏭️ Title update skipped - current title is not "New Chat"`);
+                //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-SKIP)
+            }
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-ERROR)
+            console.error(`[CHAT-APP] 🚨 Error updating chat title:`, error);
+            //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-ERROR)
+            // Don't throw error - title update failure shouldn't break the chat flow
+        }
+    }
+
+    /**
      * Retrieve relevant documents using RAG
      * 
      * @param query - The user's query
@@ -387,6 +486,9 @@ class ChatApp {
 
         // Add complete assistant response to conversation and history
         const assistantMessage = this.addAssistantMessage(chatId, assistantResponse);
+        
+        // Check if this is the first user-AI exchange and update title if needed
+        await this.updateChatTitleIfNeeded(chatId, assistantResponse, courseName, userId);
         
         return assistantMessage;
     }
@@ -879,7 +981,7 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
             id: chatId,
             courseName: courseName,
             divisionTitle: '', // Empty for now, will be set by user later
-            itemTitle: '', // Empty for now, will be set by user later
+            itemTitle: 'New Chat', // Set initial title as "New Chat"
             messages: [backendWelcomeMessage], // Use the proper backend welcome message with diagrams
             isPinned: false,
             pinnedMessageId: null
@@ -1030,6 +1132,9 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 console.log('   Assistant message ID:', assistantMessage.id);
                 console.log('   Text:', assistantMessage.text.substring(0, 50) + '...');
                 //END DEBUG LOG : DEBUG-CODE(SEND-MSG-008)
+                
+                // Check if chat title needs updating (first user-AI exchange)
+                await chatApp.updateChatTitleIfNeeded(chatId, assistantMessage.text, courseName, puid);
                 
             } catch (dbError) {
                 //START DEBUG LOG : DEBUG-CODE(SEND-MSG-009)

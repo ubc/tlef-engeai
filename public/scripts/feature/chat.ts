@@ -405,6 +405,9 @@ export class ChatManager {
                 }
             }
 
+            // Refresh chat data from server to get updated title
+            await this.refreshChatDataFromServer();
+
         } catch (error) {
             console.error('[CHAT-MANAGER] 🚨 Error sending message:', error);
             
@@ -777,6 +780,48 @@ export class ChatManager {
         }
     }
 
+    /**
+     * Refresh chat data from server to get updated titles and other changes
+     * This is called after sending a message to ensure the frontend has the latest data
+     */
+    private async refreshChatDataFromServer(): Promise<void> {
+        try {
+            //START DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA)
+            console.log('[CHAT-MANAGER] 🔄 Refreshing chat data from server...');
+            //END DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA)
+            
+            const courseName = this.config.userContext.activeCourseName;
+            const userId = this.config.userContext.puid;
+            
+            // Load fresh chat data from server
+            const freshChats = await this.loadChatsFromServer(userId, courseName);
+            
+            // Store the current active chat ID before updating
+            const currentActiveChatId = this.activeChatId;
+            
+            // Update the local chats array
+            this.chats = freshChats;
+            
+            // Restore the active chat ID
+            this.activeChatId = currentActiveChatId;
+            
+            // Update the UI to reflect any changes (like updated titles)
+            this.renderChatList();
+            this.renderActiveChatIncremental();
+            
+            //START DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA-SUCCESS)
+            console.log('[CHAT-MANAGER] ✅ Chat data refreshed successfully');
+            console.log(`[CHAT-MANAGER] 📊 Refreshed ${freshChats.length} chats`);
+            //END DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA-SUCCESS)
+            
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA-ERROR)
+            console.error('[CHAT-MANAGER] 🚨 Error refreshing chat data:', error);
+            //END DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA-ERROR)
+            // Don't throw error - refresh failure shouldn't break the chat flow
+        }
+    }
+
     private bindEvents(): void {
         // Bind all chat-related events
         this.bindChatListEvents();
@@ -1011,9 +1056,8 @@ export class ChatManager {
         li.style.alignItems = 'center';
 
         const titleSpan = document.createElement('span');
+        titleSpan.className = 'chat-title'; // Apply existing CSS class with ellipsis styling
         titleSpan.textContent = chat.itemTitle;
-        titleSpan.style.flex = '1';
-        titleSpan.style.minWidth = '0';
 
         const actions = document.createElement('div');
         actions.style.display = 'flex';

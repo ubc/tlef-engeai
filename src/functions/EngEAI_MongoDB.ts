@@ -592,6 +592,46 @@ export class EngEAI_MongoDB {
     }
 
     /**
+     * Update chat title in user's chats array
+     * @param courseName - The name of the course
+     * @param puid - The PUID of the user
+     * @param chatId - The ID of the chat to update
+     * @param newTitle - The new title for the chat
+     */
+    public updateChatTitle = async (courseName: string, puid: string, chatId: string, newTitle: string): Promise<void> => {
+        //START DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-TITLE)
+        console.log(`[MONGODB] 📝 Updating chat title for chat ${chatId} to "${newTitle}" for user PUID: ${puid} in course: ${courseName}`);
+        //END DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-TITLE)
+        
+        try {
+            const userCollection = this.getUserCollection(courseName);
+            
+            const result = await userCollection.updateOne(
+                { puid: puid, 'chats.id': chatId },
+                { 
+                    $set: { 
+                        'chats.$.itemTitle': newTitle,
+                        updatedAt: new Date()
+                    }
+                }
+            );
+            
+            if (result.matchedCount === 0) {
+                throw new Error(`Chat not found with ID: ${chatId} for user PUID: ${puid}`);
+            }
+            
+            //START DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-TITLE-SUCCESS)
+            console.log(`[MONGODB] ✅ Chat title updated successfully to "${newTitle}"`);
+            //END DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-TITLE-SUCCESS)
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-TITLE-ERROR)
+            console.error(`[MONGODB] 🚨 Error updating chat title:`, error);
+            //END DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-TITLE-ERROR)
+            throw error;
+        }
+    }
+
+    /**
      * Delete a chat from user's chats array
      * @param courseName - The name of the course
      * @param puid - The PUID of the user
