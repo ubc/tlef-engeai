@@ -72,6 +72,19 @@ export class EngEAI_MongoDB {
             //create flags collection
             const flagsCollection = `${courseName}_flags`;
             await this.db.createCollection(flagsCollection);
+
+            // Create indexes for optimal performance
+            try {
+                const indexResult = await this.createFlagIndexes(courseName);
+                if (indexResult.success) {
+                    console.log(`✅ Created ${indexResult.indexesCreated.length} indexes for course: ${courseName}`);
+                } else {
+                    console.warn(`⚠️ Some indexes failed to create for course: ${courseName}`, indexResult.errors);
+                }
+            } catch (indexError) {
+                console.error(`❌ Error creating indexes for course ${courseName}:`, indexError);
+                // Don't fail course creation if index creation fails
+            }
         
         } catch (error) {
             console.error('Error creating collections and schemas:', error);
@@ -303,6 +316,435 @@ export class EngEAI_MongoDB {
         return await flagsCollection.deleteOne({ id: flagId });
     }
 
+    // =====================================
+    // ========= FLAG STATUS MANAGEMENT ====
+    // =====================================
+
+    /**
+     * Validates flag status transition
+     * @param currentStatus - Current status of the flag
+     * @param newStatus - Desired new status
+     * @returns Validation result
+     */
+    public validateStatusTransition = (currentStatus: string, newStatus: string): {
+        isValid: boolean;
+        error?: string;
+    } => {
+        //START DEBUG LOG : DEBUG-CODE(VALIDATE-STATUS-TRANSITION)
+        console.log(`[MONGODB] 🔄 Validating status transition: ${currentStatus} -> ${newStatus}`);
+        //END DEBUG LOG : DEBUG-CODE(VALIDATE-STATUS-TRANSITION)
+        
+        // Valid statuses
+        const validStatuses = ['unresolved', 'resolved'];
+        
+        // Check if new status is valid
+        if (!validStatuses.includes(newStatus)) {
+            return {
+                isValid: false,
+                error: `Invalid status: ${newStatus}. Must be one of: ${validStatuses.join(', ')}`
+            };
+        }
+        
+        // Check if current status is valid
+        if (!validStatuses.includes(currentStatus)) {
+            return {
+                isValid: false,
+                error: `Invalid current status: ${currentStatus}. Must be one of: ${validStatuses.join(', ')}`
+            };
+        }
+        
+        // Status transition rules
+        const validTransitions: { [key: string]: string[] } = {
+            'unresolved': ['resolved'], // unresolved can only go to resolved
+            'resolved': ['unresolved']  // resolved can go back to unresolved (for corrections)
+        };
+        
+        if (!validTransitions[currentStatus].includes(newStatus)) {
+            return {
+                isValid: false,
+                error: `Invalid transition: ${currentStatus} -> ${newStatus}. Valid transitions: ${validTransitions[currentStatus].join(', ')}`
+            };
+        }
+        
+        //START DEBUG LOG : DEBUG-CODE(VALIDATE-STATUS-TRANSITION-SUCCESS)
+        console.log(`[MONGODB] ✅ Status transition validated: ${currentStatus} -> ${newStatus}`);
+        //END DEBUG LOG : DEBUG-CODE(VALIDATE-STATUS-TRANSITION-SUCCESS)
+        
+        return { isValid: true };
+    }
+
+    /**
+     * Updates flag status with validation and audit trail
+     * @param courseName - The name of the course
+     * @param flagId - The ID of the flag to update
+     * @param newStatus - The new status
+     * @param response - Optional instructor response
+     * @param instructorId - ID of the instructor making the change
+     * @returns Updated flag report
+     */
+    public updateFlagStatus = async (
+        courseName: string, 
+        flagId: string, 
+        newStatus: string, 
+        response?: string,
+        instructorId?: string
+    ): Promise<FlagReport | null> => {
+        //START DEBUG LOG : DEBUG-CODE(UPDATE-FLAG-STATUS)
+        console.log(`[MONGODB] 🔄 Updating flag status: ${flagId} to ${newStatus} in course: ${courseName}`);
+        //END DEBUG LOG : DEBUG-CODE(UPDATE-FLAG-STATUS)
+        
+        try {
+            const flagsCollection = this.getFlagsCollection(courseName);
+            
+            // Get current flag to validate transition
+            const currentFlag = await flagsCollection.findOne({ id: flagId });
+            if (!currentFlag) {
+                throw new Error(`Flag not found: ${flagId}`);
+            }
+            
+            // Validate status transition
+            const validation = this.validateStatusTransition(currentFlag.status, newStatus);
+            if (!validation.isValid) {
+                throw new Error(validation.error);
+            }
+            
+            // Prepare update data
+            const updateData: any = {
+                status: newStatus,
+                updatedAt: new Date()
+            };
+            
+            // Add response if provided
+            if (response !== undefined) {
+                updateData.response = response;
+            }
+            
+            // Add audit information
+            if (instructorId) {
+                updateData.lastUpdatedBy = instructorId;
+                updateData.lastUpdatedAt = new Date();
+            }
+            
+            // Update the flag
+            const result = await flagsCollection.findOneAndUpdate(
+                { id: flagId },
+                { $set: updateData },
+                { returnDocument: 'after' }
+            );
+            
+            if (!result) {
+                throw new Error(`Failed to update flag: ${flagId}`);
+            }
+            
+            //START DEBUG LOG : DEBUG-CODE(UPDATE-FLAG-STATUS-SUCCESS)
+            console.log(`[MONGODB] ✅ Flag status updated successfully: ${flagId} -> ${newStatus}`);
+            //END DEBUG LOG : DEBUG-CODE(UPDATE-FLAG-STATUS-SUCCESS)
+            
+            return result as unknown as FlagReport;
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(UPDATE-FLAG-STATUS-ERROR)
+            console.error(`[MONGODB] 🚨 Error updating flag status:`, error);
+            //END DEBUG LOG : DEBUG-CODE(UPDATE-FLAG-STATUS-ERROR)
+            throw error;
+        }
+    }
+
+    /**
+     * Gets flag statistics for a course
+     * @param courseName - The name of the course
+     * @returns Flag statistics
+     */
+    public getFlagStatistics = async (courseName: string): Promise<{
+        total: number;
+        unresolved: number;
+        resolved: number;
+        byType: { [key: string]: number };
+        byStatus: { [key: string]: number };
+        recentActivity: {
+            last24Hours: number;
+            last7Days: number;
+            last30Days: number;
+        };
+    }> => {
+        //START DEBUG LOG : DEBUG-CODE(GET-FLAG-STATS)
+        console.log(`[MONGODB] 📊 Getting flag statistics for course: ${courseName}`);
+        //END DEBUG LOG : DEBUG-CODE(GET-FLAG-STATS)
+        
+        try {
+            const flagsCollection = this.getFlagsCollection(courseName);
+            
+            // Get all flags
+            const allFlags = await flagsCollection.find({}).toArray();
+            
+            // Basic counts
+            const total = allFlags.length;
+            const unresolved = allFlags.filter(f => f.status === 'unresolved').length;
+            const resolved = allFlags.filter(f => f.status === 'resolved').length;
+            
+            // Count by type
+            const byType: { [key: string]: number } = {};
+            allFlags.forEach(flag => {
+                byType[flag.flagType] = (byType[flag.flagType] || 0) + 1;
+            });
+            
+            // Count by status
+            const byStatus: { [key: string]: number } = {};
+            allFlags.forEach(flag => {
+                byStatus[flag.status] = (byStatus[flag.status] || 0) + 1;
+            });
+            
+            // Recent activity
+            const now = new Date();
+            const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            const last7Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            
+            const recentActivity = {
+                last24Hours: allFlags.filter(f => f.createdAt >= last24Hours).length,
+                last7Days: allFlags.filter(f => f.createdAt >= last7Days).length,
+                last30Days: allFlags.filter(f => f.createdAt >= last30Days).length
+            };
+            
+            const stats = {
+                total,
+                unresolved,
+                resolved,
+                byType,
+                byStatus,
+                recentActivity
+            };
+            
+            //START DEBUG LOG : DEBUG-CODE(GET-FLAG-STATS-RESULT)
+            console.log(`[MONGODB] 📊 Flag statistics retrieved:`, stats);
+            //END DEBUG LOG : DEBUG-CODE(GET-FLAG-STATS-RESULT)
+            
+            return stats;
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(GET-FLAG-STATS-ERROR)
+            console.error(`[MONGODB] 🚨 Error getting flag statistics:`, error);
+            //END DEBUG LOG : DEBUG-CODE(GET-FLAG-STATS-ERROR)
+            throw error;
+        }
+    }
+
+    // =====================================
+    // ========= DATABASE VALIDATION =======
+    // =====================================
+
+    /**
+     * Validates flag collection structure and integrity
+     * @param courseName - The name of the course
+     * @returns Validation result with details
+     */
+    public validateFlagCollection = async (courseName: string): Promise<{
+        isValid: boolean;
+        issues: string[];
+        stats: {
+            totalFlags: number;
+            unresolvedFlags: number;
+            resolvedFlags: number;
+            invalidDocuments: number;
+        };
+    }> => {
+        //START DEBUG LOG : DEBUG-CODE(VALIDATE-FLAGS)
+        console.log('🔍 [MONGODB] Validating flag collection for course:', courseName);
+        //END DEBUG LOG : DEBUG-CODE(VALIDATE-FLAGS)
+        
+        try {
+            const flagsCollection = this.getFlagsCollection(courseName);
+            const issues: string[] = [];
+            
+            // Get all flags for validation
+            const allFlags = await flagsCollection.find({}).toArray();
+            
+            // Validate each flag document
+            let invalidDocuments = 0;
+            for (const flag of allFlags) {
+                const validation = this.validateFlagDocument(flag);
+                if (!validation.isValid) {
+                    invalidDocuments++;
+                    issues.push(`Flag ${flag.id}: ${validation.issues.join(', ')}`);
+                }
+            }
+            
+            // Get statistics
+            const totalFlags = allFlags.length;
+            const unresolvedFlags = allFlags.filter(f => f.status === 'unresolved').length;
+            const resolvedFlags = allFlags.filter(f => f.status === 'resolved').length;
+            
+            const isValid = invalidDocuments === 0;
+            
+            //START DEBUG LOG : DEBUG-CODE(VALIDATE-FLAGS-RESULT)
+            console.log('🔍 [MONGODB] Flag collection validation result:', {
+                isValid,
+                totalFlags,
+                unresolvedFlags,
+                resolvedFlags,
+                invalidDocuments,
+                issuesCount: issues.length
+            });
+            //END DEBUG LOG : DEBUG-CODE(VALIDATE-FLAGS-RESULT)
+            
+            return {
+                isValid,
+                issues,
+                stats: {
+                    totalFlags,
+                    unresolvedFlags,
+                    resolvedFlags,
+                    invalidDocuments
+                }
+            };
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(VALIDATE-FLAGS-ERROR)
+            console.error('🔍 [MONGODB] Error validating flag collection:', error);
+            //END DEBUG LOG : DEBUG-CODE(VALIDATE-FLAGS-ERROR)
+            
+            throw new Error(`Flag collection validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    /**
+     * Validates a single flag document structure
+     * @param flagDocument - The flag document to validate
+     * @returns Validation result
+     */
+    private validateFlagDocument = (flagDocument: any): {
+        isValid: boolean;
+        issues: string[];
+    } => {
+        const issues: string[] = [];
+        
+        // Required fields validation
+        const requiredFields = ['id', 'courseName', 'date', 'flagType', 'reportType', 'chatContent', 'userId', 'status', 'createdAt', 'updatedAt'];
+        for (const field of requiredFields) {
+            if (flagDocument[field] === undefined || flagDocument[field] === null) {
+                issues.push(`Missing required field: ${field}`);
+            }
+        }
+        
+        // Type validation
+        if (flagDocument.id && typeof flagDocument.id !== 'string') {
+            issues.push('Field "id" must be a string');
+        }
+        
+        if (flagDocument.userId && typeof flagDocument.userId !== 'number') {
+            issues.push('Field "userId" must be a number');
+        }
+        
+        if (flagDocument.status && !['unresolved', 'resolved'].includes(flagDocument.status)) {
+            issues.push('Field "status" must be "unresolved" or "resolved"');
+        }
+        
+        if (flagDocument.flagType && !['innacurate_response', 'harassment', 'inappropriate', 'dishonesty', 'interface bug', 'other'].includes(flagDocument.flagType)) {
+            issues.push('Field "flagType" has invalid value');
+        }
+        
+        // Date validation
+        if (flagDocument.date && !(flagDocument.date instanceof Date)) {
+            issues.push('Field "date" must be a Date object');
+        }
+        
+        if (flagDocument.createdAt && !(flagDocument.createdAt instanceof Date)) {
+            issues.push('Field "createdAt" must be a Date object');
+        }
+        
+        if (flagDocument.updatedAt && !(flagDocument.updatedAt instanceof Date)) {
+            issues.push('Field "updatedAt" must be a Date object');
+        }
+        
+        return {
+            isValid: issues.length === 0,
+            issues
+        };
+    }
+
+    /**
+     * Creates database indexes for optimal flag query performance
+     * @param courseName - The name of the course
+     * @returns Promise with index creation results
+     */
+    public createFlagIndexes = async (courseName: string): Promise<{
+        success: boolean;
+        indexesCreated: string[];
+        errors: string[];
+    }> => {
+        //START DEBUG LOG : DEBUG-CODE(CREATE-INDEXES)
+        console.log('📊 [MONGODB] Creating indexes for flag collection:', courseName);
+        //END DEBUG LOG : DEBUG-CODE(CREATE-INDEXES)
+        
+        try {
+            const flagsCollection = this.getFlagsCollection(courseName);
+            const indexesCreated: string[] = [];
+            const errors: string[] = [];
+            
+            // Define indexes for optimal query performance
+            const indexDefinitions = [
+                {
+                    name: 'status_createdAt',
+                    spec: { status: 1, createdAt: -1 } as any,
+                    description: 'Primary query index for unresolved flags sorted by newest first'
+                },
+                {
+                    name: 'userId',
+                    spec: { userId: 1 } as any,
+                    description: 'User lookup index for flags by specific user'
+                },
+                {
+                    name: 'courseName_status',
+                    spec: { courseName: 1, status: 1 } as any,
+                    description: 'Course-specific flag filtering'
+                },
+                {
+                    name: 'flagType_status',
+                    spec: { flagType: 1, status: 1 } as any,
+                    description: 'Filter flags by type'
+                }
+            ];
+            
+            // Create each index
+            for (const indexDef of indexDefinitions) {
+                try {
+                    await flagsCollection.createIndex(indexDef.spec, { 
+                        name: indexDef.name,
+                        background: true // Create index in background to avoid blocking
+                    });
+                    indexesCreated.push(indexDef.name);
+                    
+                    //START DEBUG LOG : DEBUG-CODE(INDEX-CREATED)
+                    console.log('📊 [MONGODB] Created index:', indexDef.name, '-', indexDef.description);
+                    //END DEBUG LOG : DEBUG-CODE(INDEX-CREATED)
+                } catch (indexError) {
+                    const errorMsg = `Failed to create index ${indexDef.name}: ${indexError instanceof Error ? indexError.message : 'Unknown error'}`;
+                    errors.push(errorMsg);
+                    console.error('📊 [MONGODB]', errorMsg);
+                }
+            }
+            
+            const success = errors.length === 0;
+            
+            //START DEBUG LOG : DEBUG-CODE(CREATE-INDEXES-RESULT)
+            console.log('📊 [MONGODB] Index creation result:', {
+                success,
+                indexesCreated: indexesCreated.length,
+                errors: errors.length
+            });
+            //END DEBUG LOG : DEBUG-CODE(CREATE-INDEXES-RESULT)
+            
+            return {
+                success,
+                indexesCreated,
+                errors
+            };
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(CREATE-INDEXES-ERROR)
+            console.error('📊 [MONGODB] Error creating indexes:', error);
+            //END DEBUG LOG : DEBUG-CODE(CREATE-INDEXES-ERROR)
+            
+            throw new Error(`Index creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
     public addContentItem = async (courseId: string, divisionId: string, contentItem: any) => {
         try {
             console.log('📝 Adding content item to course:', courseId, 'division:', divisionId);
@@ -361,6 +803,153 @@ export class EngEAI_MongoDB {
     private getUserCollection(courseName: string): Collection {
         const collectionName = `${courseName}_users`;
         return this.db.collection(collectionName);
+    }
+
+    /**
+     * Find a user by userId in a specific course and return user details
+     * @param courseName - The name of the course
+     * @param userId - The userId to look up
+     * @returns User object with name, puid, and affiliation if found, null otherwise
+     */
+    public findUserByUserId = async (courseName: string, userId: number): Promise<{
+        name: string;
+        puid: string;
+        affiliation: string;
+        userId: number;
+    } | null> => {
+        //START DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID)
+        console.log(`[MONGODB] 🔍 Finding user with userId: ${userId} in course: ${courseName}`);
+        //END DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID)
+        
+        try {
+            const userCollection = this.getUserCollection(courseName);
+            const user = await userCollection.findOne({ userId: userId });
+            
+            if (user) {
+                //START DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID-SUCCESS)
+                console.log(`[MONGODB] ✅ Found user:`, { name: user.name, puid: user.puid, affiliation: user.affiliation });
+                //END DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID-SUCCESS)
+                
+                return {
+                    name: user.name,
+                    puid: user.puid,
+                    affiliation: user.affiliation,
+                    userId: user.userId
+                };
+            } else {
+                //START DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID-NOT-FOUND)
+                console.log(`[MONGODB] ❌ User with userId ${userId} not found in course ${courseName}`);
+                //END DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID-NOT-FOUND)
+                
+                return null;
+            }
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID-ERROR)
+            console.error(`[MONGODB] 🚨 Error finding user with userId ${userId}:`, error);
+            //END DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID-ERROR)
+            throw error;
+        }
+    }
+
+    /**
+     * Batch lookup multiple users by their userIds
+     * @param courseName - The name of the course
+     * @param userIds - Array of userIds to look up
+     * @returns Map of userId to user details
+     */
+    public batchFindUsersByUserIds = async (courseName: string, userIds: number[]): Promise<Map<number, {
+        name: string;
+        puid: string;
+        affiliation: string;
+        userId: number;
+    }>> => {
+        //START DEBUG LOG : DEBUG-CODE(BATCH-FIND-USERS)
+        console.log(`[MONGODB] 🔍 Batch finding ${userIds.length} users in course: ${courseName}`);
+        //END DEBUG LOG : DEBUG-CODE(BATCH-FIND-USERS)
+        
+        try {
+            const userCollection = this.getUserCollection(courseName);
+            const users = await userCollection.find({ userId: { $in: userIds } }).toArray();
+            
+            const userMap = new Map<number, {
+                name: string;
+                puid: string;
+                affiliation: string;
+                userId: number;
+            }>();
+            
+            for (const user of users) {
+                userMap.set(user.userId, {
+                    name: user.name,
+                    puid: user.puid,
+                    affiliation: user.affiliation,
+                    userId: user.userId
+                });
+            }
+            
+            //START DEBUG LOG : DEBUG-CODE(BATCH-FIND-USERS-RESULT)
+            console.log(`[MONGODB] ✅ Batch lookup found ${userMap.size} out of ${userIds.length} users`);
+            //END DEBUG LOG : DEBUG-CODE(BATCH-FIND-USERS-RESULT)
+            
+            return userMap;
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(BATCH-FIND-USERS-ERROR)
+            console.error(`[MONGODB] 🚨 Error in batch user lookup:`, error);
+            //END DEBUG LOG : DEBUG-CODE(BATCH-FIND-USERS-ERROR)
+            throw error;
+        }
+    }
+
+    /**
+     * Get flag reports with resolved user names
+     * @param courseName - The name of the course
+     * @returns Array of flag reports with user names resolved
+     */
+    public getFlagReportsWithUserNames = async (courseName: string): Promise<Array<FlagReport & {
+        userName?: string;
+        userPuid?: string;
+        userAffiliation?: string;
+    }>> => {
+        //START DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES)
+        console.log(`[MONGODB] 🔍 Getting flag reports with user names for course: ${courseName}`);
+        //END DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES)
+        
+        try {
+            // Get all flag reports
+            const flagReports = await this.getFlagReports(courseName);
+            
+            if (flagReports.length === 0) {
+                return [];
+            }
+            
+            // Extract unique userIds
+            const userIds = [...new Set(flagReports.map(flag => flag.userId))];
+            
+            // Batch lookup users
+            const userMap = await this.batchFindUsersByUserIds(courseName, userIds);
+            
+            // Combine flag reports with user information
+            const flagsWithNames = flagReports.map(flag => {
+                const userInfo = userMap.get(flag.userId);
+                return {
+                    ...flag,
+                    userName: userInfo?.name || 'Unknown User',
+                    userPuid: userInfo?.puid || 'Unknown PUID',
+                    userAffiliation: userInfo?.affiliation || 'Unknown'
+                };
+            });
+            
+            //START DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES-RESULT)
+            console.log(`[MONGODB] ✅ Retrieved ${flagsWithNames.length} flag reports with user names`);
+            //END DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES-RESULT)
+            
+            return flagsWithNames;
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES-ERROR)
+            console.error(`[MONGODB] 🚨 Error getting flag reports with user names:`, error);
+            //END DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES-ERROR)
+            throw error;
+        }
     }
 
     /**

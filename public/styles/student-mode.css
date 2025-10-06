@@ -117,7 +117,7 @@ body {
 }
 
 .sidebar-header .collapse-sidebar-btn {
-    padding: 10px 0px 0px 10px;
+    padding: 0px 0px 0px 5px;
 }
 
 /* Hide chat list action buttons when collapsed, EXCEPT show the pinned star */
@@ -136,9 +136,11 @@ body {
     color: white;
     height: 56px;              /* keep constant height expanded/collapsed */
     box-sizing: border-box;
+    margin-bottom: 5px;
 }
 
 .logo-box .logo-text { 
+    width: 80%;
     display: flex; 
     flex-direction: column; 
 }

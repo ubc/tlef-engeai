@@ -1076,7 +1076,7 @@ export class ChatManager {
 
         const titleSpan = document.createElement('span');
         titleSpan.className = 'chat-title'; // Apply existing CSS class with ellipsis styling
-        titleSpan.textContent = this.truncateTitle(chat.itemTitle);
+        titleSpan.textContent = chat.itemTitle;
 
         const actions = document.createElement('div');
         actions.style.display = 'flex';
@@ -1623,27 +1623,32 @@ export class ChatManager {
             submitBtn.classList.add('loading');
             
             try {
-                // TODO: IMPLEMENT BACKEND API CALL
-                // Backend API endpoint: POST /api/courses/:courseId/flags or POST /api/chat/flags
-                // Request body should match FlagReport interface from types.ts:
-                // {
-                //     courseName: this.config.userContext.activeCourseName,
-                //     flagType: flagType as FlagReport['flagType'],
-                //     reportType: flagType === 'other' ? otherDetails : selectedReason.labels[0].textContent,
-                //     chatContent: message.text,
-                //     userId: this.config.userContext.userId,
-                //     chatId: activeChat.id,
-                //     messageId: message.id,
-                //     timestamp: message.timestamp
-                // }
-                // Expected response: { success: boolean, error?: string, flagId?: string }
-                // Implementation location: src/routes/chat.ts or src/routes/flags.ts
+                // Real API call to backend
+                const requestBody = {
+                    flagType: flagType as 'innacurate_response' | 'harassment' | 'inappropriate' | 'dishonesty' | 'interface bug' | 'other',
+                    reportType: flagType === 'other' ? otherDetails : (selectedReason.labels?.[0]?.textContent || 'Unknown reason'),
+                    chatContent: message.text,
+                    userId: this.config.userContext.userId
+                };
+
+                console.log('🏴 Submitting flag to API:', requestBody);
+
+                const response = await fetch(`/api/courses/${this.config.userContext.courseId}/flags`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const apiResponse = await response.json();
+                console.log('🏴 Flag API response:', apiResponse);
                 
-                // Simulate API call (REMOVE THIS AFTER BACKEND IMPLEMENTATION)
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                const simulatedResponse = { success: true };
+                if (!response.ok) {
+                    throw new Error(apiResponse.error || `HTTP ${response.status}: ${response.statusText}`);
+                }
                 
-                if (simulatedResponse.success) {
+                if (apiResponse.success) {
                     // Show success message
                     this.showFlagStatus(statusMessage, 'Flag submitted successfully! Thank you for your feedback.', 'success');
                     submitBtn.style.display = 'none';

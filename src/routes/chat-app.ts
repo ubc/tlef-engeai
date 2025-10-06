@@ -357,13 +357,22 @@ class ChatApp {
             throw new Error('Conversation not found');
         }
 
-        // Send message to LLM and get response
+        //Send message to LLM and get response
         const response = await conversation.send({
             temperature: 0.7,
             num_ctx: 32768
         });
 
-        // Add assistant response to conversation and history
+        // const llmArguments = {
+        //     temperature: 0.7
+        // };
+
+        // // if provider is Ollama
+        // llmArguments.num_ctx = 32768;
+
+        // const response = await conversation.send(llmArguments);
+
+        // // Add assistant response to conversation and history
         const assistantMessage = this.addAssistantMessage(chatId, response.content);
         
         return assistantMessage;
