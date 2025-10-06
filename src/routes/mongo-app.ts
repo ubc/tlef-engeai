@@ -690,7 +690,7 @@ router.post('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: R
         // Create flag report object with unique ID using IDGenerator
         const idGenerator = IDGenerator.getInstance();
         const flagDate = new Date();
-        const uniqueId = idGenerator.flagIDGenerator(userId.toString(), course.courseName, flagDate);
+        const uniqueId = idGenerator.flagIDGenerator(chatContent, userId.toString(), course.courseName, flagDate);
         
         const flagReport: FlagReport = {
             id: uniqueId,

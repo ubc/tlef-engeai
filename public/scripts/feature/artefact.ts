@@ -152,7 +152,10 @@ export class ArtefactHandler {
 
         //START DEBUG LOG : DEBUG-CODE(019)
         console.log('🔍 Parsing artefacts for message:', messageId);
-        console.log('🔍 Original text:', text);
+        console.log('🔍 Original text length:', text.length);
+        console.log('🔍 Text preview:', text.substring(0, 200) + (text.length > 200 ? '...' : ''));
+        console.log('🔍 Contains <Artefact>:', text.includes('<Artefact>'));
+        console.log('🔍 Contains </Artefact>:', text.includes('</Artefact>'));
         //END DEBUG LOG : DEBUG-CODE(019)
 
         let currentPos = 0;
@@ -220,6 +223,12 @@ export class ArtefactHandler {
 
             // Create artefact button
             const artefactButton = this.createArtefactButton(artefactData);
+            
+            //START DEBUG LOG : DEBUG-CODE(ARTEFACT-BUTTON-CREATED)
+            console.log('🎨 Created artefact button:', artefactButton);
+            console.log('🎨 Button HTML:', artefactButton.outerHTML);
+            //END DEBUG LOG : DEBUG-CODE(ARTEFACT-BUTTON-CREATED)
+            
             elements.push(artefactButton);
 
             // Create line break after artefact

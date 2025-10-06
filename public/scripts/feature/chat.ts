@@ -173,6 +173,13 @@ export class ChatManager {
                 this.activeChatId = this.chats[0].id;
                 console.log('[CHAT-MANAGER] ✅ Set active chat:', this.activeChatId);
             }
+            
+            //START DEBUG LOG : DEBUG-CODE(INIT-RENDER-CHAT-LIST)
+            console.log('[CHAT-MANAGER] 🎨 Rendering chat list after initialization...');
+            //END DEBUG LOG : DEBUG-CODE(INIT-RENDER-CHAT-LIST)
+            
+            // Render the chat list to display loaded chats
+            this.renderChatList();
         } catch (error) {
             console.error('Error loading initial chats:', error);
             this.chats = [];
@@ -380,29 +387,17 @@ export class ChatManager {
             }
             
             if (data.assistantMessage) {
-                // Process artefacts in the complete response
-                try {
-                    const result = this.artefactHandler.processStreamingText(
-                        data.assistantMessage.text,
-                        data.assistantMessage.id
-                    );
-                    
-                    // Update the assistant message with processed text
-                    const finalMessage = {
-                        ...data.assistantMessage,
-                        text: result.processedText
-                    };
-                    
-                    activeChat.messages.push(finalMessage);
-                    this.addMessageToDOM(finalMessage, activeChat);
-                    onComplete?.(finalMessage);
-                } catch (artefactError) {
-                    console.error('[CHAT-MANAGER] ⚠️ Error processing artefacts:', artefactError);
-                    // Fallback to original message if artefact processing fails
-                    activeChat.messages.push(data.assistantMessage);
-                    this.addMessageToDOM(data.assistantMessage, activeChat);
-                    onComplete?.(data.assistantMessage);
-                }
+                //START DEBUG LOG : DEBUG-CODE(NON-STREAMING-ARTEFACT)
+                console.log('🎨 Processing non-streaming assistant message for artefacts');
+                console.log('🎨 Message ID:', data.assistantMessage.id);
+                console.log('🎨 Message text length:', data.assistantMessage.text.length);
+                console.log('🎨 Contains artefact tags:', data.assistantMessage.text.includes('<Artefact>'));
+                //END DEBUG LOG : DEBUG-CODE(NON-STREAMING-ARTEFACT)
+                
+                // Add the assistant message directly - artefacts will be processed in addMessageToDOM
+                activeChat.messages.push(data.assistantMessage);
+                this.addMessageToDOM(data.assistantMessage, activeChat);
+                onComplete?.(data.assistantMessage);
             }
 
             // Refresh chat data from server to get updated title
@@ -1046,6 +1041,30 @@ export class ChatManager {
         });
     }
 
+    /**
+     * Truncate title intelligently at word boundaries
+     * @param title - The title to truncate
+     * @param maxLength - Maximum length before truncation (default: 30)
+     * @returns Truncated title with ellipsis
+     */
+    private truncateTitle(title: string, maxLength: number = 30): string {
+        if (title.length <= maxLength) {
+            return title;
+        }
+
+        // Find the last space before maxLength to avoid cutting words
+        const truncated = title.substring(0, maxLength);
+        const lastSpaceIndex = truncated.lastIndexOf(' ');
+        
+        // If we found a space and it's not too close to the beginning, use it
+        if (lastSpaceIndex > 10) {
+            return title.substring(0, lastSpaceIndex) + '...';
+        }
+        
+        // Otherwise, truncate at maxLength and add ellipsis
+        return truncated + '...';
+    }
+
     private createChatListItem(chat: Chat): HTMLLIElement {
         const li = document.createElement('li');
         li.className = `chat-item ${chat.id === this.activeChatId ? 'active' : ''}`;
@@ -1057,7 +1076,7 @@ export class ChatManager {
 
         const titleSpan = document.createElement('span');
         titleSpan.className = 'chat-title'; // Apply existing CSS class with ellipsis styling
-        titleSpan.textContent = chat.itemTitle;
+        titleSpan.textContent = this.truncateTitle(chat.itemTitle);
 
         const actions = document.createElement('div');
         actions.style.display = 'flex';
@@ -1169,10 +1188,19 @@ export class ChatManager {
         
         // Process artefacts for all messages (including initial messages)
         if (sender === 'bot') {
+            //START DEBUG LOG : DEBUG-CODE(ARTEFACT-DEBUG)
+            console.log('🎨 Processing bot message for artefacts:', messageId);
+            console.log('🎨 Message text length:', text.length);
+            console.log('🎨 Contains <Artefact> tag:', text.includes('<Artefact>'));
+            console.log('🎨 Contains </Artefact> tag:', text.includes('</Artefact>'));
+            //END DEBUG LOG : DEBUG-CODE(ARTEFACT-DEBUG)
+            
             const parsed = this.artefactHandler.parseArtefacts(text, messageId);
             
             //START DEBUG LOG : DEBUG-CODE(022)
             console.log('🎨 createMessageElement - Parsed artefacts:', parsed);
+            console.log('🎨 Has artefacts:', parsed.hasArtefacts);
+            console.log('🎨 Elements count:', parsed.elements.length);
             //END DEBUG LOG : DEBUG-CODE(022)
             
             if (parsed.hasArtefacts) {
