@@ -45,6 +45,7 @@
     align-items: center;
     gap: 0.75rem;
     margin-bottom: 1rem;
+    flex-shrink: 0;
 }
 
 .logo-box .feather {
@@ -74,6 +75,7 @@
 .steps-header {
     margin-bottom: 1rem;
     border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
 }
 
 .steps-header h2 {
@@ -92,6 +94,8 @@
 
 .steps-list {
     flex: 1;
+    min-height: 0;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 20px;

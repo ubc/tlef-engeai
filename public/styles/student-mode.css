@@ -79,6 +79,7 @@ body {
     border-radius: 10px;
     border: 1px solid var(--border-color);
     width: 270px;
+    height: calc(100vh - 20px); /* Fixed height to enable proper scrolling */
     flex-shrink: 0;
     background-color: var(--background-2);
     display: flex;
@@ -89,22 +90,48 @@ body {
     box-shadow: 0 4px 15px rgba(92, 138, 58, 0.2);
 }
 
+/* Wrapper div for header and chat list - needs to be flexible and constrained */
+.sidebar > div:first-child {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
 /* Collapsed sidebar to widen main chat area while keeping message content max width constant */
 .sidebar.collapsed {
     width: 56px;
     padding: 0.5rem;
 }
 
-.sidebar.collapsed .logo-text,
-.sidebar.collapsed .report-history-btn span,
-.sidebar.collapsed .logout-btn span,
-.sidebar.collapsed .chat-item span {
-    display: none; /* hide text when collapsed */
+/* Logo text hide when sidebar collapses */
+.sidebar.collapsed .logo-text {
+    display: none;
 }
 
-.sidebar.collapsed .add-chat-btn span {
-    display: none; /* hide the text when collapsed */
+
+/* Report History button text hide when sidebar collapses */
+.sidebar.collapsed .report-history-btn span {
+    display: none;
 }
+
+/* Logout button text hide when sidebar collapses */
+.sidebar.collapsed .logout-btn span {
+    display: none;
+}
+
+/* Chat title hide when sidebar collapses */
+.sidebar.collapsed .chat-item .chat-title {
+    display: none;
+}
+
+
+/* Add chat button text hide when sidebar collapses */
+.sidebar.collapsed .add-chat-btn span {
+    display: none;
+}
+
 
 .sidebar.collapsed .add-chat-btn::before {
     content: "+"; /* show just + when collapsed */
@@ -118,6 +145,11 @@ body {
 
 .sidebar-header .collapse-sidebar-btn {
     padding: 0px 0px 0px 5px;
+    transition: all 0.3s ease;
+}
+
+.sidebar.collapsed .collapse-sidebar-btn {
+    padding: 0px 0px 0px 10px;
 }
 
 /* Hide chat list action buttons when collapsed, EXCEPT show the pinned star */
@@ -125,6 +157,10 @@ body {
 /* Show the button if it contains a pinned star icon */
 .sidebar.collapsed .chat-list .icon-btn:has(.pinned) { display: inline-flex !important; }
 
+
+.sidebar-header {
+    flex-shrink: 0; /* Prevent header from shrinking */
+}
 
 .sidebar-header .logo-box {
     display: flex;
@@ -142,7 +178,7 @@ body {
 .logo-box .logo-text { 
     width: 80%;
     display: flex; 
-    flex-direction: column; 
+    flex-direction: column;
 }
 
 .logo-text span {
@@ -168,6 +204,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    flex-shrink: 0; /* Prevent footer from shrinking */
 }
 
 .report-history-btn {
@@ -184,6 +221,8 @@ body {
     cursor: pointer;
     transition: all 0.2s;
 }
+
+
 .report-history-btn:hover { 
     background-color: var(--color-eng-red); 
     color: white; 
@@ -211,6 +250,8 @@ body {
     transition: all 0.2s;
     color: #000000;
 }
+
+
 
 .logout-btn:hover { 
     background-color: var(--color-eng-red); 

@@ -1051,6 +1051,48 @@ router.get('/:courseId/flags/with-names', asyncHandlerWithAuth(async (req: Reque
     }
 }));
 
+// GET /api/courses/:courseId/flags/student/:userId - Get flag reports for a specific student (REQUIRES AUTH - Student view)
+router.get('/:courseId/flags/student/:userId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, userId } = req.params;
+        
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(GET-STUDENT-FLAGS-API)
+        console.log('🔍 Getting flag reports for student:', userId, 'in course:', course.courseName);
+        //END DEBUG LOG : DEBUG-CODE(GET-STUDENT-FLAGS-API)
+
+        // Get all flags and filter by userId
+        const allFlags = await instance.getFlagReports(course.courseName);
+        const studentFlags = allFlags.filter((flag: FlagReport) => flag.userId.toString() === userId.toString());
+        
+        // Sort by most recent first
+        studentFlags.sort((a: FlagReport, b: FlagReport) => {
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+        
+        res.json({
+            success: true,
+            data: studentFlags,
+            count: studentFlags.length
+        });
+    } catch (error) {
+        console.error('Error getting student flag reports:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get student flag reports'
+        });
+    }
+}));
+
 
 
 

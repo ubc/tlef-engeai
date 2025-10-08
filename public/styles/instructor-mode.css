@@ -178,6 +178,10 @@ body {
     color: #000000;
 }
 
+.instructor-logout-btn span {
+    transition: opacity 0.3s ease, transform 0.3s ease, max-width 0.3s ease;
+}
+
 .instructor-logout-btn:hover { 
     background-color: var(--color-eng-red); 
     color: white; 
@@ -190,9 +194,19 @@ body {
     flex-shrink: 0;
 }
 
-/* Hide logout text when feature sidebar is collapsed */
+/* Instructor logout button text fade-out when sidebar collapses */
 .instructor-feature-sidebar.collapsed .instructor-logout-btn span {
-    display: none;
+    opacity: 0;
+    max-width: 0;
+    transform: translateX(-10px);
+    overflow: hidden;
+    pointer-events: none;
+    transition-delay: 0s;
+}
+
+/* Instructor logout button text fade-in when sidebar expands */
+.instructor-feature-sidebar:not(.collapsed) .instructor-logout-btn span {
+    transition-delay: 0.15s;
 }
 
 .instructor-feature-sidebar.collapsed .instructor-logout-btn {
@@ -238,10 +252,22 @@ body {
 .logo-box .logo-text {
     display: flex;
     flex-direction: column;
+    transition: opacity 0.3s ease, transform 0.3s ease, max-width 0.3s ease;
 }
 
-.logo-box.collapsed .logo-text{
-    display: none;
+/* Logo text fade-out when instructor sidebar collapses */
+.logo-box.collapsed .logo-text {
+    opacity: 0;
+    max-width: 0;
+    transform: translateX(-10px);
+    overflow: hidden;
+    pointer-events: none;
+    transition-delay: 0s;
+}
+
+/* Logo text fade-in when instructor sidebar expands */
+.instructor-feature-sidebar:not(.collapsed) .logo-box .logo-text {
+    transition-delay: 0.15s;
 }
 
 .logo-box.collapsed .feather {
@@ -348,6 +374,10 @@ body {
     transition: background-color 0.1s ease-in-out;
 }
 
+.sidebar-menu-list .menu-list-item p {
+    transition: opacity 0.3s ease, transform 0.3s ease, max-width 0.3s ease;
+}
+
 
 
 .sidebar-menu-list .menu-list-item .feather {
@@ -372,8 +402,19 @@ body {
     justify-content: center;
 }
 
+/* Menu list item text fade-out when sidebar collapses */
 .sidebar-menu-list.collapsed .menu-list-item p {
-    display: none;
+    opacity: 0;
+    max-width: 0;
+    transform: translateX(-10px);
+    overflow: hidden;
+    pointer-events: none;
+    transition-delay: 0s;
+}
+
+/* Menu list item text fade-in when sidebar expands */
+.sidebar-menu-list:not(.collapsed) .menu-list-item p {
+    transition-delay: 0.15s;
 }
 
 

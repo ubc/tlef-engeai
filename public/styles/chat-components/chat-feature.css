@@ -12,6 +12,10 @@
 /* ======== CHAT MENU STYLES ========== */
 
 
+.add-chat-box {
+    flex-shrink: 0; /* Prevent add-chat-box from shrinking */
+}
+
 .add-chat-box .add-chat-btn {
     background: var(--background-2);
     color: var(--color-chbe-green);
@@ -47,6 +51,7 @@
     font-size: 0.8rem;
 }
 
+
 .add-chat-btn .feather { 
     width: 18px; 
     height: 18px; 
@@ -57,6 +62,8 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+    flex: 1; /* Take remaining space in sidebar */
+    overflow: hidden; /* Constrain to enable scrolling in ul */
 }
 
 .chat-list ul { 
@@ -64,7 +71,7 @@
     padding: 0; 
     margin: 0; 
     flex: 1 1 auto;
-    overflow-y: auto;
+    overflow-y: auto; /* Enable scrolling */
     min-height: 0;
 }
 

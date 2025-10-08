@@ -1041,30 +1041,6 @@ export class ChatManager {
         });
     }
 
-    /**
-     * Truncate title intelligently at word boundaries
-     * @param title - The title to truncate
-     * @param maxLength - Maximum length before truncation (default: 30)
-     * @returns Truncated title with ellipsis
-     */
-    private truncateTitle(title: string, maxLength: number = 30): string {
-        if (title.length <= maxLength) {
-            return title;
-        }
-
-        // Find the last space before maxLength to avoid cutting words
-        const truncated = title.substring(0, maxLength);
-        const lastSpaceIndex = truncated.lastIndexOf(' ');
-        
-        // If we found a space and it's not too close to the beginning, use it
-        if (lastSpaceIndex > 10) {
-            return title.substring(0, lastSpaceIndex) + '...';
-        }
-        
-        // Otherwise, truncate at maxLength and add ellipsis
-        return truncated + '...';
-    }
-
     private createChatListItem(chat: Chat): HTMLLIElement {
         const li = document.createElement('li');
         li.className = `chat-item ${chat.id === this.activeChatId ? 'active' : ''}`;

@@ -4,6 +4,7 @@ import { loadComponentHTML, renderFeatherIcons } from './functions/api.js';
 import { ChatManager, createUserFromAuthData } from './feature/chat.js';
 import { authService } from './services/AuthService.js';
 import { renderStudentOnboarding } from './onboarding/student-onboarding.js';
+import { initializeStudentFlagHistory } from './feature/student-flag-history.js';
 
 // Authentication check function
 async function checkAuthentication(): Promise<boolean> {
@@ -86,11 +87,20 @@ async function initializeChatInterface(user: any): Promise<void> {
     // Artefact functionality moved to chat.ts
 
     // --- COMPONENT LOADING ---
-    const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'report-history' | 'profile') => {
+    const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'report-history' | 'profile' | 'flag-history') => {
         if (!mainContentArea) return;
         
         try {
-            const html = await loadComponentHTML(componentName);
+            // Special handling for flag-history component (it's in student/ subdirectory)
+            let html: string;
+            if (componentName === 'flag-history') {
+                const response = await fetch('/components/student/flag-history.html');
+                if (!response.ok) throw new Error(`Failed to load flag-history component: ${response.statusText}`);
+                html = await response.text();
+            } else {
+                html = await loadComponentHTML(componentName);
+            }
+            
             mainContentArea.innerHTML = html;
             renderFeatherIcons();
             
@@ -107,6 +117,8 @@ async function initializeChatInterface(user: any): Promise<void> {
                 attachReportHistoryListeners();
             } else if (componentName === 'profile') {
                 attachProfileListeners();
+            } else if (componentName === 'flag-history') {
+                attachFlagHistoryListeners();
             }
         } catch (error) {
             console.error(`Error loading component ${componentName}:`, error);
@@ -341,11 +353,9 @@ async function initializeChatInterface(user: any): Promise<void> {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             if (!sidebarEl) return;
-            const collapsed = sidebarEl.classList.toggle('collapsed');
-            // Keep the menu icon - no need to change it
+            sidebarEl.classList.toggle('collapsed');
         });
 
-        // Place the button at the end of the header area
         sidebarHeaderEl.appendChild(btn);
         renderFeatherIcons();
     };
@@ -518,6 +528,30 @@ async function initializeChatInterface(user: any): Promise<void> {
         }
     };
 
+    const attachFlagHistoryListeners = () => {
+        console.log('[STUDENT-MODE] 🏴 Initializing flag history...');
+        
+        // Initialize flag history with user context
+        const courseId = user.courseId;
+        const userId = user.userId;
+        
+        if (!courseId || !userId) {
+            console.error('[STUDENT-MODE] ❌ Missing courseId or userId for flag history');
+            return;
+        }
+        
+        // Initialize the flag history interface
+        initializeStudentFlagHistory(courseId, userId);
+        
+        // Back button listener is handled inside initializeStudentFlagHistory
+        // but we also need to handle the actual navigation
+        const backBtn = document.getElementById('back-to-chat-btn');
+        backBtn?.addEventListener('click', () => {
+            console.log('[STUDENT-MODE] 🔙 Back to chat from flag history');
+            loadComponent('chat-window');
+        });
+    };
+
     const attachProfileButtonListener = () => {
         const profileBtn = document.getElementById('profile-btn');
         if (!profileBtn) {
@@ -526,10 +560,10 @@ async function initializeChatInterface(user: any): Promise<void> {
         }
         
         profileBtn.addEventListener('click', () => {
-            console.log('[STUDENT-MODE] 👤 Loading profile component...');
-            loadComponent('profile');
+            console.log('[STUDENT-MODE] 👤 Loading flag history component...');
+            loadComponent('flag-history');
         });
-        console.log('[STUDENT-MODE] ✅ Profile button listener attached');
+        console.log('[STUDENT-MODE] ✅ Flag history button listener attached');
     };
 
     // --- INITIALIZATION ---
