@@ -5,53 +5,56 @@
  * 
  * Styles for the student flag history interface,
  * including flag cards, filters, and statistics.
+ * Matches the instructor documents pattern for consistency.
  */
 
 /* Container */
-.flag-history-container {
-    padding: 2rem;
-    max-width: 1200px;
-    margin: 0 auto;
+.container {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
     height: 100%;
+}
+
+/* Main Content */
+.main-content {
+    width: 100%;
     overflow-y: auto;
 }
 
-/* Header Section */
+/* Header Section - Matching documents-instructor.html pattern */
 .flag-history-header {
-    margin-bottom: 2rem;
-}
-
-.flag-history-header .back-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background: transparent;
+    background: var(--color-chbe-green);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
     border: 1px solid var(--border-color);
-    border-radius: 0.5rem;
-    color: var(--text-color);
-    font-size: 0.875rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    margin-bottom: 1rem;
-}
-
-.flag-history-header .back-btn:hover {
-    background: var(--hover-bg);
-    border-color: var(--primary-color);
-    color: var(--primary-color);
-}
-
-.flag-history-header .back-btn i {
-    width: 16px;
-    height: 16px;
+    box-shadow: 
+        0px 2px 8px rgba(0, 0, 0, 0.1),
+        0px 0px 0px 20px white;
+    animation: slideInDown 0.5s 0.1s forwards;
+    position: sticky;
+    z-index: 10;
+    top: 0;
 }
 
 .flag-history-header h1 {
+    color: white;
+    margin: 0;
     font-size: 2rem;
     font-weight: 700;
-    color: var(--text-color);
-    margin-bottom: 0.5rem;
+}
+
+/* Animation for header */
+@keyframes slideInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .flag-history-description {
@@ -251,26 +254,30 @@
     height: 16px;
 }
 
-/* Flag List */
-.flag-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
-    gap: 1.5rem;
+/* Flag History Container - Matching documents-container pattern */
+.flag-history-container {
+    background: var(--chat-bg);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     margin-bottom: 2rem;
 }
 
-/* Flag Card */
+/* Flag Card - Matching content-item pattern */
 .flag-card {
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    transition: all 0.2s ease;
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--chat-bg);
+    transition: all 0.3s ease;
+}
+
+.flag-card:last-child {
+    border-bottom: none;
 }
 
 .flag-card:hover {
-    border-color: var(--primary-color);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    background: var(--hover-bg);
 }
 
 /* Flag Card Header */
@@ -278,12 +285,13 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
+    margin-bottom: 10px;
 }
 
 .flag-timestamp {
     color: var(--text-secondary);
-    font-size: 0.875rem;
+    font-size: 12px;
+    font-style: italic;
 }
 
 .status-badge {
@@ -313,31 +321,34 @@
     height: 14px;
 }
 
-/* Flag Type Label */
+/* Flag Type Label - Matching status badge pattern */
 .flag-type-label {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background: rgba(0, 123, 255, 0.1);
-    border-radius: 0.5rem;
-    color: var(--primary-color);
-    font-size: 0.875rem;
-    font-weight: 500;
+    padding: 6px 10px;
+    background: rgba(0, 33, 69, 0.1);
+    border: 1px solid var(--color-navy-blue);
+    border-radius: 6px;
+    color: var(--color-navy-blue);
+    font-size: 0.75rem;
+    font-weight: 600;
     margin-bottom: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .flag-type-label i {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
 }
 
-/* Flag Reason */
+/* Flag Reason - Matching content-title pattern */
 .flag-reason {
-    color: var(--text-color);
-    font-size: 1rem;
+    color: var(--text-primary);
+    font-size: 14px;
     font-weight: 500;
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
     line-height: 1.5;
 }
 
@@ -359,84 +370,119 @@
 }
 
 .flag-content-label {
-    color: var(--text-secondary);
-    font-size: 0.875rem;
+    color: var(--text-primary);
+    font-size: 12px;
     font-weight: 600;
-    margin-bottom: 0.5rem;
+    margin-bottom: 8px;
 }
 
 .flag-message-text {
-    background: var(--hover-bg);
-    border-left: 3px solid var(--primary-color);
-    padding: 1rem;
-    border-radius: 0.5rem;
-    color: var(--text-color);
-    font-size: 0.9375rem;
+    background: var(--gingham-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 12px 15px;
+    color: var(--text-primary);
+    font-size: 13px;
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-word;
 }
 
-/* Instructor Response */
+/* Instructor Response - Matching success pattern */
 .instructor-response {
-    background: rgba(40, 167, 69, 0.05);
-    border-left: 3px solid #28a745;
-    padding: 1rem;
-    border-radius: 0.5rem;
-    margin-bottom: 1rem;
+    background: rgba(92, 138, 58, 0.1);
+    border: 1px solid var(--pinned-color);
+    border-radius: 6px;
+    padding: 12px 15px;
+    margin-bottom: 10px;
 }
 
 .response-label {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    color: #28a745;
-    font-size: 0.875rem;
+    color: var(--pinned-color);
+    font-size: 12px;
     font-weight: 600;
-    margin-bottom: 0.5rem;
+    margin-bottom: 8px;
 }
 
 .response-label i {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
 }
 
 .response-text {
-    color: var(--text-color);
-    font-size: 0.9375rem;
+    color: var(--text-primary);
+    font-size: 13px;
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-word;
 }
 
-/* Expand Button */
+/* Expand Button - Matching instructor pattern */
 .expand-btn {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
     width: 100%;
-    padding: 0.75rem;
-    background: transparent;
+    padding: 8px 12px;
+    background: var(--gingham-color);
     border: 1px solid var(--border-color);
-    border-radius: 0.5rem;
-    color: var(--text-secondary);
-    font-size: 0.875rem;
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.3s ease;
 }
 
 .expand-btn:hover {
     background: var(--hover-bg);
-    border-color: var(--primary-color);
-    color: var(--primary-color);
+    border-color: var(--pinned-color);
+    color: var(--pinned-color);
 }
 
 .expand-btn i {
     width: 16px;
     height: 16px;
     transition: transform 0.2s ease;
+}
+
+/* Profile Actions Section */
+.profile-actions {
+    margin-top: 2rem;
+    padding: 1rem 0;
+    display: flex;
+    justify-content: center;
+}
+
+.back-to-chat-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 12px 24px;
+    background: var(--color-chbe-green);
+    border: 1px solid var(--color-chbe-green);
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.back-to-chat-btn:hover {
+    background: var(--pinned-color);
+    border-color: var(--pinned-color);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(92, 138, 58, 0.3);
+}
+
+.back-to-chat-btn i {
+    width: 18px;
+    height: 18px;
 }
 
 /* No Results Message */

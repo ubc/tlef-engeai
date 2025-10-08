@@ -433,6 +433,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             hideChatList(); // Ensure chat list is hidden
         }
         else if ( currentState === StateEvent.Chat){
+            updateSidebarState(); // Update menu active state
             collapseFeatureSidebar();
             // showChatContent is now handled by the click event listener
         }
@@ -484,12 +485,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     const updateSidebarState = () => {
+        // Handle collapsed state
         if (sidebarMenuListEl) {
             if (isSidebarCollapsed) {
                 sidebarMenuListEl.classList.add('collapsed');
             } else {
                 sidebarMenuListEl.classList.remove('collapsed');
             }
+        }
+        
+        // Handle active state for menu items
+        // Remove active class from all menu items first
+        documentsStateEl?.classList.remove('active');
+        chatStateEl?.classList.remove('active');
+        reportStateEl?.classList.remove('active');
+        monitorStateEl?.classList.remove('active');
+        
+        // Add active class to the current state's menu item
+        switch(currentState) {
+            case StateEvent.Documents:
+                documentsStateEl?.classList.add('active');
+                break;
+            case StateEvent.Chat:
+                chatStateEl?.classList.add('active');
+                break;
+            case StateEvent.Report:
+                reportStateEl?.classList.add('active');
+                break;
+            case StateEvent.Monitor:
+                monitorStateEl?.classList.add('active');
+                break;
         }
     }
 
@@ -754,6 +779,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     const showChatContent = async () => {
+        // Update menu active state
+        updateSidebarState();
+        
         // Ensure feature sidebar is collapsed when in chat mode
         collapseFeatureSidebar();
         

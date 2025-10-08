@@ -1033,7 +1033,7 @@ export class EngEAI_MongoDB {
      * Get all chats for a specific user by PUID
      * @param courseName - The name of the course
      * @param puid - The PUID of the user
-     * @returns Array of Chat objects
+     * @returns Array of Chat objects (excluding soft-deleted chats)
      */
     public getUserChats = async (courseName: string, puid: string): Promise<Chat[]> => {
         //START DEBUG LOG : DEBUG-CODE(GET-USER-CHATS)
@@ -1051,13 +1051,17 @@ export class EngEAI_MongoDB {
                 return [];
             }
             
-            const chats = (user as any).chats || [];
+            const allChats = (user as any).chats || [];
+            
+            // Filter out soft-deleted chats (where isDeleted === true)
+            // Chats without isDeleted field are treated as active (backward compatibility)
+            const activeChats = allChats.filter((chat: Chat) => !chat.isDeleted);
             
             //START DEBUG LOG : DEBUG-CODE(GET-USER-CHATS-SUCCESS)
-            console.log(`[MONGODB] ✅ Found ${chats.length} chats for user`);
+            console.log(`[MONGODB] ✅ Found ${activeChats.length} active chats (${allChats.length - activeChats.length} deleted) for user`);
             //END DEBUG LOG : DEBUG-CODE(GET-USER-CHATS-SUCCESS)
             
-            return chats;
+            return activeChats;
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(GET-USER-CHATS-ERROR)
             console.error(`[MONGODB] 🚨 Error getting user chats:`, error);
@@ -1222,7 +1226,48 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Delete a chat from user's chats array
+     * Mark a chat as deleted (soft delete) instead of removing it
+     * This preserves chat history for audit/analytics while hiding it from users
+     * @param courseName - The name of the course
+     * @param puid - The PUID of the user
+     * @param chatId - The ID of the chat to mark as deleted
+     */
+    public markChatAsDeleted = async (courseName: string, puid: string, chatId: string): Promise<void> => {
+        //START DEBUG LOG : DEBUG-CODE(MARK-CHAT-DELETED)
+        console.log(`[MONGODB] 🗑️ Marking chat ${chatId} as deleted for user PUID: ${puid} in course: ${courseName}`);
+        //END DEBUG LOG : DEBUG-CODE(MARK-CHAT-DELETED)
+        
+        try {
+            const userCollection = this.getUserCollection(courseName);
+            
+            const result = await userCollection.updateOne(
+                { puid: puid, 'chats.id': chatId },
+                { 
+                    $set: { 
+                        'chats.$.isDeleted': true,
+                        updatedAt: new Date()
+                    }
+                }
+            );
+            
+            if (result.matchedCount === 0) {
+                throw new Error(`Chat not found with ID: ${chatId} for user PUID: ${puid}`);
+            }
+            
+            //START DEBUG LOG : DEBUG-CODE(MARK-CHAT-DELETED-SUCCESS)
+            console.log(`[MONGODB] ✅ Chat ${chatId} marked as deleted successfully`);
+            //END DEBUG LOG : DEBUG-CODE(MARK-CHAT-DELETED-SUCCESS)
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(MARK-CHAT-DELETED-ERROR)
+            console.error(`[MONGODB] 🚨 Error marking chat as deleted:`, error);
+            //END DEBUG LOG : DEBUG-CODE(MARK-CHAT-DELETED-ERROR)
+            throw error;
+        }
+    }
+
+    /**
+     * Delete a chat from user's chats array (HARD DELETE - kept for backward compatibility)
+     * @deprecated Use markChatAsDeleted() instead for soft delete
      * @param courseName - The name of the course
      * @param puid - The PUID of the user
      * @param chatId - The ID of the chat to delete

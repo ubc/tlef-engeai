@@ -1257,7 +1257,10 @@ router.get('/:chatId/message/:messageId', asyncHandlerWithAuth(async (req: Reque
 }));
 
 /**
- * Delete a chat (REQUIRES AUTH)
+ * Delete a chat (REQUIRES AUTH) - Using Soft Delete
+ * 
+ * Marks the chat as deleted (isDeleted: true) instead of removing it from the database.
+ * This preserves chat history for audit/analytics while hiding it from users.
  * 
  * @param chatId - The chat ID to delete
  * @returns JSON response with deletion status
@@ -1271,20 +1274,20 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
         const puid = user?.puid;
         const courseName = user?.activeCourseName || 'APSC 099: Engineering for Kindergarten';
         
-        //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-001)
-        console.log('\n🗑️ DELETE CHAT REQUEST:');
+        //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-001)
+        console.log('\n🗑️ SOFT DELETE CHAT REQUEST:');
         console.log('='.repeat(50));
         console.log(`Chat ID: ${chatId}`);
         console.log(`PUID: ${puid}`);
         console.log(`Course: ${courseName}`);
         console.log('='.repeat(50));
-        //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-001)
+        //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-001)
         
         // Validate input
         if (!chatId) {
-            //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-002)
-            console.log('❌ DELETE FAILED: Chat ID is required');
-            //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-002)
+            //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-002)
+            console.log('❌ SOFT DELETE FAILED: Chat ID is required');
+            //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-002)
             return res.status(400).json({
                 success: false,
                 error: 'Chat ID is required'
@@ -1292,73 +1295,57 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
         }
         
         if (!puid) {
-            //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-003)
-            console.log('❌ DELETE FAILED: PUID not found in session');
-            //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-003)
+            //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-003)
+            console.log('❌ SOFT DELETE FAILED: PUID not found in session');
+            //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-003)
             return res.status(401).json({
                 success: false,
                 error: 'User not authenticated'
             });
         }
         
-        // Validate chat exists in memory
-        if (!chatApp.validateChatExists(chatId)) {
-            //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-004)
-            console.log(`❌ DELETE FAILED: Chat ${chatId} not found in memory`);
-            //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-004)
-            return res.status(404).json({
-                success: false,
-                error: 'Chat not found'
-            });
+        // Remove from memory if exists (optional cleanup)
+        // This doesn't block deletion if chat is not in memory (e.g., after server restart)
+        if (chatApp.validateChatExists(chatId)) {
+            const memoryDeleted = chatApp.deleteChat(chatId);
+            //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-004)
+            console.log(`✅ Chat ${chatId} removed from server memory`);
+            //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-004)
+        } else {
+            //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-005)
+            console.log(`ℹ️ Chat ${chatId} not in memory (may have been loaded from database after restart)`);
+            //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-005)
         }
         
-        //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-005)
-        console.log(`✅ Chat ${chatId} exists, proceeding with deletion`);
-        //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-005)
-        
-        // Delete from memory
-        const deleted = chatApp.deleteChat(chatId);
-        
-        if (deleted) {
-            //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-006)
-            console.log(`✅ Chat ${chatId} deleted from memory`);
-            //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-006)
+        // Mark as deleted in database (soft delete)
+        // This always happens, regardless of memory state
+        try {
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            await mongoDB.markChatAsDeleted(courseName, puid, chatId);
             
-            // Delete from MongoDB
-            try {
-                const mongoDB = await EngEAI_MongoDB.getInstance();
-                await mongoDB.deleteChatFromUser(courseName, puid, chatId);
-                
-                //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-007)
-                console.log(`✅ Chat ${chatId} deleted from MongoDB`);
-                //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-007)
-            } catch (dbError) {
-                //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-008)
-                console.error('⚠️ WARNING: Failed to delete chat from MongoDB:', dbError);
-                console.log('Chat deleted from memory but not from database');
-                //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-008)
-                // Continue execution - chat is deleted from memory
-            }
+            //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-006)
+            console.log(`✅ Chat ${chatId} marked as deleted in database`);
+            //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-006)
             
             res.json({
                 success: true,
                 message: 'Chat deleted successfully',
                 chatId: chatId
             });
-        } else {
-            //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-009)
-            console.log(`❌ DELETE FAILED: Failed to delete chat ${chatId} from memory`);
-            //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-009)
-            res.status(500).json({
+        } catch (dbError) {
+            //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-007)
+            console.error('⚠️ Database error during soft delete:', dbError);
+            //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-007)
+            res.status(404).json({
                 success: false,
-                error: 'Failed to delete chat'
+                error: 'Chat not found or already deleted'
             });
         }
         
     } catch (error) {
-        //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-010)
-        console.error('❌ DELETE ERROR:', error);
-        //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-010)
+        //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-008)
+        console.error('❌ SOFT DELETE ERROR:', error);
+        //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-008)
         res.status(500).json({
             success: false,
             error: 'Internal server error'

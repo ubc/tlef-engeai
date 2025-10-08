@@ -35,6 +35,7 @@ export interface Chat {
     messages: ChatMessage[];
     isPinned: boolean;
     pinnedMessageId?: string | null;
+    isDeleted?: boolean;  // Soft delete flag (defaults to false/undefined for backward compatibility)
 }
 
 // ===========================================

@@ -11,6 +11,7 @@ import { loadComponentHTML, renderFeatherIcons } from "../functions/api.js";
 import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, CreateChatRequest } from "../functions/chat-api.js";
 import { Chat, ChatMessage, User, activeCourse } from "../../../src/functions/types.js";
 import { ArtefactHandler, ArtefactData, getArtefactHandler } from "./artefact.js";
+import { showDisclaimerModal } from "../modal-overlay.js";
 
 /**
  * LaTeX Rendering Utility Functions
@@ -651,48 +652,17 @@ export class ChatManager {
     }
 
     /**
-     * Open disclaimer modal
+     * Open disclaimer modal using the proper modal-overlay system
      */
     public async openDisclaimerModal(): Promise<void> {
-        if (document.querySelector('.modal-overlay')) {
-            document.body.classList.add('modal-open');
-            (document.querySelector('.modal-overlay') as HTMLElement)?.classList.add('show');
-            return;
-        }
-
-        const overlay = document.createElement('div');
-        overlay.className = 'modal-overlay';
-        document.body.appendChild(overlay);
-
-        try {
-            overlay.innerHTML = await loadComponentHTML('disclaimer');
-        } catch (err) {
-            overlay.innerHTML = '<div class="modal"><div class="modal-header"><h2>Disclaimer</h2></div><div class="modal-content"><p>Unable to load content.</p></div></div>';
-        }
-
-        overlay.classList.add('show');
-        document.body.classList.add('modal-open');
-        renderFeatherIcons();
-
-        const closeBtn = overlay.querySelector('.close-modal') as HTMLButtonElement | null;
-        const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                this.closeDisclaimerModal(overlay);
-            }
-        };
-
-        const closeDisclaimerModal = () => {
-            document.body.classList.remove('modal-open');
-            overlay.classList.remove('show');
-            overlay.remove();
-            window.removeEventListener('keydown', onKeyDown);
-        };
-
-        closeBtn?.addEventListener('click', closeDisclaimerModal);
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) closeDisclaimerModal();
-        });
-        window.addEventListener('keydown', onKeyDown);
+        const disclaimerContent = `
+            <p><strong>Purpose:</strong> This AI is designed as a study assistant to help you understand course materials. It is not a substitute for attending lectures, completing assignments, or your own critical thinking.</p>
+            <p><strong>Accuracy:</strong> While we strive for accuracy, the AI can make mistakes, misunderstand context, or generate incorrect information. Always verify critical information against your course materials and lectures.</p>
+            <p><strong>Academic Integrity:</strong> You are responsible for your own work. Do not submit AI-generated responses as your own. Use this tool to learn, not to cheat.</p>
+            <p><strong>Privacy:</strong> Your conversations may be reviewed for quality assurance and to improve the system. Do not share personal or sensitive information.</p>
+        `;
+        
+        await showDisclaimerModal('AI Assistant Disclaimer', disclaimerContent);
     }
 
 
@@ -1672,11 +1642,6 @@ export class ChatManager {
         }
     }
 
-    private closeDisclaimerModal(overlay: HTMLElement): void {
-        document.body.classList.remove('modal-open');
-        overlay.classList.remove('show');
-        overlay.remove();
-    }
 
 
 
