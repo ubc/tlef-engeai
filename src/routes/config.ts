@@ -49,7 +49,7 @@ export function loadConfig(): AppConfig {
 		logger: logger, // Share logger
 		debug: debug,
 	};
-	if (debug) logger.debug('LLM Config:', llmConfig);
+	// if (debug) logger.debug('LLM Config:', llmConfig);
 
 	// --- RAG Module Config ---
 	const ragProvider = (process.env.RAG_PROVIDER || 'qdrant') as RAGProviderType;
