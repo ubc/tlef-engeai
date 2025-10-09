@@ -89,11 +89,20 @@ router.post('/saml/callback', (req: express.Request, res: express.Response, next
         
         // Store GlobalUser in session
         (req.session as any).globalUser = globalUser;
-        
-        // Redirect to course selection page
-        console.log('[AUTH] 🚀 Redirecting to course selection');
-        res.redirect('/pages/course-selection.html');
-        
+
+        // IMPORTANT: Save session before redirect to ensure session is persisted
+        req.session.save((saveErr) => {
+            if (saveErr) {
+                console.error('[AUTH] ❌ Session save error:', saveErr);
+                return res.redirect('/');
+            }
+
+            // Redirect to course selection page
+            console.log('[AUTH] 🚀 Session saved, redirecting to course selection');
+            console.log('[AUTH] 📋 Session ID:', (req as any).sessionID);
+            res.redirect('/pages/course-selection.html');
+        });
+
     } catch (error) {
         console.error('[AUTH] 🚨 Error in authentication callback:', error);
         res.redirect('/');
@@ -108,25 +117,22 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
         console.log('[AUTH-LOCAL] Username:', req.body.username);
         //END DEBUG LOG : DEBUG-CODE(LOCAL-LOGIN-POST)
 
-        passport.authenticate('local', (err: any, user: any, info: any) => {
+        // Use custom callback to handle session saving properly
+        passport.authenticate('local', async (err: any, user: any, info: any) => {
             if (err) {
                 console.error('[AUTH-LOCAL] ❌ Authentication error:', err);
                 return next(err);
             }
 
             if (!user) {
-                //START DEBUG LOG : DEBUG-CODE(LOCAL-LOGIN-FAILED)
                 console.log('[AUTH-LOCAL] ❌ Authentication failed:', info?.message || 'Unknown error');
-                //END DEBUG LOG : DEBUG-CODE(LOCAL-LOGIN-FAILED)
-
-                // Redirect back to login with error parameter
                 return res.redirect('/auth/login?error=auth');
             }
 
-            // Log the user in (establish session)
+            // Log the user in and WAIT for req.logIn to complete
             req.logIn(user, async (loginErr) => {
                 if (loginErr) {
-                    console.error('[AUTH-LOCAL] ❌ Session establishment error:', loginErr);
+                    console.error('[AUTH-LOCAL] ❌ Login error:', loginErr);
                     return next(loginErr);
                 }
 
@@ -138,7 +144,7 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                     const name = `${firstName} ${lastName}`.trim();
                     const affiliation = user.affiliation;
 
-                    console.log('[AUTH-LOCAL] ✅ Local authentication successful');
+                    console.log('[AUTH-LOCAL] ✅ User logged in successfully');
                     console.log('[AUTH-LOCAL] User PUID:', puid);
                     console.log('[AUTH-LOCAL] User Name:', name);
                     console.log('[AUTH-LOCAL] Affiliation:', affiliation);
@@ -146,13 +152,11 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                     // Get MongoDB instance
                     const mongoDB = await EngEAI_MongoDB.getInstance();
 
-                    // Check if GlobalUser exists in active-users collection
+                    // Check if GlobalUser exists
                     let globalUser = await mongoDB.findGlobalUserByPUID(puid);
 
                     if (!globalUser) {
-                        // First-time user - create GlobalUser
                         console.log('[AUTH-LOCAL] 🆕 Creating new GlobalUser');
-
                         globalUser = await mongoDB.createGlobalUser({
                             puid,
                             name,
@@ -161,7 +165,6 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                             affiliation,
                             status: 'active'
                         });
-
                         console.log('[AUTH-LOCAL] ✅ GlobalUser created:', globalUser.userId);
                     } else {
                         console.log('[AUTH-LOCAL] ✅ GlobalUser found:', globalUser.userId);
@@ -170,12 +173,18 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                     // Store GlobalUser in session
                     (req.session as any).globalUser = globalUser;
 
-                    // Redirect to course selection page
-                    console.log('[AUTH-LOCAL] 🚀 Redirecting to course selection');
-                    res.redirect('/pages/course-selection.html');
+                    // CRITICAL: Save session before redirect
+                    req.session.save((saveErr) => {
+                        if (saveErr) {
+                            console.error('[AUTH-LOCAL] ❌ Session save error:', saveErr);
+                            return next(saveErr);
+                        }
 
+                        console.log('[AUTH-LOCAL] 🚀 Redirecting to course selection');
+                        res.redirect('/pages/course-selection.html');
+                    });
                 } catch (error) {
-                    console.error('[AUTH-LOCAL] 🚨 Error in authentication callback:', error);
+                    console.error('[AUTH-LOCAL] 🚨 Error in post-auth processing:', error);
                     res.redirect('/auth/login?error=auth');
                 }
             });
