@@ -1,0 +1,140 @@
+<!-- Student Flag History Component -->
+<div class="container">
+    <link rel="stylesheet" href="/styles/student-components/flag-history.css">
+    <main class="main-content">
+        <!-- Header Section -->
+        <div class="flag-history-header">
+            <h1>Report History</h1>
+        </div>
+
+        <!-- Flag History Container -->
+        <div class="flag-history-container">
+            <!-- Flag Card 1: Inaccurate Response -->
+            <div class="flag-card" data-flag-id="flag_001">
+                <div class="flag-card-header">
+                    <span class="flag-timestamp">Today at 2:30 PM</span>
+                </div>
+                <div class="flag-type-label">
+                    <i data-feather="alert-circle"></i>
+                    <span>Inaccurate Response</span>
+                </div>
+                <div class="flag-reason">Wrong calculations, formulas, or engineering principles</div>
+                <div class="flag-content collapsed" id="flag-content-001">
+                    <div class="flag-content-label">Flagged Message:</div>
+                    <div class="flag-message-text">The AI stated that the heat capacity equation is Q = mc²T, which is incorrect. The correct formula is Q = mcΔT where c is the specific heat capacity, not the speed of light squared. This fundamental error could lead to significant misconceptions in thermodynamics calculations.</div>
+                </div>
+                <button class="expand-btn" data-target="flag-content-001">
+                    <span>Show Details</span>
+                    <i data-feather="chevron-down"></i>
+                </button>
+            </div>
+
+            <!-- Flag Card 2: Interface Bug -->
+            <div class="flag-card" data-flag-id="flag_002">
+                <div class="flag-card-header">
+                    <span class="flag-timestamp">Yesterday at 4:15 PM</span>
+                </div>
+                <div class="flag-type-label">
+                    <i data-feather="alert-triangle"></i>
+                    <span>Interface Bug</span>
+                </div>
+                <div class="flag-reason">Interface bugs or usability issues</div>
+                <div class="flag-content collapsed" id="flag-content-002">
+                    <div class="flag-content-label">Flagged Message:</div>
+                    <div class="flag-message-text">When trying to copy the code snippet provided by the AI, the copy button doesn't work consistently. Sometimes I have to click it multiple times before it actually copies to my clipboard. This makes it difficult to quickly test the suggested solutions in my development environment.</div>
+                </div>
+                <button class="expand-btn" data-target="flag-content-002">
+                    <span>Show Details</span>
+                    <i data-feather="chevron-down"></i>
+                </button>
+            </div>
+
+            <!-- Flag Card 3: Inappropriate Content -->
+            <div class="flag-card" data-flag-id="flag_003">
+                <div class="flag-card-header">
+                    <span class="flag-timestamp">Monday, Jan 20 at 10:45 AM</span>
+                </div>
+                <div class="flag-type-label">
+                    <i data-feather="message-square"></i>
+                    <span>Inappropriate Content</span>
+                </div>
+                <div class="flag-reason">Response veers into personal opinions, political views, or non-academic discussions</div>
+                <div class="flag-content collapsed" id="flag-content-003">
+                    <div class="flag-content-label">Flagged Message:</div>
+                    <div class="flag-message-text">I asked about sustainable engineering practices and the AI started discussing political policies about climate change rather than focusing on the technical engineering aspects of sustainability. The response included opinions about government regulations instead of sticking to the engineering principles I was trying to learn.</div>
+                </div>
+                <button class="expand-btn" data-target="flag-content-003">
+                    <span>Show Details</span>
+                    <i data-feather="chevron-down"></i>
+                </button>
+            </div>
+
+            <!-- Flag Card 4: Inaccurate Response with Instructor Feedback -->
+            <div class="flag-card" data-flag-id="flag_004">
+                <div class="flag-card-header">
+                    <span class="flag-timestamp">Friday, Jan 17 at 3:20 PM</span>
+                </div>
+                <div class="flag-type-label">
+                    <i data-feather="alert-circle"></i>
+                    <span>Inaccurate Response</span>
+                </div>
+                <div class="flag-reason">Wrong calculations, formulas, or engineering principles</div>
+                
+                <!-- Instructor Response Section -->
+                <div class="instructor-response">
+                    <div class="response-label">
+                        <i data-feather="check-circle"></i>
+                        <span>Instructor Response:</span>
+                    </div>
+                    <div class="response-text">Thank you for flagging this! You're absolutely correct - the AI made an error in the stress-strain relationship. The correct Young's modulus for steel is approximately 200 GPa, not 20 GPa as stated. I've updated the knowledge base to prevent this error in the future. Great attention to detail!</div>
+                </div>
+
+                <div class="flag-content collapsed" id="flag-content-004">
+                    <div class="flag-content-label">Flagged Message:</div>
+                    <div class="flag-message-text">The AI provided an incorrect value for Young's modulus of steel, stating it as 20 GPa when the correct value is approximately 200 GPa. This is an order of magnitude error that would lead to completely wrong calculations in structural analysis problems.</div>
+                </div>
+                <button class="expand-btn" data-target="flag-content-004">
+                    <span>Show Details</span>
+                    <i data-feather="chevron-down"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Back to Chat Button -->
+        <div class="profile-actions">
+            <button class="back-to-chat-btn" id="back-to-chat-btn">
+                <i data-feather="arrow-left"></i>
+                <span>Back to Chat</span>
+            </button>
+        </div>
+    </main>
+</div>
+
+<script>
+    // Simple expand/collapse functionality for flag details
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.expand-btn')) {
+            const btn = e.target.closest('.expand-btn');
+            const targetId = btn.getAttribute('data-target');
+            const content = document.getElementById(targetId);
+            const icon = btn.querySelector('i');
+            const text = btn.querySelector('span');
+            
+            if (content.classList.contains('collapsed')) {
+                content.classList.remove('collapsed');
+                content.classList.add('expanded');
+                text.textContent = 'Hide Details';
+                icon.setAttribute('data-feather', 'chevron-up');
+            } else {
+                content.classList.remove('expanded');
+                content.classList.add('collapsed');
+                text.textContent = 'Show Details';
+                icon.setAttribute('data-feather', 'chevron-down');
+            }
+            
+            // Re-render feather icons
+            feather.replace();
+        }
+    });
+</script>
+

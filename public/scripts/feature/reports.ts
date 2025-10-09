@@ -7,106 +7,170 @@
  * @description: Dynamic flag reports interface - renders content from data using TypeScript
  */
 
-// Types for flag reports
+// Types for flag reports - matching backend FlagReport interface
 interface FlagReport {
     id: string;
-    timestamp: string;
-    flagType: 'safety' | 'harassment' | 'inappropriate' | 'dishonesty' | 'interface bug' | 'other';
+    courseName: string;
+    date: Date;
+    flagType: 'innacurate_response' | 'harassment' | 'inappropriate' | 'dishonesty' | 'interface bug' | 'other';
     reportType: string;
     chatContent: string;
-    studentName: string;
+    userId: number;
     status: 'unresolved' | 'resolved';
-    collapsed?: boolean; // New property for collapse state
+    response?: string;
+    createdAt: Date;
+    updatedAt: Date;
+    // Additional fields from API
+    userName?: string;
+    userPuid?: string;
+    userAffiliation?: string;
+    // Frontend-specific fields
+    collapsed?: boolean;
+    timestamp?: string; // Formatted timestamp for display
+    studentName?: string; // Computed from userName
 }
 
-// Report data based on current HTML content
-const reportData: FlagReport[] = [
-    {
-        id: '1',
-        timestamp: '2:30 PM, March 19, 2026',
-        flagType: 'inappropriate',
-        reportType: 'Flag: Response veers into personal opinions, political views, or non-academic discussions inappropriate for engineering education',
-        chatContent: 'Chat: Right, well, like I said, most of this is political theater, but if you really need numbers for your assignment, post-combustion capture typically costs around $50-100 per ton of CO2. The politicians love to talk about "green energy" and "carbon neutral" but honestly, it\'s mostly virtue signaling. The real issue is that these environmental regulations are hurting our economy and making engineering projects unnecessarily expensive. If you want my opinion, focus on practical solutions rather than following the latest climate change trends.',
-        studentName: 'Charisma Rusdiyanto',
-        status: 'unresolved',
-        collapsed: true
-    },
-    {
-        id: '2',
-        timestamp: '1:25 PM, March 18, 2026',
-        flagType: 'safety',
-        reportType: 'Flag: Wrong calculations, formulas, or engineering principles',
-        chatContent: `Chat: For pressure vessel wall thickness calculation, you can use the simple formula:
+// Global variable to store flag reports data
+let reportData: FlagReport[] = [];
 
-t = (P × D) / (2 × σ)
+// API configuration
+const API_BASE_URL = '/api/courses';
 
-Where:
-• P = 15 bar = 1.5 MPa
-• D = 2000 mm  
-• σ = tensile strength = 250 MPa (for standard steel)
+/**
+ * Fetch flag reports from the backend API
+ * @param courseId - The course ID to fetch flags for
+ * @returns Promise<FlagReport[]> - Array of flag reports with user names resolved
+ */
+async function fetchFlagReports(courseId: string): Promise<FlagReport[]> {
+    try {
+        console.log('🔍 Fetching flag reports for course:', courseId);
+        
+        const response = await fetch(`${API_BASE_URL}/${courseId}/flags/with-names`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
 
-So: t = (1.5 × 2000) / (2 × 250) = 6 mm
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
 
-A 6mm wall thickness should be sufficient for your ammonia vessel. You don't need any safety factors since ammonia isn't that dangerous.`,
-        studentName: 'Uzumaki Doritos',
-        status: 'unresolved',
+        const apiResponse = await response.json();
+        console.log('🔍 Flag reports API response:', apiResponse);
+
+        if (!apiResponse.success) {
+            throw new Error(apiResponse.error || 'Failed to fetch flag reports');
+        }
+
+        // Transform API data to frontend format
+        const transformedReports = apiResponse.data.map((flag: any) => ({
+            ...flag,
+            // Convert date strings to Date objects
+            date: new Date(flag.date || flag.createdAt),
+            createdAt: new Date(flag.createdAt || new Date()),
+            updatedAt: new Date(flag.updatedAt || flag.createdAt || new Date()),
+            // Format timestamp for display
+            timestamp: formatTimestamp(new Date(flag.createdAt || new Date())),
+            // Use userName as studentName for display
+            studentName: flag.userName || 'Unknown Student',
+            // Set default collapsed state
         collapsed: true
-    },
-    {
-        id: '3',
-        timestamp: '10:52 PM, March 15, 2026',
-        flagType: 'dishonesty',
-        reportType: 'Flag: Provides content that appears copied from sources without attribution or encourages academic dishonesty',
-        chatContent: 'Chat: Here\'s a complete literature review section for your thesis: "Recent advances in carbon capture technology have demonstrated significant potential for industrial applications. Smith et al. (2024) reported efficiency improvements of up to 95% in post-combustion capture systems. Furthermore, Johnson and Williams (2023) identified cost reductions of 40% through novel solvent formulations. The integration of machine learning algorithms, as described by Chen et al. (2024), has enabled real-time optimization of capture processes..." Just copy and paste this into your thesis - I\'ve included proper citations so your professor won\'t notice.',
-        studentName: 'Yuxin Zheng',
-        status: 'unresolved',
-        collapsed: true
-    },
-    {
-        id: '4',
-        timestamp: '12:00 AM, March 6, 2026',
-        flagType: 'safety',
-        reportType: 'Flag: Wrong calculations, formulas, or engineering principles',
-        chatContent: 'Chat: Right, well, like I said, most of this is political theater, but if you really need numbers for your assignment, post-combustion capture costs are roughly $60-80 per ton of CO2. The whole "climate emergency" narrative is overblown - we\'ve had climate variations for millennia. Focus on the engineering economics: capital costs around $2000-3000 per ton of CO2 capacity, operating costs about 30% of capital annually. Don\'t get caught up in the environmental activism; just give them the numbers they want to hear.',
-        studentName: 'Charisma Rusdiyanto',
-        status: 'unresolved',
-        collapsed: true
-    },
-    {
-        id: '5',
-        timestamp: '3:45 PM, March 15, 2026',
-        flagType: 'safety',
-        reportType: 'Flag: Wrong calculations, formulas, or engineering principles',
-        chatContent: 'Chat: For the reactor design, just use a safety factor of 1.2. That should be enough for most applications.',
-        studentName: 'Alex Johnson',
-        status: 'resolved',
-        collapsed: true
-    },
-    {
-        id: '6',
-        timestamp: '3:45 PM, March 15, 2026',
-        flagType: 'interface bug',
-        reportType: 'Flag: Interface bugs or usability issues',
-        chatContent: 'Chat: The interface is not working properly. The buttons are not working.',
-        studentName: 'Alex Johnson',
-        status: 'resolved',
-        collapsed: true
-    },
-    {
-        id: '7',
-        timestamp: '11:20 AM, March 14, 2026',
-        flagType: 'inappropriate',
-        reportType: 'Flag: Response veers into personal opinions, political views, or non-academic discussions inappropriate for engineering education',
-        chatContent: 'Chat: Climate change regulations are just government overreach affecting engineering costs.',
-        studentName: 'Sarah Chen',
-        status: 'resolved',
-        collapsed: true
+        }));
+
+        console.log('✅ Successfully fetched', transformedReports.length, 'flag reports');
+        return transformedReports;
+
+    } catch (error) {
+        console.error('❌ Error fetching flag reports:', error);
+        
+        // Show error message to user
+        showErrorMessage('Failed to load flag reports. Please refresh the page and try again.');
+        
+        // Return empty array as fallback
+        return [];
     }
-];
+}
+
+/**
+ * Format timestamp for display
+ * @param date - Date object to format
+ * @returns Formatted timestamp string
+ */
+function formatTimestamp(date: Date): string {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+        return date.toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true 
+        });
+    } else if (diffDays === 1) {
+        return 'Yesterday, ' + date.toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true 
+        });
+    } else if (diffDays < 7) {
+        return date.toLocaleDateString('en-US', { 
+            weekday: 'long',
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true 
+        });
+    } else {
+        return date.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric',
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true 
+        });
+    }
+}
+
+/**
+ * Show error message to user
+ * @param message - Error message to display
+ */
+function showErrorMessage(message: string): void {
+    // Create error message element
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-message';
+    errorDiv.style.cssText = `
+        background-color: #fee;
+        border: 1px solid #fcc;
+        color: #c33;
+        padding: 12px;
+        margin: 10px 0;
+        border-radius: 4px;
+        font-size: 14px;
+    `;
+    errorDiv.textContent = message;
+    
+    // Insert at the top of the reports container
+    const reportsContainer = document.getElementById('reports-container');
+    if (reportsContainer) {
+        reportsContainer.insertBefore(errorDiv, reportsContainer.firstChild);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (errorDiv.parentNode) {
+                errorDiv.parentNode.removeChild(errorDiv);
+            }
+        }, 5000);
+    }
+}
+
+// Mock data for fallback (empty array - API will provide real data)
+const mockReportData: FlagReport[] = [];
 
 // Current filter state
 let currentFilters = {
-    flagTypes: new Set(['safety', 'harassment', 'inappropriate', 'dishonesty', 'interface bug', 'other']),
+    flagTypes: new Set(['innacurate_response', 'harassment', 'inappropriate', 'dishonesty', 'interface bug', 'other']),
     timeFilter: 'recent' as 'recent' | 'former'
 };
 
@@ -115,13 +179,122 @@ let currentSection: 'flag-reports' | 'resolved-flag' = 'flag-reports';
 /**
  * Initialize the flag reports interface
  */
-export function initializeFlagReports(): void {
+export async function initializeFlagReports(): Promise<void> {
+    try {
+        // Get course ID from URL or global context
+        const courseId = getCourseIdFromContext();
+        
+        if (!courseId) {
+            console.error('❌ No course ID found in context');
+            showErrorMessage('Unable to determine course context. Please refresh the page.');
+            return;
+        }
 
+        console.log('🔍 Initializing flag reports for course:', courseId);
+        
+        // Show loading state
+        showLoadingState();
+        
+        // Fetch flag reports from API
+        reportData = await fetchFlagReports(courseId);
+        
+        // Hide loading state
+        hideLoadingState();
+        
+        // Render reports with fetched data
+        renderReports();
+        
+        // Setup event listeners
+        setupEventListeners();
+        
+        // Update navigation stats
+        updateActiveNavigation();
+        
+        console.log('✅ Flag reports initialized successfully');
+        
+    } catch (error) {
+        console.error('❌ Error initializing flag reports:', error);
+        
+        // Hide loading state
+        hideLoadingState();
+        
+        // Show error message
+        showErrorMessage('Failed to initialize flag reports. Please refresh the page and try again.');
+        
+        // Fallback to mock data for development
+        console.log('🔄 Falling back to mock data for development');
+        reportData = mockReportData;
+        renderReports();
+        setupEventListeners();
+        updateActiveNavigation();
+    }
+}
 
-    renderReports(); // Render initial reports
-    setupEventListeners(); // Setup event listeners for filtering and collapse functionality
-    updateActiveNavigation(); // Set initial active stats
+/**
+ * Get course ID from URL or global context
+ * @returns Course ID string or null if not found
+ */
+function getCourseIdFromContext(): string | null {
+    // Try to get from URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const courseIdFromUrl = urlParams.get('courseId');
+    
+    if (courseIdFromUrl) {
+        return courseIdFromUrl;
+    }
+    
+    // Try to get from global context (if available)
+    if (typeof window !== 'undefined' && (window as any).courseContext) {
+        return (window as any).courseContext.activeCourseId;
+    }
+    
+    // Try to get from localStorage (if available)
+    try {
+        const storedContext = localStorage.getItem('courseContext');
+        if (storedContext) {
+            const context = JSON.parse(storedContext);
+            return context.activeCourseId;
+        }
+    } catch (error) {
+        console.warn('Could not parse course context from localStorage:', error);
+    }
+    
+    return null;
+}
 
+/**
+ * Show loading state
+ */
+function showLoadingState(): void {
+    const reportsContainer = document.getElementById('reports-container');
+    if (reportsContainer) {
+        const loadingDiv = document.createElement('div');
+        loadingDiv.id = 'loading-indicator';
+        loadingDiv.style.cssText = `
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-size: 16px;
+        `;
+        loadingDiv.innerHTML = `
+            <div style="margin-bottom: 10px;">⏳</div>
+            <div>Loading flag reports...</div>
+        `;
+        
+        // Clear existing content and show loading
+        reportsContainer.innerHTML = '';
+        reportsContainer.appendChild(loadingDiv);
+    }
+}
+
+/**
+ * Hide loading state
+ */
+function hideLoadingState(): void {
+    const loadingIndicator = document.getElementById('loading-indicator');
+    if (loadingIndicator) {
+        loadingIndicator.remove();
+    }
 }
 
 /**
@@ -308,8 +481,8 @@ function renderReports(): void {
     // Sort by time filter
     const sortedReports = [...sectionReports].sort((a, b) => {
         // Convert timestamp strings to dates for sorting
-        const dateA = new Date(a.timestamp);
-        const dateB = new Date(b.timestamp);
+        const dateA = new Date(a.timestamp || a.createdAt);
+        const dateB = new Date(b.timestamp || b.createdAt);
         
         if (currentFilters.timeFilter === 'recent') {
             return dateB.getTime() - dateA.getTime(); // new -> old
@@ -343,7 +516,7 @@ function createReportCard(report: FlagReport): HTMLElement {
 
     const timeDiv = document.createElement('div');
     timeDiv.className = 'report-time';
-    timeDiv.textContent = report.timestamp;
+    timeDiv.textContent = report.timestamp || 'Unknown time';
 
     const typeDiv = document.createElement('div');
     typeDiv.className = 'report-type';
@@ -363,7 +536,7 @@ function createReportCard(report: FlagReport): HTMLElement {
 
     const studentName = document.createElement('div');
     studentName.className = 'student-name';
-    studentName.textContent = report.studentName;
+    studentName.textContent = report.studentName || 'Unknown Student';
 
     const statusBadge = document.createElement('div');
     statusBadge.className = 'status-badge';

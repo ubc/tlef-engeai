@@ -1,0 +1,381 @@
+/**
+ * ===========================================
+ * ===== STUDENT FLAG HISTORY MANAGER =======
+ * ===========================================
+ * 
+ * Manages the student's view of their flag submissions,
+ * including loading, filtering, and displaying flag history.
+ * 
+ * @author EngE-AI Team
+ * @version 1.0.0
+ */
+
+import { renderFeatherIcons } from '../functions/api.js';
+
+// API Base URL
+const API_BASE_URL = '/api/courses';
+
+// Flag Report Interface (matching backend structure)
+interface FlagReport {
+    id: string;
+    courseName: string;
+    date: Date | string;
+    flagType: 'innacurate_response' | 'harassment' | 'inappropriate' | 'dishonesty' | 'interface bug' | 'other';
+    reportType: string;
+    chatContent: string;
+    userId: number;
+    status: 'unresolved' | 'resolved';
+    response: string;
+    createdAt: Date | string;
+    updatedAt: Date | string;
+}
+
+// Current filter state
+let currentFilter: 'all' | 'unresolved' | 'resolved' = 'all';
+let allFlags: FlagReport[] = [];
+
+/**
+ * Initialize the student flag history interface
+ */
+export async function initializeStudentFlagHistory(courseId: string, userId: number): Promise<void> {
+    console.log('🏴 [FLAG-HISTORY] Initializing student flag history for user:', userId);
+    
+    // Show loading state
+    showLoadingState();
+    
+    try {
+        // Fetch student's flag reports from API
+        const flags = await fetchStudentFlags(courseId, userId);
+        allFlags = flags;
+        
+        console.log(`✅ [FLAG-HISTORY] Loaded ${flags.length} flags`);
+        
+        // Update statistics
+        updateStatistics(flags);
+        
+        // Render flags
+        renderFlags(flags);
+        
+        // Attach event listeners
+        attachEventListeners(courseId, userId);
+        
+        // Hide loading state
+        hideLoadingState();
+        
+        // Show empty state if no flags
+        if (flags.length === 0) {
+            showEmptyState();
+        }
+        
+    } catch (error) {
+        console.error('❌ [FLAG-HISTORY] Error loading flag history:', error);
+        hideLoadingState();
+        showErrorState();
+    }
+}
+
+/**
+ * Fetch student's flag reports from API
+ */
+async function fetchStudentFlags(courseId: string, userId: number): Promise<FlagReport[]> {
+    try {
+        console.log('🔍 [FLAG-HISTORY] Fetching flags for user:', userId);
+        
+        const response = await fetch(`${API_BASE_URL}/${courseId}/flags/student/${userId}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const apiResponse = await response.json();
+        console.log('🔍 [FLAG-HISTORY] API response:', apiResponse);
+
+        if (!apiResponse.success) {
+            throw new Error(apiResponse.error || 'Failed to fetch flag reports');
+        }
+
+        // Transform API data to frontend format
+        const transformedFlags = apiResponse.data.map((flag: any) => ({
+            ...flag,
+            // Convert date strings to Date objects
+            date: new Date(flag.date || flag.createdAt),
+            createdAt: new Date(flag.createdAt || new Date()),
+            updatedAt: new Date(flag.updatedAt || flag.createdAt || new Date())
+        }));
+
+        console.log(`✅ [FLAG-HISTORY] Successfully fetched ${transformedFlags.length} flags`);
+        return transformedFlags;
+
+    } catch (error) {
+        console.error('❌ [FLAG-HISTORY] Error fetching flags:', error);
+        throw error;
+    }
+}
+
+/**
+ * Update statistics display
+ */
+function updateStatistics(flags: FlagReport[]): void {
+    const totalCount = flags.length;
+    const unresolvedCount = flags.filter(f => f.status === 'unresolved').length;
+    const resolvedCount = flags.filter(f => f.status === 'resolved').length;
+    
+    const totalEl = document.getElementById('total-flags-count');
+    const unresolvedEl = document.getElementById('unresolved-flags-count');
+    const resolvedEl = document.getElementById('resolved-flags-count');
+    
+    if (totalEl) totalEl.textContent = totalCount.toString();
+    if (unresolvedEl) unresolvedEl.textContent = unresolvedCount.toString();
+    if (resolvedEl) resolvedEl.textContent = resolvedCount.toString();
+}
+
+/**
+ * Render flags in the list
+ */
+function renderFlags(flags: FlagReport[]): void {
+    const flagList = document.getElementById('student-flag-list');
+    if (!flagList) return;
+    
+    // Filter flags based on current filter
+    let filteredFlags = flags;
+    if (currentFilter !== 'all') {
+        filteredFlags = flags.filter(f => f.status === currentFilter);
+    }
+    
+    // Clear existing flags
+    flagList.innerHTML = '';
+    
+    // Render each flag
+    filteredFlags.forEach(flag => {
+        const flagCard = createFlagCard(flag);
+        flagList.appendChild(flagCard);
+    });
+    
+    // Render feather icons
+    renderFeatherIcons();
+    
+    // Show empty state if no flags after filtering
+    if (filteredFlags.length === 0 && flags.length > 0) {
+        flagList.innerHTML = `
+            <div class="no-results-message">
+                <i data-feather="filter"></i>
+                <p>No ${currentFilter} flags found.</p>
+            </div>
+        `;
+        renderFeatherIcons();
+    }
+}
+
+/**
+ * Create a flag card element
+ */
+function createFlagCard(flag: FlagReport): HTMLElement {
+    const card = document.createElement('div');
+    card.className = 'flag-card';
+    card.dataset.flagId = flag.id;
+    card.dataset.status = flag.status;
+    
+    // Format timestamp
+    const timestamp = formatTimestamp(new Date(flag.createdAt));
+    
+    // Get flag type label
+    const flagTypeLabel = getFlagTypeLabel(flag.flagType);
+    
+    // Determine status badge
+    const statusBadge = flag.status === 'resolved' 
+        ? '<span class="status-badge resolved"><i data-feather="check-circle"></i> Resolved</span>'
+        : '<span class="status-badge unresolved"><i data-feather="clock"></i> Pending Review</span>';
+    
+    card.innerHTML = `
+        <div class="flag-card-header">
+            <div class="flag-timestamp">${timestamp}</div>
+            ${statusBadge}
+        </div>
+        
+        <div class="flag-type-label">
+            <i data-feather="flag"></i>
+            <span>${flagTypeLabel}</span>
+        </div>
+        
+        <div class="flag-reason">
+            ${flag.reportType}
+        </div>
+        
+        <div class="flag-content collapsed">
+            <p class="flag-content-label">Flagged Message:</p>
+            <div class="flag-message-text">${escapeHtml(flag.chatContent)}</div>
+        </div>
+        
+        ${flag.status === 'resolved' && flag.response ? `
+            <div class="instructor-response">
+                <p class="response-label">
+                    <i data-feather="message-circle"></i>
+                    Instructor Response:
+                </p>
+                <div class="response-text">${escapeHtml(flag.response)}</div>
+            </div>
+        ` : ''}
+        
+        <button class="expand-btn" data-flag-id="${flag.id}">
+            <span class="expand-text">Show Details</span>
+            <i data-feather="chevron-down"></i>
+        </button>
+    `;
+    
+    // Attach expand/collapse listener
+    const expandBtn = card.querySelector('.expand-btn') as HTMLButtonElement;
+    const flagContent = card.querySelector('.flag-content') as HTMLElement;
+    
+    expandBtn?.addEventListener('click', () => {
+        const isCollapsed = flagContent?.classList.contains('collapsed');
+        
+        if (isCollapsed) {
+            flagContent?.classList.remove('collapsed');
+            flagContent?.classList.add('expanded');
+            expandBtn.querySelector('.expand-text')!.textContent = 'Hide Details';
+            expandBtn.querySelector('i')?.setAttribute('data-feather', 'chevron-up');
+        } else {
+            flagContent?.classList.remove('expanded');
+            flagContent?.classList.add('collapsed');
+            expandBtn.querySelector('.expand-text')!.textContent = 'Show Details';
+            expandBtn.querySelector('i')?.setAttribute('data-feather', 'chevron-down');
+        }
+        
+        renderFeatherIcons();
+    });
+    
+    return card;
+}
+
+/**
+ * Get human-readable flag type label
+ */
+function getFlagTypeLabel(flagType: string): string {
+    const labels: Record<string, string> = {
+        'innacurate_response': 'Inaccurate Response',
+        'harassment': 'Harassment',
+        'inappropriate': 'Inappropriate Content',
+        'dishonesty': 'Academic Dishonesty',
+        'interface bug': 'Interface Bug',
+        'other': 'Other'
+    };
+    return labels[flagType] || flagType;
+}
+
+/**
+ * Format timestamp for display
+ */
+function formatTimestamp(date: Date): string {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    
+    // Format as date
+    return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+        hour: 'numeric',
+        minute: '2-digit'
+    });
+}
+
+/**
+ * Escape HTML to prevent XSS
+ */
+function escapeHtml(unsafe: string): string {
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+/**
+ * Attach event listeners
+ */
+function attachEventListeners(courseId: string, userId: number): void {
+    // Filter buttons
+    const filterBtns = document.querySelectorAll('.filter-btn');
+    filterBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const target = e.currentTarget as HTMLButtonElement;
+            const filter = target.dataset.filter as 'all' | 'unresolved' | 'resolved';
+            
+            // Update active state
+            filterBtns.forEach(b => b.classList.remove('active'));
+            target.classList.add('active');
+            
+            // Update filter and re-render
+            currentFilter = filter;
+            renderFlags(allFlags);
+        });
+    });
+    
+    // Refresh button
+    const refreshBtn = document.getElementById('refresh-flags-btn');
+    refreshBtn?.addEventListener('click', () => {
+        initializeStudentFlagHistory(courseId, userId);
+    });
+    
+    // Back button
+    const backBtn = document.getElementById('back-to-chat-btn');
+    backBtn?.addEventListener('click', () => {
+        // This will be handled by student-mode.ts
+        console.log('🔙 [FLAG-HISTORY] Back to chat clicked');
+    });
+}
+
+/**
+ * UI State Management
+ */
+function showLoadingState(): void {
+    const loadingState = document.getElementById('loading-state');
+    const emptyState = document.getElementById('empty-state');
+    const errorState = document.getElementById('error-state');
+    const flagList = document.getElementById('student-flag-list');
+    
+    if (loadingState) loadingState.style.display = 'flex';
+    if (emptyState) emptyState.style.display = 'none';
+    if (errorState) errorState.style.display = 'none';
+    if (flagList) flagList.style.display = 'none';
+}
+
+function hideLoadingState(): void {
+    const loadingState = document.getElementById('loading-state');
+    const flagList = document.getElementById('student-flag-list');
+    
+    if (loadingState) loadingState.style.display = 'none';
+    if (flagList) flagList.style.display = 'grid';
+}
+
+function showEmptyState(): void {
+    const emptyState = document.getElementById('empty-state');
+    const flagList = document.getElementById('student-flag-list');
+    
+    if (emptyState) emptyState.style.display = 'flex';
+    if (flagList) flagList.style.display = 'none';
+}
+
+function showErrorState(): void {
+    const errorState = document.getElementById('error-state');
+    const flagList = document.getElementById('student-flag-list');
+    
+    if (errorState) errorState.style.display = 'flex';
+    if (flagList) flagList.style.display = 'none';
+}
+

@@ -66,8 +66,8 @@ function createInstructorVirtualUser(): User {
         name: 'Instructor User',
         puid: 'instructor-virt',
         userId: 0, // Instructor ID
-        activeCourseId: currentClass.id || 'current-course',
-        activeCourseName: currentClass.courseName || 'APSC 099', // Fallback to default course
+        courseId: currentClass.id || 'current-course',
+        courseName: currentClass.courseName || 'APSC 099', // Fallback to default course
         userOnboarding: false, // Instructors don't need onboarding
         affiliation: 'faculty',
         status: 'active',
@@ -433,6 +433,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             hideChatList(); // Ensure chat list is hidden
         }
         else if ( currentState === StateEvent.Chat){
+            updateSidebarState(); // Update menu active state
             collapseFeatureSidebar();
             // showChatContent is now handled by the click event listener
         }
@@ -484,12 +485,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     const updateSidebarState = () => {
+        // Handle collapsed state
         if (sidebarMenuListEl) {
             if (isSidebarCollapsed) {
                 sidebarMenuListEl.classList.add('collapsed');
             } else {
                 sidebarMenuListEl.classList.remove('collapsed');
             }
+        }
+        
+        // Handle active state for menu items
+        // Remove active class from all menu items first
+        documentsStateEl?.classList.remove('active');
+        chatStateEl?.classList.remove('active');
+        reportStateEl?.classList.remove('active');
+        monitorStateEl?.classList.remove('active');
+        
+        // Add active class to the current state's menu item
+        switch(currentState) {
+            case StateEvent.Documents:
+                documentsStateEl?.classList.add('active');
+                break;
+            case StateEvent.Chat:
+                chatStateEl?.classList.add('active');
+                break;
+            case StateEvent.Report:
+                reportStateEl?.classList.add('active');
+                break;
+            case StateEvent.Monitor:
+                monitorStateEl?.classList.add('active');
+                break;
         }
     }
 
@@ -557,8 +582,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 name: `${authState.user.firstName} ${authState.user.lastName}`,
                 puid: authState.user.puid,
                 userId: 0, // Will be fetched from database
-                activeCourseId: 'apsc-099',
-                activeCourseName: currentClass.courseName,
+                courseId: 'apsc-099',
+                courseName: currentClass.courseName,
                 userOnboarding: false,
                 affiliation: 'faculty',
                 status: 'active',
@@ -569,16 +594,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             //START DEBUG LOG : DEBUG-CODE(002)
             console.log('👤 Instructor user data loaded:', {
-                name: instructorUser.name,
-                puid: instructorUser.puid,
-                activeCourseName: instructorUser.activeCourseName
+                name: instructorUser!.name,
+                puid: instructorUser!.puid,
+                courseName: instructorUser!.courseName
             });
             //END DEBUG LOG : DEBUG-CODE(002)
             
             // Initialize ChatManager with instructor User context
             chatManager = ChatManager.getInstance({
                 isInstructor: true,
-                userContext: instructorUser, // Use instructor User object instead of activeCourse
+                userContext: instructorUser!, // Use instructor User object instead of activeCourse
                 onModeSpecificCallback: (action: string, data?: any) => {
                     //START DEBUG LOG : DEBUG-CODE(003)
                     console.log('📞 ChatManager callback:', action, data);
@@ -754,6 +779,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     const showChatContent = async () => {
+        // Update menu active state
+        updateSidebarState();
+        
         // Ensure feature sidebar is collapsed when in chat mode
         collapseFeatureSidebar();
         

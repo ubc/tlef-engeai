@@ -115,7 +115,8 @@ body {
 .instructor-sidebar .chat-list .add-chat-btn:hover {
     color: white;
     background: var(--color-chbe-green);
-    transform: translateY(-2px);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18),
+                inset 0 -1px 0 rgba(255, 255, 255, 0.55);
 }
 
 .instructor-sidebar .chat-list .chat-list-ul {
@@ -166,17 +167,19 @@ body {
     width: 100%;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start; /* Changed from center */
     gap: 0.75rem;
-    padding: 0.5rem 0;
+    padding: 0.5rem 0.75rem; /* Adjusted padding */
     background-color: var(--background-2); 
     border: 1px solid var(--border-color);
     border-radius: 8px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s, background-color 0.25s ease; /* Keep general transitions */
     color: #000000;
+    overflow: hidden; /* Critical for clipping text during animation */
 }
+
 
 .instructor-logout-btn:hover { 
     background-color: var(--color-eng-red); 
@@ -188,16 +191,32 @@ body {
     width: 20px;
     height: 20px;
     flex-shrink: 0;
+    transition: margin 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Hide logout text when feature sidebar is collapsed */
-.instructor-feature-sidebar.collapsed .instructor-logout-btn span {
-    display: none;
+.instructor-logout-btn span {
+    white-space: nowrap;
+    opacity: 1;
+    max-width: 200px; /* Generous width for "Log Out" text */
+    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                max-width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                margin-left 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    margin-left: 0;
+    overflow: hidden;
 }
+
+/* Smooth fade + slide animation for text when sidebar collapses */
+.instructor-feature-sidebar.collapsed .instructor-logout-btn span {
+    opacity: 0;
+    max-width: 0;
+    margin-left: 0;
+    /* Remove display: none to allow animation */
+}
+
 
 .instructor-feature-sidebar.collapsed .instructor-logout-btn {
     padding: 0.5rem;
-    justify-content: center;
+    gap: 0; /* Remove gap when collapsed */
 }
 
 /* Error message styling */
@@ -232,21 +251,35 @@ body {
     gap: 0.75rem;
     display: flex;
     align-items: center;
-
+    justify-content: flex-start;
+    overflow: hidden; /* Critical for clipping text during animation */
 }
 
 .logo-box .logo-text {
     display: flex;
     flex-direction: column;
+    white-space: nowrap;
+    opacity: 1;
+    max-width: 200px; /* Generous width for logo text */
+    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                max-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
 }
 
-.logo-box.collapsed .logo-text{
-    display: none;
+/* Logo text smooth fade + slide animation when sidebar collapses */
+.logo-box.collapsed .logo-text {
+    opacity: 0;
+    max-width: 0;
+}
+
+.logo-box .feather {
+    flex-shrink: 0;
+    transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .logo-box.collapsed .feather {
     width: 16px;
-    height: 16px;;
+    height: 16px;
 }
 
 .logo-text span {
@@ -345,14 +378,35 @@ body {
     align-items: center;
     padding: 0px 0px 0px 15px;
     border-radius: 8px;
-    transition: background-color 0.1s ease-in-out;
+    transition: background-color 0.1s ease-in-out,
+                padding 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                gap 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    justify-content: flex-start;
+    overflow: hidden; /* Critical for clipping text during animation */
 }
 
-
+.sidebar-menu-list .menu-list-item p {
+    white-space: nowrap;
+    opacity: 1;
+    max-width: 200px; /* Generous width for menu text */
+    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                max-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    margin: 0;
+}
 
 .sidebar-menu-list .menu-list-item .feather {
     width: 20px;
     height: 20px;
+    flex-shrink: 0;
+    transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-menu-list .menu-list-item.active {
+    background-color: #e2d9cf;
+    color: rgb(103, 103, 103);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18),
+                inset 0 -1px 0 rgba(255, 255, 255, 0.55);
 }
 
 .sidebar-menu-list .menu-list-item.active .feather {
@@ -368,13 +422,16 @@ body {
 }
 
 .sidebar-menu-list.collapsed .menu-list-item {
-    padding: 0px 0px 0px 0px;
-    justify-content: center;
+    padding: 0px 0px 0px 7px;
+    gap: 0; /* Remove gap when collapsed */
 }
 
+/* Menu list item text smooth fade + slide animation when sidebar collapses */
 .sidebar-menu-list.collapsed .menu-list-item p {
-    display: none;
+    opacity: 0;
+    max-width: 0;
 }
+
 
 
 #main-content-area {

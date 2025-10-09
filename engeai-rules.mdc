@@ -68,6 +68,7 @@ These rules help ensure the codebase remains clean, consistent, Canvas-compatibl
 
 **TypeScript & Architecture:**
 - Use TypeScript for all frontend code with strict type checking enabled
+- **DO NOT modify JavaScript (.js) files directly** - all JS code is auto-compiled from TypeScript source files
 - Implement proper interfaces and type definitions in dedicated files
 - Use generic types and union types for type safety
 - Follow modular architecture patterns with clear separation of concerns

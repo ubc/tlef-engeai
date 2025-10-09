@@ -396,7 +396,7 @@ async function createAPSC099(): Promise<activeCourse> {
         id: courseId,
         date: now,
         courseName: 'APSC 099: Engineering for Kindergarten',
-        courseSetup: true,
+        courseSetup:  true,
         contentSetup: true, // Completed onboarding
         flagSetup: true, // Completed flag setup
         monitorSetup: true, // Completed monitor setup

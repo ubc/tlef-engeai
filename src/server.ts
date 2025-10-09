@@ -8,6 +8,8 @@ import mongodbRoutes from './routes/mongo-app';
 import healthRoutes from './routes/health';
 import debugRoutes from './routes/debug';  // Import MongoDB routes
 import authRoutes from './routes/auth';  // Import authentication routes
+import courseEntryRoutes from './routes/course-entry';  // Import course entry routes
+import userManagementRoutes from './routes/user-management';  // Import user management routes
 import { initializeDummyCourses } from './debug/dummy-courses.js';
 
 // Import SAML authentication middleware
@@ -66,6 +68,8 @@ app.use('/api/chat', chatAppRoutes);
 app.use('/api/ollama', chatAppRoutes);
 app.use('/api/rag', ragAppRoutes);
 app.use('/api/courses', mongodbRoutes);  // Course management routes
+app.use('/api/course', courseEntryRoutes);  // Course entry routes
+app.use('/api/user', userManagementRoutes);  // User management routes
 app.use('/api/health', healthRoutes);    // Health check routes
 app.use('/api/debug', debugRoutes);      // Debug routes
 

@@ -41,12 +41,45 @@ body {
 
 /* moved: flag component styles now in styles/flag-message.css (component exists as HTML) */
 
+
+.course-option {
+    padding: 0.75rem;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.2s ease;
+}
+
+.course-option:last-child {
+    border-bottom: none;
+}
+
+.course-option:hover {
+    background-color: var(--hover-bg);
+}
+
+.course-option.active {
+    background-color: var(--color-ubc-blue);
+    color: white;
+}
+
+.course-option-name {
+    font-weight: 500;
+    font-size: 0.9rem;
+    margin-bottom: 0.25rem;
+}
+
+.course-option-id {
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
+
 /* --- Sidebar --- */
 .sidebar {
     margin: 10px 5px 10px 10px;
     border-radius: 10px;
     border: 1px solid var(--border-color);
     width: 270px;
+    height: calc(100vh - 20px); /* Fixed height to enable proper scrolling */
     flex-shrink: 0;
     background-color: var(--background-2);
     display: flex;
@@ -57,35 +90,77 @@ body {
     box-shadow: 0 4px 15px rgba(92, 138, 58, 0.2);
 }
 
+/* Wrapper div for header and chat list - needs to be flexible and constrained */
+.sidebar > div:first-child {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
 /* Collapsed sidebar to widen main chat area while keeping message content max width constant */
 .sidebar.collapsed {
     width: 56px;
     padding: 0.5rem;
 }
 
-.sidebar.collapsed .logo-text,
-.sidebar.collapsed .report-history-btn span,
-.sidebar.collapsed .logout-btn span,
-.sidebar.collapsed .chat-item span {
-    display: none; /* hide text when collapsed */
+/* Logo text smooth fade + slide animation when sidebar collapses */
+.sidebar.collapsed .logo-text {
+    opacity: 0;
+    max-width: 0;
 }
 
-.sidebar.collapsed .add-chat-btn span {
-    display: none; /* hide the text when collapsed */
+
+/* Report History button text smooth fade + slide animation when sidebar collapses */
+.sidebar.collapsed .report-history-btn span {
+    opacity: 0;
+    max-width: 0;
 }
+
+/* Logout button text smooth fade + slide animation when sidebar collapses */
+.sidebar.collapsed .logout-btn span {
+    opacity: 0;
+    max-width: 0;
+}
+
+/* Chat title smooth fade + slide animation when sidebar collapses */
+.sidebar.collapsed .chat-item .chat-title {
+    opacity: 0;
+    max-width: 0;
+}
+
+
+/* Add chat button text hide when sidebar collapses */
+.sidebar.collapsed .add-chat-btn span {
+    display: none;
+}
+
 
 .sidebar.collapsed .add-chat-btn::before {
     content: "+"; /* show just + when collapsed */
 }
 
-.sidebar.collapsed .add-chat-btn,
+.sidebar.collapsed .add-chat-btn {
+    justify-content: center;
+    gap: 0;
+    padding: 0.75rem 1rem;
+}
+
 .sidebar.collapsed .report-history-btn,
 .sidebar.collapsed .logout-btn {
-    justify-content: center;
+    padding: 0.5rem; /* Square padding when collapsed */
+    justify-content: flex-start;
+    gap: 0; /* Remove gap when collapsed */
 }
 
 .sidebar-header .collapse-sidebar-btn {
-    padding: 10px 0px 0px 10px;
+    padding: 0px 0px 0px 5px;
+    transition: all 0.3s ease;
+}
+
+.sidebar.collapsed .collapse-sidebar-btn {
+    padding: 0px 0px 0px 10px;
 }
 
 /* Hide chat list action buttons when collapsed, EXCEPT show the pinned star */
@@ -94,21 +169,39 @@ body {
 .sidebar.collapsed .chat-list .icon-btn:has(.pinned) { display: inline-flex !important; }
 
 
+.sidebar-header {
+    flex-shrink: 0; /* Prevent header from shrinking */
+}
+
 .sidebar-header .logo-box {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding: 0.75rem;
+    padding: 0.6rem;
     border-radius: 8px;
     background-color: var(--color-chbe-green);
     color: white;
     height: 56px;              /* keep constant height expanded/collapsed */
     box-sizing: border-box;
+    margin-bottom: 5px;
+    overflow: hidden; /* Critical for clipping text during animation */
+    transition: gap 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .logo-box .logo-text { 
     display: flex; 
-    flex-direction: column; 
+    flex-direction: column;
+    white-space: nowrap;
+    opacity: 1;
+    max-width: 200px; /* Generous width for logo text */
+    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                max-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+}
+
+.logo-box .feather {
+    flex-shrink: 0;
+    transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .logo-text span {
@@ -130,22 +223,28 @@ body {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    flex-shrink: 0; /* Prevent footer from shrinking */
 }
 
 .report-history-btn {
     width: 100%;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 0.75rem;
-    padding: 0.5rem 0;
+    padding: 0.5rem 0.75rem;
     background-color: var(--background-2); 
     border: 1px solid var(--border-color);
     border-radius: 8px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s,
+                padding 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                gap 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden; /* Critical for clipping text during animation */
 }
+
+
 .report-history-btn:hover { 
     background-color: var(--color-eng-red); 
     color: white; 
@@ -154,7 +253,18 @@ body {
 
 .report-history-btn .feather { 
     width: 16px; 
-    height: 16px; 
+    height: 16px;
+    flex-shrink: 0;
+    transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.report-history-btn span {
+    white-space: nowrap;
+    opacity: 1;
+    max-width: 200px;
+    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                max-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
 }
 
 /* Logout Button Styles */
@@ -162,17 +272,22 @@ body {
     width: 100%;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 0.75rem;
-    padding: 0.5rem 0;
+    padding: 0.5rem 0.75rem;
     background-color: var(--background-2); 
     border: 1px solid var(--border-color);
     border-radius: 8px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s,
+                padding 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                gap 0.28s cubic-bezier(0.4, 0, 0.2, 1);
     color: #000000;
+    overflow: hidden; /* Critical for clipping text during animation */
 }
+
+
 
 .logout-btn:hover { 
     background-color: var(--color-eng-red); 
@@ -182,7 +297,18 @@ body {
 
 .logout-btn .feather { 
     width: 16px; 
-    height: 16px; 
+    height: 16px;
+    flex-shrink: 0;
+    transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.logout-btn span {
+    white-space: nowrap;
+    opacity: 1;
+    max-width: 200px;
+    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                max-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
 }
 
 /* Hide sidebar during onboarding */

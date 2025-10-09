@@ -11,6 +11,7 @@ import { loadComponentHTML, renderFeatherIcons } from "../functions/api.js";
 import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, CreateChatRequest } from "../functions/chat-api.js";
 import { Chat, ChatMessage, User, activeCourse } from "../../../src/functions/types.js";
 import { ArtefactHandler, ArtefactData, getArtefactHandler } from "./artefact.js";
+import { showDisclaimerModal } from "../modal-overlay.js";
 
 /**
  * LaTeX Rendering Utility Functions
@@ -162,7 +163,7 @@ export class ChatManager {
 
         // Load initial chats from server
         try {
-            const courseName = this.config.userContext.activeCourseName;
+            const courseName = this.config.userContext.courseName;
             const userId = this.config.userContext.puid;
             
             console.log('[CHAT-MANAGER] 📊 Loading chats with:', { userId, courseName, isInstructor: this.config.isInstructor });
@@ -173,6 +174,13 @@ export class ChatManager {
                 this.activeChatId = this.chats[0].id;
                 console.log('[CHAT-MANAGER] ✅ Set active chat:', this.activeChatId);
             }
+            
+            //START DEBUG LOG : DEBUG-CODE(INIT-RENDER-CHAT-LIST)
+            console.log('[CHAT-MANAGER] 🎨 Rendering chat list after initialization...');
+            //END DEBUG LOG : DEBUG-CODE(INIT-RENDER-CHAT-LIST)
+            
+            // Render the chat list to display loaded chats
+            this.renderChatList();
         } catch (error) {
             console.error('Error loading initial chats:', error);
             this.chats = [];
@@ -240,7 +248,7 @@ export class ChatManager {
             
             const chatRequest: CreateChatRequest = {
                 userID: this.config.userContext.puid,
-                courseName: this.config.userContext.activeCourseName,
+                courseName: this.config.userContext.courseName,
                 date: new Date().toISOString().split('T')[0]
             };
 
@@ -258,7 +266,7 @@ export class ChatManager {
             // Use it directly if available
             const newChat: Chat = (response as any).chat || {
                 id: response.chatId || Date.now().toString(),
-                courseName: this.config.userContext.activeCourseName,
+                courseName: this.config.userContext.courseName,
                 divisionTitle: '',
                 itemTitle: '',
                 messages: response.initAssistantMessage ? [{
@@ -315,7 +323,7 @@ export class ChatManager {
             id: Date.now().toString(),
             sender: 'user',
             userId: this.config.userContext.userId,
-            courseName: this.config.userContext.activeCourseName,
+            courseName: this.config.userContext.courseName,
             text,
             timestamp: Date.now()
         };
@@ -327,7 +335,7 @@ export class ChatManager {
             id: botMessageId,
             sender: 'bot',
             userId: this.config.userContext.userId,
-            courseName: this.config.userContext.activeCourseName,
+            courseName: this.config.userContext.courseName,
             text: 'Thinking...',
             timestamp: Date.now(),
         } as ChatMessage & { artefact?: any };
@@ -350,7 +358,7 @@ export class ChatManager {
                 body: JSON.stringify({
                     message: text,
                     userId: this.config.userContext.puid,
-                    courseName: this.config.userContext.activeCourseName
+                    courseName: this.config.userContext.courseName
                 }),
             });
 
@@ -380,30 +388,21 @@ export class ChatManager {
             }
             
             if (data.assistantMessage) {
-                // Process artefacts in the complete response
-                try {
-                    const result = this.artefactHandler.processStreamingText(
-                        data.assistantMessage.text,
-                        data.assistantMessage.id
-                    );
-                    
-                    // Update the assistant message with processed text
-                    const finalMessage = {
-                        ...data.assistantMessage,
-                        text: result.processedText
-                    };
-                    
-                    activeChat.messages.push(finalMessage);
-                    this.addMessageToDOM(finalMessage, activeChat);
-                    onComplete?.(finalMessage);
-                } catch (artefactError) {
-                    console.error('[CHAT-MANAGER] ⚠️ Error processing artefacts:', artefactError);
-                    // Fallback to original message if artefact processing fails
-                    activeChat.messages.push(data.assistantMessage);
-                    this.addMessageToDOM(data.assistantMessage, activeChat);
-                    onComplete?.(data.assistantMessage);
-                }
+                //START DEBUG LOG : DEBUG-CODE(NON-STREAMING-ARTEFACT)
+                console.log('🎨 Processing non-streaming assistant message for artefacts');
+                console.log('🎨 Message ID:', data.assistantMessage.id);
+                console.log('🎨 Message text length:', data.assistantMessage.text.length);
+                console.log('🎨 Contains artefact tags:', data.assistantMessage.text.includes('<Artefact>'));
+                //END DEBUG LOG : DEBUG-CODE(NON-STREAMING-ARTEFACT)
+                
+                // Add the assistant message directly - artefacts will be processed in addMessageToDOM
+                activeChat.messages.push(data.assistantMessage);
+                this.addMessageToDOM(data.assistantMessage, activeChat);
+                onComplete?.(data.assistantMessage);
             }
+
+            // Refresh chat data from server to get updated title
+            await this.refreshChatDataFromServer();
 
         } catch (error) {
             console.error('[CHAT-MANAGER] 🚨 Error sending message:', error);
@@ -653,48 +652,17 @@ export class ChatManager {
     }
 
     /**
-     * Open disclaimer modal
+     * Open disclaimer modal using the proper modal-overlay system
      */
     public async openDisclaimerModal(): Promise<void> {
-        if (document.querySelector('.modal-overlay')) {
-            document.body.classList.add('modal-open');
-            (document.querySelector('.modal-overlay') as HTMLElement)?.classList.add('show');
-            return;
-        }
-
-        const overlay = document.createElement('div');
-        overlay.className = 'modal-overlay';
-        document.body.appendChild(overlay);
-
-        try {
-            overlay.innerHTML = await loadComponentHTML('disclaimer');
-        } catch (err) {
-            overlay.innerHTML = '<div class="modal"><div class="modal-header"><h2>Disclaimer</h2></div><div class="modal-content"><p>Unable to load content.</p></div></div>';
-        }
-
-        overlay.classList.add('show');
-        document.body.classList.add('modal-open');
-        renderFeatherIcons();
-
-        const closeBtn = overlay.querySelector('.close-modal') as HTMLButtonElement | null;
-        const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                this.closeDisclaimerModal(overlay);
-            }
-        };
-
-        const closeDisclaimerModal = () => {
-            document.body.classList.remove('modal-open');
-            overlay.classList.remove('show');
-            overlay.remove();
-            window.removeEventListener('keydown', onKeyDown);
-        };
-
-        closeBtn?.addEventListener('click', closeDisclaimerModal);
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) closeDisclaimerModal();
-        });
-        window.addEventListener('keydown', onKeyDown);
+        const disclaimerContent = `
+            <p><strong>Purpose:</strong> This AI is designed as a study assistant to help you understand course materials. It is not a substitute for attending lectures, completing assignments, or your own critical thinking.</p>
+            <p><strong>Accuracy:</strong> While we strive for accuracy, the AI can make mistakes, misunderstand context, or generate incorrect information. Always verify critical information against your course materials and lectures.</p>
+            <p><strong>Academic Integrity:</strong> You are responsible for your own work. Do not submit AI-generated responses as your own. Use this tool to learn, not to cheat.</p>
+            <p><strong>Privacy:</strong> Your conversations may be reviewed for quality assurance and to improve the system. Do not share personal or sensitive information.</p>
+        `;
+        
+        await showDisclaimerModal('AI Assistant Disclaimer', disclaimerContent);
     }
 
 
@@ -774,6 +742,48 @@ export class ChatManager {
             }
             
             return [];
+        }
+    }
+
+    /**
+     * Refresh chat data from server to get updated titles and other changes
+     * This is called after sending a message to ensure the frontend has the latest data
+     */
+    private async refreshChatDataFromServer(): Promise<void> {
+        try {
+            //START DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA)
+            console.log('[CHAT-MANAGER] 🔄 Refreshing chat data from server...');
+            //END DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA)
+            
+            const courseName = this.config.userContext.courseName;
+            const userId = this.config.userContext.puid;
+            
+            // Load fresh chat data from server
+            const freshChats = await this.loadChatsFromServer(userId, courseName);
+            
+            // Store the current active chat ID before updating
+            const currentActiveChatId = this.activeChatId;
+            
+            // Update the local chats array
+            this.chats = freshChats;
+            
+            // Restore the active chat ID
+            this.activeChatId = currentActiveChatId;
+            
+            // Update the UI to reflect any changes (like updated titles)
+            this.renderChatList();
+            this.renderActiveChatIncremental();
+            
+            //START DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA-SUCCESS)
+            console.log('[CHAT-MANAGER] ✅ Chat data refreshed successfully');
+            console.log(`[CHAT-MANAGER] 📊 Refreshed ${freshChats.length} chats`);
+            //END DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA-SUCCESS)
+            
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA-ERROR)
+            console.error('[CHAT-MANAGER] 🚨 Error refreshing chat data:', error);
+            //END DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA-ERROR)
+            // Don't throw error - refresh failure shouldn't break the chat flow
         }
     }
 
@@ -1011,9 +1021,8 @@ export class ChatManager {
         li.style.alignItems = 'center';
 
         const titleSpan = document.createElement('span');
+        titleSpan.className = 'chat-title'; // Apply existing CSS class with ellipsis styling
         titleSpan.textContent = chat.itemTitle;
-        titleSpan.style.flex = '1';
-        titleSpan.style.minWidth = '0';
 
         const actions = document.createElement('div');
         actions.style.display = 'flex';
@@ -1125,10 +1134,19 @@ export class ChatManager {
         
         // Process artefacts for all messages (including initial messages)
         if (sender === 'bot') {
+            //START DEBUG LOG : DEBUG-CODE(ARTEFACT-DEBUG)
+            console.log('🎨 Processing bot message for artefacts:', messageId);
+            console.log('🎨 Message text length:', text.length);
+            console.log('🎨 Contains <Artefact> tag:', text.includes('<Artefact>'));
+            console.log('🎨 Contains </Artefact> tag:', text.includes('</Artefact>'));
+            //END DEBUG LOG : DEBUG-CODE(ARTEFACT-DEBUG)
+            
             const parsed = this.artefactHandler.parseArtefacts(text, messageId);
             
             //START DEBUG LOG : DEBUG-CODE(022)
             console.log('🎨 createMessageElement - Parsed artefacts:', parsed);
+            console.log('🎨 Has artefacts:', parsed.hasArtefacts);
+            console.log('🎨 Elements count:', parsed.elements.length);
             //END DEBUG LOG : DEBUG-CODE(022)
             
             if (parsed.hasArtefacts) {
@@ -1551,27 +1569,32 @@ export class ChatManager {
             submitBtn.classList.add('loading');
             
             try {
-                // TODO: IMPLEMENT BACKEND API CALL
-                // Backend API endpoint: POST /api/courses/:courseId/flags or POST /api/chat/flags
-                // Request body should match FlagReport interface from types.ts:
-                // {
-                //     courseName: this.config.userContext.activeCourseName,
-                //     flagType: flagType as FlagReport['flagType'],
-                //     reportType: flagType === 'other' ? otherDetails : selectedReason.labels[0].textContent,
-                //     chatContent: message.text,
-                //     userId: this.config.userContext.userId,
-                //     chatId: activeChat.id,
-                //     messageId: message.id,
-                //     timestamp: message.timestamp
-                // }
-                // Expected response: { success: boolean, error?: string, flagId?: string }
-                // Implementation location: src/routes/chat.ts or src/routes/flags.ts
+                // Real API call to backend
+                const requestBody = {
+                    flagType: flagType as 'innacurate_response' | 'harassment' | 'inappropriate' | 'dishonesty' | 'interface bug' | 'other',
+                    reportType: flagType === 'other' ? otherDetails : (selectedReason.labels?.[0]?.textContent || 'Unknown reason'),
+                    chatContent: message.text,
+                    userId: this.config.userContext.userId
+                };
+
+                console.log('🏴 Submitting flag to API:', requestBody);
+
+                const response = await fetch(`/api/courses/${this.config.userContext.courseId}/flags`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const apiResponse = await response.json();
+                console.log('🏴 Flag API response:', apiResponse);
                 
-                // Simulate API call (REMOVE THIS AFTER BACKEND IMPLEMENTATION)
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                const simulatedResponse = { success: true };
+                if (!response.ok) {
+                    throw new Error(apiResponse.error || `HTTP ${response.status}: ${response.statusText}`);
+                }
                 
-                if (simulatedResponse.success) {
+                if (apiResponse.success) {
                     // Show success message
                     this.showFlagStatus(statusMessage, 'Flag submitted successfully! Thank you for your feedback.', 'success');
                     submitBtn.style.display = 'none';
@@ -1619,11 +1642,6 @@ export class ChatManager {
         }
     }
 
-    private closeDisclaimerModal(overlay: HTMLElement): void {
-        document.body.classList.remove('modal-open');
-        overlay.classList.remove('show');
-        overlay.remove();
-    }
 
 
 
@@ -1638,8 +1656,8 @@ export function createDefaultUser(): User {
         name: 'Student User',
         puid: 'student-user',
         userId: 1,
-        activeCourseId: 'default-course',
-        activeCourseName: 'APSC 099: Engineering for Kindergarten',
+        courseId: 'default-course',
+        courseName: 'APSC 099: Engineering for Kindergarten',
         userOnboarding: false, // Student onboarding status
         affiliation: 'student',
         status: 'active',
@@ -1659,8 +1677,8 @@ export function createUserFromAuthData(authUser: any): User {
         name: `${authUser.firstName} ${authUser.lastName}`,
         puid: authUser.puid,
         userId: 0, // Will be generated by backend
-        activeCourseId: 'apsc-099',
-        activeCourseName: 'APSC 099: Engineering for Kindergarten', // Default course name
+        courseId: 'apsc-099',
+        courseName: 'APSC 099: Engineering for Kindergarten', // Default course name
         userOnboarding: false,
         affiliation: 'student',
         status: 'active',

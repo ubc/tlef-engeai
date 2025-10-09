@@ -4,6 +4,7 @@ import { loadComponentHTML, renderFeatherIcons } from './functions/api.js';
 import { ChatManager, createUserFromAuthData } from './feature/chat.js';
 import { authService } from './services/AuthService.js';
 import { renderStudentOnboarding } from './onboarding/student-onboarding.js';
+import { initializeStudentFlagHistory } from './feature/student-flag-history.js';
 
 // Authentication check function
 async function checkAuthentication(): Promise<boolean> {
@@ -19,49 +20,44 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     console.log('[STUDENT-MODE] 🚀 Loading student mode...');
     
-    // --- STATE MANAGEMENT ---
-    // Get real user data from authentication
-    const authState = authService.getAuthState();
-    if (!authState.isAuthenticated || !authState.user) {
-        console.error('[STUDENT-MODE] ❌ No authenticated user found');
-        return;
-    }
-    
-    console.log('[STUDENT-MODE] 👤 Using authenticated user data:', {
-        puid: authState.user.puid,
-        name: `${authState.user.firstName} ${authState.user.lastName}`,
-        username: authState.user.username
-    });
-    
-    // Create user context from real authentication data
-    const user = createUserFromAuthData(authState.user);
-    
-    // --- ONBOARDING CHECK ---
-    // Check if user needs to complete onboarding
-    if (!user.userOnboarding) {
-        console.log('[STUDENT-MODE] 🎓 User needs onboarding, loading student onboarding...');
-        try {
-            await renderStudentOnboarding(user);
+    try {
+        // Fetch current CourseUser from session
+        const response = await fetch('/api/user/current');
+        const { courseUser } = await response.json();
+        
+        if (!courseUser) {
+            console.error('[STUDENT-MODE] ❌ No course user found');
+            window.location.href = '/pages/course-selection.html';
+            return;
+        }
+        
+        console.log('[STUDENT-MODE] 👤 CourseUser found:', courseUser.name);
+        
+        // Check onboarding status
+        if (!courseUser.userOnboarding) {
+            console.log('[STUDENT-MODE] 🎓 User needs onboarding');
+            // Trigger onboarding
+            await renderStudentOnboarding(courseUser);
             
             // Listen for onboarding completion event
             window.addEventListener('onboarding-completed', (event: any) => {
                 console.log('[STUDENT-MODE] ✅ Onboarding completed, initializing chat interface...');
-                const completedUser = event.detail.user || user;
+                const completedUser = event.detail.user || courseUser;
                 completedUser.userOnboarding = true;
                 initializeChatInterface(completedUser);
             });
             
             return; // Stop execution here - onboarding will handle completion
-        } catch (error) {
-            console.error('[STUDENT-MODE] ❌ Failed to load student onboarding:', error);
-            // Fall through to normal chat interface if onboarding fails
+        } else {
+            console.log('[STUDENT-MODE] ✅ User already onboarded');
+            // Load normal chat interface
+            initializeChatInterface(courseUser);
         }
-    } else {
-        console.log('[STUDENT-MODE] ✅ User has completed onboarding, proceeding to chat interface');
+        
+    } catch (error) {
+        console.error('[STUDENT-MODE] ❌ Error initializing student mode:', error);
+        window.location.href = '/pages/course-selection.html';
     }
-    
-    // Initialize chat interface if user has completed onboarding
-    initializeChatInterface(user);
 });
 
 /**
@@ -91,11 +87,20 @@ async function initializeChatInterface(user: any): Promise<void> {
     // Artefact functionality moved to chat.ts
 
     // --- COMPONENT LOADING ---
-    const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'report-history' | 'profile') => {
+    const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'report-history' | 'profile' | 'flag-history') => {
         if (!mainContentArea) return;
         
         try {
-            const html = await loadComponentHTML(componentName);
+            // Special handling for flag-history component (it's in student/ subdirectory)
+            let html: string;
+            if (componentName === 'flag-history') {
+                const response = await fetch('/components/student/flag-history.html');
+                if (!response.ok) throw new Error(`Failed to load flag-history component: ${response.statusText}`);
+                html = await response.text();
+            } else {
+                html = await loadComponentHTML(componentName);
+            }
+            
             mainContentArea.innerHTML = html;
             renderFeatherIcons();
             
@@ -112,6 +117,8 @@ async function initializeChatInterface(user: any): Promise<void> {
                 attachReportHistoryListeners();
             } else if (componentName === 'profile') {
                 attachProfileListeners();
+            } else if (componentName === 'flag-history') {
+                attachFlagHistoryListeners();
             }
         } catch (error) {
             console.error(`Error loading component ${componentName}:`, error);
@@ -346,11 +353,9 @@ async function initializeChatInterface(user: any): Promise<void> {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             if (!sidebarEl) return;
-            const collapsed = sidebarEl.classList.toggle('collapsed');
-            // Keep the menu icon - no need to change it
+            sidebarEl.classList.toggle('collapsed');
         });
 
-        // Place the button at the end of the header area
         sidebarHeaderEl.appendChild(btn);
         renderFeatherIcons();
     };
@@ -523,6 +528,30 @@ async function initializeChatInterface(user: any): Promise<void> {
         }
     };
 
+    const attachFlagHistoryListeners = () => {
+        console.log('[STUDENT-MODE] 🏴 Initializing flag history...');
+        
+        // Initialize flag history with user context
+        const courseId = user.courseId;
+        const userId = user.userId;
+        
+        if (!courseId || !userId) {
+            console.error('[STUDENT-MODE] ❌ Missing courseId or userId for flag history');
+            return;
+        }
+        
+        // Initialize the flag history interface
+        initializeStudentFlagHistory(courseId, userId);
+        
+        // Back button listener is handled inside initializeStudentFlagHistory
+        // but we also need to handle the actual navigation
+        const backBtn = document.getElementById('back-to-chat-btn');
+        backBtn?.addEventListener('click', () => {
+            console.log('[STUDENT-MODE] 🔙 Back to chat from flag history');
+            loadComponent('chat-window');
+        });
+    };
+
     const attachProfileButtonListener = () => {
         const profileBtn = document.getElementById('profile-btn');
         if (!profileBtn) {
@@ -531,14 +560,31 @@ async function initializeChatInterface(user: any): Promise<void> {
         }
         
         profileBtn.addEventListener('click', () => {
-            console.log('[STUDENT-MODE] 👤 Loading profile component...');
-            loadComponent('profile');
+            console.log('[STUDENT-MODE] 👤 Loading flag history component...');
+            loadComponent('flag-history');
         });
-        console.log('[STUDENT-MODE] ✅ Profile button listener attached');
+        console.log('[STUDENT-MODE] ✅ Flag history button listener attached');
     };
 
     // --- INITIALIZATION ---
     attachLogoutListener(); // Attach logout button listener
     attachProfileButtonListener(); // Attach profile button listener
+    
+    // Update companion text with current course
+    updateCompanionText(user);
+    
     updateUI();
 }
+
+/**
+ * Update companion text with current course name
+ */
+function updateCompanionText(user: any): void {
+    const companionText = document.getElementById('companion-text');
+    if (companionText && user.courseName) {
+        companionText.textContent = `${user.courseName} companion`;
+    }
+}
+
+
+

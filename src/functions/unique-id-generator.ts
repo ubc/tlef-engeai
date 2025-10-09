@@ -30,7 +30,7 @@ import {
     courseItem, 
     LearningObjective, 
     AdditionalMaterial, 
-    User
+    CourseUser
 } from "./types";
 
 /**
@@ -229,16 +229,19 @@ export class IDGenerator {
 
     /**
      * Generates a unique flag ID using the formula:
-     * flag_timestamp_randomsuffix_userId -> uniqueIDGenerator
+     * first20CharsOfAIMessage + "-" + userId + "-" + courseName + "-" + dateString -> uniqueIDGenerator
      * 
-     * @param userId - The user ID
+     * @param aiMessageText - The AI message text that was flagged (first 20 characters will be used)
+     * @param userId - The user ID who created the flag
      * @param courseName - The name of the course
      * @param date - The date of the flag (full ISO string with milliseconds)
      * @returns A 12-character hexadecimal string representing the unique flag ID
      */
-    flagIDGenerator(userId: string, courseName: string, date: Date): string {
+    flagIDGenerator(aiMessageText: string, userId: string, courseName: string, date: Date): string {
+        // Extract first 20 characters from AI message text
+        const firstTwentyChars = aiMessageText.substring(0, 20).trim();
         const dateString = date.toISOString(); // Full ISO string with milliseconds
-        const hashInput = "flag_" + userId + "-" + courseName + "-" + dateString;
+        const hashInput = firstTwentyChars + "-" + userId + "-" + courseName + "-" + dateString;
         return this.uniqueIDGenerator(hashInput);
     }
 
@@ -285,8 +288,8 @@ export class IDGenerator {
      * @param userDB - The user object containing puid, name, role, and active course name
      * @returns A 12-character hexadecimal string representing the unique user ID
      */
-    userID(userDB: User): string {
-        const hashInput = userDB.puid + "-" + userDB.name + "-" + userDB.affiliation + "-" + userDB.activeCourseName;
+    userID(userDB: CourseUser): string {
+        const hashInput = userDB.puid + "-" + userDB.name + "-" + userDB.affiliation + "-" + userDB.courseName;
         return this.uniqueIDGenerator(hashInput);
     }
       

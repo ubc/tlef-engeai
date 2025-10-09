@@ -12,19 +12,27 @@
 /* ======== CHAT MENU STYLES ========== */
 
 
+.add-chat-box {
+    flex-shrink: 0; /* Prevent add-chat-box from shrinking */
+}
+
 .add-chat-box .add-chat-btn {
     background: var(--background-2);
     color: var(--color-chbe-green);
     border: none;
     border-radius: 6px;
     cursor: pointer;
-    height: 3rem;
+    padding: 0.75rem 1rem;
     display: flex;
     justify-content: center;
     align-items: center;
     font-size: 0.9rem;
     font-weight: 580;
-    transition: background-color 0.2s ease, transform 0.2s ease, color 0.2s ease;
+    transition: background-color 0.2s ease, 
+                transform 0.2s ease, 
+                color 0.2s ease,
+                padding 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                gap 0.28s cubic-bezier(0.4, 0, 0.2, 1);
     border: 1px solid var(--border-color);
 }
 
@@ -36,17 +44,18 @@
 .add-chat-box .add-chat-btn:hover {
     color: white;
     background: var(--color-chbe-green);
-    transform: translateY(-2px);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18),
+                inset 0 -1px 0 rgba(255, 255, 255, 0.55);
 }
 
 /* Additional styling for student mode add-chat-btn */
 .add-chat-btn {
     width: 100%;
     gap: 0.75rem;
-    padding: 0.5rem 1rem;
-    margin: 1rem 0 0.5rem;
+    margin: 0.5rem 0 0.5rem;
     font-size: 0.8rem;
 }
+
 
 .add-chat-btn .feather { 
     width: 18px; 
@@ -58,6 +67,8 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+    flex: 1; /* Take remaining space in sidebar */
+    overflow: hidden; /* Constrain to enable scrolling in ul */
 }
 
 .chat-list ul { 
@@ -65,7 +76,7 @@
     padding: 0; 
     margin: 0; 
     flex: 1 1 auto;
-    overflow-y: auto;
+    overflow-y: auto; /* Enable scrolling */
     min-height: 0;
 }
 
@@ -78,7 +89,10 @@
     border-radius: 8px; 
     cursor: pointer; 
     font-weight: 500; 
-    transition: background-color 0.2s, box-shadow 0.2s; 
+    transition: background-color 0.2s, 
+                box-shadow 0.2s,
+                padding 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                gap 0.28s cubic-bezier(0.4, 0, 0.2, 1); 
     font-size: 0.9rem; 
 }
 
@@ -109,17 +123,6 @@
 
 /* ======== CHAT HEADER STYLES ========== */
 
-.chat-header-blocker {
-    height: 10px;
-    margin: 0px 10px 0px 5px;
-    position: sticky;
-    top: 0px;
-    z-index: 9;
-    background-color: var(--chat-bg);
-    pointer-events: none;
-    flex-shrink: 0;
-    min-height: 10px;
-}
 
 .chat-header { 
     display: flex; 
@@ -130,7 +133,6 @@
     border: 1px solid var(--border-color);
     padding: 0.7rem 1rem; 
     position: sticky;         
-    top: 10px;
     z-index: 5;               
     background: var(--chat-bg); 
     animation: slideInDown 0.5s 0.1s forwards;
@@ -156,7 +158,7 @@
 }
 
 .chat-title { 
-    font-weight: 600; 
+    font-weight: 450; 
     color: var(--text-primary); 
     margin-right: auto; 
     font-size: 0.9rem;
@@ -165,6 +167,15 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     flex: 1 1 0%;
+}
+
+/* Specific styling for chat list items in sidebar */
+.chat-list .chat-item .chat-title {
+    max-width: 200px; /* Fixed width for consistent ellipsis in sidebar */
+    flex: 0 1 auto; /* Don't grow to fill space */
+    opacity: 1;
+    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                max-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .chat-actions { 
@@ -463,13 +474,24 @@
 .disclaimer { 
     text-align: center; 
     align-self: center; 
-    font-size: 0.6rem; 
+    font-size: 0.65rem; 
     color: var(--text-secondary); 
-    border-radius: 10px; 
-    padding: 0.2rem 1rem; 
     width: fit-content; 
     opacity: 0; 
     animation: slideInUp 0.5s 0.2s forwards; 
+}
+
+.disclaimer a {
+    color: var(--color-chbe-green);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s ease;
+    cursor: pointer;
+}
+
+.disclaimer a:hover {
+    color: #4a6f2e;
+    text-decoration: underline;
 }
 
 /* ======== PINNED MESSAGE STYLES ========== */

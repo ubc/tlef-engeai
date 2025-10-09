@@ -152,7 +152,10 @@ export class ArtefactHandler {
 
         //START DEBUG LOG : DEBUG-CODE(019)
         console.log('🔍 Parsing artefacts for message:', messageId);
-        console.log('🔍 Original text:', text);
+        console.log('🔍 Original text length:', text.length);
+        console.log('🔍 Text preview:', text.substring(0, 200) + (text.length > 200 ? '...' : ''));
+        console.log('🔍 Contains <Artefact>:', text.includes('<Artefact>'));
+        console.log('🔍 Contains </Artefact>:', text.includes('</Artefact>'));
         //END DEBUG LOG : DEBUG-CODE(019)
 
         let currentPos = 0;
@@ -196,11 +199,14 @@ export class ArtefactHandler {
             }
 
             // Extract mermaid code
-            const mermaidCode = text.substring(artefactStart + '<Artefact>'.length, artefactEnd).trim();
+            const rawMermaidCode = text.substring(artefactStart + '<Artefact>'.length, artefactEnd).trim();
+            // Format the Mermaid code to ensure proper line breaks
+            const mermaidCode = this.formatMermaidCode(rawMermaidCode);
             const artefactId = `artefact-${messageId}-${artefactIndex}`;
             
             //START DEBUG LOG : DEBUG-CODE(020)
-            console.log('🎨 Found artefact:', artefactId, 'with code:', mermaidCode);
+            console.log('🎨 Found artefact:', artefactId, 'with raw code:', rawMermaidCode.substring(0, 100) + '...');
+            console.log('🎨 Formatted code:', mermaidCode.substring(0, 100) + '...');
             //END DEBUG LOG : DEBUG-CODE(020)
             
             const artefactData: ArtefactData = {
@@ -220,6 +226,12 @@ export class ArtefactHandler {
 
             // Create artefact button
             const artefactButton = this.createArtefactButton(artefactData);
+            
+            //START DEBUG LOG : DEBUG-CODE(ARTEFACT-BUTTON-CREATED)
+            console.log('🎨 Created artefact button:', artefactButton);
+            console.log('🎨 Button HTML:', artefactButton.outerHTML);
+            //END DEBUG LOG : DEBUG-CODE(ARTEFACT-BUTTON-CREATED)
+            
             elements.push(artefactButton);
 
             // Create line break after artefact
@@ -502,6 +514,64 @@ graph TD
         this.setupPanZoom(panel, artefactData);
 
         // Download functionality is handled by event delegation - no need for direct setup
+    }
+
+    /**
+     * Format Mermaid code to ensure proper line breaks for parsing
+     * Converts single-line Mermaid code to properly formatted multi-line code
+     * Also wraps node labels containing special characters in quotes
+     * 
+     * @param code - The raw Mermaid code (potentially single-line)
+     * @returns Formatted Mermaid code with proper line breaks and quoted labels
+     */
+    private formatMermaidCode(code: string): string {
+        console.log('🎨 Formatting Mermaid code...');
+        console.log('🎨 Original code length:', code.length);
+        console.log('🎨 Has line breaks:', code.includes('\n'));
+        
+        try {
+            let formattedCode = code;
+            
+            // Step 1: Add quotes to node labels with special characters (parentheses, etc.)
+            // Match pattern: NodeId[Label with (parentheses)] but not already quoted
+            formattedCode = formattedCode.replace(
+                /(\w+)\[([^\]"']+[()][^\]"']*)\]/g,
+                (match, nodeId, label) => {
+                    // Only quote if not already quoted
+                    if (!label.trim().startsWith('"') && !label.trim().startsWith("'")) {
+                        console.log(`🎨 Quoting label: ${nodeId}[${label}] -> ${nodeId}["${label}"]`);
+                        return `${nodeId}["${label}"]`;
+                    }
+                    return match;
+                }
+            );
+            
+            // Step 2: If already has line breaks, return with quoted labels
+            if (code.includes('\n')) {
+                console.log('🎨 Code already has line breaks, only applied quoting');
+                return formattedCode;
+            }
+            
+            // Step 3: Format single-line Mermaid code by adding line breaks
+            formattedCode = formattedCode
+                // Add line break after graph declaration
+                .replace(/^(graph\s+TD)\s+/g, '$1\n    ')
+                // Add line breaks before arrows, but preserve indentation
+                .replace(/\s+(-->\s+)/g, '\n    --> ')
+                // Add line breaks before style declarations
+                .replace(/\s+(style\s+)/g, '\n$1')
+                // Add proper spacing in node definitions
+                .replace(/\]\s+(\w+\[)/g, ']\n    $1');
+            
+            console.log('🎨 Formatted code length:', formattedCode.length);
+            console.log('🎨 Formatted code preview:', formattedCode.substring(0, 300) + '...');
+            
+            return formattedCode;
+        } catch (error) {
+            console.error('Error formatting Mermaid code:', error);
+            // Return original code if formatting fails
+            return code;
+        }
     }
 
     /**
@@ -1032,7 +1102,9 @@ graph TD
             
             if (artefactStart !== -1 && artefactEnd !== -1 && artefactEnd > artefactStart) {
                 // We have a complete artefact, extract it
-                const mermaidCode = text.substring(artefactStart + '<Artefact>'.length, artefactEnd).trim();
+                const rawMermaidCode = text.substring(artefactStart + '<Artefact>'.length, artefactEnd).trim();
+                // Format the Mermaid code to ensure proper line breaks
+                const mermaidCode = this.formatMermaidCode(rawMermaidCode);
                 const artefactId = `artefact-${messageId}-streaming-${Date.now()}`;
                 
                 const artefactData: ArtefactData = {

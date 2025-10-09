@@ -690,7 +690,7 @@ router.post('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: R
         // Create flag report object with unique ID using IDGenerator
         const idGenerator = IDGenerator.getInstance();
         const flagDate = new Date();
-        const uniqueId = idGenerator.flagIDGenerator(userId.toString(), course.courseName, flagDate);
+        const uniqueId = idGenerator.flagIDGenerator(chatContent, userId.toString(), course.courseName, flagDate);
         
         const flagReport: FlagReport = {
             id: uniqueId,
@@ -902,6 +902,193 @@ router.delete('/:courseId/flags/:flagId', asyncHandlerWithAuth(async (req: Reque
         res.status(500).json({
             success: false,
             error: 'Failed to delete flag report'
+        });
+    }
+}));
+
+// ===========================================
+// ========= DATABASE MANAGEMENT ROUTES =====
+// ===========================================
+
+// POST /api/courses/:courseId/flags/create-indexes - Create database indexes for flag collection (REQUIRES AUTH - Instructors only)
+router.post('/:courseId/flags/create-indexes', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId } = req.params;
+        
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(CREATE-INDEXES-API)
+        console.log('📊 Creating indexes for flag collection:', course.courseName);
+        //END DEBUG LOG : DEBUG-CODE(CREATE-INDEXES-API)
+
+        const result = await instance.createFlagIndexes(course.courseName);
+        
+        res.json({
+            success: result.success,
+            message: result.success ? 'Indexes created successfully' : 'Some indexes failed to create',
+            data: {
+                indexesCreated: result.indexesCreated,
+                errors: result.errors
+            }
+        });
+    } catch (error) {
+        console.error('Error creating indexes:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to create indexes'
+        });
+    }
+}));
+
+// GET /api/courses/:courseId/flags/validate - Validate flag collection integrity (REQUIRES AUTH - Instructors only)
+router.get('/:courseId/flags/validate', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId } = req.params;
+        
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(VALIDATE-COLLECTION-API)
+        console.log('🔍 Validating flag collection for course:', course.courseName);
+        //END DEBUG LOG : DEBUG-CODE(VALIDATE-COLLECTION-API)
+
+        const validation = await instance.validateFlagCollection(course.courseName);
+        
+        res.json({
+            success: true,
+            data: validation
+        });
+    } catch (error) {
+        console.error('Error validating flag collection:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to validate flag collection'
+        });
+    }
+}));
+
+// GET /api/courses/:courseId/flags/statistics - Get flag statistics (REQUIRES AUTH - Instructors only)
+router.get('/:courseId/flags/statistics', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId } = req.params;
+        
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(GET-STATISTICS-API)
+        console.log('📊 Getting flag statistics for course:', course.courseName);
+        //END DEBUG LOG : DEBUG-CODE(GET-STATISTICS-API)
+
+        const statistics = await instance.getFlagStatistics(course.courseName);
+        
+        res.json({
+            success: true,
+            data: statistics
+        });
+    } catch (error) {
+        console.error('Error getting flag statistics:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get flag statistics'
+        });
+    }
+}));
+
+// GET /api/courses/:courseId/flags/with-names - Get flag reports with resolved user names (REQUIRES AUTH - Instructors only)
+router.get('/:courseId/flags/with-names', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId } = req.params;
+        
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES-API)
+        console.log('🔍 Getting flag reports with user names for course:', course.courseName);
+        //END DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES-API)
+
+        const flagsWithNames = await instance.getFlagReportsWithUserNames(course.courseName);
+        
+        res.json({
+            success: true,
+            data: flagsWithNames,
+            count: flagsWithNames.length
+        });
+    } catch (error) {
+        console.error('Error getting flag reports with user names:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get flag reports with user names'
+        });
+    }
+}));
+
+// GET /api/courses/:courseId/flags/student/:userId - Get flag reports for a specific student (REQUIRES AUTH - Student view)
+router.get('/:courseId/flags/student/:userId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, userId } = req.params;
+        
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(GET-STUDENT-FLAGS-API)
+        console.log('🔍 Getting flag reports for student:', userId, 'in course:', course.courseName);
+        //END DEBUG LOG : DEBUG-CODE(GET-STUDENT-FLAGS-API)
+
+        // Get all flags and filter by userId
+        const allFlags = await instance.getFlagReports(course.courseName);
+        const studentFlags = allFlags.filter((flag: FlagReport) => flag.userId.toString() === userId.toString());
+        
+        // Sort by most recent first
+        studentFlags.sort((a: FlagReport, b: FlagReport) => {
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+        
+        res.json({
+            success: true,
+            data: studentFlags,
+            count: studentFlags.length
+        });
+    } catch (error) {
+        console.error('Error getting student flag reports:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get student flag reports'
         });
     }
 }));

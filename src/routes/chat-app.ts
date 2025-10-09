@@ -101,6 +101,7 @@ class ChatApp {
     private chatID : string[];
     private chatIDGenerator: IDGenerator;
     private ragConfig: any;
+    private llmProvider: any;
 
     constructor(config: AppConfig) {
         this.llmModule = new LLMModule(config.llmConfig);
@@ -111,7 +112,8 @@ class ChatApp {
         this.chatHistory = new Map();
         this.chatID = [];
         this.chatIDGenerator = IDGenerator.getInstance();
-        
+        this.llmProvider = config.llmConfig.provider;
+            
         // Initialize RAG module asynchronously
         this.initializeRAG();
     }
@@ -126,6 +128,105 @@ class ChatApp {
         } catch (error) {
             this.logger.error('Failed to initialize RAG module:', error as any);
             this.ragModule = null;
+        }
+    }
+
+    /**
+     * Generate chat title from AI response text
+     * Extracts first 10 words from the response, cleaning up special characters
+     * 
+     * @param responseText - The AI response text
+     * @returns Clean title string with first 10 words
+     */
+    private generateChatTitleFromResponse(responseText: string): string {
+        //START DEBUG LOG : DEBUG-CODE(GENERATE-TITLE)
+        console.log(`[CHAT-APP] 📝 Generating title from response: "${responseText.substring(0, 100)}..."`);
+        //END DEBUG LOG : DEBUG-CODE(GENERATE-TITLE)
+        
+        try {
+            // Remove LaTeX delimiters ($ and $$)
+            let cleanText = responseText.replace(/\$\$.*?\$\$/g, ''); // Remove block math
+            cleanText = cleanText.replace(/\$.*?\$/g, ''); // Remove inline math
+            
+            // Remove HTML tags and special characters
+            cleanText = cleanText.replace(/<[^>]*>/g, ''); // Remove HTML tags
+            cleanText = cleanText.replace(/[^\w\s]/g, ' '); // Replace special chars with spaces
+            
+            // Clean up multiple spaces and trim
+            cleanText = cleanText.replace(/\s+/g, ' ').trim();
+            
+            // Split into words and take first 10
+            const words = cleanText.split(' ').filter(word => word.length > 0);
+            const title = words.slice(0, 10).join(' ');
+            
+            //START DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-SUCCESS)
+            console.log(`[CHAT-APP] ✅ Generated title: "${title}"`);
+            //END DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-SUCCESS)
+            
+            return title || 'New Chat'; // Fallback to "New Chat" if empty
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-ERROR)
+            console.error(`[CHAT-APP] 🚨 Error generating title:`, error);
+            //END DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-ERROR)
+            return 'New Chat'; // Fallback to "New Chat" on error
+        }
+    }
+
+    /**
+     * Update chat title if this is the first user-AI exchange
+     * Only updates title if current title is "New Chat" or empty
+     * 
+     * @param chatId - The chat ID
+     * @param assistantResponse - The AI response text
+     * @param courseName - The course name
+     * @param userId - The user ID
+     */
+    public async updateChatTitleIfNeeded(chatId: string, assistantResponse: string, courseName: string, userId: string): Promise<void> {
+        //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-CHECK)
+        console.log(`[CHAT-APP] 🔍 Checking if title needs update for chat ${chatId}`);
+        //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-CHECK)
+        
+        try {
+            // Get current chat from MongoDB to check title
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const userChats = await mongoDB.getUserChats(courseName, userId);
+            const currentChat = userChats.find(chat => chat.id === chatId);
+            
+            if (!currentChat) {
+                //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-NO-CHAT)
+                console.log(`[CHAT-APP] ⚠️ Chat ${chatId} not found in MongoDB`);
+                //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-NO-CHAT)
+                return;
+            }
+            
+            // Check if title needs updating (is "New Chat" or empty)
+            const currentTitle = currentChat.itemTitle || '';
+            const needsUpdate = currentTitle === 'New Chat' || currentTitle === '';
+            
+            //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-DECISION)
+            console.log(`[CHAT-APP] 📊 Title update decision: current="${currentTitle}", needsUpdate=${needsUpdate}`);
+            //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-DECISION)
+            
+            if (needsUpdate) {
+                // Generate new title from AI response
+                const newTitle = this.generateChatTitleFromResponse(assistantResponse);
+                
+                // Update title in MongoDB
+                await mongoDB.updateChatTitle(courseName, userId, chatId, newTitle);
+                
+                //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-SUCCESS)
+                console.log(`[CHAT-APP] ✅ Chat title updated from "${currentTitle}" to "${newTitle}"`);
+                //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-SUCCESS)
+            } else {
+                //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-SKIP)
+                console.log(`[CHAT-APP] ⏭️ Title update skipped - current title is not "New Chat"`);
+                //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-SKIP)
+            }
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-ERROR)
+            console.error(`[CHAT-APP] 🚨 Error updating chat title:`, error);
+            //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-ERROR)
+            // Don't throw error - title update failure shouldn't break the chat flow
         }
     }
 
@@ -230,57 +331,16 @@ class ChatApp {
         return context;
     }
     /**
-     * Send a user message and get streaming response from LLM
-     * 
-     * @param message - The user's message
-     * @param chatId - The chat ID
-     * @param userId - The user ID
-     * @returns Promise<ChatMessage> - The assistant's response message
-     */
-    public async sendUserMessage(message: string, chatId: string, userId: string): Promise<ChatMessage> {
-        // Validate chat exists
-        if (!this.conversations.has(chatId)) {
-            throw new Error('Chat not found');
-        }
-
-        // Check rate limiting (50 messages per chat)
-        const chatHistory = this.chatHistory.get(chatId);
-        if (chatHistory && chatHistory.length >= 50) {
-            throw new Error('Rate limit exceeded: Maximum 50 messages per chat');
-        }
-
-        // Add user message to conversation and history
-        const userMessage = this.addUserMessage(chatId, message, userId);
-        
-        // Get conversation and send message
-        const conversation = this.conversations.get(chatId);
-        if (!conversation) {
-            throw new Error('Conversation not found');
-        }
-
-        // Send message to LLM and get response
-        const response = await conversation.send({
-            temperature: 0.7,
-            num_ctx: 32768
-        });
-
-        // Add assistant response to conversation and history
-        const assistantMessage = this.addAssistantMessage(chatId, response.content);
-        
-        return assistantMessage;
-    }
-
-    /**
-     * Send a user message and stream the response from LLM with RAG
+     * Send a user message and get response from LLM with RAG context
      * 
      * @param message - The user's message
      * @param chatId - The chat ID
      * @param userId - The user ID
      * @param courseName - The course name for RAG context
-     * @param onChunk - Callback function for each chunk of the stream
+     * @param onChunk - Optional callback function for streaming chunks (defaults to no-op)
      * @returns Promise<ChatMessage> - The complete assistant's response message
      */
-    public async sendUserMessageStream(
+    public async sendUserMessage(
         message: string, 
         chatId: string, 
         userId: string, 
@@ -370,16 +430,23 @@ class ChatApp {
 
         let assistantResponse = '';
 
+        let conversationConfig: any = {
+            temperature: 0.7,
+        }
+
+        if (this.llmProvider === 'ollama') {
+            console.log('🔍 Ollama provider detected : JUJUJU');
+
+            conversationConfig.num_ctx = 32768;
+        }
+
         const response = await conversation.stream(
             (chunk: string) => {
                 // console.log(`📦 Received chunk: "${chunk}"`);
                 assistantResponse += chunk;
                 onChunk(chunk);
-            },
-            {
-                temperature: 0.7,
-                num_ctx: 32768
-            }
+            }, 
+            conversationConfig
         );
         
         // console.log(`\n✅ Streaming completed. Full response length: ${fullResponse.length}`);
@@ -387,6 +454,9 @@ class ChatApp {
 
         // Add complete assistant response to conversation and history
         const assistantMessage = this.addAssistantMessage(chatId, assistantResponse);
+        
+        // Check if this is the first user-AI exchange and update title if needed
+        await this.updateChatTitleIfNeeded(chatId, assistantResponse, courseName, userId);
         
         return assistantMessage;
     }
@@ -429,6 +499,13 @@ class ChatApp {
             Your role is to help undergraduate university students understand course concepts by connecting their questions to the provided course materials. 
             Course materials will be provided to you within code blocks such as <course_materials>relevant materials here</course_materials>
 
+            RESPONSE STYLE - BE CONCRETE AND PRACTICAL:
+            1. Provide concrete, specific responses with real-world examples
+            2. Always include at least one practical example when explaining concepts
+            3. Use specific numbers, values, and scenarios rather than abstract descriptions
+            4. Break down complex concepts into clear, actionable steps
+            5. Relate theoretical concepts to tangible engineering applications
+
             When replying to student's questions:
             1. Use the provided course materials to ask contextually relevant questions
             2. Reference the materials naturally using phrases like:
@@ -436,6 +513,24 @@ class ChatApp {
                 - According to the course materials...
                 - The lecture notes explain that...
             3. If the materials don't contain relevant information, indicate this (by saying things like "I was unable to find anything specifically relevant to this in the course materials, but I can still help based on my own knowledge.") and ask contextually relevant socratic questions based on your general knowledge.
+            4. ALWAYS provide concrete examples to illustrate your points, such as:
+                - Real-world engineering scenarios (e.g., "Consider a battery with 2.0V potential...")
+                - Specific numerical examples (e.g., "If we have 0.5 mol of electrons...")
+                - Practical applications (e.g., "In wastewater treatment, this principle is used to...")
+                - Step-by-step worked examples showing calculations
+
+            EXAMPLE FORMAT - When explaining concepts, use this structure:
+            - State the concept clearly
+            - Provide a concrete example with specific values
+            - Show step-by-step application if relevant
+            - Connect to real-world engineering practice
+
+            For instance, instead of saying "The Nernst equation relates potential to concentration", say:
+            "The Nernst equation relates potential to concentration. For example, if we have a zinc electrode in a 0.1M Zn²⁺ solution at 25°C:
+            
+            $$E = E° - \frac{0.0592}{2}\log\frac{1}{[Zn^{2+}]}$$
+            
+            This means the actual potential would be E = -0.76V - 0.0296 × log(10) = -0.79V. This is commonly used in batteries and corrosion protection systems."
 
             If as part of your questions you need to include equations, please use LaTeX notation. The system now supports LaTeX rendering, so you can use:
             - Inline math: $E = mc^2$ for simple equations within text
@@ -447,6 +542,13 @@ class ChatApp {
             - Include your Mermaid diagram code
             - End with: </Artefact>
             - Continue with any additional text below the artefact
+
+            IMPORTANT MERMAID SYNTAX RULES:
+            - Always close node labels with square brackets: [Label]
+            - Ensure all arrows point to valid nodes
+            - Use proper node IDs (letters/numbers, no spaces)
+            - Test your syntax before including in responses
+            - Common node formats: A[Label], B((Circle)), C{Decision}
 
             Example artefact usage:
             <Artefact>
@@ -879,7 +981,7 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
             id: chatId,
             courseName: courseName,
             divisionTitle: '', // Empty for now, will be set by user later
-            itemTitle: '', // Empty for now, will be set by user later
+            itemTitle: 'New Chat', // Set initial title as "New Chat"
             messages: [backendWelcomeMessage], // Use the proper backend welcome message with diagrams
             isPinned: false,
             pinnedMessageId: null
@@ -981,13 +1083,13 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             console.log('🤖 Waiting for AI response...');
             //END DEBUG LOG : DEBUG-CODE(SEND-MSG-005)
             
-            // Use the ChatApp's streaming method but don't stream to client - just wait for complete response
-            const assistantMessage = await chatApp.sendUserMessageStream(
+            // Send message through ChatApp and wait for complete response
+            const assistantMessage = await chatApp.sendUserMessage(
                 message,
                 chatId,
                 userId,
                 courseName || 'APSC 099',
-                () => {} // Empty callback - we don't stream to client
+                () => {} // Empty callback - not streaming to client
             );
 
             //START DEBUG LOG : DEBUG-CODE(SEND-MSG-006)
@@ -995,7 +1097,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             console.log('📊 Response length:', assistantMessage.text.length, 'characters');
             //END DEBUG LOG : DEBUG-CODE(SEND-MSG-006)
 
-            // Create the user message object (sendUserMessageStream adds it internally but we need to save it to DB)
+            // Create the user message object (sendUserMessage adds it internally but we need to save it to DB)
             const currentDate = new Date();
             const idGenerator = IDGenerator.getInstance();
             const userMessageId = idGenerator.messageID(message, chatId, currentDate);
@@ -1030,6 +1132,9 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 console.log('   Assistant message ID:', assistantMessage.id);
                 console.log('   Text:', assistantMessage.text.substring(0, 50) + '...');
                 //END DEBUG LOG : DEBUG-CODE(SEND-MSG-008)
+                
+                // Check if chat title needs updating (first user-AI exchange)
+                await chatApp.updateChatTitleIfNeeded(chatId, assistantMessage.text, courseName, puid);
                 
             } catch (dbError) {
                 //START DEBUG LOG : DEBUG-CODE(SEND-MSG-009)
@@ -1143,7 +1248,10 @@ router.get('/:chatId/message/:messageId', asyncHandlerWithAuth(async (req: Reque
 }));
 
 /**
- * Delete a chat (REQUIRES AUTH)
+ * Delete a chat (REQUIRES AUTH) - Using Soft Delete
+ * 
+ * Marks the chat as deleted (isDeleted: true) instead of removing it from the database.
+ * This preserves chat history for audit/analytics while hiding it from users.
  * 
  * @param chatId - The chat ID to delete
  * @returns JSON response with deletion status
@@ -1157,20 +1265,20 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
         const puid = user?.puid;
         const courseName = user?.activeCourseName || 'APSC 099: Engineering for Kindergarten';
         
-        //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-001)
-        console.log('\n🗑️ DELETE CHAT REQUEST:');
+        //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-001)
+        console.log('\n🗑️ SOFT DELETE CHAT REQUEST:');
         console.log('='.repeat(50));
         console.log(`Chat ID: ${chatId}`);
         console.log(`PUID: ${puid}`);
         console.log(`Course: ${courseName}`);
         console.log('='.repeat(50));
-        //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-001)
+        //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-001)
         
         // Validate input
         if (!chatId) {
-            //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-002)
-            console.log('❌ DELETE FAILED: Chat ID is required');
-            //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-002)
+            //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-002)
+            console.log('❌ SOFT DELETE FAILED: Chat ID is required');
+            //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-002)
             return res.status(400).json({
                 success: false,
                 error: 'Chat ID is required'
@@ -1178,73 +1286,57 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
         }
         
         if (!puid) {
-            //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-003)
-            console.log('❌ DELETE FAILED: PUID not found in session');
-            //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-003)
+            //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-003)
+            console.log('❌ SOFT DELETE FAILED: PUID not found in session');
+            //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-003)
             return res.status(401).json({
                 success: false,
                 error: 'User not authenticated'
             });
         }
         
-        // Validate chat exists in memory
-        if (!chatApp.validateChatExists(chatId)) {
-            //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-004)
-            console.log(`❌ DELETE FAILED: Chat ${chatId} not found in memory`);
-            //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-004)
-            return res.status(404).json({
-                success: false,
-                error: 'Chat not found'
-            });
+        // Remove from memory if exists (optional cleanup)
+        // This doesn't block deletion if chat is not in memory (e.g., after server restart)
+        if (chatApp.validateChatExists(chatId)) {
+            const memoryDeleted = chatApp.deleteChat(chatId);
+            //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-004)
+            console.log(`✅ Chat ${chatId} removed from server memory`);
+            //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-004)
+        } else {
+            //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-005)
+            console.log(`ℹ️ Chat ${chatId} not in memory (may have been loaded from database after restart)`);
+            //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-005)
         }
         
-        //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-005)
-        console.log(`✅ Chat ${chatId} exists, proceeding with deletion`);
-        //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-005)
-        
-        // Delete from memory
-        const deleted = chatApp.deleteChat(chatId);
-        
-        if (deleted) {
-            //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-006)
-            console.log(`✅ Chat ${chatId} deleted from memory`);
-            //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-006)
+        // Mark as deleted in database (soft delete)
+        // This always happens, regardless of memory state
+        try {
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            await mongoDB.markChatAsDeleted(courseName, puid, chatId);
             
-            // Delete from MongoDB
-            try {
-                const mongoDB = await EngEAI_MongoDB.getInstance();
-                await mongoDB.deleteChatFromUser(courseName, puid, chatId);
-                
-                //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-007)
-                console.log(`✅ Chat ${chatId} deleted from MongoDB`);
-                //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-007)
-            } catch (dbError) {
-                //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-008)
-                console.error('⚠️ WARNING: Failed to delete chat from MongoDB:', dbError);
-                console.log('Chat deleted from memory but not from database');
-                //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-008)
-                // Continue execution - chat is deleted from memory
-            }
+            //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-006)
+            console.log(`✅ Chat ${chatId} marked as deleted in database`);
+            //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-006)
             
             res.json({
                 success: true,
                 message: 'Chat deleted successfully',
                 chatId: chatId
             });
-        } else {
-            //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-009)
-            console.log(`❌ DELETE FAILED: Failed to delete chat ${chatId} from memory`);
-            //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-009)
-            res.status(500).json({
+        } catch (dbError) {
+            //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-007)
+            console.error('⚠️ Database error during soft delete:', dbError);
+            //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-007)
+            res.status(404).json({
                 success: false,
-                error: 'Failed to delete chat'
+                error: 'Chat not found or already deleted'
             });
         }
         
     } catch (error) {
-        //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-010)
-        console.error('❌ DELETE ERROR:', error);
-        //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-010)
+        //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-008)
+        console.error('❌ SOFT DELETE ERROR:', error);
+        //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-008)
         res.status(500).json({
             success: false,
             error: 'Internal server error'

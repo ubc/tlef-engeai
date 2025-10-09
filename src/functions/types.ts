@@ -35,6 +35,7 @@ export interface Chat {
     messages: ChatMessage[];
     isPinned: boolean;
     pinnedMessageId?: string | null;
+    isDeleted?: boolean;  // Soft delete flag (defaults to false/undefined for backward compatibility)
 }
 
 // ===========================================
@@ -152,19 +153,19 @@ export interface AdditionalMaterial {
 }
 
 /**
- * User data structure for authentication and chat integration
- * Replaces the old Student interface with proper user authentication
+ * Course-specific user data structure
+ * Stores user data specific to a particular course
  */
-export interface User {
+export interface CourseUser {
     name: string;
     puid: string;
-    userId: number;
-    activeCourseId: string;
-    activeCourseName: string;
-    userOnboarding: boolean; // this is only used for student mode
+    userId: number;                // Obtained from GlobalUser
+    courseName: string;            // Full name: "APSC 099: Engineering for Kindergarten"
+    courseId: string;              // Course unique ID
+    userOnboarding: boolean;       // Course-specific onboarding status
     affiliation: 'student' | 'faculty';
     status: 'active' | 'inactive';
-    chats: Chat[];
+    chats: Chat[];                 // Course-specific chat history
     createdAt: Date;
     updatedAt: Date;
 }
@@ -186,14 +187,23 @@ export interface FlagReport {
 }
 
 
-export interface Userx {
+/**
+ * Global user registry
+ * Stores core user identity across all courses
+ */
+export interface GlobalUser {
     name: string;
     puid: string;
-    userId: number;
-    courseName: string[]; // list of course names that the user is enrolled in
-    userOnboarding: boolean; // this is only used for student mode
+    userId: number;                // Generated using IDGenerator
+    coursesEnrolled: string[];     // Array of course IDs
     affiliation: 'student' | 'faculty';
     status: 'active' | 'inactive';
     createdAt: Date;
     updatedAt: Date;
 }
+
+/**
+ * Backward compatibility alias
+ * @deprecated Use CourseUser instead
+ */
+export type User = CourseUser;
