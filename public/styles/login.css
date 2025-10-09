@@ -581,15 +581,176 @@
         grid-template-columns: 1fr;
         gap: 1rem;
     }
-    
+
     .onboarding-controls {
         flex-direction: column;
         align-items: center;
     }
-    
+
     .reset-btn,
     .refresh-btn {
         width: 100%;
         max-width: 200px;
+    }
+}
+
+/* ===========================================
+   LOCAL LOGIN STYLES (Development Mode)
+   =========================================== */
+
+.dev-mode-banner {
+    background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 2rem;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(255, 87, 34, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.local-login-section {
+    margin-bottom: 2rem;
+    padding: 2rem;
+    background-color: #f8f9fa;
+    border-radius: 12px;
+    border: 1px solid #e9ecef;
+}
+
+.local-login-section h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #343a40;
+    margin-bottom: 0.5rem;
+    text-align: center;
+}
+
+.login-description {
+    text-align: center;
+    color: #6c757d;
+    font-size: 0.95rem;
+    margin-bottom: 1.5rem;
+}
+
+.local-login-form {
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+.form-group {
+    margin-bottom: 1.25rem;
+    text-align: left;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    color: #343a40;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-family: 'Inter', sans-serif;
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: var(--color-ubc-blue);
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.form-group input::placeholder {
+    color: #adb5bd;
+}
+
+.local-login-form .login-btn {
+    width: 100%;
+    margin-top: 1rem;
+    padding: 0.875rem 2rem;
+    font-size: 1rem;
+}
+
+.login-error {
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+    text-align: center;
+    animation: shake 0.5s ease;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+    20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+
+.login-hints {
+    margin-top: 2rem;
+    padding: 1.5rem;
+    background-color: #e7f3ff;
+    border: 1px solid #b3d9ff;
+    border-radius: 8px;
+    text-align: left;
+}
+
+.login-hints p {
+    margin: 0 0 0.75rem 0;
+    color: #004085;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.login-hints ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.login-hints li {
+    padding: 0.5rem 0;
+    color: #004085;
+    font-size: 0.875rem;
+    border-bottom: 1px solid #b3d9ff;
+}
+
+.login-hints li:last-child {
+    border-bottom: none;
+}
+
+.login-hints strong {
+    color: #002752;
+    font-weight: 600;
+}
+
+/* Responsive adjustments for local login */
+@media (max-width: 480px) {
+    .local-login-section {
+        padding: 1.5rem;
+    }
+
+    .local-login-form {
+        max-width: 100%;
+    }
+
+    .dev-mode-banner {
+        font-size: 0.85rem;
+        padding: 0.6rem 1rem;
     }
 }
