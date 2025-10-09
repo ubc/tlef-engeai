@@ -101,6 +101,7 @@ class ChatApp {
     private chatID : string[];
     private chatIDGenerator: IDGenerator;
     private ragConfig: any;
+    private llmProvider: any;
 
     constructor(config: AppConfig) {
         this.llmModule = new LLMModule(config.llmConfig);
@@ -111,7 +112,8 @@ class ChatApp {
         this.chatHistory = new Map();
         this.chatID = [];
         this.chatIDGenerator = IDGenerator.getInstance();
-        
+        this.llmProvider = config.llmConfig.provider;
+            
         // Initialize RAG module asynchronously
         this.initializeRAG();
     }
@@ -329,66 +331,16 @@ class ChatApp {
         return context;
     }
     /**
-     * Send a user message and get streaming response from LLM
-     * 
-     * @param message - The user's message
-     * @param chatId - The chat ID
-     * @param userId - The user ID
-     * @returns Promise<ChatMessage> - The assistant's response message
-     */
-    public async sendUserMessage(message: string, chatId: string, userId: string): Promise<ChatMessage> {
-        // Validate chat exists
-        if (!this.conversations.has(chatId)) {
-            throw new Error('Chat not found');
-        }
-
-        // Check rate limiting (50 messages per chat)
-        const chatHistory = this.chatHistory.get(chatId);
-        if (chatHistory && chatHistory.length >= 50) {
-            throw new Error('Rate limit exceeded: Maximum 50 messages per chat');
-        }
-
-        // Add user message to conversation and history
-        const userMessage = this.addUserMessage(chatId, message, userId);
-        
-        // Get conversation and send message
-        const conversation = this.conversations.get(chatId);
-        if (!conversation) {
-            throw new Error('Conversation not found');
-        }
-
-        //Send message to LLM and get response
-        const response = await conversation.send({
-            temperature: 0.7,
-            num_ctx: 32768
-        });
-
-        // const llmArguments = {
-        //     temperature: 0.7
-        // };
-
-        // // if provider is Ollama
-        // llmArguments.num_ctx = 32768;
-
-        // const response = await conversation.send(llmArguments);
-
-        // // Add assistant response to conversation and history
-        const assistantMessage = this.addAssistantMessage(chatId, response.content);
-        
-        return assistantMessage;
-    }
-
-    /**
-     * Send a user message and stream the response from LLM with RAG
+     * Send a user message and get response from LLM with RAG context
      * 
      * @param message - The user's message
      * @param chatId - The chat ID
      * @param userId - The user ID
      * @param courseName - The course name for RAG context
-     * @param onChunk - Callback function for each chunk of the stream
+     * @param onChunk - Optional callback function for streaming chunks (defaults to no-op)
      * @returns Promise<ChatMessage> - The complete assistant's response message
      */
-    public async sendUserMessageStream(
+    public async sendUserMessage(
         message: string, 
         chatId: string, 
         userId: string, 
@@ -478,16 +430,23 @@ class ChatApp {
 
         let assistantResponse = '';
 
+        let conversationConfig: any = {
+            temperature: 0.7,
+        }
+
+        if (this.llmProvider === 'ollama') {
+            console.log('🔍 Ollama provider detected : JUJUJU');
+
+            conversationConfig.num_ctx = 32768;
+        }
+
         const response = await conversation.stream(
             (chunk: string) => {
                 // console.log(`📦 Received chunk: "${chunk}"`);
                 assistantResponse += chunk;
                 onChunk(chunk);
-            },
-            {
-                temperature: 0.7,
-                num_ctx: 32768
-            }
+            }, 
+            conversationConfig
         );
         
         // console.log(`\n✅ Streaming completed. Full response length: ${fullResponse.length}`);
@@ -540,6 +499,13 @@ class ChatApp {
             Your role is to help undergraduate university students understand course concepts by connecting their questions to the provided course materials. 
             Course materials will be provided to you within code blocks such as <course_materials>relevant materials here</course_materials>
 
+            RESPONSE STYLE - BE CONCRETE AND PRACTICAL:
+            1. Provide concrete, specific responses with real-world examples
+            2. Always include at least one practical example when explaining concepts
+            3. Use specific numbers, values, and scenarios rather than abstract descriptions
+            4. Break down complex concepts into clear, actionable steps
+            5. Relate theoretical concepts to tangible engineering applications
+
             When replying to student's questions:
             1. Use the provided course materials to ask contextually relevant questions
             2. Reference the materials naturally using phrases like:
@@ -547,6 +513,24 @@ class ChatApp {
                 - According to the course materials...
                 - The lecture notes explain that...
             3. If the materials don't contain relevant information, indicate this (by saying things like "I was unable to find anything specifically relevant to this in the course materials, but I can still help based on my own knowledge.") and ask contextually relevant socratic questions based on your general knowledge.
+            4. ALWAYS provide concrete examples to illustrate your points, such as:
+                - Real-world engineering scenarios (e.g., "Consider a battery with 2.0V potential...")
+                - Specific numerical examples (e.g., "If we have 0.5 mol of electrons...")
+                - Practical applications (e.g., "In wastewater treatment, this principle is used to...")
+                - Step-by-step worked examples showing calculations
+
+            EXAMPLE FORMAT - When explaining concepts, use this structure:
+            - State the concept clearly
+            - Provide a concrete example with specific values
+            - Show step-by-step application if relevant
+            - Connect to real-world engineering practice
+
+            For instance, instead of saying "The Nernst equation relates potential to concentration", say:
+            "The Nernst equation relates potential to concentration. For example, if we have a zinc electrode in a 0.1M Zn²⁺ solution at 25°C:
+            
+            $$E = E° - \frac{0.0592}{2}\log\frac{1}{[Zn^{2+}]}$$
+            
+            This means the actual potential would be E = -0.76V - 0.0296 × log(10) = -0.79V. This is commonly used in batteries and corrosion protection systems."
 
             If as part of your questions you need to include equations, please use LaTeX notation. The system now supports LaTeX rendering, so you can use:
             - Inline math: $E = mc^2$ for simple equations within text
@@ -558,6 +542,13 @@ class ChatApp {
             - Include your Mermaid diagram code
             - End with: </Artefact>
             - Continue with any additional text below the artefact
+
+            IMPORTANT MERMAID SYNTAX RULES:
+            - Always close node labels with square brackets: [Label]
+            - Ensure all arrows point to valid nodes
+            - Use proper node IDs (letters/numbers, no spaces)
+            - Test your syntax before including in responses
+            - Common node formats: A[Label], B((Circle)), C{Decision}
 
             Example artefact usage:
             <Artefact>
@@ -1092,13 +1083,13 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             console.log('🤖 Waiting for AI response...');
             //END DEBUG LOG : DEBUG-CODE(SEND-MSG-005)
             
-            // Use the ChatApp's streaming method but don't stream to client - just wait for complete response
-            const assistantMessage = await chatApp.sendUserMessageStream(
+            // Send message through ChatApp and wait for complete response
+            const assistantMessage = await chatApp.sendUserMessage(
                 message,
                 chatId,
                 userId,
                 courseName || 'APSC 099',
-                () => {} // Empty callback - we don't stream to client
+                () => {} // Empty callback - not streaming to client
             );
 
             //START DEBUG LOG : DEBUG-CODE(SEND-MSG-006)
@@ -1106,7 +1097,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             console.log('📊 Response length:', assistantMessage.text.length, 'characters');
             //END DEBUG LOG : DEBUG-CODE(SEND-MSG-006)
 
-            // Create the user message object (sendUserMessageStream adds it internally but we need to save it to DB)
+            // Create the user message object (sendUserMessage adds it internally but we need to save it to DB)
             const currentDate = new Date();
             const idGenerator = IDGenerator.getInstance();
             const userMessageId = idGenerator.messageID(message, chatId, currentDate);

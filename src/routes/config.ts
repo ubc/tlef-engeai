@@ -31,6 +31,15 @@ export function loadConfig(): AppConfig {
 	}
 
 	// --- LLM Module Config ---
+
+	if (!process.env.LLM_PROVIDER) {
+		throw new Error(`LLM_PROVIDER environment variable is required.`);
+	}
+	else {
+		console.log(`LLM_PROVIDER environment variable is set to ${process.env.LLM_PROVIDER}.`);
+	}
+	
+	//llm provider
 	const llmProvider = (process.env.LLM_PROVIDER || 'ollama') as LLMProviderType;
 	const llmConfig: Partial<LLMConfig> = {
 		provider: llmProvider,
