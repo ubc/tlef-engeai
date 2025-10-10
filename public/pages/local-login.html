@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>EngE-AI | Local Login</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com">
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+		<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+		<!-- Global styles -->
+		<link rel="stylesheet" href="/styles/style.css" />
+		<!-- Page-specific styles -->
+		<link rel="stylesheet" href="/styles/login.css" />
+	</head>
+	<body>
+		<div class="login-container">
+			<div class="login-box">
+				<!-- Development Mode Banner -->
+				<div class="dev-mode-banner">
+					🔧 Development Mode - Local Authentication
+				</div>
+
+				<h1>EngE-AI</h1>
+				<p class="subtitle">AI-powered Engineering Education Assistant</p>
+
+				<!-- Local Login Form -->
+				<div class="local-login-section">
+					<h2>Login</h2>
+					<p class="login-description">Enter your development credentials</p>
+
+					<!-- Error Message Display (hidden by default) -->
+					<div id="login-error" class="login-error" style="display: none;">
+						Invalid username or password
+					</div>
+
+					<form id="local-login-form" class="local-login-form" method="POST" action="/auth/login">
+						<div class="form-group">
+							<label for="username">Username</label>
+							<input
+								type="text"
+								id="username"
+								name="username"
+								required
+								autofocus
+								placeholder="student or instructor"
+							/>
+						</div>
+
+						<div class="form-group">
+							<label for="password">Password</label>
+							<input
+								type="password"
+								id="password"
+								name="password"
+								required
+								placeholder="Enter password"
+							/>
+						</div>
+
+						<button type="submit" class="login-btn">Login</button>
+					</form>
+
+					<div class="login-hints">
+						<p><strong>Development Users:</strong></p>
+						<ul>
+							<li><strong>student</strong> - Student role access</li>
+							<li><strong>instructor</strong> - Instructor/Faculty role access</li>
+						</ul>
+					</div>
+				</div>
+
+				<p class="footer-text">University of British Columbia</p>
+			</div>
+		</div>
+
+		<script>
+			// Check for error query parameter and display error message
+			const urlParams = new URLSearchParams(window.location.search);
+			if (urlParams.get('error') === 'auth') {
+				const errorElement = document.getElementById('login-error');
+				if (errorElement) {
+					errorElement.style.display = 'block';
+				}
+			}
+
+			// Clear error on input
+			const form = document.getElementById('local-login-form');
+			const inputs = form.querySelectorAll('input');
+			const errorElement = document.getElementById('login-error');
+
+			inputs.forEach(input => {
+				input.addEventListener('input', () => {
+					if (errorElement) {
+						errorElement.style.display = 'none';
+					}
+				});
+			});
+		</script>
+	</body>
+</html>

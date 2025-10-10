@@ -9,16 +9,24 @@
 
 import session from 'express-session';
 
+// Only allow insecure (HTTP) cookies in local development
+// Staging and production should always use secure (HTTPS) cookies
+const isLocalDevelopment = process.env.NODE_ENV === 'development';
+
 const sessionConfig = {
     secret: process.env.SESSION_SECRET || 'change-this-secret',
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+        secure: !isLocalDevelopment, // HTTPS-only in staging/production, allow HTTP in local
         httpOnly: true, // Prevent client-side JS from accessing the cookie
-        maxAge: parseInt(process.env.SESSION_TIMEOUT_MS || '7200000') // 2 hours default
+        maxAge: parseInt(process.env.SESSION_TIMEOUT_MS || '7200000'), // 2 hours default
+        sameSite: 'lax' as 'lax' // Allow cookies on same-site redirects (critical for login flow)
     },
     name: 'engeai.sid' // Custom session ID name for TLEF EngE-AI
 };
+
+console.log(`[SESSION] Environment: ${process.env.NODE_ENV || 'not set'}`);
+console.log(`[SESSION] Secure cookies: ${sessionConfig.cookie.secure}`);
 
 export default session(sessionConfig);

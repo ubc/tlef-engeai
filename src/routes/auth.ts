@@ -1,28 +1,42 @@
 /**
  * Authentication Routes
  *
- * Handles SAML login, logout, and callback routes
+ * Handles both SAML and local authentication depending on SAML_AVAILABLE flag
+ * - When SAML_AVAILABLE=false: Uses local username/password authentication
+ * - When SAML_AVAILABLE=true: Uses SAML authentication with CWL
  * Adapted from saml-example-app for TLEF EngE-AI TypeScript project
  */
 
 import express from 'express';
-import { passport, samlStrategy } from '../middleware/passport';
+import path from 'path';
+import { passport, samlStrategy, isSamlAvailable } from '../middleware/passport';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { GlobalUser } from '../functions/types';
 import { IDGenerator } from '../functions/unique-id-generator';
 
 const router = express.Router();
 
-// Initiate SAML login
+// Login route - conditional based on SAML availability
 router.get('/login', (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    //START DEBUG LOG : DEBUG-CODE(SAML-LOGIN)
-    console.log('Initiating SAML authentication...');
-    //END DEBUG LOG : DEBUG-CODE(SAML-LOGIN)
-    
-    passport.authenticate('saml', {
-        failureRedirect: '/auth/login-failed',
-        successRedirect: '/'
-    })(req, res, next);
+    if (isSamlAvailable) {
+        // SAML authentication flow
+        //START DEBUG LOG : DEBUG-CODE(SAML-LOGIN)
+        console.log('[AUTH] Initiating SAML authentication...');
+        //END DEBUG LOG : DEBUG-CODE(SAML-LOGIN)
+
+        passport.authenticate('saml', {
+            failureRedirect: '/auth/login-failed',
+            successRedirect: '/'
+        })(req, res, next);
+    } else {
+        // Local authentication - serve login page
+        //START DEBUG LOG : DEBUG-CODE(LOCAL-LOGIN-PAGE)
+        console.log('[AUTH] Serving local login page (Development Mode)');
+        //END DEBUG LOG : DEBUG-CODE(LOCAL-LOGIN-PAGE)
+
+        const loginPagePath = path.join(__dirname, '../../public/pages/local-login.html');
+        res.sendFile(loginPagePath);
+    }
 });
 
 // SAML callback endpoint
@@ -75,14 +89,109 @@ router.post('/saml/callback', (req: express.Request, res: express.Response, next
         
         // Store GlobalUser in session
         (req.session as any).globalUser = globalUser;
-        
-        // Redirect to course selection page
-        console.log('[AUTH] 🚀 Redirecting to course selection');
-        res.redirect('/pages/course-selection.html');
-        
+
+        // IMPORTANT: Save session before redirect to ensure session is persisted
+        req.session.save((saveErr) => {
+            if (saveErr) {
+                console.error('[AUTH] ❌ Session save error:', saveErr);
+                return res.redirect('/');
+            }
+
+            // Redirect to course selection page
+            console.log('[AUTH] 🚀 Session saved, redirecting to course selection');
+            console.log('[AUTH] 📋 Session ID:', (req as any).sessionID);
+            res.redirect('/pages/course-selection.html');
+        });
+
     } catch (error) {
         console.error('[AUTH] 🚨 Error in authentication callback:', error);
         res.redirect('/');
+    }
+});
+
+// Local login POST endpoint (for local authentication only)
+router.post('/login', (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (!isSamlAvailable) {
+        //START DEBUG LOG : DEBUG-CODE(LOCAL-LOGIN-POST)
+        console.log('[AUTH-LOCAL] 📝 Local login POST received');
+        console.log('[AUTH-LOCAL] Username:', req.body.username);
+        //END DEBUG LOG : DEBUG-CODE(LOCAL-LOGIN-POST)
+
+        // Use custom callback to handle session saving properly
+        passport.authenticate('local', async (err: any, user: any, info: any) => {
+            if (err) {
+                console.error('[AUTH-LOCAL] ❌ Authentication error:', err);
+                return next(err);
+            }
+
+            if (!user) {
+                console.log('[AUTH-LOCAL] ❌ Authentication failed:', info?.message || 'Unknown error');
+                return res.redirect('/auth/login?error=auth');
+            }
+
+            // Log the user in and WAIT for req.logIn to complete
+            req.logIn(user, async (loginErr) => {
+                if (loginErr) {
+                    console.error('[AUTH-LOCAL] ❌ Login error:', loginErr);
+                    return next(loginErr);
+                }
+
+                try {
+                    // Extract user data
+                    const puid = user.puid;
+                    const firstName = user.firstName || '';
+                    const lastName = user.lastName || '';
+                    const name = `${firstName} ${lastName}`.trim();
+                    const affiliation = user.affiliation;
+
+                    console.log('[AUTH-LOCAL] ✅ User logged in successfully');
+                    console.log('[AUTH-LOCAL] User PUID:', puid);
+                    console.log('[AUTH-LOCAL] User Name:', name);
+                    console.log('[AUTH-LOCAL] Affiliation:', affiliation);
+
+                    // Get MongoDB instance
+                    const mongoDB = await EngEAI_MongoDB.getInstance();
+
+                    // Check if GlobalUser exists
+                    let globalUser = await mongoDB.findGlobalUserByPUID(puid);
+
+                    if (!globalUser) {
+                        console.log('[AUTH-LOCAL] 🆕 Creating new GlobalUser');
+                        globalUser = await mongoDB.createGlobalUser({
+                            puid,
+                            name,
+                            userId: parseInt(mongoDB.idGenerator.uniqueIDGenerator(`${puid}-${name}-${affiliation}-global`).substring(0, 8), 16),
+                            coursesEnrolled: [],
+                            affiliation,
+                            status: 'active'
+                        });
+                        console.log('[AUTH-LOCAL] ✅ GlobalUser created:', globalUser.userId);
+                    } else {
+                        console.log('[AUTH-LOCAL] ✅ GlobalUser found:', globalUser.userId);
+                    }
+
+                    // Store GlobalUser in session
+                    (req.session as any).globalUser = globalUser;
+
+                    // CRITICAL: Save session before redirect
+                    req.session.save((saveErr) => {
+                        if (saveErr) {
+                            console.error('[AUTH-LOCAL] ❌ Session save error:', saveErr);
+                            return next(saveErr);
+                        }
+
+                        console.log('[AUTH-LOCAL] 🚀 Redirecting to course selection');
+                        res.redirect('/pages/course-selection.html');
+                    });
+                } catch (error) {
+                    console.error('[AUTH-LOCAL] 🚨 Error in post-auth processing:', error);
+                    res.redirect('/auth/login?error=auth');
+                }
+            });
+        })(req, res, next);
+    } else {
+        // If SAML is available, this endpoint shouldn't be used
+        res.status(404).send('Not Found');
     }
 });
 
@@ -99,46 +208,74 @@ router.get('/login-failed', (req: express.Request, res: express.Response) => {
     `);
 });
 
-// Logout endpoint
+// Logout endpoint - handles both SAML and local logout
 router.get('/logout', (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (!(req as any).user) {
         return res.redirect('/');
     }
 
-    // This is the SAML Single Log-Out flow
-    samlStrategy.logout(req as any, (err: any, requestUrl?: string | null) => {
-        if (err) {
-            //START DEBUG LOG : DEBUG-CODE(SAML-LOGOUT-ERROR)
-            console.error('SAML logout error:', err);
-            //END DEBUG LOG : DEBUG-CODE(SAML-LOGOUT-ERROR)
-            return next(err);
-        }
+    if (isSamlAvailable && samlStrategy) {
+        // SAML Single Log-Out flow
+        //START DEBUG LOG : DEBUG-CODE(SAML-LOGOUT)
+        console.log('[AUTH] Initiating SAML logout...');
+        //END DEBUG LOG : DEBUG-CODE(SAML-LOGOUT)
 
-        // 1. Terminate the local passport session
-        (req as any).logout((logoutErr: any) => {
-            if (logoutErr) {
-                //START DEBUG LOG : DEBUG-CODE(SAML-PASSPORT-LOGOUT-ERROR)
-                console.error('Passport logout error:', logoutErr);
-                //END DEBUG LOG : DEBUG-CODE(SAML-PASSPORT-LOGOUT-ERROR)
-                return next(logoutErr);
+        samlStrategy.logout(req as any, (err: any, requestUrl?: string | null) => {
+            if (err) {
+                //START DEBUG LOG : DEBUG-CODE(SAML-LOGOUT-ERROR)
+                console.error('[AUTH] SAML logout error:', err);
+                //END DEBUG LOG : DEBUG-CODE(SAML-LOGOUT-ERROR)
+                return next(err);
             }
-            // 2. Destroy the server-side session
-            (req as any).session.destroy((sessionErr: any) => {
-                if (sessionErr) {
-                    //START DEBUG LOG : DEBUG-CODE(SAML-SESSION-DESTROY-ERROR)
-                    console.error('Session destruction error:', sessionErr);
-                    //END DEBUG LOG : DEBUG-CODE(SAML-SESSION-DESTROY-ERROR)
-                    return next(sessionErr);
+
+            // 1. Terminate the local passport session
+            (req as any).logout((logoutErr: any) => {
+                if (logoutErr) {
+                    //START DEBUG LOG : DEBUG-CODE(SAML-PASSPORT-LOGOUT-ERROR)
+                    console.error('[AUTH] Passport logout error:', logoutErr);
+                    //END DEBUG LOG : DEBUG-CODE(SAML-PASSPORT-LOGOUT-ERROR)
+                    return next(logoutErr);
                 }
-                // 3. Redirect to the SAML IdP to terminate that session
-                if (requestUrl) {
-                    res.redirect(requestUrl);
-                } else {
-                    res.redirect('/');
-                }
+                // 2. Destroy the server-side session
+                (req as any).session.destroy((sessionErr: any) => {
+                    if (sessionErr) {
+                        //START DEBUG LOG : DEBUG-CODE(SAML-SESSION-DESTROY-ERROR)
+                        console.error('[AUTH] Session destruction error:', sessionErr);
+                        //END DEBUG LOG : DEBUG-CODE(SAML-SESSION-DESTROY-ERROR)
+                        return next(sessionErr);
+                    }
+                    // 3. Redirect to the SAML IdP to terminate that session
+                    if (requestUrl) {
+                        res.redirect(requestUrl);
+                    } else {
+                        res.redirect('/');
+                    }
+                });
             });
         });
-    });
+    } else {
+        // Local authentication logout - simple session destruction
+        //START DEBUG LOG : DEBUG-CODE(LOCAL-LOGOUT)
+        console.log('[AUTH-LOCAL] 🚪 Logging out local user...');
+        //END DEBUG LOG : DEBUG-CODE(LOCAL-LOGOUT)
+
+        (req as any).logout((logoutErr: any) => {
+            if (logoutErr) {
+                console.error('[AUTH-LOCAL] ❌ Logout error:', logoutErr);
+                return next(logoutErr);
+            }
+
+            (req as any).session.destroy((sessionErr: any) => {
+                if (sessionErr) {
+                    console.error('[AUTH-LOCAL] ❌ Session destruction error:', sessionErr);
+                    return next(sessionErr);
+                }
+
+                console.log('[AUTH-LOCAL] ✅ Logout successful');
+                res.redirect('/');
+            });
+        });
+    }
 });
 
 // The SAML IdP will redirect the user back to this URL after a successful logout.
