@@ -10,8 +10,9 @@ export class EngEAI_MongoDB {
     private static activeCourseListDatabase: string = 'TLEF-ENGEAI-DB';
     private static activeCourseListCollection: string = 'active-course-list';
     private static activeUsersCollection: string = 'active-users';
-    private static MONGO_URL = `mongodb://${process.env.MONGO_USERNAME}:${process.env.MONGO_PASSWORD}@localhost:27017`;
-    
+    private static MONGO_URL = `mongodb://${process.env.MONGO_USERNAME}:${process.env.MONGO_PASSWORD}@${process.env.MONGO_HOST}:${process.env.MONGO_PORT}`; 
+    //process.env.MONGO_URI ||
+    //`mongodb://${process.env.MONGO_USERNAME}:${process.env.MONGO_PASSWORD}@${process.env.MONGO_HOST}:${process.env.MONGO_PORT}`;
     private client: MongoClient;
     public db!: Db;
     public idGenerator: IDGenerator;
