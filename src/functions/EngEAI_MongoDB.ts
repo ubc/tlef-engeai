@@ -9,7 +9,7 @@ export class EngEAI_MongoDB {
     private static instance: EngEAI_MongoDB;
     private static activeCourseListCollection: string = 'active-course-list';
     private static activeUsersCollection: string = 'active-users';
-    private static MONGO_URI = `mongodb://${process.env.MONGO_USERNAME}:${process.env.MONGO_PASSWORD}@${process.env.MONGO_HOST}:${process.env.MONGO_PORT}/${process.env.MONGO_DB_NAME}`;
+    private static MONGO_URI = `mongodb://${process.env.MONGO_USERNAME}:${process.env.MONGO_PASSWORD}@${process.env.MONGO_HOST}:${process.env.MONGO_PORT}`;
     private client: MongoClient;
     public db!: Db;
     public idGenerator: IDGenerator;
@@ -28,7 +28,7 @@ export class EngEAI_MongoDB {
             // Connect to MongoDB
             try {
                 await EngEAI_MongoDB.instance.client.connect();
-                EngEAI_MongoDB.instance.db = EngEAI_MongoDB.instance.client.db();
+                EngEAI_MongoDB.instance.db = EngEAI_MongoDB.instance.client.db(process.env.MONGO_DB_NAME);
                 console.log('✅ MongoDB connected successfully');
             } catch (error) {
                 console.error('❌ Failed to connect to MongoDB:', error);
