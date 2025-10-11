@@ -16,9 +16,7 @@ export class EngEAI_MongoDB {
 
     private constructor() {
         this.idGenerator = IDGenerator.getInstance();
-        this.client = new MongoClient(EngEAI_MongoDB.MONGO_URI, {
-            authSource: 'admin',
-        });
+        this.client = new MongoClient(EngEAI_MongoDB.MONGO_URI);
     }
 
     public static async getInstance(): Promise<EngEAI_MongoDB> {
