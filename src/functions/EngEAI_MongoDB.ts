@@ -9,7 +9,45 @@ export class EngEAI_MongoDB {
     private static instance: EngEAI_MongoDB;
     private static activeCourseListCollection: string = 'active-course-list';
     private static activeUsersCollection: string = 'active-users';
-    private static MONGO_URI = `mongodb://${process.env.MONGO_USERNAME}:${process.env.MONGO_PASSWORD}@${process.env.MONGO_HOST}:${process.env.MONGO_PORT}`;
+    
+    /**
+     * Build MongoDB connection URI with diagnostic logging and URL encoding
+     * Handles special characters in credentials and validates environment variables
+     */
+    private static buildMongoURI(): string {
+        const username = process.env.MONGO_USERNAME;
+        const password = process.env.MONGO_PASSWORD;
+        const host = process.env.MONGO_HOST;
+        const port = process.env.MONGO_PORT;
+        const dbName = process.env.MONGO_DB_NAME;
+        
+        // Diagnostic logging (safe - doesn't expose sensitive data)
+        console.log('🔍 MongoDB Connection Configuration:', {
+            username: username ? `✓ (${username.length} chars)` : '❌ MISSING',
+            password: password ? `✓ (${password.length} chars)` : '❌ MISSING',
+            host: host || '❌ MISSING',
+            port: port || '❌ MISSING',
+            database: dbName || '❌ MISSING'
+        });
+        
+        // Validate required environment variables
+        if (!username) throw new Error('MONGO_USERNAME environment variable is not set');
+        if (!password) throw new Error('MONGO_PASSWORD environment variable is not set');
+        if (!host) throw new Error('MONGO_HOST environment variable is not set');
+        if (!port) throw new Error('MONGO_PORT environment variable is not set');
+        if (!dbName) throw new Error('MONGO_DB_NAME environment variable is not set');
+        
+        // URL encode credentials to handle special characters (@, #, :, !, etc.)
+        const encodedUsername = encodeURIComponent(username);
+        const encodedPassword = encodeURIComponent(password);
+        
+        const uri = `mongodb://${encodedUsername}:${encodedPassword}@${host}:${port}`;
+        console.log('🔗 MongoDB URI format: mongodb://***:***@' + host + ':' + port);
+        
+        return uri;
+    }
+    
+    private static MONGO_URI = EngEAI_MongoDB.buildMongoURI();
     private client: MongoClient;
     public db!: Db;
     public idGenerator: IDGenerator;
@@ -25,11 +63,17 @@ export class EngEAI_MongoDB {
             
             // Connect to MongoDB
             try {
+                console.log('🔄 Attempting MongoDB connection...');
                 await EngEAI_MongoDB.instance.client.connect();
                 EngEAI_MongoDB.instance.db = EngEAI_MongoDB.instance.client.db(process.env.MONGO_DB_NAME);
-                console.log('✅ MongoDB connected successfully');
+                console.log('✅ MongoDB connected successfully to database:', process.env.MONGO_DB_NAME);
             } catch (error) {
                 console.error('❌ Failed to connect to MongoDB:', error);
+                console.error('💡 Troubleshooting hints:');
+                console.error('   1. Verify MongoDB credentials are correct');
+                console.error('   2. Check if password contains special characters');
+                console.error('   3. Ensure MongoDB server is running and accessible');
+                console.error('   4. Verify firewall rules allow connection to MongoDB port');
                 throw new Error(`MongoDB connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
             }
         }
