@@ -17,7 +17,7 @@ export class EngEAI_MongoDB {
     private constructor() {
         this.idGenerator = IDGenerator.getInstance();
         this.client = new MongoClient(EngEAI_MongoDB.MONGO_URI, {
-            authSource: 'engeai_staging',
+            authSource: process.env.MONGO_AUTH_SOURCE,
         });
     }
 
