@@ -153,7 +153,7 @@ export class ArtefactHandler {
         //START DEBUG LOG : DEBUG-CODE(019)
         console.log('🔍 Parsing artefacts for message:', messageId);
         console.log('🔍 Original text length:', text.length);
-        console.log('🔍 Text preview:', text.substring(0, 200) + (text.length > 200 ? '...' : ''));
+        console.log('🔍 Text preview:', text);
         console.log('🔍 Contains <Artefact>:', text.includes('<Artefact>'));
         console.log('🔍 Contains </Artefact>:', text.includes('</Artefact>'));
         //END DEBUG LOG : DEBUG-CODE(019)

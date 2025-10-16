@@ -27,21 +27,27 @@ export class RenderChat {
      */
     public render(text: string, messageId?: string): string {
         let html = text;
+
+        console.log('🔍 RenderChat.render() - ORIGINAL INPUT:', text);
         
-        // Step 1: Extract and preserve code blocks
+        //Step 1: Extract and preserve code blocks
         const codeResult = this.processCodeBlocks(html);
         html = codeResult.html;
         
         // Step 2: Process artifacts using ArtefactHandler wrapper
         html = this.processArtifactsWithWrapper(html, messageId);
         
-        // Step 3: Extract and wrap LaTeX for KaTeX
-        html = this.processLatex(html);
         
-        // Step 4: Process markdown formatting
+        // Step 3: Process markdown formatting
         html = this.processMarkdown(html);
         
-        // Step 5: Restore code blocks
+        // Step 4: Add CSS classes to HTML lists
+        html = this.addListClasses(html);
+        
+        // Step 5: Wrap plain text in response-text paragraphs
+        html = this.wrapPlainText(html);
+        
+        //Step 6: Restore code blocks
         html = this.restoreCodeBlocks(html, codeResult.blocks);
         
         return html;
@@ -113,22 +119,6 @@ export class RenderChat {
         return processedText;
     }
     
-    /**
-     * Step 3: Extract and wrap LaTeX for KaTeX
-     */
-    private processLatex(text: string): string {
-        // Process display math ($$...$$)
-        text = text.replace(/\$\$([\s\S]*?)\$\$/g, (match, content) => {
-            return `<div class="response-latex-display">${content}</div>`;
-        });
-        
-        // Process inline math ($...$)
-        text = text.replace(/\$([^$\n]+?)\$/g, (match, content) => {
-            return `<span class="response-latex-inline">${content}</span>`;
-        });
-        
-        return text;
-    }
     
     /**
      * Step 4: Process markdown formatting
@@ -139,10 +129,20 @@ export class RenderChat {
         text = this.processBold(text);
         text = this.processItalic(text);
         text = this.processHorizontalRules(text);
-        text = this.processLists(text);
         text = this.processLinks(text);
-        text = this.processLineBreaks(text);
+        // text = this.processLineBreaks(text);
         
+        return text;
+    }
+    
+    /**
+     * Add CSS classes to HTML lists
+     */
+    private addListClasses(text: string): string {
+        // Replace <ul> with <ul class="response-list">
+        text = text.replace(/<ul>/g, '<ul class="response-list">');
+        // Replace <ol> with <ol class="response-list-ordered">
+        text = text.replace(/<ol>/g, '<ol class="response-list-ordered">');
         return text;
     }
     
@@ -183,33 +183,6 @@ export class RenderChat {
         return text.replace(/^---$/gm, '<hr class="response-hr">');
     }
     
-    /**
-     * Process lists (- item or 1. item)
-     */
-    private processLists(text: string): string {
-        // Process unordered lists (- item)
-        text = text.replace(/^[\s]*-\s(.+)$/gm, (match, content, offset, string) => {
-            // Check if this is the start of a list or continuation
-            const lines = string.split('\n');
-            const currentLineIndex = string.substring(0, offset).split('\n').length - 1;
-            
-            // Simple approach: wrap each item individually
-            return `<li class="response-list-item">${content}</li>`;
-        });
-        
-        // Wrap consecutive list items in <ul>
-        text = this.wrapConsecutiveListItems(text, 'li', 'ul', 'response-list');
-        
-        // Process ordered lists (1. item)
-        text = text.replace(/^[\s]*\d+\.\s(.+)$/gm, (match, content, offset, string) => {
-            return `<li class="response-list-item">${content}</li>`;
-        });
-        
-        // Wrap consecutive ordered list items in <ol>
-        text = this.wrapConsecutiveListItems(text, 'li', 'ol', 'response-list-ordered');
-        
-        return text;
-    }
     
     /**
      * Process links ([text](url))
@@ -258,40 +231,30 @@ export class RenderChat {
         return html;
     }
     
+    
     /**
-     * Wrap consecutive list items in appropriate container
+     * Step 4: Wrap plain text in response-text paragraphs
+     * Identifies text that isn't already wrapped in HTML tags and wraps it in <p class="response-text">
      */
-    private wrapConsecutiveListItems(text: string, itemTag: string, containerTag: string, containerClass: string): string {
-        const lines = text.split('\n');
-        let result: string[] = [];
-        let i = 0;
+    private wrapPlainText(text: string): string {
+        // Split by double newlines to identify paragraphs
+        const paragraphs = text.split(/\n\s*\n/);
         
-        while (i < lines.length) {
-            const line = lines[i];
+        return paragraphs.map(paragraph => {
+            paragraph = paragraph.trim();
+            if (!paragraph) return '';
             
-            if (line.includes(`<${itemTag}`)) {
-                // Found a list item, collect consecutive ones
-                const listItems: string[] = [];
-                let j = i;
-                
-                while (j < lines.length && lines[j].includes(`<${itemTag}`)) {
-                    listItems.push(lines[j]);
-                    j++;
-                }
-                
-                // Wrap in container
-                result.push(`<${containerTag} class="${containerClass}">`);
-                result.push(...listItems);
-                result.push(`</${containerTag}>`);
-                
-                i = j; // Skip processed lines
-            } else {
-                result.push(line);
-                i++;
+            // Skip if it's already wrapped in HTML tags
+            if (paragraph.startsWith('<') && paragraph.includes('>')) {
+                return paragraph;
             }
-        }
-        
-        return result.join('\n');
+            
+            // Convert single newlines to <br> within the paragraph
+            paragraph = paragraph.replace(/\n/g, '<br>');
+            
+            // Wrap in response-text paragraph
+            return `<p class="response-text">${paragraph}</p>`;
+        }).join('\n');
     }
     
     /**
