@@ -449,8 +449,8 @@ class ChatApp {
             conversationConfig
         );
         
-        // console.log(`\n✅ Streaming completed. Full response length: ${fullResponse.length}`);
-        // console.log(`Full response: "${fullResponse}"`);
+        console.log(`\n✅ Streaming completed. Full response length: ${assistantResponse.length}`);
+        console.log(`Full response: "${assistantResponse}"`);
 
         // Add complete assistant response to conversation and history
         const assistantMessage = this.addAssistantMessage(chatId, assistantResponse);
@@ -532,16 +532,34 @@ class ChatApp {
             
             This means the actual potential would be E = -0.76V - 0.0296 × log(10) = -0.79V. This is commonly used in batteries and corrosion protection systems."
 
-            If as part of your questions you need to include equations, please use LaTeX notation. The system now supports LaTeX rendering, so you can use:
-            - Inline math: $E = mc^2$ for simple equations within text
-            - Block math: $$\int_0^\infty e^{-x} dx = 1$$ for centered equations
-            - Complex expressions: $$\frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u$$ for advanced mathematics
+            FORMATTING INSTRUCTIONS - Use these syntax patterns for proper rendering:
 
-            For engineering flow diagrams, process flows, or visual representations, use the following artefact format:
+            **TEXT FORMATTING:**
+            - Use **bold text** for emphasis (renders as response-bold class)
+            - Use *italic text* for emphasis (renders as response-italic class)
+            - Use # Header for main headings (renders as response-header-1 class)
+            - Use ## Subheader for section headings (renders as response-header-2 class)
+            - Use ### Sub-subheader for smaller headings (renders as response-header-3 class)
+            - Use - item for bullet lists (renders as response-list class)
+            - Use 1. item for numbered lists (renders as response-list-ordered class)
+            - Use --- for horizontal rules (renders as response-hr class)
+            - Use [link text](url) for links (renders as response-link class)
+
+            **LATEX MATHEMATICS - Use these delimiters:**
+            - Inline math: $E = mc^2$ (renders as response-latex-inline class)
+            - Display math: $$\int_0^\infty e^{-x} dx = 1$$ (renders as response-latex-display class)
+            - Complex expressions: $$\frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u$$ for advanced mathematics
+            - Chemical equations: $2H_2 + O_2 \rightarrow 2H_2O$
+            - Engineering formulas: $\Delta G = -nFE$ (Gibbs free energy)
+            - Matrix notation: $$\begin{pmatrix} a & b \\ c & d \end{pmatrix}$$
+            - Summations: $\sum_{i=1}^{n} x_i$ or $$\sum_{i=1}^{n} x_i$$
+
+            **VISUAL DIAGRAMS - Use this artifact format:**
             - Start with: <Artefact>
             - Include your Mermaid diagram code
             - End with: </Artefact>
-            - Continue with any additional text below the artefact
+            - Continue with any additional text below the artifact
+            - Creates interactive "View Diagram" button
 
             IMPORTANT MERMAID SYNTAX RULES:
             - Always close node labels with square brackets: [Label]
@@ -550,14 +568,14 @@ class ChatApp {
             - Test your syntax before including in responses
             - Common node formats: A[Label], B((Circle)), C{Decision}
 
-            Example artefact usage:
+            Example artifact usage:
             <Artefact>
             graph TD
                 A[Input] --> B[Process]
                 B --> C[Output]
             </Artefact>
             
-            The artefact will be displayed as an interactive diagram that students can view.
+            The artifact will be displayed with a "View Diagram" button that students can click to view the interactive diagram.
 
             IMPORTANT: Never output the course materials tags <course_materials>...</course_materials> in your responses. Only use them internally for context.
             Additional Instructions: If required to use an equation, use LaTEX notation. If a flow diagram is required, use Mermaid notation.
@@ -594,7 +612,7 @@ class ChatApp {
      * return the message object, so this message can be passed to the client when initiate a chat
      */
     private addDefaultAssistantMessage(chatId: string): ChatMessage {
-        const defaultMessageText = `Hello! I am EngE-AI, your AI companion for chemical, environmental, and materials engineering. As this is week 2, in lectures this week we have learned about Thermodynamics in Electrochemistry. 
+        const defaultMessageText = `Hello! I am EngE-AI, your AI companion for chemical, environmental, and materials engineering. As this is week 2, in lectures this week we have learned about **Thermodynamics in Electrochemistry**. 
 
 Here's a diagram to help visualize the key concepts we've covered:
 
@@ -623,8 +641,8 @@ graph TD
 
 What would you like to discuss? I can help you understand:
 - The relationship between thermodynamics and electrochemistry
-- How to calculate cell potentials
-- The Nernst equation and its applications
+- How to calculate cell potentials using the **Nernst equation**
+- The Nernst equation and its applications: $E = E° - \frac{RT}{nF}\ln Q$
 - Electrochemical cell design and operation
 
 Remember: I am designed to enhance your learning, not replace it, always verify important information.`;

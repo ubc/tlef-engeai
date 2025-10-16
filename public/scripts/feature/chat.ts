@@ -10,8 +10,8 @@
 import { loadComponentHTML, renderFeatherIcons } from "../functions/api.js";
 import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, CreateChatRequest } from "../functions/chat-api.js";
 import { Chat, ChatMessage, User, activeCourse } from "../../../src/functions/types.js";
-import { ArtefactHandler, ArtefactData, getArtefactHandler } from "./artefact.js";
-import { showDisclaimerModal } from "../modal-overlay.js";
+import { RenderChat } from "./render-chat.js";
+import { showDisclaimerModal, showDeleteConfirmationModal } from "../modal-overlay.js";
 
 /**
  * LaTeX Rendering Utility Functions
@@ -111,6 +111,7 @@ export function renderLatexInHtmlContent(element: HTMLElement): void {
     renderMath();
 }
 
+
 /**
  * Chat Manager Configuration
  */
@@ -131,7 +132,7 @@ export class ChatManager {
     private activeChatId: string | null = null;
     private config: ChatManagerConfig;
     private isInitialized: boolean = false;
-    private artefactHandler: ArtefactHandler;
+    private renderChat: RenderChat;
     
     // Incremental update tracking
     private domMessageIds: Set<string> = new Set(); // Track which messages are in DOM
@@ -139,7 +140,7 @@ export class ChatManager {
 
     private constructor(config: ChatManagerConfig) {
         this.config = config;
-        this.artefactHandler = getArtefactHandler();
+        this.renderChat = new RenderChat();
     }
 
     /**
@@ -619,18 +620,23 @@ export class ChatManager {
         const contentEl = messageEl.querySelector('.message-content') as HTMLElement;
         if (!contentEl) return;
 
-        // Process artefacts and render
-        const result = this.artefactHandler.processStreamingText(newText, messageId);
+        // COMMENTED OUT: Artifact processing
+        // // Process artefacts and render
+        // const result = this.artefactHandler.processStreamingText(newText, messageId);
         
-        if (result.hasArtefacts) {
-            // Use innerHTML for content with artefacts (contains button HTML)
-            contentEl.innerHTML = result.processedText;
-            // Render LaTeX safely without breaking HTML elements
-            renderLatexInHtmlContent(contentEl);
-        } else {
-            // Simple text update
-            renderLatexInElement(newText, contentEl);
-        }
+        // if (result.hasArtefacts) {
+        //     // Use innerHTML for content with artefacts (contains button HTML)
+        //     contentEl.innerHTML = result.processedText;
+        //     // Render LaTeX safely without breaking HTML elements
+        //     renderLatexInHtmlContent(contentEl);
+        // } else {
+        //     // Simple text update
+        //     renderLatexInElement(newText, contentEl);
+        // }
+        
+        // NEW: Markdown + LaTeX rendering with messageId for artifacts
+        contentEl.innerHTML = this.renderChat.render(newText, messageId);
+        renderLatexInHtmlContent(contentEl);
         
         renderFeatherIcons();
         this.scrollToBottom();
@@ -923,40 +929,52 @@ export class ChatManager {
                     const botMessageElement = document.getElementById(`msg-${botMessage.id}`);
                     const botContentElement = botMessageElement?.querySelector('.message-content');
                     if (botContentElement) {
-                        if (hasArtefacts) {
-                            // Use innerHTML for content with artefacts (contains button HTML)
-                            (botContentElement as HTMLElement).innerHTML = content;
-                            // Render LaTeX safely without breaking HTML elements
-                            renderLatexInHtmlContent(botContentElement as HTMLElement);
-                        } else {
-                            // Use text rendering for normal content
-                            renderLatexInElement(content, botContentElement as HTMLElement);
-                        }
+                        // COMMENTED OUT: Artifact processing
+                        // if (hasArtefacts) {
+                        //     // Use innerHTML for content with artefacts (contains button HTML)
+                        //     (botContentElement as HTMLElement).innerHTML = content;
+                        //     // Render LaTeX safely without breaking HTML elements
+                        //     renderLatexInHtmlContent(botContentElement as HTMLElement);
+                        // } else {
+                        //     // Use text rendering for normal content
+                        //     renderLatexInElement(content, botContentElement as HTMLElement);
+                        // }
+                        
+                        // NEW: Markdown + LaTeX rendering with messageId for artifacts
+                        (botContentElement as HTMLElement).innerHTML = this.renderChat.render(content, botMessage.id);
+                        renderLatexInHtmlContent(botContentElement as HTMLElement);
+                        
                         this.scrollToBottom();
                     }
                 }
-                // Re-render icons after each chunk update (important for artefact buttons)
+                // Re-render icons after each chunk update
                 renderFeatherIcons();
             },
             (message: ChatMessage) => {
                 const botMessageElement = document.getElementById(`msg-${message.id}`);
                 const botContentElement = botMessageElement?.querySelector('.message-content');
                 if (botContentElement) {
-                    // Check if the final message has artefacts
-                    const result = this.artefactHandler.processStreamingText(message.text, message.id);
+                    // COMMENTED OUT: Artifact processing
+                    // // Check if the final message has artefacts
+                    // const result = this.artefactHandler.processStreamingText(message.text, message.id);
                     
-                    if (result.hasArtefacts) {
-                        // Use innerHTML for content with artefacts
-                        (botContentElement as HTMLElement).innerHTML = result.processedText;
-                        // Render LaTeX safely without breaking HTML elements
-                        renderLatexInHtmlContent(botContentElement as HTMLElement);
-                    } else {
-                        // Use text rendering for normal content
-                        renderLatexInElement(message.text, botContentElement as HTMLElement);
-                    }
+                    // if (result.hasArtefacts) {
+                    //     // Use innerHTML for content with artefacts
+                    //     (botContentElement as HTMLElement).innerHTML = result.processedText;
+                    //     // Render LaTeX safely without breaking HTML elements
+                    //     renderLatexInHtmlContent(botContentElement as HTMLElement);
+                    // } else {
+                    //     // Use text rendering for normal content
+                    //     renderLatexInElement(message.text, botContentElement as HTMLElement);
+                    // }
+                    
+                    // NEW: Markdown + LaTeX rendering with messageId for artifacts
+                    (botContentElement as HTMLElement).innerHTML = this.renderChat.render(message.text, message.id);
+                    renderLatexInHtmlContent(botContentElement as HTMLElement);
+                    
                     this.scrollToBottom();
                 }
-                // Re-render icons after message completion (important for artefact buttons)
+                // Re-render icons after message completion
                 renderFeatherIcons();
             },
             (error: string) => {
@@ -988,21 +1006,35 @@ export class ChatManager {
         const activeChatId = this.getActiveChatId();
         console.log('🗑️ Active chat ID:', activeChatId);
         
-        if (activeChatId) {
+        if (!activeChatId) {
+            console.log('🗑️ No active chat to delete');
+            return;
+        }
+        
+        // Get the active chat object to display its title/name
+        const chat = this.chats.find(c => c.id === activeChatId);
+        const result = await showDeleteConfirmationModal(
+            'Chat',
+            chat?.itemTitle || 'this chat'
+        );
+        
+        if (result.action === 'delete') {
             try {
                 console.log('🗑️ Attempting to delete chat:', activeChatId);
                 await this.deleteChat(activeChatId);
                 console.log('🗑️ Chat deleted successfully');
+                
+                // Update UI after deletion using incremental updates
+                this.renderActiveChatIncremental();
+                this.renderChatList();
             } catch (error) {
                 console.error('Failed to delete active chat:', error);
                 alert('Failed to delete chat. Please try again.');
                 return; // Don't update UI if deletion failed
             }
+        } else {
+            console.log('🗑️ Chat deletion cancelled by user');
         }
-        
-        // Update UI after deletion using incremental updates
-        this.renderActiveChatIncremental();
-        this.renderChatList();
         
         // Notify instructor mode that a chat was deleted
         this.callModeSpecificCallback('chat-deleted', { 
@@ -1041,19 +1073,30 @@ export class ChatManager {
         deleteBtn.appendChild(trashIcon);
         deleteBtn.addEventListener('click', async (ev) => {
             ev.stopPropagation();
-            try {
-                await this.deleteChat(chat.id);
-                this.renderChatList();
-                
-                // Notify instructor mode that a chat was deleted from the list
-                this.callModeSpecificCallback('chat-deleted', { 
-                    remainingChats: this.chats.length,
-                    hasChats: this.chats.length > 0 
-                });
-            } catch (error) {
-                console.error('Failed to delete chat:', error);
-                // Show user-friendly error message
-                alert('Failed to delete chat. Please try again.');
+            
+            // Show confirmation modal
+            const result = await showDeleteConfirmationModal(
+                'Chat',
+                chat.itemTitle || 'this chat'
+            );
+            
+            if (result.action === 'delete') {
+                try {
+                    await this.deleteChat(chat.id);
+                    this.renderChatList();
+                    
+                    // Notify instructor mode that a chat was deleted from the list
+                    this.callModeSpecificCallback('chat-deleted', { 
+                        remainingChats: this.chats.length,
+                        hasChats: this.chats.length > 0 
+                    });
+                } catch (error) {
+                    console.error('Failed to delete chat:', error);
+                    // Show user-friendly error message
+                    alert('Failed to delete chat. Please try again.');
+                }
+            } else {
+                console.log('🗑️ Chat deletion cancelled by user');
             }
         });
 
@@ -1134,36 +1177,41 @@ export class ChatManager {
         
         // Process artefacts for all messages (including initial messages)
         if (sender === 'bot') {
-            //START DEBUG LOG : DEBUG-CODE(ARTEFACT-DEBUG)
-            console.log('🎨 Processing bot message for artefacts:', messageId);
-            console.log('🎨 Message text length:', text.length);
-            console.log('🎨 Contains <Artefact> tag:', text.includes('<Artefact>'));
-            console.log('🎨 Contains </Artefact> tag:', text.includes('</Artefact>'));
-            //END DEBUG LOG : DEBUG-CODE(ARTEFACT-DEBUG)
+            // COMMENTED OUT: Artifact processing to show plain LLM responses
+            // //START DEBUG LOG : DEBUG-CODE(ARTEFACT-DEBUG)
+            // console.log('🎨 Processing bot message for artefacts:', messageId);
+            // console.log('🎨 Message text length:', text.length);
+            // console.log('🎨 Contains <Artefact> tag:', text.includes('<Artefact>'));
+            // console.log('🎨 Contains </Artefact> tag:', text.includes('</Artefact>'));
+            // //END DEBUG LOG : DEBUG-CODE(ARTEFACT-DEBUG)
             
-            const parsed = this.artefactHandler.parseArtefacts(text, messageId);
+            // const parsed = this.artefactHandler.parseArtefacts(text, messageId);
             
-            //START DEBUG LOG : DEBUG-CODE(022)
-            console.log('🎨 createMessageElement - Parsed artefacts:', parsed);
-            console.log('🎨 Has artefacts:', parsed.hasArtefacts);
-            console.log('🎨 Elements count:', parsed.elements.length);
-            //END DEBUG LOG : DEBUG-CODE(022)
+            // //START DEBUG LOG : DEBUG-CODE(022)
+            // console.log('🎨 createMessageElement - Parsed artefacts:', parsed);
+            // console.log('🎨 Has artefacts:', parsed.hasArtefacts);
+            // console.log('🎨 Elements count:', parsed.elements.length);
+            // //END DEBUG LOG : DEBUG-CODE(022)
             
-            if (parsed.hasArtefacts) {
-                // Add all elements (text + buttons) directly to content
-                parsed.elements.forEach(element => {
-                    contentEl.appendChild(element);
-                });
+            // if (parsed.hasArtefacts) {
+            //     // Add all elements (text + buttons) directly to content
+            //     parsed.elements.forEach(element => {
+            //         contentEl.appendChild(element);
+            //     });
                 
-                // Render LaTeX safely in the content that may contain HTML
-                renderLatexInHtmlContent(contentEl);
+            //     // Render LaTeX safely in the content that may contain HTML
+            //     renderLatexInHtmlContent(contentEl);
                 
-                // Re-render icons for any buttons that were added
-                renderFeatherIcons();
-            } else {
-                // No artefacts, render normally
-                renderLatexInElement(text, contentEl);
-            }
+            //     // Re-render icons for any buttons that were added
+            //     renderFeatherIcons();
+            // } else {
+            //     // No artefacts, render normally
+            //     renderLatexInElement(text, contentEl);
+            // }
+            
+            // NEW: Direct markdown + LaTeX rendering with messageId for artifacts
+            contentEl.innerHTML = this.renderChat.render(text, messageId);
+            renderLatexInHtmlContent(contentEl);
         } else {
             // User messages don't have artefacts
             renderLatexInElement(text, contentEl);

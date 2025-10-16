@@ -5,10 +5,11 @@ import { renderOnCourseSetup } from "./onboarding/course-setup.js";
 import { renderDocumentSetup } from "./onboarding/document-setup.js";
 import { renderFlagSetup } from "./onboarding/flag-setup.js";
 import { renderMonitorSetup } from "./onboarding/monitor-setup.js";
-import { initializeFlagReports } from "./feature/reports.js";
+import { initializeFlags } from "./feature/flags.js";
 import { initializeMonitorDashboard } from "./feature/monitor.js";
 import { ChatManager, createDefaultUser } from "./feature/chat.js";
 import { authService } from './services/AuthService.js';
+import { showConfirmModal } from './modal-overlay.js';
 
 // Authentication check function
 async function checkAuthentication(): Promise<boolean> {
@@ -16,7 +17,7 @@ async function checkAuthentication(): Promise<boolean> {
 }
 
 const enum StateEvent {
-    Report,
+    Flag,
     Monitor,
     Documents,
     Chat
@@ -292,7 +293,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- STATE MANAGEMENT ----
     let isSidebarCollapsed: boolean = false;
     
-    const reportStateEl = document.getElementById('report-state');
+    const flagStateEl = document.getElementById('flag-state');
     const monitorStateEl = document.getElementById('monitor-state');
     const documentsStateEl = document.getElementById('documents-state');
     const chatStateEl = document.getElementById('chat-state');
@@ -304,9 +305,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    reportStateEl?.addEventListener('click', () => {
-        if (currentState !== StateEvent.Report) {
-            currentState = StateEvent.Report;
+    flagStateEl?.addEventListener('click', () => {
+        if (currentState !== StateEvent.Flag) {
+            currentState = StateEvent.Flag;
             updateUI();
         }
     });
@@ -357,10 +358,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     sidebarCollapseToggle();
 
     const loadComponent = async (
-        componentName :'report-instructor' 
+        componentName :'flag-instructor' 
                         | 'monitor-instructor' 
                         | 'documents-instructor' 
-                        | 'report-history' 
+                        | 'flag-history' 
                         | 'course-setup'
                         | 'document-setup'
         ) => {
@@ -371,8 +372,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (componentName === 'documents-instructor') {
                 initializeDocumentsPage(currentClass);
             }
-            else if (componentName === 'report-instructor') {
-                initializeFlagReports();
+            else if (componentName === 'flag-instructor') {
+                initializeFlags();
             }
             else if (componentName === 'monitor-instructor') {
                 initializeMonitorDashboard();
@@ -414,8 +415,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        if ( currentState === StateEvent.Report){
-            loadComponent('report-instructor');
+        if ( currentState === StateEvent.Flag){
+            loadComponent('flag-instructor');
             updateSidebarState();
             expandFeatureSidebar();
             hideChatList(); // Ensure chat list is hidden
@@ -444,16 +445,29 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
 
-    // //make a get request for course
-    // getCourse('CHBE251').then((data: activeCourse) => {
-    //     console.log("data: ", JSON.stringify(data));
-    //     currentClass = data;
-    //     document.body.classList.remove('onboarding-active');
-    //     updateUI();
-    // }).catch(() => {
-    //     console.log("Error loading class data");
-    //     updateUI();
-    // });
+    // Load course data from database
+    getCourse('APSC 099: Engineering for Kindergarten').then((data: activeCourse) => {
+        console.log("✅ Loaded course data: ", JSON.stringify(data));
+        currentClass = data;
+        
+        // Make currentClass globally accessible for flags.ts
+        window.currentClass = currentClass;
+        
+        // Check if onboarding is needed
+        if (currentClass.courseSetup && currentClass.contentSetup && currentClass.flagSetup && currentClass.monitorSetup) {
+            // All setup complete, show main interface
+            document.body.classList.remove('onboarding-active');
+            updateUI();
+        } else {
+            // Show appropriate onboarding step
+            updateUI();
+        }
+    }).catch((error) => {
+        console.error("❌ Error loading course data:", error);
+        // Fallback to hardcoded data if API fails
+        console.log("🔄 Using fallback course data");
+        updateUI();
+    });
 
 
     // fetch('/api/courses/courses/CHBE241')
@@ -498,7 +512,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Remove active class from all menu items first
         documentsStateEl?.classList.remove('active');
         chatStateEl?.classList.remove('active');
-        reportStateEl?.classList.remove('active');
+        flagStateEl?.classList.remove('active');
         monitorStateEl?.classList.remove('active');
         
         // Add active class to the current state's menu item
@@ -509,8 +523,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             case StateEvent.Chat:
                 chatStateEl?.classList.add('active');
                 break;
-            case StateEvent.Report:
-                reportStateEl?.classList.add('active');
+            case StateEvent.Flag:
+                flagStateEl?.classList.add('active');
                 break;
             case StateEvent.Monitor:
                 monitorStateEl?.classList.add('active');
@@ -812,9 +826,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- LOGOUT FUNCTIONALITY ---
     const handleInstructorLogout = async (): Promise<void> => {
         try {
-            // Show confirmation dialog
-            const confirmed = confirm('Are you sure you want to log out?');
-            if (!confirmed) {
+            // Show confirmation modal
+            const result = await showConfirmModal(
+                'Confirm Logout',
+                'Are you sure you want to log out? You will be redirected to the login page.',
+                'Log Out',
+                'Cancel'
+            );
+            if (result.action !== 'log-out') {
                 console.log('[INSTRUCTOR-MODE] 🚫 Logout cancelled by user');
                 return;
             }
