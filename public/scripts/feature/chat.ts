@@ -11,7 +11,7 @@ import { loadComponentHTML, renderFeatherIcons } from "../functions/api.js";
 import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, CreateChatRequest } from "../functions/chat-api.js";
 import { Chat, ChatMessage, User, activeCourse } from "../../../src/functions/types.js";
 import { RenderChat } from "./render-chat.js";
-import { showDisclaimerModal, showDeleteConfirmationModal } from "../modal-overlay.js";
+import { showDisclaimerModal, showDeleteConfirmationModal, showSimpleErrorModal } from "../modal-overlay.js";
 
 /**
  * LaTeX Rendering Utility Functions
@@ -484,6 +484,14 @@ export class ChatManager {
         if (!chatListEl) return;
 
         chatListEl.innerHTML = '';
+        
+        // If no chats, show welcome screen
+        if (this.chats.length === 0) {
+            console.log('🎯 No chats available, triggering welcome screen');
+            this.callModeSpecificCallback('no-chats', { showWelcome: true });
+            return;
+        }
+        
         const sortedChats = [...this.chats].sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0));
 
         sortedChats.forEach(chat => {
@@ -533,7 +541,10 @@ export class ChatManager {
         const messageAreaEl = document.getElementById('message-area');
         const pinBtn = document.getElementById('pin-chat-btn');
         
-        if (!activeChat || !chatTitleEl || !messageAreaEl || !pinBtn) return;
+        if (!activeChat || !chatTitleEl || !messageAreaEl || !pinBtn) {
+            console.log('🎯 renderActiveChatIncremental: No active chat or missing DOM elements, skipping render');
+            return;
+        }
 
         this.ensureChatHeaderStructure();
 
@@ -1024,12 +1035,24 @@ export class ChatManager {
                 await this.deleteChat(activeChatId);
                 console.log('🗑️ Chat deleted successfully');
                 
-                // Update UI after deletion using incremental updates
-                this.renderActiveChatIncremental();
+                // Check if we still have an active chat after deletion
+                const currentActiveChat = this.getActiveChat();
+                if (currentActiveChat) {
+                    // We have a new active chat, render it
+                    this.renderActiveChatIncremental();
+                } else {
+                    // No active chat, render the welcome screen or empty state
+                    console.log('🗑️ No active chat after deletion, updating UI');
+                    this.renderChatList(); // This will handle showing welcome screen if no chats
+                }
+                
+                // Always render the chat list to update the sidebar
                 this.renderChatList();
+                
             } catch (error) {
                 console.error('Failed to delete active chat:', error);
-                alert('Failed to delete chat. Please try again.');
+                // Use modal instead of alert to avoid potential conflicts
+                await showSimpleErrorModal('Failed to delete chat. Please try again.', 'Delete Error');
                 return; // Don't update UI if deletion failed
             }
         } else {

@@ -495,15 +495,78 @@ class ChatApp {
     private addDefaultSystemMessage(chatId: string) {
 
         const defaultSystemMessage =  `
-            🚨 **MANDATORY FORMATTING RULES - FOLLOW THESE EXACTLY:** 🚨
+            **LIST FORMATTING - USE HTML TAGS DIRECTLY:**
+            
+            For unordered lists, use HTML <ul> and <li> tags:
+            <ul>
+            <li>First item</li>
+            <li>Second item</li>
+            <li>Third item</li>
+            </ul>
+            
+            For ordered lists, use HTML <ol> and <li> tags:
+            <ol>
+            <li>First step</li>
+            <li>Second step</li>
+            <li>Third step</li>
+            </ol>
+            
+            For nested lists, nest the HTML tags properly:
+            <ul>
+            <li>Main item 1
+                <ul>
+                <li>Sub-item 1.1</li>
+                <li>Sub-item 1.2</li>
+                </ul>
+            </li>
+            <li>Main item 2</li>
+            </ul>
+            
+            **IMPORTANT:** Do NOT use markdown syntax (- or 1.) for lists. Always use HTML tags directly. The frontend renderer will automatically add the appropriate CSS classes (response-list and response-list-ordered) to style these lists properly.
 
-            **CRITICAL: NEVER use markdown syntax for lists. ALWAYS use HTML tags:**
-            - ❌ FORBIDDEN: "- First item\\n- Second item" 
-            - ✅ REQUIRED: "<ul><li>First item</li><li>Second item</li></ul>"
-            - ❌ FORBIDDEN: "1. First step\\n2. Second step"
-            - ✅ REQUIRED: "<ol><li>First step</li><li>Second step</li></ol>"
+            **LATEX FORMATTING:**
+            When using LaTeX math expressions, ALWAYS keep them on single lines without line breaks:
+            
+            ✅ CORRECT Examples:
+            $$E°_{Cu^{2+}/Cu} = +0.34 V$$
+            $$[Cu^{2+}] = 0.010 M$$
+            $$E = E° - \frac{RT}{nF}\ln Q$$
+            $$ΔG = -nFE$$
+            
+            ✅ CORRECT Inline Math:
+            The standard reduction potential is $E°_{Cu^{2+}/Cu} = +0.34 V$ at $25°C$.
+            
+            ❌ INCORRECT (PROHIBITED - do not split math across lines):
+            $$
+            E°_{Cu^{2+}/Cu} = +0.34 V
+            $$
+            
+            $$
+            [Cu^{2+}] = 0.010 M
+            $$
+            
+            $$
+            E = E° - \frac{RT}{nF}\ln Q
+            $$
+            
+            **CRITICAL:** Never put line breaks inside LaTeX delimiters ($...$ or $$...$$). Always keep mathematical expressions on a single line.
 
-            **VIOLATION OF THESE RULES WILL RESULT IN INCORRECT RENDERING!**
+            **MERMAID DIAGRAM FORMATTING:**
+            When creating Mermaid diagrams in <Artefact> tags, avoid complex mathematical expressions in edge labels as they cause parser errors:
+            
+            ❌ INCORRECT (will fail to render):
+            A -->|E = E° - (RT/nF)·ln(Q)| B
+            
+            ✅ CORRECT (use descriptive labels or move math to nodes):
+            A -->|"relates to"| B
+            H["Nernst Equation: E = E° - (RT/nF)·ln(Q)"]
+            
+            **Key Rules for Mermaid:**
+            - Use descriptive phrases for edge labels: "relates to", "depends on", "calculates"
+            - Put complex mathematical expressions inside node labels, not edge labels
+            - Quote node labels containing special characters: ["Node with math: E = mc²"]
+            - Avoid parentheses, multiplication dots (·), and function notation in edge labels
+            - Keep edge labels simple and descriptive
 
             ---
 
@@ -557,21 +620,12 @@ class ChatApp {
             - Use --- for horizontal rules (renders as response-hr class)
             - Use [link text](url) for links (renders as response-link class)
             
-            **HTML LISTS - Use proper HTML tags:**
-            - Unordered lists: <ul><li>First item</li><li>Second item</li></ul>
-            - Ordered lists: <ol><li>Step 1</li><li>Step 2</li></ol>
-            - Multi-line items: <li>Long text that spans multiple lines is fine</li>
-            - Lists with LaTeX: <li>Formula: $E = mc^2$</li>
-            - Nested lists: <ul><li>Parent<ul><li>Child item</li></ul></li></ul>
-
-            🚨 **CRITICAL ENFORCEMENT - READ THIS CAREFULLY:** 🚨
-            NEVER use markdown list syntax (- or 1.). ALWAYS use HTML tags:
-            - ❌ WRONG: "- First item\n- Second item" 
-            - ✅ CORRECT: "<ul><li>First item</li><li>Second item</li></ul>"
-            - ❌ WRONG: "1. First step\n2. Second step"
-            - ✅ CORRECT: "<ol><li>First step</li><li>Second step</li></ol>"
-            
-            **THIS IS NOT OPTIONAL - YOUR RESPONSES MUST FOLLOW THIS FORMAT!**
+            **LIST EXAMPLES:**
+            - Use - for bullet points (renders as response-list class)
+            - Use 1. 2. 3. for numbered lists (renders as response-list-ordered class)
+            - Indent with spaces for nested lists
+            - Lists with LaTeX: - Formula: $E = mc^2$
+            - Multi-line items work naturally with markdown
             
             **RENDERING SYSTEM:**
             - All formatting uses a custom renderer that processes markdown, LaTeX, and artifacts
@@ -619,10 +673,8 @@ class ChatApp {
                 B --> C[Output]
             </Artefact>
 
-            🚨 **LIST FORMATTING REMINDER:** 🚨
-            When creating lists, ALWAYS use HTML tags:
-            ✅ CORRECT: "<ul><li>First point</li><li>Second point</li></ul>"
-            ❌ NEVER: "- First point\n- Second point"
+            **LIST FORMATTING REMINDER:**
+            Use natural markdown syntax for lists - they will be automatically converted to HTML.
             
             The artifact will be displayed with a "View Diagram" button that students can click to view the interactive diagram.
 
@@ -689,9 +741,10 @@ graph TD
 </Artefact>
 
 What would you like to discuss? I can help you understand:
+
 <ul>
 <li>The relationship between thermodynamics and electrochemistry</li>
-<li>How to calculate cell potentials using the <strong>Nernst equation</strong></li>
+<li>How to calculate cell potentials using the **Nernst equation**</li>
 <li>The Nernst equation and its applications: $E = E° - \\frac{RT}{nF}\\ln Q$</li>
 <li>Electrochemical cell design and operation</li>
 </ul>

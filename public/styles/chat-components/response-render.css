@@ -45,19 +45,22 @@
 
 /* Lists */
 .response-list{
-    margin: 0px;
-    line-height: 1.0;
-    padding: 0 0 0 0;
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+    list-style-type: disc;
+    line-height: 1.5;
 }
 
 .response-list-ordered {
-    margin: 0px;
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+    list-style-type: decimal;
     line-height: 1.5;
-    padding: 0 0 0 1.5rem;
 }
 
-.response-list-item {
-    margin: 0;
+.response-list li,
+.response-list-ordered li {
+    padding-left: 0.25rem;
 }
 
 /* Links */
@@ -76,7 +79,7 @@
 .response-hr {
     border: none;
     border-top: 1px solid var(--border-color, #e0e0e0);
-    margin: 1rem 0;
+    margin: 1rem 0 0 0;
     opacity: 0.5;
 }
 
