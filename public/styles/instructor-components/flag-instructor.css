@@ -10,7 +10,7 @@
     --background-2: #ECE5DD;
 }
 
-.report-instructor-container { 
+.flag-instructor-container { 
     min-height: 100%; 
     display: flex;
     flex-direction: column;
@@ -24,7 +24,7 @@
 }
 
 /* Header Section - Matching documents design */
-.flag-reports-header {
+.flags-header {
     background: var(--color-chbe-green);
     border-radius: 10px;
     padding: 20px;
@@ -145,6 +145,36 @@
     pointer-events: none;
 }
 
+/* Choose Date Button */
+.choose-date-btn {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.4);
+    border-radius: 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background-color 0.2s ease;
+    min-width: 140px;
+}
+
+.choose-date-btn:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+.choose-date-btn .button-text {
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.choose-date-btn i {
+    width: 16px;
+    height: 16px;
+    color: white;
+}
+
 /* Filter Section - Matching documents style */
 .filter-section {
     background: var(--chat-bg);
@@ -201,14 +231,14 @@
     flex: 1;
 }
 
-/* Reports List - Individual separated cards */
-.reports-list {
+/* Flags List - Individual separated cards */
+.flags-list {
     display: flex;
     flex-direction: column;
     gap: 5px;
 }
 
-.report-card {
+.flag-card {
     background: var(--chat-bg);
     border-radius: 10px;
     border: 1px solid var(--border-color);
@@ -218,24 +248,24 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.report-card:hover {
+.flag-card:hover {
     background: var(--hover-bg);
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.report-header-row {
+.flag-header-row {
     margin-bottom: 8px;
 }
 
-.report-time {
+.flag-time {
     font-size: 14px;
     font-weight: 600;
     color: var(--text-primary);
     margin-bottom: 4px;
 }
 
-.report-type {
+.flag-type {
     font-size: 14px;
     font-weight: 600;
     color: var(--text-primary);
@@ -258,7 +288,7 @@
     line-height: 1.4; /* Normal line height for single line */
 }
 
-.report-footer {
+.flag-footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -284,7 +314,7 @@
     transition: transform 0.2s ease;
 }
 
-.report-card.expanded .expand-arrow {
+.flag-card.expanded .expand-arrow {
     transform: rotate(180deg);
 }
 
@@ -296,7 +326,7 @@
     margin-top: 15px;
 }
 
-.report-card.expanded .expanded-content {
+.flag-card.expanded .expanded-content {
     max-height: 800px;
     overflow: visible;
 }
@@ -385,9 +415,187 @@
     background: #6c757d;
 }
 
+/* Calendar Modal Styles - Consistent with overall design */
+.calendar-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+
+.calendar-modal-content {
+    background: var(--chat-bg);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    width: 90%;
+    max-width: 400px;
+    max-height: 90vh;
+    overflow: hidden;
+    animation: slideInDown 0.3s ease;
+}
+
+.calendar-header {
+    background: var(--color-chbe-green);
+    color: white;
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.calendar-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.close-calendar-btn {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.close-calendar-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.close-calendar-btn i {
+    width: 18px;
+    height: 18px;
+}
+
+/* Calendar Styles */
+.calendar {
+    padding: 20px;
+}
+
+.calendar-nav-btn {
+    background: var(--color-chbe-green);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.calendar-nav-btn:hover {
+    background: #2d7a2d;
+}
+
+.calendar-nav-btn i {
+    width: 16px;
+    height: 16px;
+}
+
+.calendar-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.calendar-weekday {
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding: 8px 4px;
+}
+
+.calendar-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+
+.calendar-day {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+
+.calendar-day:hover {
+    background: var(--hover-bg);
+}
+
+.calendar-day.current-month {
+    color: var(--text-primary);
+}
+
+.calendar-day.other-month {
+    color: var(--text-secondary);
+    opacity: 0.5;
+}
+
+.calendar-day.today {
+    background: var(--color-chbe-green);
+    color: white;
+    font-weight: 600;
+}
+
+.calendar-day.selected {
+    background: var(--pinned-color);
+    color: white;
+    font-weight: 600;
+}
+
+.calendar-day.selected.today {
+    background: var(--pinned-color);
+    border: 2px solid var(--color-chbe-green);
+}
+
+/* Calendar Footer */
+.calendar-footer {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--background-2);
+}
+
+.calendar-selection-info {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.calendar-ok-btn {
+    background: var(--color-chbe-green);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.calendar-ok-btn:hover {
+    background: #2d7a2d;
+}
+
 /* Responsive Design */
 @media (max-width: 960px) {
-    .flag-reports-header {
+    .flags-header {
         flex-direction: column;
         align-items: flex-start;
         gap: 15px;

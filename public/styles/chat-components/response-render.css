@@ -1,0 +1,157 @@
+/* Response Render Styles - For custom RenderChat class output */
+
+/* Bold text */
+.response-bold {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Italic text */
+.response-italic {
+    font-style: italic;
+    color: var(--text-secondary);
+}
+
+/* Headers */
+.response-header-1 {
+    font-size: 1.7em;
+    font-weight: 700;
+    margin: 0;
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--border-color, #e0e0e0);
+    padding-bottom: 0.3em;
+}
+
+.response-header-2 {
+    font-size: 1.5em;
+    font-weight: 600;
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.response-header-3 {
+    font-size: 1.3em;
+    font-weight: 600;
+    margin: 0;
+    color: var(--text-primary);
+}
+
+/* Plain text paragraphs */
+.response-text {
+    line-height: 1.5;
+    margin: 0;
+    color: var(--text-primary);
+}
+
+/* Lists */
+.response-list{
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+    list-style-type: disc;
+    line-height: 1.5;
+}
+
+.response-list-ordered {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+    list-style-type: decimal;
+    line-height: 1.5;
+}
+
+.response-list li,
+.response-list-ordered li {
+    padding-left: 0.25rem;
+}
+
+/* Links */
+.response-link {
+    color: var(--primary-color, #007bff);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s;
+}
+
+.response-link:hover {
+    border-bottom-color: var(--primary-color, #007bff);
+}
+
+/* Horizontal rule */
+.response-hr {
+    border: none;
+    border-top: 1px solid var(--border-color, #e0e0e0);
+    margin: 1rem 0 0 0;
+    opacity: 0.5;
+}
+
+/* Inline code */
+.response-code-inline {
+    background: var(--code-bg, #f5f5f5);
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9em;
+    color: var(--code-text, #d73a49);
+}
+
+/* Code blocks */
+.response-code-block {
+    display: block;
+    padding: 1em;
+    background: var(--code-bg, #f5f5f5);
+    border-radius: 4px;
+    overflow-x: auto;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9em;
+    line-height: 1.5;
+    color: var(--code-text, #333);
+    white-space: pre;
+}
+
+/* Note: Artifact styling is handled by ArtefactHandler's existing CSS */
+
+/* LaTeX display math */
+.response-latex-display {
+    margin: 0;
+    text-align: center;
+    overflow-x: auto;
+}
+
+/* LaTeX inline math */
+.response-latex-inline {
+    display: inline;
+}
+
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .response-bold {
+        color: var(--text-primary, #ffffff);
+    }
+    
+    .response-italic {
+        color: var(--text-secondary, #cccccc);
+    }
+    
+    .response-header-1,
+    .response-header-2,
+    .response-header-3 {
+        color: var(--text-primary, #ffffff);
+        border-bottom-color: var(--border-color, #444444);
+    }
+    
+    .response-hr {
+        border-top-color: var(--border-color, #444444);
+    }
+    
+    .response-code-inline {
+        background: var(--code-bg, #2d2d2d);
+        color: var(--code-text, #ff6b6b);
+    }
+    
+    .response-code-block {
+        background: var(--code-bg, #2d2d2d);
+        color: var(--code-text, #ffffff);
+    }
+    
+    /* Artifact styling handled by ArtefactHandler */
+}

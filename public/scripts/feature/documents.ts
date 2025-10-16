@@ -1264,7 +1264,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @param materialId the id of the material to delete
      * @returns null
      */
-    function deleteAdditionalMaterial(
+    async function deleteAdditionalMaterial(
         divisionId: string,
         contentId: string,
         materialId: string
@@ -1276,19 +1276,47 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         if (!division) {
             //print the divisionId
             console.log('DEBUG #11.1', divisionId);
-            alert('Division not found');
+            await showSimpleErrorModal('Division not found', 'Delete Material Error');
             return;
         }
 
         const content = division.items.find(c => c.id === contentId);
         if (!content || !content.additionalMaterials) {
-            alert('Content not found');
+            await showSimpleErrorModal('Content not found', 'Delete Material Error');
             return;
         }
 
-        content.additionalMaterials = content.additionalMaterials.filter(m => m.id !== materialId);
-        refreshContentItem(divisionId, contentId);
-        console.log('DEBUG #12');
+        // Get the material to show its name in confirmation
+        const material = content.additionalMaterials.find(m => m.id === materialId);
+        const result = await showDeleteConfirmationModal(
+            'Document',
+            material?.name || 'this document'
+        );
+        
+        if (result.action === 'delete') {
+            try {
+                // Call backend API to soft delete from MongoDB
+                const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/materials/${materialId}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const result = await response.json();
+                if (!result.success) {
+                    await showSimpleErrorModal('Failed to delete document: ' + result.error, 'Delete Document Error');
+                    return;
+                }
+                
+                // Remove from local array after successful backend deletion
+                content.additionalMaterials = content.additionalMaterials.filter(m => m.id !== materialId);
+                refreshContentItem(divisionId, contentId);
+                console.log('DEBUG #12 - Document deleted successfully');
+            } catch (error) {
+                console.error('Error deleting document:', error);
+                await showSimpleErrorModal('An error occurred while deleting the document. Please try again.', 'Delete Document Error');
+            }
+        } else {
+            console.log('🗑️ Document deletion cancelled by user');
+        }
     }
 
     // Build the Objectives list + Add form via DOM APIs

@@ -69,7 +69,7 @@ export class ModalOverlay {
     private container: HTMLElement | null = null;
     private resolvePromise: ((result: ModalResult) => void) | null = null;
     private rejectPromise: ((error: Error) => void) | null = null;
-    private isVisible = false;
+    public isVisible = false;
     private focusableElements: HTMLElement[] = [];
     private lastFocusedElement: HTMLElement | null = null;
 
@@ -259,10 +259,13 @@ export class ModalOverlay {
             this.overlay.setAttribute('data-escape-handler', 'true');
         }
 
-        // Tab navigation
+        // Tab navigation and Enter key handling
         this.overlay.addEventListener('keydown', (e) => {
             if (e.key === 'Tab') {
                 this.handleTabNavigation(e);
+            } else if (e.key === 'Enter') {
+                e.stopPropagation(); // Prevent event from bubbling to other handlers
+                this.handleEnterKey(e);
             }
         });
     }
@@ -291,6 +294,106 @@ export class ModalOverlay {
                 firstElement.focus();
             }
         }
+    }
+
+    /**
+     * Handles Enter key press within the modal
+     * 
+     * @param e - Keyboard event
+     */
+    private handleEnterKey(e: KeyboardEvent): void {
+        // Don't handle Enter if user is typing in an input field (except buttons)
+        const activeElement = document.activeElement;
+        if (activeElement && 
+            (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') &&
+            activeElement.getAttribute('type') !== 'button') {
+            return; // Let the input handle its own Enter key behavior
+        }
+
+        e.preventDefault();
+        
+        // Modal-specific Enter key handling based on modal type
+        if (!this.container) return;
+        
+        const modalType = this.getModalType();
+        const action = this.determineEnterAction(modalType);
+        
+        if (action) {
+            // Directly close modal with the determined action
+            this.close(action);
+        }
+    }
+
+    /**
+     * Gets the modal type from the container classes
+     * 
+     * @returns The modal type
+     */
+    private getModalType(): ModalType {
+        if (!this.container) return 'custom';
+        
+        const classList = this.container.classList;
+        
+        if (classList.contains('modal-warning')) return 'warning';
+        if (classList.contains('modal-error')) return 'error';
+        if (classList.contains('modal-success')) return 'success';
+        if (classList.contains('modal-info')) return 'info';
+        if (classList.contains('modal-disclaimer')) return 'disclaimer';
+        
+        return 'custom';
+    }
+
+    /**
+     * Determines what action should be taken when Enter is pressed
+     * 
+     * @param modalType - The type of modal
+     * @returns The action to take, or null if no action should be taken
+     */
+    private determineEnterAction(modalType: ModalType): string | null {
+        // Check if this is a delete confirmation modal by looking for danger buttons
+        const hasDangerButton = this.focusableElements.some(element => 
+            element.tagName === 'BUTTON' && element.classList.contains('modal-btn-danger')
+        );
+        
+        // Check if this is a confirmation modal by looking for specific button text
+        const hasCancelButton = this.focusableElements.some(element => 
+            element.tagName === 'BUTTON' && 
+            element.textContent?.toLowerCase().includes('cancel')
+        );
+        
+        // Modal-specific Enter key behavior
+        if (hasDangerButton && hasCancelButton) {
+            // This is likely a delete confirmation modal
+            // Enter should trigger the danger action (Delete)
+            return 'delete';
+        }
+        
+        // Check for primary buttons
+        const primaryButton = this.focusableElements.find(element => 
+            element.tagName === 'BUTTON' && element.classList.contains('modal-btn-primary')
+        );
+        
+        if (primaryButton) {
+            // Get the action from the button's data-action or text content
+            const action = primaryButton.getAttribute('data-action') || 
+                          primaryButton.textContent?.toLowerCase().replace(/\s+/g, '-') || 
+                          'confirm';
+            return action;
+        }
+        
+        // Fallback: use the first button's action
+        const firstButton = this.focusableElements.find(element => 
+            element.tagName === 'BUTTON'
+        );
+        
+        if (firstButton) {
+            const action = firstButton.getAttribute('data-action') || 
+                          firstButton.textContent?.toLowerCase().replace(/\s+/g, '-') || 
+                          'confirm';
+            return action;
+        }
+        
+        return null;
     }
 
     /**
@@ -396,6 +499,12 @@ let globalModal: ModalOverlay | null = null;
  * @returns Modal overlay instance
  */
 function getModal(): ModalOverlay {
+    // If there's already a modal open, close it first to prevent conflicts
+    if (globalModal && globalModal.isVisible) {
+        console.log('⚠️ Modal already open, closing previous modal first');
+        globalModal.close('replaced');
+    }
+    
     if (!globalModal) {
         globalModal = new ModalOverlay();
     }
@@ -915,12 +1024,29 @@ export async function openUploadModal(
          if (e.target === overlay) close(); 
     });
 
-    // Create the event listener for the escape key
-    window.addEventListener('keydown', function esc(e) { 
+    // Create the event listener for the escape key and enter key
+    const keyHandler = (e: KeyboardEvent) => {
         if (e.key === 'Escape') { 
-            close(); window.removeEventListener('keydown', esc); 
-        } 
-    });
+            close(); 
+            window.removeEventListener('keydown', keyHandler); 
+        } else if (e.key === 'Enter') {
+            // Handle Enter key for form submission
+            const activeElement = document.activeElement;
+            
+            // If focused on input fields, don't prevent default behavior
+            if (activeElement && 
+                (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') &&
+                activeElement.getAttribute('type') !== 'button') {
+                return; // Let the input handle its own Enter key behavior
+            }
+            
+            // Otherwise, trigger the upload button
+            e.preventDefault();
+            uploadBtn.click();
+        }
+    };
+    
+    window.addEventListener('keydown', keyHandler);
 
     // Create the event listener for the upload file button
     let selectedFile: File | null = null;

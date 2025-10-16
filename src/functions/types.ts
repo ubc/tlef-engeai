@@ -150,6 +150,8 @@ export interface AdditionalMaterial {
     uploaded?: boolean; // Track if successfully uploaded to Qdrant
     qdrantId?: string; // Store Qdrant document ID
     chunksGenerated?: number; // Number of chunks generated in Qdrant
+    deleted?: boolean; // Soft delete flag (defaults to false/undefined for backward compatibility)
+    deletedAt?: Date; // Timestamp when material was deleted
 }
 
 /**

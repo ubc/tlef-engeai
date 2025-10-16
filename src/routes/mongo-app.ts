@@ -1093,10 +1093,86 @@ router.get('/:courseId/flags/student/:userId', asyncHandlerWithAuth(async (req: 
     }
 }));
 
-
-
-
-
-
+// DELETE /api/courses/:courseId/divisions/:divisionId/items/:itemId/materials/:materialId - Delete a material (REQUIRES AUTH)
+router.delete('/:courseId/divisions/:divisionId/items/:itemId/materials/:materialId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const { courseId, divisionId, itemId, materialId } = req.params;
+        
+        console.log(`🗑️ Deleting material ${materialId} from course ${courseId}, division ${divisionId}, item ${itemId}`);
+        
+        // Get MongoDB instance
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        
+        // Get the course
+        const course = await mongoDB.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        // Find the division
+        const division = course.divisions?.find((d: any) => d.id === divisionId);
+        if (!division) {
+            return res.status(404).json({
+                success: false,
+                error: 'Division not found'
+            });
+        }
+        
+        // Find the content item
+        const contentItem = division.items?.find((item: any) => item.id === itemId);
+        if (!contentItem) {
+            return res.status(404).json({
+                success: false,
+                error: 'Content item not found'
+            });
+        }
+        
+        // Find the material
+        const material = contentItem.additionalMaterials?.find((m: any) => m.id === materialId);
+        if (!material) {
+            return res.status(404).json({
+                success: false,
+                error: 'Material not found'
+            });
+        }
+        
+                // Hard delete: Remove material from array
+                contentItem.additionalMaterials = contentItem.additionalMaterials.filter((m: any) => m.id !== materialId);
+        
+        // Update the course in MongoDB
+        const result = await mongoDB.updateActiveCourse(courseId, course as any);
+        
+        if (!result) {
+            return res.status(500).json({
+                success: false,
+                error: 'Failed to update course in database'
+            });
+        }
+        
+        // TODO: Remove from Qdrant vector database
+        // This would require calling the RAG module to delete the material's chunks
+        // For now, we'll just mark it as deleted in MongoDB
+                console.log(`✅ Material ${materialId} deleted from MongoDB`);
+        
+                res.json({
+                    success: true,
+                    message: 'Material deleted successfully',
+                    data: {
+                        materialId: materialId,
+                        deleted: true
+                    }
+                });
+        
+    } catch (error) {
+        console.error('Error deleting material:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to delete material'
+        });
+    }
+}));
 
 

@@ -9,7 +9,8 @@
 
 /* Display math (block equations) */
 .message .message-content .katex-display {
-    margin: 0.5em 0;
+    margin: 0;
+    padding: 0.5em 0 0 0;
     text-align: center;
     overflow-x: auto;
     overflow-y: hidden;

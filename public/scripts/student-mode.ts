@@ -5,6 +5,7 @@ import { ChatManager, createUserFromAuthData } from './feature/chat.js';
 import { authService } from './services/AuthService.js';
 import { renderStudentOnboarding } from './onboarding/student-onboarding.js';
 import { initializeStudentFlagHistory } from './feature/student-flag-history.js';
+import { showConfirmModal } from './modal-overlay.js';
 
 // Authentication check function
 async function checkAuthentication(): Promise<boolean> {
@@ -229,9 +230,14 @@ async function initializeChatInterface(user: any): Promise<void> {
     // --- LOGOUT FUNCTIONALITY ---
     const handleLogout = async (): Promise<void> => {
         try {
-            // Show confirmation dialog
-            const confirmed = confirm('Are you sure you want to log out?');
-            if (!confirmed) {
+            // Show confirmation modal
+            const result = await showConfirmModal(
+                'Confirm Logout',
+                'Are you sure you want to log out? You will be redirected to the login page.',
+                'Log Out',
+                'Cancel'
+            );
+            if (result.action !== 'log-out') {
                 console.log('[STUDENT-MODE] 🚫 Logout cancelled by user');
                 return;
             }

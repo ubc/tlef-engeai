@@ -1,30 +1,34 @@
-<div class="report-instructor-container">
-    <link rel="stylesheet" href="/styles/instructor-components/report-instructor.css">
+<div class="flag-instructor-container">
+    <link rel="stylesheet" href="/styles/instructor-components/flag-instructor.css">
     <main class="main-content">
         <!-- Header with title and navigation tiles -->
-        <header class="flag-reports-header">
+        <header class="flags-header">
             <div class="header-left">
-                <h1>Flag Reports</h1>
+                <h1>Flag Management</h1>
                 <div class="last-updated">Last Updated: 8:30 AM, May 17, 2026</div>
             </div>
             <div class="header-right">
                 <div class="nav-tiles">
-                    <div class="nav-tile active" data-section="flag-reports">
+                    <div class="nav-tile active" data-section="unresolved-flags">
                         <i data-feather="alert-triangle"></i>
-                        <span class="count" id="flag-reports-count"></span>
+                        <span class="count" id="unresolved-flags-count"></span>
                     </div>
-                    <div class="nav-tile" data-section="resolved-flag">
+                    <div class="nav-tile" data-section="resolved-flags">
                         <i data-feather="check"></i>
-                        <span class="count" id="resolved-flag-count"></span>
+                        <span class="count" id="resolved-flags-count"></span>
                     </div>
                 </div>
                 <div class="time-filter-dropdown">
                     <select id="time-filter">
-                        <option value="recent">Recent Reports</option>
-                        <option value="former">Former Reports</option>
+                        <option value="recent">Recent Flags</option>
+                        <option value="former">Former Flags</option>
                     </select>
                     <i data-feather="chevron-down"></i>
                 </div>
+                <button class="choose-date-btn" id="choose-date-btn">
+                    <span class="button-text">Choose Date</span>
+                    <i data-feather="calendar"></i>
+                </button>
             </div>
         </header>
 
@@ -64,11 +68,36 @@
             </div>
         </section>
 
-        <!-- Flag reports list - dynamically populated by TypeScript -->
-        <section class="reports-list" id="flag-reports-list">
-            <!-- Report cards will be dynamically generated here -->
+        <!-- Flag list - dynamically populated by TypeScript -->
+        <section class="flags-list" id="flags-list">
+            <!-- Flag cards will be dynamically generated here -->
         </section>
     </main>
+</div>
+
+<!-- Calendar Modal -->
+<div class="calendar-modal" id="calendar-modal">
+    <div class="calendar-modal-content">
+        <div class="calendar-header">
+            <h3>Select Date Range</h3>
+            <button class="close-calendar-btn" id="close-calendar-btn">
+                <i data-feather="x"></i>
+            </button>
+        </div>
+        <div class="calendar-container">
+            <div class="calendar" id="calendar">
+                <!-- Calendar will be populated by TypeScript -->
+            </div>
+        </div>
+        <div class="calendar-footer">
+            <div class="calendar-selection-info">
+                <span id="calendar-selection-status">No dates selected</span>
+            </div>
+            <button class="calendar-ok-btn" id="calendar-ok-btn">
+                Apply Filter
+            </button>
+        </div>
+    </div>
 </div>
 
 

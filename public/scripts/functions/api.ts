@@ -62,9 +62,10 @@ export async function loadComponentHTML(
     componentName:  | 'welcome-screen' 
                     | 'chat-window' 
                     | 'report-history'
+                    | 'flag-history'
                     | 'profile'
                     | 'disclaimer'
-                    | 'report-instructor'
+                    | 'flag-instructor'
                     | 'monitor-instructor'
                     | 'documents-instructor'
                     | 'course-setup'
@@ -81,13 +82,14 @@ export async function loadComponentHTML(
         case 'welcome-screen':
         case 'chat-window' :
         case 'report-history':
+        case 'flag-history':
         case 'disclaimer':
             response = await fetch(`/components/chat/${componentName}.html`);
             break;
         case 'profile':
             response = await fetch(`/components/profile/${componentName}.html`);
             break;
-        case 'report-instructor':
+        case 'flag-instructor':
             response = await fetch(`/components/report/${componentName}.html`);
             break;
         case 'monitor-instructor':
