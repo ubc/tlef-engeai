@@ -6,6 +6,7 @@ import { authService } from './services/AuthService.js';
 import { renderStudentOnboarding } from './onboarding/student-onboarding.js';
 import { initializeStudentFlagHistory } from './feature/student-flag-history.js';
 import { showConfirmModal } from './modal-overlay.js';
+import { renderAbout } from './about/about.js';
 
 // Authentication check function
 async function checkAuthentication(): Promise<boolean> {
@@ -74,6 +75,10 @@ async function initializeChatInterface(user: any): Promise<void> {
             // Handle student-specific behaviors if needed
             if (action === 'ui-update-needed') {
                 updateUI();
+            } else if (action === 'chat-clicked') {
+                // User clicked a chat in sidebar - switch to chat window
+                console.log('[STUDENT-MODE] 💬 Chat clicked, switching to chat window');
+                loadComponent('chat-window');
             }
             console.log('Student mode callback:', action, data);
         }
@@ -138,36 +143,29 @@ async function initializeChatInterface(user: any): Promise<void> {
             return;
         }
         
-        const chats = chatManager.getChats();
+        const metadata = chatManager.getChatMetadata();
         const activeChatId = chatManager.getActiveChatId();
         
-        console.log(`[STUDENT-MODE] 📊 Chat status: ${chats.length} chats, active: ${activeChatId}`);
+        console.log(`[STUDENT-MODE] 📊 Chat status: ${metadata.length} chats, active: ${activeChatId}`);
         
-        if (chats.length === 0) {
-            // No chats yet: show welcome screen for new users
+        if (metadata.length === 0) {
+            // No chats: show welcome screen
             console.log('[STUDENT-MODE] 👋 No chats found, showing welcome screen');
             loadComponent('welcome-screen');
         } else if (activeChatId) {
-            // Has chats and active chat: show chat window with last conversation
+            // Has chats: show chat window (will lazy load on display)
             console.log('[STUDENT-MODE] 💬 Has active chat, showing chat window');
             loadComponent('chat-window');
         } else {
-            // Has chats but no active chat: set most recent chat as active and show it
+            // Has metadata but no active: set most recent as active
             console.log('[STUDENT-MODE] 🔄 Has chats but no active chat, setting most recent as active');
-            const mostRecentChat = chats.sort((a, b) => {
-                // Use the timestamp of the last message in each chat
-                const aLastMessage = a.messages[a.messages.length - 1];
-                const bLastMessage = b.messages[b.messages.length - 1];
-                
-                const aTime = aLastMessage ? aLastMessage.timestamp : 0;
-                const bTime = bLastMessage ? bLastMessage.timestamp : 0;
-                
-                return bTime - aTime; // Most recent first
-            })[0];
+            const mostRecent = metadata.sort((a, b) => 
+                b.lastMessageTimestamp - a.lastMessageTimestamp
+            )[0];
             
-            if (mostRecentChat) {
-                chatManager.setActiveChatId(mostRecentChat.id);
-                console.log(`[STUDENT-MODE] ✅ Set most recent chat as active: ${mostRecentChat.id}`);
+            if (mostRecent) {
+                await chatManager.setActiveChatId(mostRecent.id); // Now async
+                console.log(`[STUDENT-MODE] ✅ Set most recent chat as active: ${mostRecent.id}`);
                 loadComponent('chat-window');
             } else {
                 console.log('[STUDENT-MODE] ⚠️ No valid chat found, showing welcome screen');
@@ -272,6 +270,16 @@ async function initializeChatInterface(user: any): Promise<void> {
         
         logoutBtn.addEventListener('click', handleLogout);
         console.log('[STUDENT-MODE] ✅ Logout button listener attached');
+
+        // About button listener
+        const aboutBtn = document.getElementById('about-btn');
+        if (aboutBtn) {
+            aboutBtn.addEventListener('click', async () => {
+                console.log('[STUDENT-MODE] ℹ️ About button clicked');
+                await renderAbout();
+            });
+            console.log('[STUDENT-MODE] ✅ About button listener attached');
+        }
     };
 
     // --- EVENT LISTENERS ATTACHMENT ---

@@ -14,6 +14,19 @@ import { RenderChat } from "./render-chat.js";
 import { showDisclaimerModal, showDeleteConfirmationModal, showSimpleErrorModal } from "../modal-overlay.js";
 
 /**
+ * Chat Metadata Interface - Lightweight chat information without full message history
+ */
+interface ChatMetadata {
+    id: string;
+    courseName: string;
+    itemTitle: string;
+    isPinned: boolean;
+    pinnedMessageId: string | null;
+    lastMessageTimestamp: number;
+    messageCount: number;
+}
+
+/**
  * LaTeX Rendering Utility Functions
  */
 export function renderLatexInElement(text: string, element: HTMLElement): void {
@@ -134,6 +147,10 @@ export class ChatManager {
     private isInitialized: boolean = false;
     private renderChat: RenderChat;
     
+    // Metadata and lazy loading tracking
+    private chatMetadata: ChatMetadata[] = []; // Store chat metadata separately
+    private loadedChatIds: Set<string> = new Set(); // Track which chats are fully loaded
+    
     // Incremental update tracking
     private domMessageIds: Set<string> = new Set(); // Track which messages are in DOM
     private lastRenderedMessageCount: number = 0; // Track last rendered count for active chat
@@ -167,23 +184,29 @@ export class ChatManager {
             const courseName = this.config.userContext.courseName;
             const userId = this.config.userContext.puid;
             
-            console.log('[CHAT-MANAGER] 📊 Loading chats with:', { userId, courseName, isInstructor: this.config.isInstructor });
-            this.chats = await this.loadChatsFromServer(userId, courseName);
+            console.log('[CHAT-MANAGER] 📊 Loading chat metadata with:', { userId, courseName, isInstructor: this.config.isInstructor });
             
-            // Set the first chat as active if there are any chats
-            if (this.chats.length > 0) {
-                this.activeChatId = this.chats[0].id;
-                console.log('[CHAT-MANAGER] ✅ Set active chat:', this.activeChatId);
+            // Load only metadata initially
+            this.chatMetadata = await this.loadChatMetadataFromServer(userId, courseName);
+            
+            // Initialize empty chats array
+            this.chats = [];
+            
+            // If metadata exists, set first chat as "pending load" active chat
+            if (this.chatMetadata.length > 0) {
+                this.activeChatId = this.chatMetadata[0].id;
+                console.log('[CHAT-MANAGER] ✅ Set active chat metadata:', this.activeChatId);
             }
             
             //START DEBUG LOG : DEBUG-CODE(INIT-RENDER-CHAT-LIST)
             console.log('[CHAT-MANAGER] 🎨 Rendering chat list after initialization...');
             //END DEBUG LOG : DEBUG-CODE(INIT-RENDER-CHAT-LIST)
             
-            // Render the chat list to display loaded chats
+            // Render the chat list with metadata only
             this.renderChatList();
         } catch (error) {
-            console.error('Error loading initial chats:', error);
+            console.error('Error loading initial chat metadata:', error);
+            this.chatMetadata = [];
             this.chats = [];
         }
 
@@ -199,6 +222,13 @@ export class ChatManager {
     }
 
     /**
+     * Get chat metadata
+     */
+    public getChatMetadata(): ChatMetadata[] {
+        return this.chatMetadata;
+    }
+
+    /**
      * Get active chat ID
      */
     public getActiveChatId(): string | null {
@@ -206,9 +236,32 @@ export class ChatManager {
     }
 
     /**
-     * Set active chat ID
+     * Set active chat ID and trigger lazy loading if needed
      */
-    public setActiveChatId(chatId: string | null): void {
+    public async setActiveChatId(chatId: string | null): Promise<void> {
+        if (!chatId) {
+            this.activeChatId = null;
+            return;
+        }
+        
+        // Check if we need to load this chat
+        if (!this.loadedChatIds.has(chatId)) {
+            console.log(`[CHAT-MANAGER] 📥 Loading full chat ${chatId} from server...`);
+            
+            // Show loading indicator in UI
+            this.showChatLoadingIndicator();
+            
+            try {
+                const fullChat = await this.loadFullChat(chatId);
+                console.log(`[CHAT-MANAGER] ✅ Chat ${chatId} loaded successfully`);
+            } catch (error) {
+                console.error(`[CHAT-MANAGER] ❌ Failed to load chat ${chatId}:`, error);
+                this.showChatLoadError();
+                return;
+            }
+        }
+        
+        // Set as active
         this.activeChatId = chatId;
     }
 
@@ -283,6 +336,23 @@ export class ChatManager {
 
             this.chats.push(newChat);
             this.activeChatId = newChat.id;
+            
+            // Add to metadata array for sidebar rendering
+            const newMetadata: ChatMetadata = {
+                id: newChat.id,
+                courseName: newChat.courseName,
+                itemTitle: newChat.itemTitle,
+                isPinned: newChat.isPinned,
+                pinnedMessageId: newChat.pinnedMessageId || null,
+                messageCount: newChat.messages ? newChat.messages.length : 0,
+                lastMessageTimestamp: newChat.messages && newChat.messages.length > 0 
+                    ? newChat.messages[newChat.messages.length - 1].timestamp 
+                    : Date.now()
+            };
+            this.chatMetadata.unshift(newMetadata); // Add to beginning of list
+            
+            // Mark as loaded since we have the full chat
+            this.loadedChatIds.add(newChat.id);
 
             console.log('[CHAT-MANAGER] ✅ Chat created successfully:', newChat.id);
 
@@ -443,14 +513,17 @@ export class ChatManager {
                 throw new Error(response.error || 'Server deletion failed');
             }
             
-            // Only remove from local array if server deletion was successful
+            // Only remove from local arrays if server deletion was successful
             this.chats = this.chats.filter(c => c.id !== chatId);
+            this.chatMetadata = this.chatMetadata.filter(m => m.id !== chatId);
+            this.loadedChatIds.delete(chatId);
             
             // Update active chat if needed
             if (this.activeChatId === chatId) {
-                if (this.chats.length > 0) {
-                    const lastPinned = this.chats.filter(c => c.isPinned).pop();
-                    this.activeChatId = lastPinned ? lastPinned.id : this.chats[0].id;
+                if (this.chatMetadata.length > 0) {
+                    // Try to find a pinned chat first, otherwise use first chat
+                    const lastPinned = this.chatMetadata.filter(m => m.isPinned).pop();
+                    this.activeChatId = lastPinned ? lastPinned.id : this.chatMetadata[0].id;
                 } else {
                     this.activeChatId = null;
                 }
@@ -485,17 +558,20 @@ export class ChatManager {
 
         chatListEl.innerHTML = '';
         
-        // If no chats, show welcome screen
-        if (this.chats.length === 0) {
+        // If no chat metadata, show welcome screen
+        if (this.chatMetadata.length === 0) {
             console.log('🎯 No chats available, triggering welcome screen');
             this.callModeSpecificCallback('no-chats', { showWelcome: true });
             return;
         }
         
-        const sortedChats = [...this.chats].sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0));
+        // Sort by pinned status
+        const sortedMetadata = [...this.chatMetadata].sort((a, b) => 
+            (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)
+        );
 
-        sortedChats.forEach(chat => {
-            const li = this.createChatListItem(chat);
+        sortedMetadata.forEach(metadata => {
+            const li = this.createChatListItemFromMetadata(metadata);
             chatListEl.appendChild(li);
         });
 
@@ -762,6 +838,185 @@ export class ChatManager {
         }
     }
 
+    private async loadChatMetadataFromServer(userId: string, courseName: string): Promise<ChatMetadata[]> {
+        try {
+            console.log('[CHAT-MANAGER] 📊 Loading chat metadata from server...');
+            console.log('[CHAT-MANAGER] 📊 Request context:', {
+                userId,
+                courseName,
+                endpoint: '/api/chat/user/chats/metadata'
+            });
+            
+            const response = await fetch('/api/chat/user/chats/metadata', {
+                method: 'GET',
+                credentials: 'include', // Important for session cookies
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            console.log('[CHAT-MANAGER] 📡 Server response status:', response.status, response.statusText);
+            
+            if (!response.ok) {
+                console.error('[CHAT-MANAGER] ❌ Failed to load chat metadata:', response.statusText);
+                console.error('[CHAT-MANAGER] 🔍 Response details:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    url: response.url
+                });
+                return [];
+            }
+            
+            const data = await response.json();
+            console.log('[CHAT-MANAGER] 📊 Raw response data:', data);
+            
+            if (data.success && Array.isArray(data.chats)) {
+                console.log(`[CHAT-MANAGER] ✅ Loaded ${data.chats.length} chat metadata from database`);
+                if (data.chats.length > 0) {
+                    console.log('[CHAT-MANAGER] 📋 Chat metadata details:', data.chats.map((metadata: any) => ({
+                        id: metadata.id,
+                        title: metadata.itemTitle,
+                        messageCount: metadata.messageCount,
+                        lastMessageTimestamp: metadata.lastMessageTimestamp
+                    })));
+                }
+                return data.chats;
+            }
+            
+            if (data.error) {
+                console.error('[CHAT-MANAGER] ❌ Server error:', data.error);
+            }
+            
+            console.log('[CHAT-MANAGER] ⚠️ No chat metadata found or invalid response format');
+            return [];
+            
+        } catch (error) {
+            console.error('[CHAT-MANAGER] 🚨 Error loading chat metadata:', error);
+            
+            // Handle specific error types
+            if (error instanceof TypeError && error.message.includes('fetch')) {
+                console.error('[CHAT-MANAGER] 🌐 Network error - check internet connection');
+            } else if (error instanceof SyntaxError) {
+                console.error('[CHAT-MANAGER] 📄 JSON parsing error - server response may be malformed');
+            }
+            
+            return [];
+        }
+    }
+
+    /**
+     * Load full chat from server using restoration endpoint
+     * @param chatId - The chat ID to load
+     * @returns Promise<Chat> - The full chat object with messages
+     */
+    private async loadFullChat(chatId: string): Promise<Chat> {
+        // Check if chat already loaded
+        if (this.loadedChatIds.has(chatId)) {
+            const existingChat = this.chats.find(chat => chat.id === chatId);
+            if (existingChat) {
+                console.log(`[CHAT-MANAGER] 📋 Chat ${chatId} already loaded, returning cached version`);
+                return existingChat;
+            }
+        }
+
+        console.log(`[CHAT-MANAGER] 📥 Loading full chat ${chatId} from server...`);
+        
+        try {
+            const response = await fetch(`/api/chat/restore/${chatId}`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            console.log(`[CHAT-MANAGER] 📡 Restoration response status:`, response.status);
+            
+            if (!response.ok) {
+                throw new Error(`Failed to restore chat: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            console.log(`[CHAT-MANAGER] 📊 Restoration response data:`, data);
+            
+            if (data.success && data.chat) {
+                const fullChat = data.chat;
+                
+                // Add to chats array if not already present
+                const existingIndex = this.chats.findIndex(chat => chat.id === chatId);
+                if (existingIndex >= 0) {
+                    this.chats[existingIndex] = fullChat;
+                } else {
+                    this.chats.push(fullChat);
+                }
+                
+                // Mark as loaded
+                this.loadedChatIds.add(chatId);
+                
+                console.log(`[CHAT-MANAGER] ✅ Chat ${chatId} loaded successfully with ${fullChat.messages?.length || 0} messages`);
+                return fullChat;
+            } else {
+                throw new Error(data.error || 'Failed to restore chat');
+            }
+            
+        } catch (error) {
+            console.error(`[CHAT-MANAGER] 🚨 Error loading full chat ${chatId}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Show loading indicator while chat is being loaded
+     */
+    private showChatLoadingIndicator(): void {
+        const messageAreaEl = document.getElementById('message-area');
+        if (messageAreaEl) {
+            messageAreaEl.innerHTML = `
+                <div style="text-align: center; padding: 2rem; color: #6c757d;">
+                    <div class="spinner" style="
+                        width: 40px;
+                        height: 40px;
+                        border: 4px solid #f3f3f3;
+                        border-top: 4px solid #007bff;
+                        border-radius: 50%;
+                        animation: spin 1s linear infinite;
+                        margin: 0 auto 1rem;
+                    "></div>
+                    <p>Loading conversation...</p>
+                    <style>
+                        @keyframes spin {
+                            0% { transform: rotate(0deg); }
+                            100% { transform: rotate(360deg); }
+                        }
+                    </style>
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * Show error message when chat loading fails
+     */
+    private showChatLoadError(): void {
+        const messageAreaEl = document.getElementById('message-area');
+        if (messageAreaEl) {
+            messageAreaEl.innerHTML = `
+                <div style="text-align: center; padding: 2rem; color: #dc3545;">
+                    <p>⚠️ Failed to load conversation</p>
+                    <button onclick="window.location.reload()" style="
+                        background: #007bff;
+                        color: white;
+                        border: none;
+                        padding: 0.5rem 1rem;
+                        border-radius: 0.375rem;
+                        cursor: pointer;
+                        margin-top: 1rem;
+                    ">Retry</button>
+                </div>
+            `;
+        }
+    }
+
     /**
      * Refresh chat data from server to get updated titles and other changes
      * This is called after sending a message to ensure the frontend has the latest data
@@ -833,20 +1088,21 @@ export class ChatManager {
             });
         });
 
-        chatListEl?.addEventListener('click', (e) => {
+        chatListEl?.addEventListener('click', async (e) => {
             const target = e.target as HTMLElement;
             const li = target.closest('.chat-item') as HTMLLIElement | null;
             if (li && !((target as HTMLElement).closest('button'))) {
                 const chatId = li.dataset.chatId || null;
                 if (chatId) {
-                    this.setActiveChatId(chatId);
+                    // This now triggers lazy loading if needed
+                    await this.setActiveChatId(chatId);
                     
                     // Reset DOM tracking when switching chats
                     this.domMessageIds.clear();
                     this.lastRenderedMessageCount = 0;
                     
                     this.renderChatList();
-                    this.renderActiveChat(); // Use full render when switching chats
+                    this.renderActiveChat(); // Will render the now-loaded chat
                 }
             }
         });
@@ -1176,6 +1432,134 @@ export class ChatManager {
             this.setActiveChatId(chat.id);
             this.renderChatList();
             this.renderActiveChat();
+        });
+
+        li.appendChild(titleSpan);
+        li.appendChild(rightSide);
+        return li;
+    }
+
+    private createChatListItemFromMetadata(metadata: ChatMetadata): HTMLLIElement {
+        const li = document.createElement('li');
+        li.className = `chat-item ${metadata.id === this.activeChatId ? 'active' : ''}`;
+        li.dataset.chatId = metadata.id.toString();
+
+        li.style.display = 'flex';
+        li.style.justifyContent = 'space-between';
+        li.style.alignItems = 'center';
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'chat-title';
+        titleSpan.textContent = metadata.itemTitle;
+
+        // Add loading indicator if chat is not fully loaded
+        const isLoaded = this.loadedChatIds.has(metadata.id);
+        if (!isLoaded && metadata.id === this.activeChatId) {
+            titleSpan.innerHTML = `${metadata.itemTitle} <span style="color: #6c757d; font-size: 0.8em;">(loading...)</span>`;
+        }
+
+        const actions = document.createElement('div');
+        actions.style.display = 'flex';
+        actions.style.gap = '4px';
+        actions.style.alignItems = 'center';
+        actions.style.visibility = 'hidden';
+        actions.style.opacity = '0';
+        actions.style.transition = 'opacity 0.15s ease-in-out';
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'icon-btn';
+        deleteBtn.style.padding = '0';
+        deleteBtn.title = 'Delete chat';
+        const trashIcon = document.createElement('i');
+        trashIcon.setAttribute('data-feather', 'trash-2');
+        deleteBtn.appendChild(trashIcon);
+        deleteBtn.addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            
+            // Show confirmation modal
+            const result = await showDeleteConfirmationModal(
+                'Chat',
+                metadata.itemTitle || 'this chat'
+            );
+            
+            if (result.action === 'delete') {
+                try {
+                    await this.deleteChat(metadata.id);
+                    this.renderChatList();
+                    
+                    // Notify instructor mode that a chat was deleted from the list
+                    this.callModeSpecificCallback('chat-deleted', { 
+                        remainingChats: this.chatMetadata.length,
+                        hasChats: this.chatMetadata.length > 0 
+                    });
+                } catch (error) {
+                    console.error('Failed to delete chat:', error);
+                    // Show user-friendly error message
+                    alert('Failed to delete chat. Please try again.');
+                }
+            } else {
+                console.log('🗑️ Chat deletion cancelled by user');
+            }
+        });
+
+        actions.appendChild(deleteBtn);
+
+        const rightSide = document.createElement('div');
+        rightSide.style.display = 'flex';
+        rightSide.style.alignItems = 'center';
+        rightSide.style.gap = '6px';
+
+        if (metadata.isPinned) {
+            const alwaysPinBtn = document.createElement('button');
+            alwaysPinBtn.className = 'icon-btn';
+            alwaysPinBtn.style.padding = '0';
+            alwaysPinBtn.title = 'Unpin chat';
+            const alwaysPinIcon = document.createElement('i');
+            alwaysPinIcon.setAttribute('data-feather', 'star');
+            alwaysPinIcon.classList.add('pinned');
+            alwaysPinBtn.appendChild(alwaysPinIcon);
+            alwaysPinBtn.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                this.togglePin(metadata.id);
+                this.renderChatList();
+            });
+            rightSide.appendChild(actions);
+            rightSide.appendChild(alwaysPinBtn);
+        } else {
+            const pinBtn = document.createElement('button');
+            pinBtn.className = 'icon-btn';
+            pinBtn.style.padding = '0';
+            pinBtn.title = 'Pin chat';
+            const pinIcon = document.createElement('i');
+            pinIcon.setAttribute('data-feather', 'star');
+            pinBtn.appendChild(pinIcon);
+            pinBtn.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                this.togglePin(metadata.id);
+                this.renderChatList();
+            });
+            actions.appendChild(pinBtn);
+            rightSide.appendChild(actions);
+        }
+
+        li.addEventListener('mouseenter', () => {
+            actions.style.visibility = 'visible';
+            actions.style.opacity = '1';
+        });
+        li.addEventListener('mouseleave', () => {
+            actions.style.opacity = '0';
+            actions.style.visibility = 'hidden';
+        });
+
+        li.addEventListener('click', async () => {
+            // This will trigger lazy loading if needed
+            await this.setActiveChatId(metadata.id);
+            this.renderChatList();
+            this.renderActiveChat();
+            
+            // Notify mode-specific callback that a chat was clicked
+            // This allows student-mode to switch from welcome screen to chat window
+            this.callModeSpecificCallback('chat-clicked', { chatId: metadata.id });
         });
 
         li.appendChild(titleSpan);

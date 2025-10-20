@@ -45,6 +45,13 @@ import { IDGenerator } from '../functions/unique-id-generator';
 import { ChatMessage, Chat } from '../functions/types';
 import { asyncHandlerWithAuth } from '../middleware/asyncHandler';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
+import { 
+    getSystemPrompt, 
+    getInitialAssistantMessage, 
+    formatRAGPrompt, 
+    RAG_CONTEXT_SEPARATOR,
+    RAG_ERROR_MESSAGE 
+} from '../functions/chat-prompts';
 
 // Load environment variables
 dotenv.config();
@@ -102,6 +109,8 @@ class ChatApp {
     private chatIDGenerator: IDGenerator;
     private ragConfig: any;
     private llmProvider: any;
+    private chatTimers: Map<string, NodeJS.Timeout>; // Maps chatId to cleanup timer
+    private chatInactivityTimeout: number = 5 * 60 * 1000; // 5 minutes in milliseconds
 
     constructor(config: AppConfig) {
         this.llmModule = new LLMModule(config.llmConfig);
@@ -113,6 +122,7 @@ class ChatApp {
         this.chatID = [];
         this.chatIDGenerator = IDGenerator.getInstance();
         this.llmProvider = config.llmConfig.provider;
+        this.chatTimers = new Map();
             
         // Initialize RAG module asynchronously
         this.initializeRAG();
@@ -128,6 +138,77 @@ class ChatApp {
         } catch (error) {
             this.logger.error('Failed to initialize RAG module:', error as any);
             this.ragModule = null;
+        }
+    }
+
+    /**
+     * Reset the inactivity timer for a chat
+     * Clears existing timer and creates a new one for 5 minutes
+     * 
+     * @param chatId - The chat ID to reset timer for
+     */
+    public resetChatTimer(chatId: string): void {
+        // Clear existing timer if present
+        if (this.chatTimers.has(chatId)) {
+            const existingTimer = this.chatTimers.get(chatId);
+            if (existingTimer) {
+                clearTimeout(existingTimer);
+            }
+        }
+
+        // Create new timer that will clean up the chat after inactivity
+        const timer = setTimeout(() => {
+            this.cleanupInactiveChat(chatId);
+        }, this.chatInactivityTimeout);
+
+        // Store the timer reference
+        this.chatTimers.set(chatId, timer);
+
+        // Log timer reset for debugging
+        console.log(`🕐 Timer reset for chat ${chatId} - will cleanup in ${this.chatInactivityTimeout / 1000 / 60} minutes`);
+    }
+
+    /**
+     * Clean up an inactive chat from memory
+     * Removes chat from all maps and arrays, clears its timer
+     * 
+     * @param chatId - The chat ID to clean up
+     */
+    private cleanupInactiveChat(chatId: string): void {
+        console.log(`🧹 Cleaning up inactive chat: ${chatId} at ${new Date().toISOString()}`);
+
+        // Remove from conversations map
+        this.conversations.delete(chatId);
+        
+        // Remove from chat history map
+        this.chatHistory.delete(chatId);
+        
+        // Remove from chatID array
+        const index = this.chatID.indexOf(chatId);
+        if (index > -1) {
+            this.chatID.splice(index, 1);
+        }
+        
+        // Remove timer from chatTimers map
+        this.chatTimers.delete(chatId);
+
+        console.log(`✅ Chat ${chatId} cleaned up successfully. Remaining active chats: ${this.chatID.length}`);
+    }
+
+    /**
+     * Stop the inactivity timer for a chat
+     * Used when explicitly deleting a chat
+     * 
+     * @param chatId - The chat ID to stop timer for
+     */
+    public stopChatTimer(chatId: string): void {
+        if (this.chatTimers.has(chatId)) {
+            const timer = this.chatTimers.get(chatId);
+            if (timer) {
+                clearTimeout(timer);
+            }
+            this.chatTimers.delete(chatId);
+            console.log(`⏹️ Timer stopped for chat ${chatId}`);
         }
     }
 
@@ -253,44 +334,13 @@ class ChatApp {
         try {
             // Add course context to the query for better retrieval
             const contextualQuery = ` ${query}`;
-
-            // this.logger.debug(`🔍 RAG Query: "${contextualQuery}"`);
-            // this.logger.debug(`🔍 RAG Options: limit=${limit}, scoreThreshold=${scoreThreshold}, courseName=${courseName}`);
             
+
             const results = await this.ragModule.retrieveContext(contextualQuery, {
                 limit: limit,
                 scoreThreshold: scoreThreshold
             });
 
-            // this.logger.debug(`📄 RAG Results: Retrieved ${results.length} documents`);
-            
-            // Print each retrieved document
-            // results.forEach((doc, index) => {
-            //     this.logger.debug(`\n--- Document ${index + 1} ---`);
-            //     this.logger.debug(`Score: ${(doc as any).score || 0}`);
-            //     
-            //     const title = (doc as any).payload?.contentTitle || 
-            //                  (doc as any).contentTitle || 
-            //                  (doc as any).title || 
-            //                  'Untitled';
-            //     this.logger.debug(`Title: ${title}`);
-            //     
-            //     const subTitle = (doc as any).payload?.subContentTitle || 
-            //                     (doc as any).subContentTitle || 
-            //                     (doc as any).section;
-            //     if (subTitle) {
-            //         this.logger.debug(`Section: ${subTitle}`);
-            //     }
-            //     
-            //     const text = (doc as any).payload?.text || 
-            //                 (doc as any).text || 
-            //                 (doc as any).content || 
-            //                 '';
-            //     this.logger.debug(`Content Preview: ${text.substring(0, 200)}${text.length > 200 ? '...' : ''}`);
-            //     this.logger.debug(`Full Content Length: ${text.length} characters`);
-            // });
-
-            // this.logger.debug(`Retrieved ${results.length} documents for query: ${query}`);
             return results;
         } catch (error) {
             this.logger.debug(`❌ RAG Error:`, error as any);
@@ -321,8 +371,6 @@ class ChatApp {
                            '';
             context += `Content: ${content}\n`;
             
-            // const score = (doc as any).score || 0;
-            // context += `Relevance Score: ${score.toFixed(3)}\n`;
         });
         
         context += '\n</course_materials>\n';
@@ -347,6 +395,9 @@ class ChatApp {
         courseName: string,
         onChunk: (chunk: string) => void
     ): Promise<ChatMessage> {
+        // Reset the inactivity timer since user is actively using this chat
+        this.resetChatTimer(chatId);
+
         // Validate chat exists
         if (!this.conversations.has(chatId)) {
             throw new Error('Chat not found');
@@ -358,9 +409,6 @@ class ChatApp {
             throw new Error('Rate limit exceeded: Maximum 50 messages per chat');
         }
 
-
-        // console.log(`DEBUG #286: User message added: ${userMessage}`);
-        
         // Get conversation
         const conversation = this.conversations.get(chatId);
         if (!conversation) {
@@ -380,15 +428,10 @@ class ChatApp {
             // Continue without RAG context if retrieval fails
         }
 
-        const userPromptHook = `, 
-                                    # Extra Info
-                                    In order to help, here is some additional information in the form of course materials:
-                                `;
-
-        //construct the user full prompt
+        //construct the user full prompt using abstracted RAG formatting
         let userFullPrompt = '';
         if (documentsLength > 0) {  
-            userFullPrompt = message + userPromptHook + ragContext;
+            userFullPrompt = formatRAGPrompt(ragContext, message);
         }
         else {
             userFullPrompt = message;
@@ -470,13 +513,16 @@ class ChatApp {
         this.chatHistory.set(chatId, []);
         
         // Add default system message
-        this.addDefaultSystemMessage(chatId);
+        this.addDefaultSystemMessage(chatId, courseName);
         
         // Add default assistant message and get it
         const initAssistantMessage = this.addDefaultAssistantMessage(chatId);
         
         // Set the course name on the assistant message
         initAssistantMessage.courseName = courseName;
+
+        // Start the inactivity timer for this new chat
+        this.resetChatTimer(chatId);
 
         const initChatRequest: initChatRequest = {
             userID: userID,
@@ -492,195 +538,8 @@ class ChatApp {
     /**
      * this method directly add the Default System Message to the conversation
      */
-    private addDefaultSystemMessage(chatId: string) {
-
-        const defaultSystemMessage =  `
-            **LIST FORMATTING - USE HTML TAGS DIRECTLY:**
-            
-            For unordered lists, use HTML <ul> and <li> tags:
-            <ul>
-            <li>First item</li>
-            <li>Second item</li>
-            <li>Third item</li>
-            </ul>
-            
-            For ordered lists, use HTML <ol> and <li> tags:
-            <ol>
-            <li>First step</li>
-            <li>Second step</li>
-            <li>Third step</li>
-            </ol>
-            
-            For nested lists, nest the HTML tags properly:
-            <ul>
-            <li>Main item 1
-                <ul>
-                <li>Sub-item 1.1</li>
-                <li>Sub-item 1.2</li>
-                </ul>
-            </li>
-            <li>Main item 2</li>
-            </ul>
-            
-            **IMPORTANT:** Do NOT use markdown syntax (- or 1.) for lists. Always use HTML tags directly. The frontend renderer will automatically add the appropriate CSS classes (response-list and response-list-ordered) to style these lists properly.
-
-            **LATEX FORMATTING:**
-            When using LaTeX math expressions, ALWAYS keep them on single lines without line breaks:
-            
-            ✅ CORRECT Examples:
-            $$E°_{Cu^{2+}/Cu} = +0.34 V$$
-            $$[Cu^{2+}] = 0.010 M$$
-            $$E = E° - \frac{RT}{nF}\ln Q$$
-            $$ΔG = -nFE$$
-            
-            ✅ CORRECT Inline Math:
-            The standard reduction potential is $E°_{Cu^{2+}/Cu} = +0.34 V$ at $25°C$.
-            
-            ❌ INCORRECT (PROHIBITED - do not split math across lines):
-            $$
-            E°_{Cu^{2+}/Cu} = +0.34 V
-            $$
-            
-            $$
-            [Cu^{2+}] = 0.010 M
-            $$
-            
-            $$
-            E = E° - \frac{RT}{nF}\ln Q
-            $$
-            
-            **CRITICAL:** Never put line breaks inside LaTeX delimiters ($...$ or $$...$$). Always keep mathematical expressions on a single line.
-
-            **MERMAID DIAGRAM FORMATTING:**
-            When creating Mermaid diagrams in <Artefact> tags, avoid complex mathematical expressions in edge labels as they cause parser errors:
-            
-            ❌ INCORRECT (will fail to render):
-            A -->|E = E° - (RT/nF)·ln(Q)| B
-            
-            ✅ CORRECT (use descriptive labels or move math to nodes):
-            A -->|"relates to"| B
-            H["Nernst Equation: E = E° - (RT/nF)·ln(Q)"]
-            
-            **Key Rules for Mermaid:**
-            - Use descriptive phrases for edge labels: "relates to", "depends on", "calculates"
-            - Put complex mathematical expressions inside node labels, not edge labels
-            - Quote node labels containing special characters: ["Node with math: E = mc²"]
-            - Avoid parentheses, multiplication dots (·), and function notation in edge labels
-            - Keep edge labels simple and descriptive
-
-            ---
-
-            You are an AI tutor for chemical, environmental, and materials engineering students called EngE-AI. 
-            Your role is to help undergraduate university students understand course concepts by connecting their questions to the provided course materials. 
-            Course materials will be provided to you within code blocks such as <course_materials>relevant materials here</course_materials>
-
-            RESPONSE STYLE - BE CONCRETE AND PRACTICAL:
-            1. Provide concrete, specific responses with real-world examples
-            2. Always include at least one practical example when explaining concepts
-            3. Use specific numbers, values, and scenarios rather than abstract descriptions
-            4. Break down complex concepts into clear, actionable steps
-            5. Relate theoretical concepts to tangible engineering applications
-
-            When replying to student's questions:
-            1. Use the provided course materials to ask contextually relevant questions
-            2. Reference the materials naturally using phrases like:
-                - In the module, it is discussed that...
-                - According to the course materials...
-                - The lecture notes explain that...
-            3. If the materials don't contain relevant information, indicate this (by saying things like "I was unable to find anything specifically relevant to this in the course materials, but I can still help based on my own knowledge.") and ask contextually relevant socratic questions based on your general knowledge.
-            4. ALWAYS provide concrete examples to illustrate your points, such as:
-                - Real-world engineering scenarios (e.g., "Consider a battery with 2.0V potential...")
-                - Specific numerical examples (e.g., "If we have 0.5 mol of electrons...")
-                - Practical applications (e.g., "In wastewater treatment, this principle is used to...")
-                - Step-by-step worked examples showing calculations
-
-            EXAMPLE FORMAT - When explaining concepts, use this structure:
-            - State the concept clearly
-            - Provide a concrete example with specific values
-            - Show step-by-step application if relevant
-            - Connect to real-world engineering practice
-
-            For instance, instead of saying "The Nernst equation relates potential to concentration", say:
-            "The Nernst equation relates potential to concentration. For example, if we have a zinc electrode in a 0.1M Zn²⁺ solution at 25°C:
-            
-            $$E = E° - \\frac{0.0592}{2}\\log\\frac{1}{[Zn^{2+}]}$$
-            
-            This means the actual potential would be E = -0.76V - 0.0296 × log(10) = -0.79V. This is commonly used in batteries and corrosion protection systems."
-
-            FORMATTING INSTRUCTIONS - Use these syntax patterns for proper rendering:
-
-            **TEXT FORMATTING:**
-            - Use **bold text** for emphasis (renders as response-bold class)
-            - Use *italic text* for emphasis (renders as response-italic class)
-            - Use # Header for main headings (renders as response-header-1 class)
-            - Use ## Subheader for section headings (renders as response-header-2 class)
-            - Use ### Sub-subheader for smaller headings (renders as response-header-3 class)
-            - Use <ul><li>item</li></ul> for bullet lists (renders as response-list class)
-            - Use <ol><li>item</li></ol> for numbered lists (renders as response-list-ordered class)
-            - Use --- for horizontal rules (renders as response-hr class)
-            - Use [link text](url) for links (renders as response-link class)
-            
-            **LIST EXAMPLES:**
-            - Use - for bullet points (renders as response-list class)
-            - Use 1. 2. 3. for numbered lists (renders as response-list-ordered class)
-            - Indent with spaces for nested lists
-            - Lists with LaTeX: - Formula: $E = mc^2$
-            - Multi-line items work naturally with markdown
-            
-            **RENDERING SYSTEM:**
-            - All formatting uses a custom renderer that processes markdown, LaTeX, and artifacts
-            - LaTeX expressions are protected from markdown processing to prevent corruption
-            - Artifacts are processed separately using the ArtefactHandler system
-            - All rendered elements receive appropriate CSS classes for styling
-
-            **LATEX MATHEMATICS - Use these delimiters:**
-            - Inline math: $E = mc^2$ (renders as response-latex-inline class)
-            - Display math: $$\int_0^\infty e^{-x} dx = 1$$ (renders as response-latex-display class)
-            - Complex expressions: $$\frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u$$ for advanced mathematics
-            - Chemical equations: $2H_2 + O_2 \rightarrow 2H_2O$
-            - Engineering formulas: $\Delta G = -nFE$ (Gibbs free energy)
-            - Matrix notation: $$\begin{pmatrix} a & b \\ c & d \end{pmatrix}$$
-            - Summations: $\sum_{i=1}^{n} x_i$ or $$\sum_{i=1}^{n} x_i$$
-            
-            **IMPORTANT LATEX ESCAPE SEQUENCES:**
-            - Use \\frac{}{} for fractions: $E = E° - \\frac{RT}{nF}\\ln Q$
-            - Use \\ln for natural log: $\\ln(x)$
-            - Use \\log for logarithms: $\\log_{10}(x)$
-            - Use \\sin, \\cos, \\tan for trigonometric functions
-            - Use \\alpha, \\beta, \\gamma for Greek letters
-            - Use \\rightarrow for arrows: $A \\rightarrow B$
-            - Use \\infty for infinity: $\\int_0^\\infty$
-            - Always escape backslashes properly in LaTeX expressions
-
-            **VISUAL DIAGRAMS - Use this artifact format:**
-            - Start with: <Artefact>
-            - Include your Mermaid diagram code
-            - End with: </Artefact>
-            - Continue with any additional text below the artifact
-            - Creates interactive "View Diagram" button
-
-            IMPORTANT MERMAID SYNTAX RULES:
-            - Always close node labels with square brackets: [Label]
-            - Ensure all arrows point to valid nodes
-            - Use proper node IDs (letters/numbers, no spaces)
-            - Test your syntax before including in responses
-            - Common node formats: A[Label], B((Circle)), C{Decision}
-
-            Example artifact usage:
-            <Artefact>
-            graph TD
-                A[Input] --> B[Process]
-                B --> C[Output]
-            </Artefact>
-
-            **LIST FORMATTING REMINDER:**
-            Use natural markdown syntax for lists - they will be automatically converted to HTML.
-            
-            The artifact will be displayed with a "View Diagram" button that students can click to view the interactive diagram.
-
-            IMPORTANT: Never output the course materials tags <course_materials>...</course_materials> in your responses. Only use them internally for context.
-            Additional Instructions: If required to use an equation, use LaTEX notation. If a flow diagram is required, use Mermaid notation.
-        `;
+    private addDefaultSystemMessage(chatId: string, courseName?: string) {
+        const defaultSystemMessage = getSystemPrompt(courseName);
 
         try {
             if (this.conversations.has(chatId)) {
@@ -713,43 +572,7 @@ class ChatApp {
      * return the message object, so this message can be passed to the client when initiate a chat
      */
     private addDefaultAssistantMessage(chatId: string): ChatMessage {
-        const defaultMessageText = `Hello! I am EngE-AI, your AI companion for chemical, environmental, and materials engineering. As this is week 2, in lectures this week we have learned about **Thermodynamics in Electrochemistry**. 
-
-Here's a diagram to help visualize the key concepts we've covered:
-
-<Artefact>
-graph TD
-    A[Thermodynamics in Electrochemistry] --> B[Gibbs Free Energy]
-    A --> C[Electrode Potentials]
-    A --> D[Electrochemical Cells]
-    
-    B --> E["ΔG = -nFE"]
-    C --> F["E = E° - (RT/nF)lnQ"]
-    D --> G[Anode: Oxidation]
-    D --> H[Cathode: Reduction]
-    
-    G --> I[Electrons Flow]
-    H --> I
-    I --> J[Current Generation]
-    
-    style A fill:#e1f5fe
-    style B fill:#f3e5f5
-    style C fill:#f3e5f5
-    style D fill:#f3e5f5
-    style E fill:#fff3e0
-    style F fill:#fff3e0
-</Artefact>
-
-What would you like to discuss? I can help you understand:
-
-<ul>
-<li>The relationship between thermodynamics and electrochemistry</li>
-<li>How to calculate cell potentials using the **Nernst equation**</li>
-<li>The Nernst equation and its applications: $E = E° - \\frac{RT}{nF}\\ln Q$</li>
-<li>Electrochemical cell design and operation</li>
-</ul>
-
-Remember: I am designed to enhance your learning, not replace it, always verify important information.`;
+        const defaultMessageText = getInitialAssistantMessage();
         
         // Generate message ID using the first 10 words, chatID, and current date
         const currentDate = new Date();
@@ -925,6 +748,81 @@ Remember: I am designed to enhance your learning, not replace it, always verify 
     }
 
     /**
+     * Restore a chat from MongoDB with full conversation context
+     * 
+     * @param chatId - The chat ID to restore
+     * @param courseName - The course name
+     * @param userId - The user ID
+     * @returns Promise<boolean> - True if restoration was successful, false otherwise
+     */
+    public async restoreChatFromDatabase(chatId: string, courseName: string, userId: string): Promise<boolean> {
+        // Check if chat already exists in memory
+        if (this.conversations.has(chatId)) {
+            console.log(`📋 Chat ${chatId} already exists in memory, resetting timer`);
+            this.resetChatTimer(chatId);
+            return true;
+        }
+
+        try {
+            // Get MongoDB instance
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            
+            // Fetch chat data from MongoDB
+            const userChats = await mongoDB.getUserChats(courseName, userId);
+            const chatData = userChats.find(chat => chat.id === chatId);
+            
+            if (!chatData) {
+                console.log(`❌ Chat ${chatId} not found in MongoDB`);
+                return false;
+            }
+
+            if (chatData.isDeleted) {
+                console.log(`❌ Chat ${chatId} is marked as deleted`);
+                return false;
+            }
+
+            console.log(`🔄 Restoring chat ${chatId} from MongoDB with ${chatData.messages.length} messages`);
+
+            // Create new conversation
+            const conversation = this.llmModule.createConversation();
+            
+            // Add system message first (same as in initializeConversation)
+            const defaultSystemMessage = getSystemPrompt(courseName);
+            conversation.addMessage('system', defaultSystemMessage);
+
+            // Restore all messages from MongoDB in order
+            const restoredMessages: ChatMessage[] = [];
+            for (const message of chatData.messages) {
+                // Determine role based on sender
+                const role = message.sender === 'user' ? 'user' : 'assistant';
+                
+                // Add to conversation
+                conversation.addMessage(role, message.text);
+                
+                // Add to local chat history
+                restoredMessages.push(message);
+            }
+
+            // Store conversation in memory
+            this.conversations.set(chatId, conversation);
+            this.chatHistory.set(chatId, restoredMessages);
+            
+            // Add chatId to active chats array
+            this.chatID.push(chatId);
+            
+            // Start the inactivity timer
+            this.resetChatTimer(chatId);
+
+            console.log(`✅ Chat ${chatId} restored successfully with ${restoredMessages.length} messages`);
+            return true;
+
+        } catch (error) {
+            console.error(`❌ Error restoring chat ${chatId}:`, error);
+            return false;
+        }
+    }
+
+    /**
      * Delete a chat and all its associated data
      * 
      * @param chatId - The chat ID to delete
@@ -937,6 +835,9 @@ Remember: I am designed to enhance your learning, not replace it, always verify 
                 this.logger.warn(`Attempted to delete non-existent chat: ${chatId}`);
                 return false;
             }
+
+            // Stop the inactivity timer for this chat
+            this.stopChatTimer(chatId);
 
             // Remove from conversations map
             const conversationDeleted = this.conversations.delete(chatId);
@@ -970,12 +871,91 @@ Remember: I am designed to enhance your learning, not replace it, always verify 
         }
     }
 
+    /**
+     * Clean up all active timers on server shutdown
+     * Called by process signal handlers to prevent memory leaks
+     */
+    public cleanup(): void {
+        console.log('🧹 Cleaning up all active chat timers...');
+        let timerCount = 0;
+        
+        for (const [chatId, timer] of this.chatTimers) {
+            if (timer) {
+                clearTimeout(timer);
+                timerCount++;
+            }
+        }
+        
+        this.chatTimers.clear();
+        console.log(`✅ Cleaned up ${timerCount} active timers`);
+    }
 
 }
 
 const chatApp = new ChatApp(appConfig);
 
+// Add process handlers for graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('📴 Received SIGTERM signal, cleaning up chat timers...');
+    chatApp.cleanup();
+    process.exit(0);
+});
+
+process.on('SIGINT', () => {
+    console.log('📴 Received SIGINT signal, cleaning up chat timers...');
+    chatApp.cleanup();
+    process.exit(0);
+});
+
 // console.log(`DEBUG #666: Chat exists: ${chatApp.validateChatExists('1234567890')}`);
+
+/**
+ * Load chat metadata for the authenticated user (REQUIRES AUTH)
+ * Returns only chat titles, IDs, and basic info without full message history
+ * 
+ * @returns Array of user's chat metadata from MongoDB
+ */
+router.get('/user/chats/metadata', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        // Get user from session
+        const user = (req as any).user;
+        const puid = user?.puid;
+        const courseName = user?.activeCourseName || 'APSC 099: Engineering for Kindergarten';
+        
+        console.log('\n📊 LOADING USER CHAT METADATA:');
+        console.log('='.repeat(50));
+        console.log(`PUID: ${puid}`);
+        console.log(`Course Name: ${courseName}`);
+        console.log('='.repeat(50));
+        
+        if (!puid) {
+            console.log('❌ VALIDATION FAILED: PUID not found in session');
+            return res.status(401).json({ 
+                success: false, 
+                error: 'User not authenticated' 
+            });
+        }
+        
+        // Load chat metadata from MongoDB
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const chatMetadata = await mongoDB.getUserChatsMetadata(courseName, puid);
+        
+        console.log(`✅ LOADED ${chatMetadata.length} CHAT METADATA FROM MONGODB`);
+        console.log('='.repeat(50));
+        
+        res.json({ 
+            success: true, 
+            chats: chatMetadata
+        });
+        
+    } catch (error) {
+        console.error('❌ ERROR LOADING USER CHAT METADATA:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to load user chat metadata' 
+        });
+    }
+}));
 
 /**
  * Load all chats for the authenticated user (REQUIRES AUTH)
@@ -1258,6 +1238,9 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 // Check if chat title needs updating (first user-AI exchange)
                 await chatApp.updateChatTitleIfNeeded(chatId, assistantMessage.text, courseName, puid);
                 
+                // Reset timer after successful message processing
+                chatApp.resetChatTimer(chatId);
+                
             } catch (dbError) {
                 //START DEBUG LOG : DEBUG-CODE(SEND-MSG-009)
                 console.error('⚠️ WARNING: Failed to save messages to MongoDB:', dbError);
@@ -1370,6 +1353,82 @@ router.get('/:chatId/message/:messageId', asyncHandlerWithAuth(async (req: Reque
 }));
 
 /**
+ * Restore a chat from MongoDB (REQUIRES AUTH)
+ * 
+ * Loads a past chat from MongoDB into memory with full conversation context
+ * so the user can continue chatting with that conversation.
+ * 
+ * @param chatId - The chat ID to restore
+ * @returns JSON response with restoration status
+ */
+router.post('/restore/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const { chatId } = req.params;
+        
+        // Get user from session
+        const user = (req as any).user;
+        const puid = user?.puid;
+        const courseName = user?.activeCourseName || 'APSC 099: Engineering for Kindergarten';
+        
+        console.log('\n🔄 CHAT RESTORATION REQUEST:');
+        console.log('='.repeat(50));
+        console.log(`Chat ID: ${chatId}`);
+        console.log(`PUID: ${puid}`);
+        console.log(`Course: ${courseName}`);
+        console.log('='.repeat(50));
+        
+        // Validate input
+        if (!chatId) {
+            console.log('❌ RESTORATION FAILED: Chat ID is required');
+            return res.status(400).json({
+                success: false,
+                error: 'Chat ID is required'
+            });
+        }
+        
+        if (!puid) {
+            console.log('❌ RESTORATION FAILED: PUID not found in session');
+            return res.status(401).json({
+                success: false,
+                error: 'User not authenticated'
+            });
+        }
+        
+        // Restore chat from database
+        const restored = await chatApp.restoreChatFromDatabase(chatId, courseName, puid);
+        
+        if (restored) {
+            console.log(`✅ Chat ${chatId} restored successfully`);
+            
+            // Get the restored chat data from MongoDB to return in response
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const userChats = await mongoDB.getUserChats(courseName, puid);
+            const chatData = userChats.find(chat => chat.id === chatId);
+            
+            res.json({
+                success: true,
+                message: 'Chat restored successfully',
+                chatId: chatId,
+                chat: chatData  // Add full chat object to response
+            });
+        } else {
+            console.log(`❌ Chat ${chatId} restoration failed`);
+            res.status(404).json({
+                success: false,
+                error: 'Chat not found or could not be restored'
+            });
+        }
+        
+    } catch (error) {
+        console.error('❌ CHAT RESTORATION ERROR:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
+        });
+    }
+}));
+
+/**
  * Delete a chat (REQUIRES AUTH) - Using Soft Delete
  * 
  * Marks the chat as deleted (isDeleted: true) instead of removing it from the database.
@@ -1417,9 +1476,10 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
             });
         }
         
-        // Remove from memory if exists (optional cleanup)
+        // Stop timer and remove from memory if exists (optional cleanup)
         // This doesn't block deletion if chat is not in memory (e.g., after server restart)
         if (chatApp.validateChatExists(chatId)) {
+            chatApp.stopChatTimer(chatId);
             const memoryDeleted = chatApp.deleteChat(chatId);
             //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-004)
             console.log(`✅ Chat ${chatId} removed from server memory`);

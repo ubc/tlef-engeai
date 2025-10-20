@@ -1069,6 +1069,51 @@ export class EngEAI_MongoDB {
     }
 
     /**
+     * Get chat metadata for a specific user by PUID (without full message history)
+     * @param courseName - The name of the course
+     * @param puid - The PUID of the user
+     * @returns Array of chat metadata objects (excluding soft-deleted chats)
+     */
+    public getUserChatsMetadata = async (courseName: string, puid: string): Promise<any[]> => {
+        console.log(`[MONGODB] 📊 Getting chat metadata for user PUID: ${puid} in course: ${courseName}`);
+        
+        try {
+            const userCollection = this.getUserCollection(courseName);
+            const user = await userCollection.findOne({ puid: puid });
+            
+            if (!user) {
+                console.log(`[MONGODB] ⚠️ User not found with PUID: ${puid}`);
+                return [];
+            }
+            
+            const allChats = (user as any).chats || [];
+            
+            // Filter out soft-deleted chats and transform to metadata
+            const activeChatsMetadata = allChats
+                .filter((chat: Chat) => !chat.isDeleted)
+                .map((chat: Chat) => ({
+                    id: chat.id,
+                    courseName: chat.courseName,
+                    itemTitle: chat.itemTitle,
+                    isPinned: chat.isPinned,
+                    pinnedMessageId: chat.pinnedMessageId,
+                    messageCount: chat.messages ? chat.messages.length : 0,
+                    lastMessageTimestamp: chat.messages && chat.messages.length > 0 
+                        ? chat.messages[chat.messages.length - 1].timestamp 
+                        : 0
+                }))
+                .sort((a: any, b: any) => b.lastMessageTimestamp - a.lastMessageTimestamp); // Sort by most recent first
+            
+            console.log(`[MONGODB] ✅ Found ${activeChatsMetadata.length} active chat metadata for user`);
+            
+            return activeChatsMetadata;
+        } catch (error) {
+            console.error(`[MONGODB] 🚨 Error getting user chat metadata:`, error);
+            throw error;
+        }
+    }
+
+    /**
      * Add a new chat to a user's chats array
      * @param courseName - The name of the course
      * @param puid - The PUID of the user

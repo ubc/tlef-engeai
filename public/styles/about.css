@@ -1,0 +1,248 @@
+/* ===========================================
+   ABOUT PAGE LAYOUT - TWO COLUMN DESIGN
+   Based on onboarding layout patterns
+   =========================================== */
+
+.about-container {
+    display: flex;
+    height: 100%;
+    width: 100%;
+    background-color: #f8f9fa;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+/* ===========================================
+   RIGHT CONTENT AREA - MATCHING ONBOARDING
+   =========================================== */
+
+.about-content-area {
+    flex: 1;
+    background-color: white;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    height: calc(100% - 20px);
+    overflow: hidden;
+}
+
+.about-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.about-content-inner {
+    flex: 1;
+    padding: 2rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.about-main-content {
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.about-main-content h1 {
+    font-size: 2.5rem;
+    font-weight: 900;
+    color: var(--color-chbe-green);
+    margin: 0 0 1.5rem 0;
+    text-align: center;
+}
+
+.about-description {
+    font-size: 1.1rem;
+    line-height: 1.6;
+    color: var(--text-primary);
+    margin: 0 0 2rem 0;
+    text-align: center;
+    font-weight: 500;
+}
+
+.about-section {
+    margin-bottom: 2.5rem;
+}
+
+.about-section h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-chbe-green);
+    margin: 0 0 1rem 0;
+    border-bottom: 2px solid var(--color-chbe-green);
+    padding-bottom: 0.5rem;
+}
+
+.about-section p {
+    font-size: 1rem;
+    line-height: 1.6;
+    color: var(--text-primary);
+    margin: 0 0 1rem 0;
+}
+
+.feature-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.feature-list li {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: var(--text-primary);
+}
+
+.feature-list li:last-child {
+    border-bottom: none;
+}
+
+.feature-list li strong {
+    color: var(--color-chbe-green);
+    font-weight: 600;
+}
+
+.team-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.team-member {
+    background-color: var(--background-2);
+    padding: 1rem;
+    border-radius: 8px;
+    text-align: center;
+    font-weight: 600;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    transition: all 0.2s ease;
+}
+
+.team-member:hover {
+    background-color: var(--color-chbe-green);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(92, 138, 58, 0.3);
+}
+
+/* ===========================================
+   NAVIGATION - MATCHING ONBOARDING STYLE
+   =========================================== */
+
+.about-navigation {
+    position: absolute;
+    bottom: 2rem;
+    right: 2rem;
+    display: flex;
+    gap: 1rem;
+    z-index: 10;
+}
+
+.nav-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.875rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    min-width: 120px;
+    justify-content: center;
+}
+
+.nav-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    stroke-width: 2;
+}
+
+.nav-btn .feather {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    stroke-width: 2;
+}
+
+.btn-back {
+    background-color: var(--background-2);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-back:hover {
+    background-color: var(--color-chbe-green);
+    color: white;
+    border-color: var(--color-chbe-green);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(92, 138, 58, 0.3);
+}
+
+/* ===========================================
+   RESPONSIVE DESIGN
+   =========================================== */
+
+@media (max-width: 768px) {
+    .about-container {
+        flex-direction: column;
+    }
+    
+    .about-left-panel {
+        width: 100%;
+        min-width: auto;
+        margin: 10px;
+        height: auto;
+    }
+    
+    .about-content-area {
+        height: auto;
+        flex: 1;
+    }
+    
+    .about-main-content h1 {
+        font-size: 2rem;
+    }
+    
+    .team-grid {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+    
+    .about-navigation {
+        bottom: 1rem;
+        right: 1rem;
+    }
+    
+    .nav-btn {
+        padding: 0.75rem 1.25rem;
+        min-width: 100px;
+        font-size: 0.9rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .about-content-inner {
+        padding: 1rem;
+    }
+    
+    .about-navigation {
+        padding: 1rem;
+    }
+    
+    .about-main-content h1 {
+        font-size: 1.75rem;
+    }
+    
+    .about-section h3 {
+        font-size: 1.25rem;
+    }
+}

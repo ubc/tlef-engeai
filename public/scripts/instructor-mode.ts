@@ -10,6 +10,7 @@ import { initializeMonitorDashboard } from "./feature/monitor.js";
 import { ChatManager, createDefaultUser } from "./feature/chat.js";
 import { authService } from './services/AuthService.js';
 import { showConfirmModal } from './modal-overlay.js';
+import { renderAbout } from './about/about.js';
 
 // Authentication check function
 async function checkAuthentication(): Promise<boolean> {
@@ -868,6 +869,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         logoutBtn.addEventListener('click', handleInstructorLogout);
         console.log('[INSTRUCTOR-MODE] ✅ Logout button listener attached');
+
+        // About button listener
+        const aboutBtn = document.getElementById('instructor-about-btn');
+        if (aboutBtn) {
+            aboutBtn.addEventListener('click', async () => {
+                console.log('[INSTRUCTOR-MODE] ℹ️ About button clicked');
+                await renderAbout();
+            });
+            console.log('[INSTRUCTOR-MODE] ✅ About button listener attached');
+        }
     };
 
     // Artefact functionality moved to chat.ts

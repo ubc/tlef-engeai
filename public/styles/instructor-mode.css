@@ -162,6 +162,46 @@ body {
     margin-top: auto;
 }
 
+/* Instructor About Button Styles */
+.instructor-about-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start; /* Changed from center */
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem; /* Adjusted padding */
+    background-color: var(--background-2); 
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s, background-color 0.25s ease; /* Keep general transitions */
+    color: #000000;
+    overflow: hidden; /* Critical for clipping text during animation */
+}
+
+.instructor-about-btn:hover { 
+    background-color: var(--color-chbe-green); 
+    color: white; 
+    border-color: var(--color-chbe-green); 
+}
+
+.instructor-about-btn i {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    transition: margin 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.instructor-about-btn span {
+    white-space: nowrap;
+    opacity: 1;
+    max-width: 200px;
+    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                max-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+}
+
 /* Instructor Logout Button Styles */
 .instructor-logout-btn {
     width: 100%;
