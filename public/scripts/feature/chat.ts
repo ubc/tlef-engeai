@@ -151,9 +151,75 @@ export class ChatManager {
     private chatMetadata: ChatMetadata[] = []; // Store chat metadata separately
     private loadedChatIds: Set<string> = new Set(); // Track which chats are fully loaded
     
+    // Logging configuration
+    private readonly LOG_PREFIX = '[CHAT-MANAGER]';
+    private readonly LOG_LEVELS = {
+        INFO: 'ℹ️',
+        DEBUG: '🔍',
+        WARN: '⚠️',
+        ERROR: '❌',
+        SUCCESS: '✅'
+    };
+    
     // Incremental update tracking
     private domMessageIds: Set<string> = new Set(); // Track which messages are in DOM
     private lastRenderedMessageCount: number = 0; // Track last rendered count for active chat
+    
+    // ===== LOGGING HELPER METHODS =====
+    
+    /**
+     * Log active chat state with detailed information
+     */
+    private logActiveChatState(event: string, details?: any): void {
+        const timestamp = new Date().toISOString();
+        const state = this.getActiveChatState();
+        
+        console.log(`${this.LOG_PREFIX} ${this.LOG_LEVELS.INFO} [${event}] [${timestamp}]`);
+        console.log(`📊 ACTIVE CHAT STATE:`, state);
+        
+        if (details) {
+            console.log(`📋 EVENT DETAILS:`, details);
+        }
+        
+        console.log('─'.repeat(80));
+    }
+    
+    /**
+     * Get comprehensive active chat state snapshot
+     */
+    private getActiveChatState(): any {
+        return {
+            activeChatId: this.activeChatId,
+            totalMetadataChats: this.chatMetadata.length,
+            totalLoadedChats: this.chats.length,
+            loadedChatIds: Array.from(this.loadedChatIds),
+            chatMetadata: this.chatMetadata.map(m => ({
+                id: m.id,
+                title: m.itemTitle,
+                isPinned: m.isPinned,
+                messageCount: m.messageCount,
+                lastMessageTime: new Date(m.lastMessageTimestamp).toISOString()
+            })),
+            loadedChats: this.chats.map(c => ({
+                id: c.id,
+                title: c.itemTitle,
+                messageCount: c.messages?.length || 0,
+                isPinned: c.isPinned
+            }))
+        };
+    }
+    
+    /**
+     * Log with consistent formatting
+     */
+    private log(level: keyof typeof this.LOG_LEVELS, message: string, data?: any): void {
+        const timestamp = new Date().toISOString();
+        console.log(`${this.LOG_PREFIX} ${this.LOG_LEVELS[level]} [${timestamp}] ${message}`);
+        
+        if (data) {
+            console.log(`📋 Data:`, data);
+        }
+    }
 
     private constructor(config: ChatManagerConfig) {
         this.config = config;
@@ -176,6 +242,13 @@ export class ChatManager {
     public async initialize(): Promise<void> {
         if (this.isInitialized) return;
 
+        this.log('INFO', '🚀 INITIALIZING CHAT MANAGER - First time user login');
+        this.log('DEBUG', 'User context:', {
+            userId: this.config.userContext.puid,
+            courseName: this.config.userContext.courseName,
+            userName: this.config.userContext.name,
+            isInstructor: this.config.isInstructor
+        });
         
         // Artefact panel is now embedded in chat-window.html (disabled for now)
 
@@ -184,34 +257,57 @@ export class ChatManager {
             const courseName = this.config.userContext.courseName;
             const userId = this.config.userContext.puid;
             
-            console.log('[CHAT-MANAGER] 📊 Loading chat metadata with:', { userId, courseName, isInstructor: this.config.isInstructor });
+            this.log('DEBUG', '📥 Loading chat metadata from server...');
             
             // Load only metadata initially
             this.chatMetadata = await this.loadChatMetadataFromServer(userId, courseName);
             
+            this.log('SUCCESS', `📊 Loaded ${this.chatMetadata.length} chat metadata entries`);
+            
             // Initialize empty chats array
             this.chats = [];
+            this.loadedChatIds.clear(); // Clear any previously loaded chats
             
             // If metadata exists, set first chat as "pending load" active chat
             if (this.chatMetadata.length > 0) {
-                this.activeChatId = this.chatMetadata[0].id;
-                console.log('[CHAT-MANAGER] ✅ Set active chat metadata:', this.activeChatId);
+                // Sort by pinned status and timestamp to get the most relevant chat
+                const sortedMetadata = [...this.chatMetadata].sort((a, b) => {
+                    // Pinned chats first
+                    if (a.isPinned !== b.isPinned) {
+                        return b.isPinned ? 1 : -1;
+                    }
+                    // Then by most recent
+                    return b.lastMessageTimestamp - a.lastMessageTimestamp;
+                });
+                
+                this.activeChatId = sortedMetadata[0].id;
+                this.log('INFO', `🎯 Set initial active chat: ${this.activeChatId} (${sortedMetadata[0].itemTitle})`);
+            } else {
+                this.activeChatId = null;
+                this.log('INFO', '📭 No existing chats found - user will see welcome screen');
             }
             
-            //START DEBUG LOG : DEBUG-CODE(INIT-RENDER-CHAT-LIST)
-            console.log('[CHAT-MANAGER] 🎨 Rendering chat list after initialization...');
-            //END DEBUG LOG : DEBUG-CODE(INIT-RENDER-CHAT-LIST)
+            this.log('DEBUG', '🎨 Rendering chat list after initialization...');
             
             // Render the chat list with metadata only
             this.renderChatList();
+            
+            this.logActiveChatState('INITIALIZATION_COMPLETE', {
+                metadataLoaded: this.chatMetadata.length,
+                activeChatSet: !!this.activeChatId,
+                willShowWelcome: this.chatMetadata.length === 0
+            });
+            
         } catch (error) {
-            console.error('Error loading initial chat metadata:', error);
+            this.log('ERROR', 'Failed to initialize chat manager:', error);
             this.chatMetadata = [];
             this.chats = [];
+            this.activeChatId = null;
         }
 
         this.bindEvents();
         this.isInitialized = true;
+        this.log('SUCCESS', '✅ Chat manager initialization complete');
     }
 
     /**
@@ -239,30 +335,54 @@ export class ChatManager {
      * Set active chat ID and trigger lazy loading if needed
      */
     public async setActiveChatId(chatId: string | null): Promise<void> {
+        this.log('INFO', `🔄 SWITCHING ACTIVE CHAT - User triggered chat switch`);
+        
         if (!chatId) {
+            this.log('INFO', '📭 Setting active chat to null');
             this.activeChatId = null;
+            this.logActiveChatState('ACTIVE_CHAT_CLEARED');
             return;
         }
         
+        const previousActiveChatId = this.activeChatId;
+        const needsLoading = !this.loadedChatIds.has(chatId);
+        
+        this.log('DEBUG', `Chat switch details:`, {
+            previousActiveChatId,
+            newChatId: chatId,
+            needsLoading,
+            isAlreadyLoaded: this.loadedChatIds.has(chatId)
+        });
+        
         // Check if we need to load this chat
-        if (!this.loadedChatIds.has(chatId)) {
-            console.log(`[CHAT-MANAGER] 📥 Loading full chat ${chatId} from server...`);
+        if (needsLoading) {
+            this.log('INFO', `📥 LAZY LOADING CHAT - Chat ${chatId} needs to be loaded from server`);
             
             // Show loading indicator in UI
             this.showChatLoadingIndicator();
             
             try {
                 const fullChat = await this.loadFullChat(chatId);
-                console.log(`[CHAT-MANAGER] ✅ Chat ${chatId} loaded successfully`);
+                this.log('SUCCESS', `✅ Chat ${chatId} loaded successfully for activation`);
             } catch (error) {
-                console.error(`[CHAT-MANAGER] ❌ Failed to load chat ${chatId}:`, error);
+                this.log('ERROR', `Failed to load chat ${chatId}:`, error);
                 this.showChatLoadError();
                 return;
             }
+        } else {
+            this.log('DEBUG', `💾 Chat ${chatId} already loaded in memory`);
         }
         
         // Set as active
         this.activeChatId = chatId;
+        
+        this.logActiveChatState('ACTIVE_CHAT_SWITCHED', {
+            previousActiveChatId,
+            newActiveChatId: chatId,
+            wasLazyLoaded: needsLoading,
+            totalLoadedChats: this.chats.length,
+            totalMetadataChats: this.chatMetadata.length
+        });
     }
 
     /**
@@ -297,19 +417,21 @@ export class ChatManager {
      * Create a new chat
      */
     public async createNewChat(): Promise<{ success: boolean; error?: string; chat?: Chat }> {
+        this.log('INFO', '🆕 CREATING NEW CHAT - User triggered new chat creation');
+        this.logActiveChatState('BEFORE_NEW_CHAT_CREATION');
+        
         try {
-            console.log('[CHAT-MANAGER] 🆕 Creating new chat...');
-            
             const chatRequest: CreateChatRequest = {
                 userID: this.config.userContext.puid,
                 courseName: this.config.userContext.courseName,
                 date: new Date().toISOString().split('T')[0]
             };
 
+            this.log('DEBUG', '📤 Sending new chat request to server:', chatRequest);
             const response = await createNewChat(chatRequest);
 
             if (!response.success) {
-                console.error('[CHAT-MANAGER] ❌ Failed to create chat:', response.error);
+                this.log('ERROR', 'Failed to create chat:', response.error);
                 return {
                     success: false,
                     error: response.error || 'Unknown error occurred'
@@ -334,6 +456,9 @@ export class ChatManager {
                 isPinned: false
             };
 
+            this.log('SUCCESS', `📝 New chat created: ${newChat.id} (${newChat.itemTitle})`);
+
+            // Add to chats array
             this.chats.push(newChat);
             this.activeChatId = newChat.id;
             
@@ -354,7 +479,13 @@ export class ChatManager {
             // Mark as loaded since we have the full chat
             this.loadedChatIds.add(newChat.id);
 
-            console.log('[CHAT-MANAGER] ✅ Chat created successfully:', newChat.id);
+            this.logActiveChatState('AFTER_NEW_CHAT_CREATION', {
+                newChatId: newChat.id,
+                newChatTitle: newChat.itemTitle,
+                initialMessageCount: newChat.messages?.length || 0,
+                metadataAdded: true,
+                markedAsLoaded: true
+            });
 
             // Notify UI update needed
             this.notifyUIUpdate();
@@ -364,7 +495,7 @@ export class ChatManager {
                 chat: newChat
             };
         } catch (error) {
-            console.error('[CHAT-MANAGER] 🚨 Error creating new chat:', error);
+            this.log('ERROR', 'Network error occurred while creating chat:', error);
             return {
                 success: false,
                 error: 'Network error occurred while creating chat'
@@ -504,14 +635,25 @@ export class ChatManager {
      * Delete a chat
      */
     public async deleteChat(chatId: string): Promise<void> {
+        this.log('INFO', `🗑️ DELETING CHAT - User triggered chat deletion: ${chatId}`);
+        this.logActiveChatState('BEFORE_CHAT_DELETION', { chatIdToDelete: chatId });
+        
         try {
             // Delete from server first and wait for proper response
+            this.log('DEBUG', `📤 Sending delete request to server for chat: ${chatId}`);
             const response = await deleteChat(chatId);
             
             // Check if server deletion was successful
             if (!response.success) {
+                this.log('ERROR', `Server deletion failed for chat ${chatId}:`, response.error);
                 throw new Error(response.error || 'Server deletion failed');
             }
+            
+            this.log('SUCCESS', `✅ Server confirmed deletion of chat: ${chatId}`);
+            
+            // Store previous state for logging
+            const previousActiveChatId = this.activeChatId;
+            const wasActiveChat = this.activeChatId === chatId;
             
             // Only remove from local arrays if server deletion was successful
             this.chats = this.chats.filter(c => c.id !== chatId);
@@ -524,15 +666,26 @@ export class ChatManager {
                     // Try to find a pinned chat first, otherwise use first chat
                     const lastPinned = this.chatMetadata.filter(m => m.isPinned).pop();
                     this.activeChatId = lastPinned ? lastPinned.id : this.chatMetadata[0].id;
+                    this.log('INFO', `🔄 Switched active chat from deleted ${chatId} to: ${this.activeChatId}`);
                 } else {
                     this.activeChatId = null;
+                    this.log('INFO', `📭 No remaining chats - active chat set to null`);
                 }
             }
+            
+            this.logActiveChatState('AFTER_CHAT_DELETION', {
+                deletedChatId: chatId,
+                wasActiveChat: wasActiveChat,
+                previousActiveChatId: previousActiveChatId,
+                newActiveChatId: this.activeChatId,
+                remainingChats: this.chatMetadata.length,
+                remainingLoadedChats: this.chats.length
+            });
             
             // Notify UI update needed
             this.notifyUIUpdate();
         } catch (error) {
-            console.error('Error deleting chat:', error);
+            this.log('ERROR', `Failed to delete chat ${chatId}:`, error);
             // Don't remove from local array if server call failed
             // This ensures data consistency
             throw error; // Re-throw to let caller handle the error
@@ -910,16 +1063,18 @@ export class ChatManager {
      * @returns Promise<Chat> - The full chat object with messages
      */
     private async loadFullChat(chatId: string): Promise<Chat> {
+        this.log('DEBUG', `🔍 Checking if chat ${chatId} is already loaded...`);
+        
         // Check if chat already loaded
         if (this.loadedChatIds.has(chatId)) {
             const existingChat = this.chats.find(chat => chat.id === chatId);
             if (existingChat) {
-                console.log(`[CHAT-MANAGER] 📋 Chat ${chatId} already loaded, returning cached version`);
+                this.log('DEBUG', `💾 Chat ${chatId} already loaded in memory, returning cached version`);
                 return existingChat;
             }
         }
 
-        console.log(`[CHAT-MANAGER] 📥 Loading full chat ${chatId} from server...`);
+        this.log('INFO', `📥 Loading full chat ${chatId} from server via restoration endpoint`);
         
         try {
             const response = await fetch(`/api/chat/restore/${chatId}`, {
@@ -930,32 +1085,43 @@ export class ChatManager {
                 }
             });
             
-            console.log(`[CHAT-MANAGER] 📡 Restoration response status:`, response.status);
+            this.log('DEBUG', `📡 Restoration response status: ${response.status}`);
             
             if (!response.ok) {
+                this.log('ERROR', `HTTP error ${response.status} when restoring chat ${chatId}: ${response.statusText}`);
                 throw new Error(`Failed to restore chat: ${response.statusText}`);
             }
             
             const data = await response.json();
-            console.log(`[CHAT-MANAGER] 📊 Restoration response data:`, data);
+            this.log('DEBUG', `📊 Restoration response received for chat ${chatId}`);
             
             if (data.success && data.chat) {
                 const fullChat = data.chat;
+                
+                this.log('SUCCESS', `📝 Chat ${chatId} restored successfully with ${fullChat.messages?.length || 0} messages`);
                 
                 // Add to chats array if not already present
                 const existingIndex = this.chats.findIndex(chat => chat.id === chatId);
                 if (existingIndex >= 0) {
                     this.chats[existingIndex] = fullChat;
+                    this.log('DEBUG', `🔄 Updated existing chat ${chatId} in memory`);
                 } else {
                     this.chats.push(fullChat);
+                    this.log('DEBUG', `➕ Added chat ${chatId} to memory`);
                 }
                 
                 // Mark as loaded
                 this.loadedChatIds.add(chatId);
                 
-                console.log(`[CHAT-MANAGER] ✅ Chat ${chatId} loaded successfully with ${fullChat.messages?.length || 0} messages`);
+                this.log('DEBUG', `📊 Memory state after loading:`, {
+                    totalLoadedChats: this.chats.length,
+                    loadedChatIds: Array.from(this.loadedChatIds),
+                    newChatMessageCount: fullChat.messages?.length || 0
+                });
+                
                 return fullChat;
             } else {
+                this.log('ERROR', `Server returned error for chat ${chatId}:`, data.error);
                 throw new Error(data.error || 'Failed to restore chat');
             }
             

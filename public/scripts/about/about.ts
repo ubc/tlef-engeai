@@ -154,3 +154,4 @@ function validateAboutPage(): boolean {
     
     return !!(container && aboutContainer && backBtn);
 }
+

@@ -175,7 +175,20 @@ class ChatApp {
      * @param chatId - The chat ID to clean up
      */
     private cleanupInactiveChat(chatId: string): void {
-        console.log(`🧹 Cleaning up inactive chat: ${chatId} at ${new Date().toISOString()}`);
+        const timestamp = new Date().toISOString();
+        console.log(`🧹 [CHAT-APP] ⏰ TIME LIMIT EXCEEDED - Cleaning up inactive chat: ${chatId} at ${timestamp}`);
+        
+        // Log state before cleanup
+        const stateBeforeCleanup = {
+            totalConversations: this.conversations.size,
+            totalChatHistory: this.chatHistory.size,
+            totalChatIDs: this.chatID.length,
+            totalTimers: this.chatTimers.size,
+            activeChatIds: Array.from(this.chatID),
+            activeTimerIds: Array.from(this.chatTimers.keys())
+        };
+        
+        console.log(`📊 [CHAT-APP] 📋 STATE BEFORE CLEANUP:`, stateBeforeCleanup);
 
         // Remove from conversations map
         this.conversations.delete(chatId);
@@ -192,7 +205,19 @@ class ChatApp {
         // Remove timer from chatTimers map
         this.chatTimers.delete(chatId);
 
-        console.log(`✅ Chat ${chatId} cleaned up successfully. Remaining active chats: ${this.chatID.length}`);
+        // Log state after cleanup
+        const stateAfterCleanup = {
+            totalConversations: this.conversations.size,
+            totalChatHistory: this.chatHistory.size,
+            totalChatIDs: this.chatID.length,
+            totalTimers: this.chatTimers.size,
+            activeChatIds: Array.from(this.chatID),
+            activeTimerIds: Array.from(this.chatTimers.keys())
+        };
+        
+        console.log(`📊 [CHAT-APP] 📋 STATE AFTER CLEANUP:`, stateAfterCleanup);
+        console.log(`✅ [CHAT-APP] 🧹 Chat ${chatId} cleaned up successfully. Remaining active chats: ${this.chatID.length}`);
+        console.log('─'.repeat(80));
     }
 
     /**

@@ -124,6 +124,12 @@ body {
     max-width: 0;
 }
 
+/* About button text smooth fade + slide animation when sidebar collapses */
+.sidebar.collapsed .about-btn span {
+    opacity: 0;
+    max-width: 0;
+}
+
 /* Chat title smooth fade + slide animation when sidebar collapses */
 .sidebar.collapsed .chat-item .chat-title {
     opacity: 0;
@@ -148,7 +154,8 @@ body {
 }
 
 .sidebar.collapsed .report-history-btn,
-.sidebar.collapsed .logout-btn {
+.sidebar.collapsed .logout-btn,
+.sidebar.collapsed .about-btn {
     padding: 0.5rem; /* Square padding when collapsed */
     justify-content: flex-start;
     gap: 0; /* Remove gap when collapsed */

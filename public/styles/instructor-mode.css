@@ -253,8 +253,20 @@ body {
     /* Remove display: none to allow animation */
 }
 
+.instructor-feature-sidebar.collapsed .instructor-about-btn span {
+    opacity: 0;
+    max-width: 0;
+    margin-left: 0;
+    /* Remove display: none to allow animation */
+}
+
 
 .instructor-feature-sidebar.collapsed .instructor-logout-btn {
+    padding: 0.5rem;
+    gap: 0; /* Remove gap when collapsed */
+}
+
+.instructor-feature-sidebar.collapsed .instructor-about-btn {
     padding: 0.5rem;
     gap: 0; /* Remove gap when collapsed */
 }
