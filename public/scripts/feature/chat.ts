@@ -1718,14 +1718,26 @@ export class ChatManager {
         });
 
         li.addEventListener('click', async () => {
-            // This will trigger lazy loading if needed
-            await this.setActiveChatId(metadata.id);
-            this.renderChatList();
-            this.renderActiveChat();
-            
-            // Notify mode-specific callback that a chat was clicked
-            // This allows student-mode to switch from welcome screen to chat window
-            this.callModeSpecificCallback('chat-clicked', { chatId: metadata.id });
+            try {
+                // Wait for chat to be fully loaded
+                await this.setActiveChatId(metadata.id);
+                
+                // Update UI AFTER loading
+                this.renderChatList();
+                this.renderActiveChat();
+                
+                // Now notify the mode that chat is ready to display
+                this.callModeSpecificCallback('chat-clicked', { 
+                    chatId: metadata.id,
+                    loaded: true 
+                });
+            } catch (error) {
+                console.error('[CHAT-MANAGER] Failed to load chat:', error);
+                this.callModeSpecificCallback('chat-load-failed', { 
+                    chatId: metadata.id,
+                    error: error 
+                });
+            }
         });
 
         li.appendChild(titleSpan);

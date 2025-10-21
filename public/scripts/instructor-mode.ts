@@ -636,6 +636,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                         // Handle chat deletion - update main content area
                         console.log('🗑️ Chat deleted, updating main content area');
                         loadChatWindow();
+                    } else if (action === 'chat-clicked') {
+                        // Chat is fully loaded from sidebar click, switch to chat window
+                        console.log('[INSTRUCTOR-MODE] 💬 Chat loaded and ready, switching to chat window');
+                        if (data?.loaded) {
+                            loadChatWindow();
+                        }
+                    } else if (action === 'chat-load-failed') {
+                        console.error('[INSTRUCTOR-MODE] ❌ Chat loading failed:', data?.error);
+                        showWelcomeScreen();
                     }
                 }
             });

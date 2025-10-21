@@ -79,9 +79,14 @@ async function initializeChatInterface(user: any): Promise<void> {
             if (action === 'ui-update-needed') {
                 updateUI();
             } else if (action === 'chat-clicked') {
-                // User clicked a chat in sidebar - switch to chat window
-                console.log('[STUDENT-MODE] 💬 Chat clicked, switching to chat window');
-                loadComponent('chat-window');
+                // Chat is fully loaded, safe to switch to chat window
+                console.log('[STUDENT-MODE] 💬 Chat loaded and ready, switching to chat window');
+                if (data?.loaded) {
+                    loadComponent('chat-window');
+                }
+            } else if (action === 'chat-load-failed') {
+                console.error('[STUDENT-MODE] ❌ Chat loading failed:', data?.error);
+                // Stay on current view or show error message
             }
             console.log('Student mode callback:', action, data);
         }
