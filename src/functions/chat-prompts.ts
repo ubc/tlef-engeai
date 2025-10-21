@@ -60,14 +60,15 @@ export const SYSTEM_PROMPT = `
     $$
     E°_{Cu^{2+}/Cu} = +0.34 V
     $$
-    
+    ❌ INCORRECT (PROHIBITED - do not split math across lines):
     $$
     [Cu^{2+}] = 0.010 M
     $$
-    
+    ❌ INCORRECT (PROHIBITED - do not split math across lines):
     $$
     E = E° - \frac{RT}{nF}\ln Q
     $$
+    ❌ INCORRECT (PROHIBITED - do not split math across lines):
     
     **CRITICAL:** Never put line breaks inside LaTeX delimiters ($...$ or $$...$$). Always keep mathematical expressions on a single line.
 

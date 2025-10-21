@@ -1,14 +1,15 @@
 #!/usr/bin/env npx ts-node
 
 /**
- * @fileoverview Standalone script to clear all documents from the RAG database
+ * @fileoverview Nuclear option script to completely delete the RAG database collection
  * 
- * This script uses the UBC GenAI Toolkit RAG module to remove all documents
- * from the Qdrant vector database. It can be run manually using:
+ * This script uses the UBC GenAI Toolkit RAG module to completely delete
+ * the entire Qdrant collection. This is the "nuclear option" that removes
+ * everything including the collection itself.
  * 
- * npx ts-node src/functions/clear-rag-database.ts
+ * Usage: npx ts-node src/functions/nuclear-clear-rag.ts
  * 
- * WARNING: This will permanently delete ALL documents from the database!
+ * WARNING: This will permanently delete the ENTIRE COLLECTION from Qdrant!
  * 
  * @author: AI Assistant
  * @version: 1.0.0
@@ -30,7 +31,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
  */
 function createRAGConfig(): RAGConfig {
     const debug = process.env.DEBUG === 'true';
-    const logger = new ConsoleLogger('clear-rag-database');
+    const logger = new ConsoleLogger('nuclear-clear-rag');
     
     if (debug) {
         logger.debug('Loading configuration from environment variables...');
@@ -122,14 +123,15 @@ function createRAGConfig(): RAGConfig {
 }
 
 /**
- * Main function to clear all documents from the RAG database
+ * Main function to nuclear clear the RAG database (delete entire collection)
  */
-async function clearRAGDatabase(): Promise<void> {
-    const logger = new ConsoleLogger('clear-rag-database');
+async function nuclearClearRAGDatabase(): Promise<void> {
+    const logger = new ConsoleLogger('nuclear-clear-rag');
     
     try {
-        logger.info('🚀 Starting RAG database clearing process...');
-        logger.info('⚠️  WARNING: This will permanently delete ALL documents from the database!');
+        logger.info('💥 Starting NUCLEAR RAG database clearing process...');
+        logger.info('⚠️  WARNING: This will permanently delete the ENTIRE COLLECTION!');
+        logger.info('⚠️  WARNING: This is irreversible and will remove all data!');
         
         // Create RAG configuration
         logger.info('📋 Loading configuration...');
@@ -145,63 +147,39 @@ async function clearRAGDatabase(): Promise<void> {
         try {
             const allDocuments = await ragModule.getDocumentsByMetadata({});
             const documentCount = allDocuments.length;
-            logger.info(`📈 Found ${documentCount} documents in the database`);
+            logger.info(`📈 Found ${documentCount} documents in the collection`);
             
             if (documentCount === 0) {
-                logger.info('✅ Database is already empty. Nothing to delete.');
-                return;
+                logger.info('✅ Collection is already empty. Proceeding with collection deletion...');
             }
         } catch (error) {
-            logger.warn('⚠️  Could not retrieve document count (this is normal if collection is empty)');
+            logger.warn('⚠️  Could not retrieve document count (collection may not exist)');
         }
         
-        // Method 1: Get all document IDs and delete by IDs
-        logger.info('🗑️  Attempting to delete documents by IDs...');
+        // Nuclear option: Delete entire storage container (collection)
+        logger.info('💥 Executing NUCLEAR OPTION: Deleting entire collection...');
         try {
-            // Get all documents first to extract their IDs
-            const allDocuments = await ragModule.getDocumentsByMetadata({});
-            const allIds = allDocuments.map(doc => doc.id);
-            
-            if (allIds.length === 0) {
-                logger.info('✅ No documents found to delete');
-            } else {
-                logger.info(`📋 Found ${allIds.length} document IDs to delete`);
-                await ragModule.deleteDocumentsByIds(allIds);
-                logger.info('✅ Documents deleted by IDs successfully');
-            }
+            await ragModule.deleteStorage();
+            logger.info('✅ Collection deleted successfully');
         } catch (error) {
-            logger.warn('⚠️  ID-based deletion failed, trying storage deletion...');
-            
-            // Method 2: Delete entire storage (nuclear option)
-            logger.info('💥 Attempting to delete entire storage container...');
-            try {
-                await ragModule.deleteStorage();
-                logger.info('✅ Storage container deleted successfully');
-            } catch (storageError) {
-                logger.error('❌ Storage deletion also failed:', { error: storageError });
-                throw storageError;
-            }
+            logger.error('❌ Collection deletion failed:', { error });
+            throw error;
         }
         
-        // Verify deletion
-        logger.info('🔍 Verifying deletion...');
+        // Verify deletion by trying to access the collection
+        logger.info('🔍 Verifying collection deletion...');
         try {
             const remainingDocuments = await ragModule.getDocumentsByMetadata({});
-            const remainingCount = remainingDocuments.length;
-            
-            if (remainingCount === 0) {
-                logger.info('✅ SUCCESS: All documents have been deleted from the database');
-            } else {
-                logger.warn(`⚠️  WARNING: ${remainingCount} documents still remain in the database`);
-            }
+            logger.warn(`⚠️  WARNING: ${remainingDocuments.length} documents still remain in the collection`);
         } catch (error) {
-            logger.info('✅ SUCCESS: Database appears to be empty (collection may have been deleted)');
+            logger.info('✅ SUCCESS: Collection appears to have been deleted (access failed as expected)');
         }
         
-        logger.info('🎉 RAG database clearing process completed successfully!');
+        logger.info('🎉 NUCLEAR RAG database clearing process completed successfully!');
+        logger.info('💥 The entire collection has been deleted from Qdrant');
         
     } catch (error) {
-        logger.error('❌ Error during RAG database clearing process:');
+        logger.error('❌ Error during nuclear RAG database clearing process:');
         logger.error(error as string);
         process.exit(1);
     }
@@ -212,17 +190,18 @@ async function clearRAGDatabase(): Promise<void> {
  */
 function displayUsage(): void {
     console.log(`
-🗑️  RAG Database Clearing Script
-================================
+💥 Nuclear RAG Database Clearing Script
+=======================================
 
-This script will permanently delete ALL documents from the RAG database.
+This script will permanently delete the ENTIRE COLLECTION from Qdrant.
+This is the "nuclear option" that removes everything including the collection itself.
 
 Usage:
-  npx ts-node src/functions/clear-rag-database.ts
+  npx ts-node src/functions/nuclear-clear-rag.ts
 
 Required Environment Variables:
   - QDRANT_URL: URL of the Qdrant instance
-  - QDRANT_COLLECTION_NAME: Name of the collection to clear
+  - QDRANT_COLLECTION_NAME: Name of the collection to delete
   - QDRANT_VECTOR_SIZE: Vector size for the collection
   - QDRANT_DISTANCE_METRIC: Distance metric (Cosine, Euclid, or Dot)
   - EMBEDDING_PROVIDER: Embeddings provider type
@@ -234,7 +213,9 @@ Optional Environment Variables:
   - QDRANT_API_KEY: API key for Qdrant (if required)
   - DEBUG: Set to 'true' for debug logging
 
-WARNING: This operation is irreversible!
+⚠️  WARNING: This operation is irreversible!
+⚠️  WARNING: This will delete the ENTIRE COLLECTION!
+⚠️  WARNING: Use with extreme caution!
     `);
 }
 
@@ -246,16 +227,16 @@ if (require.main === module) {
         process.exit(0);
     }
     
-    // Run the clearing process
-    clearRAGDatabase()
+    // Run the nuclear clearing process
+    nuclearClearRAGDatabase()
         .then(() => {
-            console.log('✅ Script completed successfully');
+            console.log('✅ Nuclear script completed successfully');
             process.exit(0);
         })
         .catch((error) => {
-            console.error('❌ Script failed:', error);
+            console.error('❌ Nuclear script failed:', error);
             process.exit(1);
         });
 }
 
-export { clearRAGDatabase, createRAGConfig };
+export { nuclearClearRAGDatabase, createRAGConfig };

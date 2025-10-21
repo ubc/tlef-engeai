@@ -186,7 +186,7 @@ body {
     gap: 0.75rem;
     padding: 0.6rem;
     border-radius: 8px;
-    background-color: red; /* var(--color-chbe-green); */
+    background-color: var(--color-chbe-green); 
     color: white;
     height: 56px;              /* keep constant height expanded/collapsed */
     box-sizing: border-box;
