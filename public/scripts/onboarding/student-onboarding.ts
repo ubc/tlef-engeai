@@ -760,13 +760,8 @@ async function handleOnboardingCompletion(user: User): Promise<void> {
         
         console.log("✅ Onboarding status updated in database");
 
-        // Show completion message
-        await showCompletionMessage();
-
-        // Wait a moment, then redirect to main interface
-        setTimeout(() => {
-            redirectToMainInterface();
-        }, 2000);
+        // Immediately redirect to main interface - no delay
+        redirectToMainInterface();
 
     } catch (error) {
         console.error("Error completing onboarding:", error);
@@ -776,34 +771,35 @@ async function handleOnboardingCompletion(user: User): Promise<void> {
 
 /**
  * Shows completion message
+ * @deprecated No longer used - removed to eliminate onboarding delay
  */
-async function showCompletionMessage(): Promise<void> {
-    const currentStep = document.getElementById(`step-${(window as any).studentOnboardingState?.currentStep}`);
-    if (currentStep) {
-        currentStep.innerHTML = `
-            <div class="content-step-inner">
-                <div class="step-header">
-                    <h1>🎉 Welcome to EngE-AI!</h1>
-                    <p>You're all set to start your engineering learning journey</p>
-                </div>
-                <div class="completion-content">
-                    <div class="completion-message">
-                        <div class="success-icon">✅</div>
-                        <h3>Onboarding Complete!</h3>
-                        <p>You've successfully completed the onboarding process. You now know how to:</p>
-                        <ul class="completion-list">
-                            <li>Ask effective engineering questions</li>
-                            <li>Use interactive diagrams and artefacts</li>
-                            <li>Report inappropriate or incorrect responses</li>
-                            <li>Navigate the EngE-AI interface</li>
-                        </ul>
-                        <p><strong>Redirecting you to the main chat interface...</strong></p>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-}
+// async function showCompletionMessage(): Promise<void> {
+//     const currentStep = document.getElementById(`step-${(window as any).studentOnboardingState?.currentStep}`);
+//     if (currentStep) {
+//         currentStep.innerHTML = `
+//             <div class="content-step-inner">
+//                 <div class="step-header">
+//                     <h1>🎉 Welcome to EngE-AI!</h1>
+//                     <p>You're all set to start your engineering learning journey</p>
+//                 </div>
+//                 <div class="completion-content">
+//                     <div class="completion-message">
+//                         <div class="success-icon">✅</div>
+//                         <h3>Onboarding Complete!</h3>
+//                         <p>You've successfully completed the onboarding process. You now know how to:</p>
+//                         <ul class="completion-list">
+//                             <li>Ask effective engineering questions</li>
+//                             <li>Use interactive diagrams and artefacts</li>
+//                             <li>Report inappropriate or incorrect responses</li>
+//                             <li>Navigate the EngE-AI interface</li>
+//                         </ul>
+//                         <p><strong>Redirecting you to the main chat interface...</strong></p>
+//                     </div>
+//                 </div>
+//             </div>
+//         `;
+//     }
+// }
 
 /**
  * Redirects to the main student interface

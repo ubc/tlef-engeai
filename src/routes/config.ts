@@ -58,9 +58,9 @@ export function loadConfig(): AppConfig {
 	}
 
 	// --- RAG Internal Embeddings Config ---
-	const embeddingsProvider = (process.env.EMBEDDINGS_PROVIDER) as EmbeddingProviderType;
+	const embeddingsProvider = (process.env.EMBEDDING_PROVIDER) as EmbeddingProviderType;
 	if (!embeddingsProvider) {
-		throw new Error('EMBEDDINGS_PROVIDER environment variable is required for RAG.');
+		throw new Error('EMBEDDING_PROVIDER environment variable is required for RAG.');
 	}
 
 	// Structure embeddingsConfig based on the provider
@@ -74,18 +74,18 @@ export function loadConfig(): AppConfig {
 			throw new Error('LLM_PROVIDER environment variable is required when EMBEDDINGS_PROVIDER is ubc-genai-toolkit-llm');
 		}
 
-		specificEmbeddingsConfig.llmConfig = {
-			// We need to provide *some* LLM config, even if reusing provider type/endpoint
-			// It's slightly redundant but required by the EmbeddingsModule structure
-			provider: internalLlmProvider, // Use the determined LLM provider
-			apiKey: process.env.EMBEDDINGS_API_KEY, // Use the EMBEDDINGS_ specific key
-			endpoint: process.env.EMBEDDINGS_ENDPOINT, // Use the EMBEDDINGS_ specific endpoint
-			embeddingModel: process.env.EMBEDDINGS_MODEL, // *This* is where the model goes
-			defaultModel: process.env.LLM_DEFAULT_MODEL, // Add defaultModel from main LLM env vars
-			// We should explicitly pass logger/debug here for the internal LLMModule instance
-			logger: logger,
-			debug: debug,
-		};
+			specificEmbeddingsConfig.llmConfig = {
+				// We need to provide *some* LLM config, even if reusing provider type/endpoint
+				// It's slightly redundant but required by the EmbeddingsModule structure
+				provider: internalLlmProvider, // Use the determined LLM provider
+				apiKey: process.env.LLM_API_KEY, // Use the LLM_API_KEY
+				endpoint: process.env.EMBEDDINGS_ENDPOINT, // Use the EMBEDDINGS_ specific endpoint
+				embeddingModel: process.env.EMBEDDINGS_MODEL, // *This* is where the model goes
+				defaultModel: process.env.LLM_DEFAULT_MODEL, // Add defaultModel from main LLM env vars
+				// We should explicitly pass logger/debug here for the internal LLMModule instance
+				logger: logger,
+				debug: debug,
+			};
 	} else if (embeddingsProvider === 'fastembed') {
 		specificEmbeddingsConfig.fastembedConfig = {
 			// For fastembed, model name needs conversion if provided via env var
@@ -93,10 +93,10 @@ export function loadConfig(): AppConfig {
 			model: process.env.EMBEDDINGS_MODEL as any, // Assuming model name matches fastembed enum/string
 			cacheDir: process.env.EMBEDDINGS_CACHE_DIR, // Optional cache dir
 		};
-	} else {
-		// Handle other potential embedding providers if added later
-		throw new Error(`Unsupported EMBEDDINGS_PROVIDER: ${embeddingsProvider}`);
-	}
+		} else {
+			// Handle other potential embedding providers if added later
+			throw new Error(`Unsupported EMBEDDING_PROVIDER: ${embeddingsProvider}`);
+		}
 
 	const embeddingsConfig: EmbeddingsConfig = {
 		providerType: embeddingsProvider,

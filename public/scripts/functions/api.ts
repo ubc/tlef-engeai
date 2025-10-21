@@ -73,6 +73,7 @@ export async function loadComponentHTML(
                     | 'flag-setup'
                     | 'monitor-setup'
                     | 'student-onboarding'
+                    | 'about'
 ): Promise<string> {
 
     let response: Response;
@@ -104,6 +105,9 @@ export async function loadComponentHTML(
         case 'monitor-setup':
         case 'student-onboarding':
             response = await fetch(`/components/onboarding/${componentName}.html`);
+            break;
+        case 'about':
+            response = await fetch(`/components/about/${componentName}.html`);
             break;
         default:
             throw new Error("Invalid component name: " + componentName);
