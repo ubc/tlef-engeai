@@ -218,6 +218,9 @@ class ChatApp {
         console.log(`📊 [CHAT-APP] 📋 STATE AFTER CLEANUP:`, stateAfterCleanup);
         console.log(`✅ [CHAT-APP] 🧹 Chat ${chatId} cleaned up successfully. Remaining active chats: ${this.chatID.length}`);
         console.log('─'.repeat(80));
+        
+        // TODO: Remove after testing lazy loading functionality
+        this.logActiveChats('CHAT CLEANED UP (TIMER EXPIRED)');
     }
 
     /**
@@ -276,6 +279,22 @@ class ChatApp {
             //END DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-ERROR)
             return 'New Chat'; // Fallback to "New Chat" on error
         }
+    }
+
+    /**
+     * DEBUG LOGGER - Print list of active chat IDs
+     * TODO: Remove after testing lazy loading functionality
+     */
+    private logActiveChats(event: string): void {
+        console.log('\n' + '='.repeat(60));
+        console.log(`🔍 DEBUG - ACTIVE CHATS @ ${event}`);
+        console.log('='.repeat(60));
+        console.log(`Total Active Chats: ${this.chatID.length}`);
+        console.log(`Active Chat IDs: [${this.chatID.join(', ')}]`);
+        console.log(`Conversations Map Size: ${this.conversations.size}`);
+        console.log(`Chat History Map Size: ${this.chatHistory.size}`);
+        console.log(`Active Timers: ${this.chatTimers.size}`);
+        console.log('='.repeat(60) + '\n');
     }
 
     /**
@@ -422,6 +441,9 @@ class ChatApp {
     ): Promise<ChatMessage> {
         // Reset the inactivity timer since user is actively using this chat
         this.resetChatTimer(chatId);
+        
+        // TODO: Remove after testing lazy loading functionality
+        this.logActiveChats('MESSAGE SENT (TIMER RESET)');
 
         // Validate chat exists
         if (!this.conversations.has(chatId)) {
@@ -533,7 +555,13 @@ class ChatApp {
         //create chatID from the user ID
         const chatId = this.chatIDGenerator.chatID(userID, courseName, date);
 
-        this.chatID.push(chatId);
+        // Add chatId to active chats array (only if not already present)
+        if (!this.chatID.includes(chatId)) {
+            this.chatID.push(chatId);
+        } else {
+            console.log(`⚠️ Chat ${chatId} already exists in chatID array, skipping duplicate addition`);
+        }
+        
         this.conversations.set(chatId, this.llmModule.createConversation());
         this.chatHistory.set(chatId, []);
         
@@ -548,6 +576,9 @@ class ChatApp {
 
         // Start the inactivity timer for this new chat
         this.resetChatTimer(chatId);
+
+        // TODO: Remove after testing lazy loading functionality
+        this.logActiveChats('NEW CHAT CREATED');
 
         const initChatRequest: initChatRequest = {
             userID: userID,
@@ -832,13 +863,21 @@ class ChatApp {
             this.conversations.set(chatId, conversation);
             this.chatHistory.set(chatId, restoredMessages);
             
-            // Add chatId to active chats array
-            this.chatID.push(chatId);
+            // Add chatId to active chats array (only if not already present)
+            if (!this.chatID.includes(chatId)) {
+                this.chatID.push(chatId);
+            } else {
+                console.log(`⚠️ Chat ${chatId} already exists in chatID array, skipping duplicate addition`);
+            }
             
             // Start the inactivity timer
             this.resetChatTimer(chatId);
 
             console.log(`✅ Chat ${chatId} restored successfully with ${restoredMessages.length} messages`);
+            
+            // TODO: Remove after testing lazy loading functionality
+            this.logActiveChats('CHAT RESTORED FROM DB');
+            
             return true;
 
         } catch (error) {
@@ -887,6 +926,10 @@ class ChatApp {
             console.log(`   Remaining active chats: ${this.chatID.length}`);
             
             this.logger.info(`Chat ${chatId} deleted successfully`);
+            
+            // TODO: Remove after testing lazy loading functionality
+            this.logActiveChats('CHAT EXPLICITLY DELETED');
+            
             return true;
             
         } catch (error) {

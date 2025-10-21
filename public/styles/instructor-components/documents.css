@@ -193,6 +193,50 @@
     border: 1px solid #e67e22;
 }
 
+/* Division Control Panel Styles */
+.division-control-panel {
+    margin: 15px 0;
+}
+
+.control-status-row {
+    display: flex;
+    flex-direction: row;
+    gap: 15px;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 5px 10px 0 0;
+}
+
+.status-add-division {
+    background: rgba(76, 86, 175, 0.1);
+    color: var(--color-navy-blue);
+    border: 1px solid var(--color-navy-blue);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.status-add-division:hover {
+    background: rgba(76, 86, 175, 0.2);
+    border-color: #4c56af;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(76, 86, 175, 0.3);
+}
+
+.status-delete-all-divisions {
+    background: rgba(175, 76, 76, 0.1);
+    color: var(--color-eng-red);
+    border: 1px solid var(--color-eng-red);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.status-delete-all-divisions:hover {
+    background: rgba(175, 76, 76, 0.2);
+    border-color: #c82333;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(175, 76, 76, 0.3);
+}
+
 .learning-objectives {
     margin: 10px 0;
 }
