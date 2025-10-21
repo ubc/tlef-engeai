@@ -51,7 +51,7 @@
     font-weight: 900;
     color: var(--color-chbe-green);
     margin: 0 0 1.5rem 0;
-    text-align: center;
+    text-align: left;
 }
 
 .about-description {
@@ -59,7 +59,7 @@
     line-height: 1.6;
     color: var(--text-primary);
     margin: 0 0 2rem 0;
-    text-align: center;
+    text-align: left;
     font-weight: 500;
 }
 
@@ -219,7 +219,7 @@
     color: var(--text-primary);
     margin: 0;
     font-style: italic;
-    text-align: center;
+    text-align: left;
     font-weight: 500;
 }
 

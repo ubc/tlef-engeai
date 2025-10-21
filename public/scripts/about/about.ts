@@ -36,10 +36,11 @@ declare const feather: any;
  * 3. Initializes feather icons
  * 4. Handles back button functionality
  * 
+ * @param context Optional context information about where the about page was opened from
  * @returns Promise<void>
  */
-export const renderAbout = async (): Promise<void> => {
-    console.log("ℹ️ Loading about page...");
+export const renderAbout = async (context?: any): Promise<void> => {
+    console.log("ℹ️ Loading about page...", context ? `from context: ${JSON.stringify(context)}` : '');
     
     try {
         // Load the about component
@@ -136,6 +137,7 @@ function handleBackClick(): void {
         detail: { timestamp: Date.now() } 
     });
     window.dispatchEvent(event);
+    console.log("📡 Dispatched 'about-page-closed' event");
 }
 
 // ===========================================

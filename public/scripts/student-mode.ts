@@ -13,6 +13,9 @@ async function checkAuthentication(): Promise<boolean> {
     return await authService.checkAuthenticationAndRedirect('/pages/student-mode.html', 'STUDENT-MODE');
 }
 
+// State tracking for about page navigation
+let currentComponent: 'welcome-screen' | 'chat-window' | 'report-history' | 'profile' | 'flag-history' = 'welcome-screen';
+
 document.addEventListener('DOMContentLoaded', async () => {
     // Check authentication first
     const isAuthenticated = await checkAuthentication();
@@ -95,6 +98,9 @@ async function initializeChatInterface(user: any): Promise<void> {
     // --- COMPONENT LOADING ---
     const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'report-history' | 'profile' | 'flag-history') => {
         if (!mainContentArea) return;
+        
+        // Track current component for about page navigation
+        currentComponent = componentName;
         
         try {
             // Special handling for flag-history component (it's in student/ subdirectory)
@@ -276,11 +282,20 @@ async function initializeChatInterface(user: any): Promise<void> {
         if (aboutBtn) {
             aboutBtn.addEventListener('click', async () => {
                 console.log('[STUDENT-MODE] ℹ️ About button clicked');
-                await renderAbout();
+                await renderAbout({ component: currentComponent, mode: 'student' });
             });
             console.log('[STUDENT-MODE] ✅ About button listener attached');
         }
     };
+
+    // --- STATE RESTORATION ---
+    const restorePreviousComponent = async () => {
+        console.log('[STUDENT-MODE] 🔄 Restoring previous component:', currentComponent);
+        await loadComponent(currentComponent);
+    };
+
+    // Listen for about page close event
+    window.addEventListener('about-page-closed', restorePreviousComponent);
 
     // --- EVENT LISTENERS ATTACHMENT ---
     const attachWelcomeScreenListeners = () => {

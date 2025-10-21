@@ -875,11 +875,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (aboutBtn) {
             aboutBtn.addEventListener('click', async () => {
                 console.log('[INSTRUCTOR-MODE] ℹ️ About button clicked');
-                await renderAbout();
+                await renderAbout({ state: currentState, mode: 'instructor' });
             });
             console.log('[INSTRUCTOR-MODE] ✅ About button listener attached');
         }
     };
+
+    // --- STATE RESTORATION ---
+    const restorePreviousState = () => {
+        console.log('[INSTRUCTOR-MODE] 🔄 Restoring previous state:', currentState);
+        updateUI();
+    };
+
+    // Listen for about page close event
+    window.addEventListener('about-page-closed', restorePreviousState);
 
     // Artefact functionality moved to chat.ts
 
