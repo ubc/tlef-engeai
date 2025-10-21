@@ -220,7 +220,7 @@ class ChatApp {
         console.log('─'.repeat(80));
         
         // TODO: Remove after testing lazy loading functionality
-        this.logActiveChats('CHAT CLEANED UP (TIMER EXPIRED)');
+        // this.logActiveChats('CHAT CLEANED UP (TIMER EXPIRED)');
     }
 
     /**
@@ -443,7 +443,7 @@ class ChatApp {
         this.resetChatTimer(chatId);
         
         // TODO: Remove after testing lazy loading functionality
-        this.logActiveChats('MESSAGE SENT (TIMER RESET)');
+        // this.logActiveChats('MESSAGE SENT (TIMER RESET)');
 
         // Validate chat exists
         if (!this.conversations.has(chatId)) {
@@ -578,7 +578,7 @@ class ChatApp {
         this.resetChatTimer(chatId);
 
         // TODO: Remove after testing lazy loading functionality
-        this.logActiveChats('NEW CHAT CREATED');
+        // this.logActiveChats('NEW CHAT CREATED');
 
         const initChatRequest: initChatRequest = {
             userID: userID,
@@ -876,7 +876,7 @@ class ChatApp {
             console.log(`✅ Chat ${chatId} restored successfully with ${restoredMessages.length} messages`);
             
             // TODO: Remove after testing lazy loading functionality
-            this.logActiveChats('CHAT RESTORED FROM DB');
+            // this.logActiveChats('CHAT RESTORED FROM DB');
             
             return true;
 
@@ -928,7 +928,7 @@ class ChatApp {
             this.logger.info(`Chat ${chatId} deleted successfully`);
             
             // TODO: Remove after testing lazy loading functionality
-            this.logActiveChats('CHAT EXPLICITLY DELETED');
+            // this.logActiveChats('CHAT EXPLICITLY DELETED');
             
             return true;
             
