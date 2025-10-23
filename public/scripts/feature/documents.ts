@@ -380,6 +380,27 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         console.log('🔧 Added delete all documents handler');
     }
 
+    // Add event listener for nuclear clear button
+    const nuclearClearBtn = document.getElementById('nuclear-clear-btn');
+    if (nuclearClearBtn) {
+        // Remove any existing event listeners to prevent accumulation
+        const existingNuclearHandler = (nuclearClearBtn as any)._nuclearHandler;
+        if (existingNuclearHandler) {
+            nuclearClearBtn.removeEventListener('click', existingNuclearHandler);
+            console.log('🔧 Removed existing nuclear clear handler');
+        }
+
+        // Create the nuclear clear handler function
+        const nuclearHandler = async () => {
+            await nuclearClearDocuments();
+        };
+
+        // Store the handler reference and add the event listener
+        (nuclearClearBtn as any)._nuclearHandler = nuclearHandler;
+        nuclearClearBtn.addEventListener('click', nuclearHandler);
+        console.log('🔧 Added nuclear clear handler');
+    }
+
     // --- Event Handler Functions ---
 
     /**
@@ -1492,6 +1513,95 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         wrapper.appendChild(addWrap);
 
         return wrapper;
+    }
+
+    /**
+     * Nuclear clear - delete entire RAG collection (nuclear option)
+     */
+    async function nuclearClearDocuments(): Promise<void> {
+        try {
+            // Show confirmation modal with stronger warning
+            const result = await showDeleteConfirmationModal(
+                '💥 Nuclear Clear',
+                'the ENTIRE RAG collection from ALL courses. This will permanently delete the entire Qdrant collection and is IRREVERSIBLE!'
+            );
+
+            if (result.action !== 'delete') {
+                console.log('Nuclear clear cancelled by user');
+                return;
+            }
+
+            console.log('💥 Starting nuclear clear of entire RAG collection...');
+
+            // Call the nuclear clear API endpoint
+            console.log('🔍 NUCLEAR CLEAR - Request Details:');
+            console.log('  URL:', `/api/rag/nuclear-clear`);
+            console.log('  Method: DELETE');
+            
+            const response = await fetch(`/api/rag/nuclear-clear`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include'
+            });
+
+            console.log('🔍 NUCLEAR CLEAR - Response Details:');
+            console.log('  Status:', response.status);
+            console.log('  Status Text:', response.statusText);
+            console.log('  Headers:', Object.fromEntries(response.headers.entries()));
+            console.log('  Content-Type:', response.headers.get('content-type'));
+
+            if (!response.ok) {
+                const responseText = await response.text();
+                console.log('🔍 NUCLEAR CLEAR - Error Response Body (raw):');
+                console.log('  Raw Response:', responseText);
+                
+                try {
+                    const errorData = JSON.parse(responseText);
+                    console.log('🔍 NUCLEAR CLEAR - Error Response Body (parsed):');
+                    console.log('  Parsed Error:', errorData);
+                    throw new Error(errorData.message || errorData.details || `HTTP ${response.status}`);
+                } catch (parseError) {
+                    console.log('🔍 NUCLEAR CLEAR - JSON Parse Error:');
+                    console.log('  Parse Error:', parseError);
+                    throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
+                }
+            }
+
+            const responseText = await response.text();
+            console.log('🔍 NUCLEAR CLEAR - Success Response Body (raw):');
+            console.log('  Raw Response:', responseText);
+            
+            let result_data;
+            try {
+                result_data = JSON.parse(responseText);
+                console.log('🔍 NUCLEAR CLEAR - Success Response Body (parsed):');
+                console.log('  Parsed Result:', result_data);
+            } catch (parseError) {
+                console.log('🔍 NUCLEAR CLEAR - JSON Parse Error:');
+                console.log('  Parse Error:', parseError);
+                throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
+            }
+            console.log('💥 Nuclear clear completed:', result_data);
+
+            // Clear all additional materials from local data
+            courseData.forEach(division => {
+                division.items.forEach(item => {
+                    item.additionalMaterials = [];
+                });
+            });
+
+            // Refresh the UI to show empty state
+            renderDocumentsPage();
+
+            // Show success message
+            alert(`💥 Nuclear clear completed! Entire RAG collection deleted. Removed ${result_data.data?.deletedCount || 0} documents from the entire system.`);
+
+        } catch (error) {
+            console.error('Error nuclear clearing RAG collection:', error);
+            alert(`Failed to nuclear clear RAG collection: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
     }
 
     /**
