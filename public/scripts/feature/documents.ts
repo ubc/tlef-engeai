@@ -230,6 +230,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             if (divisionHeader) {
                 const divisionId = divisionHeader.getAttribute('data-division') || '0';
                 if (!divisionId) return;
+                console.log('🔍 DIVISION CLICKED - Division ID:', divisionId);
                 toggleDivision(divisionId);
                 return;
             }
@@ -318,9 +319,20 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 const divisionId = ids[2] || '0';
                 const contentId = ids[3] || '0';
                 if (!divisionId || !contentId) return;
-                console.log('Upload area clicked!', divisionId, contentId);
+                console.log('🔍 UPLOAD AREA CLICKED - Division ID:', divisionId, 'Item ID:', contentId);
                 openUploadModal(divisionId, contentId, handleUploadMaterial);
                     return;
+            }
+
+            // Content item click -> log item info
+            const contentItem = target.closest('.content-item') as HTMLElement | null;
+            if (contentItem) {
+                const ids = contentItem.id.split('-'); // content-item-divisionId-contentId
+                const divisionId = ids[2] || '0';
+                const contentId = ids[3] || '0';
+                if (!divisionId || !contentId) return;
+                console.log('🔍 ITEM CLICKED - Division ID:', divisionId, 'Item ID:', contentId);
+                return;
             }
         });
     }
@@ -342,11 +354,24 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @returns Promise<void>
      */
     async function handleUploadMaterial(material: any): Promise<void> {
+        console.log('🔍 HANDLE UPLOAD MATERIAL CALLED');
+        console.log('  - material:', material);
+        console.log('  - material.divisionId:', material.divisionId);
+        console.log('  - material.itemId:', material.itemId);
+        
         try {
             // Get the division and the content item
             const division = courseData.find(d => d.id === material.divisionId);
-            const contentItem = division?.items.find(c => c.id === material.contentId);
-            if (!contentItem) return;
+            console.log('  - division found:', !!division);
+            
+            const contentItem = division?.items.find(c => c.id === material.itemId);
+            console.log('  - contentItem found:', !!contentItem);
+            
+            if (!contentItem) {
+                console.error('❌ Content item not found for itemId:', material.itemId);
+                alert('Content item not found. Please try again.');
+                return;
+            }
             if (!contentItem.additionalMaterials) contentItem.additionalMaterials = [];
 
             // Create the additional material object
@@ -362,18 +387,23 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 fileName: material.fileName,
                 date: new Date(),
                 // Add these three lines:
-                courseId: currentClass.id,
-                divisionId: material.divisionId,
-                itemId: material.contentId
+    courseId: currentClass.id,
+    divisionId: material.divisionId,
+    itemId: material.itemId
             };
 
+            console.log('🔍 CREATING DOCUMENT UPLOAD MODULE');
+            console.log('  - additionalMaterial:', additionalMaterial);
+            
             // Use DocumentUploadModule for upload
             const uploadModule = new DocumentUploadModule((progress, stage) => {
                 console.log(`Upload progress: ${progress}% - ${stage}`);
                 // You could update a progress bar here if needed
             });
 
+            console.log('🔍 CALLING UPLOAD MODULE.uploadDocument');
             const uploadResult: UploadResult = await uploadModule.uploadDocument(additionalMaterial);
+            console.log('🔍 UPLOAD RESULT:', uploadResult);
             
             if (!uploadResult.success) {
                 console.error(`Upload failed: ${uploadResult.error}`);
@@ -391,7 +421,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             contentItem.additionalMaterials.push(uploadResult.document);
 
             // Refresh the content item
-            refreshContentItem(material.divisionId, material.contentId);
+            refreshContentItem(material.divisionId, material.itemId);
 
             console.log('Material uploaded successfully:', uploadResult.document);
             console.log(`Generated ${uploadResult.chunksGenerated} chunks in Qdrant`);

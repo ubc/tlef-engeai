@@ -172,7 +172,10 @@ export class DocumentUploadModule {
                     courseName: document.courseName,
                     divisionTitle: document.divisionTitle,
                     itemTitle: document.itemTitle,
-                    sourceType: document.sourceType
+                    sourceType: document.sourceType,
+                    courseId: document.courseId,
+                    divisionId: document.divisionId,
+                    itemId: document.itemId
                 });
             } else if (document.sourceType === 'text' && document.text) {
                 const validation = this.validateText(document.text);
@@ -184,7 +187,10 @@ export class DocumentUploadModule {
                     courseName: document.courseName,
                     divisionTitle: document.divisionTitle,
                     itemTitle: document.itemTitle,
-                    sourceType: document.sourceType
+                    sourceType: document.sourceType,
+                    courseId: document.courseId,
+                    divisionId: document.divisionId,
+                    itemId: document.itemId
                 });
             } else {
                 return { success: false, error: 'Invalid document: must have either file or text content' };

@@ -779,16 +779,19 @@ export function closeModal(action: string = 'close'): void {
  * Opens a document upload modal for adding course materials
  * 
  * @param divisionId - The ID of the division
- * @param contentId - The ID of the content item
+ * @param itemId - The ID of the content item
  * @param onUpload - Callback function called when upload is successful
  * @returns Promise<void>
  */
 export async function openUploadModal(
     divisionId: string, 
-    contentId: string, 
+    itemId: string, 
     onUpload?: (material: any) => void
 ): Promise<void> {
-    console.log('Open upload modal called for divisionId: ', divisionId, ' and contentId: ', contentId);
+    console.log('🔍 OPEN UPLOAD MODAL CALLED');
+    console.log('  - divisionId:', divisionId);
+    console.log('  - itemId:', itemId);
+    console.log('  - onUpload callback provided:', !!onUpload);
     
     // Get the mount point for the modal
     const mount = document.getElementById('upload-modal-mount');
@@ -1134,7 +1137,7 @@ export async function openUploadModal(
                 id: '',
                 name: name,
                 divisionId: divisionId,
-                contentId: contentId,
+                itemId: itemId,
                 sourceType: currentMethod,
                 file: currentMethod === 'file' ? selectedFile : null,
                 text: currentMethod === 'text' ? text : '',
@@ -1142,19 +1145,28 @@ export async function openUploadModal(
                 date: new Date(),
             };
 
+            console.log('🔍 MATERIAL OBJECT CREATED IN UPLOAD MODAL:');
+            console.log('  - material:', material);
+            console.log('  - material.divisionId:', material.divisionId);
+            console.log('  - material.itemId:', material.itemId);
+
             // Call the upload callback if provided and wait for completion
             if (onUpload) {
+                console.log('🔍 CALLING onUpload CALLBACK');
                 try {
                     await onUpload(material);
+                    console.log('🔍 UPLOAD CALLBACK COMPLETED SUCCESSFULLY');
                     // Only close modal after successful upload
                     close();
                 } catch (error) {
-                    console.error('Upload failed:', error);
-                    alert('Upload failed. Please try again.');
+                    console.error('❌ UPLOAD CALLBACK FAILED:', error);
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    alert(`Upload failed: ${errorMessage}`);
                     // Don't close modal on error - let user try again
                     return;
                 }
             } else {
+                console.log('🔍 NO onUpload CALLBACK PROVIDED');
                 // Close the modal if no upload callback
                 close();
             }
