@@ -152,6 +152,11 @@ export interface AdditionalMaterial {
     chunksGenerated?: number; // Number of chunks generated in Qdrant
     deleted?: boolean; // Soft delete flag (defaults to false/undefined for backward compatibility)
     deletedAt?: Date; // Timestamp when material was deleted
+    uploadedBy?: string; // Track who uploaded the material
+    // Add these three optional fields:
+    courseId?: string;
+    divisionId?: string;
+    itemId?: string;
 }
 
 /**

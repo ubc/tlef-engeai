@@ -311,11 +311,174 @@ export class RAGApp {
     /**
      * Delete document from RAG
      * 
-     * @param id - The id of the document to delete
+     * @param materialId - The id of the material to delete
+     * @param courseId - The course ID
+     * @param divisionId - The division ID
+     * @param itemId - The item ID
      * @returns The result of the delete
      */
-    async deleteDocument(id: string) : Promise<any> {
-        return ;
+    async deleteDocument(materialId: string, courseId: string, divisionId: string, itemId: string): Promise<boolean> {
+        try {
+            // Get course to find the material and its qdrantId
+            const course = await this.mongoDB.getActiveCourse(courseId);
+            if (!course) {
+                throw new Error('Course not found');
+            }
+            const division = course.divisions?.find((d: any) => d.id === divisionId);
+            const item = division?.items?.find((i: any) => i.id === itemId);
+            const material = item?.additionalMaterials?.find((m: any) => m.id === materialId);
+            
+            if (!material || !material.qdrantId) {
+                throw new Error('Material or qdrantId not found');
+            }
+            
+            // Delete from Qdrant using the qdrantId
+            await this.rag.deleteDocumentsByIds([material.qdrantId]);
+            
+            this.logger.info(`Deleted document from Qdrant: ${material.qdrantId}`);
+            return true;
+        } catch (error) {
+            this.logger.error('Failed to delete document from Qdrant:', error as any);
+            throw error;
+        }
+    }
+
+    /**
+     * Delete all documents for a course from Qdrant
+     * 
+     * @param courseId - The course ID
+     * @returns Statistics about the deletion
+     */
+    async deleteAllDocumentsForCourse(courseId: string): Promise<{ deletedCount: number, errors: string[] }> {
+        try {
+            const course = await this.mongoDB.getActiveCourse(courseId);
+            if (!course) {
+                throw new Error('Course not found');
+            }
+
+            const qdrantIds: string[] = [];
+            const errors: string[] = [];
+
+            // Collect all qdrantIds from all materials
+            course.divisions?.forEach((division: any) => {
+                division.items?.forEach((item: any) => {
+                    item.additionalMaterials?.forEach((material: any) => {
+                        if (material.qdrantId) {
+                            qdrantIds.push(material.qdrantId);
+                        }
+                    });
+                });
+            });
+
+            if (qdrantIds.length === 0) {
+                this.logger.info('No documents found to delete');
+                return { deletedCount: 0, errors: [] };
+            }
+
+            // Use bulk delete for efficiency
+            await this.rag.deleteDocumentsByIds(qdrantIds);
+            
+            this.logger.info(`Deleted ${qdrantIds.length} documents from Qdrant`);
+            return { deletedCount: qdrantIds.length, errors };
+        } catch (error) {
+            this.logger.error('Failed to delete all documents from Qdrant:', error as any);
+            throw error;
+        }
+    }
+
+    /**
+     * Wipe all documents from RAG database for a specific course
+     * Based on clear-rag-database.ts approach but filtered by course
+     * 
+     * @param courseId - The course ID to filter documents by
+     * @returns Statistics about the deletion
+     */
+    async WipeRAGDatabase(courseId: string): Promise<{ deletedCount: number, errors: string[] }> {
+        const errors: string[] = [];
+        
+        try {
+            this.logger.info('🚀 Starting RAG database wipe process for course:', { courseId });
+            this.logger.info('⚠️  WARNING: This will permanently delete ALL documents from this course!');
+            
+            // Get course from MongoDB to find all qdrantIds
+            const course = await this.mongoDB.getActiveCourse(courseId);
+            if (!course) {
+                throw new Error('Course not found');
+            }
+
+            const qdrantIds: string[] = [];
+            let mongoMaterialCount = 0;
+
+            // Collect all qdrantIds from all materials in the course
+            this.logger.info('📊 Collecting document IDs from course materials...');
+            course.divisions?.forEach((division: any) => {
+                division.items?.forEach((item: any) => {
+                    item.additionalMaterials?.forEach((material: any) => {
+                        mongoMaterialCount++;
+                        if (material.qdrantId) {
+                            qdrantIds.push(material.qdrantId);
+                        }
+                    });
+                });
+            });
+
+            this.logger.info(`📈 Found ${mongoMaterialCount} materials in MongoDB, ${qdrantIds.length} with Qdrant IDs`);
+
+            if (qdrantIds.length === 0) {
+                this.logger.info('✅ No documents found to delete for this course');
+                return { deletedCount: 0, errors: [] };
+            }
+            
+            // Method 1: Delete documents by IDs from Qdrant
+            this.logger.info('🗑️  Attempting to delete documents by IDs from Qdrant...');
+            try {
+                this.logger.info(`📋 Deleting ${qdrantIds.length} document IDs from Qdrant`);
+                await this.rag.deleteDocumentsByIds(qdrantIds);
+                this.logger.info('✅ Documents deleted from Qdrant successfully');
+                
+                // Clear all AdditionalMaterial from MongoDB for this course
+                this.logger.info('🗑️  Clearing AdditionalMaterial from MongoDB...');
+                await this.mongoDB.clearAllAdditionalMaterials(courseId);
+                this.logger.info('✅ AdditionalMaterial cleared from MongoDB successfully');
+                
+                return { deletedCount: qdrantIds.length, errors: [] };
+                
+            } catch (error) {
+                this.logger.warn('⚠️  ID-based deletion failed:', { error: error instanceof Error ? error.message : String(error) });
+                errors.push(`ID-based deletion failed: ${error instanceof Error ? error.message : String(error)}`);
+                
+                // Method 2: Try to delete by course metadata filter
+                this.logger.info('🔄 Attempting to delete by course metadata filter...');
+                try {
+                    // Get documents by course metadata
+                    const courseDocuments = await this.rag.getDocumentsByMetadata({ courseName: course.courseName });
+                    const courseDocumentIds = courseDocuments.map(doc => doc.id);
+                    
+                    if (courseDocumentIds.length > 0) {
+                        this.logger.info(`📋 Found ${courseDocumentIds.length} documents by course metadata`);
+                        await this.rag.deleteDocumentsByIds(courseDocumentIds);
+                        this.logger.info('✅ Documents deleted by course metadata successfully');
+                        
+                        // Clear MongoDB materials
+                        await this.mongoDB.clearAllAdditionalMaterials(courseId);
+                        
+                        return { deletedCount: courseDocumentIds.length, errors: [] };
+                    } else {
+                        this.logger.info('✅ No documents found by course metadata');
+                        return { deletedCount: 0, errors: [] };
+                    }
+                } catch (metadataError) {
+                    this.logger.error('❌ Course metadata deletion also failed:', { error: metadataError });
+                    errors.push(`Course metadata deletion failed: ${metadataError instanceof Error ? metadataError.message : String(metadataError)}`);
+                    throw metadataError;
+                }
+            }
+            
+        } catch (error) {
+            this.logger.error('❌ Error during RAG database wipe process:', { error: error });
+            errors.push(`Wipe process failed: ${error instanceof Error ? error.message : String(error)}`);
+            throw error;
+        }
     }
 
     /**
@@ -491,6 +654,11 @@ const validateFileDocument = (req: MulterRequest, res: Response, next: Function)
 // POST /api/rag/documents/text - Upload a text document (REQUIRES AUTH)
 router.post('/documents/text', validateTextDocument, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
+        console.log('🔍 BACKEND UPLOAD TEXT - Request Details:');
+        console.log('  Headers:', req.headers);
+        console.log('  Body:', req.body);
+        console.log('  User:', req.user);
+        
         const ragApp = await RAGApp.getInstance();
         
         const document: AdditionalMaterial = {
@@ -506,6 +674,54 @@ router.post('/documents/text', validateTextDocument, asyncHandlerWithAuth(async 
         };
 
         const result = await ragApp.uploadDocument(document);
+
+        console.log('🔍 BACKEND UPLOAD TEXT - RAG Upload Result:');
+        console.log('  Result:', result);
+
+        // Store metadata in MongoDB if upload was successful
+        if (result.uploaded && result.qdrantId) {
+            try {
+                // Extract courseId, divisionId, and itemId from request body
+                const { courseId, divisionId, itemId } = req.body;
+                
+                console.log('🔍 BACKEND UPLOAD TEXT - MongoDB Storage Details:');
+                console.log('  CourseId:', courseId);
+                console.log('  DivisionId:', divisionId);
+                console.log('  ItemId:', itemId);
+                
+                if (!courseId || !divisionId || !itemId) {
+                    console.warn('Missing courseId, divisionId, or itemId for MongoDB storage');
+                } else {
+                    // Add uploadedBy field from authenticated user
+                    const materialWithUser = {
+                        ...result,
+                        uploadedBy: (req.user as any)?.puid || 'system'
+                    };
+                    
+                    console.log('🔍 BACKEND UPLOAD TEXT - Material with User:');
+                    console.log('  Material:', materialWithUser);
+                    
+                    await ragApp['mongoDB'].addAdditionalMaterial(courseId, divisionId, itemId, materialWithUser);
+                    console.log('✅ Document metadata stored in MongoDB');
+                }
+            } catch (mongoError) {
+                console.error('Failed to store document metadata in MongoDB:', mongoError);
+                // Don't fail the entire request if MongoDB storage fails
+            }
+        }
+
+        console.log('🔍 BACKEND UPLOAD TEXT - Response Data:');
+        console.log('  Response:', {
+            status: 201,
+            message: 'Document uploaded successfully',
+            data: {
+                id: result.id,
+                name: result.name,
+                uploaded: result.uploaded,
+                qdrantId: result.qdrantId,
+                chunksGenerated: result.chunksGenerated || 0
+            }
+        });
 
         res.status(201).json({
             status: 201,
@@ -531,6 +747,12 @@ router.post('/documents/text', validateTextDocument, asyncHandlerWithAuth(async 
 // POST /api/rag/documents/file - Upload a file document (REQUIRES AUTH)
 router.post('/documents/file', upload.single('file'), validateFileDocument, asyncHandlerWithAuth(async (req: MulterRequest, res: Response) => {
     try {
+        console.log('🔍 BACKEND UPLOAD FILE - Request Details:');
+        console.log('  Headers:', req.headers);
+        console.log('  Body:', req.body);
+        console.log('  File:', req.file);
+        console.log('  User:', req.user);
+        
         const ragApp = await RAGApp.getInstance();
         
         if (!req.file) {
@@ -554,6 +776,30 @@ router.post('/documents/file', upload.single('file'), validateFileDocument, asyn
         };
 
         const result = await ragApp.uploadDocument(document);
+
+        // Store metadata in MongoDB if upload was successful
+        if (result.uploaded && result.qdrantId) {
+            try {
+                // Extract courseId, divisionId, and itemId from request body
+                const { courseId, divisionId, itemId } = req.body;
+                
+                if (!courseId || !divisionId || !itemId) {
+                    console.warn('Missing courseId, divisionId, or itemId for MongoDB storage');
+                } else {
+                    // Add uploadedBy field from authenticated user
+                    const materialWithUser = {
+                        ...result,
+                        uploadedBy: (req.user as any)?.puid || 'system'
+                    };
+                    
+                    await ragApp['mongoDB'].addAdditionalMaterial(courseId, divisionId, itemId, materialWithUser);
+                    console.log('✅ Document metadata stored in MongoDB');
+                }
+            } catch (mongoError) {
+                console.error('Failed to store document metadata in MongoDB:', mongoError);
+                // Don't fail the entire request if MongoDB storage fails
+            }
+        }
 
         res.status(201).json({
             status: 201,
@@ -605,6 +851,54 @@ router.get('/documents/:courseName/:contentTitle/:subContentTitle/:chunkNumber',
 router.post('/search', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     // TODO: Implement document search
     res.status(501).json({ message: 'Not implemented yet' });
+}));
+
+// DELETE /api/rag/wipe-all - Wipe all documents from RAG database for a specific course (REQUIRES AUTH)
+router.delete('/wipe-all', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        console.log('🔍 BACKEND WIPE ALL DOCUMENTS - Request Details:');
+        console.log('  Headers:', req.headers);
+        console.log('  Body:', req.body);
+        console.log('  Query:', req.query);
+        console.log('  User:', req.user);
+        
+        // Get courseId from query parameters
+        const courseId = req.query.courseId as string;
+        if (!courseId) {
+            return res.status(400).json({
+                status: 400,
+                message: 'courseId query parameter is required'
+            });
+        }
+        
+        const ragApp = await RAGApp.getInstance();
+        
+        // Call the WipeRAGDatabase method with courseId
+        const result = await ragApp.WipeRAGDatabase(courseId);
+        
+        console.log('🔍 BACKEND WIPE ALL DOCUMENTS - Result:');
+        console.log('  CourseId:', courseId);
+        console.log('  Deleted Count:', result.deletedCount);
+        console.log('  Errors:', result.errors);
+        
+        res.status(200).json({
+            status: 200,
+            message: `All documents wiped from RAG database for course ${courseId} successfully`,
+            data: {
+                courseId: courseId,
+                deletedCount: result.deletedCount,
+                errors: result.errors
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Failed to wipe RAG database:', error);
+        res.status(500).json({
+            status: 500,
+            message: 'Failed to wipe RAG database',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
 }));
 
 // Note: Setup is now handled automatically in the QdrantUpload constructor

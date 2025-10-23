@@ -817,7 +817,7 @@ export async function resetDummyCourses(): Promise<boolean> {
             const apsc099Course = await instance.getActiveCourse(apsc099Id);
             if (apsc099Course) {
                 // Get all flag reports for APSC099 and delete them
-                const flagReports = await instance.getFlagReports(apsc099Course.courseName);
+                const flagReports = await instance.getAllFlagReports(apsc099Course.courseName);
                 for (const flag of flagReports) {
                     await instance.deleteFlagReport(apsc099Course.courseName, flag.id);
                 }

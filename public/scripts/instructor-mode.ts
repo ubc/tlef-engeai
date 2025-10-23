@@ -80,8 +80,18 @@ function createInstructorVirtualUser(): User {
 }
 
 
+// Flag to prevent multiple initializations
+let isInitialized = false;
+
 document.addEventListener('DOMContentLoaded', async () => {
     console.log("DOMContentLoaded is called");
+    
+    // Prevent multiple initializations
+    if (isInitialized) {
+        console.log("Already initialized, skipping...");
+        return;
+    }
+    isInitialized = true;
 
     // Check authentication first
     const isAuthenticated = await checkAuthentication();
@@ -307,9 +317,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     flagStateEl?.addEventListener('click', () => {
+        console.log('🖱️ [INSTRUCTOR-DEBUG] Flag state clicked');
+        console.log('🖱️ [INSTRUCTOR-DEBUG] Current state:', currentState);
+        console.log('🖱️ [INSTRUCTOR-DEBUG] Flag state enum:', StateEvent.Flag);
+        
         if (currentState !== StateEvent.Flag) {
+            console.log('🔄 [INSTRUCTOR-DEBUG] Switching to flag state');
             currentState = StateEvent.Flag;
+            console.log('🔄 [INSTRUCTOR-DEBUG] Calling updateUI()');
             updateUI();
+        } else {
+            console.log('ℹ️ [INSTRUCTOR-DEBUG] Already in flag state, no action needed');
         }
     });
 
@@ -366,29 +384,52 @@ document.addEventListener('DOMContentLoaded', async () => {
                         | 'course-setup'
                         | 'document-setup'
         ) => {
-        if (!mainContentAreaEl) return;
+        console.log(`🚀 [INSTRUCTOR-DEBUG] Loading component: ${componentName}`);
+        
+        if (!mainContentAreaEl) {
+            console.error('❌ [INSTRUCTOR-DEBUG] Main content area element not found!');
+            return;
+        }
+        
         try {
+            console.log(`📡 [INSTRUCTOR-DEBUG] Fetching HTML for component: ${componentName}`);
             const html = await loadComponentHTML(componentName);
+            console.log(`✅ [INSTRUCTOR-DEBUG] HTML fetched successfully for: ${componentName}`);
+            
+            console.log(`🎨 [INSTRUCTOR-DEBUG] Setting innerHTML for component: ${componentName}`);
             mainContentAreaEl.innerHTML = html;
+            
             if (componentName === 'documents-instructor') {
+                console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing documents page...`);
                 initializeDocumentsPage(currentClass);
             }
             else if (componentName === 'flag-instructor') {
-                initializeFlags();
+                console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing flags...`);
+                console.log(`🔧 [INSTRUCTOR-DEBUG] Current class data:`, currentClass);
+                console.log(`🔧 [INSTRUCTOR-DEBUG] Window.currentClass:`, (window as any).currentClass);
+                await initializeFlags();
             }
             else if (componentName === 'monitor-instructor') {
+                console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing monitor dashboard...`);
                 initializeMonitorDashboard();
             }
             else if (componentName === 'course-setup') {
+                console.log(`🔧 [INSTRUCTOR-DEBUG] Course setup component - handled by renderOnCourseSetup`);
                 // Course setup component - handled by renderOnCourseSetup
             }
             else if (componentName === 'document-setup') {
+                console.log(`🔧 [INSTRUCTOR-DEBUG] Document setup component - handled by renderDocumentSetup`);
                 //course setup component - handled by renderDocumentSetup
             }
+            
+            console.log(`🎨 [INSTRUCTOR-DEBUG] Rendering feather icons...`);
             renderFeatherIcons();
+            
+            console.log(`✅ [INSTRUCTOR-DEBUG] Component ${componentName} loaded successfully`);
         }
         catch (error) {
-            console.log(`Error loading component ${componentName}:`, error);
+            console.error(`❌ [INSTRUCTOR-DEBUG] Error loading component ${componentName}:`, error);
+            console.error(`❌ [INSTRUCTOR-DEBUG] Error stack:`, error instanceof Error ? error.stack : 'No stack trace');
             mainContentAreaEl.innerHTML = `<p style="color: red; text-align: center;"> Error loading content. </p>`
         }
     };
@@ -417,6 +458,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         if ( currentState === StateEvent.Flag){
+            console.log('🎯 [INSTRUCTOR-DEBUG] updateUI() handling flag state');
+            console.log('🎯 [INSTRUCTOR-DEBUG] Calling loadComponent("flag-instructor")');
             loadComponent('flag-instructor');
             updateSidebarState();
             expandFeatureSidebar();

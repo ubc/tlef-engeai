@@ -731,6 +731,46 @@ export async function showDeleteConfirmationModal(itemType: string, itemName?: s
 }
 
 /**
+ * Shows an upload loading modal with progress indication
+ * 
+ * @returns Promise that resolves when modal is closed
+ */
+export async function showUploadLoadingModal(): Promise<ModalResult> {
+    const modal = getModal();
+    return modal.show({
+        type: 'info',
+        title: 'Uploading Document',
+        content: `
+            <div style="text-align: center; padding: 20px;">
+                <div style="font-size: 48px; margin-bottom: 16px;">📄</div>
+                <p style="margin-bottom: 16px; color: var(--text-primary);">
+                    Uploading your document...
+                </p>
+                <p style="color: var(--text-secondary); font-size: 14px;">
+                    Please wait while we process and store your document.
+                </p>
+                <div style="margin-top: 20px;">
+                    <div style="width: 100%; height: 4px; background-color: #e0e0e0; border-radius: 2px; overflow: hidden;">
+                        <div style="width: 100%; height: 100%; background-color: #4CAF50; animation: progress 3s ease-in-out infinite;"></div>
+                    </div>
+                </div>
+            </div>
+            <style>
+                @keyframes progress {
+                    0% { transform: translateX(-100%); }
+                    50% { transform: translateX(0%); }
+                    100% { transform: translateX(100%); }
+                }
+            </style>
+        `,
+        showCloseButton: false,
+        closeOnOverlayClick: false,
+        closeOnEscape: false,
+        maxWidth: '400px'
+    });
+}
+
+/**
  * Shows a chat creation error modal
  * 
  * @param errorMessage - The error message to display
@@ -779,16 +819,21 @@ export function closeModal(action: string = 'close'): void {
  * Opens a document upload modal for adding course materials
  * 
  * @param divisionId - The ID of the division
- * @param contentId - The ID of the content item
+ * @param itemId - The ID of the content item
  * @param onUpload - Callback function called when upload is successful
  * @returns Promise<void>
  */
 export async function openUploadModal(
     divisionId: string, 
-    contentId: string, 
+    itemId: string, 
     onUpload?: (material: any) => void
 ): Promise<void> {
-    console.log('Open upload modal called for divisionId: ', divisionId, ' and contentId: ', contentId);
+    console.log('🔍 OPEN UPLOAD MODAL CALLED');
+    console.log('  - divisionId:', divisionId);
+    console.log('  - itemId:', itemId);
+    console.log('  - onUpload callback provided:', !!onUpload);
+    console.log('  - onUpload callback type:', typeof onUpload);
+    console.log('  - onUpload callback:', onUpload);
     
     // Get the mount point for the modal
     const mount = document.getElementById('upload-modal-mount');
@@ -1134,7 +1179,7 @@ export async function openUploadModal(
                 id: '',
                 name: name,
                 divisionId: divisionId,
-                contentId: contentId,
+                itemId: itemId,
                 sourceType: currentMethod,
                 file: currentMethod === 'file' ? selectedFile : null,
                 text: currentMethod === 'text' ? text : '',
@@ -1142,21 +1187,57 @@ export async function openUploadModal(
                 date: new Date(),
             };
 
+            console.log('🔍 MATERIAL OBJECT CREATED IN UPLOAD MODAL:');
+            console.log('  - material:', material);
+            console.log('  - material.divisionId:', material.divisionId);
+            console.log('  - material.itemId:', material.itemId);
+
             // Call the upload callback if provided and wait for completion
             if (onUpload) {
+                console.log('🔍 CALLING onUpload CALLBACK');
+                console.log('🔍 onUpload function:', onUpload);
+                console.log('🔍 onUpload function type:', typeof onUpload);
+                console.log('🔍 material being passed:', material);
+                
+                // Show loading modal
+                console.log('🔍 SHOWING LOADING MODAL');
+                const loadingModalPromise = showUploadLoadingModal();
+                console.log('🔍 LOADING MODAL PROMISE CREATED:', loadingModalPromise);
+                
                 try {
-                    await onUpload(material);
-                    // Only close modal after successful upload
+                    console.log('🔍 ABOUT TO CALL onUpload(material)');
+                    console.log('🔍 Calling onUpload with material:', material);
+                    
+                    const result = await onUpload(material);
+                    console.log('🔍 UPLOAD CALLBACK COMPLETED SUCCESSFULLY');
+                    console.log('🔍 Upload result:', result);
+                    
+                    // Close loading modal manually
+                    console.log('🔍 CLOSING LOADING MODAL - SUCCESS');
+                    closeModal('success');
+                    
+                    // Only close upload modal after successful upload
+                    console.log('🔍 CLOSING UPLOAD MODAL');
                     close();
                 } catch (error) {
-                    console.error('Upload failed:', error);
-                    alert('Upload failed. Please try again.');
+                    console.error('❌ UPLOAD CALLBACK FAILED:', error);
+                    console.error('❌ Error details:', error);
+                    console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack');
+                    
+                    // Close loading modal manually
+                    console.log('🔍 CLOSING LOADING MODAL - ERROR');
+                    closeModal('error');
+                    
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    alert(`Upload failed: ${errorMessage}`);
                     // Don't close modal on error - let user try again
                     return;
                 }
             } else {
-                // Close the modal if no upload callback
-                close();
+                console.warn('⚠️ No onUpload callback provided');
+                console.warn('⚠️ onUpload is:', onUpload);
+                console.warn('⚠️ onUpload type:', typeof onUpload);
+                alert('Upload callback not available. Please try again.');
             }
         } catch (error) {
             console.error('Error in upload process:', error);
@@ -1181,6 +1262,7 @@ export default {
     showCustomModal,
     showSimpleErrorModal,
     showDeleteConfirmationModal,
+    showUploadLoadingModal,
     showChatCreationErrorModal,
     openUploadModal,
     closeModal

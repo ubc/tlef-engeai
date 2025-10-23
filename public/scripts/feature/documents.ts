@@ -27,7 +27,7 @@ import {
 } from '../../../src/functions/types';
 import { uploadRAGContent } from '../services/RAGService.js';
 import { DocumentUploadModule, UploadResult } from '../services/DocumentUploadModule.js';
-import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal } from '../modal-overlay.js';
+import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal } from '../modal-overlay.js';
 
 // In-memory store for the course data
 let courseData: ContentDivision[] = [];
@@ -222,7 +222,15 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const container = document.getElementById('documents-container');
         if (!container) return;
 
-        container.addEventListener('click', (event) => {
+        // Remove any existing event listeners to prevent accumulation
+        const existingHandler = (container as any)._documentsClickHandler;
+        if (existingHandler) {
+            container.removeEventListener('click', existingHandler);
+            console.log('🔧 Removed existing documents click handler');
+        }
+
+        // Create the click handler function
+        const clickHandler = (event: Event) => {
             const target = event.target as HTMLElement;
 
             // Division header toggles
@@ -230,6 +238,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             if (divisionHeader) {
                 const divisionId = divisionHeader.getAttribute('data-division') || '0';
                 if (!divisionId) return;
+                console.log('🔍 DIVISION CLICKED - Division ID:', divisionId);
                 toggleDivision(divisionId);
                 return;
             }
@@ -290,9 +299,18 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                             return; // Prevent further event handling
                         case 'delete-material':
                             event.stopPropagation();
-                            //print the divisionId, contentId, and materialId
-                            console.log('DEBUG #13: divisionId : ', divisionId, ' ; contentId : ', contentId, ' ; materialId : ', button.dataset.materialId);
-                            deleteAdditionalMaterial(divisionId, contentId, button.dataset.materialId || '');
+                            // For additional materials, get IDs from the content item container
+                            const additionalMaterialRow = button.closest('.additional-material') as HTMLElement | null;
+                            const contentItem = button.closest('.content-item') as HTMLElement | null;
+                            if (!contentItem) return;
+                            
+                            const contentItemId = contentItem.id; // content-item-divisionId-contentId
+                            const ids = contentItemId.split('-'); // ['content', 'item', 'divisionId', 'contentId']
+                            const materialDivisionId = ids[2] || '0';
+                            const materialContentId = ids[3] || '0';
+                            
+                            console.log('DEBUG #13: divisionId : ', materialDivisionId, ' ; contentId : ', materialContentId, ' ; materialId : ', button.dataset.materialId);
+                            deleteAdditionalMaterial(materialDivisionId, materialContentId, button.dataset.materialId || '');
                             return; // Prevent further event handling
                     }
                 }
@@ -318,11 +336,48 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 const divisionId = ids[2] || '0';
                 const contentId = ids[3] || '0';
                 if (!divisionId || !contentId) return;
-                console.log('Upload area clicked!', divisionId, contentId);
+                console.log('🔍 UPLOAD AREA CLICKED - Division ID:', divisionId, 'Item ID:', contentId);
                 openUploadModal(divisionId, contentId, handleUploadMaterial);
                     return;
             }
-        });
+
+            // Content item click -> log item info
+            const contentItem = target.closest('.content-item') as HTMLElement | null;
+            if (contentItem) {
+                const ids = contentItem.id.split('-'); // content-item-divisionId-contentId
+                const divisionId = ids[2] || '0';
+                const contentId = ids[3] || '0';
+                if (!divisionId || !contentId) return;
+                console.log('🔍 ITEM CLICKED - Division ID:', divisionId, 'Item ID:', contentId);
+                return;
+            }
+        };
+
+        // Store the handler reference and add the event listener
+        (container as any)._documentsClickHandler = clickHandler;
+        container.addEventListener('click', clickHandler);
+        console.log('🔧 Added documents click handler');
+    }
+
+    // Add event listener for delete all documents button
+    const deleteAllDocumentsBtn = document.getElementById('delete-all-documents-btn');
+    if (deleteAllDocumentsBtn) {
+        // Remove any existing event listeners to prevent accumulation
+        const existingDeleteHandler = (deleteAllDocumentsBtn as any)._deleteAllHandler;
+        if (existingDeleteHandler) {
+            deleteAllDocumentsBtn.removeEventListener('click', existingDeleteHandler);
+            console.log('🔧 Removed existing delete all documents handler');
+        }
+
+        // Create the delete handler function
+        const deleteHandler = async () => {
+            await deleteAllDocuments();
+        };
+
+        // Store the handler reference and add the event listener
+        (deleteAllDocumentsBtn as any)._deleteAllHandler = deleteHandler;
+        deleteAllDocumentsBtn.addEventListener('click', deleteHandler);
+        console.log('🔧 Added delete all documents handler');
     }
 
     // --- Event Handler Functions ---
@@ -334,11 +389,26 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @returns Promise<void>
      */
     async function handleUploadMaterial(material: any): Promise<void> {
+        console.log('🔍 HANDLE UPLOAD MATERIAL CALLED - FUNCTION STARTED');
+        console.log('  - material:', material);
+        console.log('  - material.divisionId:', material.divisionId);
+        console.log('  - material.itemId:', material.itemId);
+        console.log('  - courseData:', courseData);
+        console.log('  - currentClass:', currentClass);
+        
         try {
             // Get the division and the content item
             const division = courseData.find(d => d.id === material.divisionId);
-            const contentItem = division?.items.find(c => c.id === material.contentId);
-            if (!contentItem) return;
+            console.log('  - division found:', !!division);
+            
+            const contentItem = division?.items.find(c => c.id === material.itemId);
+            console.log('  - contentItem found:', !!contentItem);
+            
+            if (!contentItem) {
+                console.error('❌ Content item not found for itemId:', material.itemId);
+                alert('Content item not found. Please try again.');
+                return;
+            }
             if (!contentItem.additionalMaterials) contentItem.additionalMaterials = [];
 
             // Create the additional material object
@@ -353,18 +423,27 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 text: material.text,
                 fileName: material.fileName,
                 date: new Date(),
+                // Add these three lines:
+    courseId: currentClass.id,
+    divisionId: material.divisionId,
+    itemId: material.itemId
             };
 
+            console.log('🔍 CREATING DOCUMENT UPLOAD MODULE');
+            console.log('  - additionalMaterial:', additionalMaterial);
+            
             // Use DocumentUploadModule for upload
             const uploadModule = new DocumentUploadModule((progress, stage) => {
                 console.log(`Upload progress: ${progress}% - ${stage}`);
                 // You could update a progress bar here if needed
             });
 
+            console.log('🔍 CALLING UPLOAD MODULE.uploadDocument');
             const uploadResult: UploadResult = await uploadModule.uploadDocument(additionalMaterial);
+            console.log('🔍 UPLOAD RESULT:', uploadResult);
             
             if (!uploadResult.success) {
-                console.error('Upload failed:', uploadResult.error);
+                console.error(`Upload failed: ${uploadResult.error}`);
                 alert(`Failed to upload content: ${uploadResult.error}`);
                 return;
             }
@@ -379,7 +458,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             contentItem.additionalMaterials.push(uploadResult.document);
 
             // Refresh the content item
-            refreshContentItem(material.divisionId, material.contentId);
+            refreshContentItem(material.divisionId, material.itemId);
 
             console.log('Material uploaded successfully:', uploadResult.document);
             console.log(`Generated ${uploadResult.chunksGenerated} chunks in Qdrant`);
@@ -1413,5 +1492,101 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         wrapper.appendChild(addWrap);
 
         return wrapper;
+    }
+
+    /**
+     * Delete all documents from both MongoDB and Qdrant
+     */
+    async function deleteAllDocuments(): Promise<void> {
+        try {
+            // Show confirmation modal
+            const result = await showDeleteConfirmationModal(
+                'All Documents',
+                `all documents from the RAG database for course "${currentClass.courseName}"`
+            );
+
+            if (result.action !== 'delete') {
+                console.log('Delete all documents cancelled by user');
+                return;
+            }
+
+            console.log('🗑️ Starting wipe of all RAG documents for current course...');
+
+            // Get course ID from currentClass
+            const courseId = currentClass.id;
+            if (!courseId) {
+                throw new Error('Course ID not found');
+            }
+
+            // Call the new wipe-all API endpoint with courseId
+            console.log('🔍 WIPE ALL DOCUMENTS - Request Details:');
+            console.log('  URL:', `/api/rag/wipe-all?courseId=${courseId}`);
+            console.log('  Method: DELETE');
+            console.log('  Course ID:', courseId);
+            
+            const response = await fetch(`/api/rag/wipe-all?courseId=${courseId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include'
+            });
+
+            console.log('🔍 WIPE ALL DOCUMENTS - Response Details:');
+            console.log('  Status:', response.status);
+            console.log('  Status Text:', response.statusText);
+            console.log('  Headers:', Object.fromEntries(response.headers.entries()));
+            console.log('  Content-Type:', response.headers.get('content-type'));
+
+            if (!response.ok) {
+                const responseText = await response.text();
+                console.log('🔍 WIPE ALL DOCUMENTS - Error Response Body (raw):');
+                console.log('  Raw Response:', responseText);
+                
+                try {
+                    const errorData = JSON.parse(responseText);
+                    console.log('🔍 WIPE ALL DOCUMENTS - Error Response Body (parsed):');
+                    console.log('  Parsed Error:', errorData);
+                    throw new Error(errorData.message || errorData.details || `HTTP ${response.status}`);
+                } catch (parseError) {
+                    console.log('🔍 WIPE ALL DOCUMENTS - JSON Parse Error:');
+                    console.log('  Parse Error:', parseError);
+                    throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
+                }
+            }
+
+            const responseText = await response.text();
+            console.log('🔍 WIPE ALL DOCUMENTS - Success Response Body (raw):');
+            console.log('  Raw Response:', responseText);
+            
+            let result_data;
+            try {
+                result_data = JSON.parse(responseText);
+                console.log('🔍 WIPE ALL DOCUMENTS - Success Response Body (parsed):');
+                console.log('  Parsed Result:', result_data);
+            } catch (parseError) {
+                console.log('🔍 WIPE ALL DOCUMENTS - JSON Parse Error:');
+                console.log('  Parse Error:', parseError);
+                throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
+            }
+            console.log('✅ RAG database wipe completed:', result_data);
+
+            // Clear all additional materials from local data
+            courseData.forEach(division => {
+                division.items.forEach(item => {
+                    item.additionalMaterials = [];
+                });
+            });
+
+            // Refresh the UI to show empty state
+            renderDocumentsPage();
+
+            // Show success message
+            alert(`Successfully wiped all documents from RAG database for course "${currentClass.courseName}"! Deleted ${result_data.data?.deletedCount || 0} documents.`);
+
+        } catch (error) {
+            console.error('Error deleting all documents:', error);
+            alert(`Failed to delete documents: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
     }
 }

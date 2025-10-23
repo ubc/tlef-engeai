@@ -172,7 +172,10 @@ export class DocumentUploadModule {
                     courseName: document.courseName,
                     divisionTitle: document.divisionTitle,
                     itemTitle: document.itemTitle,
-                    sourceType: document.sourceType
+                    sourceType: document.sourceType,
+                    courseId: document.courseId,
+                    divisionId: document.divisionId,
+                    itemId: document.itemId
                 });
             } else if (document.sourceType === 'text' && document.text) {
                 const validation = this.validateText(document.text);
@@ -184,7 +187,10 @@ export class DocumentUploadModule {
                     courseName: document.courseName,
                     divisionTitle: document.divisionTitle,
                     itemTitle: document.itemTitle,
-                    sourceType: document.sourceType
+                    sourceType: document.sourceType,
+                    courseId: document.courseId,
+                    divisionId: document.divisionId,
+                    itemId: document.itemId
                 });
             } else {
                 return { success: false, error: 'Invalid document: must have either file or text content' };
@@ -225,8 +231,27 @@ export class DocumentUploadModule {
             formData.append('divisionTitle', metadata.divisionTitle);
             formData.append('itemTitle', metadata.itemTitle);
             formData.append('sourceType', metadata.sourceType);
+            // Add these three lines:
+            formData.append('courseId', (metadata as any).courseId || '');
+            formData.append('divisionId', (metadata as any).divisionId || '');
+            formData.append('itemId', (metadata as any).itemId || '');
 
             this.progressCallback(30, 'Uploading file...');
+
+            console.log('🔍 UPLOAD FILE - Request Details:');
+            console.log('  URL:', '/api/rag/documents/file');
+            console.log('  Method: POST');
+            console.log('  File Name:', fileToUpload.name);
+            console.log('  File Size:', fileToUpload.size);
+            console.log('  File Type:', fileToUpload.type);
+            console.log('  FormData Contents:');
+            for (const [key, value] of formData.entries()) {
+                if (value instanceof File) {
+                    console.log(`    ${key}: File(${value.name}, ${value.size} bytes, ${value.type})`);
+                } else {
+                    console.log(`    ${key}: ${value}`);
+                }
+            }
 
             // Upload to the correct RAG endpoint
             const response = await fetch('/api/rag/documents/file', {
@@ -236,12 +261,43 @@ export class DocumentUploadModule {
 
             this.progressCallback(70, 'Processing file...');
 
+            console.log('🔍 UPLOAD FILE - Response Details:');
+            console.log('  Status:', response.status);
+            console.log('  Status Text:', response.statusText);
+            console.log('  Headers:', Object.fromEntries(response.headers.entries()));
+            console.log('  Content-Type:', response.headers.get('content-type'));
+
             if (!response.ok) {
                 const errorText = await response.text();
+                console.log('🔍 UPLOAD FILE - Error Response Body (raw):');
+                console.log('  Raw Response:', errorText);
+                
+                try {
+                    const errorData = JSON.parse(errorText);
+                    console.log('🔍 UPLOAD FILE - Error Response Body (parsed):');
+                    console.log('  Parsed Error:', errorData);
+                } catch (parseError) {
+                    console.log('🔍 UPLOAD FILE - JSON Parse Error:');
+                    console.log('  Parse Error:', parseError);
+                }
+                
                 throw new Error(`Upload failed: ${response.status} - ${errorText}`);
             }
 
-            const result = await response.json();
+            const responseText = await response.text();
+            console.log('🔍 UPLOAD FILE - Success Response Body (raw):');
+            console.log('  Raw Response:', responseText);
+            
+            let result;
+            try {
+                result = JSON.parse(responseText);
+                console.log('🔍 UPLOAD FILE - Success Response Body (parsed):');
+                console.log('  Parsed Result:', result);
+            } catch (parseError) {
+                console.log('🔍 UPLOAD FILE - JSON Parse Error:');
+                console.log('  Parse Error:', parseError);
+                throw new Error(`Invalid JSON response: ${responseText}`);
+            }
 
             this.progressCallback(90, 'Finalizing upload...');
 
@@ -285,30 +341,74 @@ export class DocumentUploadModule {
 
             this.progressCallback(30, 'Uploading text...');
 
+            const requestBody = {
+                text: text,
+                name: metadata.name,
+                courseName: metadata.courseName,
+                divisionTitle: metadata.divisionTitle,
+                itemTitle: metadata.itemTitle,
+                sourceType: metadata.sourceType,
+                // Add these three lines:
+                courseId: (metadata as any).courseId || '',
+                divisionId: (metadata as any).divisionId || '',
+                itemId: (metadata as any).itemId || ''
+            };
+
+            console.log('🔍 UPLOAD TEXT - Request Details:');
+            console.log('  URL:', '/api/rag/documents/text');
+            console.log('  Method: POST');
+            console.log('  Headers:', { 'Content-Type': 'application/json' });
+            console.log('  Request Body:', requestBody);
+            console.log('  Text Length:', text.length);
+
             // Upload to the correct RAG endpoint
             const response = await fetch('/api/rag/documents/text', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    text: text,
-                    name: metadata.name,
-                    courseName: metadata.courseName,
-                    divisionTitle: metadata.divisionTitle,
-                    itemTitle: metadata.itemTitle,
-                    sourceType: metadata.sourceType
-                })
+                body: JSON.stringify(requestBody)
             });
 
             this.progressCallback(70, 'Processing text...');
 
+            console.log('🔍 UPLOAD TEXT - Response Details:');
+            console.log('  Status:', response.status);
+            console.log('  Status Text:', response.statusText);
+            console.log('  Headers:', Object.fromEntries(response.headers.entries()));
+            console.log('  Content-Type:', response.headers.get('content-type'));
+
             if (!response.ok) {
                 const errorText = await response.text();
+                console.log('🔍 UPLOAD TEXT - Error Response Body (raw):');
+                console.log('  Raw Response:', errorText);
+                
+                try {
+                    const errorData = JSON.parse(errorText);
+                    console.log('🔍 UPLOAD TEXT - Error Response Body (parsed):');
+                    console.log('  Parsed Error:', errorData);
+                } catch (parseError) {
+                    console.log('🔍 UPLOAD TEXT - JSON Parse Error:');
+                    console.log('  Parse Error:', parseError);
+                }
+                
                 throw new Error(`Upload failed: ${response.status} - ${errorText}`);
             }
 
-            const result = await response.json();
+            const responseText = await response.text();
+            console.log('🔍 UPLOAD TEXT - Success Response Body (raw):');
+            console.log('  Raw Response:', responseText);
+            
+            let result;
+            try {
+                result = JSON.parse(responseText);
+                console.log('🔍 UPLOAD TEXT - Success Response Body (parsed):');
+                console.log('  Parsed Result:', result);
+            } catch (parseError) {
+                console.log('🔍 UPLOAD TEXT - JSON Parse Error:');
+                console.log('  Parse Error:', parseError);
+                throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
+            }
 
             this.progressCallback(90, 'Finalizing upload...');
 

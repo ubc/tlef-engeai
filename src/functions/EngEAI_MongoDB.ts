@@ -243,7 +243,7 @@ export class EngEAI_MongoDB {
         }
     }
 
-    public getFlagReports = async (courseName: string): Promise<FlagReport[]> => {
+    public getAllFlagReports = async (courseName: string): Promise<FlagReport[]> => {
         //START DEBUG LOG : DEBUG-CODE(002)
         console.log('🏴 Getting flag reports for course:', courseName);
         //END DEBUG LOG : DEBUG-CODE(002)
@@ -779,6 +779,73 @@ export class EngEAI_MongoDB {
         }
     }
 
+    public addAdditionalMaterial = async (
+        courseId: string, 
+        divisionId: string, 
+        itemId: string, 
+        material: AdditionalMaterial
+    ): Promise<any> => {
+        try {
+            console.log('📄 Adding additional material to course:', courseId, 'division:', divisionId, 'item:', itemId);
+            
+            const result = await this.getCourseCollection().findOneAndUpdate(
+                { 
+                    id: courseId,
+                    'divisions.id': divisionId,
+                    'divisions.items.id': itemId
+                },
+                { 
+                    $push: { 
+                        'divisions.$[division].items.$[item].additionalMaterials': material as any
+                    },
+                    $set: { updatedAt: Date.now().toString() }
+                },
+                { 
+                    arrayFilters: [
+                        { 'division.id': divisionId },
+                        { 'item.id': itemId }
+                    ],
+                    returnDocument: 'after' 
+                }
+            );
+            
+            console.log('✅ Additional material added successfully');
+            return result;
+        } catch (error) {
+            console.error('Error adding additional material:', error);
+            throw error;
+        }
+    }
+
+    public clearAllAdditionalMaterials = async (courseId: string): Promise<any> => {
+        try {
+            console.log('🗑️ Clearing all additional materials from course:', courseId);
+            
+            const result = await this.getCourseCollection().findOneAndUpdate(
+                { id: courseId },
+                { 
+                    $unset: { 
+                        'divisions.$[division].items.$[item].additionalMaterials': 1 
+                    },
+                    $set: { updatedAt: Date.now().toString() }
+                },
+                { 
+                    arrayFilters: [
+                        { 'division.id': { $exists: true } }, // Match all divisions that have an id
+                        { 'item.id': { $exists: true } }     // Match all items that have an id
+                    ],
+                    returnDocument: 'after' 
+                }
+            );
+            
+            console.log('✅ All additional materials cleared successfully');
+            return result;
+        } catch (error) {
+            console.error('Error clearing additional materials:', error);
+            throw error;
+        }
+    }
+
     public async close(): Promise<void> {
         try {
             await this.client.close();
@@ -914,7 +981,7 @@ export class EngEAI_MongoDB {
         
         try {
             // Get all flag reports
-            const flagReports = await this.getFlagReports(courseName);
+            const flagReports = await this.getAllFlagReports(courseName);
             
             if (flagReports.length === 0) {
                 return [];
