@@ -237,6 +237,21 @@
     box-shadow: 0 2px 4px rgba(175, 76, 76, 0.3);
 }
 
+.status-delete-all-documents {
+    background-color: #ff6b35;
+    color: white;
+    border: 1px solid #ff6b35;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.status-delete-all-documents:hover {
+    background-color: #ff5722;
+    border-color: #ff5722;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(255, 107, 53, 0.3);
+}
+
 .learning-objectives {
     margin: 10px 0;
 }

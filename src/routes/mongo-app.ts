@@ -744,7 +744,7 @@ router.get('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: Re
             });
         }
 
-        const flagReports = await instance.getFlagReports(course.courseName);
+        const flagReports = await instance.getAllFlagReports(course.courseName);
         
         res.json({
             success: true,
@@ -756,6 +756,41 @@ router.get('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: Re
         res.status(500).json({
             success: false,
             error: 'Failed to get flag reports'
+        });
+    }
+}));
+
+// GET /api/courses/:courseId/flags/with-names - Get flag reports with resolved user names (REQUIRES AUTH - Instructors only)
+router.get('/:courseId/flags/with-names', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId } = req.params;
+        
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES-API)
+        console.log('🔍 Getting flag reports with user names for course:', course.courseName);
+        //END DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES-API)
+
+        const flagsWithNames = await instance.getFlagReportsWithUserNames(course.courseName);
+        
+        res.json({
+            success: true,
+            data: flagsWithNames,
+            count: flagsWithNames.length
+        });
+    } catch (error) {
+        console.error('Error getting flag reports with user names:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get flag reports with user names'
         });
     }
 }));
@@ -1016,41 +1051,6 @@ router.get('/:courseId/flags/statistics', asyncHandlerWithAuth(async (req: Reque
     }
 }));
 
-// GET /api/courses/:courseId/flags/with-names - Get flag reports with resolved user names (REQUIRES AUTH - Instructors only)
-router.get('/:courseId/flags/with-names', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId } = req.params;
-        
-        // Get course to get course name
-        const course = await instance.getActiveCourse(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                error: 'Course not found'
-            });
-        }
-
-        //START DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES-API)
-        console.log('🔍 Getting flag reports with user names for course:', course.courseName);
-        //END DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES-API)
-
-        const flagsWithNames = await instance.getFlagReportsWithUserNames(course.courseName);
-        
-        res.json({
-            success: true,
-            data: flagsWithNames,
-            count: flagsWithNames.length
-        });
-    } catch (error) {
-        console.error('Error getting flag reports with user names:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to get flag reports with user names'
-        });
-    }
-}));
-
 // GET /api/courses/:courseId/flags/student/:userId - Get flag reports for a specific student (REQUIRES AUTH - Student view)
 router.get('/:courseId/flags/student/:userId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -1071,7 +1071,7 @@ router.get('/:courseId/flags/student/:userId', asyncHandlerWithAuth(async (req: 
         //END DEBUG LOG : DEBUG-CODE(GET-STUDENT-FLAGS-API)
 
         // Get all flags and filter by userId
-        const allFlags = await instance.getFlagReports(course.courseName);
+        const allFlags = await instance.getAllFlagReports(course.courseName);
         const studentFlags = allFlags.filter((flag: FlagReport) => flag.userId.toString() === userId.toString());
         
         // Sort by most recent first
@@ -1139,8 +1139,24 @@ router.delete('/:courseId/divisions/:divisionId/items/:itemId/materials/:materia
             });
         }
         
-                // Hard delete: Remove material from array
-                contentItem.additionalMaterials = contentItem.additionalMaterials.filter((m: any) => m.id !== materialId);
+        // Delete from Qdrant first if material has qdrantId
+        if (material.qdrantId) {
+            try {
+                const { RAGApp } = await import('../routes/RAG-App.js');
+                const ragApp = await RAGApp.getInstance();
+                await ragApp.deleteDocument(materialId, courseId, divisionId, itemId);
+                console.log(`✅ Material ${materialId} deleted from Qdrant`);
+            } catch (qdrantError) {
+                console.error('Failed to delete from Qdrant:', qdrantError);
+                return res.status(500).json({
+                    success: false,
+                    error: 'Failed to delete material from vector database'
+                });
+            }
+        }
+        
+        // Hard delete: Remove material from array
+        contentItem.additionalMaterials = contentItem.additionalMaterials.filter((m: any) => m.id !== materialId);
         
         // Update the course in MongoDB
         const result = await mongoDB.updateActiveCourse(courseId, course as any);
@@ -1152,25 +1168,100 @@ router.delete('/:courseId/divisions/:divisionId/items/:itemId/materials/:materia
             });
         }
         
-        // TODO: Remove from Qdrant vector database
-        // This would require calling the RAG module to delete the material's chunks
-        // For now, we'll just mark it as deleted in MongoDB
-                console.log(`✅ Material ${materialId} deleted from MongoDB`);
+        console.log(`✅ Material ${materialId} deleted from MongoDB`);
         
-                res.json({
-                    success: true,
-                    message: 'Material deleted successfully',
-                    data: {
-                        materialId: materialId,
-                        deleted: true
-                    }
-                });
+        res.json({
+            success: true,
+            message: 'Material deleted successfully',
+            data: {
+                materialId: materialId,
+                deleted: true
+            }
+        });
         
     } catch (error) {
         console.error('Error deleting material:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to delete material'
+        });
+    }
+}));
+
+// DELETE /api/courses/:courseId/documents/all - Delete all RAG documents (REQUIRES AUTH - Instructors only)
+router.delete('/:courseId/documents/all', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const { courseId } = req.params;
+        
+        console.log('🔍 BACKEND DELETE ALL DOCUMENTS - Request Details:');
+        console.log('  Headers:', req.headers);
+        console.log('  Params:', req.params);
+        console.log('  User:', req.user);
+        console.log(`🗑️ Deleting all documents from course ${courseId}`);
+        
+        // Get MongoDB instance
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        
+        // Get the course
+        const course = await mongoDB.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        // Delete from Qdrant first
+        try {
+            const { RAGApp } = await import('../routes/RAG-App.js');
+            const ragApp = await RAGApp.getInstance();
+            const qdrantResult = await ragApp.deleteAllDocumentsForCourse(courseId);
+            console.log(`✅ Deleted ${qdrantResult.deletedCount} documents from Qdrant`);
+        } catch (qdrantError) {
+            console.error('Failed to delete from Qdrant:', qdrantError);
+            return res.status(500).json({
+                success: false,
+                error: 'Failed to delete documents from vector database'
+            });
+        }
+        
+        // Clear all additionalMaterials arrays in MongoDB
+        let totalDeleted = 0;
+        course.divisions?.forEach((division: any) => {
+            division.items?.forEach((item: any) => {
+                if (item.additionalMaterials && item.additionalMaterials.length > 0) {
+                    totalDeleted += item.additionalMaterials.length;
+                    item.additionalMaterials = [];
+                }
+            });
+        });
+        
+        // Update the course in MongoDB
+        const result = await mongoDB.updateActiveCourse(courseId, course as any);
+        
+        if (!result) {
+            return res.status(500).json({
+                success: false,
+                error: 'Failed to update course in database'
+            });
+        }
+        
+        console.log(`✅ Deleted ${totalDeleted} documents from MongoDB`);
+        
+        res.json({
+            success: true,
+            message: 'All documents deleted successfully',
+            data: {
+                deletedCount: totalDeleted,
+                courseId: courseId
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error deleting all documents:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to delete all documents'
         });
     }
 }));

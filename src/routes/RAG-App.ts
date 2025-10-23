@@ -311,11 +311,79 @@ export class RAGApp {
     /**
      * Delete document from RAG
      * 
-     * @param id - The id of the document to delete
+     * @param materialId - The id of the material to delete
+     * @param courseId - The course ID
+     * @param divisionId - The division ID
+     * @param itemId - The item ID
      * @returns The result of the delete
      */
-    async deleteDocument(id: string) : Promise<any> {
-        return ;
+    async deleteDocument(materialId: string, courseId: string, divisionId: string, itemId: string): Promise<boolean> {
+        try {
+            // Get course to find the material and its qdrantId
+            const course = await this.mongoDB.getActiveCourse(courseId);
+            if (!course) {
+                throw new Error('Course not found');
+            }
+            const division = course.divisions?.find((d: any) => d.id === divisionId);
+            const item = division?.items?.find((i: any) => i.id === itemId);
+            const material = item?.additionalMaterials?.find((m: any) => m.id === materialId);
+            
+            if (!material || !material.qdrantId) {
+                throw new Error('Material or qdrantId not found');
+            }
+            
+            // Delete from Qdrant using the qdrantId
+            await this.rag.deleteDocumentsByIds([material.qdrantId]);
+            
+            this.logger.info(`Deleted document from Qdrant: ${material.qdrantId}`);
+            return true;
+        } catch (error) {
+            this.logger.error('Failed to delete document from Qdrant:', error as any);
+            throw error;
+        }
+    }
+
+    /**
+     * Delete all documents for a course from Qdrant
+     * 
+     * @param courseId - The course ID
+     * @returns Statistics about the deletion
+     */
+    async deleteAllDocumentsForCourse(courseId: string): Promise<{ deletedCount: number, errors: string[] }> {
+        try {
+            const course = await this.mongoDB.getActiveCourse(courseId);
+            if (!course) {
+                throw new Error('Course not found');
+            }
+
+            const qdrantIds: string[] = [];
+            const errors: string[] = [];
+
+            // Collect all qdrantIds from all materials
+            course.divisions?.forEach((division: any) => {
+                division.items?.forEach((item: any) => {
+                    item.additionalMaterials?.forEach((material: any) => {
+                        if (material.qdrantId) {
+                            qdrantIds.push(material.qdrantId);
+                        }
+                    });
+                });
+            });
+
+            if (qdrantIds.length === 0) {
+                this.logger.info('No documents found to delete');
+                return { deletedCount: 0, errors: [] };
+            }
+
+            // Use bulk delete for efficiency
+            await this.rag.deleteDocumentsByIds(qdrantIds);
+            
+            this.logger.info(`Deleted ${qdrantIds.length} documents from Qdrant`);
+            return { deletedCount: qdrantIds.length, errors };
+        } catch (error) {
+            this.logger.error('Failed to delete all documents from Qdrant:', error as any);
+            throw error;
+        }
     }
 
     /**
@@ -491,6 +559,11 @@ const validateFileDocument = (req: MulterRequest, res: Response, next: Function)
 // POST /api/rag/documents/text - Upload a text document (REQUIRES AUTH)
 router.post('/documents/text', validateTextDocument, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
+        console.log('🔍 BACKEND UPLOAD TEXT - Request Details:');
+        console.log('  Headers:', req.headers);
+        console.log('  Body:', req.body);
+        console.log('  User:', req.user);
+        
         const ragApp = await RAGApp.getInstance();
         
         const document: AdditionalMaterial = {
@@ -506,6 +579,54 @@ router.post('/documents/text', validateTextDocument, asyncHandlerWithAuth(async 
         };
 
         const result = await ragApp.uploadDocument(document);
+
+        console.log('🔍 BACKEND UPLOAD TEXT - RAG Upload Result:');
+        console.log('  Result:', result);
+
+        // Store metadata in MongoDB if upload was successful
+        if (result.uploaded && result.qdrantId) {
+            try {
+                // Extract courseId, divisionId, and itemId from request body
+                const { courseId, divisionId, itemId } = req.body;
+                
+                console.log('🔍 BACKEND UPLOAD TEXT - MongoDB Storage Details:');
+                console.log('  CourseId:', courseId);
+                console.log('  DivisionId:', divisionId);
+                console.log('  ItemId:', itemId);
+                
+                if (!courseId || !divisionId || !itemId) {
+                    console.warn('Missing courseId, divisionId, or itemId for MongoDB storage');
+                } else {
+                    // Add uploadedBy field from authenticated user
+                    const materialWithUser = {
+                        ...result,
+                        uploadedBy: (req.user as any)?.puid || 'system'
+                    };
+                    
+                    console.log('🔍 BACKEND UPLOAD TEXT - Material with User:');
+                    console.log('  Material:', materialWithUser);
+                    
+                    await ragApp['mongoDB'].addAdditionalMaterial(courseId, divisionId, itemId, materialWithUser);
+                    console.log('✅ Document metadata stored in MongoDB');
+                }
+            } catch (mongoError) {
+                console.error('Failed to store document metadata in MongoDB:', mongoError);
+                // Don't fail the entire request if MongoDB storage fails
+            }
+        }
+
+        console.log('🔍 BACKEND UPLOAD TEXT - Response Data:');
+        console.log('  Response:', {
+            status: 201,
+            message: 'Document uploaded successfully',
+            data: {
+                id: result.id,
+                name: result.name,
+                uploaded: result.uploaded,
+                qdrantId: result.qdrantId,
+                chunksGenerated: result.chunksGenerated || 0
+            }
+        });
 
         res.status(201).json({
             status: 201,
@@ -531,6 +652,12 @@ router.post('/documents/text', validateTextDocument, asyncHandlerWithAuth(async 
 // POST /api/rag/documents/file - Upload a file document (REQUIRES AUTH)
 router.post('/documents/file', upload.single('file'), validateFileDocument, asyncHandlerWithAuth(async (req: MulterRequest, res: Response) => {
     try {
+        console.log('🔍 BACKEND UPLOAD FILE - Request Details:');
+        console.log('  Headers:', req.headers);
+        console.log('  Body:', req.body);
+        console.log('  File:', req.file);
+        console.log('  User:', req.user);
+        
         const ragApp = await RAGApp.getInstance();
         
         if (!req.file) {
@@ -554,6 +681,30 @@ router.post('/documents/file', upload.single('file'), validateFileDocument, asyn
         };
 
         const result = await ragApp.uploadDocument(document);
+
+        // Store metadata in MongoDB if upload was successful
+        if (result.uploaded && result.qdrantId) {
+            try {
+                // Extract courseId, divisionId, and itemId from request body
+                const { courseId, divisionId, itemId } = req.body;
+                
+                if (!courseId || !divisionId || !itemId) {
+                    console.warn('Missing courseId, divisionId, or itemId for MongoDB storage');
+                } else {
+                    // Add uploadedBy field from authenticated user
+                    const materialWithUser = {
+                        ...result,
+                        uploadedBy: (req.user as any)?.puid || 'system'
+                    };
+                    
+                    await ragApp['mongoDB'].addAdditionalMaterial(courseId, divisionId, itemId, materialWithUser);
+                    console.log('✅ Document metadata stored in MongoDB');
+                }
+            } catch (mongoError) {
+                console.error('Failed to store document metadata in MongoDB:', mongoError);
+                // Don't fail the entire request if MongoDB storage fails
+            }
+        }
 
         res.status(201).json({
             status: 201,

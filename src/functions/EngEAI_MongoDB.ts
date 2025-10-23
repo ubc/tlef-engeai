@@ -243,7 +243,7 @@ export class EngEAI_MongoDB {
         }
     }
 
-    public getFlagReports = async (courseName: string): Promise<FlagReport[]> => {
+    public getAllFlagReports = async (courseName: string): Promise<FlagReport[]> => {
         //START DEBUG LOG : DEBUG-CODE(002)
         console.log('🏴 Getting flag reports for course:', courseName);
         //END DEBUG LOG : DEBUG-CODE(002)
@@ -779,6 +779,44 @@ export class EngEAI_MongoDB {
         }
     }
 
+    public addAdditionalMaterial = async (
+        courseId: string, 
+        divisionId: string, 
+        itemId: string, 
+        material: AdditionalMaterial
+    ): Promise<any> => {
+        try {
+            console.log('📄 Adding additional material to course:', courseId, 'division:', divisionId, 'item:', itemId);
+            
+            const result = await this.getCourseCollection().findOneAndUpdate(
+                { 
+                    id: courseId,
+                    'divisions.id': divisionId,
+                    'divisions.items.id': itemId
+                },
+                { 
+                    $push: { 
+                        'divisions.$[division].items.$[item].additionalMaterials': material as any
+                    },
+                    $set: { updatedAt: Date.now().toString() }
+                },
+                { 
+                    arrayFilters: [
+                        { 'division.id': divisionId },
+                        { 'item.id': itemId }
+                    ],
+                    returnDocument: 'after' 
+                }
+            );
+            
+            console.log('✅ Additional material added successfully');
+            return result;
+        } catch (error) {
+            console.error('Error adding additional material:', error);
+            throw error;
+        }
+    }
+
     public async close(): Promise<void> {
         try {
             await this.client.close();
@@ -914,7 +952,7 @@ export class EngEAI_MongoDB {
         
         try {
             // Get all flag reports
-            const flagReports = await this.getFlagReports(courseName);
+            const flagReports = await this.getAllFlagReports(courseName);
             
             if (flagReports.length === 0) {
                 return [];

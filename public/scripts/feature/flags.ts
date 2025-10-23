@@ -33,11 +33,6 @@ interface FlagReport {
 // Global variable to store flag data
 let flagData: FlagReport[] = [];
 
-// Calendar state
-let isCalendarOpen: boolean = false;
-let selectedStartDate: Date | null = null;
-let selectedEndDate: Date | null = null;
-
 // API configuration
 const API_BASE_URL = '/api/courses';
 
@@ -48,7 +43,8 @@ const API_BASE_URL = '/api/courses';
  */
 async function fetchFlags(courseId: string): Promise<FlagReport[]> {
     try {
-        console.log('🔍 Fetching flags for course:', courseId);
+        console.log('🔍 [FLAG-DEBUG] Fetching flags for course:', courseId);
+        console.log('🔍 [FLAG-DEBUG] API URL:', `${API_BASE_URL}/${courseId}/flags/with-names`);
         
         const response = await fetch(`${API_BASE_URL}/${courseId}/flags/with-names`, {
             method: 'GET',
@@ -57,18 +53,26 @@ async function fetchFlags(courseId: string): Promise<FlagReport[]> {
             }
         });
 
+        console.log('📡 [FLAG-DEBUG] API Response status:', response.status);
+        console.log('📡 [FLAG-DEBUG] API Response ok:', response.ok);
+
         if (!response.ok) {
+            console.error('❌ [FLAG-DEBUG] API Response not ok:', response.status, response.statusText);
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
         const apiResponse = await response.json();
-        console.log('🔍 Flags API response:', apiResponse);
+        console.log('📊 [FLAG-DEBUG] Raw API response:', apiResponse);
+        console.log('📊 [FLAG-DEBUG] API response success:', apiResponse.success);
+        console.log('📊 [FLAG-DEBUG] API response data:', apiResponse.data);
 
         if (!apiResponse.success) {
+            console.error('❌ [FLAG-DEBUG] API returned success: false');
             throw new Error(apiResponse.error || 'Failed to fetch flags');
         }
 
         // Transform API data to frontend format
+        console.log('🔄 [FLAG-DEBUG] Transforming API data...');
         const transformedFlags = apiResponse.data.map((flag: any) => ({
             ...flag,
             // Convert date strings to Date objects
@@ -83,17 +87,60 @@ async function fetchFlags(courseId: string): Promise<FlagReport[]> {
         collapsed: true
         }));
 
-        console.log('✅ Successfully fetched', transformedFlags.length, 'flags');
+        console.log('✅ [FLAG-DEBUG] Successfully fetched', transformedFlags.length, 'flags');
+        console.log('📋 [FLAG-DEBUG] Transformed flags:', transformedFlags);
         return transformedFlags;
 
     } catch (error) {
-        console.error('❌ Error fetching flags:', error);
+        console.error('❌ [FLAG-DEBUG] Error fetching flags:', error);
+        console.error('❌ [FLAG-DEBUG] Error details:', {
+            name: error instanceof Error ? error.name : 'Unknown',
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : 'No stack trace'
+        });
         
         // Show error message to user
         showErrorMessage('Failed to load flags. Please refresh the page and try again.');
         
         // Return empty array as fallback
         return [];
+    }
+}
+
+/**
+ * Update flag status via API
+ */
+async function updateFlagStatus(courseId: string, flagId: string, status: 'unresolved' | 'resolved', response?: string): Promise<FlagReport | null> {
+    try {
+        console.log('[FLAG-API] Updating flag status:', { flagId, status, response });
+        
+        const apiResponse = await fetch(`${API_BASE_URL}/${courseId}/flags/${flagId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+                status, 
+                response: response || undefined 
+            })
+        });
+
+        if (!apiResponse.ok) {
+            throw new Error(`HTTP ${apiResponse.status}: ${apiResponse.statusText}`);
+        }
+
+        const responseData = await apiResponse.json();
+        
+        if (!responseData.success) {
+            throw new Error(responseData.error || 'Failed to update flag status');
+        }
+
+        console.log('[FLAG-API] Flag updated successfully:', responseData.data);
+        return responseData.data;
+        
+    } catch (error) {
+        console.error('[FLAG-API] Error updating flag status:', error);
+        throw error;
     }
 }
 
@@ -185,40 +232,55 @@ let currentSection: 'unresolved-flags' | 'resolved-flags' = 'unresolved-flags';
  * Initialize the flag management interface
  */
 export async function initializeFlags(): Promise<void> {
+    console.log('🚀 [FLAG-DEBUG] Starting initializeFlags() function');
+    
     try {
         // Get course ID from URL or global context
         const courseId = getCourseIdFromContext();
         
+        console.log('🔍 [FLAG-DEBUG] Course ID from context:', courseId);
+        console.log('🔍 [FLAG-DEBUG] Window.currentClass:', (window as any).currentClass);
+        console.log('🔍 [FLAG-DEBUG] URL params:', window.location.search);
+        
         if (!courseId) {
-            console.error('❌ No course ID found in context');
+            console.error('❌ [FLAG-DEBUG] No course ID found in context');
             showErrorMessage('Unable to determine course context. Please refresh the page.');
             return;
         }
 
-        console.log('🔍 Initializing flags for course:', courseId);
+        console.log('🔍 [FLAG-DEBUG] Initializing flags for course:', courseId);
         
         // Show loading state
+        console.log('⏳ [FLAG-DEBUG] Showing loading state');
         showLoadingState();
         
         // Fetch flags from API
+        console.log('📡 [FLAG-DEBUG] Fetching flags from API...');
         flagData = await fetchFlags(courseId);
+        console.log('📊 [FLAG-DEBUG] Fetched flag data:', flagData);
+        console.log('📊 [FLAG-DEBUG] Number of flags fetched:', flagData.length);
         
         // Hide loading state
+        console.log('✅ [FLAG-DEBUG] Hiding loading state');
         hideLoadingState();
         
         // Render flags with fetched data
+        console.log('🎨 [FLAG-DEBUG] Rendering flags...');
         renderFlags();
         
         // Setup event listeners
+        console.log('🎧 [FLAG-DEBUG] Setting up event listeners...');
         setupEventListeners();
         
         // Update navigation stats
+        console.log('📊 [FLAG-DEBUG] Updating navigation stats...');
         updateActiveNavigation();
         
-        console.log('✅ Flags initialized successfully');
+        console.log('✅ [FLAG-DEBUG] Flags initialized successfully');
         
     } catch (error) {
-        console.error('❌ Error initializing flags:', error);
+        console.error('❌ [FLAG-DEBUG] Error initializing flags:', error);
+        console.error('❌ [FLAG-DEBUG] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
         
         // Hide loading state
         hideLoadingState();
@@ -227,7 +289,7 @@ export async function initializeFlags(): Promise<void> {
         showErrorMessage('Failed to initialize flags. Please refresh the page and try again.');
         
         // Fallback to mock data for development
-        console.log('🔄 Falling back to mock data for development');
+        console.log('🔄 [FLAG-DEBUG] Falling back to mock data for development');
         flagData = mockFlagData;
         renderFlags();
         setupEventListeners();
@@ -240,35 +302,56 @@ export async function initializeFlags(): Promise<void> {
  * @returns Course ID string or null if not found
  */
 function getCourseIdFromContext(): string | null {
+    console.log('🔍 [FLAG-DEBUG] Getting course ID from context...');
+    
     // Try to get from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const courseIdFromUrl = urlParams.get('courseId');
+    console.log('🔍 [FLAG-DEBUG] Course ID from URL:', courseIdFromUrl);
     
     if (courseIdFromUrl) {
+        console.log('✅ [FLAG-DEBUG] Found course ID in URL:', courseIdFromUrl);
         return courseIdFromUrl;
     }
     
     // Try to get from global context (if available)
     if (typeof window !== 'undefined' && (window as any).courseContext) {
-        return (window as any).courseContext.activeCourseId;
+        const courseIdFromContext = (window as any).courseContext.activeCourseId;
+        console.log('🔍 [FLAG-DEBUG] Course ID from global context:', courseIdFromContext);
+        if (courseIdFromContext) {
+            console.log('✅ [FLAG-DEBUG] Found course ID in global context:', courseIdFromContext);
+            return courseIdFromContext;
+        }
     }
     
     // Try to get from instructor mode's currentClass
     if (typeof window !== 'undefined' && (window as any).currentClass && (window as any).currentClass.id) {
-        return (window as any).currentClass.id;
+        const courseIdFromCurrentClass = (window as any).currentClass.id;
+        console.log('🔍 [FLAG-DEBUG] Course ID from currentClass:', courseIdFromCurrentClass);
+        if (courseIdFromCurrentClass) {
+            console.log('✅ [FLAG-DEBUG] Found course ID in currentClass:', courseIdFromCurrentClass);
+            return courseIdFromCurrentClass;
+        }
     }
     
     // Try to get from localStorage (if available)
     try {
         const storedContext = localStorage.getItem('courseContext');
+        console.log('🔍 [FLAG-DEBUG] Stored context from localStorage:', storedContext);
         if (storedContext) {
             const context = JSON.parse(storedContext);
-            return context.activeCourseId;
+            const courseIdFromStorage = context.activeCourseId;
+            console.log('🔍 [FLAG-DEBUG] Course ID from localStorage:', courseIdFromStorage);
+            if (courseIdFromStorage) {
+                console.log('✅ [FLAG-DEBUG] Found course ID in localStorage:', courseIdFromStorage);
+                return courseIdFromStorage;
+            }
         }
     } catch (error) {
-        console.warn('Could not parse course context from localStorage:', error);
+        console.warn('⚠️ [FLAG-DEBUG] Could not parse course context from localStorage:', error);
     }
     
+    console.error('❌ [FLAG-DEBUG] No course ID found in any context');
     return null;
 }
 
@@ -325,34 +408,18 @@ function setupEventListeners(): void {
 
     // Flag card collapse listeners (event delegation)
     const flagsList = document.getElementById('flags-list');
+    console.log('🎧 [FLAG-DEBUG] Setting up flag card click listeners on:', flagsList);
     if (flagsList) {
         flagsList.addEventListener('click', handleFlagCardClick);
+        console.log('🎧 [FLAG-DEBUG] Event listener attached successfully');
+    } else {
+        console.error('❌ [FLAG-DEBUG] Flags list element not found for event listener');
     }
 
     // Navigation tile listeners
     const navTiles = document.querySelectorAll('.nav-tile');
     navTiles.forEach(tile => {
         tile.addEventListener('click', handleNavigationClick);
-    });
-
-    // Calendar button listener
-    const chooseDateBtn = document.getElementById('choose-date-btn');
-    chooseDateBtn?.addEventListener('click', () => openCalendar());
-
-    // Close calendar button
-    const closeCalendarBtn = document.getElementById('close-calendar-btn');
-    closeCalendarBtn?.addEventListener('click', () => closeCalendar());
-
-    // Calendar OK button
-    const calendarOkBtn = document.getElementById('calendar-ok-btn');
-    calendarOkBtn?.addEventListener('click', () => applyDateSelection());
-
-    // Calendar modal click outside to close
-    const calendarModal = document.getElementById('calendar-modal');
-    calendarModal?.addEventListener('click', (e) => {
-        if (e.target === calendarModal) {
-            closeCalendar();
-        }
     });
 }
 
@@ -418,23 +485,36 @@ function updateActiveNavigation(): void {
 function handleFlagCardClick(event: Event): void {
     const target = event.target as HTMLElement;
     
+    console.log('🖱️ [FLAG-DEBUG] Flag card clicked, target:', target);
+    console.log('🖱️ [FLAG-DEBUG] Target classes:', target.className);
+    console.log('🖱️ [FLAG-DEBUG] Target tag:', target.tagName);
+    
     // Handle resolve button clicks
     if (target.classList.contains('resolve-button')) {
+        console.log('🖱️ [FLAG-DEBUG] Resolve button clicked, handling resolve');
         handleResolveClick(target);
         return;
     }
     
     // Don't collapse if clicking on response section elements
     if (target.closest('.response-section')) {
+        console.log('🖱️ [FLAG-DEBUG] Clicked on response section, ignoring');
         return;
     }
     
     const flagCard = target.closest('.flag-card') as HTMLElement;
-    if (!flagCard) return;
+    if (!flagCard) {
+        console.log('🖱️ [FLAG-DEBUG] No flag card found');
+        return;
+    }
 
     const flagId = flagCard.dataset.flagId;
-    if (!flagId) return;
+    if (!flagId) {
+        console.log('🖱️ [FLAG-DEBUG] No flag ID found');
+        return;
+    }
 
+    console.log('🖱️ [FLAG-DEBUG] Toggling collapse for flag:', flagId);
     // Toggle collapse state
     toggleFlagCollapse(flagId);
 }
@@ -442,19 +522,75 @@ function handleFlagCardClick(event: Event): void {
 /**
  * Handle resolve button clicks
  */
-function handleResolveClick(button: HTMLElement): void {
+async function handleResolveClick(button: HTMLElement): Promise<void> {
     const flagId = button.dataset.flagId;
     if (!flagId) return;
 
     const flag = flagData.find(f => f.id === flagId);
     if (!flag) return;
 
-    // Toggle resolved status
-    flag.status = flag.status === 'unresolved' ? 'resolved' : 'unresolved';
+    // Get course ID from context
+    const courseId = getCourseIdFromContext();
+    if (!courseId) {
+        showErrorMessage('Unable to determine course context');
+        return;
+    }
+
+    // Determine new status
+    const newStatus: 'unresolved' | 'resolved' = flag.status === 'unresolved' ? 'resolved' : 'unresolved';
     
-    // Re-render to update UI and navigation counts
-    renderFlags();
-    updateNavigationCounts();
+    // Get response from textarea if resolving
+    let response: string | undefined;
+    if (newStatus === 'resolved') {
+        const flagCard = document.querySelector(`[data-flag-id="${flagId}"]`);
+        const responseTextarea = flagCard?.querySelector('.response-textarea') as HTMLTextAreaElement;
+        response = responseTextarea?.value?.trim() || undefined;
+    }
+
+    // Show loading state on button
+    const originalText = button.textContent;
+    button.textContent = 'Loading...';
+    (button as HTMLButtonElement).disabled = true;
+    button.style.cursor = 'wait';
+
+    try {
+        // Call API to update flag status
+        const updatedFlag = await updateFlagStatus(courseId, flagId, newStatus, response);
+        
+        if (!updatedFlag) {
+            throw new Error('Failed to update flag - no data returned');
+        }
+
+        // Update local data with response from API
+        const flagIndex = flagData.findIndex(f => f.id === flagId);
+        if (flagIndex !== -1) {
+            flagData[flagIndex] = {
+                ...flagData[flagIndex],
+                status: updatedFlag.status,
+                response: updatedFlag.response,
+                updatedAt: new Date(updatedFlag.updatedAt)
+            };
+        }
+
+        // Re-render to update UI and navigation counts
+        renderFlags();
+        updateNavigationCounts();
+
+        console.log('[FLAG-RESOLVE] Successfully updated flag:', flagId, 'to', newStatus);
+        
+    } catch (error) {
+        console.error('[FLAG-RESOLVE] Error updating flag:', error);
+        
+        // Show error notification
+        showErrorMessage(
+            `Failed to ${newStatus === 'resolved' ? 'resolve' : 'unresolve'} flag. Please try again.`
+        );
+        
+        // Reset button state
+        button.textContent = originalText;
+        (button as HTMLButtonElement).disabled = false;
+        button.style.cursor = 'pointer';
+    }
 }
 
 /**
@@ -467,8 +603,34 @@ function toggleFlagCollapse(flagId: string): void {
     // Toggle collapse state
     flag.collapsed = !flag.collapsed;
     
-    // Re-render to apply changes
-    renderFlags();
+    // Find the flag card element and update it directly instead of re-rendering
+    const flagCard = document.querySelector(`[data-flag-id="${flagId}"]`) as HTMLElement;
+    if (!flagCard) return;
+    
+    // Update the card classes
+    if (flag.collapsed) {
+        flagCard.classList.remove('expanded');
+    } else {
+        flagCard.classList.add('expanded');
+    }
+    
+    // Update the chat content
+    const chatContent = flagCard.querySelector('.chat-content') as HTMLElement;
+    if (chatContent) {
+        if (flag.collapsed) {
+            chatContent.classList.add('collapsed');
+        } else {
+            chatContent.classList.remove('collapsed');
+        }
+    }
+    
+    // Update the expand arrow
+    const expandArrow = flagCard.querySelector('.expand-arrow') as HTMLElement;
+    if (expandArrow) {
+        expandArrow.textContent = flag.collapsed ? '▼' : '▲';
+    }
+    
+    console.log(`🔄 [FLAG-DEBUG] Toggled flag ${flagId} to ${flag.collapsed ? 'collapsed' : 'expanded'}`);
 }
 
 /**
@@ -484,39 +646,64 @@ function handleTimeFilterChange(event: Event): void {
  * Render all flags dynamically
  */
 function renderFlags(): void {
+    console.log('🎨 [FLAG-DEBUG] Starting renderFlags() function');
+    console.log('🎨 [FLAG-DEBUG] Current flag data:', flagData);
+    console.log('🎨 [FLAG-DEBUG] Number of flags in data:', flagData.length);
+    console.log('🎨 [FLAG-DEBUG] Current section:', currentSection);
+    console.log('🎨 [FLAG-DEBUG] Current filters:', currentFilters);
+    
     const flagsList = document.getElementById('flags-list');
-    if (!flagsList) return;
+    console.log('🎨 [FLAG-DEBUG] Flags list element:', flagsList);
+    
+    if (!flagsList) {
+        console.error('❌ [FLAG-DEBUG] Flags list element not found!');
+        return;
+    }
 
     // Filter flags based on current section, flag types, and date range
     let sectionFlags: FlagReport[] = [];
     
+    console.log('🔍 [FLAG-DEBUG] Filtering flags...');
+    
     switch (currentSection) {
         case 'unresolved-flags':
             sectionFlags = flagData.filter(flag => {
-                if (flag.status !== 'unresolved' || !currentFilters.flagTypes.has(flag.flagType)) {
+                const statusMatch = flag.status === 'unresolved';
+                const typeMatch = currentFilters.flagTypes.has(flag.flagType);
+                const dateMatch = isDateInRange(flag);
+                
+                console.log(`🔍 [FLAG-DEBUG] Flag ${flag.id}: status=${statusMatch}, type=${typeMatch}, date=${dateMatch}`);
+                
+                if (!statusMatch || !typeMatch || !dateMatch) {
                     return false;
                 }
                 
-                // Apply date range filter
-                return isDateInRange(flag);
+                return true;
             });
             break;
         case 'resolved-flags':
             sectionFlags = flagData.filter(flag => {
-                if (flag.status !== 'resolved' || !currentFilters.flagTypes.has(flag.flagType)) {
+                const statusMatch = flag.status === 'resolved';
+                const typeMatch = currentFilters.flagTypes.has(flag.flagType);
+                const dateMatch = isDateInRange(flag);
+                
+                console.log(`🔍 [FLAG-DEBUG] Flag ${flag.id}: status=${statusMatch}, type=${typeMatch}, date=${dateMatch}`);
+                
+                if (!statusMatch || !typeMatch || !dateMatch) {
                     return false;
                 }
                 
-                // Apply date range filter
-                return isDateInRange(flag);
+                return true;
             });
             break;
         default:
-            //alert
-            alert('Invalid section');
+            console.error('❌ [FLAG-DEBUG] Invalid section:', currentSection);
             sectionFlags = [];
             break;
     }
+
+    console.log('📊 [FLAG-DEBUG] Filtered section flags:', sectionFlags);
+    console.log('📊 [FLAG-DEBUG] Number of filtered flags:', sectionFlags.length);
 
     // Sort by time filter
     const sortedFlags = [...sectionFlags].sort((a, b) => {
@@ -531,14 +718,24 @@ function renderFlags(): void {
         }
     });
 
+    console.log('📊 [FLAG-DEBUG] Sorted flags:', sortedFlags);
+
     // Clear and render
+    console.log('🧹 [FLAG-DEBUG] Clearing flags list innerHTML');
     flagsList.innerHTML = '';
-    sortedFlags.forEach(flag => {
+    
+    console.log('🎨 [FLAG-DEBUG] Creating flag cards...');
+    sortedFlags.forEach((flag, index) => {
+        console.log(`🎨 [FLAG-DEBUG] Creating card ${index + 1} for flag:`, flag);
         const flagCard = createFlagCard(flag);
         flagsList.appendChild(flagCard);
+        console.log(`✅ [FLAG-DEBUG] Card ${index + 1} created and appended`);
     });
 
+    console.log('📊 [FLAG-DEBUG] Updating navigation counts...');
     updateNavigationCounts();
+    
+    console.log('✅ [FLAG-DEBUG] renderFlags() completed successfully');
 }
 
 /**
@@ -604,6 +801,7 @@ function createFlagCard(flag: FlagReport): HTMLElement {
     const responseTextarea = document.createElement('textarea');
     responseTextarea.className = 'response-textarea';
     responseTextarea.placeholder = 'Write your response to this flag...';
+    responseTextarea.value = flag.response || '';
 
     const responseActions = document.createElement('div');
     responseActions.className = 'response-actions';
@@ -613,6 +811,7 @@ function createFlagCard(flag: FlagReport): HTMLElement {
     resolveButton.textContent = flag.status === 'unresolved' ? 'Resolve' : 'Resolved';
     resolveButton.dataset.flagId = flag.id;
     resolveButton.dataset.status = flag.status;
+    resolveButton.disabled = false; // Ensure button is not disabled by default
 
     responseActions.appendChild(resolveButton);
 
@@ -657,235 +856,7 @@ function updateNavigationCounts(): void {
  * Check if a flag's date is within the selected date range
  */
 function isDateInRange(flag: FlagReport): boolean {
-    // If no date range is selected, include all flags
-    if (!selectedStartDate && !selectedEndDate) {
-        return true;
-    }
-    
-    const flagDate = new Date(flag.date || flag.createdAt);
-    
-    if (selectedStartDate && selectedEndDate) {
-        // Date range filter - flag date must be within range
-        return flagDate >= selectedStartDate && flagDate <= selectedEndDate;
-    } else if (selectedStartDate) {
-        // Single date filter - flag date must be the same day
-        return isSameDate(flagDate, selectedStartDate);
-    }
-    
+    // No date filtering - show all flags
     return true;
-}
-
-/**
- * Calendar Functions - Adapted from monitor.ts
- */
-
-/**
- * Open calendar modal
- */
-function openCalendar(): void {
-    const calendarModal = document.getElementById('calendar-modal');
-    if (calendarModal) {
-        calendarModal.style.display = 'flex';
-        isCalendarOpen = true;
-        renderCalendar();
-    }
-}
-
-/**
- * Close calendar modal
- */
-function closeCalendar(): void {
-    const calendarModal = document.getElementById('calendar-modal');
-    if (calendarModal) {
-        calendarModal.style.display = 'none';
-        isCalendarOpen = false;
-    }
-}
-
-/**
- * Render calendar
- */
-function renderCalendar(): void {
-    const calendar = document.getElementById('calendar');
-    if (!calendar) return;
-
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-
-    // Generate calendar HTML
-    const calendarHTML = generateCalendarHTML(currentYear, currentMonth);
-    calendar.innerHTML = calendarHTML;
-
-    // Bind calendar date selection events
-    bindCalendarEvents();
-}
-
-/**
- * Generate calendar HTML for a given month/year
- */
-function generateCalendarHTML(year: number, month: number): string {
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const daysInMonth = lastDay.getDate();
-    const startDay = firstDay.getDay(); // 0 = Sunday
-
-    const monthNames = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-
-    const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-    let html = `
-        <div class="calendar-header">
-            <button class="calendar-nav-btn" id="prev-month">
-                <i data-feather="chevron-left"></i>
-            </button>
-            <h3>${monthNames[month]} ${year}</h3>
-            <button class="calendar-nav-btn" id="next-month">
-                <i data-feather="chevron-right"></i>
-            </button>
-        </div>
-        <div class="calendar-selection-info">
-            <span id="calendar-selection-status">No dates selected</span>
-        </div>
-        <div class="calendar-weekdays">
-            ${weekdays.map(day => `<div class="calendar-weekday">${day}</div>`).join('')}
-        </div>
-        <div class="calendar-days">
-    `;
-
-    // Add empty cells for days before the first day of the month
-    for (let i = 0; i < startDay; i++) {
-        html += `<div class="calendar-day other-month"></div>`;
-    }
-
-    // Add days of the month
-    for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month, day);
-        const isToday = isSameDate(date, new Date());
-        const isSelected = isDateSelected(date);
-        const isCurrentMonth = true;
-
-        html += `
-            <div class="calendar-day ${isCurrentMonth ? 'current-month' : 'other-month'} 
-                ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''}" 
-                data-date="${date.toISOString()}">
-                ${day}
-            </div>
-        `;
-    }
-
-    html += '</div>';
-    return html;
-}
-
-/**
- * Bind calendar event listeners
- */
-function bindCalendarEvents(): void {
-    // Date selection
-    const calendarDays = document.querySelectorAll('.calendar-day');
-    calendarDays.forEach(day => {
-        day.addEventListener('click', () => {
-            const dateStr = day.getAttribute('data-date');
-            if (dateStr) {
-                selectDate(new Date(dateStr));
-            }
-        });
-    });
-
-    // Month navigation
-    const prevBtn = document.getElementById('prev-month');
-    const nextBtn = document.getElementById('next-month');
-    
-    prevBtn?.addEventListener('click', () => {
-        // This would update the calendar view
-        renderCalendar();
-    });
-
-    nextBtn?.addEventListener('click', () => {
-        // This would update the calendar view
-        renderCalendar();
-    });
-}
-
-/**
- * Select a date in the calendar
- */
-function selectDate(date: Date): void {
-    if (!selectedStartDate) {
-        // First selection - set as start date
-        selectedStartDate = date;
-        selectedEndDate = null;
-    } else if (!selectedEndDate) {
-        // Second selection - set as end date
-        if (date < selectedStartDate) {
-            // If selected date is before start date, swap them
-            selectedEndDate = selectedStartDate;
-            selectedStartDate = date;
-        } else {
-            selectedEndDate = date;
-        }
-    } else {
-        // Reset selection and start over
-        selectedStartDate = date;
-        selectedEndDate = null;
-    }
-
-    updateCalendarSelectionStatus();
-    renderCalendar();
-}
-
-/**
- * Check if a date is selected
- */
-function isDateSelected(date: Date): boolean {
-    if (!selectedStartDate) return false;
-    
-    if (selectedStartDate && !selectedEndDate) {
-        return isSameDate(date, selectedStartDate);
-    }
-    
-    if (selectedStartDate && selectedEndDate) {
-        return date >= selectedStartDate && date <= selectedEndDate;
-    }
-    
-    return false;
-}
-
-/**
- * Check if two dates are the same day
- */
-function isSameDate(date1: Date, date2: Date): boolean {
-    return date1.getFullYear() === date2.getFullYear() &&
-           date1.getMonth() === date2.getMonth() &&
-           date1.getDate() === date2.getDate();
-}
-
-/**
- * Update the selection status display in the calendar header
- */
-function updateCalendarSelectionStatus(): void {
-    const statusElement = document.getElementById('calendar-selection-status');
-    if (!statusElement) return;
-
-    if (!selectedStartDate) {
-        statusElement.textContent = 'No dates selected';
-    } else if (!selectedEndDate) {
-        statusElement.textContent = `Start: ${selectedStartDate.toLocaleDateString()}`;
-    } else {
-        statusElement.textContent = `${selectedStartDate.toLocaleDateString()} - ${selectedEndDate.toLocaleDateString()}`;
-    }
-}
-
-/**
- * Apply date selection and close calendar
- */
-function applyDateSelection(): void {
-    // Apply the date filter to the flags
-    renderFlags(); // This will use the selected dates for filtering
-    closeCalendar();
 }
 

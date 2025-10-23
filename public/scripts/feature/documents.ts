@@ -325,6 +325,14 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         });
     }
 
+    // Add event listener for delete all documents button
+    const deleteAllDocumentsBtn = document.getElementById('delete-all-documents-btn');
+    if (deleteAllDocumentsBtn) {
+        deleteAllDocumentsBtn.addEventListener('click', async () => {
+            await deleteAllDocuments();
+        });
+    }
+
     // --- Event Handler Functions ---
 
     /**
@@ -353,6 +361,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 text: material.text,
                 fileName: material.fileName,
                 date: new Date(),
+                // Add these three lines:
+                courseId: currentClass.id,
+                divisionId: material.divisionId,
+                itemId: material.contentId
             };
 
             // Use DocumentUploadModule for upload
@@ -1413,5 +1425,95 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         wrapper.appendChild(addWrap);
 
         return wrapper;
+    }
+
+    /**
+     * Delete all documents from both MongoDB and Qdrant
+     */
+    async function deleteAllDocuments(): Promise<void> {
+        try {
+            // Show confirmation modal
+            const result = await showDeleteConfirmationModal(
+                'All Documents',
+                'all documents from this course'
+            );
+
+            if (result.action !== 'delete') {
+                console.log('Delete all documents cancelled by user');
+                return;
+            }
+
+            console.log('🗑️ Starting bulk delete of all documents...');
+
+            // Get course ID from currentClass
+            const courseId = currentClass.id;
+            if (!courseId) {
+                throw new Error('Course ID not found');
+            }
+
+            // Call the bulk delete API
+            console.log('🔍 DELETE ALL DOCUMENTS - Request Details:');
+            console.log('  URL:', `/api/courses/${courseId}/documents/all`);
+            console.log('  Method: DELETE');
+            console.log('  Course ID:', courseId);
+            
+            const response = await fetch(`/api/courses/${courseId}/documents/all`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include'
+            });
+
+            console.log('🔍 DELETE ALL DOCUMENTS - Response Details:');
+            console.log('  Status:', response.status);
+            console.log('  Status Text:', response.statusText);
+            console.log('  Headers:', Object.fromEntries(response.headers.entries()));
+            console.log('  Content-Type:', response.headers.get('content-type'));
+
+            if (!response.ok) {
+                const responseText = await response.text();
+                console.log('🔍 DELETE ALL DOCUMENTS - Error Response Body (raw):');
+                console.log('  Raw Response:', responseText);
+                
+                try {
+                    const errorData = JSON.parse(responseText);
+                    console.log('🔍 DELETE ALL DOCUMENTS - Error Response Body (parsed):');
+                    console.log('  Parsed Error:', errorData);
+                    throw new Error(errorData.error || `HTTP ${response.status}`);
+                } catch (parseError) {
+                    console.log('🔍 DELETE ALL DOCUMENTS - JSON Parse Error:');
+                    console.log('  Parse Error:', parseError);
+                    throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
+                }
+            }
+
+            const responseText = await response.text();
+            console.log('🔍 DELETE ALL DOCUMENTS - Success Response Body (raw):');
+            console.log('  Raw Response:', responseText);
+            
+            let result_data;
+            try {
+                result_data = JSON.parse(responseText);
+                console.log('🔍 DELETE ALL DOCUMENTS - Success Response Body (parsed):');
+                console.log('  Parsed Result:', result_data);
+            } catch (parseError) {
+                console.log('🔍 DELETE ALL DOCUMENTS - JSON Parse Error:');
+                console.log('  Parse Error:', parseError);
+                throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
+            }
+            console.log('✅ Bulk delete completed:', result_data);
+
+            // Refresh the UI to show empty state
+            loadClassroomData(currentClass);
+            renderDocumentsPage();
+
+            // Show success message
+            alert(`Successfully deleted ${result_data.data.deletedCount} documents from the course.`);
+
+        } catch (error) {
+            console.error('Error deleting all documents:', error);
+            alert(`Failed to delete documents: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
     }
 }

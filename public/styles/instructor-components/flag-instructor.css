@@ -327,7 +327,7 @@
 }
 
 .flag-card.expanded .expanded-content {
-    max-height: 800px;
+    max-height: 2000px; /* Increased from 800px to accommodate larger content */
     overflow: visible;
 }
 
@@ -400,6 +400,11 @@
     cursor: pointer;
     transition: background-color 0.2s ease;
     min-width: 100px;
+}
+
+.resolve-button:disabled {
+    opacity: 0.6;
+    cursor: wait !important;
 }
 
 .resolve-button:hover {
