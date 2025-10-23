@@ -817,6 +817,35 @@ export class EngEAI_MongoDB {
         }
     }
 
+    public clearAllAdditionalMaterials = async (courseId: string): Promise<any> => {
+        try {
+            console.log('🗑️ Clearing all additional materials from course:', courseId);
+            
+            const result = await this.getCourseCollection().findOneAndUpdate(
+                { id: courseId },
+                { 
+                    $unset: { 
+                        'divisions.$[division].items.$[item].additionalMaterials': 1 
+                    },
+                    $set: { updatedAt: Date.now().toString() }
+                },
+                { 
+                    arrayFilters: [
+                        { 'division.id': { $exists: true } }, // Match all divisions that have an id
+                        { 'item.id': { $exists: true } }     // Match all items that have an id
+                    ],
+                    returnDocument: 'after' 
+                }
+            );
+            
+            console.log('✅ All additional materials cleared successfully');
+            return result;
+        } catch (error) {
+            console.error('Error clearing additional materials:', error);
+            throw error;
+        }
+    }
+
     public async close(): Promise<void> {
         try {
             await this.client.close();

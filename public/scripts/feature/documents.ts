@@ -27,7 +27,7 @@ import {
 } from '../../../src/functions/types';
 import { uploadRAGContent } from '../services/RAGService.js';
 import { DocumentUploadModule, UploadResult } from '../services/DocumentUploadModule.js';
-import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal } from '../modal-overlay.js';
+import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal } from '../modal-overlay.js';
 
 // In-memory store for the course data
 let courseData: ContentDivision[] = [];
@@ -299,9 +299,18 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                             return; // Prevent further event handling
                         case 'delete-material':
                             event.stopPropagation();
-                            //print the divisionId, contentId, and materialId
-                            console.log('DEBUG #13: divisionId : ', divisionId, ' ; contentId : ', contentId, ' ; materialId : ', button.dataset.materialId);
-                            deleteAdditionalMaterial(divisionId, contentId, button.dataset.materialId || '');
+                            // For additional materials, get IDs from the content item container
+                            const additionalMaterialRow = button.closest('.additional-material') as HTMLElement | null;
+                            const contentItem = button.closest('.content-item') as HTMLElement | null;
+                            if (!contentItem) return;
+                            
+                            const contentItemId = contentItem.id; // content-item-divisionId-contentId
+                            const ids = contentItemId.split('-'); // ['content', 'item', 'divisionId', 'contentId']
+                            const materialDivisionId = ids[2] || '0';
+                            const materialContentId = ids[3] || '0';
+                            
+                            console.log('DEBUG #13: divisionId : ', materialDivisionId, ' ; contentId : ', materialContentId, ' ; materialId : ', button.dataset.materialId);
+                            deleteAdditionalMaterial(materialDivisionId, materialContentId, button.dataset.materialId || '');
                             return; // Prevent further event handling
                     }
                 }
@@ -380,10 +389,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @returns Promise<void>
      */
     async function handleUploadMaterial(material: any): Promise<void> {
-        console.log('🔍 HANDLE UPLOAD MATERIAL CALLED');
+        console.log('🔍 HANDLE UPLOAD MATERIAL CALLED - FUNCTION STARTED');
         console.log('  - material:', material);
         console.log('  - material.divisionId:', material.divisionId);
         console.log('  - material.itemId:', material.itemId);
+        console.log('  - courseData:', courseData);
+        console.log('  - currentClass:', currentClass);
         
         try {
             // Get the division and the content item
@@ -1491,7 +1502,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             // Show confirmation modal
             const result = await showDeleteConfirmationModal(
                 'All Documents',
-                'all documents from this course'
+                `all documents from the RAG database for course "${currentClass.courseName}"`
             );
 
             if (result.action !== 'delete') {
@@ -1499,7 +1510,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 return;
             }
 
-            console.log('🗑️ Starting bulk delete of all documents...');
+            console.log('🗑️ Starting wipe of all RAG documents for current course...');
 
             // Get course ID from currentClass
             const courseId = currentClass.id;
@@ -1507,13 +1518,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 throw new Error('Course ID not found');
             }
 
-            // Call the bulk delete API
-            console.log('🔍 DELETE ALL DOCUMENTS - Request Details:');
-            console.log('  URL:', `/api/courses/${courseId}/documents/all`);
+            // Call the new wipe-all API endpoint with courseId
+            console.log('🔍 WIPE ALL DOCUMENTS - Request Details:');
+            console.log('  URL:', `/api/rag/wipe-all?courseId=${courseId}`);
             console.log('  Method: DELETE');
             console.log('  Course ID:', courseId);
             
-            const response = await fetch(`/api/courses/${courseId}/documents/all`, {
+            const response = await fetch(`/api/rag/wipe-all?courseId=${courseId}`, {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1521,7 +1532,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 credentials: 'include'
             });
 
-            console.log('🔍 DELETE ALL DOCUMENTS - Response Details:');
+            console.log('🔍 WIPE ALL DOCUMENTS - Response Details:');
             console.log('  Status:', response.status);
             console.log('  Status Text:', response.statusText);
             console.log('  Headers:', Object.fromEntries(response.headers.entries()));
@@ -1529,43 +1540,49 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
             if (!response.ok) {
                 const responseText = await response.text();
-                console.log('🔍 DELETE ALL DOCUMENTS - Error Response Body (raw):');
+                console.log('🔍 WIPE ALL DOCUMENTS - Error Response Body (raw):');
                 console.log('  Raw Response:', responseText);
                 
                 try {
                     const errorData = JSON.parse(responseText);
-                    console.log('🔍 DELETE ALL DOCUMENTS - Error Response Body (parsed):');
+                    console.log('🔍 WIPE ALL DOCUMENTS - Error Response Body (parsed):');
                     console.log('  Parsed Error:', errorData);
-                    throw new Error(errorData.error || `HTTP ${response.status}`);
+                    throw new Error(errorData.message || errorData.details || `HTTP ${response.status}`);
                 } catch (parseError) {
-                    console.log('🔍 DELETE ALL DOCUMENTS - JSON Parse Error:');
+                    console.log('🔍 WIPE ALL DOCUMENTS - JSON Parse Error:');
                     console.log('  Parse Error:', parseError);
                     throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
                 }
             }
 
             const responseText = await response.text();
-            console.log('🔍 DELETE ALL DOCUMENTS - Success Response Body (raw):');
+            console.log('🔍 WIPE ALL DOCUMENTS - Success Response Body (raw):');
             console.log('  Raw Response:', responseText);
             
             let result_data;
             try {
                 result_data = JSON.parse(responseText);
-                console.log('🔍 DELETE ALL DOCUMENTS - Success Response Body (parsed):');
+                console.log('🔍 WIPE ALL DOCUMENTS - Success Response Body (parsed):');
                 console.log('  Parsed Result:', result_data);
             } catch (parseError) {
-                console.log('🔍 DELETE ALL DOCUMENTS - JSON Parse Error:');
+                console.log('🔍 WIPE ALL DOCUMENTS - JSON Parse Error:');
                 console.log('  Parse Error:', parseError);
                 throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
             }
-            console.log('✅ Bulk delete completed:', result_data);
+            console.log('✅ RAG database wipe completed:', result_data);
+
+            // Clear all additional materials from local data
+            courseData.forEach(division => {
+                division.items.forEach(item => {
+                    item.additionalMaterials = [];
+                });
+            });
 
             // Refresh the UI to show empty state
-            loadClassroomData(currentClass);
             renderDocumentsPage();
 
             // Show success message
-            alert(`Successfully deleted ${result_data.data.deletedCount} documents from the course.`);
+            alert(`Successfully wiped all documents from RAG database for course "${currentClass.courseName}"! Deleted ${result_data.data?.deletedCount || 0} documents.`);
 
         } catch (error) {
             console.error('Error deleting all documents:', error);

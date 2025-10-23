@@ -387,6 +387,101 @@ export class RAGApp {
     }
 
     /**
+     * Wipe all documents from RAG database for a specific course
+     * Based on clear-rag-database.ts approach but filtered by course
+     * 
+     * @param courseId - The course ID to filter documents by
+     * @returns Statistics about the deletion
+     */
+    async WipeRAGDatabase(courseId: string): Promise<{ deletedCount: number, errors: string[] }> {
+        const errors: string[] = [];
+        
+        try {
+            this.logger.info('🚀 Starting RAG database wipe process for course:', { courseId });
+            this.logger.info('⚠️  WARNING: This will permanently delete ALL documents from this course!');
+            
+            // Get course from MongoDB to find all qdrantIds
+            const course = await this.mongoDB.getActiveCourse(courseId);
+            if (!course) {
+                throw new Error('Course not found');
+            }
+
+            const qdrantIds: string[] = [];
+            let mongoMaterialCount = 0;
+
+            // Collect all qdrantIds from all materials in the course
+            this.logger.info('📊 Collecting document IDs from course materials...');
+            course.divisions?.forEach((division: any) => {
+                division.items?.forEach((item: any) => {
+                    item.additionalMaterials?.forEach((material: any) => {
+                        mongoMaterialCount++;
+                        if (material.qdrantId) {
+                            qdrantIds.push(material.qdrantId);
+                        }
+                    });
+                });
+            });
+
+            this.logger.info(`📈 Found ${mongoMaterialCount} materials in MongoDB, ${qdrantIds.length} with Qdrant IDs`);
+
+            if (qdrantIds.length === 0) {
+                this.logger.info('✅ No documents found to delete for this course');
+                return { deletedCount: 0, errors: [] };
+            }
+            
+            // Method 1: Delete documents by IDs from Qdrant
+            this.logger.info('🗑️  Attempting to delete documents by IDs from Qdrant...');
+            try {
+                this.logger.info(`📋 Deleting ${qdrantIds.length} document IDs from Qdrant`);
+                await this.rag.deleteDocumentsByIds(qdrantIds);
+                this.logger.info('✅ Documents deleted from Qdrant successfully');
+                
+                // Clear all AdditionalMaterial from MongoDB for this course
+                this.logger.info('🗑️  Clearing AdditionalMaterial from MongoDB...');
+                await this.mongoDB.clearAllAdditionalMaterials(courseId);
+                this.logger.info('✅ AdditionalMaterial cleared from MongoDB successfully');
+                
+                return { deletedCount: qdrantIds.length, errors: [] };
+                
+            } catch (error) {
+                this.logger.warn('⚠️  ID-based deletion failed:', { error: error instanceof Error ? error.message : String(error) });
+                errors.push(`ID-based deletion failed: ${error instanceof Error ? error.message : String(error)}`);
+                
+                // Method 2: Try to delete by course metadata filter
+                this.logger.info('🔄 Attempting to delete by course metadata filter...');
+                try {
+                    // Get documents by course metadata
+                    const courseDocuments = await this.rag.getDocumentsByMetadata({ courseName: course.courseName });
+                    const courseDocumentIds = courseDocuments.map(doc => doc.id);
+                    
+                    if (courseDocumentIds.length > 0) {
+                        this.logger.info(`📋 Found ${courseDocumentIds.length} documents by course metadata`);
+                        await this.rag.deleteDocumentsByIds(courseDocumentIds);
+                        this.logger.info('✅ Documents deleted by course metadata successfully');
+                        
+                        // Clear MongoDB materials
+                        await this.mongoDB.clearAllAdditionalMaterials(courseId);
+                        
+                        return { deletedCount: courseDocumentIds.length, errors: [] };
+                    } else {
+                        this.logger.info('✅ No documents found by course metadata');
+                        return { deletedCount: 0, errors: [] };
+                    }
+                } catch (metadataError) {
+                    this.logger.error('❌ Course metadata deletion also failed:', { error: metadataError });
+                    errors.push(`Course metadata deletion failed: ${metadataError instanceof Error ? metadataError.message : String(metadataError)}`);
+                    throw metadataError;
+                }
+            }
+            
+        } catch (error) {
+            this.logger.error('❌ Error during RAG database wipe process:', { error: error });
+            errors.push(`Wipe process failed: ${error instanceof Error ? error.message : String(error)}`);
+            throw error;
+        }
+    }
+
+    /**
      * getDocument by metadata
      * 
      * @param metadata - The metadata of the document to get
@@ -756,6 +851,54 @@ router.get('/documents/:courseName/:contentTitle/:subContentTitle/:chunkNumber',
 router.post('/search', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     // TODO: Implement document search
     res.status(501).json({ message: 'Not implemented yet' });
+}));
+
+// DELETE /api/rag/wipe-all - Wipe all documents from RAG database for a specific course (REQUIRES AUTH)
+router.delete('/wipe-all', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        console.log('🔍 BACKEND WIPE ALL DOCUMENTS - Request Details:');
+        console.log('  Headers:', req.headers);
+        console.log('  Body:', req.body);
+        console.log('  Query:', req.query);
+        console.log('  User:', req.user);
+        
+        // Get courseId from query parameters
+        const courseId = req.query.courseId as string;
+        if (!courseId) {
+            return res.status(400).json({
+                status: 400,
+                message: 'courseId query parameter is required'
+            });
+        }
+        
+        const ragApp = await RAGApp.getInstance();
+        
+        // Call the WipeRAGDatabase method with courseId
+        const result = await ragApp.WipeRAGDatabase(courseId);
+        
+        console.log('🔍 BACKEND WIPE ALL DOCUMENTS - Result:');
+        console.log('  CourseId:', courseId);
+        console.log('  Deleted Count:', result.deletedCount);
+        console.log('  Errors:', result.errors);
+        
+        res.status(200).json({
+            status: 200,
+            message: `All documents wiped from RAG database for course ${courseId} successfully`,
+            data: {
+                courseId: courseId,
+                deletedCount: result.deletedCount,
+                errors: result.errors
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Failed to wipe RAG database:', error);
+        res.status(500).json({
+            status: 500,
+            message: 'Failed to wipe RAG database',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
 }));
 
 // Note: Setup is now handled automatically in the QdrantUpload constructor
