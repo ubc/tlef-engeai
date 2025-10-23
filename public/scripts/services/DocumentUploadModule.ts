@@ -284,13 +284,13 @@ export class DocumentUploadModule {
             
             let result;
             try {
-                result = await response.json();
+                result = JSON.parse(responseText);
                 console.log('🔍 UPLOAD FILE - Success Response Body (parsed):');
                 console.log('  Parsed Result:', result);
             } catch (parseError) {
                 console.log('🔍 UPLOAD FILE - JSON Parse Error:');
                 console.log('  Parse Error:', parseError);
-                throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
+                throw new Error(`Invalid JSON response: ${responseText}`);
             }
 
             this.progressCallback(90, 'Finalizing upload...');

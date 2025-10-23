@@ -376,7 +376,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const uploadResult: UploadResult = await uploadModule.uploadDocument(additionalMaterial);
             
             if (!uploadResult.success) {
-                console.error('Upload failed:', uploadResult.error);
+                console.error(`Upload failed: ${uploadResult.error}`);
                 alert(`Failed to upload content: ${uploadResult.error}`);
                 return;
             }
