@@ -482,13 +482,52 @@ export class RAGApp {
     }
 
     /**
-     * getDocument by metadata
+     * Nuclear clear - delete entire Qdrant collection (nuclear option)
+     * Based on nuclear-clear-rag.ts approach
      * 
-     * @param metadata - The metadata of the document to get
-     * @returns The result of the get
+     * @returns Statistics about the deletion
      */
-    async getDocumentByMetadata(metadata: any) : Promise<any> {
-        return ;
+    async NuclearClearRAGDatabase(): Promise<{ deletedCount: number, errors: string[] }> {
+        const errors: string[] = [];
+        
+        try {
+            this.logger.info('💥 Starting NUCLEAR RAG database clearing process...');
+            this.logger.info('⚠️  WARNING: This will permanently delete the ENTIRE COLLECTION!');
+            this.logger.info('⚠️  WARNING: This is irreversible and will remove all data!');
+            
+            // Get current document count before deletion
+            this.logger.info('📊 Checking current document count...');
+            let documentCount = 0;
+            try {
+                const allDocuments = await this.rag.getDocumentsByMetadata({});
+                documentCount = allDocuments.length;
+                this.logger.info(`📈 Found ${documentCount} documents in the collection`);
+                
+                if (documentCount === 0) {
+                    this.logger.info('✅ Collection is already empty. Proceeding with collection deletion...');
+                }
+            } catch (error) {
+                this.logger.warn('⚠️  Could not retrieve document count (collection may not exist)');
+            }
+            
+            // Nuclear option: Delete entire storage container (collection)
+            this.logger.info('💥 Executing NUCLEAR OPTION: Deleting entire collection...');
+            try {
+                await this.rag.deleteStorage();
+                this.logger.info('✅ Collection deleted successfully');
+                
+                return { deletedCount: documentCount, errors: [] };
+            } catch (error) {
+                this.logger.error('❌ Collection deletion failed:', { error: error instanceof Error ? error.message : String(error) });
+                errors.push(`Collection deletion failed: ${error instanceof Error ? error.message : String(error)}`);
+                throw error;
+            }
+            
+        } catch (error) {
+            this.logger.error('❌ Error during nuclear RAG database clearing process:', { error: error });
+            errors.push(`Nuclear clear process failed: ${error instanceof Error ? error.message : String(error)}`);
+            throw error;
+        }
     }
     
     /**
@@ -896,6 +935,42 @@ router.delete('/wipe-all', asyncHandlerWithAuth(async (req: Request, res: Respon
         res.status(500).json({
             status: 500,
             message: 'Failed to wipe RAG database',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+// DELETE /api/rag/nuclear-clear - Nuclear clear entire RAG collection (REQUIRES AUTH)
+router.delete('/nuclear-clear', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        console.log('🔍 BACKEND NUCLEAR CLEAR - Request Details:');
+        console.log('  Headers:', req.headers);
+        console.log('  Body:', req.body);
+        console.log('  User:', req.user);
+        
+        const ragApp = await RAGApp.getInstance();
+        
+        // Call the NuclearClearRAGDatabase method
+        const result = await ragApp.NuclearClearRAGDatabase();
+        
+        console.log('🔍 BACKEND NUCLEAR CLEAR - Result:');
+        console.log('  Deleted Count:', result.deletedCount);
+        console.log('  Errors:', result.errors);
+        
+        res.status(200).json({
+            status: 200,
+            message: 'Nuclear clear completed - entire RAG collection deleted successfully',
+            data: {
+                deletedCount: result.deletedCount,
+                errors: result.errors
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Failed to nuclear clear RAG database:', error);
+        res.status(500).json({
+            status: 500,
+            message: 'Failed to nuclear clear RAG database',
             details: error instanceof Error ? error.message : 'Unknown error'
         });
     }

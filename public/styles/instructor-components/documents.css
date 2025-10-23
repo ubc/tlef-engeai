@@ -252,6 +252,22 @@
     box-shadow: 0 2px 4px rgba(255, 107, 53, 0.3);
 }
 
+.status-nuclear-clear {
+    background-color: #d32f2f;
+    color: white;
+    border: 1px solid #b71c1c;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: bold;
+}
+
+.status-nuclear-clear:hover {
+    background-color: #b71c1c;
+    border-color: #8d0000;
+    transform: translateY(-1px) scale(1.05);
+    box-shadow: 0 4px 8px rgba(211, 47, 47, 0.4);
+}
+
 .learning-objectives {
     margin: 10px 0;
 }
