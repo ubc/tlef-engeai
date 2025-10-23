@@ -222,7 +222,15 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const container = document.getElementById('documents-container');
         if (!container) return;
 
-        container.addEventListener('click', (event) => {
+        // Remove any existing event listeners to prevent accumulation
+        const existingHandler = (container as any)._documentsClickHandler;
+        if (existingHandler) {
+            container.removeEventListener('click', existingHandler);
+            console.log('🔧 Removed existing documents click handler');
+        }
+
+        // Create the click handler function
+        const clickHandler = (event: Event) => {
             const target = event.target as HTMLElement;
 
             // Division header toggles
@@ -334,15 +342,33 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 console.log('🔍 ITEM CLICKED - Division ID:', divisionId, 'Item ID:', contentId);
                 return;
             }
-        });
+        };
+
+        // Store the handler reference and add the event listener
+        (container as any)._documentsClickHandler = clickHandler;
+        container.addEventListener('click', clickHandler);
+        console.log('🔧 Added documents click handler');
     }
 
     // Add event listener for delete all documents button
     const deleteAllDocumentsBtn = document.getElementById('delete-all-documents-btn');
     if (deleteAllDocumentsBtn) {
-        deleteAllDocumentsBtn.addEventListener('click', async () => {
+        // Remove any existing event listeners to prevent accumulation
+        const existingDeleteHandler = (deleteAllDocumentsBtn as any)._deleteAllHandler;
+        if (existingDeleteHandler) {
+            deleteAllDocumentsBtn.removeEventListener('click', existingDeleteHandler);
+            console.log('🔧 Removed existing delete all documents handler');
+        }
+
+        // Create the delete handler function
+        const deleteHandler = async () => {
             await deleteAllDocuments();
-        });
+        };
+
+        // Store the handler reference and add the event listener
+        (deleteAllDocumentsBtn as any)._deleteAllHandler = deleteHandler;
+        deleteAllDocumentsBtn.addEventListener('click', deleteHandler);
+        console.log('🔧 Added delete all documents handler');
     }
 
     // --- Event Handler Functions ---

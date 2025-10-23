@@ -80,8 +80,18 @@ function createInstructorVirtualUser(): User {
 }
 
 
+// Flag to prevent multiple initializations
+let isInitialized = false;
+
 document.addEventListener('DOMContentLoaded', async () => {
     console.log("DOMContentLoaded is called");
+    
+    // Prevent multiple initializations
+    if (isInitialized) {
+        console.log("Already initialized, skipping...");
+        return;
+    }
+    isInitialized = true;
 
     // Check authentication first
     const isAuthenticated = await checkAuthentication();
