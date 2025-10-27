@@ -38,6 +38,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // Build initial in-memory data from onboarding selections
         loadClassroomData(currentClass);
         
+        // Update button labels based on frameType
+        updateDivisionButtonLabels(currentClass);
+        
         // Load learning objectives from database for all content items
         await loadAllLearningObjectives();
     // Render DOM using safe DOM APIs (no string concatenation)
@@ -212,6 +215,34 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         return wrapper;
     }
 
+
+    /**
+     * Update division control panel button labels based on frameType
+     * 
+     * @param currentClass the currently active class
+     */
+    function updateDivisionButtonLabels(currentClass: activeCourse): void {
+        // Get references to the control panel buttons
+        const addDivisionBtn = document.getElementById('add-division-btn');
+        const deleteAllDivisionsBtn = document.getElementById('delete-all-divisions-btn');
+        
+        // Update button text based on frameType
+        if (currentClass.frameType === 'byWeek') {
+            if (addDivisionBtn) {
+                addDivisionBtn.textContent = 'Add Week';
+            }
+            if (deleteAllDivisionsBtn) {
+                deleteAllDivisionsBtn.textContent = 'Delete All Weeks';
+            }
+        } else if (currentClass.frameType === 'byTopic') {
+            if (addDivisionBtn) {
+                addDivisionBtn.textContent = 'Add Topic';
+            }
+            if (deleteAllDivisionsBtn) {
+                deleteAllDivisionsBtn.textContent = 'Delete All Topics';
+            }
+        }
+    }
 
     /**
      * Setup all event listeners for the page (delegated, with safety checks)

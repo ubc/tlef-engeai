@@ -45,32 +45,35 @@ export const SYSTEM_PROMPT = `
     **IMPORTANT:** Do NOT use markdown syntax (- or 1.) for lists. Always use HTML tags directly. The frontend renderer will automatically add the appropriate CSS classes (response-list and response-list-ordered) to style these lists properly.
 
     **LATEX FORMATTING:**
-    When using LaTeX math expressions, ALWAYS keep them on single lines without line breaks:
+    When using LaTeX math expressions, follow these rules:
     
-    ✅ CORRECT Examples:
-    $$E°_{Cu^{2+}/Cu} = +0.34 V$$
-    $$[Cu^{2+}] = 0.010 M$$
-    $$E = E° - \frac{RT}{nF}\ln Q$$
-    $$ΔG = -nFE$$
-    
+    **For INLINE math ($...$):** Keep on single lines
     ✅ CORRECT Inline Math:
     The standard reduction potential is $E°_{Cu^{2+}/Cu} = +0.34 V$ at $25°C$.
     
-    ❌ INCORRECT (PROHIBITED - do not split math across lines):
+    **For DISPLAY math ($$...$$):** Use multi-line format with line breaks
+    ✅ CORRECT Display Math Examples:
     $$
     E°_{Cu^{2+}/Cu} = +0.34 V
     $$
-    ❌ INCORRECT (PROHIBITED - do not split math across lines):
     $$
     [Cu^{2+}] = 0.010 M
     $$
-    ❌ INCORRECT (PROHIBITED - do not split math across lines):
     $$
     E = E° - \frac{RT}{nF}\ln Q
     $$
-    ❌ INCORRECT (PROHIBITED - do not split math across lines):
+    $$
+    ΔG = -nFE
+    $$
     
-    **CRITICAL:** Never put line breaks inside LaTeX delimiters ($...$ or $$...$$). Always keep mathematical expressions on a single line.
+    ❌ INCORRECT (PROHIBITED - do not use single-line format for display math):
+    $$E°_{Cu^{2+}/Cu} = +0.34 V$$
+    ❌ INCORRECT (PROHIBITED - do not use single-line format for display math):
+    $$[Cu^{2+}] = 0.010 M$$
+    ❌ INCORRECT (PROHIBITED - do not use single-line format for display math):
+    $$E = E° - \frac{RT}{nF}\ln Q$$
+    
+    **CRITICAL:** Always use multi-line format for display math ($$...$$) with line breaks. Keep inline math ($...$) on single lines.
 
     **MERMAID DIAGRAM FORMATTING:**
     When creating Mermaid diagrams in <Artefact> tags, avoid complex mathematical expressions in edge labels as they cause parser errors:
@@ -156,12 +159,26 @@ export const SYSTEM_PROMPT = `
 
     **LATEX MATHEMATICS - Use these delimiters:**
     - Inline math: $E = mc^2$ (renders as response-latex-inline class)
-    - Display math: $$\int_0^\infty e^{-x} dx = 1$$ (renders as response-latex-display class)
-    - Complex expressions: $$\frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u$$ for advanced mathematics
-    - Chemical equations: $2H_2 + O_2 \rightarrow 2H_2O$
-    - Engineering formulas: $\Delta G = -nFE$ (Gibbs free energy)
-    - Matrix notation: $$\begin{pmatrix} a & b \\ c & d \end{pmatrix}$$
-    - Summations: $\sum_{i=1}^{n} x_i$ or $$\sum_{i=1}^{n} x_i$$
+    - Display math (multi-line format): 
+    $$
+    \int_0^\infty e^{-x} dx = 1
+    $$
+    (renders as response-latex-display class)
+    - Complex expressions (multi-line format):
+    $$
+    \frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u
+    $$
+    for advanced mathematics
+    - Chemical equations: $2H_2 + O_2 \rightarrow 2H_2O$ (inline)
+    - Engineering formulas: $\Delta G = -nFE$ (inline - Gibbs free energy)
+    - Matrix notation (multi-line format):
+    $$
+    \begin{pmatrix} a & b \\ c & d \end{pmatrix}
+    $$
+    - Summations: $\sum_{i=1}^{n} x_i$ (inline) or display format:
+    $$
+    \sum_{i=1}^{n} x_i
+    $$
     
     **IMPORTANT LATEX ESCAPE SEQUENCES:**
     - Use \\frac{}{} for fractions: $E = E° - \\frac{RT}{nF}\\ln Q$

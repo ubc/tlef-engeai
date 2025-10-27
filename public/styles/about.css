@@ -21,7 +21,7 @@
     border: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
-    height: calc(100% - 20px);
+    height: calc(100%);
     overflow: hidden;
 }
 
