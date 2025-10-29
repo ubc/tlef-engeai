@@ -173,78 +173,105 @@ function renderFlags(flags: FlagReport[]): void {
 }
 
 /**
- * Create a flag card element
+ * Create a flag card element (matching instructor structure)
  */
 function createFlagCard(flag: FlagReport): HTMLElement {
     const card = document.createElement('div');
-    card.className = 'flag-card';
+    card.className = 'flag-card'; // Will add 'expanded' class when clicked
     card.dataset.flagId = flag.id;
+    card.dataset.flagType = flag.flagType;
     card.dataset.status = flag.status;
     
     // Format timestamp
     const timestamp = formatTimestamp(new Date(flag.createdAt));
     
-    // Get flag type label
-    const flagTypeLabel = getFlagTypeLabel(flag.flagType);
+    // Create flag header row
+    const headerRow = document.createElement('div');
+    headerRow.className = 'flag-header-row';
     
-    // Determine status badge
-    const statusBadge = flag.status === 'resolved' 
-        ? '<span class="status-badge resolved"><i data-feather="check-circle"></i> Resolved</span>'
-        : '<span class="status-badge unresolved"><i data-feather="clock"></i> Pending Review</span>';
+    const timeDiv = document.createElement('div');
+    timeDiv.className = 'flag-time';
+    timeDiv.textContent = timestamp;
     
-    card.innerHTML = `
-        <div class="flag-card-header">
-            <div class="flag-timestamp">${timestamp}</div>
-            ${statusBadge}
-        </div>
-        
-        <div class="flag-type-label">
-            <i data-feather="flag"></i>
-            <span>${flagTypeLabel}</span>
-        </div>
-        
-        <div class="flag-reason">
-            ${flag.reportType}
-        </div>
-        
-        <div class="flag-content collapsed">
-            <p class="flag-content-label">Flagged Message:</p>
-            <div class="flag-message-text">${escapeHtml(flag.chatContent)}</div>
-        </div>
-        
-        ${flag.status === 'resolved' && flag.response ? `
-            <div class="instructor-response">
-                <p class="response-label">
-                    <i data-feather="message-circle"></i>
-                    Instructor Response:
-                </p>
-                <div class="response-text">${escapeHtml(flag.response)}</div>
-            </div>
-        ` : ''}
-        
-        <button class="expand-btn" data-flag-id="${flag.id}">
-            <span class="expand-text">Show Details</span>
-            <i data-feather="chevron-down"></i>
-        </button>
-    `;
+    const typeDiv = document.createElement('div');
+    typeDiv.className = 'flag-type';
+    typeDiv.textContent = flag.reportType;
     
-    // Attach expand/collapse listener
-    const expandBtn = card.querySelector('.expand-btn') as HTMLButtonElement;
-    const flagContent = card.querySelector('.flag-content') as HTMLElement;
+    headerRow.appendChild(timeDiv);
+    headerRow.appendChild(typeDiv);
     
-    expandBtn?.addEventListener('click', () => {
-        const isCollapsed = flagContent?.classList.contains('collapsed');
+    // Create chat content (with collapsed class by default)
+    const chatContent = document.createElement('div');
+    chatContent.className = 'chat-content collapsed';
+    chatContent.textContent = flag.chatContent;
+    
+    // Create flag footer
+    const footer = document.createElement('div');
+    footer.className = 'flag-footer';
+    
+    const studentName = document.createElement('div');
+    studentName.className = 'student-name';
+    studentName.textContent = 'You';
+    
+    const statusBadge = document.createElement('div');
+    statusBadge.className = 'status-badge';
+    statusBadge.textContent = flag.status === 'unresolved' ? 'Unresolved' : 'Resolved';
+    
+    const expandArrow = document.createElement('div');
+    expandArrow.className = 'expand-arrow';
+    expandArrow.textContent = '▼';
+    
+    footer.appendChild(studentName);
+    footer.appendChild(statusBadge);
+    footer.appendChild(expandArrow);
+    
+    // Create expanded content section for instructor responses
+    const expandedContent = document.createElement('div');
+    expandedContent.className = 'expanded-content';
+    
+    if (flag.status === 'resolved' && flag.response) {
+        const fullChatContent = document.createElement('div');
+        fullChatContent.className = 'full-chat-content';
+        fullChatContent.innerHTML = `
+            <strong>Flagged Message:</strong>
+            <div style="margin-top: 8px;">${escapeHtml(flag.chatContent)}</div>
+            <br>
+            <strong>Instructor Response:</strong>
+            <div style="margin-top: 8px;">${escapeHtml(flag.response)}</div>
+        `;
+        expandedContent.appendChild(fullChatContent);
+    } else {
+        const fullChatContent = document.createElement('div');
+        fullChatContent.className = 'full-chat-content';
+        fullChatContent.innerHTML = `
+            <strong>Flagged Message:</strong>
+            <div style="margin-top: 8px;">${escapeHtml(flag.chatContent)}</div>
+        `;
+        expandedContent.appendChild(fullChatContent);
+    }
+    
+    // Assemble the card
+    card.appendChild(headerRow);
+    card.appendChild(chatContent);
+    card.appendChild(footer);
+    card.appendChild(expandedContent);
+    
+    // Make the entire card clickable (or just the footer)
+    footer.style.cursor = 'pointer';
+    
+    footer.addEventListener('click', () => {
+        const isExpanded = card.classList.contains('expanded');
+        const chatContent = card.querySelector('.chat-content') as HTMLElement;
+        const expandArrow = card.querySelector('.expand-arrow') as HTMLElement;
         
-        if (isCollapsed) {
-            flagContent?.classList.remove('collapsed');
-            flagContent?.classList.add('expanded');
-            expandBtn.querySelector('.expand-text')!.textContent = 'Hide Details';
-            expandBtn.querySelector('i')?.setAttribute('data-feather', 'chevron-up');
+        if (isExpanded) {
+            card.classList.remove('expanded');
+            chatContent.classList.add('collapsed');
+            expandArrow.textContent = '▼';
         } else {
-            flagContent?.classList.remove('expanded');
-            flagContent?.classList.add('collapsed');
-            expandBtn.querySelector('.expand-text')!.textContent = 'Show Details';
-            expandBtn.querySelector('i')?.setAttribute('data-feather', 'chevron-down');
+            card.classList.add('expanded');
+            chatContent.classList.remove('collapsed');
+            expandArrow.textContent = '▲';
         }
         
         renderFeatherIcons();

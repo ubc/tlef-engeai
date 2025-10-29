@@ -6,17 +6,19 @@
  * 
  * FEATURES:
  * - Display current course information in editable form
- * - Allow modification of course name, instructors, TAs, division type, and content count
- * - Save changes to database
- * - Validation of all inputs before saving
+ * - Allow modification of instructors, TAs, and content count
+ * - Course name and organization type are readonly
+ * - Save changes to database with proper validation
+ * - Confirmation modals for instructor/TA removal
+ * - Handle section count changes with automatic division management
  * 
  * @author: gatahcha
  * @date: 2025-01-29
- * @version: 1.0.0
+ * @version: 2.0.0
  */
 
-import { activeCourse } from "../../../src/functions/types.js";
-import { showErrorModal, showSuccessModal } from "../modal-overlay.js";
+import { activeCourse, ContentDivision } from "../../../src/functions/types.js";
+import { showErrorModal, showSuccessModal, showConfirmModal } from "../modal-overlay.js";
 import { renderFeatherIcons } from "../functions/api.js";
 
 // ===========================================
@@ -108,15 +110,15 @@ function ensureCourseInOptions(courseName: string): Array<{value: string, text: 
 }
 
 /**
- * Updates the display of selected items (instructors or TAs)
+ * Updates the display of selected items (instructors or TAs) with confirmation on removal
  */
-function updateSelectedItemsDisplay(containerId: string, items: string[]): void {
+async function updateSelectedItemsDisplay(containerId: string, items: string[], itemType: 'instructor' | 'ta'): Promise<void> {
     const container = document.getElementById(containerId);
     if (!container) return;
     
     container.innerHTML = '';
     
-    items.forEach(item => {
+    for (const item of items) {
         const itemElement = document.createElement('div');
         itemElement.className = 'selected-item';
         itemElement.innerHTML = `
@@ -124,17 +126,31 @@ function updateSelectedItemsDisplay(containerId: string, items: string[]): void 
             <button class="remove-btn" data-item="${item}">×</button>
         `;
         
-        // Add remove functionality
+        // Add remove functionality with confirmation modal
         const removeBtn = itemElement.querySelector('.remove-btn');
         if (removeBtn) {
-            removeBtn.addEventListener('click', () => {
-                items.splice(items.indexOf(item), 1);
-                updateSelectedItemsDisplay(containerId, items);
+            removeBtn.addEventListener('click', async () => {
+                const typeName = itemType === 'instructor' ? 'instructor' : 'teaching assistant';
+                const result = await showConfirmModal(
+                    `Remove ${typeName.charAt(0).toUpperCase() + typeName.slice(1)}`,
+                    `Are you sure you want to remove ${item}?`,
+                    'Confirm',
+                    'Cancel'
+                );
+                
+                // Check if user confirmed (clicked Confirm button)
+                if (result.action === 'confirm') {
+                    const index = items.indexOf(item);
+                    if (index > -1) {
+                        items.splice(index, 1);
+                        await updateSelectedItemsDisplay(containerId, items, itemType);
+                    }
+                }
             });
         }
         
         container.appendChild(itemElement);
-    });
+    }
 }
 
 /**
@@ -149,6 +165,65 @@ function updateContentCountDescription(frameType: 'byWeek' | 'byTopic'): void {
     } else {
         descriptionElement.textContent = 'How many topics are in your course?';
     }
+}
+
+/**
+ * Generates a unique ID for divisions
+ */
+function generateUniqueId(): string {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
+
+/**
+ * Handles section count changes and updates divisions array
+ */
+async function handleSectionCountChange(
+    newCount: number, 
+    oldCount: number, 
+    frameType: 'byWeek' | 'byTopic',
+    divisions: ContentDivision[],
+    courseName: string
+): Promise<ContentDivision[] | null> {
+    // If decreasing, show confirmation modal
+    if (newCount < oldCount) {
+        const result = await showConfirmModal(
+            "Confirm Reduction",
+            `Reducing sections will permanently delete the last ${oldCount - newCount} division(s). Are you sure?`,
+            'Confirm',
+            'Cancel'
+        );
+        
+        if (result.action !== 'confirm') {
+            return null; // User cancelled
+        }
+        
+        // Keep only the first newCount divisions
+        return divisions.slice(0, newCount);
+    } 
+    // If increasing, add placeholder divisions
+    else if (newCount > oldCount) {
+        const updatedDivisions = [...divisions];
+        const divisionPrefix = frameType === 'byWeek' ? 'Week' : 'Topic';
+        
+        for (let i = oldCount; i < newCount; i++) {
+            const newDivision: ContentDivision = {
+                id: generateUniqueId(),
+                date: new Date(),
+                title: `${divisionPrefix}: no name`,
+                courseName: courseName,
+                published: false,
+                items: [],
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+            updatedDivisions.push(newDivision);
+        }
+        
+        return updatedDivisions;
+    }
+    
+    // No change
+    return divisions;
 }
 
 /**
@@ -191,17 +266,23 @@ async function saveCourseInfo(courseData: activeCourse): Promise<boolean> {
         console.log("🎯 Saving course information to database...");
         console.log("courseData: ", courseData);
         
-        const response = await fetch('/api/courses', {
+        const response = await fetch(`/api/courses/${courseData.id}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
             },
             credentials: 'include',
-            body: JSON.stringify(courseData)
+            body: JSON.stringify({
+                instructors: courseData.instructors,
+                teachingAssistants: courseData.teachingAssistants,
+                tilesNumber: courseData.tilesNumber,
+                divisions: courseData.divisions
+            })
         });
         
         if (!response.ok) {
-            throw new Error(`Failed to update course: ${response.statusText}`);
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Failed to update course: ${response.statusText}`);
         }
         
         const result = await response.json();
@@ -215,7 +296,8 @@ async function saveCourseInfo(courseData: activeCourse): Promise<boolean> {
         }
     } catch (error) {
         console.error("❌ Error saving course information:", error);
-        await showErrorModal("Error", "Failed to save course information. Please try again.");
+        const errorMessage = error instanceof Error ? error.message : "Failed to save course information. Please try again.";
+        await showErrorModal("Error", errorMessage);
         return false;
     }
 }
@@ -233,8 +315,16 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
     console.log("🔧 Initializing course information page...");
     
     try {
-        // Populate form with current course data
-        const localCourseData: activeCourse = { ...currentClass };
+        // Create a deep copy for local modifications
+        const localCourseData: activeCourse = { 
+            ...currentClass,
+            instructors: [...currentClass.instructors],
+            teachingAssistants: [...currentClass.teachingAssistants],
+            divisions: [...currentClass.divisions]
+        };
+        
+        // Store the original count for comparison
+        let originalTilesNumber = localCourseData.tilesNumber;
         
         // Ensure current course name is in the options list
         const courseOptions = ensureCourseInOptions(localCourseData.courseName);
@@ -248,10 +338,12 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
         if (instructorSelect) populateSelectOptions(instructorSelect, INSTRUCTOR_OPTIONS);
         if (taSelect) populateSelectOptions(taSelect, TA_OPTIONS);
         
+        // Set current values
         if (courseSelect) courseSelect.value = localCourseData.courseName;
-        if (instructorSelect) updateSelectedItemsDisplay('courseInfoSelectedInstructors', localCourseData.instructors);
-        if (taSelect) updateSelectedItemsDisplay('courseInfoSelectedTAs', localCourseData.teachingAssistants);
+        if (instructorSelect) await updateSelectedItemsDisplay('courseInfoSelectedInstructors', localCourseData.instructors, 'instructor');
+        if (taSelect) await updateSelectedItemsDisplay('courseInfoSelectedTAs', localCourseData.teachingAssistants, 'ta');
         
+        // Set radio buttons (they are disabled, but should show current value)
         const byWeekRadio = document.getElementById('courseInfoByWeek') as HTMLInputElement;
         const byTopicRadio = document.getElementById('courseInfoByTopic') as HTMLInputElement;
         if (byWeekRadio && byTopicRadio) {
@@ -262,6 +354,7 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
             }
         }
         
+        // Set content count
         const contentCountInput = document.getElementById('courseInfoContentCount') as HTMLInputElement;
         if (contentCountInput) {
             contentCountInput.value = localCourseData.tilesNumber.toString();
@@ -272,11 +365,11 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
         // Add instructors
         const addInstructorBtn = document.getElementById('courseInfoAddInstructorBtn');
         if (addInstructorBtn && instructorSelect) {
-            const addInstructor = () => {
+            const addInstructor = async () => {
                 const selectedValue = instructorSelect.value;
                 if (selectedValue && !localCourseData.instructors.includes(selectedValue)) {
                     localCourseData.instructors.push(selectedValue);
-                    updateSelectedItemsDisplay('courseInfoSelectedInstructors', localCourseData.instructors);
+                    await updateSelectedItemsDisplay('courseInfoSelectedInstructors', localCourseData.instructors, 'instructor');
                     instructorSelect.value = '';
                 }
             };
@@ -293,11 +386,11 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
         // Add TAs
         const addTABtn = document.getElementById('courseInfoAddTABtn');
         if (addTABtn && taSelect) {
-            const addTA = () => {
+            const addTA = async () => {
                 const selectedValue = taSelect.value;
                 if (selectedValue && !localCourseData.teachingAssistants.includes(selectedValue)) {
                     localCourseData.teachingAssistants.push(selectedValue);
-                    updateSelectedItemsDisplay('courseInfoSelectedTAs', localCourseData.teachingAssistants);
+                    await updateSelectedItemsDisplay('courseInfoSelectedTAs', localCourseData.teachingAssistants, 'ta');
                     taSelect.value = '';
                 }
             };
@@ -311,34 +404,11 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
             });
         }
         
-        // Handle division type changes
-        if (byWeekRadio) {
-            byWeekRadio.addEventListener('change', () => {
-                localCourseData.frameType = 'byWeek';
-                updateContentCountDescription(localCourseData.frameType);
-            });
-        }
-        
-        if (byTopicRadio) {
-            byTopicRadio.addEventListener('change', () => {
-                localCourseData.frameType = 'byTopic';
-                updateContentCountDescription(localCourseData.frameType);
-            });
-        }
-        
-        // Handle content count changes
+        // Handle content count changes (track changes for save)
         if (contentCountInput) {
             contentCountInput.addEventListener('input', (e) => {
                 const target = e.target as HTMLInputElement;
                 localCourseData.tilesNumber = parseInt(target.value) || 0;
-            });
-        }
-        
-        // Handle course name changes
-        if (courseSelect) {
-            courseSelect.addEventListener('change', (e) => {
-                const target = e.target as HTMLSelectElement;
-                localCourseData.courseName = target.value;
             });
         }
         
@@ -347,13 +417,35 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
         if (saveBtn) {
             saveBtn.addEventListener('click', async () => {
                 console.log("💾 Saving course information...");
+                
+                // Handle section count changes if necessary
+                if (localCourseData.tilesNumber !== originalTilesNumber) {
+                    const updatedDivisions = await handleSectionCountChange(
+                        localCourseData.tilesNumber,
+                        originalTilesNumber,
+                        localCourseData.frameType,
+                        localCourseData.divisions,
+                        localCourseData.courseName
+                    );
+                    
+                    if (updatedDivisions === null) {
+                        // User cancelled the operation
+                        if (contentCountInput) {
+                            contentCountInput.value = originalTilesNumber.toString();
+                            localCourseData.tilesNumber = originalTilesNumber;
+                        }
+                        return;
+                    }
+                    
+                    localCourseData.divisions = updatedDivisions;
+                }
+                
                 const success = await saveCourseInfo(localCourseData);
                 
                 if (success) {
-                    // Update the global currentClass if it exists
-                    if ((window as any).currentClass) {
-                        Object.assign((window as any).currentClass, localCourseData);
-                    }
+                    // Update the global currentClass and original count
+                    Object.assign(currentClass, localCourseData);
+                    originalTilesNumber = localCourseData.tilesNumber;
                     
                     console.log("✅ Course information saved successfully");
                 }
@@ -365,8 +457,6 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
         if (backBtn) {
             backBtn.addEventListener('click', () => {
                 console.log('[COURSE-INFO] 🔙 Back button clicked');
-                
-                // Dispatch event to return to previous state
                 window.dispatchEvent(new CustomEvent('course-info-closed'));
             });
             console.log('[COURSE-INFO] ✅ Back button listener attached');
@@ -382,4 +472,3 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
         await showErrorModal("Initialization Error", "Failed to initialize course information page.");
     }
 };
-

@@ -27,7 +27,8 @@ import {
 } from '../../../src/functions/types';
 import { uploadRAGContent } from '../services/RAGService.js';
 import { DocumentUploadModule, UploadResult } from '../services/DocumentUploadModule.js';
-import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal } from '../modal-overlay.js';
+import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal } from '../modal-overlay.js';
+import { renderFeatherIcons } from '../functions/api.js';
 
 // In-memory store for the course data
 let courseData: ContentDivision[] = [];
@@ -109,6 +110,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const el = createDivisionElement(division);
             container.appendChild(el);
         });
+        
+        // Render feather icons (including rename icons)
+        renderFeatherIcons();
     }
 
     /**
@@ -133,7 +137,27 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const left = document.createElement('div');
         const title = document.createElement('div');
         title.className = 'week-title';
-        title.textContent = division.title;
+        
+        // Create title text span
+        const titleText = document.createElement('span');
+        titleText.textContent = division.title;
+        title.appendChild(titleText);
+        
+        // Create rename icon
+        const renameIcon = document.createElement('i');
+        renameIcon.setAttribute('data-feather', 'edit-2');
+        renameIcon.className = 'rename-icon';
+        renameIcon.setAttribute('data-division-id', division.id);
+        renameIcon.style.cursor = 'pointer';
+        renameIcon.style.marginLeft = '8px';
+        renameIcon.style.width = '16px';
+        renameIcon.style.height = '16px';
+        renameIcon.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent header toggle
+            renameDivision(division);
+        });
+        title.appendChild(renameIcon);
+        
         const status = document.createElement('div');
         status.className = 'completion-status';
 
@@ -1068,7 +1092,28 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         header.className = 'content-header';
         const title = document.createElement('div');
         title.className = 'content-title';
-        title.textContent = content.title;
+        
+        // Create title text span
+        const titleText = document.createElement('span');
+        titleText.textContent = content.title;
+        title.appendChild(titleText);
+        
+        // Create rename icon
+        const renameIcon = document.createElement('i');
+        renameIcon.setAttribute('data-feather', 'edit-2');
+        renameIcon.className = 'rename-icon';
+        renameIcon.setAttribute('data-division-id', divisionId);
+        renameIcon.setAttribute('data-item-id', content.id);
+        renameIcon.style.cursor = 'pointer';
+        renameIcon.style.marginLeft = '8px';
+        renameIcon.style.width = '16px';
+        renameIcon.style.height = '16px';
+        renameIcon.addEventListener('click', (e) => {
+            e.stopPropagation();
+            renameItem(divisionId, content);
+        });
+        title.appendChild(renameIcon);
+        
         const statusRow = document.createElement('div');
         statusRow.className = 'content-status-row';
         const deleteBadge = document.createElement('div');
@@ -1277,6 +1322,172 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const totalSections = division.items.length;
         const container = document.querySelector(`.week-header[data-division="${divisionId}"] .completion-status`) as HTMLElement | null;
         if (container) container.textContent = `${sectionsCompleted} / ${totalSections} Sections completed`;
+    }
+
+    /**
+     * Rename a division (week/topic)
+     * 
+     * @param division - The division to rename
+     */
+    async function renameDivision(division: ContentDivision): Promise<void> {
+        if (!currentClass) {
+            console.error('❌ No current class found for renaming division');
+            return;
+        }
+
+        try {
+            // Show input modal with current title
+            const result = await showInputModal(
+                'Rename Division',
+                'Enter a new name for this division:',
+                division.title,
+                'Save',
+                'Cancel'
+            );
+
+            // Check if user cancelled
+            if (result.action !== 'confirm' || !result.data) {
+                return;
+            }
+
+            const newTitle = result.data.trim();
+
+            // Validate input
+            if (!newTitle) {
+                await showErrorModal('Validation Error', 'Division name cannot be empty.');
+                return;
+            }
+
+            if (newTitle.length > 100) {
+                await showErrorModal('Validation Error', 'Division name is too long (max 100 characters).');
+                return;
+            }
+
+            console.log(`📝 Renaming division ${division.id} from "${division.title}" to "${newTitle}"`);
+
+            // Call backend API to update division title
+            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${division.id}/title`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    title: newTitle
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `Failed to rename division: ${response.statusText}`);
+            }
+
+            const responseData = await response.json();
+
+            if (responseData.success) {
+                // Update local data
+                division.title = newTitle;
+
+                // Update DOM
+                const titleElement = document.querySelector(`.week-header[data-division="${division.id}"] .week-title span`);
+                if (titleElement) {
+                    titleElement.textContent = newTitle;
+                }
+
+                console.log('✅ Division renamed successfully');
+                await showSuccessModal('Success', 'Division title updated successfully.');
+            } else {
+                throw new Error(responseData.error || 'Failed to rename division');
+            }
+        } catch (error) {
+            console.error('❌ Error renaming division:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Failed to rename division. Please try again.';
+            await showErrorModal('Error', errorMessage);
+        }
+    }
+
+    /**
+     * Rename a course item (section)
+     * 
+     * @param divisionId - The ID of the division containing the item
+     * @param item - The item to rename
+     */
+    async function renameItem(divisionId: string, item: courseItem): Promise<void> {
+        if (!currentClass) {
+            console.error('❌ No current class found for renaming item');
+            return;
+        }
+
+        try {
+            // Show input modal with current title
+            const result = await showInputModal(
+                'Rename Section',
+                'Enter a new name for this section:',
+                item.title,
+                'Save',
+                'Cancel'
+            );
+
+            // Check if user cancelled
+            if (result.action !== 'confirm' || !result.data) {
+                return;
+            }
+
+            const newTitle = result.data.trim();
+
+            // Validate input
+            if (!newTitle) {
+                await showErrorModal('Validation Error', 'Section name cannot be empty.');
+                return;
+            }
+
+            if (newTitle.length > 100) {
+                await showErrorModal('Validation Error', 'Section name is too long (max 100 characters).');
+                return;
+            }
+
+            console.log(`📝 Renaming item ${item.id} in division ${divisionId} from "${item.title}" to "${newTitle}"`);
+
+            // Call backend API to update item title
+            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${item.id}/title`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    title: newTitle
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `Failed to rename section: ${response.statusText}`);
+            }
+
+            const responseData = await response.json();
+
+            if (responseData.success) {
+                // Update local data
+                item.title = newTitle;
+                item.itemTitle = newTitle;
+
+                // Update DOM
+                const titleElement = document.querySelector(`#content-item-${divisionId}-${item.id} .content-title span`);
+                if (titleElement) {
+                    titleElement.textContent = newTitle;
+                }
+
+                console.log('✅ Item renamed successfully');
+                await showSuccessModal('Success', 'Section title updated successfully.');
+            } else {
+                throw new Error(responseData.error || 'Failed to rename section');
+            }
+        } catch (error) {
+            console.error('❌ Error renaming item:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Failed to rename section. Please try again.';
+            await showErrorModal('Error', errorMessage);
+        }
     }
 
     // Make functions globally available for inline event handlers if needed,

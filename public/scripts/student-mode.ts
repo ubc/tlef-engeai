@@ -189,7 +189,7 @@ async function initializeChatInterface(user: any): Promise<void> {
     console.log('[STUDENT-MODE] 🚀 Initializing ChatManager with real user data...');
     console.log('[STUDENT-MODE] 📊 User context:', {
         puid: user.puid,
-        activeCourseName: user.activeCourseName,
+        courseName: user.courseName,
         affiliation: user.affiliation
     });
     
@@ -419,7 +419,7 @@ async function initializeChatInterface(user: any): Promise<void> {
         }
         
         if (profileCourse && user) {
-            profileCourse.textContent = user.activeCourseName || 'APSC 099: Engineering for Kindergarten';
+            profileCourse.textContent = user.courseName || 'APSC 099: Engineering for Kindergarten';
         }
     };
 
@@ -614,9 +614,19 @@ async function initializeChatInterface(user: any): Promise<void> {
  * Update companion text with current course name
  */
 function updateCompanionText(user: any): void {
+    console.log('[STUDENT-MODE] 🔍 Updating companion text with user:', user);
     const companionText = document.getElementById('companion-text');
+    console.log('[STUDENT-MODE] 🔍 Companion text element found:', !!companionText);
+    console.log('[STUDENT-MODE] 🔍 User courseName:', user?.courseName);
+    
     if (companionText && user.courseName) {
         companionText.textContent = `${user.courseName} companion`;
+        console.log('[STUDENT-MODE] ✅ Companion text updated to:', companionText.textContent);
+    } else {
+        console.warn('[STUDENT-MODE] ⚠️ Could not update companion text:', {
+            elementExists: !!companionText,
+            hasCourseName: !!user.courseName
+        });
     }
 }
 

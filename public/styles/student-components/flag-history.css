@@ -264,12 +264,14 @@
     margin-bottom: 2rem;
 }
 
-/* Flag Card - Matching content-item pattern */
+/* Flag Card - Matching instructor pattern */
 .flag-card {
-    padding: 15px 20px;
+    padding: 16px 20px;
     border-bottom: 1px solid var(--border-color);
     background: var(--chat-bg);
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .flag-card:last-child {
@@ -278,176 +280,100 @@
 
 .flag-card:hover {
     background: var(--hover-bg);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-/* Flag Card Header */
-.flag-card-header {
+/* Flag Header Row - Matching instructor pattern */
+.flag-header-row {
+    margin-bottom: 8px;
+}
+
+.flag-time {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.flag-type {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.3;
+}
+
+/* Chat Content - Matching instructor pattern */
+.chat-content {
+    margin: 12px 0;
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.6; /* Better spacing for equations */
+    white-space: pre-line; /* Preserve line breaks for equations */
+}
+
+.chat-content.collapsed {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4; /* Normal line height for single line */
+}
+
+/* Flag Footer - Matching instructor pattern */
+.flag-footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
+    margin-top: 12px;
 }
 
-.flag-timestamp {
+.student-name {
+    font-size: 13px;
     color: var(--text-secondary);
-    font-size: 12px;
-    font-style: italic;
 }
 
 .status-badge {
-    display: inline-flex;
+    font-size: 13px;
+    color: var(--text-secondary);
+    display: flex;
     align-items: center;
-    gap: 0.375rem;
-    padding: 0.375rem 0.75rem;
-    border-radius: 0.375rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    gap: 4px;
 }
 
-.status-badge.resolved {
-    background: rgba(40, 167, 69, 0.1);
-    color: #28a745;
+.expand-arrow {
+    font-size: 16px;
+    color: var(--text-secondary);
+    transition: transform 0.2s ease;
 }
 
-.status-badge.unresolved {
-    background: rgba(255, 193, 7, 0.1);
-    color: #ffc107;
+.flag-card.expanded .expand-arrow {
+    transform: rotate(180deg);
 }
 
-.status-badge i {
-    width: 14px;
-    height: 14px;
-}
-
-/* Flag Type Label - Matching status badge pattern */
-.flag-type-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 6px 10px;
-    background: rgba(0, 33, 69, 0.1);
-    border: 1px solid var(--color-navy-blue);
-    border-radius: 6px;
-    color: var(--color-navy-blue);
-    font-size: 0.75rem;
-    font-weight: 600;
-    margin-bottom: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.flag-type-label i {
-    width: 14px;
-    height: 14px;
-}
-
-/* Flag Reason - Matching content-title pattern */
-.flag-reason {
-    color: var(--text-primary);
-    font-size: 14px;
-    font-weight: 500;
-    margin-bottom: 0.75rem;
-    line-height: 1.5;
-}
-
-/* Flag Content */
-.flag-content {
-    margin-bottom: 1rem;
-    transition: all 0.3s ease;
-}
-
-.flag-content.collapsed {
+/* Expanded Content - Matching instructor pattern */
+.expanded-content {
     max-height: 0;
     overflow: hidden;
-    opacity: 0;
+    transition: max-height 0.3s ease;
+    margin-top: 15px;
 }
 
-.flag-content.expanded {
-    max-height: 500px;
-    opacity: 1;
+.flag-card.expanded .expanded-content {
+    max-height: 2000px; /* Increased from 800px to accommodate larger content */
+    overflow: visible;
 }
 
-.flag-content-label {
+.full-chat-content {
+    margin-top: 10px;
+    margin-bottom: 15px;
+    font-size: 14px;
+    line-height: 1.5;
     color: var(--text-primary);
-    font-size: 12px;
+}
+
+.full-chat-content strong {
+    color: var(--text-primary);
     font-weight: 600;
-    margin-bottom: 8px;
-}
-
-.flag-message-text {
-    background: var(--gingham-color);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 12px 15px;
-    color: var(--text-primary);
-    font-size: 13px;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    word-break: break-word;
-}
-
-/* Instructor Response - Matching success pattern */
-.instructor-response {
-    background: rgba(92, 138, 58, 0.1);
-    border: 1px solid var(--pinned-color);
-    border-radius: 6px;
-    padding: 12px 15px;
-    margin-bottom: 10px;
-}
-
-.response-label {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--pinned-color);
-    font-size: 12px;
-    font-weight: 600;
-    margin-bottom: 8px;
-}
-
-.response-label i {
-    width: 14px;
-    height: 14px;
-}
-
-.response-text {
-    color: var(--text-primary);
-    font-size: 13px;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    word-break: break-word;
-}
-
-/* Expand Button - Matching instructor pattern */
-.expand-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 8px 12px;
-    background: var(--gingham-color);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    color: var(--text-primary);
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.expand-btn:hover {
-    background: var(--hover-bg);
-    border-color: var(--pinned-color);
-    color: var(--pinned-color);
-}
-
-.expand-btn i {
-    width: 16px;
-    height: 16px;
-    transition: transform 0.2s ease;
 }
 
 /* Profile Actions Section */

@@ -30,6 +30,8 @@ interface ChatMetadata {
  * LaTeX Rendering Utility Functions
  */
 export function renderLatexInElement(text: string, element: HTMLElement): void {
+    // Set text content directly - KaTeX's renderMathInElement can process it correctly
+    // textContent preserves newlines in the DOM, which KaTeX can then process
     element.textContent = text;
     
     // Wait for KaTeX to be available and render

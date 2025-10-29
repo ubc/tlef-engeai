@@ -635,6 +635,101 @@ export async function showConfirmModal(
 }
 
 /**
+ * Shows an input modal for text entry
+ * 
+ * @param title - Modal title
+ * @param message - Instruction message
+ * @param currentValue - Pre-filled value in the input
+ * @param confirmText - Text for confirm button
+ * @param cancelText - Text for cancel button
+ * @returns Promise that resolves with user's input and action
+ */
+export async function showInputModal(
+    title: string,
+    message: string,
+    currentValue: string = '',
+    confirmText: string = 'Save',
+    cancelText: string = 'Cancel'
+): Promise<ModalResult> {
+    return new Promise((resolve) => {
+        const modal = getModal();
+        
+        // Create input element
+        const inputContainer = document.createElement('div');
+        inputContainer.style.padding = '20px 0';
+        
+        if (message) {
+            const messageP = document.createElement('p');
+            messageP.textContent = message;
+            messageP.style.marginBottom = '15px';
+            messageP.style.color = 'var(--text-primary)';
+            inputContainer.appendChild(messageP);
+        }
+        
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = currentValue;
+        input.className = 'modal-input-field';
+        input.style.width = '100%';
+        input.style.padding = '10px 12px';
+        input.style.border = '2px solid #e9ecef';
+        input.style.borderRadius = '8px';
+        input.style.fontSize = '16px';
+        input.style.fontFamily = 'inherit';
+        input.style.boxSizing = 'border-box';
+        input.style.transition = 'border-color 0.2s ease';
+        
+        input.addEventListener('focus', () => {
+            input.style.borderColor = 'var(--color-chbe-green)';
+            input.style.outline = 'none';
+        });
+        
+        input.addEventListener('blur', () => {
+            input.style.borderColor = '#e9ecef';
+        });
+        
+        inputContainer.appendChild(input);
+        
+        // Show modal and focus input after a short delay
+        modal.show({
+            type: 'info',
+            title,
+            content: inputContainer,
+            buttons: [
+                { 
+                    text: cancelText, 
+                    type: 'secondary', 
+                    action: async () => {
+                        resolve({ action: 'cancel', data: null });
+                    },
+                    closeOnClick: true 
+                },
+                { 
+                    text: confirmText, 
+                    type: 'primary',
+                    action: async () => {
+                        const value = input.value.trim();
+                        resolve({ action: 'confirm', data: value });
+                    },
+                    closeOnClick: true 
+                }
+            ]
+        }).then(result => {
+            // If modal was closed by other means (ESC, overlay click)
+            if (result.action !== 'confirm' && result.action !== 'cancel') {
+                resolve({ action: 'cancel', data: null });
+            }
+        });
+        
+        // Focus input after modal is shown
+        setTimeout(() => {
+            input.focus();
+            input.select();
+        }, 100);
+    });
+}
+
+/**
  * Shows a disclaimer modal
  * 
  * @param title - Modal title
@@ -1257,6 +1352,7 @@ export default {
     showSuccessModal,
     showInfoModal,
     showConfirmModal,
+    showInputModal,
     showDisclaimerModal,
     showHelpModal,
     showCustomModal,

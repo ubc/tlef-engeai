@@ -1266,4 +1266,170 @@ router.delete('/:courseId/documents/all', asyncHandlerWithAuth(async (req: Reque
     }
 }));
 
+// PATCH /api/courses/:courseId/divisions/:divisionId/title - Update division title (REQUIRES AUTH)
+router.patch('/:courseId/divisions/:divisionId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, divisionId } = req.params;
+        const { title } = req.body;
+        
+        // Validate input
+        if (!title || typeof title !== 'string') {
+            return res.status(400).json({
+                success: false,
+                error: 'Title is required and must be a string'
+            });
+        }
+        
+        const trimmedTitle = title.trim();
+        
+        if (!trimmedTitle) {
+            return res.status(400).json({
+                success: false,
+                error: 'Title cannot be empty'
+            });
+        }
+        
+        if (trimmedTitle.length > 100) {
+            return res.status(400).json({
+                success: false,
+                error: 'Title is too long (maximum 100 characters)'
+            });
+        }
+        
+        // Get the course
+        const course = await instance.getActiveCourse(courseId);
+        
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        // Find the division
+        const division = course.divisions?.find((d: ContentDivision) => d.id === divisionId);
+        
+        if (!division) {
+            return res.status(404).json({
+                success: false,
+                error: 'Division not found'
+            });
+        }
+        
+        // Update the division title
+        division.title = trimmedTitle;
+        division.updatedAt = new Date();
+        
+        // Save the updated course
+        const updatedCourse = await instance.updateActiveCourse(courseId, {
+            divisions: course.divisions
+        });
+        
+        console.log(`✅ Division ${divisionId} title updated to "${trimmedTitle}"`);
+        
+        res.status(200).json({
+            success: true,
+            data: division,
+            message: 'Division title updated successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error updating division title:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update division title'
+        });
+    }
+}));
+
+// PATCH /api/courses/:courseId/divisions/:divisionId/items/:itemId/title - Update item title (REQUIRES AUTH)
+router.patch('/:courseId/divisions/:divisionId/items/:itemId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, divisionId, itemId } = req.params;
+        const { title } = req.body;
+        
+        // Validate input
+        if (!title || typeof title !== 'string') {
+            return res.status(400).json({
+                success: false,
+                error: 'Title is required and must be a string'
+            });
+        }
+        
+        const trimmedTitle = title.trim();
+        
+        if (!trimmedTitle) {
+            return res.status(400).json({
+                success: false,
+                error: 'Title cannot be empty'
+            });
+        }
+        
+        if (trimmedTitle.length > 100) {
+            return res.status(400).json({
+                success: false,
+                error: 'Title is too long (maximum 100 characters)'
+            });
+        }
+        
+        // Get the course
+        const course = await instance.getActiveCourse(courseId);
+        
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        // Find the division
+        const division = course.divisions?.find((d: ContentDivision) => d.id === divisionId);
+        
+        if (!division) {
+            return res.status(404).json({
+                success: false,
+                error: 'Division not found'
+            });
+        }
+        
+        // Find the item
+        const item = division.items?.find((i: courseItem) => i.id === itemId);
+        
+        if (!item) {
+            return res.status(404).json({
+                success: false,
+                error: 'Item not found'
+            });
+        }
+        
+        // Update the item title
+        item.title = trimmedTitle;
+        item.itemTitle = trimmedTitle;
+        item.updatedAt = new Date();
+        division.updatedAt = new Date();
+        
+        // Save the updated course
+        const updatedCourse = await instance.updateActiveCourse(courseId, {
+            divisions: course.divisions
+        });
+        
+        console.log(`✅ Item ${itemId} title updated to "${trimmedTitle}"`);
+        
+        res.status(200).json({
+            success: true,
+            data: item,
+            message: 'Item title updated successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error updating item title:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update item title'
+        });
+    }
+}));
+
 

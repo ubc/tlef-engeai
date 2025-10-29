@@ -43,6 +43,11 @@
     color: var(--text-primary);
 }
 
+/* Preserve whitespace and newlines for LaTeX display math */
+.response-latex-preserve {
+    white-space: pre-wrap;
+}
+
 /* Lists */
 .response-list{
     margin: 0.5rem 0;

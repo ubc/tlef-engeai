@@ -22,12 +22,9 @@
     overflow-y: auto;
 }
 
-.course-info-content-inner {
-}
-
 .course-info-main-content {
     background-color: white;
-    padding: 2rem;
+    padding: 2rem 2rem 5rem 2rem;
     margin: 0 auto;
     border-radius: 10px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -168,6 +165,14 @@
     box-shadow: 0 0 0 3px rgba(92, 138, 58, 0.1);
 }
 
+.form-select:disabled,
+.form-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background-color: #f5f5f5;
+    color: #6c757d;
+}
+
 .form-select[multiple] {
     min-height: 120px;
     padding: 0.75rem;
@@ -268,6 +273,21 @@
 .radio-option:has(input:checked) {
     border-color: var(--color-chbe-green);
     background-color: rgba(92, 138, 58, 0.1);
+}
+
+.radio-option:has(input:disabled) {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background-color: #f5f5f5;
+}
+
+.radio-option input[type="radio"]:disabled {
+    cursor: not-allowed;
+}
+
+.radio-option:has(input:disabled) label {
+    cursor: not-allowed;
+    color: #6c757d;
 }
 
 /* ===========================================
