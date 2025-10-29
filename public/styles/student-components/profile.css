@@ -74,8 +74,8 @@
     padding-bottom: 80px; /* Space for floating back button */
 }
 
-/* Report History Title */
-.report-history-title {
+/* Flag History Title */
+.flag-history-title {
     font-size: 1.5rem;
     font-weight: 600;
     color: var(--text-primary);
@@ -85,7 +85,7 @@
     position: relative;
 }
 
-.report-history-title::after {
+.flag-history-title::after {
     content: '';
     position: absolute;
     bottom: -2px;

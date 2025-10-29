@@ -13,8 +13,9 @@ async function checkAuthentication(): Promise<boolean> {
     return await authService.checkAuthenticationAndRedirect('/pages/student-mode.html', 'STUDENT-MODE');
 }
 
-// State tracking for about page navigation
-let currentComponent: 'welcome-screen' | 'chat-window' | 'report-history' | 'profile' | 'flag-history' = 'welcome-screen';
+// State tracking for navigation
+let currentComponent: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history' = 'welcome-screen';
+let previousComponent: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history' = 'welcome-screen';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // Check authentication first
@@ -101,10 +102,11 @@ async function initializeChatInterface(user: any): Promise<void> {
     // Artefact functionality moved to chat.ts
 
     // --- COMPONENT LOADING ---
-    const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'report-history' | 'profile' | 'flag-history') => {
+    const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history') => {
         if (!mainContentArea) return;
         
-        // Track current component for about page navigation
+        // Track previous and current component for navigation
+        previousComponent = currentComponent;
         currentComponent = componentName;
         
         try {
@@ -123,6 +125,13 @@ async function initializeChatInterface(user: any): Promise<void> {
             
             // After loading, attach necessary event listeners
             if (componentName === 'chat-window') {
+                // Defensive check: if no chats exist, show welcome screen instead
+                if (chatManager.getChats().length === 0) {
+                    console.log('[STUDENT-MODE] 🚫 No chats available, showing welcome screen instead');
+                    loadComponent('welcome-screen');
+                    return;
+                }
+                
                 // Rebind message events after chat window is loaded
                 chatManager.bindMessageEvents();
                 // Reset DOM tracking and render active chat
@@ -130,8 +139,6 @@ async function initializeChatInterface(user: any): Promise<void> {
                 chatManager.renderActiveChat();
             } else if (componentName === 'welcome-screen') {
                 attachWelcomeScreenListeners();
-            } else if (componentName === 'report-history') {
-                attachReportHistoryListeners();
             } else if (componentName === 'profile') {
                 attachProfileListeners();
             } else if (componentName === 'flag-history') {
@@ -154,34 +161,17 @@ async function initializeChatInterface(user: any): Promise<void> {
             return;
         }
         
-        const metadata = chatManager.getChatMetadata();
-        const activeChatId = chatManager.getActiveChatId();
+        const chats = chatManager.getChats();
         
-        console.log(`[STUDENT-MODE] 📊 Chat status: ${metadata.length} chats, active: ${activeChatId}`);
+        console.log(`[STUDENT-MODE] 📊 Chat count: ${chats.length}`);
         
-        if (metadata.length === 0) {
-            // No chats: show welcome screen
-            console.log('[STUDENT-MODE] 👋 No chats found, showing welcome screen');
+        // Show welcome screen if no chats exist (like instructor mode)
+        if (chats.length === 0) {
+            console.log('[STUDENT-MODE] 📺 Showing welcome screen (no chats exist)');
             loadComponent('welcome-screen');
-        } else if (activeChatId) {
-            // Has chats: show chat window (will lazy load on display)
-            console.log('[STUDENT-MODE] 💬 Has active chat, showing chat window');
-            loadComponent('chat-window');
         } else {
-            // Has metadata but no active: set most recent as active
-            console.log('[STUDENT-MODE] 🔄 Has chats but no active chat, setting most recent as active');
-            const mostRecent = metadata.sort((a, b) => 
-                b.lastMessageTimestamp - a.lastMessageTimestamp
-            )[0];
-            
-            if (mostRecent) {
-                await chatManager.setActiveChatId(mostRecent.id); // Now async
-                console.log(`[STUDENT-MODE] ✅ Set most recent chat as active: ${mostRecent.id}`);
-                loadComponent('chat-window');
-            } else {
-                console.log('[STUDENT-MODE] ⚠️ No valid chat found, showing welcome screen');
-                loadComponent('welcome-screen');
-            }
+            console.log('[STUDENT-MODE] 💬 Loading chat window with active chat');
+            loadComponent('chat-window');
         }
     };
 
@@ -307,12 +297,21 @@ async function initializeChatInterface(user: any): Promise<void> {
         const welcomeBtn = document.getElementById('welcome-add-chat-btn');
         if (!welcomeBtn) return;
         welcomeBtn.addEventListener('click', async () => {
+            console.log('[STUDENT-MODE] 🆕 Creating new chat from welcome screen...');
             const result = await chatManager.createNewChat();
             if (result.success) {
+                console.log('[STUDENT-MODE] ✅ New chat created successfully, loading chat window');
+                
+                // Update chat list in sidebar
                 chatManager.renderChatList();
-                // UI update will be handled by the callback from createNewChat
+                
+                // Load chat window in main content area after creating new chat
+                loadComponent('chat-window');
+                
+                // Re-bind message events after creating new chat
+                chatManager.rebindMessageEvents();
             } else {
-                console.error('Error creating new chat:', result.error);
+                console.error('[STUDENT-MODE] ❌ Error creating new chat:', result.error);
             }
         });
     };
@@ -320,21 +319,6 @@ async function initializeChatInterface(user: any): Promise<void> {
     const attachChatWindowListeners = () => {
         // Chat window listeners are now handled by ChatManager
         // This function is kept for compatibility but ChatManager handles all chat events
-    };
-
-    const attachReportHistoryListeners = () => {
-        const backBtn = document.getElementById('back-to-chat-btn');
-        const reportList = document.querySelector('.report-list');
-
-        backBtn?.addEventListener('click', () => loadComponent('chat-window'));
-
-        // Expand/collapse
-        reportList?.addEventListener('click', (e) => {
-            const header = (e.target as HTMLElement).closest('.report-item-header') as HTMLElement | null;
-            if (!header) return;
-            const item = header.closest('.report-item');
-            item?.classList.toggle('open');
-        });
     };
 
     const attachProfileListeners = () => {
@@ -349,7 +333,7 @@ async function initializeChatInterface(user: any): Promise<void> {
         backBtn?.addEventListener('click', () => loadComponent('chat-window'));
 
         // Report card expand/collapse functionality - following report-instructor.css pattern
-        const reportHistoryList = document.getElementById('report-history-list');
+        const reportHistoryList = document.getElementById('flag-history-list');
         reportHistoryList?.addEventListener('click', (e) => {
             const target = e.target as HTMLElement;
             const reportCard = target.closest('.report-card') as HTMLElement;
@@ -424,7 +408,7 @@ async function initializeChatInterface(user: any): Promise<void> {
     };
 
     const renderSampleReportHistory = () => {
-        const reportHistoryList = document.getElementById('report-history-list');
+        const reportHistoryList = document.getElementById('flag-history-list');
         if (!reportHistoryList) return;
 
         // Sample report history data - following reports.ts structure
@@ -577,13 +561,37 @@ async function initializeChatInterface(user: any): Promise<void> {
         // Initialize the flag history interface
         initializeStudentFlagHistory(courseId, userId);
         
-        // Back button listener is handled inside initializeStudentFlagHistory
-        // but we also need to handle the actual navigation
-        const backBtn = document.getElementById('back-to-chat-btn');
+        // Back button listener - return to previous component
+        const backBtn = document.getElementById('flag-history-back-btn');
         backBtn?.addEventListener('click', () => {
-            console.log('[STUDENT-MODE] 🔙 Back to chat from flag history');
-            loadComponent('chat-window');
+            console.log('[STUDENT-MODE] 🔙 Back button clicked, returning to:', previousComponent);
+            // Dispatch event to notify that we're returning to the main interface
+            const event = new CustomEvent('flag-history-closed', { 
+                detail: { timestamp: Date.now() } 
+            });
+            window.dispatchEvent(event);
+            
+            // Load the previous component
+            loadComponent(previousComponent);
         });
+        
+        // Also support ESC key
+        const escHandler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                console.log('[STUDENT-MODE] 🔙 ESC key pressed in flag history, returning to:', previousComponent);
+                const event = new CustomEvent('flag-history-closed', { 
+                    detail: { timestamp: Date.now() } 
+                });
+                window.dispatchEvent(event);
+                
+                // Load the previous component
+                loadComponent(previousComponent);
+                
+                // Remove listener after handling
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
     };
 
     const attachProfileButtonListener = () => {

@@ -5,27 +5,43 @@
  * 
  * Styles for the student flag history interface,
  * including flag cards, filters, and statistics.
- * Matches the instructor documents pattern for consistency.
+ * Matches the instructor flag instructor pattern for consistency.
  */
 
+:root {
+    --sidebar-bg: #f7f7f7;
+    --chat-bg: #fcfcfc;
+    --border-color: #b8b8b8;
+    --hover-bg: #efefef;
+    --text-primary: #333333;
+    --text-secondary: #6c757d;
+    --background-2: #ECE5DD;
+    --pinned-color: var(--color-chbe-green);
+}
+
 /* Container */
-.container {
-    min-height: 100%;
+.flag-student-container {
+    min-height: 100%; 
     display: flex;
     flex-direction: column;
     height: 100%;
 }
 
 /* Main Content */
-.main-content {
-    width: 100%;
-    overflow-y: auto;
+.main-content { 
+    width: 100%; 
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding-bottom: 80px; /* Space for navigation button */
 }
 
-/* Header Section - Matching documents-instructor.html pattern */
-.flag-history-header {
+/* Header Section - Matching flag-instructor pattern */
+.flags-header {
     background: var(--color-chbe-green);
-    border-radius: 12px;
+    border-radius: 10px;
     padding: 20px;
     margin-bottom: 20px;
     border: 1px solid var(--border-color);
@@ -38,11 +54,11 @@
     top: 0;
 }
 
-.flag-history-header h1 {
+.header-left h1 {
+    font-size: 20px;
+    font-weight: 600;
     color: white;
-    margin: 0;
-    font-size: 2rem;
-    font-weight: 700;
+    margin: 0 0 5px 0;
 }
 
 /* Animation for header */
@@ -254,28 +270,24 @@
     height: 16px;
 }
 
-/* Flag History Container - Matching documents-container pattern */
-.flag-history-container {
-    background: var(--chat-bg);
-    border-radius: 12px;
-    border: 1px solid var(--border-color);
-    overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    margin-bottom: 2rem;
+/* Flags List - Individual separated cards - Matching instructor pattern */
+.flags-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    overflow-y: auto;
+    flex: 1;
+    padding: 0;
 }
 
-/* Flag Card - Matching instructor pattern */
 .flag-card {
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border-color);
     background: var(--chat-bg);
-    transition: all 0.2s ease;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    padding: 16px 20px;
     cursor: pointer;
+    transition: all 0.2s ease;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.flag-card:last-child {
-    border-bottom: none;
 }
 
 .flag-card:hover {
@@ -376,39 +388,73 @@
     font-weight: 600;
 }
 
-/* Profile Actions Section */
-.profile-actions {
-    margin-top: 2rem;
-    padding: 1rem 0;
+.response-section {
+    background: var(--background-2);
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 15px;
+}
+
+.response-header {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 10px;
+}
+
+/* Navigation Section - Matching about page */
+.about-navigation {
     display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 1.5rem;
+    margin-top: auto;
+    gap: 1rem;
+    z-index: 10;
+}
+
+.nav-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.875rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    min-width: 120px;
     justify-content: center;
 }
 
-.back-to-chat-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 12px 24px;
-    background: var(--color-chbe-green);
-    border: 1px solid var(--color-chbe-green);
-    border-radius: 8px;
-    color: white;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s ease;
+.nav-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    stroke-width: 2;
 }
 
-.back-to-chat-btn:hover {
-    background: var(--pinned-color);
-    border-color: var(--pinned-color);
+.nav-btn .feather {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    stroke-width: 2;
+}
+
+.btn-back {
+    background-color: var(--background-2);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-back:hover {
+    background-color: var(--color-chbe-green);
+    color: white;
+    border-color: var(--color-chbe-green);
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(92, 138, 58, 0.3);
-}
-
-.back-to-chat-btn i {
-    width: 18px;
-    height: 18px;
 }
 
 /* No Results Message */
@@ -435,22 +481,29 @@
     font-size: 1rem;
 }
 
-/* Responsive Design */
-@media (max-width: 768px) {
-    .flag-history-container {
-        padding: 1rem;
+/* Responsive Design - Matching instructor pattern */
+@media (max-width: 960px) {
+    .flags-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 15px;
     }
     
-    .flag-list {
-        grid-template-columns: 1fr;
+    .flags-list {
+        gap: 3px;
     }
     
-    .flag-statistics {
-        grid-template-columns: 1fr;
+    .flag-card {
+        padding: 12px 16px;
     }
     
-    .flag-history-header h1 {
-        font-size: 1.5rem;
+    .profile-actions {
+        margin-top: 1.5rem;
+    }
+    
+    .back-to-chat-btn {
+        width: 100%;
+        justify-content: center;
     }
 }
 
