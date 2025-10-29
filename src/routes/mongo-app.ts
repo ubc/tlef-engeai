@@ -445,6 +445,85 @@ router.put('/:id', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     });
 }));
 
+// DELETE /api/courses/:id/restart-onboarding - Restart onboarding by deleting course and related collections, then recreating with empty defaults
+// NOTE: This route must come before the general /:id route to ensure proper matching
+router.delete('/:id/restart-onboarding', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    const instance = await EngEAI_MongoDB.getInstance();
+    
+    try {
+        // First check if course exists and save the courseName
+        const existingCourse = await instance.getActiveCourse(req.params.id);
+        if (!existingCourse) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        const course = existingCourse as unknown as activeCourse;
+        const courseName = course.courseName; // Preserve course name
+        
+        // Remove course from active-course-list
+        await instance.deleteActiveCourse(course);
+        
+        // Drop the users collection
+        const usersCollectionName = `${courseName}_users`;
+        const usersDropResult = await instance.dropCollection(usersCollectionName);
+        if (!usersDropResult.success) {
+            console.error(`Failed to drop ${usersCollectionName}:`, usersDropResult.error);
+            // Continue with other operations even if one fails
+        }
+        
+        // Drop the flags collection
+        const flagsCollectionName = `${courseName}_flags`;
+        const flagsDropResult = await instance.dropCollection(flagsCollectionName);
+        if (!flagsDropResult.success) {
+            console.error(`Failed to drop ${flagsCollectionName}:`, flagsDropResult.error);
+            // Continue with other operations even if one fails
+        }
+        
+        // Recreate the course with empty defaults but preserved courseName
+        const tempCourseForId = {
+            courseName: courseName,
+            date: new Date()
+        } as activeCourse;
+        const newCourseId = instance.idGenerator.courseID(tempCourseForId);
+        
+        const newCourse: activeCourse = {
+            id: newCourseId,
+            date: new Date(),
+            courseName: courseName, // Preserved from original
+            courseSetup: false,
+            contentSetup: false,
+            flagSetup: false,
+            monitorSetup: false,
+            instructors: [], // Empty array
+            teachingAssistants: [], // Empty array
+            frameType: 'byTopic', // Default frame type
+            tilesNumber: 0, // Empty/zero tiles
+            divisions: [] // Empty divisions array
+        };
+        
+        // Create the new course (this also creates the users and flags collections)
+        await instance.postActiveCourse(newCourse);
+        
+        res.status(200).json({
+            success: true,
+            message: 'Onboarding restarted successfully. Course recreated with empty defaults.',
+            data: {
+                courseId: newCourseId,
+                courseName: courseName
+            }
+        });
+    } catch (error) {
+        console.error('Error restarting onboarding:', error);
+        return res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
+        });
+    }
+}));
+
 // DELETE /api/courses/:id - Delete course (REQUIRES AUTH - Instructors only)
 router.delete('/:id', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();

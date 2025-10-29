@@ -124,6 +124,30 @@ export class EngEAI_MongoDB {
         await this.getCourseCollection().deleteOne({ id: course.id });
     }
 
+    /**
+     * Drop a collection from the database
+     * @param collectionName - The name of the collection to drop
+     * @returns Promise with success status
+     */
+    public dropCollection = async (collectionName: string): Promise<{ success: boolean; error?: string }> => {
+        try {
+            const collectionExists = await this.db.listCollections({ name: collectionName }).hasNext();
+            
+            if (collectionExists) {
+                await this.db.dropCollection(collectionName);
+                console.log(`✅ Successfully dropped collection: ${collectionName}`);
+                return { success: true };
+            } else {
+                console.log(`⚠️ Collection ${collectionName} does not exist, skipping drop`);
+                return { success: true }; // Not an error if collection doesn't exist
+            }
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            console.error(`❌ Error dropping collection ${collectionName}:`, errorMessage);
+            return { success: false, error: errorMessage };
+        }
+    }
+
     // Learning objectives methods
     public addLearningObjective = async (courseId: string, divisionId: string, contentId: string, learningObjective: any) => {
         console.log('🎯 [MONGODB] addLearningObjective called with:', { courseId, divisionId, contentId, learningObjective });

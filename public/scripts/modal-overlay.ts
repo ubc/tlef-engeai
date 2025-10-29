@@ -866,6 +866,47 @@ export async function showUploadLoadingModal(): Promise<ModalResult> {
 }
 
 /**
+ * Shows a loading modal for title updates
+ * 
+ * @param itemType - Type of item being updated (e.g., "Division" or "Section")
+ * @returns Promise that resolves when modal is closed
+ */
+export async function showTitleUpdateLoadingModal(itemType: string = 'Title'): Promise<ModalResult> {
+    const modal = getModal();
+    return modal.show({
+        type: 'info',
+        title: 'Updating Title',
+        content: `
+            <div style="text-align: center; padding: 20px;">
+                <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
+                <p style="margin-bottom: 16px; color: var(--text-primary);">
+                    Updating ${itemType.toLowerCase()} title...
+                </p>
+                <p style="color: var(--text-secondary); font-size: 14px;">
+                    Please wait while we save your changes.
+                </p>
+                <div style="margin-top: 20px;">
+                    <div style="width: 100%; height: 4px; background-color: #e0e0e0; border-radius: 2px; overflow: hidden;">
+                        <div style="width: 100%; height: 100%; background-color: #4CAF50; animation: progress 3s ease-in-out infinite;"></div>
+                    </div>
+                </div>
+            </div>
+            <style>
+                @keyframes progress {
+                    0% { transform: translateX(-100%); }
+                    50% { transform: translateX(0%); }
+                    100% { transform: translateX(100%); }
+                }
+            </style>
+        `,
+        showCloseButton: false,
+        closeOnOverlayClick: false,
+        closeOnEscape: false,
+        maxWidth: '400px'
+    });
+}
+
+/**
  * Shows a chat creation error modal
  * 
  * @param errorMessage - The error message to display

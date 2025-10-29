@@ -172,6 +172,9 @@
 .workspace-action {
     flex-shrink: 0;
     margin-left: 1rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
 }
 
 .launch-btn {
@@ -200,6 +203,38 @@
 }
 
 .launch-btn:disabled {
+    background: #adb5bd;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.restart-onboarding-btn {
+    background: var(--color-eng-red); /* #8B0000 */
+    color: white;
+    border: none;
+    padding: 0.75rem 2rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.restart-onboarding-btn:hover:not(:disabled) {
+    background: #6d0000;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(139, 0, 0, 0.3);
+}
+
+.restart-onboarding-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.restart-onboarding-btn:disabled {
     background: #adb5bd;
     cursor: not-allowed;
     transform: none;

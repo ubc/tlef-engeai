@@ -27,7 +27,7 @@ import {
 } from '../../../src/functions/types';
 import { uploadRAGContent } from '../services/RAGService.js';
 import { DocumentUploadModule, UploadResult } from '../services/DocumentUploadModule.js';
-import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal } from '../modal-overlay.js';
+import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, closeModal } from '../modal-overlay.js';
 import { renderFeatherIcons } from '../functions/api.js';
 
 // In-memory store for the course data
@@ -1325,7 +1325,342 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     /**
-     * Rename a division (week/topic)
+     * Enter edit mode for a division or item title
+     * 
+     * @param divisionId - The ID of the division
+     * @param itemId - Optional item ID (if editing an item title)
+     * @param currentTitle - The current title text
+     */
+    function enterEditMode(divisionId: string, itemId: string | null, currentTitle: string): void {
+        let titleSpan: HTMLElement | null = null;
+        let titleContainer: HTMLElement | null = null;
+        
+        if (itemId) {
+            // Editing an item title
+            titleSpan = document.querySelector(`#content-item-${divisionId}-${itemId} .content-title span`) as HTMLElement | null;
+            titleContainer = document.querySelector(`#content-item-${divisionId}-${itemId} .content-title`) as HTMLElement | null;
+        } else {
+            // Editing a division title
+            titleSpan = document.querySelector(`.week-header[data-division="${divisionId}"] .week-title span`) as HTMLElement | null;
+            titleContainer = document.querySelector(`.week-header[data-division="${divisionId}"] .week-title`) as HTMLElement | null;
+        }
+        
+        if (!titleSpan || !titleContainer) {
+            console.error('Title element not found for edit mode');
+            return;
+        }
+        
+        // Store original title for cancel
+        const originalTitle = currentTitle;
+        
+        // Create input field
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = currentTitle;
+        input.className = 'title-edit-input';
+        input.style.minWidth = '200px';
+        input.style.maxWidth = '400px';
+        input.style.width = 'auto';
+        input.style.padding = '4px 8px';
+        input.style.border = '1px solid #ccc';
+        input.style.borderRadius = '4px';
+        input.style.fontSize = 'inherit';
+        input.style.fontFamily = 'inherit';
+        
+        // Find the rename icon and replace with OK/Cancel buttons
+        const renameIcon = titleContainer.querySelector('.rename-icon') as HTMLElement | null;
+        if (!renameIcon) return;
+        
+        // Create button container
+        const buttonContainer = document.createElement('div');
+        buttonContainer.className = 'edit-mode-buttons';
+        buttonContainer.style.display = 'inline-flex';
+        buttonContainer.style.gap = '8px';
+        buttonContainer.style.marginLeft = '8px';
+        buttonContainer.style.alignItems = 'center';
+        
+        // Create OK button (check icon)
+        const okButton = document.createElement('i');
+        okButton.setAttribute('data-feather', 'check');
+        okButton.className = 'edit-ok-button';
+        okButton.style.cursor = 'pointer';
+        okButton.style.width = '16px';
+        okButton.style.height = '16px';
+        okButton.style.color = '#4CAF50';
+        okButton.title = 'Save';
+        
+        // Create Cancel button (x icon)
+        const cancelButton = document.createElement('i');
+        cancelButton.setAttribute('data-feather', 'x');
+        cancelButton.className = 'edit-cancel-button';
+        cancelButton.style.cursor = 'pointer';
+        cancelButton.style.width = '16px';
+        cancelButton.style.height = '16px';
+        cancelButton.style.color = '#f44336';
+        cancelButton.title = 'Cancel';
+        
+        buttonContainer.appendChild(okButton);
+        buttonContainer.appendChild(cancelButton);
+        
+        // Replace span with input
+        titleSpan.replaceWith(input);
+        renameIcon.replaceWith(buttonContainer);
+        
+        // Focus and select input text
+        input.focus();
+        input.select();
+        
+        // Re-render feather icons
+        renderFeatherIcons();
+        
+        // Handle OK button click
+        okButton.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const newTitle = input.value.trim();
+            
+            // Validate input
+            if (!newTitle) {
+                await showErrorModal('Validation Error', `${itemId ? 'Section' : 'Division'} name cannot be empty.`);
+                input.focus();
+                return;
+            }
+            
+            if (newTitle.length > 100) {
+                await showErrorModal('Validation Error', `${itemId ? 'Section' : 'Division'} name is too long (max 100 characters).`);
+                input.focus();
+                return;
+            }
+            
+            // Only proceed if title changed
+            if (newTitle === originalTitle) {
+                exitEditMode(divisionId, itemId, originalTitle);
+                return;
+            }
+            
+            // Save the title change
+            await saveTitleChange(divisionId, itemId, newTitle);
+        });
+        
+        // Handle Cancel button click
+        cancelButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            exitEditMode(divisionId, itemId, originalTitle);
+        });
+        
+        // Handle Escape key
+        const escapeHandler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                exitEditMode(divisionId, itemId, originalTitle);
+                document.removeEventListener('keydown', escapeHandler);
+            }
+        };
+        document.addEventListener('keydown', escapeHandler);
+        
+        // Handle Enter key
+        input.addEventListener('keydown', async (e: KeyboardEvent) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                e.stopPropagation();
+                okButton.click();
+            }
+        });
+        
+        // Store escape handler on button container for cleanup
+        (buttonContainer as any)._escapeHandler = escapeHandler;
+    }
+    
+    /**
+     * Exit edit mode and restore display mode
+     * 
+     * @param divisionId - The ID of the division
+     * @param itemId - Optional item ID (if editing an item title)
+     * @param title - The title to display
+     */
+    function exitEditMode(divisionId: string, itemId: string | null, title: string): void {
+        let titleContainer: HTMLElement | null = null;
+        
+        if (itemId) {
+            titleContainer = document.querySelector(`#content-item-${divisionId}-${itemId} .content-title`) as HTMLElement | null;
+        } else {
+            titleContainer = document.querySelector(`.week-header[data-division="${divisionId}"] .week-title`) as HTMLElement | null;
+        }
+        
+        if (!titleContainer) return;
+        
+        // Find input field
+        const input = titleContainer.querySelector('.title-edit-input') as HTMLInputElement | null;
+        const buttonContainer = titleContainer.querySelector('.edit-mode-buttons') as HTMLElement | null;
+        
+        if (!input || !buttonContainer) return;
+        
+        // Remove escape handler if exists
+        const escapeHandler = (buttonContainer as any)._escapeHandler;
+        if (escapeHandler) {
+            document.removeEventListener('keydown', escapeHandler);
+        }
+        
+        // Create title span
+        const titleSpan = document.createElement('span');
+        titleSpan.textContent = title;
+        
+        // Create rename icon
+        const renameIcon = document.createElement('i');
+        renameIcon.setAttribute('data-feather', 'edit-2');
+        renameIcon.className = 'rename-icon';
+        renameIcon.setAttribute('data-division-id', divisionId);
+        if (itemId) {
+            renameIcon.setAttribute('data-item-id', itemId);
+        }
+        renameIcon.style.cursor = 'pointer';
+        renameIcon.style.marginLeft = '8px';
+        renameIcon.style.width = '16px';
+        renameIcon.style.height = '16px';
+        
+        // Replace input with span
+        input.replaceWith(titleSpan);
+        buttonContainer.replaceWith(renameIcon);
+        
+        // Re-attach rename event listener
+        renameIcon.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (itemId) {
+                const division = courseData.find(d => d.id === divisionId);
+                const item = division?.items.find(i => i.id === itemId);
+                if (item) {
+                    renameItem(divisionId, item);
+                }
+            } else {
+                const division = courseData.find(d => d.id === divisionId);
+                if (division) {
+                    renameDivision(division);
+                }
+            }
+        });
+        
+        // Re-render feather icons
+        renderFeatherIcons();
+    }
+    
+    /**
+     * Save title change via API
+     * 
+     * @param divisionId - The ID of the division
+     * @param itemId - Optional item ID (if updating an item title)
+     * @param newTitle - The new title to save
+     */
+    async function saveTitleChange(divisionId: string, itemId: string | null, newTitle: string): Promise<void> {
+        if (!currentClass) {
+            console.error('❌ No current class found for saving title');
+            return;
+        }
+        
+        // Show loading modal (don't await - it stays open until we close it)
+        showTitleUpdateLoadingModal(itemId ? 'Section' : 'Division');
+        
+        try {
+            let response: Response;
+            let responseData: any;
+            
+            if (itemId) {
+                // Update item title
+                console.log(`📝 Saving item ${itemId} in division ${divisionId} with new title: "${newTitle}"`);
+                
+                response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${itemId}/title`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        title: newTitle
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Failed to rename section: ${response.statusText}`);
+                }
+                
+                responseData = await response.json();
+                
+                if (responseData.success) {
+                    // Find and update item in local data
+                    const division = courseData.find(d => d.id === divisionId);
+                    const item = division?.items.find(i => i.id === itemId);
+                    if (item) {
+                        // Update title from backend response if available
+                        const updatedTitle = responseData.data?.title || newTitle;
+                        item.title = updatedTitle;
+                        item.itemTitle = updatedTitle;
+                        
+                        // Close loading modal before exiting edit mode
+                        closeModal('success');
+                        
+                        // Exit edit mode with backend title
+                        exitEditMode(divisionId, itemId, updatedTitle);
+                        
+                        console.log('✅ Item title saved successfully');
+                    }
+                } else {
+                    throw new Error(responseData.error || 'Failed to rename section');
+                }
+            } else {
+                // Update division title
+                console.log(`📝 Saving division ${divisionId} with new title: "${newTitle}"`);
+                
+                response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/title`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        title: newTitle
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Failed to rename division: ${response.statusText}`);
+                }
+                
+                responseData = await response.json();
+                
+                if (responseData.success) {
+                    // Find and update division in local data
+                    const division = courseData.find(d => d.id === divisionId);
+                    if (division) {
+                        // Update title from backend response if available
+                        const updatedTitle = responseData.data?.title || newTitle;
+                        division.title = updatedTitle;
+                        
+                        // Close loading modal before exiting edit mode
+                        closeModal('success');
+                        
+                        // Exit edit mode with backend title
+                        exitEditMode(divisionId, null, updatedTitle);
+                        
+                        console.log('✅ Division title saved successfully');
+                    }
+                } else {
+                    throw new Error(responseData.error || 'Failed to rename division');
+                }
+            }
+            
+        } catch (error) {
+            // Close loading modal on error
+            closeModal('error');
+            
+            console.error('❌ Error saving title:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Failed to save title. Please try again.';
+            await showErrorModal('Error', errorMessage);
+            
+            // Don't exit edit mode on error - let user try again
+        }
+    }
+
+    /**
+     * Rename a division (week/topic) - enters inline edit mode
      * 
      * @param division - The division to rename
      */
@@ -1335,79 +1670,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             return;
         }
 
-        try {
-            // Show input modal with current title
-            const result = await showInputModal(
-                'Rename Division',
-                'Enter a new name for this division:',
-                division.title,
-                'Save',
-                'Cancel'
-            );
-
-            // Check if user cancelled
-            if (result.action !== 'confirm' || !result.data) {
-                return;
-            }
-
-            const newTitle = result.data.trim();
-
-            // Validate input
-            if (!newTitle) {
-                await showErrorModal('Validation Error', 'Division name cannot be empty.');
-                return;
-            }
-
-            if (newTitle.length > 100) {
-                await showErrorModal('Validation Error', 'Division name is too long (max 100 characters).');
-                return;
-            }
-
-            console.log(`📝 Renaming division ${division.id} from "${division.title}" to "${newTitle}"`);
-
-            // Call backend API to update division title
-            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${division.id}/title`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                credentials: 'include',
-                body: JSON.stringify({
-                    title: newTitle
-                })
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || `Failed to rename division: ${response.statusText}`);
-            }
-
-            const responseData = await response.json();
-
-            if (responseData.success) {
-                // Update local data
-                division.title = newTitle;
-
-                // Update DOM
-                const titleElement = document.querySelector(`.week-header[data-division="${division.id}"] .week-title span`);
-                if (titleElement) {
-                    titleElement.textContent = newTitle;
-                }
-
-                console.log('✅ Division renamed successfully');
-                await showSuccessModal('Success', 'Division title updated successfully.');
-            } else {
-                throw new Error(responseData.error || 'Failed to rename division');
-            }
-        } catch (error) {
-            console.error('❌ Error renaming division:', error);
-            const errorMessage = error instanceof Error ? error.message : 'Failed to rename division. Please try again.';
-            await showErrorModal('Error', errorMessage);
-        }
+        // Enter inline edit mode
+        enterEditMode(division.id, null, division.title);
     }
 
     /**
-     * Rename a course item (section)
+     * Rename a course item (section) - enters inline edit mode
      * 
      * @param divisionId - The ID of the division containing the item
      * @param item - The item to rename
@@ -1418,76 +1686,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             return;
         }
 
-        try {
-            // Show input modal with current title
-            const result = await showInputModal(
-                'Rename Section',
-                'Enter a new name for this section:',
-                item.title,
-                'Save',
-                'Cancel'
-            );
-
-            // Check if user cancelled
-            if (result.action !== 'confirm' || !result.data) {
-                return;
-            }
-
-            const newTitle = result.data.trim();
-
-            // Validate input
-            if (!newTitle) {
-                await showErrorModal('Validation Error', 'Section name cannot be empty.');
-                return;
-            }
-
-            if (newTitle.length > 100) {
-                await showErrorModal('Validation Error', 'Section name is too long (max 100 characters).');
-                return;
-            }
-
-            console.log(`📝 Renaming item ${item.id} in division ${divisionId} from "${item.title}" to "${newTitle}"`);
-
-            // Call backend API to update item title
-            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${item.id}/title`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                credentials: 'include',
-                body: JSON.stringify({
-                    title: newTitle
-                })
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || `Failed to rename section: ${response.statusText}`);
-            }
-
-            const responseData = await response.json();
-
-            if (responseData.success) {
-                // Update local data
-                item.title = newTitle;
-                item.itemTitle = newTitle;
-
-                // Update DOM
-                const titleElement = document.querySelector(`#content-item-${divisionId}-${item.id} .content-title span`);
-                if (titleElement) {
-                    titleElement.textContent = newTitle;
-                }
-
-                console.log('✅ Item renamed successfully');
-                await showSuccessModal('Success', 'Section title updated successfully.');
-            } else {
-                throw new Error(responseData.error || 'Failed to rename section');
-            }
-        } catch (error) {
-            console.error('❌ Error renaming item:', error);
-            const errorMessage = error instanceof Error ? error.message : 'Failed to rename section. Please try again.';
-            await showErrorModal('Error', errorMessage);
-        }
+        // Enter inline edit mode
+        enterEditMode(divisionId, item.id, item.title);
     }
 
     // Make functions globally available for inline event handlers if needed,

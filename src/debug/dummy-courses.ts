@@ -696,14 +696,6 @@ export async function initializeDummyCourses(): Promise<void> {
         const apsc080 = await createAPSC080();
         await createOrUpdateCourse(apsc080);
         
-        // Create APSC 060 (Flag Setup Course)
-        const apsc060 = await createAPSC060();
-        await createOrUpdateCourse(apsc060);
-        
-        // Create APSC 091 (Monitor Setup Course)
-        const apsc091 = await createAPSC091();
-        await createOrUpdateCourse(apsc091);
-        
         console.log('✅ Dummy courses initialized successfully');
     } catch (error) {
         console.error('❌ Error initializing dummy courses:', error);
@@ -720,13 +712,9 @@ export async function resetDummyCourses(): Promise<boolean> {
         // Delete existing courses
         const apsc099Id = idGenerator.uniqueIDGenerator('APSC099-Engineering-Kindergarten');
         const apsc080Id = idGenerator.uniqueIDGenerator('APSC080-Introduction-Engineering');
-        const apsc060Id = idGenerator.uniqueIDGenerator('APSC060-Engineering-Society');
-        const apsc091Id = idGenerator.uniqueIDGenerator('APSC091-PID-Engineers');
         
         await deleteCourse(apsc099Id);
         await deleteCourse(apsc080Id);
-        await deleteCourse(apsc060Id);
-        await deleteCourse(apsc091Id);
         
         // Recreate courses
         await initializeDummyCourses();
@@ -742,23 +730,19 @@ export async function resetDummyCourses(): Promise<boolean> {
 /**
  * Gets all dummy courses for display
  */
-export async function getDummyCourses(): Promise<{ apsc099: activeCourse | null, apsc080: activeCourse | null, apsc060: activeCourse | null, apsc091: activeCourse | null }> {
+export async function getDummyCourses(): Promise<{ apsc099: activeCourse | null, apsc080: activeCourse | null }> {
     try {
         const apsc099Id = idGenerator.uniqueIDGenerator('APSC099-Engineering-Kindergarten');
         const apsc080Id = idGenerator.uniqueIDGenerator('APSC080-Introduction-Engineering');
-        const apsc060Id = idGenerator.uniqueIDGenerator('APSC060-Engineering-Society');
-        const apsc091Id = idGenerator.uniqueIDGenerator('APSC091-PID-Engineers');
         
         const instance = await EngEAI_MongoDB.getInstance();
         
         const apsc099 = await instance.getActiveCourse(apsc099Id) as activeCourse | null;
         const apsc080 = await instance.getActiveCourse(apsc080Id) as activeCourse | null;
-        const apsc060 = await instance.getActiveCourse(apsc060Id) as activeCourse | null;
-        const apsc091 = await instance.getActiveCourse(apsc091Id) as activeCourse | null;
         
-        return { apsc099, apsc080, apsc060, apsc091 };
+        return { apsc099, apsc080 };
     } catch (error) {
         console.error('Error getting dummy courses:', error);
-        return { apsc099: null, apsc080: null, apsc060: null, apsc091: null };
+        return { apsc099: null, apsc080: null };
     }
 }
