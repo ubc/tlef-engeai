@@ -67,9 +67,7 @@
 /* Main Content - Following report-instructor.html structure */
 .main-content {
     width: 100%;
-    max-width: 1200px;
     margin: 0 auto;
-    padding: 0 2rem 2rem 2rem;
     overflow-y: auto;
     padding-bottom: 80px; /* Space for floating back button */
 }

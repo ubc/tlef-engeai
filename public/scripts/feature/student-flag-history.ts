@@ -49,8 +49,9 @@ export async function initializeStudentFlagHistory(courseId: string, userId: num
         allFlags = flags;
         
         console.log(`✅ [FLAG-HISTORY] Loaded ${flags.length} flags`);
+        console.log('📋 [FLAG-HISTORY] Flags:', flags);
         
-        // Update statistics
+        // Update statistics (if elements exist)
         updateStatistics(flags);
         
         // Render flags
@@ -69,6 +70,7 @@ export async function initializeStudentFlagHistory(courseId: string, userId: num
         
     } catch (error) {
         console.error('❌ [FLAG-HISTORY] Error loading flag history:', error);
+        console.error('❌ [FLAG-HISTORY] Error details:', error);
         hideLoadingState();
         showErrorState();
     }
@@ -207,7 +209,12 @@ function updateStatistics(flags: FlagReport[]): void {
  */
 function renderFlags(flags: FlagReport[]): void {
     const flagList = document.getElementById('student-flag-list');
-    if (!flagList) return;
+    console.log('📊 [FLAG-HISTORY] Rendering flags, flagList element:', flagList);
+    
+    if (!flagList) {
+        console.error('❌ [FLAG-HISTORY] student-flag-list element not found!');
+        return;
+    }
     
     // Filter flags based on current filter
     let filteredFlags = flags;
@@ -215,11 +222,14 @@ function renderFlags(flags: FlagReport[]): void {
         filteredFlags = flags.filter(f => f.status === currentFilter);
     }
     
+    console.log(`📊 [FLAG-HISTORY] Rendering ${filteredFlags.length} flags (filtered from ${flags.length} total)`);
+    
     // Clear existing flags
     flagList.innerHTML = '';
     
     // Render each flag
-    filteredFlags.forEach(flag => {
+    filteredFlags.forEach((flag, index) => {
+        console.log(`🎴 [FLAG-HISTORY] Creating card ${index + 1}:`, flag);
         const flagCard = createFlagCard(flag);
         flagList.appendChild(flagCard);
     });
@@ -282,7 +292,7 @@ function createFlagCard(flag: FlagReport): HTMLElement {
     
     const statusBadge = document.createElement('div');
     statusBadge.className = 'status-badge';
-    statusBadge.textContent = flag.status === 'unresolved' ? 'Unresolved' : 'Resolved';
+    statusBadge.textContent = `🏳 ${flag.status === 'unresolved' ? 'Unresolved' : 'Resolved'}`;
     
     const expandArrow = document.createElement('div');
     expandArrow.className = 'expand-arrow';
@@ -323,22 +333,27 @@ function createFlagCard(flag: FlagReport): HTMLElement {
     card.appendChild(footer);
     card.appendChild(expandedContent);
     
-    // Make the entire card clickable (or just the footer)
-    footer.style.cursor = 'pointer';
-    
-    footer.addEventListener('click', () => {
+    // Make the entire card clickable to toggle expand/collapse
+    card.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        
+        // Don't collapse if clicking on response section elements
+        if (target.closest('.expanded-content')) {
+            return;
+        }
+        
         const isExpanded = card.classList.contains('expanded');
-        const chatContent = card.querySelector('.chat-content') as HTMLElement;
+        const chatContentEl = card.querySelector('.chat-content') as HTMLElement;
         const expandArrow = card.querySelector('.expand-arrow') as HTMLElement;
         
         if (isExpanded) {
             card.classList.remove('expanded');
-            chatContent.classList.add('collapsed');
-            expandArrow.textContent = '▼';
+            if (chatContentEl) chatContentEl.classList.add('collapsed');
+            if (expandArrow) expandArrow.textContent = '▼';
         } else {
             card.classList.add('expanded');
-            chatContent.classList.remove('collapsed');
-            expandArrow.textContent = '▲';
+            if (chatContentEl) chatContentEl.classList.remove('collapsed');
+            if (expandArrow) expandArrow.textContent = '▲';
         }
         
         renderFeatherIcons();
@@ -453,7 +468,7 @@ function hideLoadingState(): void {
     const flagList = document.getElementById('student-flag-list');
     
     if (loadingState) loadingState.style.display = 'none';
-    if (flagList) flagList.style.display = 'grid';
+    if (flagList) flagList.style.display = 'flex'; // Match the CSS flex layout
 }
 
 function showEmptyState(): void {
