@@ -283,6 +283,14 @@ function createFlagCard(flag: FlagReport): HTMLElement {
     chatContent.className = 'chat-content collapsed';
     chatContent.textContent = `Chat: ${flag.chatContent}`;
     
+    // Create instructor response section (if resolved and has response)
+    let instructorResponse: HTMLElement | null = null;
+    if (flag.status === 'resolved' && flag.response) {
+        instructorResponse = document.createElement('div');
+        instructorResponse.className = 'instructor-response collapsed';
+        instructorResponse.textContent = `Instructor Response: ${flag.response}`;
+    }
+    
     // Create flag footer
     const footer = document.createElement('div');
     footer.className = 'flag-footer';
@@ -293,7 +301,7 @@ function createFlagCard(flag: FlagReport): HTMLElement {
     
     const statusBadge = document.createElement('div');
     statusBadge.className = 'status-badge';
-    statusBadge.textContent = `🏳 ${flag.status === 'unresolved' ? 'Unresolved' : 'Resolved'}`;
+    statusBadge.textContent = ` ${flag.status === 'unresolved' ? 'Unresolved' : 'Resolved'}`;
     
     const expandArrow = document.createElement('div');
     expandArrow.className = 'expand-arrow';
@@ -303,57 +311,32 @@ function createFlagCard(flag: FlagReport): HTMLElement {
     footer.appendChild(statusBadge);
     footer.appendChild(expandArrow);
     
-    // Create expanded content section for instructor responses
-    const expandedContent = document.createElement('div');
-    expandedContent.className = 'expanded-content';
-    
-    if (flag.status === 'resolved' && flag.response) {
-        const fullChatContent = document.createElement('div');
-        fullChatContent.className = 'full-chat-content';
-        fullChatContent.innerHTML = `
-            <strong>Flagged Message:</strong>
-            <div style="margin-top: 8px;">${escapeHtml(`Chat: ${flag.chatContent}`)}</div>
-            <br>
-            <strong>Instructor Response:</strong>
-            <div style="margin-top: 8px;">${escapeHtml(flag.response)}</div>
-        `;
-        expandedContent.appendChild(fullChatContent);
-    } else {
-        const fullChatContent = document.createElement('div');
-        fullChatContent.className = 'full-chat-content';
-        fullChatContent.innerHTML = `
-            <strong>Flagged Message:</strong>
-            <div style="margin-top: 8px;">${escapeHtml(`Chat: ${flag.chatContent}`)}</div>
-        `;
-        expandedContent.appendChild(fullChatContent);
-    }
-    
     // Assemble the card
     card.appendChild(headerRow);
     card.appendChild(chatContent);
+    if (instructorResponse) {
+        card.appendChild(instructorResponse);
+    }
     card.appendChild(footer);
-    card.appendChild(expandedContent);
     
     // Make the entire card clickable to toggle expand/collapse
     card.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
         
-        // Don't collapse if clicking on response section elements
-        if (target.closest('.expanded-content')) {
-            return;
-        }
-        
         const isExpanded = card.classList.contains('expanded');
         const chatContentEl = card.querySelector('.chat-content') as HTMLElement;
+        const instructorResponseEl = card.querySelector('.instructor-response') as HTMLElement;
         const expandArrow = card.querySelector('.expand-arrow') as HTMLElement;
         
         if (isExpanded) {
             card.classList.remove('expanded');
             if (chatContentEl) chatContentEl.classList.add('collapsed');
+            if (instructorResponseEl) instructorResponseEl.classList.add('collapsed');
             if (expandArrow) expandArrow.textContent = '▼';
         } else {
             card.classList.add('expanded');
             if (chatContentEl) chatContentEl.classList.remove('collapsed');
+            if (instructorResponseEl) instructorResponseEl.classList.remove('collapsed');
             if (expandArrow) expandArrow.textContent = '▲';
         }
         

@@ -2098,16 +2098,35 @@ export class ChatManager {
             radioWrapper.appendChild(radioLabel);
             radioGroup.appendChild(radioWrapper);
             
-            // Make the entire card clickable - clicking on empty space in the card selects the radio
+            // Make the entire card clickable - clicking anywhere on the card selects the radio
             radioWrapper.addEventListener('click', (e) => {
-                const target = e.target as HTMLElement;
-                // If clicking on the radio button or label, let the default behavior handle it
-                // (labels automatically trigger their associated input via the 'for' attribute)
-                if (target === radioInput || target === radioLabel || 
-                    radioLabel.contains(target)) {
+                // Get the actual element that was clicked (handle text nodes)
+                let clickedElement: HTMLElement | null = null;
+                
+                if (e.target instanceof HTMLElement) {
+                    clickedElement = e.target;
+                } else if (e.target instanceof Node && e.target.nodeType === Node.TEXT_NODE) {
+                    clickedElement = e.target.parentElement;
+                } else {
+                    clickedElement = e.target as HTMLElement | null;
+                }
+                
+                if (!clickedElement) return;
+                
+                // If clicking directly on the radio input, let native behavior handle it
+                if (clickedElement === radioInput || clickedElement.tagName === 'INPUT') {
                     return;
                 }
-                // If clicking on the wrapper itself or empty space, select the radio
+                
+                // If clicking on or inside the label, let label's 'for' attribute handle it
+                // Labels automatically trigger their associated input via 'for' attribute
+                const labelElement = clickedElement.closest('label');
+                if (labelElement === radioLabel || clickedElement === radioLabel || clickedElement.tagName === 'LABEL') {
+                    return; // Label will automatically select the radio via 'for' attribute
+                }
+                
+                // For any other click (wrapper div, margin area, padding), select the radio
+                // This makes clicking anywhere on the card select the radio option
                 radioInput.checked = true;
                 radioInput.dispatchEvent(new Event('change', { bubbles: true }));
             });

@@ -804,6 +804,7 @@
     color: var(--text-primary);
     cursor: pointer;
     line-height: 1.4;
+    /* Remove margin - use wrapper padding instead for consistent clickable area */
 }
 
 .flag-radio-item:has(input:checked) {

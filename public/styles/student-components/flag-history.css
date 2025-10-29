@@ -400,32 +400,27 @@
     margin-left: 8px;
 }
 
-/* Expanded Content - Matching instructor pattern */
-.expanded-content {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s ease;
-    margin-top: 15px;
-}
-
-.flag-card.expanded .expanded-content {
-    max-height: 2000px; /* Increased from 800px to accommodate larger content */
-    overflow: visible;
-}
-
-.full-chat-content {
-    margin-top: 10px;
-    margin-bottom: 15px;
+/* Instructor Response - Same pattern as chat content */
+.instructor-response {
+    margin: 12px 0;
     font-size: 14px;
-    line-height: 1.5;
-    color: var(--text-primary);
-    overflow-wrap: anywhere; /* Ensure expanded content never overflows */
-    word-break: break-word;
+    color: var(--text-secondary);
+    line-height: 1.6; /* Better spacing for equations */
+    white-space: pre-wrap; /* Preserve line breaks and wrap text */
+    word-wrap: break-word;
+    overflow-wrap: anywhere; /* Break very long tokens/URLs */
+    word-break: break-word; /* Fallback for older engines */
+    width: 100%;
 }
 
-.full-chat-content strong {
-    color: var(--text-primary);
-    font-weight: 600;
+.instructor-response.collapsed {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4; /* Normal line height for single line */
+    display: block;
+    width: 100%;
+    max-width: 100%; /* Ensure it never exceeds parent width */
 }
 
 .response-section {

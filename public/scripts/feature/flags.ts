@@ -938,7 +938,7 @@ function createFlagCard(flag: FlagReport): HTMLElement {
 
     const statusBadge = document.createElement('div');
     statusBadge.className = 'status-badge';
-    statusBadge.textContent = `🏳 ${flag.status === 'unresolved' ? 'Unresolved' : 'Resolved'}`;
+    statusBadge.textContent = ` ${flag.status === 'unresolved' ? 'Unresolved' : 'Resolved'}`;
 
     const expandArrow = document.createElement('div');
     expandArrow.className = 'expand-arrow';
