@@ -108,6 +108,156 @@ async function fetchFlags(courseId: string): Promise<FlagReport[]> {
 }
 
 /**
+ * Delete all flags for a course via API
+ */
+async function deleteAllFlags(courseId: string): Promise<{ deletedCount: number } | null> {
+    try {
+        console.log('[FLAG-API] Deleting all flags for course:', courseId);
+        
+        const apiResponse = await fetch(`${API_BASE_URL}/${courseId}/flags`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+
+        if (!apiResponse.ok) {
+            throw new Error(`HTTP ${apiResponse.status}: ${apiResponse.statusText}`);
+        }
+
+        const responseData = await apiResponse.json();
+        
+        if (!responseData.success) {
+            throw new Error(responseData.error || 'Failed to delete all flags');
+        }
+
+        console.log('[FLAG-API] All flags deleted successfully:', responseData.deletedCount);
+        return { deletedCount: responseData.deletedCount };
+        
+    } catch (error) {
+        console.error('[FLAG-API] Error deleting all flags:', error);
+        throw error;
+    }
+}
+
+/**
+ * Handle delete all flags button click
+ */
+async function handleDeleteAllFlags(): Promise<void> {
+    // Get course ID from context
+    const courseId = getCourseIdFromContext();
+    if (!courseId) {
+        showErrorMessage('Unable to determine course context');
+        return;
+    }
+
+    // Confirm deletion with user
+    const confirmed = confirm(
+        'Are you sure you want to delete ALL flags for this course?\n\n' +
+        'This action cannot be undone. All flag reports will be permanently deleted.'
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    const deleteButton = document.getElementById('delete-all-flags-button') as HTMLButtonElement;
+    if (!deleteButton) return;
+
+    // Show loading state on button
+    const originalText = deleteButton.innerHTML;
+    deleteButton.disabled = true;
+    deleteButton.style.cursor = 'wait';
+    deleteButton.innerHTML = '<i data-feather="loader"></i><span>Deleting...</span>';
+
+    // Re-initialize feather icons for the loading spinner
+    if (typeof (window as any).feather !== 'undefined') {
+        (window as any).feather.replace();
+    }
+
+    try {
+        // Call API to delete all flags
+        const result = await deleteAllFlags(courseId);
+        
+        if (!result) {
+            throw new Error('Failed to delete flags - no data returned');
+        }
+
+        // Clear local data
+        flagData = [];
+
+        // Re-render to show empty state and update navigation counts
+        renderFlags();
+        updateNavigationCounts();
+
+        console.log('[FLAG-DELETE-ALL] Successfully deleted', result.deletedCount, 'flags');
+        
+        // Show success message
+        showSuccessMessage(`Successfully deleted ${result.deletedCount} flag(s).`);
+        
+    } catch (error) {
+        console.error('[FLAG-DELETE-ALL] Error deleting all flags:', error);
+        
+        // Show error notification
+        showErrorMessage(
+            'Failed to delete all flags. Please try again.'
+        );
+        
+    } finally {
+        // Reset button state
+        deleteButton.innerHTML = originalText;
+        deleteButton.disabled = false;
+        deleteButton.style.cursor = 'pointer';
+        
+        // Re-initialize feather icons
+        if (typeof (window as any).feather !== 'undefined') {
+            (window as any).feather.replace();
+        }
+    }
+}
+
+/**
+ * Show success message to user
+ * @param message - Success message to display
+ */
+function showSuccessMessage(message: string): void {
+    // Create success message element
+    const successDiv = document.createElement('div');
+    successDiv.className = 'success-message';
+    successDiv.style.cssText = `
+        background-color: #efe;
+        border: 1px solid #cfc;
+        color: #3c3;
+        padding: 12px;
+        margin: 10px 0;
+        border-radius: 4px;
+        font-size: 14px;
+    `;
+    successDiv.textContent = message;
+    
+    // Insert at the top of the main content or flags list
+    const mainContent = document.querySelector('.main-content');
+    const flagsList = document.getElementById('flags-list');
+    const container = mainContent || flagsList;
+    
+    if (container) {
+        // Insert before flags-list or at the start of main-content
+        if (flagsList && flagsList.parentNode) {
+            flagsList.parentNode.insertBefore(successDiv, flagsList);
+        } else if (mainContent) {
+            mainContent.insertBefore(successDiv, mainContent.firstChild);
+        }
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (successDiv.parentNode) {
+                successDiv.parentNode.removeChild(successDiv);
+            }
+        }, 5000);
+    }
+}
+
+/**
  * Update flag status via API
  */
 async function updateFlagStatus(courseId: string, flagId: string, status: 'unresolved' | 'resolved', response?: string): Promise<FlagReport | null> {
@@ -203,18 +353,22 @@ function showErrorMessage(message: string): void {
     `;
     errorDiv.textContent = message;
     
-    // Insert at the top of the flags container
-    const flagsContainer = document.getElementById('flags-container');
-    if (flagsContainer) {
-        flagsContainer.insertBefore(errorDiv, flagsContainer.firstChild);
-        
-        // Auto-remove after 5 seconds
-        setTimeout(() => {
-            if (errorDiv.parentNode) {
-                errorDiv.parentNode.removeChild(errorDiv);
-            }
-        }, 5000);
+    // Insert at the top of the main content or flags list
+    const mainContent = document.querySelector('.main-content');
+    const flagsList = document.getElementById('flags-list');
+    
+    if (flagsList && flagsList.parentNode) {
+        flagsList.parentNode.insertBefore(errorDiv, flagsList);
+    } else if (mainContent) {
+        mainContent.insertBefore(errorDiv, mainContent.firstChild);
     }
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (errorDiv.parentNode) {
+            errorDiv.parentNode.removeChild(errorDiv);
+        }
+    }, 5000);
 }
 
 // Mock data for fallback (empty array - API will provide real data)
@@ -359,8 +513,8 @@ function getCourseIdFromContext(): string | null {
  * Show loading state
  */
 function showLoadingState(): void {
-    const flagsContainer = document.getElementById('flags-container');
-    if (flagsContainer) {
+    const flagsList = document.getElementById('flags-list');
+    if (flagsList) {
         const loadingDiv = document.createElement('div');
         loadingDiv.id = 'loading-indicator';
         loadingDiv.style.cssText = `
@@ -375,8 +529,8 @@ function showLoadingState(): void {
         `;
         
         // Clear existing content and show loading
-        flagsContainer.innerHTML = '';
-        flagsContainer.appendChild(loadingDiv);
+        flagsList.innerHTML = '';
+        flagsList.appendChild(loadingDiv);
     }
 }
 
@@ -421,6 +575,12 @@ function setupEventListeners(): void {
     navTiles.forEach(tile => {
         tile.addEventListener('click', handleNavigationClick);
     });
+
+    // Delete all flags button listener
+    const deleteAllButton = document.getElementById('delete-all-flags-button');
+    if (deleteAllButton) {
+        deleteAllButton.addEventListener('click', handleDeleteAllFlags);
+    }
 }
 
 /**
@@ -763,9 +923,10 @@ function createFlagCard(flag: FlagReport): HTMLElement {
     headerRow.appendChild(typeDiv);
 
     // Create chat content with collapse support
+    // Add "Chat:" prefix to align with student view format
     const chatDiv = document.createElement('div');
     chatDiv.className = flag.collapsed ? 'chat-content collapsed' : 'chat-content';
-    chatDiv.textContent = flag.chatContent;
+    chatDiv.textContent = `Chat: ${flag.chatContent}`;
 
     // Create flag footer
     const footer = document.createElement('div');

@@ -1,143 +1,206 @@
 /**
- * COURSE SELECTION STYLES
+ * COURSE SELECTION STYLES - Slack-Style Design
  * 
- * Clean, professional course selection interface
+ * Clean, professional Slack-inspired course selection interface
  */
 
-/* Main container */
-.course-selection-container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 2rem;
-    min-height: 100vh;
-    background: #f8f9fa;
+/* Top Branding Bar */
+.top-branding {
+    background-color: #5C8A3A; /* CHBE green */
+    padding: 1.5rem 10% 0 10% ;
+    width: 100%;
 }
 
-/* Header section */
-.course-selection-header {
-    text-align: center;
-    margin-bottom: 3rem;
-    padding: 2rem 0;
-    background: #5c8a3a; /* CHBE green */
-    border-radius: 12px;
+.branding-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.top-branding-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.welcome-text {
     color: white;
-}
-
-.course-selection-header h1 {
-    font-size: 2.5rem;
-    margin-bottom: 1rem;
-    font-weight: 700;
-}
-
-.welcome-message {
-    font-size: 1.2rem;
-    margin-bottom: 0.5rem;
+    font-size: 1rem;
     font-weight: 500;
 }
 
-.welcome-message span {
-    color: #f0f0f0;
-    font-weight: 600;
-}
-
-.instruction {
-    font-size: 1rem;
-    margin-bottom: 0;
-    opacity: 0.9;
-}
-
-/* Course cards container */
-.course-cards-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-    gap: 2rem;
-    margin-bottom: 2rem;
-}
-
-/* Individual course card */
-.course-card {
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    overflow: hidden;
-    transition: all 0.3s ease;
-    border: 2px solid transparent;
-}
-
-.course-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-    border-color: #5c8a3a;
-}
-
-/* Course card header */
-.course-card-header {
-    background: #5c8a3a; /* CHBE green */
+.logout-btn {
+    background-color: var(--color-eng-red);
     color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.logout-btn:hover {
+    background-color: #7a0000;
+    transform: translateY(-1px);
+}
+
+.brand-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: white;
+    font-weight: 600;
+    font-size: 1.2rem;
+}
+
+.brand-logo i {
+    width: 24px;
+    height: 24px;
+    stroke: white;
+}
+
+/* Main Wrapper with Dark Background */
+.course-selection-wrapper {
+    background-color: #5C8A3A; /* CHBE green */
+    min-height: calc(100vh - 60px);
+    padding: 2rem 0;
+    width: 100%;
+}
+
+/* White Content Area Container */
+.course-selection-container {
+    width: 80%;
+    margin: 1.5rem auto;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    
+}
+
+/* Header Section with Welcome Message */
+.course-selection-header {
+    background: #ECE5DD; /* var(--background-2) */
     padding: 1.5rem;
     text-align: center;
+    position: relative;
 }
 
-.course-card-header h2 {
+.header-brand {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    color: #666;
+}
+
+.header-brand i {
+    width: 32px;
+    height: 32px;
+    stroke: #666;
+}
+
+.course-selection-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #212529;
+    margin: 0 0 0 0;
+    text-align:left;
+}
+
+.welcome-subtitle {
+    font-size: 1rem;
+    color: #666;
     margin: 0;
-    font-size: 1.4rem;
+}
+
+.welcome-subtitle span {
+    color: #333;
+    font-weight: 500;
+}
+
+/* Workspace/Course List */
+.course-workspace-list {
+    padding: 0;
+}
+
+/* Workspace Row Styling (Slack-style) */
+.workspace-row {
+    display: flex;
+    align-items: center;
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid #e9ecef;
+    transition: background-color 0.2s ease;
+    cursor: pointer;
+}
+
+.workspace-row:hover {
+    background-color: #f8f9fa;
+}
+
+.workspace-row:last-child {
+    border-bottom: none;
+}
+
+/* Workspace Info */
+.workspace-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.workspace-name {
+    font-size: 1.2rem;
     font-weight: 600;
+    color: #212529;
+    margin-bottom: 0.5rem;
     line-height: 1.3;
 }
 
-/* Course card body */
-.course-card-body {
-    padding: 1.5rem;
+.workspace-members {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
-.course-info h3 {
-    color: #333;
-    font-size: 1.1rem;
-    margin-bottom: 0.8rem;
-    font-weight: 600;
-}
-
-.instructor-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-.instructor-list li {
+.member-count {
+    font-size: 0.9rem;
     color: #666;
-    padding: 0.3rem 0;
-    font-size: 0.95rem;
 }
 
-/* Course card footer */
-.course-card-footer {
-    padding: 1.5rem;
-    background: #f8f9fa;
-    text-align: center;
-    border-top: 1px solid #e9ecef;
+/* Workspace Action Button */
+.workspace-action {
+    flex-shrink: 0;
+    margin-left: 1rem;
 }
 
-.enter-course-btn {
-    background: #5c8a3a; /* CHBE green */
+.launch-btn {
+    background: #5C8A3A; /* CHBE green */
     color: white;
     border: none;
-    padding: 0.8rem 2rem;
-    border-radius: 8px;
-    font-size: 1rem;
-    font-weight: 600;
+    padding: 0.75rem 2rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
     cursor: pointer;
-    transition: all 0.3s ease;
-    min-width: 160px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
 }
 
-.enter-course-btn:hover:not(:disabled) {
+.launch-btn:hover:not(:disabled) {
     background: #4a6b2f;
-    transform: translateY(-2px);
+    transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(92, 138, 58, 0.3);
 }
 
-.enter-course-btn:disabled {
-    background: #6c757d;
+.launch-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.launch-btn:disabled {
+    background: #adb5bd;
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
@@ -147,18 +210,14 @@
 .loading-message,
 .error-message {
     text-align: center;
-    padding: 3rem;
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    margin: 2rem 0;
+    padding: 4rem 2rem;
 }
 
 .spinner {
     width: 40px;
     height: 40px;
     border: 4px solid #f3f3f3;
-    border-top: 4px solid #5c8a3a;
+    border-top: 4px solid #5C8A3A;
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin: 0 auto 1rem;
@@ -171,22 +230,22 @@
 
 .loading-message p,
 .error-message p {
-    color: #333;
-    font-size: 1.1rem;
+    color: #666;
+    font-size: 1rem;
     margin: 0;
 }
 
 .retry-btn {
-    background: #5c8a3a;
+    background: #5C8A3A;
     color: white;
     border: none;
-    padding: 0.6rem 1.5rem;
+    padding: 0.75rem 1.5rem;
     border-radius: 6px;
     font-size: 0.9rem;
-    font-weight: 500;
+    font-weight: 600;
     cursor: pointer;
     margin-top: 1rem;
-    transition: background 0.3s ease;
+    transition: background 0.2s ease;
 }
 
 .retry-btn:hover {
@@ -195,44 +254,102 @@
 
 /* Responsive Design */
 @media (max-width: 768px) {
-    .course-selection-container {
+    .top-branding {
+        padding: 1rem 5%;
+    }
+    
+    .top-branding-right {
+        gap: 0.5rem;
+    }
+    
+    .welcome-text {
+        font-size: 0.9rem;
+    }
+    
+    .logout-btn {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.85rem;
+    }
+    
+    .course-selection-wrapper {
         padding: 1rem;
     }
     
-    .course-selection-header h1 {
+    .course-selection-title {
         font-size: 2rem;
     }
     
-    .course-cards-container {
-        grid-template-columns: 1fr;
-        gap: 1.5rem;
-    }
-    
-    .course-card-header h2 {
-        font-size: 1.2rem;
-    }
-    
-    .course-card-body,
-    .course-card-footer {
+    .workspace-row {
+        flex-wrap: wrap;
         padding: 1rem;
+    }
+    
+    .workspace-action {
+        width: 100%;
+        margin: 1rem 0 0 0;
+    }
+    
+    .launch-btn {
+        width: 100%;
+    }
+    
+    .workspace-name {
+        font-size: 1.1rem;
     }
 }
 
 @media (max-width: 480px) {
-    .course-selection-header {
-        margin-bottom: 2rem;
-        padding: 1rem 0;
+    .top-branding {
+        padding: 0.75rem 3%;
     }
     
-    .course-selection-header h1 {
-        font-size: 1.8rem;
+    .branding-content {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
     }
     
-    .welcome-message {
+    .top-branding-right {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .brand-logo {
         font-size: 1rem;
     }
     
-    .instruction {
-        font-size: 0.9rem;
+    .welcome-text {
+        font-size: 0.85rem;
+    }
+    
+    .logout-btn {
+        padding: 0.4rem 0.7rem;
+        font-size: 0.8rem;
+    }
+    
+    .course-selection-header {
+        padding: 2rem 1rem 1.5rem 1rem;
+    }
+    
+    .course-selection-title {
+        font-size: 1.75rem;
+    }
+    
+    .header-brand {
+        top: 0.5rem;
+        left: 0.5rem;
+    }
+    
+    .header-brand i {
+        width: 24px;
+        height: 24px;
+    }
+    
+    .workspace-row {
+        padding: 1rem;
+    }
+    
+    .workspace-name {
+        font-size: 1rem;
     }
 }

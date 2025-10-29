@@ -19,10 +19,11 @@ html {
 body {
     margin: 0;
     font-family: var(--font-family);
-    background-color: var(--color-eng-red);
+    background-color: var(--color-chbe-green);
     color: #212529;
     line-height: 1.6;
     overflow-x: hidden; /* Prevent horizontal scroll on body */
+    height: 100vh;
 }
 
 /* REMOVED: Duplicate body rule that was overriding overflow-x: hidden */

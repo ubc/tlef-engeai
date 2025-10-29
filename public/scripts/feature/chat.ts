@@ -2098,6 +2098,20 @@ export class ChatManager {
             radioWrapper.appendChild(radioLabel);
             radioGroup.appendChild(radioWrapper);
             
+            // Make the entire card clickable - clicking on empty space in the card selects the radio
+            radioWrapper.addEventListener('click', (e) => {
+                const target = e.target as HTMLElement;
+                // If clicking on the radio button or label, let the default behavior handle it
+                // (labels automatically trigger their associated input via the 'for' attribute)
+                if (target === radioInput || target === radioLabel || 
+                    radioLabel.contains(target)) {
+                    return;
+                }
+                // If clicking on the wrapper itself or empty space, select the radio
+                radioInput.checked = true;
+                radioInput.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            
             // Show/hide "Other" text input based on selection
             if (option.value === 'other') {
                 radioInput.addEventListener('change', () => {
@@ -2204,10 +2218,20 @@ export class ChatManager {
             submitBtn.classList.add('loading');
             
             try {
+                // Get the label text for the selected reason
+                let reportTypeText: string;
+                if (flagType === 'other') {
+                    reportTypeText = otherDetails;
+                } else {
+                    // Find the label associated with the selected radio button
+                    const labelElement = document.querySelector(`label[for="${selectedReason.id}"]`) as HTMLLabelElement;
+                    reportTypeText = labelElement?.textContent?.trim() || 'Unknown reason';
+                }
+                
                 // Real API call to backend
                 const requestBody = {
                     flagType: flagType as 'innacurate_response' | 'harassment' | 'inappropriate' | 'dishonesty' | 'interface bug' | 'other',
-                    reportType: flagType === 'other' ? otherDetails : (selectedReason.labels?.[0]?.textContent || 'Unknown reason'),
+                    reportType: reportTypeText,
                     chatContent: message.text,
                     userId: this.config.userContext.userId
                 };

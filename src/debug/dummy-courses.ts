@@ -623,86 +623,6 @@ async function createAPSC080(): Promise<activeCourse> {
 }
 
 /**
- * Creates an unresolved flag instance for APSC099 course
- * This simulates a student reporting an issue that needs instructor attention
- */
-async function createUnresolvedFlagForAPSC099(): Promise<boolean> {
-    try {
-        const courseId = idGenerator.uniqueIDGenerator('APSC099-Engineering-Kindergarten');
-        const instance = await EngEAI_MongoDB.getInstance();
-        
-        // Check if APSC099 exists
-        const course = await instance.getActiveCourse(courseId);
-        if (!course) {
-            console.error('APSC099 course not found. Cannot create flag instance.');
-            return false;
-        }
-
-        // Use October 15, 2025 as the date for testing
-        const now = new Date('2025-10-15T10:30:00.000Z'); // October 15, 2025 at 10:30 AM UTC
-        const dummyUserId = 12345; // Consistent dummy student ID
-        
-        // First, create a global user for the dummy student
-        const globalUser: GlobalUser = {
-            name: 'Alex Johnson',
-            puid: 'alex.johnson@student.ubc.ca',
-            userId: dummyUserId,
-            coursesEnrolled: [courseId],
-            affiliation: 'student',
-            status: 'active',
-            createdAt: now,
-            updatedAt: now
-        };
-
-        // Create the global user
-        await instance.createGlobalUser(globalUser);
-        console.log(`✅ Created global user: ${globalUser.name} (ID: ${globalUser.userId})`);
-
-        // Create a course-specific user for APSC099
-        const courseUser: CourseUser = {
-            name: globalUser.name,
-            puid: globalUser.puid,
-            userId: globalUser.userId,
-            courseName: course.courseName,
-            courseId: courseId,
-            userOnboarding: true,
-            affiliation: 'student',
-            status: 'active',
-            chats: [],
-            createdAt: now,
-            updatedAt: now
-        };
-
-        // Create the course user
-        await instance.createStudent(course.courseName, courseUser);
-        console.log(`✅ Created course user: ${courseUser.name} for ${course.courseName}`);
-        
-        // Create an unresolved flag report
-        const unresolvedFlag: FlagReport = {
-            id: idGenerator.uniqueIDGenerator('flag-apsc099-unresolved-001'),
-            courseName: course.courseName,
-            date: now,
-            flagType: 'innacurate_response',
-            reportType: 'The AI provided incorrect information about bridge construction materials. It suggested using cardboard for load-bearing structures, which is not appropriate for kindergarten safety standards.',
-            chatContent: 'Student: "What materials should we use to build a strong bridge?"\n\nAI: "You can use cardboard, popsicle sticks, or even paper to build bridges. Cardboard is very strong and can hold a lot of weight."\n\nStudent: "But won\'t cardboard break if we put heavy things on it?"\n\nAI: "No, cardboard is actually stronger than you think. Many real bridges use cardboard-like materials in their construction."',
-            userId: dummyUserId, // Now this user exists in the database
-            status: 'unresolved',
-            createdAt: now,
-            updatedAt: now
-        };
-
-        // Create the flag report in the database
-        await instance.createFlagReport(unresolvedFlag);
-        console.log(`✅ Created unresolved flag instance for ${course.courseName}: ${unresolvedFlag.id}`);
-        
-        return true;
-    } catch (error) {
-        console.error('❌ Error creating unresolved flag for APSC099:', error);
-        return false;
-    }
-}
-
-/**
  * Checks if a course exists in the database
  */
 async function courseExists(courseId: string): Promise<boolean> {
@@ -784,9 +704,6 @@ export async function initializeDummyCourses(): Promise<void> {
         const apsc091 = await createAPSC091();
         await createOrUpdateCourse(apsc091);
         
-        // Create unresolved flag instance for APSC099 (for testing flag functionality)
-        await createUnresolvedFlagForAPSC099();
-        
         console.log('✅ Dummy courses initialized successfully');
     } catch (error) {
         console.error('❌ Error initializing dummy courses:', error);
@@ -811,26 +728,6 @@ export async function resetDummyCourses(): Promise<boolean> {
         await deleteCourse(apsc060Id);
         await deleteCourse(apsc091Id);
         
-        // Clear any existing flag reports and users for APSC099 (they will be recreated)
-        try {
-            const instance = await EngEAI_MongoDB.getInstance();
-            const apsc099Course = await instance.getActiveCourse(apsc099Id);
-            if (apsc099Course) {
-                // Get all flag reports for APSC099 and delete them
-                const flagReports = await instance.getAllFlagReports(apsc099Course.courseName);
-                for (const flag of flagReports) {
-                    await instance.deleteFlagReport(apsc099Course.courseName, flag.id);
-                }
-                console.log('🧹 Cleared existing flag reports for APSC099');
-                
-                // Note: User deletion methods don't exist in the MongoDB class
-                // Users will remain in the database but flags will be cleared and recreated
-                console.log('ℹ️ Note: Users are not deleted during reset (no delete methods available)');
-            }
-        } catch (error) {
-            console.warn('⚠️ Could not clear flag reports and users (course may not exist yet):', error);
-        }
-        
         // Recreate courses
         await initializeDummyCourses();
         
@@ -840,14 +737,6 @@ export async function resetDummyCourses(): Promise<boolean> {
         console.error('❌ Error resetting dummy courses:', error);
         return false;
     }
-}
-
-/**
- * Manually creates an unresolved flag instance for APSC099 course
- * This can be called independently to add flag instances for testing
- */
-export async function createUnresolvedFlagInstance(): Promise<boolean> {
-    return await createUnresolvedFlagForAPSC099();
 }
 
 /**

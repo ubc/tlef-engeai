@@ -314,6 +314,15 @@ export class EngEAI_MongoDB {
         return await flagsCollection.deleteOne({ id: flagId });
     }
 
+    public deleteAllFlagReports = async (courseName: string) => {
+        //START DEBUG LOG : DEBUG-CODE(006)
+        console.log('🏴 Deleting all flag reports for course:', courseName);
+        //END DEBUG LOG : DEBUG-CODE(006)
+        
+        const flagsCollection = this.getFlagsCollection(courseName);
+        return await flagsCollection.deleteMany({});
+    }
+
     // =====================================
     // ========= FLAG STATUS MANAGEMENT ====
     // =====================================

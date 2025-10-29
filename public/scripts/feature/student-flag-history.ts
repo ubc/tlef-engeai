@@ -278,9 +278,10 @@ function createFlagCard(flag: FlagReport): HTMLElement {
     headerRow.appendChild(typeDiv);
     
     // Create chat content (with collapsed class by default)
+    // Add "Chat:" prefix to align with instructor view format
     const chatContent = document.createElement('div');
     chatContent.className = 'chat-content collapsed';
-    chatContent.textContent = flag.chatContent;
+    chatContent.textContent = `Chat: ${flag.chatContent}`;
     
     // Create flag footer
     const footer = document.createElement('div');
@@ -311,7 +312,7 @@ function createFlagCard(flag: FlagReport): HTMLElement {
         fullChatContent.className = 'full-chat-content';
         fullChatContent.innerHTML = `
             <strong>Flagged Message:</strong>
-            <div style="margin-top: 8px;">${escapeHtml(flag.chatContent)}</div>
+            <div style="margin-top: 8px;">${escapeHtml(`Chat: ${flag.chatContent}`)}</div>
             <br>
             <strong>Instructor Response:</strong>
             <div style="margin-top: 8px;">${escapeHtml(flag.response)}</div>
@@ -322,7 +323,7 @@ function createFlagCard(flag: FlagReport): HTMLElement {
         fullChatContent.className = 'full-chat-content';
         fullChatContent.innerHTML = `
             <strong>Flagged Message:</strong>
-            <div style="margin-top: 8px;">${escapeHtml(flag.chatContent)}</div>
+            <div style="margin-top: 8px;">${escapeHtml(`Chat: ${flag.chatContent}`)}</div>
         `;
         expandedContent.appendChild(fullChatContent);
     }

@@ -941,6 +941,41 @@ router.delete('/:courseId/flags/:flagId', asyncHandlerWithAuth(async (req: Reque
     }
 }));
 
+// DELETE /api/courses/:courseId/flags - Delete all flag reports for a course (REQUIRES AUTH - Instructors only)
+router.delete('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId } = req.params;
+        
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(009)
+        console.log('🏴 Deleting all flag reports from course:', course.courseName);
+        //END DEBUG LOG : DEBUG-CODE(009)
+
+        const result = await instance.deleteAllFlagReports(course.courseName);
+        
+        res.json({
+            success: true,
+            message: 'All flag reports deleted successfully',
+            deletedCount: result.deletedCount
+        });
+    } catch (error) {
+        console.error('Error deleting all flag reports:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to delete all flag reports'
+        });
+    }
+}));
+
 // ===========================================
 // ========= DATABASE MANAGEMENT ROUTES =====
 // ===========================================

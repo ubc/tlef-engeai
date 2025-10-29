@@ -63,6 +63,48 @@
     gap: 15px;
 }
 
+/* Delete All Flags Button */
+.delete-all-flags-button {
+    background: rgba(220, 53, 69, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 10px;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    color: white;
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.delete-all-flags-button:hover {
+    background: rgba(220, 53, 69, 1);
+    transform: translateY(-1px);
+}
+
+.delete-all-flags-button:active {
+    transform: translateY(0);
+}
+
+.delete-all-flags-button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+    transform: none;
+}
+
+.delete-all-flags-button i {
+    width: 16px;
+    height: 16px;
+    color: white;
+}
+
+.delete-all-flags-button span {
+    color: white;
+}
+
 /* Navigation Tiles */
 .nav-tiles {
     display: flex;

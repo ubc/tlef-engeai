@@ -6,30 +6,56 @@
     <title>EngE-AI - Course Selection</title>
     <link rel="stylesheet" href="/styles/style.css">
     <link rel="stylesheet" href="/styles/course-selection.css">
+    <script src="https://unpkg.com/feather-icons"></script>
 </head>
 <body>
-    <div class="course-selection-container">
-        <header class="course-selection-header">
-            <h1>EngE-AI - Course Selection</h1>
-            <p class="welcome-message">Welcome, <span id="user-name"></span>!</p>
-            <p class="instruction">Select a course to enter:</p>
-        </header>
-
-        <div class="course-cards-container" id="course-cards">
-            <!-- Course cards will be dynamically loaded here -->
-        </div>
-
-        <div class="loading-message" id="loading-message">
-            <div class="spinner"></div>
-            <p>Loading available courses...</p>
-        </div>
-
-        <div class="error-message" id="error-message" style="display: none;">
-            <p>Unable to load courses. Please try again.</p>
-            <button id="retry-btn" class="retry-btn">Retry</button>
+    <!-- Top Branding Bar (outside main content) -->
+    <div class="top-branding">
+        <div class="branding-content">
+            <div class="brand-logo">
+                <i data-feather="box"></i>
+                <span>TLEF EngE AI</span>
+            </div>
+            <div class="top-branding-right">
+                <span class="welcome-text">Welcome, <span id="user-name"></span></span>
+                <button class="logout-btn" id="logout-btn">Logout</button>
+            </div>
         </div>
     </div>
 
+    <!-- Main Container with Dark Background -->
+    <div class="course-selection-wrapper">
+        <!-- White Content Area -->
+        <div class="course-selection-container">
+            <!-- Header Section with Welcome Message -->
+            <header class="course-selection-header">
+                <h1 class="course-selection-title">
+                    Course selection
+                </h1>
+            </header>
+
+            <!-- Workspace/Course List -->
+            <div class="course-workspace-list" id="course-cards">
+                <!-- Course rows will be dynamically loaded here -->
+            </div>
+
+            <!-- Loading State -->
+            <div class="loading-message" id="loading-message">
+                <div class="spinner"></div>
+                <p>Loading available courses...</p>
+            </div>
+
+            <!-- Error State -->
+            <div class="error-message" id="error-message" style="display: none;">
+                <p>Unable to load courses. Please try again.</p>
+                <button id="retry-btn" class="retry-btn">Retry</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        feather.replace();
+    </script>
     <script type="module" src="/dist/public/scripts/course-selection.js"></script>
 </body>
 </html>

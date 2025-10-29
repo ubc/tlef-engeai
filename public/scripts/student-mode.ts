@@ -325,23 +325,9 @@ async function initializeChatInterface(user: any): Promise<void> {
         // Populate user profile information
         populateUserProfile();
         
-        // Render sample report history
-        renderSampleReportHistory();
-        
         // Back to chat button
         const backBtn = document.getElementById('back-to-chat-btn');
         backBtn?.addEventListener('click', () => loadComponent('chat-window'));
-
-        // Report card expand/collapse functionality - following report-instructor.css pattern
-        const reportHistoryList = document.getElementById('flag-history-list');
-        reportHistoryList?.addEventListener('click', (e) => {
-            const target = e.target as HTMLElement;
-            const reportCard = target.closest('.report-card') as HTMLElement;
-            if (!reportCard) return;
-
-            // Toggle collapse state
-            toggleReportCollapse(reportCard);
-        });
     };
 
     // Artefact functionality moved to chat.ts
@@ -404,145 +390,6 @@ async function initializeChatInterface(user: any): Promise<void> {
         
         if (profileCourse && user) {
             profileCourse.textContent = user.courseName || 'APSC 099: Engineering for Kindergarten';
-        }
-    };
-
-    const renderSampleReportHistory = () => {
-        const reportHistoryList = document.getElementById('flag-history-list');
-        if (!reportHistoryList) return;
-
-        // Sample report history data - following reports.ts structure
-        const sampleReports = [
-            {
-                id: '1',
-                timestamp: '2:30 PM, March 19, 2026',
-                flagType: 'inappropriate',
-                reportType: 'Response veers into personal opinions, political views, or non-academic discussions',
-                chatContent: 'Chat: Right, well, like I said, most of this is political theater, but if you really need numbers for your assignment, post-combustion capture typically costs around $50-100 per ton of CO2. The politicians love to talk about "green energy" and "carbon neutral" but honestly, it\'s mostly virtue signaling.',
-                status: 'unresolved',
-                collapsed: true
-            },
-            {
-                id: '2',
-                timestamp: '1:25 PM, March 18, 2026',
-                flagType: 'safety',
-                reportType: 'Wrong calculations, formulas, or engineering principles',
-                chatContent: 'Chat: For pressure vessel wall thickness calculation, you can use the simple formula: t = (P × D) / (2 × σ). So: t = (1.5 × 2000) / (2 × 250) = 6 mm. A 6mm wall thickness should be sufficient for your ammonia vessel. You don\'t need any safety factors since ammonia isn\'t that dangerous.',
-                status: 'unresolved',
-                collapsed: true
-            },
-            {
-                id: '3',
-                timestamp: '10:52 PM, March 15, 2026',
-                flagType: 'interface bug',
-                reportType: 'Interface bugs or usability issues',
-                chatContent: 'Chat: The diagram viewer is not displaying correctly. The buttons are not working and the interface seems to be broken.',
-                status: 'resolved',
-                collapsed: true
-            }
-        ];
-
-        reportHistoryList.innerHTML = '';
-        sampleReports.forEach(report => {
-            const reportItem = createReportItem(report);
-            reportHistoryList.appendChild(reportItem);
-        });
-    };
-
-    const createReportItem = (report: any): HTMLElement => {
-        // Following exact structure from report-instructor.html and report-instructor.css
-        const reportCard = document.createElement('div');
-        reportCard.className = 'report-card';
-        reportCard.dataset.reportId = report.id;
-
-        // Report Header Row
-        const headerRow = document.createElement('div');
-        headerRow.className = 'report-header-row';
-
-        const reportTime = document.createElement('div');
-        reportTime.className = 'report-time';
-        reportTime.textContent = report.timestamp || 'Today at 2:30 PM';
-
-        const reportType = document.createElement('div');
-        reportType.className = 'report-type';
-        reportType.textContent = report.reportType || 'Assignment Submission';
-
-        headerRow.appendChild(reportTime);
-        headerRow.appendChild(reportType);
-
-        // Chat Content (truncated by default)
-        const chatContent = document.createElement('div');
-        chatContent.className = 'chat-content collapsed';
-        chatContent.innerHTML = `
-            <strong>Question:</strong> ${report.question || 'Sample engineering question about thermodynamics and heat transfer...'}
-            <br><br>
-            <strong>Your Response:</strong> ${report.answer || 'Sample student response explaining the solution step by step with proper calculations...'}
-        `;
-
-        // Report Footer
-        const reportFooter = document.createElement('div');
-        reportFooter.className = 'report-footer';
-
-        const studentName = document.createElement('div');
-        studentName.className = 'student-name';
-        studentName.textContent = report.studentName || 'You';
-
-        const statusBadge = document.createElement('div');
-        statusBadge.className = 'status-badge';
-        statusBadge.innerHTML = `
-            <span>${report.status || 'Submitted'}</span>
-            <i class="feather expand-arrow" data-feather="chevron-down"></i>
-        `;
-
-        reportFooter.appendChild(studentName);
-        reportFooter.appendChild(statusBadge);
-
-        // Expanded Content (hidden by default)
-        const expandedContent = document.createElement('div');
-        expandedContent.className = 'expanded-content';
-        expandedContent.innerHTML = `
-            <div class="full-chat-content">
-                <p><strong>Question:</strong></p>
-                <p>${report.question || 'Sample engineering question about thermodynamics and heat transfer in industrial processes...'}</p>
-                <br>
-                <p><strong>Your Response:</strong></p>
-                <p>${report.answer || 'Sample student response explaining the solution step by step with proper calculations and engineering principles...'}</p>
-                <br>
-                <p><strong>Feedback:</strong></p>
-                <p>${report.feedback || 'Good understanding of the concepts. Consider explaining the assumptions more clearly and double-check your calculations.'}</p>
-            </div>
-        `;
-
-        // Assemble the card
-        reportCard.appendChild(headerRow);
-        reportCard.appendChild(chatContent);
-        reportCard.appendChild(reportFooter);
-        reportCard.appendChild(expandedContent);
-
-        return reportCard;
-    };
-
-    const toggleReportCollapse = (reportCard: HTMLElement) => {
-        const isExpanded = reportCard.classList.contains('expanded');
-        const chatContent = reportCard.querySelector('.chat-content') as HTMLElement;
-        const expandArrow = reportCard.querySelector('.expand-arrow') as HTMLElement;
-
-        if (isExpanded) {
-            // Collapse the card
-            reportCard.classList.remove('expanded');
-            if (chatContent) {
-                chatContent.classList.add('collapsed');
-                chatContent.style.display = 'block'; // Show collapsed content
-            }
-            if (expandArrow) expandArrow.style.transform = 'rotate(0deg)';
-        } else {
-            // Expand the card
-            reportCard.classList.add('expanded');
-            if (chatContent) {
-                chatContent.classList.remove('collapsed');
-                chatContent.style.display = 'none'; // Hide collapsed content when expanded
-            }
-            if (expandArrow) expandArrow.style.transform = 'rotate(180deg)';
         }
     };
 

@@ -42,13 +42,14 @@ async function initializeCourseSelection(): Promise<void> {
             throw new Error('No global user found');
         }
         
-        // Update welcome message
+        // Update welcome message with first name only
+        const userName = globalUser.name.split(' ')[0]; // Get first name
         const userNameElement = document.getElementById('user-name');
         if (userNameElement) {
-            userNameElement.textContent = globalUser.name;
+            userNameElement.textContent = userName;
         }
         
-        console.log('[COURSE-SELECTION] ✅ User data loaded:', globalUser.name);
+        console.log('[COURSE-SELECTION] ✅ User data loaded:', userName);
         
         // Fetch course data
         await loadCourses();
@@ -92,10 +93,15 @@ async function loadCourses(): Promise<void> {
         // Hide loading message
         hideLoadingMessage();
         
-        // Render course cards
+        // Render workspace rows
         container.innerHTML = availableCourses.map((course: any) => 
             createCourseCard(course)
         ).join('');
+        
+        // Re-initialize Feather icons for any new icons in the content
+        if (typeof (window as any).feather !== 'undefined') {
+            (window as any).feather.replace();
+        }
         
         // Attach event listeners
         attachCourseCardListeners();
@@ -110,29 +116,23 @@ async function loadCourses(): Promise<void> {
 }
 
 /**
- * Create HTML for a course card
+ * Create HTML for a Slack-style workspace row
  */
 function createCourseCard(course: any): string {
-    const instructorsList = course.instructors
-        .map((instructor: string) => `<li>• ${instructor}</li>`)
-        .join('');
+    // Display instructor names instead of avatars
+    const instructorNames = course.instructors?.join(', ') || 'No instructors';
     
     return `
-        <div class="course-card" data-course-id="${course.id}">
-            <div class="course-card-header">
-                <h2>${course.courseName}</h2>
-            </div>
-            <div class="course-card-body">
-                <div class="course-info">
-                    <h3>Instructors:</h3>
-                    <ul class="instructor-list">
-                        ${instructorsList}
-                    </ul>
+        <div class="workspace-row" data-course-id="${course.id}">
+            <div class="workspace-info">
+                <div class="workspace-name">${course.courseName}</div>
+                <div class="workspace-members">
+                    <span class="member-count">${instructorNames}</span>
                 </div>
             </div>
-            <div class="course-card-footer">
-                <button class="enter-course-btn" data-course-id="${course.id}">
-                    Enter Course →
+            <div class="workspace-action">
+                <button class="launch-btn" data-course-id="${course.id}">
+                    ENTER CLASS
                 </button>
             </div>
         </div>
@@ -140,16 +140,30 @@ function createCourseCard(course: any): string {
 }
 
 /**
- * Attach event listeners to course cards
+ * Attach event listeners to workspace rows
  */
 function attachCourseCardListeners(): void {
-    const buttons = document.querySelectorAll('.enter-course-btn');
+    const buttons = document.querySelectorAll('.launch-btn');
     
     buttons.forEach(button => {
         button.addEventListener('click', async (event) => {
             const courseId = (event.target as HTMLElement).getAttribute('data-course-id');
             if (courseId) {
                 await enterCourse(courseId);
+            }
+        });
+    });
+    
+    // Attach click listener to entire row for better UX
+    const rows = document.querySelectorAll('.workspace-row');
+    rows.forEach(row => {
+        row.addEventListener('click', (event) => {
+            // Don't trigger if clicking the button itself (avoid double trigger)
+            if (!(event.target as HTMLElement).closest('.launch-btn')) {
+                const courseId = row.getAttribute('data-course-id');
+                if (courseId) {
+                    enterCourse(courseId);
+                }
             }
         });
     });
@@ -162,12 +176,12 @@ async function enterCourse(courseId: string): Promise<void> {
     try {
         console.log('[COURSE-SELECTION] 🚀 Entering course:', courseId);
         
-        // Disable all buttons to prevent multiple clicks
-        const buttons = document.querySelectorAll('.enter-course-btn');
-        buttons.forEach(btn => {
-            (btn as HTMLButtonElement).disabled = true;
-            btn.textContent = 'Entering...';
-        });
+        // Find and disable only the clicked button
+        const clickedButton = document.querySelector(`button.launch-btn[data-course-id="${courseId}"]`);
+        if (clickedButton) {
+            (clickedButton as HTMLButtonElement).disabled = true;
+            clickedButton.textContent = 'ENTERING...';
+        }
         
         // Call API to enter course
         const response = await fetch('/api/course/enter', {
@@ -182,11 +196,12 @@ async function enterCourse(courseId: string): Promise<void> {
             console.error('[COURSE-SELECTION] ❌ Error entering course:', data.error);
             alert('Failed to enter course. Please try again.');
             
-            // Re-enable buttons
-            buttons.forEach(btn => {
-                (btn as HTMLButtonElement).disabled = false;
-                btn.textContent = 'Enter Course →';
-            });
+            // Re-enable the clicked button
+            const clickedButton = document.querySelector(`button.launch-btn[data-course-id="${courseId}"]`);
+            if (clickedButton) {
+                (clickedButton as HTMLButtonElement).disabled = false;
+                clickedButton.textContent = 'ENTER CLASS';
+            }
             return;
         }
         
@@ -198,11 +213,37 @@ async function enterCourse(courseId: string): Promise<void> {
         console.error('[COURSE-SELECTION] ❌ Error entering course:', error);
         alert('Failed to enter course. Please try again.');
         
-        // Re-enable buttons
-        const buttons = document.querySelectorAll('.enter-course-btn');
-        buttons.forEach(btn => {
-            (btn as HTMLButtonElement).disabled = false;
-            btn.textContent = 'Enter Course →';
+        // Re-enable the clicked button
+        const clickedButton = document.querySelector(`button.launch-btn[data-course-id="${courseId}"]`);
+        if (clickedButton) {
+            (clickedButton as HTMLButtonElement).disabled = false;
+            clickedButton.textContent = 'ENTER CLASS';
+        }
+    }
+}
+
+/**
+ * Handle logout button click
+ */
+function setupLogoutButton(): void {
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/auth/logout', {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    window.location.href = '/';
+                } else {
+                    alert('Failed to logout. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error logging out:', error);
+                alert('Failed to logout. Please try again.');
+            }
         });
     }
 }
@@ -253,5 +294,6 @@ function setupRetryButton(): void {
 document.addEventListener('DOMContentLoaded', () => {
     initializeCourseSelection();
     setupRetryButton();
+    setupLogoutButton();
 });
 
