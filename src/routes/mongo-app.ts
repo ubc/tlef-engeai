@@ -646,6 +646,19 @@ router.post('/:courseId/divisions/:divisionId/items/:itemId/objectives', asyncHa
                 error: 'Missing required field: learningObjective'
             });
         }
+        // Validate and sanitize objective text
+        const rawText = (learningObjective?.LearningObjective ?? '').toString();
+        const sanitizedText = rawText.trim();
+        if (!sanitizedText) {
+            return res.status(400).json({ success: false, error: 'Learning objective cannot be empty' });
+        }
+        if (sanitizedText.length > 300) {
+            return res.status(400).json({ success: false, error: 'Learning objective too long (max 300 characters)' });
+        }
+        // Ensure timestamps and normalized text
+        learningObjective.LearningObjective = sanitizedText;
+        learningObjective.createdAt = learningObjective.createdAt || new Date();
+        learningObjective.updatedAt = new Date();
         
         console.log('📡 [BACKEND] Calling addLearningObjective with:', { courseId, divisionId, itemId, learningObjective });
         
@@ -680,6 +693,16 @@ router.put('/:courseId/divisions/:divisionId/items/:itemId/objectives/:objective
                 error: 'Missing required field: updateData'
             });
         }
+        // Validate and sanitize objective text
+        const rawText = (updateData?.LearningObjective ?? '').toString();
+        const sanitizedText = rawText.trim();
+        if (!sanitizedText) {
+            return res.status(400).json({ success: false, error: 'Learning objective cannot be empty' });
+        }
+        if (sanitizedText.length > 300) {
+            return res.status(400).json({ success: false, error: 'Learning objective too long (max 300 characters)' });
+        }
+        updateData.LearningObjective = sanitizedText;
         
         const result = await instance.updateLearningObjective(courseId, divisionId, itemId, objectiveId, updateData);
         

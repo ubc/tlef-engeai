@@ -983,12 +983,21 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         console.log('✅ Found objective to edit:', objective.LearningObjective);
         //END DEBUG LOG : DEBUG-CODE(038)
 
-        const contentDiv = document.getElementById(`objective-content-${divisionId}-${contentId}-${index}`);
+        let contentDiv = document.getElementById(`objective-content-${divisionId}-${contentId}-${index}`) as HTMLElement | null;
         if (!contentDiv) {
-            //START DEBUG LOG : DEBUG-CODE(039)
-            console.error('❌ Content div not found for edit - ID:', `objective-content-${divisionId}-${contentId}-${index}`);
-            //END DEBUG LOG : DEBUG-CODE(039)
-            return;
+            // If the target container doesn't exist (e.g., due to markup changes), create it on demand
+            const headerEl = document.querySelector(
+                `.objective-header[data-division="${divisionId}"][data-content="${contentId}"][data-objective="${index}"]`
+            ) as HTMLElement | null;
+            const itemEl = headerEl?.parentElement as HTMLElement | null; // .objective-item
+            if (!itemEl) {
+                console.error('❌ Could not locate objective item container to create edit region.');
+                return;
+            }
+            contentDiv = document.createElement('div');
+            contentDiv.className = 'objective-content';
+            contentDiv.id = `objective-content-${divisionId}-${contentId}-${index}`;
+            itemEl.appendChild(contentDiv);
         }
 
         //START DEBUG LOG : DEBUG-CODE(040)
@@ -1030,6 +1039,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
         contentDiv.appendChild(form);
         contentDiv.classList.add('expanded');
+        // Ensure visible during editing
+        contentDiv.style.display = 'block';
         
         //START DEBUG LOG : DEBUG-CODE(041)
         console.log('✅ Edit form created and added to DOM successfully');
