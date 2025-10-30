@@ -131,19 +131,31 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const header = document.createElement('div');
         header.className = 'week-header';
         header.setAttribute('data-division', division.id);
+        // Layout: make header a flexible row so left area can grow
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+        header.style.justifyContent = 'space-between';
+        header.style.gap = '12px';
 
         // create the left side of the header
         // display the title and the completed status of the division
         const left = document.createElement('div');
+        // Left grows, prevents overflow clipping
+        left.style.flex = '1 1 auto';
+        left.style.minWidth = '0';
         const title = document.createElement('div');
         title.className = 'week-title';
+        // Title row as flex so input and buttons align and expand nicely
+        title.style.display = 'flex';
+        title.style.alignItems = 'center';
+        title.style.gap = '8px';
         
         // Create title text span
         const titleText = document.createElement('span');
         titleText.textContent = division.title;
         title.appendChild(titleText);
         
-        // Create rename icon
+        // Create rename icon (handled via delegated listener in setupEventListeners)
         const renameIcon = document.createElement('i');
         renameIcon.setAttribute('data-feather', 'edit-2');
         renameIcon.className = 'rename-icon';
@@ -152,10 +164,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         renameIcon.style.marginLeft = '8px';
         renameIcon.style.width = '16px';
         renameIcon.style.height = '16px';
-        renameIcon.addEventListener('click', (e) => {
-            e.stopPropagation(); // Prevent header toggle
-            renameDivision(division);
-        });
         title.appendChild(renameIcon);
         
         const status = document.createElement('div');
@@ -170,6 +178,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // create the right side of the header (add session, publish toggle/status, then expand arrow)
         const right = document.createElement('div');
         right.className = 'week-status';
+        // Right side does not grow
+        right.style.flex = '0 0 auto';
 
         // Add Session badge/button
         const addSessionBadge = document.createElement('div');
@@ -287,6 +297,90 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // Create the click handler function
         const clickHandler = (event: Event) => {
             const target = event.target as HTMLElement;
+            
+            // PRIORITY: Handle inline edit controls BEFORE any header toggles
+            // a) Pen icon (rename)
+            const earlyRenameIcon = target.closest('.rename-icon') as HTMLElement | null;
+            if (earlyRenameIcon) {
+                event.stopPropagation();
+                let divisionId = earlyRenameIcon.getAttribute('data-division-id') || '';
+                let itemId = earlyRenameIcon.getAttribute('data-item-id') || '';
+
+                // Derive from nearest containers if attributes are missing (feather replacement case)
+                const contentItem = earlyRenameIcon.closest('.content-item') as HTMLElement | null;
+                if (contentItem) {
+                    const ids = contentItem.id.split('-'); // content-item-divisionId-contentId
+                    if (!divisionId && ids[2]) divisionId = ids[2];
+                    if (!itemId && ids[3]) itemId = ids[3];
+                }
+                if (!divisionId) {
+                    const header = earlyRenameIcon.closest('.week-header') as HTMLElement | null;
+                    if (header) divisionId = header.getAttribute('data-division') || '';
+                }
+                if (!divisionId) return;
+
+                if (itemId) {
+                    const division = courseData.find(d => d.id === divisionId);
+                    const item = division?.items.find(i => i.id === itemId);
+                    if (item) enterEditMode(divisionId, itemId, item.title);
+                } else {
+                    const division = courseData.find(d => d.id === divisionId);
+                    if (division) enterEditMode(divisionId, null, division.title);
+                }
+                return; // Avoid header toggle
+            }
+
+            // b) OK button during edit
+            const earlyOk = target.closest('.edit-ok-button') as HTMLElement | null;
+            if (earlyOk) {
+                event.stopPropagation();
+                const contentItem = earlyOk.closest('.content-item') as HTMLElement | null;
+                if (contentItem) {
+                    const ids = contentItem.id.split('-');
+                    const divisionId = ids[2] || '0';
+                    const itemId = ids[3] || '0';
+                    const input = contentItem.querySelector('.title-edit-input') as HTMLInputElement | null;
+                    if (!input) return;
+                    const newTitle = input.value.trim();
+                    if (!newTitle) { showErrorModal('Validation Error', 'Section name cannot be empty.'); return; }
+                    if (newTitle.length > 100) { showErrorModal('Validation Error', 'Section name is too long (max 100 characters).'); return; }
+                    saveTitleChange(divisionId, itemId, newTitle);
+                } else {
+                    const header = earlyOk.closest('.week-header') as HTMLElement | null;
+                    if (!header) return;
+                    const divisionId = header.getAttribute('data-division') || '0';
+                    const titleWrap = header.querySelector('.week-title') as HTMLElement | null;
+                    const input = titleWrap?.querySelector('.title-edit-input') as HTMLInputElement | null;
+                    if (!input) return;
+                    const newTitle = input.value.trim();
+                    if (!newTitle) { showErrorModal('Validation Error', 'Division name cannot be empty.'); return; }
+                    if (newTitle.length > 100) { showErrorModal('Validation Error', 'Division name is too long (max 100 characters).'); return; }
+                    saveTitleChange(divisionId, null, newTitle);
+                }
+                return; // Avoid header toggle
+            }
+
+            // c) Cancel button during edit
+            const earlyCancel = target.closest('.edit-cancel-button') as HTMLElement | null;
+            if (earlyCancel) {
+                event.stopPropagation();
+                const contentItem = earlyCancel.closest('.content-item') as HTMLElement | null;
+                if (contentItem) {
+                    const ids = contentItem.id.split('-');
+                    const divisionId = ids[2] || '0';
+                    const itemId = ids[3] || '0';
+                    const division = courseData.find(d => d.id === divisionId);
+                    const item = division?.items.find(i => i.id === itemId);
+                    if (division && item) exitEditMode(divisionId, itemId, item.title);
+                } else {
+                    const header = earlyCancel.closest('.week-header') as HTMLElement | null;
+                    if (!header) return;
+                    const divisionId = header.getAttribute('data-division') || '0';
+                    const division = courseData.find(d => d.id === divisionId);
+                    if (division) exitEditMode(divisionId, null, division.title);
+                }
+                return; // Avoid header toggle
+            }
 
             // Division header toggles
             const divisionHeader = target.closest('.week-header') as HTMLElement | null;
@@ -321,7 +415,110 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 return; // Prevent further event handling
             }
 
-            // Handle actions on buttons FIRST (before header clicks)
+        // Handle rename/edit buttons FIRST (before header clicks)
+        // 1) Rename icon click (pen)
+        const renameIconEl = target.closest('.rename-icon') as HTMLElement | null;
+        if (renameIconEl) {
+            event.stopPropagation();
+            // Attributes on icon may be lost after feather replacement; derive robustly
+            let divisionId = renameIconEl.getAttribute('data-division-id') || '';
+            let itemId = renameIconEl.getAttribute('data-item-id') || '';
+
+            // Try to derive from nearest content item if missing
+            const contentItem = renameIconEl.closest('.content-item') as HTMLElement | null;
+            if (contentItem) {
+                const ids = contentItem.id.split('-'); // content-item-divisionId-contentId
+                if (!divisionId && ids[2]) divisionId = ids[2];
+                if (!itemId && ids[3]) itemId = ids[3];
+            }
+
+            // For division header, derive from closest week-header
+            if (!divisionId) {
+                const header = renameIconEl.closest('.week-header') as HTMLElement | null;
+                if (header) {
+                    divisionId = header.getAttribute('data-division') || '';
+                }
+            }
+
+            if (!divisionId) return;
+
+            if (itemId) {
+                // Item title edit
+                const division = courseData.find(d => d.id === divisionId);
+                const item = division?.items.find(i => i.id === itemId);
+                if (item) {
+                    enterEditMode(divisionId, itemId, item.title);
+                }
+            } else {
+                // Division title edit
+                const division = courseData.find(d => d.id === divisionId);
+                if (division) {
+                    enterEditMode(divisionId, null, division.title);
+                }
+            }
+            return; // Prevent header toggle
+        }
+
+        // 2) OK button (check) during edit mode
+        const okButtonEl = target.closest('.edit-ok-button') as HTMLElement | null;
+        if (okButtonEl) {
+            event.stopPropagation();
+            // Determine context (division vs item) via closest containers
+            const contentItem = okButtonEl.closest('.content-item') as HTMLElement | null;
+            if (contentItem) {
+                // Item OK
+                const ids = contentItem.id.split('-'); // content-item-divisionId-contentId
+                const divisionId = ids[2] || '0';
+                const itemId = ids[3] || '0';
+                const input = contentItem.querySelector('.title-edit-input') as HTMLInputElement | null;
+                if (!input) return;
+                const newTitle = input.value.trim();
+                if (!newTitle) { showErrorModal('Validation Error', 'Section name cannot be empty.'); return; }
+                if (newTitle.length > 100) { showErrorModal('Validation Error', 'Section name is too long (max 100 characters).'); return; }
+                saveTitleChange(divisionId, itemId, newTitle);
+            } else {
+                // Division OK
+                const header = okButtonEl.closest('.week-header') as HTMLElement | null;
+                if (!header) return;
+                const divisionId = header.getAttribute('data-division') || '0';
+                const titleWrap = header.querySelector('.week-title') as HTMLElement | null;
+                const input = titleWrap?.querySelector('.title-edit-input') as HTMLInputElement | null;
+                if (!input) return;
+                const newTitle = input.value.trim();
+                if (!newTitle) { showErrorModal('Validation Error', 'Division name cannot be empty.'); return; }
+                if (newTitle.length > 100) { showErrorModal('Validation Error', 'Division name is too long (max 100 characters).'); return; }
+                saveTitleChange(divisionId, null, newTitle);
+            }
+            return; // Prevent header toggle
+        }
+
+        // 3) Cancel button (x) during edit mode
+        const cancelButtonEl = target.closest('.edit-cancel-button') as HTMLElement | null;
+        if (cancelButtonEl) {
+            event.stopPropagation();
+            const contentItem = cancelButtonEl.closest('.content-item') as HTMLElement | null;
+            if (contentItem) {
+                const ids = contentItem.id.split('-');
+                const divisionId = ids[2] || '0';
+                const itemId = ids[3] || '0';
+                const division = courseData.find(d => d.id === divisionId);
+                const item = division?.items.find(i => i.id === itemId);
+                if (division && item) {
+                    exitEditMode(divisionId, itemId, item.title);
+                }
+            } else {
+                const header = cancelButtonEl.closest('.week-header') as HTMLElement | null;
+                if (!header) return;
+                const divisionId = header.getAttribute('data-division') || '0';
+                const division = courseData.find(d => d.id === divisionId);
+                if (division) {
+                    exitEditMode(divisionId, null, division.title);
+                }
+            }
+            return; // Prevent header toggle
+        }
+
+        // Handle actions on buttons FIRST (before header clicks)
             const button = target.closest('button') as HTMLButtonElement | null;
             if (button) {
                 const action = button.dataset.action;
@@ -1090,15 +1287,27 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // Header
         const header = document.createElement('div');
         header.className = 'content-header';
+        // Layout: make header a flexible row so left area can grow
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+        header.style.justifyContent = 'space-between';
+        header.style.gap = '12px';
         const title = document.createElement('div');
         title.className = 'content-title';
+        // Title row as flex so input and buttons align and expand nicely
+        title.style.display = 'flex';
+        title.style.alignItems = 'center';
+        title.style.gap = '8px';
+        // Left grows, prevents overflow clipping
+        title.style.flex = '1 1 auto';
+        title.style.minWidth = '0';
         
         // Create title text span
         const titleText = document.createElement('span');
         titleText.textContent = content.title;
         title.appendChild(titleText);
         
-        // Create rename icon
+        // Create rename icon (handled via delegated listener in setupEventListeners)
         const renameIcon = document.createElement('i');
         renameIcon.setAttribute('data-feather', 'edit-2');
         renameIcon.className = 'rename-icon';
@@ -1108,14 +1317,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         renameIcon.style.marginLeft = '8px';
         renameIcon.style.width = '16px';
         renameIcon.style.height = '16px';
-        renameIcon.addEventListener('click', (e) => {
-            e.stopPropagation();
-            renameItem(divisionId, content);
-        });
         title.appendChild(renameIcon);
         
         const statusRow = document.createElement('div');
         statusRow.className = 'content-status-row';
+        // Right side does not grow
+        statusRow.style.flex = '0 0 auto';
         const deleteBadge = document.createElement('div');
         deleteBadge.className = 'content-status status-delete-section';
         deleteBadge.textContent = 'Delete Section';
@@ -1358,9 +1565,11 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         input.type = 'text';
         input.value = currentTitle;
         input.className = 'title-edit-input';
-        input.style.minWidth = '200px';
-        input.style.maxWidth = '400px';
-        input.style.width = 'auto';
+        // Allow input to expand to available width
+        input.style.minWidth = '0';
+        input.style.width = '100%';
+        input.style.boxSizing = 'border-box';
+        input.style.flex = '1 1 auto';
         input.style.padding = '4px 8px';
         input.style.border = '1px solid #ccc';
         input.style.borderRadius = '4px';
@@ -1371,6 +1580,11 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const renameIcon = titleContainer.querySelector('.rename-icon') as HTMLElement | null;
         if (!renameIcon) return;
         
+        // Ensure title container is flex so input can grow next to buttons
+        titleContainer.style.display = 'flex';
+        titleContainer.style.alignItems = 'center';
+        titleContainer.style.gap = '8px';
+
         // Create button container
         const buttonContainer = document.createElement('div');
         buttonContainer.className = 'edit-mode-buttons';
@@ -1516,26 +1730,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         renameIcon.style.width = '16px';
         renameIcon.style.height = '16px';
         
-        // Replace input with span
+        // Replace input with span and restore rename icon (handled via delegated listener)
         input.replaceWith(titleSpan);
         buttonContainer.replaceWith(renameIcon);
-        
-        // Re-attach rename event listener
-        renameIcon.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (itemId) {
-                const division = courseData.find(d => d.id === divisionId);
-                const item = division?.items.find(i => i.id === itemId);
-                if (item) {
-                    renameItem(divisionId, item);
-                }
-            } else {
-                const division = courseData.find(d => d.id === divisionId);
-                if (division) {
-                    renameDivision(division);
-                }
-            }
-        });
         
         // Re-render feather icons
         renderFeatherIcons();
