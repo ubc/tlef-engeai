@@ -36,7 +36,9 @@ let courseData: ContentDivision[] = [];
 // Function to initialize the documents page
 export async function initializeDocumentsPage( currentClass : activeCourse) {
 
-        // Build initial in-memory data from onboarding selections
+        // Sync from server so refresh reflects latest divisions/items
+        await syncCourseFromServer();
+        // Build initial in-memory data (prefers server divisions)
         loadClassroomData(currentClass);
         
         // Update button labels based on frameType
@@ -54,40 +56,61 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @param currentClass the currently active class
      */
     function loadClassroomData( currentClass : activeCourse ) {
+        // If server provided divisions, trust them completely
+        if (currentClass.divisions && currentClass.divisions.length > 0) {
+            courseData = currentClass.divisions;
+            return;
+        }
+
+        // Fallback to generating defaults based on tilesNumber when no divisions are present
         const total = currentClass.tilesNumber;
         courseData = [];
         for (let i = 0; i < total; i++) {
-            // Check if the content item exists, if not create a default one
-            if (currentClass.divisions[i]) {
-                courseData.push(currentClass.divisions[i]);
-            } else {
-                // Create a default content division if it doesn't exist
-                const defaultDivision: ContentDivision = {
-                    id: String(i + 1),
-                    date: new Date(),
-                    title: currentClass.frameType === 'byWeek' ? `Week ${i + 1}` : `Topic ${i + 1}`,
-                    courseName: currentClass.courseName,
-                    published: false,
-                    items: [
-                        {
-                            id: String(i + 1),
-                            date: new Date(),
-                            title: currentClass.frameType === 'byWeek' ? `Lecture ${i + 1}` : `Session ${i + 1}`,
-                            courseName: currentClass.courseName,
-                            divisionTitle: currentClass.frameType === 'byWeek' ? `Week ${i + 1}` : `Topic ${i + 1}`,
-                            itemTitle: currentClass.frameType === 'byWeek' ? `Lecture ${i + 1}` : `Session ${i + 1}`,
-                            learningObjectives: [],
-                            additionalMaterials: [],
-                            completed: false,
-                            createdAt: new Date(),
-                            updatedAt: new Date()
-                        }
-                    ],
-                    createdAt: new Date(),
-                    updatedAt: new Date()
-                };
-                courseData.push(defaultDivision);
+            const defaultDivision: ContentDivision = {
+                id: String(i + 1),
+                date: new Date(),
+                title: currentClass.frameType === 'byWeek' ? `Week ${i + 1}` : `Topic ${i + 1}`,
+                courseName: currentClass.courseName,
+                published: false,
+                items: [
+                    {
+                        id: String(i + 1),
+                        date: new Date(),
+                        title: currentClass.frameType === 'byWeek' ? `Lecture ${i + 1}` : `Session ${i + 1}`,
+                        courseName: currentClass.courseName,
+                        divisionTitle: currentClass.frameType === 'byWeek' ? `Week ${i + 1}` : `Topic ${i + 1}`,
+                        itemTitle: currentClass.frameType === 'byWeek' ? `Lecture ${i + 1}` : `Session ${i + 1}`,
+                        learningObjectives: [],
+                        additionalMaterials: [],
+                        completed: false,
+                        createdAt: new Date(),
+                        updatedAt: new Date()
+                    }
+                ],
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+            courseData.push(defaultDivision);
+        }
+    }
+
+    async function syncCourseFromServer(): Promise<void> {
+        try {
+            if (!currentClass || !currentClass.id) return;
+            const res = await fetch(`/api/courses/${currentClass.id}`);
+            if (!res.ok) {
+                console.warn('⚠️ Failed to fetch latest course from server:', res.status, res.statusText);
+                return;
             }
+            const payload = await res.json();
+            if (payload && payload.success && payload.data) {
+                const course = payload.data;
+                // Update currentClass with latest divisions count and data
+                currentClass.divisions = course.divisions || currentClass.divisions;
+                currentClass.tilesNumber = (course.divisions && course.divisions.length) ? course.divisions.length : currentClass.tilesNumber;
+            }
+        } catch (e) {
+            console.warn('⚠️ Exception fetching latest course:', e);
         }
     }
 
@@ -611,6 +634,74 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         console.log('🔧 Added documents click handler');
     }
 
+    // ----- Divisions (Week/Topic) management -----
+    async function addDivision(): Promise<void> {
+        try {
+            if (!currentClass) {
+                console.error('❌ No current class found for adding division');
+                return;
+            }
+
+            // Compute next numeric id (server will compute as well; client uses server response)
+            const existingNumericIds = courseData
+                .map(d => parseInt(d.id, 10))
+                .filter(n => !Number.isNaN(n));
+            const nextIdNum = (existingNumericIds.length ? Math.max(...existingNumericIds) : 0) + 1;
+
+            console.log('📡 Making API call to add division...');
+            console.log('🌐 API URL:', `/api/courses/${currentClass.id}/divisions`);
+
+            const response = await fetch(`/api/courses/${currentClass.id}/divisions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                // Send optional title; server may override to ensure consistency
+                body: JSON.stringify({
+                    title: currentClass.frameType === 'byWeek' ? `Week ${nextIdNum}` : `Topic ${nextIdNum}`
+                })
+            });
+
+            console.log('📡 Add Division API Response status:', response.status, response.statusText);
+
+            // Handle unauthorized gracefully
+            if (response.status === 401 || response.status === 403) {
+                await showSimpleErrorModal('You are not authorized to add divisions. Please sign in as an instructor.', 'Authorization Error');
+                return;
+            }
+
+            const result = await response.json();
+            console.log('📡 Add Division API Response body:', result);
+
+            if (!result.success) {
+                await showSimpleErrorModal('Failed to add division: ' + (result.error || 'Unknown error'), 'Add Division Error');
+                return;
+            }
+
+            const createdDivision: ContentDivision = result.data;
+
+            // Update local state
+            courseData.push(createdDivision);
+
+            // Append to DOM
+            const container = document.getElementById('documents-container');
+            if (container) {
+                const el = createDivisionElement(createdDivision);
+                container.appendChild(el);
+                // Re-render icons for newly added elements
+                renderFeatherIcons();
+            }
+
+            // Update control panel labels (if frame type-dependent)
+            updateDivisionButtonLabels(currentClass);
+
+            console.log('✅ Division added successfully');
+        } catch (error) {
+            console.error('❌ Exception caught while adding division:', error);
+            await showSimpleErrorModal('An error occurred while adding the division. Please try again.', 'Add Division Error');
+        }
+    }
+
     // Add event listener for delete all documents button
     const deleteAllDocumentsBtn = document.getElementById('delete-all-documents-btn');
     if (deleteAllDocumentsBtn) {
@@ -651,6 +742,24 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         (nuclearClearBtn as any)._nuclearHandler = nuclearHandler;
         nuclearClearBtn.addEventListener('click', nuclearHandler);
         console.log('🔧 Added nuclear clear handler');
+    }
+
+    // Add event listener for add division (Week/Topic) button
+    const addDivisionBtn = document.getElementById('add-division-btn');
+    if (addDivisionBtn) {
+        const existingAddDivisionHandler = (addDivisionBtn as any)._addDivisionHandler;
+        if (existingAddDivisionHandler) {
+            addDivisionBtn.removeEventListener('click', existingAddDivisionHandler);
+            console.log('🔧 Removed existing add division handler');
+        }
+
+        const addDivisionHandler = async () => {
+            await addDivision();
+        };
+
+        (addDivisionBtn as any)._addDivisionHandler = addDivisionHandler;
+        addDivisionBtn.addEventListener('click', addDivisionHandler);
+        console.log('🔧 Added add division handler');
     }
 
     // --- Event Handler Functions ---
@@ -1442,31 +1551,20 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             return;
         }
 
-        // Generate a new unique content id within this division
-        const existingIds = division.items.map(c => c.id);
-        const base = parseInt(division.id) * 100 + 1; // e.g., week 3 -> 301 base
-        let next = base;
-        while (existingIds.includes(String(next))) next++;
-
-        const newContent: courseItem = {
-            id: String(next),
-            title: `New Section ${division.items.length + 1}`,
-            date: new Date(),
-            courseName: currentClass.courseName,
-            divisionTitle: division.title,
-            itemTitle: `New Section ${division.items.length + 1}`,
+        // Prepare minimal payload; server assigns IDs and timestamps
+        const newContentTitle = `New Section ${division.items.length + 1}`;
+        const minimalContentPayload = {
+            title: newContentTitle,
             completed: false,
             learningObjectives: [],
-            additionalMaterials: [],
-            createdAt: new Date(),
-            updatedAt: new Date()
+            additionalMaterials: []
         };
 
         try {
             //START DEBUG LOG : DEBUG-CODE(056)
             console.log('📡 Making API call to add section...');
             console.log('🌐 API URL:', `/api/courses/${currentClass.id}/divisions/${division.id}/items`);
-            console.log('📦 Request body:', { contentItem: newContent });
+            console.log('📦 Request body:', { contentItem: minimalContentPayload });
             //END DEBUG LOG : DEBUG-CODE(056)
             
             // Call backend API to add the section
@@ -1476,7 +1574,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    contentItem: newContent
+                    contentItem: minimalContentPayload
                 })
             });
 
@@ -1495,13 +1593,15 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 console.log('✅ Section added successfully to database');
                 //END DEBUG LOG : DEBUG-CODE(059)
                 
+                // Use server-returned item (ensures IDs and timestamps are consistent)
+                const createdItem: courseItem = result.data;
                 // Add to local data only after successful database save
-                division.items.push(newContent);
+                division.items.push(createdItem);
                 
                 // Append to DOM
                 const container = document.getElementById(`content-division-${division.id}`);
                 if (!container) return;
-                const built = buildContentItemDOM(division.id, newContent);
+                const built = buildContentItemDOM(division.id, createdItem);
                 container.appendChild(built);
                 
                 // Update header completion count

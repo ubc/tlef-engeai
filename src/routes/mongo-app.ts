@@ -546,40 +546,120 @@ router.delete('/:id', asyncHandlerWithAuth(async (req: Request, res: Response) =
     });
 }));
 
+// POST /api/courses/:courseId/divisions - Add a new division (Week/Topic) (REQUIRES AUTH)
+router.post('/:courseId/divisions', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId } = req.params;
+        const { title } = req.body || {};
+
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+
+        const divisions: ContentDivision[] = (course.divisions as unknown as ContentDivision[]) || [];
+        const existingNumericIds = divisions
+            .map(d => parseInt(d.id as unknown as string, 10))
+            .filter(n => !Number.isNaN(n));
+        const nextIdNum = (existingNumericIds.length ? Math.max(...existingNumericIds) : 0) + 1;
+        const nextId = String(nextIdNum);
+
+        const isByWeek = (course as any).frameType === 'byWeek';
+        const resolvedTitle = (typeof title === 'string' && title.trim())
+            ? title.trim()
+            : (isByWeek ? `Week ${nextIdNum}` : `Topic ${nextIdNum}`);
+
+        const defaultItemTitle = isByWeek ? 'Lecture 1' : 'Session 1';
+        const now = new Date();
+
+        const newDivision: ContentDivision = {
+            id: nextId,
+            date: now,
+            title: resolvedTitle,
+            courseName: (course as any).courseName,
+            published: false,
+            items: [
+                {
+                    id: '1',
+                    date: now,
+                    title: defaultItemTitle,
+                    courseName: (course as any).courseName,
+                    divisionTitle: resolvedTitle,
+                    itemTitle: defaultItemTitle,
+                    learningObjectives: [],
+                    additionalMaterials: [],
+                    completed: false,
+                    createdAt: now,
+                    updatedAt: now
+                } as unknown as courseItem
+            ],
+            createdAt: now,
+            updatedAt: now
+        } as unknown as ContentDivision;
+
+        const updatedDivisions = [...divisions, newDivision];
+        await instance.updateActiveCourse(courseId, { divisions: updatedDivisions } as any);
+
+        return res.status(201).json({ success: true, data: newDivision, message: 'Division added successfully' });
+    } catch (error) {
+        console.error('Error adding division:', error);
+        return res.status(500).json({ success: false, error: 'Failed to add division' });
+    }
+}));
+
 // POST /api/courses/:courseId/divisions/:divisionId/items - Add a new content item (section) to a division (REQUIRES AUTH)
 router.post('/:courseId/divisions/:divisionId/items', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, divisionId } = req.params;
-        const { contentItem } = req.body;
-        
-        if (!contentItem) {
-            return res.status(400).json({
-                success: false,
-                error: 'Content item data is required'
-            });
+        const { contentItem } = req.body || {};
+
+        if (!contentItem || typeof contentItem.title !== 'string' || !contentItem.title.trim()) {
+            return res.status(400).json({ success: false, error: 'Valid content item title is required' });
         }
-        
-        const result = await instance.addContentItem(courseId, divisionId, contentItem);
-        
-        if (result.success) {
-            res.status(201).json({
-                success: true,
-                data: result.data,
-                message: 'Content item added successfully'
-            });
-        } else {
-            res.status(500).json({
-                success: false,
-                error: result.error || 'Failed to add content item'
-            });
+
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
         }
+
+        const divisions: ContentDivision[] = (course.divisions as unknown as ContentDivision[]) || [];
+        const division = divisions.find(d => (d.id as unknown as string) === divisionId);
+        if (!division) {
+            return res.status(404).json({ success: false, error: 'Division not found' });
+        }
+
+        const existingNumericIds = (division.items as unknown as courseItem[])
+            .map(i => parseInt((i.id as unknown as string), 10))
+            .filter(n => !Number.isNaN(n));
+        const nextItemIdNum = (existingNumericIds.length ? Math.max(...existingNumericIds) : 0) + 1;
+        const nextItemId = String(nextItemIdNum);
+
+        const now = new Date();
+        const newItem: courseItem = {
+            id: nextItemId,
+            date: now,
+            title: contentItem.title.trim(),
+            courseName: (course as any).courseName,
+            divisionTitle: (division as any).title,
+            itemTitle: contentItem.title.trim(),
+            learningObjectives: Array.isArray(contentItem.learningObjectives) ? contentItem.learningObjectives : [],
+            additionalMaterials: Array.isArray(contentItem.additionalMaterials) ? contentItem.additionalMaterials : [],
+            completed: !!contentItem.completed,
+            createdAt: now,
+            updatedAt: now
+        } as unknown as courseItem;
+
+        (division.items as any) = [ ...(division.items as any || []), newItem ];
+        (division as any).updatedAt = now;
+
+        await instance.updateActiveCourse(courseId, { divisions } as any);
+
+        return res.status(201).json({ success: true, data: newItem, message: 'Content item added successfully' });
     } catch (error) {
         console.error('Error adding content item:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to add content item'
-        });
+        return res.status(500).json({ success: false, error: 'Failed to add content item' });
     }
 }));
 
