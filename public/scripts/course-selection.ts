@@ -119,11 +119,11 @@ function createCourseCard(course: any): string {
     
     // Only show restart onboarding button for instructors (faculty)
     const isInstructor = currentUserAffiliation === 'faculty';
-    const restartButton = isInstructor ? `
-        <button class="restart-onboarding-btn" data-course-id="${course.id}" data-course-name="${course.courseName}">
-            RESTART ONBOARDING
-        </button>
-    ` : '';
+    const restartButton = ""; // isInstructor ? `
+    //     <button class="restart-onboarding-btn" data-course-id="${course.id}" data-course-name="${course.courseName}">
+    //         RESTART ONBOARDING
+    //     </button>
+    // ` : '';
     
     return `
         <div class="workspace-row" data-course-id="${course.id}">
