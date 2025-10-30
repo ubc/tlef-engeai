@@ -61,7 +61,6 @@ export async function sendMessageToServer(text: string): Promise<ChatResponse> {
 export async function loadComponentHTML(
     componentName:  | 'welcome-screen' 
                     | 'chat-window' 
-                    | 'report-history'
                     | 'flag-history'
                     | 'profile'
                     | 'disclaimer'
@@ -74,6 +73,7 @@ export async function loadComponentHTML(
                     | 'monitor-setup'
                     | 'student-onboarding'
                     | 'about'
+                    | 'course-information'
 ): Promise<string> {
 
     let response: Response;
@@ -82,7 +82,6 @@ export async function loadComponentHTML(
     switch (componentName) {
         case 'welcome-screen':
         case 'chat-window' :
-        case 'report-history':
         case 'flag-history':
         case 'disclaimer':
             response = await fetch(`/components/chat/${componentName}.html`);
@@ -108,6 +107,9 @@ export async function loadComponentHTML(
             break;
         case 'about':
             response = await fetch(`/components/about/${componentName}.html`);
+            break;
+        case 'course-information':
+            response = await fetch(`/components/course-information/${componentName}.html`);
             break;
         default:
             throw new Error("Invalid component name: " + componentName);

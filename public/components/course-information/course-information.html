@@ -1,0 +1,79 @@
+<!-- COURSE INFORMATION COMPONENT -->
+<!-- Matches about.html structure with content area and navigation -->
+<link rel="stylesheet" href="/styles/instructor-components/course-information.css">
+
+    <!-- CONTENT AREA -->
+    <div class="course-info-content-area">
+        <!-- Course Information Content -->
+        <div class="course-info-content">
+            <div class="course-info-content-inner">
+                <div class="course-info-main-content">
+                    <h1>Course Information</h1>
+                    <p class="course-info-description">
+                        Review and update your course setup details
+                    </p>
+                    
+                    <div class="form-group">
+                        <label for="courseInfoCourseSelect">Course Name</label>
+                        <select id="courseInfoCourseSelect" class="form-select" disabled>
+                            <!-- Options populated by TypeScript -->
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="courseInfoInstructorSelect">Instructors</label>
+                        <div class="dropdown-with-add">
+                            <select id="courseInfoInstructorSelect" class="form-select">
+                                <!-- Options populated by TypeScript -->
+                            </select>
+                            <button type="button" class="add-instructor-btn" id="courseInfoAddInstructorBtn">Add</button>
+                        </div>
+                        <div class="selected-items" id="courseInfoSelectedInstructors"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="courseInfoTASelect">Teaching Assistants</label>
+                        <div class="dropdown-with-add">
+                            <select id="courseInfoTASelect" class="form-select">
+                                <!-- Options populated by TypeScript -->
+                            </select>
+                            <button type="button" class="add-ta-btn" id="courseInfoAddTABtn">Add</button>
+                        </div>
+                        <div class="selected-items" id="courseInfoSelectedTAs"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Course Organization</label>
+                        <div class="radio-options">
+                            <div class="radio-option">
+                                <input type="radio" id="courseInfoByWeek" name="courseInfoDivision" value="byWeek" disabled>
+                                <label for="courseInfoByWeek">By Week</label>
+                            </div>
+                            <div class="radio-option">
+                                <input type="radio" id="courseInfoByTopic" name="courseInfoDivision" value="byTopic" disabled>
+                                <label for="courseInfoByTopic">By Topic</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="courseInfoContentCount" id="courseInfoCountDescription">Number of Sections</label>
+                        <input type="number" id="courseInfoContentCount" class="form-input" min="1" max="52">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="course-info-navigation">
+            <button class="nav-btn btn-back" id="course-info-back-btn">
+                <i data-feather="chevron-left" class="feather"></i>
+                Back
+            </button>
+            <button type="button" class="btn-save-changes" id="btnSaveCourseInfo">
+                Save Changes
+            </button>
+        </div>
+    </div>
+</div>
+

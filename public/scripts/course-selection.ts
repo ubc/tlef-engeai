@@ -5,12 +5,10 @@
  */
 
 import { GlobalUser } from '../../src/functions/types.js';
+import { showConfirmModal, showErrorModal, showSuccessModal } from './modal-overlay.js';
 
-// Course IDs to display (matching actual database IDs)
-const AVAILABLE_COURSES = [
-    '62b77de1abfe', // APSC 099: Engineering for Kindergarten
-    '96cd706d9571'  // APSC 080: Introduction to Engineering
-];
+// Store current user's affiliation to check if they're an instructor
+let currentUserAffiliation: 'student' | 'faculty' | null = null;
 
 /**
  * Initialize course selection page
@@ -42,13 +40,17 @@ async function initializeCourseSelection(): Promise<void> {
             throw new Error('No global user found');
         }
         
-        // Update welcome message
+        // Store user affiliation to determine if they're an instructor
+        currentUserAffiliation = globalUser.affiliation;
+        
+        // Update welcome message with first name only
+        const userName = globalUser.name.split(' ')[0]; // Get first name
         const userNameElement = document.getElementById('user-name');
         if (userNameElement) {
-            userNameElement.textContent = globalUser.name;
+            userNameElement.textContent = userName;
         }
         
-        console.log('[COURSE-SELECTION] ✅ User data loaded:', globalUser.name);
+        console.log('[COURSE-SELECTION] ✅ User data loaded:', userName, 'Affiliation:', currentUserAffiliation);
         
         // Fetch course data
         await loadCourses();
@@ -78,24 +80,23 @@ async function loadCourses(): Promise<void> {
         const { data: courses } = await response.json();
         console.log('[COURSE-SELECTION] 📋 Courses fetched:', courses.length);
         
-        // Filter to only show APSC 099 and APSC 080
-        const availableCourses = courses.filter((course: any) => 
-            AVAILABLE_COURSES.includes(course.id)
-        );
-        
-        console.log('[COURSE-SELECTION] 🎯 Available courses:', availableCourses.length);
-        
-        if (availableCourses.length === 0) {
+        // Display all courses from the database (no filtering)
+        if (courses.length === 0) {
             throw new Error('No available courses found');
         }
         
         // Hide loading message
         hideLoadingMessage();
         
-        // Render course cards
-        container.innerHTML = availableCourses.map((course: any) => 
+        // Render workspace rows for all courses
+        container.innerHTML = courses.map((course: any) => 
             createCourseCard(course)
         ).join('');
+        
+        // Re-initialize Feather icons for any new icons in the content
+        if (typeof (window as any).feather !== 'undefined') {
+            (window as any).feather.replace();
+        }
         
         // Attach event listeners
         attachCourseCardListeners();
@@ -110,46 +111,79 @@ async function loadCourses(): Promise<void> {
 }
 
 /**
- * Create HTML for a course card
+ * Create HTML for a Slack-style workspace row
  */
 function createCourseCard(course: any): string {
-    const instructorsList = course.instructors
-        .map((instructor: string) => `<li>• ${instructor}</li>`)
-        .join('');
+    // Display instructor names instead of avatars
+    const instructorNames = course.instructors?.join(', ') || 'No instructors';
+    
+    // Only show restart onboarding button for instructors (faculty)
+    const isInstructor = currentUserAffiliation === 'faculty';
+    const restartButton = isInstructor ? `
+        <button class="restart-onboarding-btn" data-course-id="${course.id}" data-course-name="${course.courseName}">
+            RESTART ONBOARDING
+        </button>
+    ` : '';
     
     return `
-        <div class="course-card" data-course-id="${course.id}">
-            <div class="course-card-header">
-                <h2>${course.courseName}</h2>
-            </div>
-            <div class="course-card-body">
-                <div class="course-info">
-                    <h3>Instructors:</h3>
-                    <ul class="instructor-list">
-                        ${instructorsList}
-                    </ul>
+        <div class="workspace-row" data-course-id="${course.id}">
+            <div class="workspace-info">
+                <div class="workspace-name">${course.courseName}</div>
+                <div class="workspace-members">
+                    <span class="member-count">${instructorNames}</span>
                 </div>
             </div>
-            <div class="course-card-footer">
-                <button class="enter-course-btn" data-course-id="${course.id}">
-                    Enter Course →
+            <div class="workspace-action">
+                <button class="launch-btn" data-course-id="${course.id}">
+                    ENTER CLASS
                 </button>
+                ${restartButton}
             </div>
         </div>
     `;
 }
 
 /**
- * Attach event listeners to course cards
+ * Attach event listeners to workspace rows
  */
 function attachCourseCardListeners(): void {
-    const buttons = document.querySelectorAll('.enter-course-btn');
+    const buttons = document.querySelectorAll('.launch-btn');
     
     buttons.forEach(button => {
         button.addEventListener('click', async (event) => {
+            event.stopPropagation(); // Prevent row click
             const courseId = (event.target as HTMLElement).getAttribute('data-course-id');
             if (courseId) {
                 await enterCourse(courseId);
+            }
+        });
+    });
+    
+    // Attach click listeners to restart onboarding buttons
+    const restartButtons = document.querySelectorAll('.restart-onboarding-btn');
+    
+    restartButtons.forEach(button => {
+        button.addEventListener('click', async (event) => {
+            event.stopPropagation(); // Prevent row click
+            const courseId = (event.target as HTMLElement).getAttribute('data-course-id');
+            const courseName = (event.target as HTMLElement).getAttribute('data-course-name');
+            if (courseId && courseName) {
+                await restartOnboarding(courseId, courseName);
+            }
+        });
+    });
+    
+    // Attach click listener to entire row for better UX
+    const rows = document.querySelectorAll('.workspace-row');
+    rows.forEach(row => {
+        row.addEventListener('click', (event) => {
+            // Don't trigger if clicking any button (avoid double trigger)
+            if (!(event.target as HTMLElement).closest('.launch-btn') && 
+                !(event.target as HTMLElement).closest('.restart-onboarding-btn')) {
+                const courseId = row.getAttribute('data-course-id');
+                if (courseId) {
+                    enterCourse(courseId);
+                }
             }
         });
     });
@@ -162,12 +196,12 @@ async function enterCourse(courseId: string): Promise<void> {
     try {
         console.log('[COURSE-SELECTION] 🚀 Entering course:', courseId);
         
-        // Disable all buttons to prevent multiple clicks
-        const buttons = document.querySelectorAll('.enter-course-btn');
-        buttons.forEach(btn => {
-            (btn as HTMLButtonElement).disabled = true;
-            btn.textContent = 'Entering...';
-        });
+        // Find and disable only the clicked button
+        const clickedButton = document.querySelector(`button.launch-btn[data-course-id="${courseId}"]`);
+        if (clickedButton) {
+            (clickedButton as HTMLButtonElement).disabled = true;
+            clickedButton.textContent = 'ENTERING...';
+        }
         
         // Call API to enter course
         const response = await fetch('/api/course/enter', {
@@ -182,11 +216,12 @@ async function enterCourse(courseId: string): Promise<void> {
             console.error('[COURSE-SELECTION] ❌ Error entering course:', data.error);
             alert('Failed to enter course. Please try again.');
             
-            // Re-enable buttons
-            buttons.forEach(btn => {
-                (btn as HTMLButtonElement).disabled = false;
-                btn.textContent = 'Enter Course →';
-            });
+            // Re-enable the clicked button
+            const clickedButton = document.querySelector(`button.launch-btn[data-course-id="${courseId}"]`);
+            if (clickedButton) {
+                (clickedButton as HTMLButtonElement).disabled = false;
+                clickedButton.textContent = 'ENTER CLASS';
+            }
             return;
         }
         
@@ -198,11 +233,113 @@ async function enterCourse(courseId: string): Promise<void> {
         console.error('[COURSE-SELECTION] ❌ Error entering course:', error);
         alert('Failed to enter course. Please try again.');
         
-        // Re-enable buttons
-        const buttons = document.querySelectorAll('.enter-course-btn');
-        buttons.forEach(btn => {
-            (btn as HTMLButtonElement).disabled = false;
-            btn.textContent = 'Enter Course →';
+        // Re-enable the clicked button
+        const clickedButton = document.querySelector(`button.launch-btn[data-course-id="${courseId}"]`);
+        if (clickedButton) {
+            (clickedButton as HTMLButtonElement).disabled = false;
+            clickedButton.textContent = 'ENTER CLASS';
+        }
+    }
+}
+
+/**
+ * Restart onboarding by deleting course and related collections
+ */
+async function restartOnboarding(courseId: string, courseName: string): Promise<void> {
+    try {
+        // Show confirmation modal
+        const confirmationMessage = 
+            `Are you sure you want to restart onboarding for "${courseName}"?\n\n` +
+            `This will permanently delete:\n` +
+            `- The course from active courses\n` +
+            `- All user data (${courseName}_users)\n` +
+            `- All flag reports (${courseName}_flags)\n\n` +
+            `The course will be recreated with empty defaults.\n\n` +
+            `This action cannot be undone.`;
+        
+        const result = await showConfirmModal(
+            'Restart Onboarding',
+            confirmationMessage,
+            'Restart Onboarding',
+            'Cancel'
+        );
+        
+        // Check if user confirmed (clicked "Restart Onboarding" button)
+        if (result.action !== 'Restart Onboarding') {
+            console.log('[COURSE-SELECTION] 🚫 Restart onboarding cancelled by user');
+            return;
+        }
+        
+        console.log('[COURSE-SELECTION] 🔄 Restarting onboarding for course:', courseId);
+        
+        // Find and disable the clicked button
+        const clickedButton = document.querySelector(`button.restart-onboarding-btn[data-course-id="${courseId}"]`);
+        if (clickedButton) {
+            (clickedButton as HTMLButtonElement).disabled = true;
+            clickedButton.textContent = 'PROCESSING...';
+        }
+        
+        // Call API to restart onboarding
+        const response = await fetch(`/api/courses/${courseId}/restart-onboarding`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+            console.error('[COURSE-SELECTION] ❌ Error restarting onboarding:', data.error);
+            await showErrorModal(
+                'Error',
+                `Failed to restart onboarding: ${data.error || 'Unknown error'}`
+            );
+            
+            // Re-enable the clicked button
+            if (clickedButton) {
+                (clickedButton as HTMLButtonElement).disabled = false;
+                clickedButton.textContent = 'RESTART ONBOARDING';
+            }
+            return;
+        }
+        
+        // Success - reload the page to refresh course list
+        console.log('[COURSE-SELECTION] ✅ Onboarding restarted successfully');
+        await showSuccessModal(
+            'Success',
+            'Onboarding restarted successfully. The page will reload.'
+        );
+        window.location.reload();
+        
+    } catch (error) {
+        console.error('[COURSE-SELECTION] ❌ Error restarting onboarding:', error);
+        await showErrorModal(
+            'Error',
+            'Failed to restart onboarding. Please try again.'
+        );
+        
+        // Re-enable the clicked button
+        const clickedButton = document.querySelector(`button.restart-onboarding-btn[data-course-id="${courseId}"]`);
+        if (clickedButton) {
+            (clickedButton as HTMLButtonElement).disabled = false;
+            clickedButton.textContent = 'RESTART ONBOARDING';
+        }
+    }
+}
+
+/**
+ * Handle logout button click
+ */
+function setupLogoutButton(): void {
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+            try {
+                // Logout endpoint expects GET request
+                window.location.href = '/auth/logout';
+            } catch (error) {
+                console.error('Error logging out:', error);
+                alert('Failed to logout. Please try again.');
+            }
         });
     }
 }
@@ -253,5 +390,6 @@ function setupRetryButton(): void {
 document.addEventListener('DOMContentLoaded', () => {
     initializeCourseSelection();
     setupRetryButton();
+    setupLogoutButton();
 });
 

@@ -445,6 +445,85 @@ router.put('/:id', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     });
 }));
 
+// DELETE /api/courses/:id/restart-onboarding - Restart onboarding by deleting course and related collections, then recreating with empty defaults
+// NOTE: This route must come before the general /:id route to ensure proper matching
+router.delete('/:id/restart-onboarding', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    const instance = await EngEAI_MongoDB.getInstance();
+    
+    try {
+        // First check if course exists and save the courseName
+        const existingCourse = await instance.getActiveCourse(req.params.id);
+        if (!existingCourse) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        const course = existingCourse as unknown as activeCourse;
+        const courseName = course.courseName; // Preserve course name
+        
+        // Remove course from active-course-list
+        await instance.deleteActiveCourse(course);
+        
+        // Drop the users collection
+        const usersCollectionName = `${courseName}_users`;
+        const usersDropResult = await instance.dropCollection(usersCollectionName);
+        if (!usersDropResult.success) {
+            console.error(`Failed to drop ${usersCollectionName}:`, usersDropResult.error);
+            // Continue with other operations even if one fails
+        }
+        
+        // Drop the flags collection
+        const flagsCollectionName = `${courseName}_flags`;
+        const flagsDropResult = await instance.dropCollection(flagsCollectionName);
+        if (!flagsDropResult.success) {
+            console.error(`Failed to drop ${flagsCollectionName}:`, flagsDropResult.error);
+            // Continue with other operations even if one fails
+        }
+        
+        // Recreate the course with empty defaults but preserved courseName
+        const tempCourseForId = {
+            courseName: courseName,
+            date: new Date()
+        } as activeCourse;
+        const newCourseId = instance.idGenerator.courseID(tempCourseForId);
+        
+        const newCourse: activeCourse = {
+            id: newCourseId,
+            date: new Date(),
+            courseName: courseName, // Preserved from original
+            courseSetup: false,
+            contentSetup: false,
+            flagSetup: false,
+            monitorSetup: false,
+            instructors: [], // Empty array
+            teachingAssistants: [], // Empty array
+            frameType: 'byTopic', // Default frame type
+            tilesNumber: 0, // Empty/zero tiles
+            divisions: [] // Empty divisions array
+        };
+        
+        // Create the new course (this also creates the users and flags collections)
+        await instance.postActiveCourse(newCourse);
+        
+        res.status(200).json({
+            success: true,
+            message: 'Onboarding restarted successfully. Course recreated with empty defaults.',
+            data: {
+                courseId: newCourseId,
+                courseName: courseName
+            }
+        });
+    } catch (error) {
+        console.error('Error restarting onboarding:', error);
+        return res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
+        });
+    }
+}));
+
 // DELETE /api/courses/:id - Delete course (REQUIRES AUTH - Instructors only)
 router.delete('/:id', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
@@ -467,40 +546,120 @@ router.delete('/:id', asyncHandlerWithAuth(async (req: Request, res: Response) =
     });
 }));
 
+// POST /api/courses/:courseId/divisions - Add a new division (Week/Topic) (REQUIRES AUTH)
+router.post('/:courseId/divisions', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId } = req.params;
+        const { title } = req.body || {};
+
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+
+        const divisions: ContentDivision[] = (course.divisions as unknown as ContentDivision[]) || [];
+        const existingNumericIds = divisions
+            .map(d => parseInt(d.id as unknown as string, 10))
+            .filter(n => !Number.isNaN(n));
+        const nextIdNum = (existingNumericIds.length ? Math.max(...existingNumericIds) : 0) + 1;
+        const nextId = String(nextIdNum);
+
+        const isByWeek = (course as any).frameType === 'byWeek';
+        const resolvedTitle = (typeof title === 'string' && title.trim())
+            ? title.trim()
+            : (isByWeek ? `Week ${nextIdNum}` : `Topic ${nextIdNum}`);
+
+        const defaultItemTitle = isByWeek ? 'Lecture 1' : 'Session 1';
+        const now = new Date();
+
+        const newDivision: ContentDivision = {
+            id: nextId,
+            date: now,
+            title: resolvedTitle,
+            courseName: (course as any).courseName,
+            published: false,
+            items: [
+                {
+                    id: '1',
+                    date: now,
+                    title: defaultItemTitle,
+                    courseName: (course as any).courseName,
+                    divisionTitle: resolvedTitle,
+                    itemTitle: defaultItemTitle,
+                    learningObjectives: [],
+                    additionalMaterials: [],
+                    completed: false,
+                    createdAt: now,
+                    updatedAt: now
+                } as unknown as courseItem
+            ],
+            createdAt: now,
+            updatedAt: now
+        } as unknown as ContentDivision;
+
+        const updatedDivisions = [...divisions, newDivision];
+        await instance.updateActiveCourse(courseId, { divisions: updatedDivisions } as any);
+
+        return res.status(201).json({ success: true, data: newDivision, message: 'Division added successfully' });
+    } catch (error) {
+        console.error('Error adding division:', error);
+        return res.status(500).json({ success: false, error: 'Failed to add division' });
+    }
+}));
+
 // POST /api/courses/:courseId/divisions/:divisionId/items - Add a new content item (section) to a division (REQUIRES AUTH)
 router.post('/:courseId/divisions/:divisionId/items', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, divisionId } = req.params;
-        const { contentItem } = req.body;
-        
-        if (!contentItem) {
-            return res.status(400).json({
-                success: false,
-                error: 'Content item data is required'
-            });
+        const { contentItem } = req.body || {};
+
+        if (!contentItem || typeof contentItem.title !== 'string' || !contentItem.title.trim()) {
+            return res.status(400).json({ success: false, error: 'Valid content item title is required' });
         }
-        
-        const result = await instance.addContentItem(courseId, divisionId, contentItem);
-        
-        if (result.success) {
-            res.status(201).json({
-                success: true,
-                data: result.data,
-                message: 'Content item added successfully'
-            });
-        } else {
-            res.status(500).json({
-                success: false,
-                error: result.error || 'Failed to add content item'
-            });
+
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
         }
+
+        const divisions: ContentDivision[] = (course.divisions as unknown as ContentDivision[]) || [];
+        const division = divisions.find(d => (d.id as unknown as string) === divisionId);
+        if (!division) {
+            return res.status(404).json({ success: false, error: 'Division not found' });
+        }
+
+        const existingNumericIds = (division.items as unknown as courseItem[])
+            .map(i => parseInt((i.id as unknown as string), 10))
+            .filter(n => !Number.isNaN(n));
+        const nextItemIdNum = (existingNumericIds.length ? Math.max(...existingNumericIds) : 0) + 1;
+        const nextItemId = String(nextItemIdNum);
+
+        const now = new Date();
+        const newItem: courseItem = {
+            id: nextItemId,
+            date: now,
+            title: contentItem.title.trim(),
+            courseName: (course as any).courseName,
+            divisionTitle: (division as any).title,
+            itemTitle: contentItem.title.trim(),
+            learningObjectives: Array.isArray(contentItem.learningObjectives) ? contentItem.learningObjectives : [],
+            additionalMaterials: Array.isArray(contentItem.additionalMaterials) ? contentItem.additionalMaterials : [],
+            completed: !!contentItem.completed,
+            createdAt: now,
+            updatedAt: now
+        } as unknown as courseItem;
+
+        (division.items as any) = [ ...(division.items as any || []), newItem ];
+        (division as any).updatedAt = now;
+
+        await instance.updateActiveCourse(courseId, { divisions } as any);
+
+        return res.status(201).json({ success: true, data: newItem, message: 'Content item added successfully' });
     } catch (error) {
         console.error('Error adding content item:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to add content item'
-        });
+        return res.status(500).json({ success: false, error: 'Failed to add content item' });
     }
 }));
 
@@ -567,6 +726,19 @@ router.post('/:courseId/divisions/:divisionId/items/:itemId/objectives', asyncHa
                 error: 'Missing required field: learningObjective'
             });
         }
+        // Validate and sanitize objective text
+        const rawText = (learningObjective?.LearningObjective ?? '').toString();
+        const sanitizedText = rawText.trim();
+        if (!sanitizedText) {
+            return res.status(400).json({ success: false, error: 'Learning objective cannot be empty' });
+        }
+        if (sanitizedText.length > 300) {
+            return res.status(400).json({ success: false, error: 'Learning objective too long (max 300 characters)' });
+        }
+        // Ensure timestamps and normalized text
+        learningObjective.LearningObjective = sanitizedText;
+        learningObjective.createdAt = learningObjective.createdAt || new Date();
+        learningObjective.updatedAt = new Date();
         
         console.log('📡 [BACKEND] Calling addLearningObjective with:', { courseId, divisionId, itemId, learningObjective });
         
@@ -601,6 +773,16 @@ router.put('/:courseId/divisions/:divisionId/items/:itemId/objectives/:objective
                 error: 'Missing required field: updateData'
             });
         }
+        // Validate and sanitize objective text
+        const rawText = (updateData?.LearningObjective ?? '').toString();
+        const sanitizedText = rawText.trim();
+        if (!sanitizedText) {
+            return res.status(400).json({ success: false, error: 'Learning objective cannot be empty' });
+        }
+        if (sanitizedText.length > 300) {
+            return res.status(400).json({ success: false, error: 'Learning objective too long (max 300 characters)' });
+        }
+        updateData.LearningObjective = sanitizedText;
         
         const result = await instance.updateLearningObjective(courseId, divisionId, itemId, objectiveId, updateData);
         
@@ -941,6 +1123,41 @@ router.delete('/:courseId/flags/:flagId', asyncHandlerWithAuth(async (req: Reque
     }
 }));
 
+// DELETE /api/courses/:courseId/flags - Delete all flag reports for a course (REQUIRES AUTH - Instructors only)
+router.delete('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId } = req.params;
+        
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(009)
+        console.log('🏴 Deleting all flag reports from course:', course.courseName);
+        //END DEBUG LOG : DEBUG-CODE(009)
+
+        const result = await instance.deleteAllFlagReports(course.courseName);
+        
+        res.json({
+            success: true,
+            message: 'All flag reports deleted successfully',
+            deletedCount: result.deletedCount
+        });
+    } catch (error) {
+        console.error('Error deleting all flag reports:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to delete all flag reports'
+        });
+    }
+}));
+
 // ===========================================
 // ========= DATABASE MANAGEMENT ROUTES =====
 // ===========================================
@@ -1262,6 +1479,172 @@ router.delete('/:courseId/documents/all', asyncHandlerWithAuth(async (req: Reque
         res.status(500).json({
             success: false,
             error: 'Failed to delete all documents'
+        });
+    }
+}));
+
+// PATCH /api/courses/:courseId/divisions/:divisionId/title - Update division title (REQUIRES AUTH)
+router.patch('/:courseId/divisions/:divisionId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, divisionId } = req.params;
+        const { title } = req.body;
+        
+        // Validate input
+        if (!title || typeof title !== 'string') {
+            return res.status(400).json({
+                success: false,
+                error: 'Title is required and must be a string'
+            });
+        }
+        
+        const trimmedTitle = title.trim();
+        
+        if (!trimmedTitle) {
+            return res.status(400).json({
+                success: false,
+                error: 'Title cannot be empty'
+            });
+        }
+        
+        if (trimmedTitle.length > 100) {
+            return res.status(400).json({
+                success: false,
+                error: 'Title is too long (maximum 100 characters)'
+            });
+        }
+        
+        // Get the course
+        const course = await instance.getActiveCourse(courseId);
+        
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        // Find the division
+        const division = course.divisions?.find((d: ContentDivision) => d.id === divisionId);
+        
+        if (!division) {
+            return res.status(404).json({
+                success: false,
+                error: 'Division not found'
+            });
+        }
+        
+        // Update the division title
+        division.title = trimmedTitle;
+        division.updatedAt = new Date();
+        
+        // Save the updated course
+        const updatedCourse = await instance.updateActiveCourse(courseId, {
+            divisions: course.divisions
+        });
+        
+        console.log(`✅ Division ${divisionId} title updated to "${trimmedTitle}"`);
+        
+        res.status(200).json({
+            success: true,
+            data: division,
+            message: 'Division title updated successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error updating division title:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update division title'
+        });
+    }
+}));
+
+// PATCH /api/courses/:courseId/divisions/:divisionId/items/:itemId/title - Update item title (REQUIRES AUTH)
+router.patch('/:courseId/divisions/:divisionId/items/:itemId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, divisionId, itemId } = req.params;
+        const { title } = req.body;
+        
+        // Validate input
+        if (!title || typeof title !== 'string') {
+            return res.status(400).json({
+                success: false,
+                error: 'Title is required and must be a string'
+            });
+        }
+        
+        const trimmedTitle = title.trim();
+        
+        if (!trimmedTitle) {
+            return res.status(400).json({
+                success: false,
+                error: 'Title cannot be empty'
+            });
+        }
+        
+        if (trimmedTitle.length > 100) {
+            return res.status(400).json({
+                success: false,
+                error: 'Title is too long (maximum 100 characters)'
+            });
+        }
+        
+        // Get the course
+        const course = await instance.getActiveCourse(courseId);
+        
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        // Find the division
+        const division = course.divisions?.find((d: ContentDivision) => d.id === divisionId);
+        
+        if (!division) {
+            return res.status(404).json({
+                success: false,
+                error: 'Division not found'
+            });
+        }
+        
+        // Find the item
+        const item = division.items?.find((i: courseItem) => i.id === itemId);
+        
+        if (!item) {
+            return res.status(404).json({
+                success: false,
+                error: 'Item not found'
+            });
+        }
+        
+        // Update the item title
+        item.title = trimmedTitle;
+        item.itemTitle = trimmedTitle;
+        item.updatedAt = new Date();
+        division.updatedAt = new Date();
+        
+        // Save the updated course
+        const updatedCourse = await instance.updateActiveCourse(courseId, {
+            divisions: course.divisions
+        });
+        
+        console.log(`✅ Item ${itemId} title updated to "${trimmedTitle}"`);
+        
+        res.status(200).json({
+            success: true,
+            data: item,
+            message: 'Item title updated successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error updating item title:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update item title'
         });
     }
 }));

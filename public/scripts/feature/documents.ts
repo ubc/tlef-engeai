@@ -27,7 +27,8 @@ import {
 } from '../../../src/functions/types';
 import { uploadRAGContent } from '../services/RAGService.js';
 import { DocumentUploadModule, UploadResult } from '../services/DocumentUploadModule.js';
-import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal } from '../modal-overlay.js';
+import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, closeModal } from '../modal-overlay.js';
+import { renderFeatherIcons } from '../functions/api.js';
 
 // In-memory store for the course data
 let courseData: ContentDivision[] = [];
@@ -35,8 +36,13 @@ let courseData: ContentDivision[] = [];
 // Function to initialize the documents page
 export async function initializeDocumentsPage( currentClass : activeCourse) {
 
-        // Build initial in-memory data from onboarding selections
+        // Sync from server so refresh reflects latest divisions/items
+        await syncCourseFromServer();
+        // Build initial in-memory data (prefers server divisions)
         loadClassroomData(currentClass);
+        
+        // Update button labels based on frameType
+        updateDivisionButtonLabels(currentClass);
         
         // Load learning objectives from database for all content items
         await loadAllLearningObjectives();
@@ -50,40 +56,61 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @param currentClass the currently active class
      */
     function loadClassroomData( currentClass : activeCourse ) {
+        // If server provided divisions, trust them completely
+        if (currentClass.divisions && currentClass.divisions.length > 0) {
+            courseData = currentClass.divisions;
+            return;
+        }
+
+        // Fallback to generating defaults based on tilesNumber when no divisions are present
         const total = currentClass.tilesNumber;
         courseData = [];
         for (let i = 0; i < total; i++) {
-            // Check if the content item exists, if not create a default one
-            if (currentClass.divisions[i]) {
-                courseData.push(currentClass.divisions[i]);
-            } else {
-                // Create a default content division if it doesn't exist
-                const defaultDivision: ContentDivision = {
-                    id: String(i + 1),
-                    date: new Date(),
-                    title: currentClass.frameType === 'byWeek' ? `Week ${i + 1}` : `Topic ${i + 1}`,
-                    courseName: currentClass.courseName,
-                    published: false,
-                    items: [
-                        {
-                            id: String(i + 1),
-                            date: new Date(),
-                            title: currentClass.frameType === 'byWeek' ? `Lecture ${i + 1}` : `Session ${i + 1}`,
-                            courseName: currentClass.courseName,
-                            divisionTitle: currentClass.frameType === 'byWeek' ? `Week ${i + 1}` : `Topic ${i + 1}`,
-                            itemTitle: currentClass.frameType === 'byWeek' ? `Lecture ${i + 1}` : `Session ${i + 1}`,
-                            learningObjectives: [],
-                            additionalMaterials: [],
-                            completed: false,
-                            createdAt: new Date(),
-                            updatedAt: new Date()
-                        }
-                    ],
-                    createdAt: new Date(),
-                    updatedAt: new Date()
-                };
-                courseData.push(defaultDivision);
+            const defaultDivision: ContentDivision = {
+                id: String(i + 1),
+                date: new Date(),
+                title: currentClass.frameType === 'byWeek' ? `Week ${i + 1}` : `Topic ${i + 1}`,
+                courseName: currentClass.courseName,
+                published: false,
+                items: [
+                    {
+                        id: String(i + 1),
+                        date: new Date(),
+                        title: currentClass.frameType === 'byWeek' ? `Lecture ${i + 1}` : `Session ${i + 1}`,
+                        courseName: currentClass.courseName,
+                        divisionTitle: currentClass.frameType === 'byWeek' ? `Week ${i + 1}` : `Topic ${i + 1}`,
+                        itemTitle: currentClass.frameType === 'byWeek' ? `Lecture ${i + 1}` : `Session ${i + 1}`,
+                        learningObjectives: [],
+                        additionalMaterials: [],
+                        completed: false,
+                        createdAt: new Date(),
+                        updatedAt: new Date()
+                    }
+                ],
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+            courseData.push(defaultDivision);
+        }
+    }
+
+    async function syncCourseFromServer(): Promise<void> {
+        try {
+            if (!currentClass || !currentClass.id) return;
+            const res = await fetch(`/api/courses/${currentClass.id}`);
+            if (!res.ok) {
+                console.warn('⚠️ Failed to fetch latest course from server:', res.status, res.statusText);
+                return;
             }
+            const payload = await res.json();
+            if (payload && payload.success && payload.data) {
+                const course = payload.data;
+                // Update currentClass with latest divisions count and data
+                currentClass.divisions = course.divisions || currentClass.divisions;
+                currentClass.tilesNumber = (course.divisions && course.divisions.length) ? course.divisions.length : currentClass.tilesNumber;
+            }
+        } catch (e) {
+            console.warn('⚠️ Exception fetching latest course:', e);
         }
     }
 
@@ -106,6 +133,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const el = createDivisionElement(division);
             container.appendChild(el);
         });
+        
+        // Render feather icons (including rename icons)
+        renderFeatherIcons();
     }
 
     /**
@@ -124,13 +154,41 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const header = document.createElement('div');
         header.className = 'week-header';
         header.setAttribute('data-division', division.id);
+        // Layout: make header a flexible row so left area can grow
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+        header.style.justifyContent = 'space-between';
+        header.style.gap = '12px';
 
         // create the left side of the header
         // display the title and the completed status of the division
         const left = document.createElement('div');
+        // Left grows, prevents overflow clipping
+        left.style.flex = '1 1 auto';
+        left.style.minWidth = '0';
         const title = document.createElement('div');
         title.className = 'week-title';
-        title.textContent = division.title;
+        // Title row as flex so input and buttons align and expand nicely
+        title.style.display = 'flex';
+        title.style.alignItems = 'center';
+        title.style.gap = '8px';
+        
+        // Create title text span
+        const titleText = document.createElement('span');
+        titleText.textContent = division.title;
+        title.appendChild(titleText);
+        
+        // Create rename icon (handled via delegated listener in setupEventListeners)
+        const renameIcon = document.createElement('i');
+        renameIcon.setAttribute('data-feather', 'edit-2');
+        renameIcon.className = 'rename-icon';
+        renameIcon.setAttribute('data-division-id', division.id);
+        renameIcon.style.cursor = 'pointer';
+        renameIcon.style.marginLeft = '8px';
+        renameIcon.style.width = '16px';
+        renameIcon.style.height = '16px';
+        title.appendChild(renameIcon);
+        
         const status = document.createElement('div');
         status.className = 'completion-status';
 
@@ -143,6 +201,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // create the right side of the header (add session, publish toggle/status, then expand arrow)
         const right = document.createElement('div');
         right.className = 'week-status';
+        // Right side does not grow
+        right.style.flex = '0 0 auto';
 
         // Add Session badge/button
         const addSessionBadge = document.createElement('div');
@@ -214,6 +274,34 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
 
     /**
+     * Update division control panel button labels based on frameType
+     * 
+     * @param currentClass the currently active class
+     */
+    function updateDivisionButtonLabels(currentClass: activeCourse): void {
+        // Get references to the control panel buttons
+        const addDivisionBtn = document.getElementById('add-division-btn');
+        const deleteAllDivisionsBtn = document.getElementById('delete-all-divisions-btn');
+        
+        // Update button text based on frameType
+        if (currentClass.frameType === 'byWeek') {
+            if (addDivisionBtn) {
+                addDivisionBtn.textContent = 'Add Week';
+            }
+            if (deleteAllDivisionsBtn) {
+                deleteAllDivisionsBtn.textContent = 'Delete All Weeks';
+            }
+        } else if (currentClass.frameType === 'byTopic') {
+            if (addDivisionBtn) {
+                addDivisionBtn.textContent = 'Add Topic';
+            }
+            if (deleteAllDivisionsBtn) {
+                deleteAllDivisionsBtn.textContent = 'Delete All Topics';
+            }
+        }
+    }
+
+    /**
      * Setup all event listeners for the page (delegated, with safety checks)
      * 
      * @returns null    
@@ -232,6 +320,90 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // Create the click handler function
         const clickHandler = (event: Event) => {
             const target = event.target as HTMLElement;
+            
+            // PRIORITY: Handle inline edit controls BEFORE any header toggles
+            // a) Pen icon (rename)
+            const earlyRenameIcon = target.closest('.rename-icon') as HTMLElement | null;
+            if (earlyRenameIcon) {
+                event.stopPropagation();
+                let divisionId = earlyRenameIcon.getAttribute('data-division-id') || '';
+                let itemId = earlyRenameIcon.getAttribute('data-item-id') || '';
+
+                // Derive from nearest containers if attributes are missing (feather replacement case)
+                const contentItem = earlyRenameIcon.closest('.content-item') as HTMLElement | null;
+                if (contentItem) {
+                    const ids = contentItem.id.split('-'); // content-item-divisionId-contentId
+                    if (!divisionId && ids[2]) divisionId = ids[2];
+                    if (!itemId && ids[3]) itemId = ids[3];
+                }
+                if (!divisionId) {
+                    const header = earlyRenameIcon.closest('.week-header') as HTMLElement | null;
+                    if (header) divisionId = header.getAttribute('data-division') || '';
+                }
+                if (!divisionId) return;
+
+                if (itemId) {
+                    const division = courseData.find(d => d.id === divisionId);
+                    const item = division?.items.find(i => i.id === itemId);
+                    if (item) enterEditMode(divisionId, itemId, item.title);
+                } else {
+                    const division = courseData.find(d => d.id === divisionId);
+                    if (division) enterEditMode(divisionId, null, division.title);
+                }
+                return; // Avoid header toggle
+            }
+
+            // b) OK button during edit
+            const earlyOk = target.closest('.edit-ok-button') as HTMLElement | null;
+            if (earlyOk) {
+                event.stopPropagation();
+                const contentItem = earlyOk.closest('.content-item') as HTMLElement | null;
+                if (contentItem) {
+                    const ids = contentItem.id.split('-');
+                    const divisionId = ids[2] || '0';
+                    const itemId = ids[3] || '0';
+                    const input = contentItem.querySelector('.title-edit-input') as HTMLInputElement | null;
+                    if (!input) return;
+                    const newTitle = input.value.trim();
+                    if (!newTitle) { showErrorModal('Validation Error', 'Section name cannot be empty.'); return; }
+                    if (newTitle.length > 100) { showErrorModal('Validation Error', 'Section name is too long (max 100 characters).'); return; }
+                    saveTitleChange(divisionId, itemId, newTitle);
+                } else {
+                    const header = earlyOk.closest('.week-header') as HTMLElement | null;
+                    if (!header) return;
+                    const divisionId = header.getAttribute('data-division') || '0';
+                    const titleWrap = header.querySelector('.week-title') as HTMLElement | null;
+                    const input = titleWrap?.querySelector('.title-edit-input') as HTMLInputElement | null;
+                    if (!input) return;
+                    const newTitle = input.value.trim();
+                    if (!newTitle) { showErrorModal('Validation Error', 'Division name cannot be empty.'); return; }
+                    if (newTitle.length > 100) { showErrorModal('Validation Error', 'Division name is too long (max 100 characters).'); return; }
+                    saveTitleChange(divisionId, null, newTitle);
+                }
+                return; // Avoid header toggle
+            }
+
+            // c) Cancel button during edit
+            const earlyCancel = target.closest('.edit-cancel-button') as HTMLElement | null;
+            if (earlyCancel) {
+                event.stopPropagation();
+                const contentItem = earlyCancel.closest('.content-item') as HTMLElement | null;
+                if (contentItem) {
+                    const ids = contentItem.id.split('-');
+                    const divisionId = ids[2] || '0';
+                    const itemId = ids[3] || '0';
+                    const division = courseData.find(d => d.id === divisionId);
+                    const item = division?.items.find(i => i.id === itemId);
+                    if (division && item) exitEditMode(divisionId, itemId, item.title);
+                } else {
+                    const header = earlyCancel.closest('.week-header') as HTMLElement | null;
+                    if (!header) return;
+                    const divisionId = header.getAttribute('data-division') || '0';
+                    const division = courseData.find(d => d.id === divisionId);
+                    if (division) exitEditMode(divisionId, null, division.title);
+                }
+                return; // Avoid header toggle
+            }
 
             // Division header toggles
             const divisionHeader = target.closest('.week-header') as HTMLElement | null;
@@ -266,7 +438,110 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 return; // Prevent further event handling
             }
 
-            // Handle actions on buttons FIRST (before header clicks)
+        // Handle rename/edit buttons FIRST (before header clicks)
+        // 1) Rename icon click (pen)
+        const renameIconEl = target.closest('.rename-icon') as HTMLElement | null;
+        if (renameIconEl) {
+            event.stopPropagation();
+            // Attributes on icon may be lost after feather replacement; derive robustly
+            let divisionId = renameIconEl.getAttribute('data-division-id') || '';
+            let itemId = renameIconEl.getAttribute('data-item-id') || '';
+
+            // Try to derive from nearest content item if missing
+            const contentItem = renameIconEl.closest('.content-item') as HTMLElement | null;
+            if (contentItem) {
+                const ids = contentItem.id.split('-'); // content-item-divisionId-contentId
+                if (!divisionId && ids[2]) divisionId = ids[2];
+                if (!itemId && ids[3]) itemId = ids[3];
+            }
+
+            // For division header, derive from closest week-header
+            if (!divisionId) {
+                const header = renameIconEl.closest('.week-header') as HTMLElement | null;
+                if (header) {
+                    divisionId = header.getAttribute('data-division') || '';
+                }
+            }
+
+            if (!divisionId) return;
+
+            if (itemId) {
+                // Item title edit
+                const division = courseData.find(d => d.id === divisionId);
+                const item = division?.items.find(i => i.id === itemId);
+                if (item) {
+                    enterEditMode(divisionId, itemId, item.title);
+                }
+            } else {
+                // Division title edit
+                const division = courseData.find(d => d.id === divisionId);
+                if (division) {
+                    enterEditMode(divisionId, null, division.title);
+                }
+            }
+            return; // Prevent header toggle
+        }
+
+        // 2) OK button (check) during edit mode
+        const okButtonEl = target.closest('.edit-ok-button') as HTMLElement | null;
+        if (okButtonEl) {
+            event.stopPropagation();
+            // Determine context (division vs item) via closest containers
+            const contentItem = okButtonEl.closest('.content-item') as HTMLElement | null;
+            if (contentItem) {
+                // Item OK
+                const ids = contentItem.id.split('-'); // content-item-divisionId-contentId
+                const divisionId = ids[2] || '0';
+                const itemId = ids[3] || '0';
+                const input = contentItem.querySelector('.title-edit-input') as HTMLInputElement | null;
+                if (!input) return;
+                const newTitle = input.value.trim();
+                if (!newTitle) { showErrorModal('Validation Error', 'Section name cannot be empty.'); return; }
+                if (newTitle.length > 100) { showErrorModal('Validation Error', 'Section name is too long (max 100 characters).'); return; }
+                saveTitleChange(divisionId, itemId, newTitle);
+            } else {
+                // Division OK
+                const header = okButtonEl.closest('.week-header') as HTMLElement | null;
+                if (!header) return;
+                const divisionId = header.getAttribute('data-division') || '0';
+                const titleWrap = header.querySelector('.week-title') as HTMLElement | null;
+                const input = titleWrap?.querySelector('.title-edit-input') as HTMLInputElement | null;
+                if (!input) return;
+                const newTitle = input.value.trim();
+                if (!newTitle) { showErrorModal('Validation Error', 'Division name cannot be empty.'); return; }
+                if (newTitle.length > 100) { showErrorModal('Validation Error', 'Division name is too long (max 100 characters).'); return; }
+                saveTitleChange(divisionId, null, newTitle);
+            }
+            return; // Prevent header toggle
+        }
+
+        // 3) Cancel button (x) during edit mode
+        const cancelButtonEl = target.closest('.edit-cancel-button') as HTMLElement | null;
+        if (cancelButtonEl) {
+            event.stopPropagation();
+            const contentItem = cancelButtonEl.closest('.content-item') as HTMLElement | null;
+            if (contentItem) {
+                const ids = contentItem.id.split('-');
+                const divisionId = ids[2] || '0';
+                const itemId = ids[3] || '0';
+                const division = courseData.find(d => d.id === divisionId);
+                const item = division?.items.find(i => i.id === itemId);
+                if (division && item) {
+                    exitEditMode(divisionId, itemId, item.title);
+                }
+            } else {
+                const header = cancelButtonEl.closest('.week-header') as HTMLElement | null;
+                if (!header) return;
+                const divisionId = header.getAttribute('data-division') || '0';
+                const division = courseData.find(d => d.id === divisionId);
+                if (division) {
+                    exitEditMode(divisionId, null, division.title);
+                }
+            }
+            return; // Prevent header toggle
+        }
+
+        // Handle actions on buttons FIRST (before header clicks)
             const button = target.closest('button') as HTMLButtonElement | null;
             if (button) {
                 const action = button.dataset.action;
@@ -359,6 +634,74 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         console.log('🔧 Added documents click handler');
     }
 
+    // ----- Divisions (Week/Topic) management -----
+    async function addDivision(): Promise<void> {
+        try {
+            if (!currentClass) {
+                console.error('❌ No current class found for adding division');
+                return;
+            }
+
+            // Compute next numeric id (server will compute as well; client uses server response)
+            const existingNumericIds = courseData
+                .map(d => parseInt(d.id, 10))
+                .filter(n => !Number.isNaN(n));
+            const nextIdNum = (existingNumericIds.length ? Math.max(...existingNumericIds) : 0) + 1;
+
+            console.log('📡 Making API call to add division...');
+            console.log('🌐 API URL:', `/api/courses/${currentClass.id}/divisions`);
+
+            const response = await fetch(`/api/courses/${currentClass.id}/divisions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                // Send optional title; server may override to ensure consistency
+                body: JSON.stringify({
+                    title: currentClass.frameType === 'byWeek' ? `Week ${nextIdNum}` : `Topic ${nextIdNum}`
+                })
+            });
+
+            console.log('📡 Add Division API Response status:', response.status, response.statusText);
+
+            // Handle unauthorized gracefully
+            if (response.status === 401 || response.status === 403) {
+                await showSimpleErrorModal('You are not authorized to add divisions. Please sign in as an instructor.', 'Authorization Error');
+                return;
+            }
+
+            const result = await response.json();
+            console.log('📡 Add Division API Response body:', result);
+
+            if (!result.success) {
+                await showSimpleErrorModal('Failed to add division: ' + (result.error || 'Unknown error'), 'Add Division Error');
+                return;
+            }
+
+            const createdDivision: ContentDivision = result.data;
+
+            // Update local state
+            courseData.push(createdDivision);
+
+            // Append to DOM
+            const container = document.getElementById('documents-container');
+            if (container) {
+                const el = createDivisionElement(createdDivision);
+                container.appendChild(el);
+                // Re-render icons for newly added elements
+                renderFeatherIcons();
+            }
+
+            // Update control panel labels (if frame type-dependent)
+            updateDivisionButtonLabels(currentClass);
+
+            console.log('✅ Division added successfully');
+        } catch (error) {
+            console.error('❌ Exception caught while adding division:', error);
+            await showSimpleErrorModal('An error occurred while adding the division. Please try again.', 'Add Division Error');
+        }
+    }
+
     // Add event listener for delete all documents button
     const deleteAllDocumentsBtn = document.getElementById('delete-all-documents-btn');
     if (deleteAllDocumentsBtn) {
@@ -399,6 +742,24 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         (nuclearClearBtn as any)._nuclearHandler = nuclearHandler;
         nuclearClearBtn.addEventListener('click', nuclearHandler);
         console.log('🔧 Added nuclear clear handler');
+    }
+
+    // Add event listener for add division (Week/Topic) button
+    const addDivisionBtn = document.getElementById('add-division-btn');
+    if (addDivisionBtn) {
+        const existingAddDivisionHandler = (addDivisionBtn as any)._addDivisionHandler;
+        if (existingAddDivisionHandler) {
+            addDivisionBtn.removeEventListener('click', existingAddDivisionHandler);
+            console.log('🔧 Removed existing add division handler');
+        }
+
+        const addDivisionHandler = async () => {
+            await addDivision();
+        };
+
+        (addDivisionBtn as any)._addDivisionHandler = addDivisionHandler;
+        addDivisionBtn.addEventListener('click', addDivisionHandler);
+        console.log('🔧 Added add division handler');
     }
 
     // --- Event Handler Functions ---
@@ -731,12 +1092,21 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         console.log('✅ Found objective to edit:', objective.LearningObjective);
         //END DEBUG LOG : DEBUG-CODE(038)
 
-        const contentDiv = document.getElementById(`objective-content-${divisionId}-${contentId}-${index}`);
+        let contentDiv = document.getElementById(`objective-content-${divisionId}-${contentId}-${index}`) as HTMLElement | null;
         if (!contentDiv) {
-            //START DEBUG LOG : DEBUG-CODE(039)
-            console.error('❌ Content div not found for edit - ID:', `objective-content-${divisionId}-${contentId}-${index}`);
-            //END DEBUG LOG : DEBUG-CODE(039)
-            return;
+            // If the target container doesn't exist (e.g., due to markup changes), create it on demand
+            const headerEl = document.querySelector(
+                `.objective-header[data-division="${divisionId}"][data-content="${contentId}"][data-objective="${index}"]`
+            ) as HTMLElement | null;
+            const itemEl = headerEl?.parentElement as HTMLElement | null; // .objective-item
+            if (!itemEl) {
+                console.error('❌ Could not locate objective item container to create edit region.');
+                return;
+            }
+            contentDiv = document.createElement('div');
+            contentDiv.className = 'objective-content';
+            contentDiv.id = `objective-content-${divisionId}-${contentId}-${index}`;
+            itemEl.appendChild(contentDiv);
         }
 
         //START DEBUG LOG : DEBUG-CODE(040)
@@ -778,6 +1148,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
         contentDiv.appendChild(form);
         contentDiv.classList.add('expanded');
+        // Ensure visible during editing
+        contentDiv.style.display = 'block';
         
         //START DEBUG LOG : DEBUG-CODE(041)
         console.log('✅ Edit form created and added to DOM successfully');
@@ -1035,11 +1407,42 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // Header
         const header = document.createElement('div');
         header.className = 'content-header';
+        // Layout: make header a flexible row so left area can grow
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+        header.style.justifyContent = 'space-between';
+        header.style.gap = '12px';
         const title = document.createElement('div');
         title.className = 'content-title';
-        title.textContent = content.title;
+        // Title row as flex so input and buttons align and expand nicely
+        title.style.display = 'flex';
+        title.style.alignItems = 'center';
+        title.style.gap = '8px';
+        // Left grows, prevents overflow clipping
+        title.style.flex = '1 1 auto';
+        title.style.minWidth = '0';
+        
+        // Create title text span
+        const titleText = document.createElement('span');
+        titleText.textContent = content.title;
+        title.appendChild(titleText);
+        
+        // Create rename icon (handled via delegated listener in setupEventListeners)
+        const renameIcon = document.createElement('i');
+        renameIcon.setAttribute('data-feather', 'edit-2');
+        renameIcon.className = 'rename-icon';
+        renameIcon.setAttribute('data-division-id', divisionId);
+        renameIcon.setAttribute('data-item-id', content.id);
+        renameIcon.style.cursor = 'pointer';
+        renameIcon.style.marginLeft = '8px';
+        renameIcon.style.width = '16px';
+        renameIcon.style.height = '16px';
+        title.appendChild(renameIcon);
+        
         const statusRow = document.createElement('div');
         statusRow.className = 'content-status-row';
+        // Right side does not grow
+        statusRow.style.flex = '0 0 auto';
         const deleteBadge = document.createElement('div');
         deleteBadge.className = 'content-status status-delete-section';
         deleteBadge.textContent = 'Delete Section';
@@ -1148,31 +1551,20 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             return;
         }
 
-        // Generate a new unique content id within this division
-        const existingIds = division.items.map(c => c.id);
-        const base = parseInt(division.id) * 100 + 1; // e.g., week 3 -> 301 base
-        let next = base;
-        while (existingIds.includes(String(next))) next++;
-
-        const newContent: courseItem = {
-            id: String(next),
-            title: `New Section ${division.items.length + 1}`,
-            date: new Date(),
-            courseName: currentClass.courseName,
-            divisionTitle: division.title,
-            itemTitle: `New Section ${division.items.length + 1}`,
+        // Prepare minimal payload; server assigns IDs and timestamps
+        const newContentTitle = `New Section ${division.items.length + 1}`;
+        const minimalContentPayload = {
+            title: newContentTitle,
             completed: false,
             learningObjectives: [],
-            additionalMaterials: [],
-            createdAt: new Date(),
-            updatedAt: new Date()
+            additionalMaterials: []
         };
 
         try {
             //START DEBUG LOG : DEBUG-CODE(056)
             console.log('📡 Making API call to add section...');
             console.log('🌐 API URL:', `/api/courses/${currentClass.id}/divisions/${division.id}/items`);
-            console.log('📦 Request body:', { contentItem: newContent });
+            console.log('📦 Request body:', { contentItem: minimalContentPayload });
             //END DEBUG LOG : DEBUG-CODE(056)
             
             // Call backend API to add the section
@@ -1182,7 +1574,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    contentItem: newContent
+                    contentItem: minimalContentPayload
                 })
             });
 
@@ -1201,13 +1593,15 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 console.log('✅ Section added successfully to database');
                 //END DEBUG LOG : DEBUG-CODE(059)
                 
+                // Use server-returned item (ensures IDs and timestamps are consistent)
+                const createdItem: courseItem = result.data;
                 // Add to local data only after successful database save
-                division.items.push(newContent);
+                division.items.push(createdItem);
                 
                 // Append to DOM
                 const container = document.getElementById(`content-division-${division.id}`);
                 if (!container) return;
-                const built = buildContentItemDOM(division.id, newContent);
+                const built = buildContentItemDOM(division.id, createdItem);
                 container.appendChild(built);
                 
                 // Update header completion count
@@ -1246,6 +1640,362 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const totalSections = division.items.length;
         const container = document.querySelector(`.week-header[data-division="${divisionId}"] .completion-status`) as HTMLElement | null;
         if (container) container.textContent = `${sectionsCompleted} / ${totalSections} Sections completed`;
+    }
+
+    /**
+     * Enter edit mode for a division or item title
+     * 
+     * @param divisionId - The ID of the division
+     * @param itemId - Optional item ID (if editing an item title)
+     * @param currentTitle - The current title text
+     */
+    function enterEditMode(divisionId: string, itemId: string | null, currentTitle: string): void {
+        let titleSpan: HTMLElement | null = null;
+        let titleContainer: HTMLElement | null = null;
+        
+        if (itemId) {
+            // Editing an item title
+            titleSpan = document.querySelector(`#content-item-${divisionId}-${itemId} .content-title span`) as HTMLElement | null;
+            titleContainer = document.querySelector(`#content-item-${divisionId}-${itemId} .content-title`) as HTMLElement | null;
+        } else {
+            // Editing a division title
+            titleSpan = document.querySelector(`.week-header[data-division="${divisionId}"] .week-title span`) as HTMLElement | null;
+            titleContainer = document.querySelector(`.week-header[data-division="${divisionId}"] .week-title`) as HTMLElement | null;
+        }
+        
+        if (!titleSpan || !titleContainer) {
+            console.error('Title element not found for edit mode');
+            return;
+        }
+        
+        // Store original title for cancel
+        const originalTitle = currentTitle;
+        
+        // Create input field
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = currentTitle;
+        input.className = 'title-edit-input';
+        // Allow input to expand to available width
+        input.style.minWidth = '0';
+        input.style.width = '100%';
+        input.style.boxSizing = 'border-box';
+        input.style.flex = '1 1 auto';
+        input.style.padding = '4px 8px';
+        input.style.border = '1px solid #ccc';
+        input.style.borderRadius = '4px';
+        input.style.fontSize = 'inherit';
+        input.style.fontFamily = 'inherit';
+        
+        // Find the rename icon and replace with OK/Cancel buttons
+        const renameIcon = titleContainer.querySelector('.rename-icon') as HTMLElement | null;
+        if (!renameIcon) return;
+        
+        // Ensure title container is flex so input can grow next to buttons
+        titleContainer.style.display = 'flex';
+        titleContainer.style.alignItems = 'center';
+        titleContainer.style.gap = '8px';
+
+        // Create button container
+        const buttonContainer = document.createElement('div');
+        buttonContainer.className = 'edit-mode-buttons';
+        buttonContainer.style.display = 'inline-flex';
+        buttonContainer.style.gap = '8px';
+        buttonContainer.style.marginLeft = '8px';
+        buttonContainer.style.alignItems = 'center';
+        
+        // Create OK button (check icon)
+        const okButton = document.createElement('i');
+        okButton.setAttribute('data-feather', 'check');
+        okButton.className = 'edit-ok-button';
+        okButton.style.cursor = 'pointer';
+        okButton.style.width = '16px';
+        okButton.style.height = '16px';
+        okButton.style.color = '#4CAF50';
+        okButton.title = 'Save';
+        
+        // Create Cancel button (x icon)
+        const cancelButton = document.createElement('i');
+        cancelButton.setAttribute('data-feather', 'x');
+        cancelButton.className = 'edit-cancel-button';
+        cancelButton.style.cursor = 'pointer';
+        cancelButton.style.width = '16px';
+        cancelButton.style.height = '16px';
+        cancelButton.style.color = '#f44336';
+        cancelButton.title = 'Cancel';
+        
+        buttonContainer.appendChild(okButton);
+        buttonContainer.appendChild(cancelButton);
+        
+        // Replace span with input
+        titleSpan.replaceWith(input);
+        renameIcon.replaceWith(buttonContainer);
+        
+        // Focus and select input text
+        input.focus();
+        input.select();
+        
+        // Re-render feather icons
+        renderFeatherIcons();
+        
+        // Handle OK button click
+        okButton.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const newTitle = input.value.trim();
+            
+            // Validate input
+            if (!newTitle) {
+                await showErrorModal('Validation Error', `${itemId ? 'Section' : 'Division'} name cannot be empty.`);
+                input.focus();
+                return;
+            }
+            
+            if (newTitle.length > 100) {
+                await showErrorModal('Validation Error', `${itemId ? 'Section' : 'Division'} name is too long (max 100 characters).`);
+                input.focus();
+                return;
+            }
+            
+            // Only proceed if title changed
+            if (newTitle === originalTitle) {
+                exitEditMode(divisionId, itemId, originalTitle);
+                return;
+            }
+            
+            // Save the title change
+            await saveTitleChange(divisionId, itemId, newTitle);
+        });
+        
+        // Handle Cancel button click
+        cancelButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            exitEditMode(divisionId, itemId, originalTitle);
+        });
+        
+        // Handle Escape key
+        const escapeHandler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                exitEditMode(divisionId, itemId, originalTitle);
+                document.removeEventListener('keydown', escapeHandler);
+            }
+        };
+        document.addEventListener('keydown', escapeHandler);
+        
+        // Handle Enter key
+        input.addEventListener('keydown', async (e: KeyboardEvent) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                e.stopPropagation();
+                okButton.click();
+            }
+        });
+        
+        // Store escape handler on button container for cleanup
+        (buttonContainer as any)._escapeHandler = escapeHandler;
+    }
+    
+    /**
+     * Exit edit mode and restore display mode
+     * 
+     * @param divisionId - The ID of the division
+     * @param itemId - Optional item ID (if editing an item title)
+     * @param title - The title to display
+     */
+    function exitEditMode(divisionId: string, itemId: string | null, title: string): void {
+        let titleContainer: HTMLElement | null = null;
+        
+        if (itemId) {
+            titleContainer = document.querySelector(`#content-item-${divisionId}-${itemId} .content-title`) as HTMLElement | null;
+        } else {
+            titleContainer = document.querySelector(`.week-header[data-division="${divisionId}"] .week-title`) as HTMLElement | null;
+        }
+        
+        if (!titleContainer) return;
+        
+        // Find input field
+        const input = titleContainer.querySelector('.title-edit-input') as HTMLInputElement | null;
+        const buttonContainer = titleContainer.querySelector('.edit-mode-buttons') as HTMLElement | null;
+        
+        if (!input || !buttonContainer) return;
+        
+        // Remove escape handler if exists
+        const escapeHandler = (buttonContainer as any)._escapeHandler;
+        if (escapeHandler) {
+            document.removeEventListener('keydown', escapeHandler);
+        }
+        
+        // Create title span
+        const titleSpan = document.createElement('span');
+        titleSpan.textContent = title;
+        
+        // Create rename icon
+        const renameIcon = document.createElement('i');
+        renameIcon.setAttribute('data-feather', 'edit-2');
+        renameIcon.className = 'rename-icon';
+        renameIcon.setAttribute('data-division-id', divisionId);
+        if (itemId) {
+            renameIcon.setAttribute('data-item-id', itemId);
+        }
+        renameIcon.style.cursor = 'pointer';
+        renameIcon.style.marginLeft = '8px';
+        renameIcon.style.width = '16px';
+        renameIcon.style.height = '16px';
+        
+        // Replace input with span and restore rename icon (handled via delegated listener)
+        input.replaceWith(titleSpan);
+        buttonContainer.replaceWith(renameIcon);
+        
+        // Re-render feather icons
+        renderFeatherIcons();
+    }
+    
+    /**
+     * Save title change via API
+     * 
+     * @param divisionId - The ID of the division
+     * @param itemId - Optional item ID (if updating an item title)
+     * @param newTitle - The new title to save
+     */
+    async function saveTitleChange(divisionId: string, itemId: string | null, newTitle: string): Promise<void> {
+        if (!currentClass) {
+            console.error('❌ No current class found for saving title');
+            return;
+        }
+        
+        // Show loading modal (don't await - it stays open until we close it)
+        showTitleUpdateLoadingModal(itemId ? 'Section' : 'Division');
+        
+        try {
+            let response: Response;
+            let responseData: any;
+            
+            if (itemId) {
+                // Update item title
+                console.log(`📝 Saving item ${itemId} in division ${divisionId} with new title: "${newTitle}"`);
+                
+                response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${itemId}/title`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        title: newTitle
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Failed to rename section: ${response.statusText}`);
+                }
+                
+                responseData = await response.json();
+                
+                if (responseData.success) {
+                    // Find and update item in local data
+                    const division = courseData.find(d => d.id === divisionId);
+                    const item = division?.items.find(i => i.id === itemId);
+                    if (item) {
+                        // Update title from backend response if available
+                        const updatedTitle = responseData.data?.title || newTitle;
+                        item.title = updatedTitle;
+                        item.itemTitle = updatedTitle;
+                        
+                        // Close loading modal before exiting edit mode
+                        closeModal('success');
+                        
+                        // Exit edit mode with backend title
+                        exitEditMode(divisionId, itemId, updatedTitle);
+                        
+                        console.log('✅ Item title saved successfully');
+                    }
+                } else {
+                    throw new Error(responseData.error || 'Failed to rename section');
+                }
+            } else {
+                // Update division title
+                console.log(`📝 Saving division ${divisionId} with new title: "${newTitle}"`);
+                
+                response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/title`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        title: newTitle
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Failed to rename division: ${response.statusText}`);
+                }
+                
+                responseData = await response.json();
+                
+                if (responseData.success) {
+                    // Find and update division in local data
+                    const division = courseData.find(d => d.id === divisionId);
+                    if (division) {
+                        // Update title from backend response if available
+                        const updatedTitle = responseData.data?.title || newTitle;
+                        division.title = updatedTitle;
+                        
+                        // Close loading modal before exiting edit mode
+                        closeModal('success');
+                        
+                        // Exit edit mode with backend title
+                        exitEditMode(divisionId, null, updatedTitle);
+                        
+                        console.log('✅ Division title saved successfully');
+                    }
+                } else {
+                    throw new Error(responseData.error || 'Failed to rename division');
+                }
+            }
+            
+        } catch (error) {
+            // Close loading modal on error
+            closeModal('error');
+            
+            console.error('❌ Error saving title:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Failed to save title. Please try again.';
+            await showErrorModal('Error', errorMessage);
+            
+            // Don't exit edit mode on error - let user try again
+        }
+    }
+
+    /**
+     * Rename a division (week/topic) - enters inline edit mode
+     * 
+     * @param division - The division to rename
+     */
+    async function renameDivision(division: ContentDivision): Promise<void> {
+        if (!currentClass) {
+            console.error('❌ No current class found for renaming division');
+            return;
+        }
+
+        // Enter inline edit mode
+        enterEditMode(division.id, null, division.title);
+    }
+
+    /**
+     * Rename a course item (section) - enters inline edit mode
+     * 
+     * @param divisionId - The ID of the division containing the item
+     * @param item - The item to rename
+     */
+    async function renameItem(divisionId: string, item: courseItem): Promise<void> {
+        if (!currentClass) {
+            console.error('❌ No current class found for renaming item');
+            return;
+        }
+
+        // Enter inline edit mode
+        enterEditMode(divisionId, item.id, item.title);
     }
 
     // Make functions globally available for inline event handlers if needed,

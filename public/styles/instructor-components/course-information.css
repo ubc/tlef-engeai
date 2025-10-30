@@ -1,0 +1,341 @@
+/* ===========================================
+   COURSE INFORMATION PAGE STYLES (Matching about.html structure)
+   =========================================== */
+
+.course-info-content-area {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow-y: auto;
+
+    background-color: white;
+    overflow: hidden;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+}
+
+.course-info-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.course-info-main-content {
+    background-color: white;
+    padding: 2rem 2rem 5rem 2rem;
+    margin: 0 auto;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.course-info-main-content h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.course-info-description {
+    color: var(--text-secondary);
+    font-size: 1rem;
+    margin-bottom: 2rem;
+}
+
+.course-info-actions {
+    display: none; /* Hide the old actions section - navigation moved to bottom */
+}
+
+/* ===========================================
+   NAVIGATION (Save button on right, Back button on left)
+   =========================================== */
+
+.course-info-navigation {
+    position: absolute;
+    bottom: 3rem;
+    right: 3rem;
+    display: flex;
+    gap: 1rem;
+    z-index: 10;
+}
+
+.nav-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.875rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    min-width: 120px;
+    justify-content: center;
+}
+
+.nav-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    stroke-width: 2;
+}
+
+.nav-btn .feather {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    stroke-width: 2;
+}
+
+.btn-back {
+    background-color: var(--background-2);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-back:hover {
+    background-color: var(--color-chbe-green);
+    color: white;
+    border-color: var(--color-chbe-green);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(92, 138, 58, 0.3);
+}
+
+.btn-save-changes {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.875rem 1.5rem;
+    background-color: var(--color-chbe-green);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    min-width: 120px;
+    justify-content: center;
+}
+
+.btn-save-changes:hover {
+    background-color: #4a6f2e;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(92, 138, 58, 0.3);
+}
+
+/* ===========================================
+   FORM ELEMENTS (from onboarding.css)
+   =========================================== */
+
+.form-group {
+    margin-bottom: 2rem;
+    width: 100%;
+}
+
+.form-group label {
+    display: block;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 0.75rem;
+}
+
+.form-select,
+.form-input {
+    width: 100%;
+    padding: 0.875rem 1rem;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-family: inherit;
+    background-color: white;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+}
+
+.form-select:focus,
+.form-input:focus {
+    outline: none;
+    border-color: var(--color-chbe-green);
+    box-shadow: 0 0 0 3px rgba(92, 138, 58, 0.1);
+}
+
+.form-select:disabled,
+.form-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background-color: #f5f5f5;
+    color: #6c757d;
+}
+
+.form-select[multiple] {
+    min-height: 120px;
+    padding: 0.75rem;
+}
+
+.form-help {
+    font-size: 0.875rem;
+    color: #6c757d;
+    margin-top: 0.5rem;
+    margin-bottom: 0;
+}
+
+/* ===========================================
+   SELECTED ITEMS DISPLAY (from onboarding.css)
+   =========================================== */
+
+.selected-items {
+    margin-top: 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.selected-item {
+    background-color: rgba(92, 138, 58, 0.1);
+    color: var(--color-chbe-green);
+    padding: 0.5rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.selected-item .remove-btn {
+    background: none;
+    border: none;
+    color: var(--color-chbe-green);
+    cursor: pointer;
+    padding: 0;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background-color 0.2s ease;
+}
+
+.selected-item .remove-btn:hover {
+    background-color: rgba(92, 138, 58, 0.2);
+}
+
+/* ===========================================
+   RADIO OPTIONS (from onboarding.css)
+   =========================================== */
+
+.radio-options {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    width: 100%;
+}
+
+.radio-option {
+    display: flex;
+    align-items: center;
+    padding: 1.5rem;
+    border: 2px solid #e9ecef;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background-color: white;
+    width: 100%;
+}
+
+.radio-option:hover {
+    border-color: var(--color-chbe-green);
+    background-color: rgba(92, 138, 58, 0.05);
+}
+
+.radio-option input[type="radio"] {
+    margin: 0 1rem 0 0;
+    width: 20px;
+    height: 20px;
+    accent-color: var(--color-chbe-green);
+}
+
+.radio-option label {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin: 0;
+    cursor: pointer;
+}
+
+.radio-option:has(input:checked) {
+    border-color: var(--color-chbe-green);
+    background-color: rgba(92, 138, 58, 0.1);
+}
+
+.radio-option:has(input:disabled) {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background-color: #f5f5f5;
+}
+
+.radio-option input[type="radio"]:disabled {
+    cursor: not-allowed;
+}
+
+.radio-option:has(input:disabled) label {
+    cursor: not-allowed;
+    color: #6c757d;
+}
+
+/* ===========================================
+   DROPDOWN WITH ADD FUNCTIONALITY (from onboarding.css)
+   =========================================== */
+
+.dropdown-with-add {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+    width: 100%;
+}
+
+.dropdown-with-add .form-select {
+    flex: 1;
+    width: 100%;
+}
+
+.add-instructor-btn,
+.add-ta-btn {
+    background-color: var(--color-chbe-green);
+    color: white;
+    border: none;
+    padding: 0.875rem 1.5rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    height: 100%;
+    min-height: 52px; /* Match form-select height */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.add-instructor-btn:hover,
+.add-ta-btn:hover {
+    background-color: #4a6f2e;
+    transform: translateY(-1px);
+}
+
+.add-instructor-btn:disabled,
+.add-ta-btn:disabled {
+    background-color: #e9ecef;
+    color: #6c757d;
+    cursor: not-allowed;
+    transform: none;
+}
+

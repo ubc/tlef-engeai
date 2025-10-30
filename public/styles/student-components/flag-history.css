@@ -5,44 +5,56 @@
  * 
  * Styles for the student flag history interface,
  * including flag cards, filters, and statistics.
- * Matches the instructor documents pattern for consistency.
+ * Matches the instructor flag instructor pattern for consistency.
  */
 
+:root {
+    --sidebar-bg: #f7f7f7;
+    --chat-bg: #fcfcfc;
+    --border-color: #b8b8b8;
+    --hover-bg: #efefef;
+    --text-primary: #333333;
+    --text-secondary: #6c757d;
+    --background-2: #ECE5DD;
+    --pinned-color: var(--color-chbe-green);
+}
+
 /* Container */
-.container {
-    min-height: 100%;
+.flag-student-container {
+    position: relative;
+    min-height: 100%; 
+    width: 100%;
     display: flex;
     flex-direction: column;
     height: 100%;
 }
 
 /* Main Content */
-.main-content {
-    width: 100%;
-    overflow-y: auto;
+.main-content { 
+    width: 100%; 
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 }
 
-/* Header Section - Matching documents-instructor.html pattern */
-.flag-history-header {
+/* Header Section - Matching documents-instructor pattern */
+.flag-header {
     background: var(--color-chbe-green);
     border-radius: 12px;
     padding: 20px;
     margin-bottom: 20px;
     border: 1px solid var(--border-color);
-    box-shadow: 
-        0px 2px 8px rgba(0, 0, 0, 0.1),
-        0px 0px 0px 20px white;
     animation: slideInDown 0.5s 0.1s forwards;
     position: sticky;
     z-index: 10;
     top: 0;
 }
 
-.flag-history-header h1 {
+.flag-header h1 {
     color: white;
     margin: 0;
-    font-size: 2rem;
-    font-weight: 700;
+    font-size: 1.5rem;
 }
 
 /* Animation for header */
@@ -254,235 +266,229 @@
     height: 16px;
 }
 
-/* Flag History Container - Matching documents-container pattern */
-.flag-history-container {
-    background: var(--chat-bg);
-    border-radius: 12px;
-    border: 1px solid var(--border-color);
-    overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    margin-bottom: 2rem;
+/* Flags List - Individual separated cards - Matching instructor pattern */
+.flags-list {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start; /* Prevent cards from stretching to match tallest card */
+    gap: 5px;
+    overflow-y: auto;
+    flex: 1;
+    padding: 0;
 }
 
-/* Flag Card - Matching content-item pattern */
 .flag-card {
-    padding: 15px 20px;
-    border-bottom: 1px solid var(--border-color);
+    margin:2px 0 0 0;
     background: var(--chat-bg);
-    transition: all 0.3s ease;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    padding: 16px 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden; /* Prevent inner overflow from breaking layout */
+    align-self: stretch; /* Ensure card takes full width */
+    flex-shrink: 0; /* Prevent card from shrinking */
 }
 
-.flag-card:last-child {
-    border-bottom: none;
+/* When expanded, allow content to overflow so full chat is visible */
+.flag-card.expanded {
+    overflow: visible;
 }
 
 .flag-card:hover {
     background: var(--hover-bg);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-/* Flag Card Header */
-.flag-card-header {
+/* Flag Header Row - Matching instructor pattern */
+.flag-header-row {
+    margin-bottom: 8px;
+    /* Prevent overflow */
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.flag-time {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    /* Add ellipsis for long timestamps */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.flag-type {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.3;
+    /* Add ellipsis for long flag type names */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+/* Chat Content - Matching instructor pattern */
+.chat-content {
+    margin: 12px 0;
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.6; /* Better spacing for equations */
+    white-space: pre-wrap; /* Preserve line breaks and wrap text */
+    word-wrap: break-word;
+    overflow-wrap: anywhere; /* Break very long tokens/URLs */
+    word-break: break-word; /* Fallback for older engines */
+    width: 100%;
+}
+
+.chat-content.collapsed {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4; /* Normal line height for single line */
+    display: block;
+    width: 100%;
+    max-width: 100%; /* Ensure it never exceeds parent width */
+}
+
+/* Flag Footer - Matching instructor pattern */
+.flag-footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
+    margin-top: 12px;
+    gap: 8px; /* Add spacing between footer elements */
+    width: 100%;
+    max-width: 100%;
 }
 
-.flag-timestamp {
+.student-name {
+    font-size: 13px;
     color: var(--text-secondary);
-    font-size: 12px;
-    font-style: italic;
+    /* Add ellipsis for long names */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px; /* Reasonable max width for names */
+    flex-shrink: 1; /* Allow shrinking if needed */
 }
 
 .status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.375rem 0.75rem;
-    border-radius: 0.375rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.status-badge.resolved {
-    background: rgba(40, 167, 69, 0.1);
-    color: #28a745;
-}
-
-.status-badge.unresolved {
-    background: rgba(255, 193, 7, 0.1);
-    color: #ffc107;
-}
-
-.status-badge i {
-    width: 14px;
-    height: 14px;
-}
-
-/* Flag Type Label - Matching status badge pattern */
-.flag-type-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 6px 10px;
-    background: rgba(0, 33, 69, 0.1);
-    border: 1px solid var(--color-navy-blue);
-    border-radius: 6px;
-    color: var(--color-navy-blue);
-    font-size: 0.75rem;
-    font-weight: 600;
-    margin-bottom: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.flag-type-label i {
-    width: 14px;
-    height: 14px;
-}
-
-/* Flag Reason - Matching content-title pattern */
-.flag-reason {
-    color: var(--text-primary);
-    font-size: 14px;
-    font-weight: 500;
-    margin-bottom: 0.75rem;
-    line-height: 1.5;
-}
-
-/* Flag Content */
-.flag-content {
-    margin-bottom: 1rem;
-    transition: all 0.3s ease;
-}
-
-.flag-content.collapsed {
-    max-height: 0;
-    overflow: hidden;
-    opacity: 0;
-}
-
-.flag-content.expanded {
-    max-height: 500px;
-    opacity: 1;
-}
-
-.flag-content-label {
-    color: var(--text-primary);
-    font-size: 12px;
-    font-weight: 600;
-    margin-bottom: 8px;
-}
-
-.flag-message-text {
-    background: var(--gingham-color);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 12px 15px;
-    color: var(--text-primary);
     font-size: 13px;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    word-break: break-word;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0; /* Don't shrink status badge */
+    white-space: nowrap;
 }
 
-/* Instructor Response - Matching success pattern */
+.expand-arrow {
+    font-size: 16px;
+    color: var(--text-secondary);
+    user-select: none;
+    flex-shrink: 0; /* Don't shrink arrow */
+    margin-left: 8px;
+}
+
+/* Instructor Response - Same pattern as chat content */
 .instructor-response {
-    background: rgba(92, 138, 58, 0.1);
-    border: 1px solid var(--pinned-color);
-    border-radius: 6px;
-    padding: 12px 15px;
+    margin: 12px 0;
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.6; /* Better spacing for equations */
+    white-space: pre-wrap; /* Preserve line breaks and wrap text */
+    word-wrap: break-word;
+    overflow-wrap: anywhere; /* Break very long tokens/URLs */
+    word-break: break-word; /* Fallback for older engines */
+    width: 100%;
+}
+
+.instructor-response.collapsed {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4; /* Normal line height for single line */
+    display: block;
+    width: 100%;
+    max-width: 100%; /* Ensure it never exceeds parent width */
+}
+
+.response-section {
+    background: var(--background-2);
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 15px;
+}
+
+.response-header {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
     margin-bottom: 10px;
 }
 
-.response-label {
+/* Navigation Section - Matching about page */
+.flag-navigation {
+    position: absolute;
+    bottom: 3rem;
+    right: 3rem;
+    display: flex;
+    gap: 1rem;
+    z-index: 10;
+}
+
+.nav-btn {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    color: var(--pinned-color);
-    font-size: 12px;
+    padding: 0.875rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
     font-weight: 600;
-    margin-bottom: 8px;
-}
-
-.response-label i {
-    width: 14px;
-    height: 14px;
-}
-
-.response-text {
-    color: var(--text-primary);
-    font-size: 13px;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    word-break: break-word;
-}
-
-/* Expand Button - Matching instructor pattern */
-.expand-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 8px 12px;
-    background: var(--gingham-color);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    color: var(--text-primary);
-    font-size: 13px;
-    font-weight: 500;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    min-width: 120px;
+    justify-content: center;
 }
 
-.expand-btn:hover {
-    background: var(--hover-bg);
-    border-color: var(--pinned-color);
-    color: var(--pinned-color);
-}
-
-.expand-btn i {
+.nav-btn svg {
     width: 16px;
     height: 16px;
-    transition: transform 0.2s ease;
+    stroke: currentColor;
+    stroke-width: 2;
 }
 
-/* Profile Actions Section */
-.profile-actions {
-    margin-top: 2rem;
-    padding: 1rem 0;
-    display: flex;
-    justify-content: center;
+.nav-btn .feather {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    stroke-width: 2;
 }
 
-.back-to-chat-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 12px 24px;
-    background: var(--color-chbe-green);
-    border: 1px solid var(--color-chbe-green);
-    border-radius: 8px;
+.btn-back {
+    background-color: var(--background-2);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-back:hover {
+    background-color: var(--color-chbe-green);
     color: white;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.back-to-chat-btn:hover {
-    background: var(--pinned-color);
-    border-color: var(--pinned-color);
+    border-color: var(--color-chbe-green);
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(92, 138, 58, 0.3);
-}
-
-.back-to-chat-btn i {
-    width: 18px;
-    height: 18px;
 }
 
 /* No Results Message */
@@ -509,22 +515,22 @@
     font-size: 1rem;
 }
 
-/* Responsive Design */
-@media (max-width: 768px) {
-    .flag-history-container {
-        padding: 1rem;
+/* Responsive Design - Matching instructor pattern */
+@media (max-width: 960px) {
+    .flag-header {
+        padding: 15px;
     }
     
-    .flag-list {
-        grid-template-columns: 1fr;
-    }
-    
-    .flag-statistics {
-        grid-template-columns: 1fr;
-    }
-    
-    .flag-history-header h1 {
+    .flag-header h1 {
         font-size: 1.5rem;
+    }
+    
+    .flags-list {
+        gap: 3px;
+    }
+    
+    .flag-card {
+        padding: 12px 16px;
     }
 }
 

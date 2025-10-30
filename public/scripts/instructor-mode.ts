@@ -11,6 +11,7 @@ import { ChatManager, createDefaultUser } from "./feature/chat.js";
 import { authService } from './services/AuthService.js';
 import { showConfirmModal } from './modal-overlay.js';
 import { renderAbout } from './about/about.js';
+import { initializeCourseInformation } from './feature/course-information.js';
 
 // Authentication check function
 async function checkAuthentication(): Promise<boolean> {
@@ -383,6 +384,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         | 'flag-history' 
                         | 'course-setup'
                         | 'document-setup'
+                        | 'course-information'
         ) => {
         console.log(`🚀 [INSTRUCTOR-DEBUG] Loading component: ${componentName}`);
         
@@ -420,6 +422,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             else if (componentName === 'document-setup') {
                 console.log(`🔧 [INSTRUCTOR-DEBUG] Document setup component - handled by renderDocumentSetup`);
                 //course setup component - handled by renderDocumentSetup
+            }
+            else if (componentName === 'course-information') {
+                console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing course information...`);
+                await initializeCourseInformation(currentClass);
             }
             
             console.log(`🎨 [INSTRUCTOR-DEBUG] Rendering feather icons...`);
@@ -931,6 +937,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             console.log('[INSTRUCTOR-MODE] ✅ About button listener attached');
         }
+
+        // Course Information button listener
+        const courseInfoBtn = document.getElementById('instructor-course-info-btn');
+        if (courseInfoBtn) {
+            courseInfoBtn.addEventListener('click', async () => {
+                console.log('[INSTRUCTOR-MODE] ⚙️ Course Information button clicked');
+                
+                // Load the course-information component
+                await loadComponent('course-information');
+                
+                // Ensure sidebar stays expanded
+                expandFeatureSidebar();
+                
+                // Hide chat list
+                hideChatList();
+            });
+            console.log('[INSTRUCTOR-MODE] ✅ Course Information button listener attached');
+        }
     };
 
     // --- STATE RESTORATION ---
@@ -941,6 +965,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Listen for about page close event
     window.addEventListener('about-page-closed', restorePreviousState);
+    
+    // Listen for course info page close event
+    window.addEventListener('course-info-closed', restorePreviousState);
 
     // Artefact functionality moved to chat.ts
 

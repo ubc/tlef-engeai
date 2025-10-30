@@ -30,6 +30,8 @@ interface ChatMetadata {
  * LaTeX Rendering Utility Functions
  */
 export function renderLatexInElement(text: string, element: HTMLElement): void {
+    // Set text content directly - KaTeX's renderMathInElement can process it correctly
+    // textContent preserves newlines in the DOM, which KaTeX can then process
     element.textContent = text;
     
     // Wait for KaTeX to be available and render
@@ -2096,6 +2098,39 @@ export class ChatManager {
             radioWrapper.appendChild(radioLabel);
             radioGroup.appendChild(radioWrapper);
             
+            // Make the entire card clickable - clicking anywhere on the card selects the radio
+            radioWrapper.addEventListener('click', (e) => {
+                // Get the actual element that was clicked (handle text nodes)
+                let clickedElement: HTMLElement | null = null;
+                
+                if (e.target instanceof HTMLElement) {
+                    clickedElement = e.target;
+                } else if (e.target instanceof Node && e.target.nodeType === Node.TEXT_NODE) {
+                    clickedElement = e.target.parentElement;
+                } else {
+                    clickedElement = e.target as HTMLElement | null;
+                }
+                
+                if (!clickedElement) return;
+                
+                // If clicking directly on the radio input, let native behavior handle it
+                if (clickedElement === radioInput || clickedElement.tagName === 'INPUT') {
+                    return;
+                }
+                
+                // If clicking on or inside the label, let label's 'for' attribute handle it
+                // Labels automatically trigger their associated input via 'for' attribute
+                const labelElement = clickedElement.closest('label');
+                if (labelElement === radioLabel || clickedElement === radioLabel || clickedElement.tagName === 'LABEL') {
+                    return; // Label will automatically select the radio via 'for' attribute
+                }
+                
+                // For any other click (wrapper div, margin area, padding), select the radio
+                // This makes clicking anywhere on the card select the radio option
+                radioInput.checked = true;
+                radioInput.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            
             // Show/hide "Other" text input based on selection
             if (option.value === 'other') {
                 radioInput.addEventListener('change', () => {
@@ -2202,10 +2237,20 @@ export class ChatManager {
             submitBtn.classList.add('loading');
             
             try {
+                // Get the label text for the selected reason
+                let reportTypeText: string;
+                if (flagType === 'other') {
+                    reportTypeText = otherDetails;
+                } else {
+                    // Find the label associated with the selected radio button
+                    const labelElement = document.querySelector(`label[for="${selectedReason.id}"]`) as HTMLLabelElement;
+                    reportTypeText = labelElement?.textContent?.trim() || 'Unknown reason';
+                }
+                
                 // Real API call to backend
                 const requestBody = {
                     flagType: flagType as 'innacurate_response' | 'harassment' | 'inappropriate' | 'dishonesty' | 'interface bug' | 'other',
-                    reportType: flagType === 'other' ? otherDetails : (selectedReason.labels?.[0]?.textContent || 'Unknown reason'),
+                    reportType: reportTypeText,
                     chatContent: message.text,
                     userId: this.config.userContext.userId
                 };

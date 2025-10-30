@@ -249,7 +249,14 @@ export class RenderChat {
                 return paragraph;
             }
             
-            // Convert single newlines to <br> within the paragraph
+            // Check if this paragraph contains LaTeX display math ($$...$$)
+            // If it does, DON'T convert newlines to <br> - preserve them for KaTeX
+            if (paragraph.includes('$$')) {
+                // Wrap in response-text paragraph with whitespace preservation for LaTeX
+                return `<p class="response-text response-latex-preserve">${paragraph}</p>`;
+            }
+            
+            // Convert single newlines to <br> within the paragraph (non-LaTeX content)
             paragraph = paragraph.replace(/\n/g, '<br>');
             
             // Wrap in response-text paragraph

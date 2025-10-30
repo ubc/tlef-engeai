@@ -87,6 +87,8 @@
     color: var(--text-primary);
     font-size: 18px;
     font-weight: 600;
+    display: flex;
+    align-items: center;
 }
 
 .week-status {
@@ -137,6 +139,8 @@
     color: var(--text-primary);
     font-size: 16px;
     font-weight: 500;
+    display: flex;
+    align-items: center;
 }
 
 .content-status {
@@ -579,6 +583,25 @@ input:checked + .toggle-slider::before {
     box-shadow: 0 0 8px rgba(0,0,0,0.1);
 }
 
+/* Rename Icon Styles */
+.rename-icon {
+    cursor: pointer;
+    margin-left: 8px;
+    opacity: 0.6;
+    transition: opacity 0.2s ease, color 0.2s ease;
+    color: var(--text-secondary);
+}
+
+.rename-icon:hover {
+    opacity: 1;
+    color: var(--color-chbe-green);
+}
+
+.week-title .rename-icon,
+.content-title .rename-icon {
+    display: inline-flex;
+    align-items: center;
+}
 
 
 

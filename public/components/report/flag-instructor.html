@@ -8,6 +8,10 @@
                 <div class="last-updated">Last Updated: 8:30 AM, May 17, 2026</div>
             </div>
             <div class="header-right">
+                <button id="delete-all-flags-button" class="delete-all-flags-button" title="Delete all flags for this course">
+                    <i data-feather="trash-2"></i>
+                    <span>Delete All Flags</span>
+                </button>
                 <div class="nav-tiles">
                     <div class="nav-tile active" data-section="unresolved-flags">
                         <i data-feather="alert-triangle"></i>
@@ -32,7 +36,7 @@
         <section class="filter-section">
             <div class="filter-checkboxes">
                 <label class="filter-checkbox">
-                    <input type="checkbox" data-filter="safety" checked>
+                    <input type="checkbox" data-filter="innacurate_response" checked>
                     <span class="checkmark">✓</span>
                     <span class="filter-text">Wrong calculations, formulas, or engineering principles</span>
                 </label>
