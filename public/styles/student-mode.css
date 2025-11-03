@@ -219,7 +219,8 @@ body {
 .logo-text p { 
     font-size: 0.75rem; 
     margin: 0; 
-    opacity: 0.8; 
+    opacity: 1; /* Increased opacity for better contrast on green background */
+    color: #ffffff; /* Ensure white for better contrast */
 }
 
 /* Chat menu styles moved to chat-feature.css */

@@ -1140,7 +1140,7 @@ export class ChatManager {
         const messageAreaEl = document.getElementById('message-area');
         if (messageAreaEl) {
             messageAreaEl.innerHTML = `
-                <div style="text-align: center; padding: 2rem; color: #6c757d;">
+                <div style="text-align: center; padding: 2rem; color: #525252;">
                     <div class="spinner" style="
                         width: 40px;
                         height: 40px;
@@ -1623,7 +1623,7 @@ export class ChatManager {
         // Add loading indicator if chat is not fully loaded
         const isLoaded = this.loadedChatIds.has(metadata.id);
         if (!isLoaded && metadata.id === this.activeChatId) {
-            titleSpan.innerHTML = `${metadata.itemTitle} <span style="color: #6c757d; font-size: 0.8em;">(loading...)</span>`;
+            titleSpan.innerHTML = `${metadata.itemTitle} <span style="color: #525252; font-size: 0.8em;">(loading...)</span>`;
         }
 
         const actions = document.createElement('div');

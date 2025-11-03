@@ -47,7 +47,7 @@
 .welcome-box p { 
     line-height: 1.7; 
     margin-bottom: 1.25rem; 
-    color: var(--text-secondary); 
+    color: #525252; /* Darker gray for better contrast on #ECE5DD background (was var(--text-secondary) #6c757d) */
     font-size: 0.94rem; 
 }
 

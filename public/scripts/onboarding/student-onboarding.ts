@@ -214,7 +214,7 @@ async function renderDemoArtefact(): Promise<void> {
         tempContainer.style.backgroundColor = '#f8f9fa';
 
         // Add loading message
-        tempContainer.innerHTML = '<p style="text-align: center; color: #6c757d; margin: 50px 0;">Loading demo diagram...</p>';
+        tempContainer.innerHTML = '<p style="text-align: center; color: #525252; margin: 50px 0;">Loading demo diagram...</p>';
         artefactContainer.appendChild(tempContainer);
 
         // Wait a moment for the container to be visible
@@ -243,7 +243,7 @@ async function renderDemoArtefact(): Promise<void> {
                             <p><strong>5.</strong> Verify compliance with safety standards</p>
                             <p><strong>6.</strong> Make final material selection</p>
                         </div>
-                        <p style="margin-top: 1rem; font-style: italic; color: #6c757d;">
+                        <p style="margin-top: 1rem; font-style: italic; color: #525252;">
                             💡 <em>In real conversations, you'll see interactive diagrams like this!</em>
                         </p>
                     </div>
@@ -255,7 +255,7 @@ async function renderDemoArtefact(): Promise<void> {
             tempContainer.innerHTML = `
                 <div style="padding: 1rem; text-align: center;">
                     <h4 style="color: #2c3e50; margin-bottom: 1rem;">Material Selection Process</h4>
-                    <p style="color: #6c757d;">
+                    <p style="color: #525252;">
                         💡 <em>Interactive diagrams will appear here during your conversations with EngE-AI!</em>
                     </p>
                 </div>
