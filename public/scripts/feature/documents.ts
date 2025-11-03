@@ -220,6 +220,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const toggleInput = document.createElement('input');
         toggleInput.type = 'checkbox';
         toggleInput.checked = !!division.published;
+        toggleInput.setAttribute('aria-label', `Toggle publish status for ${division.title}`);
         const toggleSlider = document.createElement('span');
         toggleSlider.className = 'toggle-slider';
         toggleWrap.appendChild(toggleInput);
