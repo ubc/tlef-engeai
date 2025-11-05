@@ -22,6 +22,7 @@ export interface ChatMessage {
     courseName: string;
     text: string;
     timestamp: number;
+    retrievedDocuments?: string[];  // NEW: Store full text of retrieved RAG documents
 }
 
 /**

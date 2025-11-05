@@ -42,7 +42,7 @@ import { AppConfig, loadConfig } from './config';
 import { RAGModule, RetrievedChunk } from 'ubc-genai-toolkit-rag';
 import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
 import { IDGenerator } from '../functions/unique-id-generator';
-import { ChatMessage, Chat } from '../functions/types';
+import { ChatMessage, Chat, LearningObjective } from '../functions/types';
 import { asyncHandlerWithAuth } from '../middleware/asyncHandler';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { 
@@ -465,10 +465,25 @@ class ChatApp {
         // Retrieve relevant documents using RAG with limited context
         let ragContext = '';
         let documentsLength = 0;
+        let retrievedDocumentTexts: string[] = [];  // NEW: Store document texts
+
         try {
             const documents = await this.retrieveRelevantDocuments(message, courseName, 3, 0.6); // Limit to 2 docs, higher threshold
             ragContext = this.formatDocumentsForContext(documents);
             documentsLength = documents.length;
+            
+            // NEW: Extract full text content from each retrieved document
+            documents.forEach((doc) => {
+                const content = (doc as any).payload?.text || 
+                               (doc as any).text || 
+                               (doc as any).content || 
+                               '';
+                if (content) {
+                    retrievedDocumentTexts.push(content);
+                }
+            });
+            
+            console.log(`📚 Captured ${retrievedDocumentTexts.length} documents for storage`);
         } catch (error) {
             console.log(`❌ RAG Context Error:`, error);
             this.logger.error('Error retrieving RAG documents:', error as any);
@@ -543,7 +558,7 @@ class ChatApp {
         console.log(`Full response: "${assistantResponse}"`);
 
         // Add complete assistant response to conversation and history
-        const assistantMessage = this.addAssistantMessage(chatId, assistantResponse);
+        const assistantMessage = this.addAssistantMessage(chatId, assistantResponse, parseInt(userId), courseName, retrievedDocumentTexts);
         
         // Check if this is the first user-AI exchange and update title if needed
         await this.updateChatTitleIfNeeded(chatId, assistantResponse, courseName, userId);
@@ -551,7 +566,7 @@ class ChatApp {
         return assistantMessage;
     }
 
-    public initializeConversation(userID: string, courseName: string, date: Date): initChatRequest {
+    public async initializeConversation(userID: string, courseName: string, date: Date): Promise<initChatRequest> {
         //create chatID from the user ID
         const chatId = this.chatIDGenerator.chatID(userID, courseName, date);
 
@@ -565,8 +580,8 @@ class ChatApp {
         this.conversations.set(chatId, this.llmModule.createConversation());
         this.chatHistory.set(chatId, []);
         
-        // Add default system message
-        this.addDefaultSystemMessage(chatId, courseName);
+        // Add default system message (now async to retrieve learning objectives)
+        await this.addDefaultSystemMessage(chatId, courseName);
         
         // Add default assistant message and get it
         const initAssistantMessage = this.addDefaultAssistantMessage(chatId);
@@ -594,32 +609,36 @@ class ChatApp {
     /**
      * this method directly add the Default System Message to the conversation
      */
-    private addDefaultSystemMessage(chatId: string, courseName?: string) {
-        const defaultSystemMessage = getSystemPrompt(courseName);
+    private async addDefaultSystemMessage(chatId: string, courseName?: string): Promise<void> {
+        const conversation = this.conversations.get(chatId);
+        if (!conversation) {
+            throw new Error('Conversation not found');
+        }
+        
+        // Retrieve all learning objectives for the course
+        let learningObjectives: LearningObjective[] = [];
+        if (courseName) {
+            try {
+                const mongoDB = await EngEAI_MongoDB.getInstance();
+                // Get course by name to extract courseId
+                const course = await mongoDB.getCourseByName(courseName);
+                if (course && course.id) {
+                    learningObjectives = await mongoDB.getAllLearningObjectives(course.id);
+                    console.log(`📚 Retrieved ${learningObjectives.length} learning objectives for system prompt`);
+                }
+            } catch (error) {
+                console.error('❌ Error retrieving learning objectives:', error);
+                // Continue without learning objectives if retrieval fails
+            }
+        }
+        
+        const defaultSystemMessage = getSystemPrompt(courseName, learningObjectives);
 
         try {
-            if (this.conversations.has(chatId)) {
-                if (this.conversations.get(chatId) === undefined) {
-                    throw new Error('Conversation not found');
-                }
-                else {
-                    const message = this.conversations.get(chatId);
-                    if (message === undefined) {
-                        throw new Error('Message not found');
-                    }
-                    else {
-                        message.addMessage('system', defaultSystemMessage);
-                    }
-                }
-            }
-            else {
-                throw new Error('ChatId not found');
-            }
-        }
-        catch (error) {
+            conversation.addMessage('system', defaultSystemMessage);
+        } catch (error) {
             console.error('Error adding default message:', error);
         }
-
     }
 
     /**
@@ -738,9 +757,12 @@ class ChatApp {
      * 
      * @param chatId - The chat ID
      * @param message - The assistant's message
+     * @param userId - Optional user ID (defaults to 0)
+     * @param courseName - Optional course name (defaults to empty string)
+     * @param retrievedDocuments - Optional array of retrieved document texts
      * @returns ChatMessage - The created assistant message
      */
-    private addAssistantMessage(chatId: string, message: string): ChatMessage {
+    private addAssistantMessage(chatId: string, message: string, userId: number = 0, courseName: string = '', retrievedDocuments?: string[]): ChatMessage {
         // Generate message ID
         const currentDate = new Date();
         const messageId = this.chatIDGenerator.messageID(message, chatId, currentDate);
@@ -749,10 +771,11 @@ class ChatApp {
         const chatMessage: ChatMessage = {
             id: messageId,
             sender: 'bot',
-            userId: 0,
-            courseName: '', // Will be set by the caller if needed
+            userId: userId,
+            courseName: courseName,
             text: message,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            retrievedDocuments: retrievedDocuments  // NEW: Add retrieved documents
         };
         
         try {
@@ -843,7 +866,20 @@ class ChatApp {
             const conversation = this.llmModule.createConversation();
             
             // Add system message first (same as in initializeConversation)
-            const defaultSystemMessage = getSystemPrompt(courseName);
+            // Retrieve learning objectives for the course
+            let learningObjectives: LearningObjective[] = [];
+            try {
+                const course = await mongoDB.getCourseByName(courseName);
+                if (course && course.id) {
+                    learningObjectives = await mongoDB.getAllLearningObjectives(course.id);
+                    console.log(`📚 Retrieved ${learningObjectives.length} learning objectives during chat restoration`);
+                }
+            } catch (error) {
+                console.error('❌ Error retrieving learning objectives during restore:', error);
+                // Continue without learning objectives if retrieval fails
+            }
+            
+            const defaultSystemMessage = getSystemPrompt(courseName, learningObjectives);
             conversation.addMessage('system', defaultSystemMessage);
 
             // Restore all messages from MongoDB in order
@@ -1131,7 +1167,7 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
         }
 
         // Actually create the chat using the ChatApp class FIRST
-        const initRequest = chatApp.initializeConversation(userID, courseName, date);
+        const initRequest = await chatApp.initializeConversation(userID, courseName, date);
         const chatId = initRequest.chatId;
         
         // Use the proper welcome message from the backend (includes diagrams and course context)
