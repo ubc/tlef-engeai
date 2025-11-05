@@ -42,7 +42,7 @@ import { AppConfig, loadConfig } from './config';
 import { RAGModule, RetrievedChunk } from 'ubc-genai-toolkit-rag';
 import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
 import { IDGenerator } from '../functions/unique-id-generator';
-import { ChatMessage, Chat, LearningObjective } from '../functions/types';
+import { ChatMessage, Chat, LearningObjective, ContentDivision, courseItem } from '../functions/types';
 import { asyncHandlerWithAuth } from '../middleware/asyncHandler';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { 
@@ -371,19 +371,69 @@ class ChatApp {
         scoreThreshold: number = 0.4
     ): Promise<RetrievedChunk[]> {
         if (!this.ragModule) {
+
+            // DEBUG 18: Print the query
+            console.log(`DEBUG #118: RAG Query:`, query);
+            //END DEBUG 18
             // this.logger.warn('RAG module not available, skipping document retrieval');
             return [];
         }
 
         try {
+            // Get course from MongoDB to check published status
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const course = await mongoDB.getCourseByName(courseName);
+            
+            if (!course) {
+                this.logger.warn(`Course not found: ${courseName}, skipping document retrieval`);
+                return [];
+            }
+
+            // Extract published item titles
+            const publishedItemTitles: string[] = [];
+            if (course.divisions) {
+                course.divisions
+                    .filter((division: ContentDivision) => division.published === true)
+                    .forEach((division: ContentDivision) => {
+                        if (division.items) {
+                            division.items.forEach((item: courseItem) => {
+                                if (item.itemTitle && !publishedItemTitles.includes(item.itemTitle)) {
+                                    publishedItemTitles.push(item.itemTitle);
+                                }
+                            });
+                        }
+                    });
+            }
+
+            // If no published items exist, return empty array
+            if (publishedItemTitles.length === 0) {
+                this.logger.debug(`No published items found for course: ${courseName}`);
+                return [];
+            }
+
+            // Build filter for RAG retrieval
+            // Qdrant filter format: must conditions with match clauses
+            const filter: Record<string, any> = {
+                must: [
+                    { key: "courseName", match: { value: courseName } },
+                    { key: "itemTitle", match: { any: publishedItemTitles } }
+                ]
+            };
+
             // Add course context to the query for better retrieval
             const contextualQuery = ` ${query}`;
             
 
             const results = await this.ragModule.retrieveContext(contextualQuery, {
                 limit: limit,
-                scoreThreshold: scoreThreshold
+                scoreThreshold: scoreThreshold,
+                filter: filter
             });
+
+            // DEBUG 19: Print the results
+            console.log(`DEBUG #119: RAG Results:`, results);
+            console.log(`DEBUG #119: RAG Results length:`, results.length);
+            //END DEBUG 19
 
             return results;
         } catch (error) {
@@ -467,8 +517,9 @@ class ChatApp {
         let documentsLength = 0;
         let retrievedDocumentTexts: string[] = [];  // NEW: Store document texts
 
+
         try {
-            const documents = await this.retrieveRelevantDocuments(message, courseName, 3, 0.6); // Limit to 2 docs, higher threshold
+            const documents = await this.retrieveRelevantDocuments(message, courseName, 3, 0.4); // Limit to 2 docs, higher threshold
             ragContext = this.formatDocumentsForContext(documents);
             documentsLength = documents.length;
             

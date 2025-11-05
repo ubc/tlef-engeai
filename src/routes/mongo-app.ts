@@ -1560,6 +1560,67 @@ router.patch('/:courseId/divisions/:divisionId/title', asyncHandlerWithAuth(asyn
     }
 }));
 
+// PATCH /api/courses/:courseId/divisions/:divisionId/published - Update division published status (REQUIRES AUTH)
+router.patch('/:courseId/divisions/:divisionId/published', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, divisionId } = req.params;
+        const { published } = req.body;
+        
+        // Validate input
+        if (typeof published !== 'boolean') {
+            return res.status(400).json({
+                success: false,
+                error: 'Published status is required and must be a boolean'
+            });
+        }
+        
+        // Get the course
+        const course = await instance.getActiveCourse(courseId);
+        
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        // Find the division
+        const division = course.divisions?.find((d: ContentDivision) => d.id === divisionId);
+        
+        if (!division) {
+            return res.status(404).json({
+                success: false,
+                error: 'Division not found'
+            });
+        }
+        
+        // Update the division published status
+        division.published = published;
+        division.updatedAt = new Date();
+        
+        // Save the updated course
+        const updatedCourse = await instance.updateActiveCourse(courseId, {
+            divisions: course.divisions
+        });
+        
+        console.log(`✅ Division ${divisionId} published status updated to ${published}`);
+        
+        res.status(200).json({
+            success: true,
+            data: division,
+            message: 'Division published status updated successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error updating division published status:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update division published status'
+        });
+    }
+}));
+
 // PATCH /api/courses/:courseId/divisions/:divisionId/items/:itemId/title - Update item title (REQUIRES AUTH)
 router.patch('/:courseId/divisions/:divisionId/items/:itemId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {

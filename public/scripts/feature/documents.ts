@@ -238,12 +238,61 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         expandIcon.id = `icon-${division.id}`;
         expandIcon.textContent = '▼';
 
-        // Wire toggle behaviour (update in-memory state and badge only)
-        toggleInput.addEventListener('change', (e) => {
+        // Wire toggle behaviour (update in-memory state, badge, and persist to backend)
+        toggleInput.addEventListener('change', async (e) => {
             const checked = (e.currentTarget as HTMLInputElement).checked;
+            const originalChecked = !checked; // Store original state for error rollback
+            
+            // Optimistically update UI
             division.published = checked;
             statusBadge.className = `content-status ${checked ? 'status-published' : 'status-draft'}`;
             statusBadge.textContent = checked ? 'Published' : 'Draft';
+            
+            // Persist to backend
+            try {
+                if (!currentClass || !currentClass.id) {
+                    throw new Error('Current class not found');
+                }
+                
+                const response = await fetch(`/api/courses/${currentClass.id}/divisions/${division.id}/published`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        published: checked
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Failed to update published status: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Update local data with backend response
+                    if (result.data) {
+                        division.published = result.data.published;
+                    }
+                    console.log(`✅ Division ${division.id} published status updated to ${checked}`);
+                } else {
+                    throw new Error(result.error || 'Failed to update published status');
+                }
+            } catch (error) {
+                // Revert UI on error
+                console.error('Error updating published status:', error);
+                toggleInput.checked = originalChecked;
+                division.published = originalChecked;
+                statusBadge.className = `content-status ${originalChecked ? 'status-published' : 'status-draft'}`;
+                statusBadge.textContent = originalChecked ? 'Published' : 'Draft';
+                
+                // Show error modal
+                const errorMessage = error instanceof Error ? error.message : 'Failed to update published status. Please try again.';
+                await showSimpleErrorModal(errorMessage, 'Update Published Status Error');
+            }
         });
 
         right.appendChild(addSessionBadge);
