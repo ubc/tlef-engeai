@@ -82,7 +82,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                         itemTitle: currentClass.frameType === 'byWeek' ? `Lecture ${i + 1}` : `Session ${i + 1}`,
                         learningObjectives: [],
                         additionalMaterials: [],
-                        completed: false,
                         createdAt: new Date(),
                         updatedAt: new Date()
                     }
@@ -192,9 +191,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const status = document.createElement('div');
         status.className = 'completion-status';
 
-        const sectionsCompleted = division.items.filter(c=> c.completed).length;
         const totalSections = division.items.length;
-        status.textContent = `${sectionsCompleted} / ${totalSections} Sections completed`;
+        status.textContent = totalSections === 1 ? '1 section' : `${totalSections} sections`;
         left.appendChild(title);
         left.appendChild(status);
 
@@ -1499,11 +1497,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         deleteBadge.dataset.action = 'delete-section';
         deleteBadge.dataset.divisionId = divisionId;
         deleteBadge.dataset.contentId = content.id;
-        const status = document.createElement('div');
-        status.className = 'content-status status-completed';
-        status.textContent = 'Completed';
         statusRow.appendChild(deleteBadge);
-        statusRow.appendChild(status);
         header.appendChild(title);
         header.appendChild(statusRow);
 
@@ -1605,7 +1599,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const newContentTitle = `New Section ${division.items.length + 1}`;
         const minimalContentPayload = {
             title: newContentTitle,
-            completed: false,
             learningObjectives: [],
             additionalMaterials: []
         };
@@ -1654,6 +1647,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 const built = buildContentItemDOM(division.id, createdItem);
                 container.appendChild(built);
                 
+                // Render feather icons for the newly added section (including edit title button)
+                renderFeatherIcons();
+                
                 // Update header completion count
                 updateDivisionCompletion(division.id);
                 
@@ -1673,23 +1669,75 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         }
     }
 
-    function deleteSection(divisionId: string, contentId: string) {
+    async function deleteSection(divisionId: string, contentId: string) {
         const division = courseData.find(d => d.id === divisionId);
         if (!division) return;
-        if (!confirm('Delete this section?')) return;
-        division.items = division.items.filter(c => c.id !== contentId);
-        const item = document.getElementById(`content-item-${divisionId}-${contentId}`);
-        if (item && item.parentElement) item.parentElement.removeChild(item);
-        updateDivisionCompletion(divisionId);
+        
+        const content = division.items.find(c => c.id === contentId);
+        if (!content) return;
+        
+        // Show confirmation modal
+        const result = await showDeleteConfirmationModal('Section', content.title || 'Section');
+        
+        // If user cancelled, don't proceed
+        if (result.action !== 'delete') {
+            return;
+        }
+        
+        // Check if currentClass exists
+        if (!currentClass || !currentClass.id) {
+            await showErrorModal('Error', 'Current class not found. Cannot delete section.');
+            return;
+        }
+        
+        try {
+            // Call backend API to delete the section
+            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include'
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `Failed to delete section: ${response.statusText}`);
+            }
+            
+            const resultData = await response.json();
+            
+            if (resultData.success) {
+                // Remove from local state
+                division.items = division.items.filter(c => c.id !== contentId);
+                
+                // Remove from DOM
+                const item = document.getElementById(`content-item-${divisionId}-${contentId}`);
+                if (item && item.parentElement) {
+                    item.parentElement.removeChild(item);
+                }
+                
+                // Update completion status
+                updateDivisionCompletion(divisionId);
+                
+                // Show success message
+                await showSuccessModal('Success', 'Section deleted successfully.');
+            } else {
+                throw new Error(resultData.error || 'Failed to delete section');
+            }
+        } catch (error) {
+            console.error('Error deleting section:', error);
+            const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+            await showErrorModal('Error', `Failed to delete section: ${errorMessage}`);
+        }
     }
 
     function updateDivisionCompletion(divisionId: string) {
         const division = courseData.find(d => d.id === divisionId);
         if (!division) return;
-        const sectionsCompleted = division.items.filter(c => c.completed).length;
         const totalSections = division.items.length;
         const container = document.querySelector(`.week-header[data-division="${divisionId}"] .completion-status`) as HTMLElement | null;
-        if (container) container.textContent = `${sectionsCompleted} / ${totalSections} Sections completed`;
+        if (container) container.textContent = totalSections === 1 ? '1 section' : `${totalSections} sections`;
     }
 
     /**

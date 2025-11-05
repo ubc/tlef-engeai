@@ -218,7 +218,6 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
                     courseName: req.body.name,
                     divisionTitle: `Week ${i + 1}`,
                     itemTitle: `Lecture 1`,
-                    completed: false,
                     learningObjectives: [],
                     additionalMaterials: [],
                     createdAt: new Date(),
@@ -234,7 +233,6 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
                     courseName: req.body.name,
                     divisionTitle: `Week ${i + 1}`,
                     itemTitle: `Lecture 2`,
-                    completed: false,
                     learningObjectives: [],
                     additionalMaterials: [],
                     createdAt: new Date(),
@@ -249,7 +247,6 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
                     courseName: req.body.name,
                     divisionTitle: `Week ${i + 1}`,
                     itemTitle: `Lecture 3`,
-                    completed: false,
                     learningObjectives: [],
                     additionalMaterials: [],
                     createdAt: new Date(),
@@ -295,7 +292,6 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
                     courseName: req.body.name,
                     divisionTitle: `Topic ${i + 1}`,
                     itemTitle: `Topic ${i + 1}`,
-                    completed: false,
                     learningObjectives: [],
                     additionalMaterials: [],
                     createdAt: new Date(),
@@ -589,7 +585,6 @@ router.post('/:courseId/divisions', asyncHandlerWithAuth(async (req: Request, re
                     itemTitle: defaultItemTitle,
                     learningObjectives: [],
                     additionalMaterials: [],
-                    completed: false,
                     createdAt: now,
                     updatedAt: now
                 } as unknown as courseItem
@@ -646,7 +641,6 @@ router.post('/:courseId/divisions/:divisionId/items', asyncHandlerWithAuth(async
             itemTitle: contentItem.title.trim(),
             learningObjectives: Array.isArray(contentItem.learningObjectives) ? contentItem.learningObjectives : [],
             additionalMaterials: Array.isArray(contentItem.additionalMaterials) ? contentItem.additionalMaterials : [],
-            completed: !!contentItem.completed,
             createdAt: now,
             updatedAt: now
         } as unknown as courseItem;
@@ -1706,6 +1700,83 @@ router.patch('/:courseId/divisions/:divisionId/items/:itemId/title', asyncHandle
         res.status(500).json({
             success: false,
             error: 'Failed to update item title'
+        });
+    }
+}));
+
+// DELETE /api/courses/:courseId/divisions/:divisionId/items/:itemId - Delete a content item (section) (REQUIRES AUTH)
+router.delete('/:courseId/divisions/:divisionId/items/:itemId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        console.log('🗑️ [BACKEND] Delete content item request received');
+        console.log('🔍 [BACKEND] Request params:', req.params);
+        
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, divisionId, itemId } = req.params;
+        
+        // Validate input
+        if (!courseId || !divisionId || !itemId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Course ID, Division ID, and Item ID are required'
+            });
+        }
+        
+        // Get the course
+        const course = await instance.getActiveCourse(courseId);
+        
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        // Find the division
+        const division = course.divisions?.find((d: ContentDivision) => d.id === divisionId);
+        
+        if (!division) {
+            return res.status(404).json({
+                success: false,
+                error: 'Division not found'
+            });
+        }
+        
+        // Find the item
+        const item = division.items?.find((i: courseItem) => i.id === itemId);
+        
+        if (!item) {
+            return res.status(404).json({
+                success: false,
+                error: 'Content item not found'
+            });
+        }
+        
+        // Remove the item from the division
+        division.items = division.items.filter((i: courseItem) => i.id !== itemId);
+        division.updatedAt = new Date();
+        
+        // Save the updated course
+        const updatedCourse = await instance.updateActiveCourse(courseId, {
+            divisions: course.divisions
+        });
+        
+        console.log(`✅ Content item ${itemId} deleted successfully from division ${divisionId}`);
+        
+        res.status(200).json({
+            success: true,
+            data: {
+                deletedItemId: itemId,
+                divisionId: divisionId,
+                remainingItems: division.items.length
+            },
+            message: 'Content item deleted successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error deleting content item:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to delete content item'
         });
     }
 }));

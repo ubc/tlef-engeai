@@ -105,7 +105,7 @@ export interface courseItem {
     courseName: string;
     divisionTitle: string;
     itemTitle: string;
-    completed: boolean;
+    completed?: boolean;
     learningObjectives: LearningObjective[];
     additionalMaterials?: AdditionalMaterial[];
     createdAt: Date;
