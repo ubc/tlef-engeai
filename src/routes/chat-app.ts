@@ -519,7 +519,7 @@ class ChatApp {
 
 
         try {
-            const documents = await this.retrieveRelevantDocuments(message, courseName, 3, 0.4); // Limit to 2 docs, higher threshold
+            const documents = await this.retrieveRelevantDocuments(message, courseName, 3, 0.6); // Limit to 2 docs, higher threshold
             ragContext = this.formatDocumentsForContext(documents);
             documentsLength = documents.length;
             
