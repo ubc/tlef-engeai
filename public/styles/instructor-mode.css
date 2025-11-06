@@ -143,7 +143,7 @@ body {
 
 .instructor-sidebar .chat-list .chat-item.active {
     background-color: #e2d9cf;
-    color: rgb(103, 103, 103);
+    color: #4a4a4a; /* Darker color for better contrast (was rgb(103, 103, 103)) */
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18),
                 inset 0 -1px 0 rgba(255, 255, 255, 0.55);
 }
@@ -349,7 +349,7 @@ body {
 }
 
 .instructor-feature-sidebar .logo-box {
-    background-color: var(--color-chbe-green);
+    background-color: #4d7a2f; /* Darker green for better contrast with white text */
     color: white;
     padding: 0.75rem;
     height: 56px;
@@ -395,8 +395,9 @@ body {
 
 .logo-text p {
     font-size: 0.75rem;
-    opacity: 0.8;
+    opacity: 1; /* Increase opacity for better contrast */
     margin: 0;
+    color: #ffffff; /* Ensure white for better contrast */
 }
 
 .instructor-feature-sidebar .sidebar-collapse-icon {
@@ -510,7 +511,7 @@ body {
 
 .sidebar-menu-list .menu-list-item.active {
     background-color: #e2d9cf;
-    color: rgb(103, 103, 103);
+    color: #4a4a4a; /* Darker color for better contrast (was rgb(103, 103, 103)) */
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18),
                 inset 0 -1px 0 rgba(255, 255, 255, 0.55);
 }

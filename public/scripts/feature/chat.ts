@@ -720,10 +720,16 @@ export class ChatManager {
             return;
         }
         
-        // Sort by pinned status
-        const sortedMetadata = [...this.chatMetadata].sort((a, b) => 
-            (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)
-        );
+        // Sort by pinned status first, then by most recent message timestamp
+        // This ensures chats with recent activity (like updated titles) appear at the top
+        const sortedMetadata = [...this.chatMetadata].sort((a, b) => {
+            // Pinned chats first
+            if (a.isPinned !== b.isPinned) {
+                return b.isPinned ? 1 : -1;
+            }
+            // Then by most recent message timestamp
+            return b.lastMessageTimestamp - a.lastMessageTimestamp;
+        });
 
         sortedMetadata.forEach(metadata => {
             const li = this.createChatListItemFromMetadata(metadata);
@@ -1140,7 +1146,7 @@ export class ChatManager {
         const messageAreaEl = document.getElementById('message-area');
         if (messageAreaEl) {
             messageAreaEl.innerHTML = `
-                <div style="text-align: center; padding: 2rem; color: #6c757d;">
+                <div style="text-align: center; padding: 2rem; color: #525252;">
                     <div class="spinner" style="
                         width: 40px;
                         height: 40px;
@@ -1206,6 +1212,19 @@ export class ChatManager {
             
             // Update the local chats array
             this.chats = freshChats;
+            
+            // Sync metadata array from refreshed chats to ensure sidebar shows updated titles
+            this.chatMetadata = freshChats.map((chat: Chat) => ({
+                id: chat.id,
+                courseName: chat.courseName,
+                itemTitle: chat.itemTitle,
+                isPinned: chat.isPinned,
+                pinnedMessageId: chat.pinnedMessageId || null,
+                messageCount: chat.messages ? chat.messages.length : 0,
+                lastMessageTimestamp: chat.messages && chat.messages.length > 0 
+                    ? chat.messages[chat.messages.length - 1].timestamp 
+                    : Date.now()
+            }));
             
             // Restore the active chat ID
             this.activeChatId = currentActiveChatId;
@@ -1623,7 +1642,7 @@ export class ChatManager {
         // Add loading indicator if chat is not fully loaded
         const isLoaded = this.loadedChatIds.has(metadata.id);
         if (!isLoaded && metadata.id === this.activeChatId) {
-            titleSpan.innerHTML = `${metadata.itemTitle} <span style="color: #6c757d; font-size: 0.8em;">(loading...)</span>`;
+            titleSpan.innerHTML = `${metadata.itemTitle} <span style="color: #525252; font-size: 0.8em;">(loading...)</span>`;
         }
 
         const actions = document.createElement('div');

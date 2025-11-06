@@ -22,6 +22,7 @@ export interface ChatMessage {
     courseName: string;
     text: string;
     timestamp: number;
+    retrievedDocuments?: string[];  // NEW: Store full text of retrieved RAG documents
 }
 
 /**
@@ -104,7 +105,7 @@ export interface courseItem {
     courseName: string;
     divisionTitle: string;
     itemTitle: string;
-    completed: boolean;
+    completed?: boolean;
     learningObjectives: LearningObjective[];
     additionalMaterials?: AdditionalMaterial[];
     createdAt: Date;

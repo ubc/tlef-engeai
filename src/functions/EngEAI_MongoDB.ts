@@ -1,6 +1,6 @@
 import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 import * as dotenv from 'dotenv';
-import { activeCourse, AdditionalMaterial, ContentDivision, courseItem, FlagReport, User, Chat, ChatMessage, GlobalUser, CourseUser } from './types';
+import { activeCourse, AdditionalMaterial, ContentDivision, courseItem, FlagReport, User, Chat, ChatMessage, GlobalUser, CourseUser, LearningObjective } from './types';
 import { IDGenerator } from './unique-id-generator';
 
 dotenv.config();
@@ -230,6 +230,34 @@ export class EngEAI_MongoDB {
         
         console.log('✅ [MONGODB] deleteLearningObjective result:', result);
         return result;
+    }
+
+    /**
+     * Get all learning objectives for an entire course
+     * @param courseId - The course ID
+     * @returns Promise<LearningObjective[]> - All learning objectives across all divisions and items
+     */
+    public getAllLearningObjectives = async (courseId: string): Promise<LearningObjective[]> => {
+        const course = await this.getActiveCourse(courseId);
+        
+        if (!course || !course.divisions) {
+            return [];
+        }
+        
+        const allObjectives: LearningObjective[] = [];
+        
+        // Iterate through all divisions and items to collect learning objectives
+        for (const division of course.divisions) {
+            if (division.items) {
+                for (const item of division.items) {
+                    if (item.learningObjectives && item.learningObjectives.length > 0) {
+                        allObjectives.push(...item.learningObjectives);
+                    }
+                }
+            }
+        }
+        
+        return allObjectives;
     }
 
     // Flag report methods

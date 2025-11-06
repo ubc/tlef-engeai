@@ -417,11 +417,11 @@ async function createAPSC099(): Promise<activeCourse> {
     // Create 10 modules with learning objectives
     const modules = [
         {
-            title: 'Module 1: Building with Blocks',
+            title: 'Chapter 3: Processes & Process Variables',
             objectives: [
-                'Identify basic building shapes (cubes, cylinders, triangles)',
-                'Build simple structures using blocks',
-                'Understand the concept of stability in structures'
+                'Calculate mass, molar and volumetric flows and convert between them',
+                'Distinguish between variables as _intensive _ and extensive',
+                'Define basic process variables: Density – Ch3.1, Flow rate – Ch 3.2, Chemical Composition – Ch 3.3,  Pressure (absolute and gauge) – Ch 3.4, Temperature – Ch 3.5',
             ]
         },
         {

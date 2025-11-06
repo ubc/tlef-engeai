@@ -28,7 +28,7 @@
 
 .login-box .subtitle {
     font-size: 1rem;
-    color: #6c757d;
+    color: #525252; /* Darker gray for better contrast (was #6c757d) */
     margin-bottom: 2.5rem;
 }
 
@@ -55,7 +55,7 @@
 }
 
 .login-prompt p {
-    color: #6c757d;
+    color: #525252; /* Darker gray for better contrast on #f8f9fa background (was #6c757d) */
     margin-bottom: 1.5rem;
     font-size: 1rem;
 }
@@ -134,7 +134,7 @@
 }
 
 .auth-loading p {
-    color: #6c757d;
+    color: #525252; /* Darker gray for better contrast on #f8f9fa background (was #6c757d) */
     font-size: 1rem;
     margin: 0;
 }
@@ -191,7 +191,7 @@
 
 .course-box p {
     font-size: 0.9rem;
-    color: #6c757d;
+    color: #525252; /* Darker gray for better contrast on #f8f9fa background (was #6c757d) */
     margin: 0.5rem 0 1rem 0;
 }
 
@@ -224,7 +224,7 @@
 
 .footer-text {
     font-size: 0.9rem;
-    color: #adb5bd;
+    color: #6c757d; /* Darker gray for better contrast on white background (was #adb5bd) */
 }
 
 /* ===========================================
@@ -303,7 +303,7 @@
 
 .course-description {
     font-size: 0.9rem;
-    color: #6c757d;
+    color: #525252; /* Darker gray for better contrast on #f8f9fa background (was #6c757d) */
     margin: 0 0 1.5rem 0;
     line-height: 1.5;
 }
@@ -459,7 +459,7 @@
 
 .section-description {
     text-align: center;
-    color: #6c757d;
+    color: #525252; /* Darker gray for better contrast on white background (was #6c757d) */
     margin-bottom: 2rem;
     font-size: 0.95rem;
 }
@@ -493,7 +493,7 @@
 
 .onboarding-step .step-description {
     font-size: 0.9rem;
-    color: #6c757d;
+    color: #525252; /* Darker gray for better contrast on #f8f9fa background (was #6c757d) */
     margin-bottom: 1rem;
     line-height: 1.4;
 }
@@ -632,7 +632,7 @@
 
 .login-description {
     text-align: center;
-    color: #6c757d;
+    color: #525252; /* Darker gray for better contrast on #f8f9fa background (was #6c757d) */
     font-size: 0.95rem;
     margin-bottom: 1.5rem;
 }
@@ -673,7 +673,7 @@
 }
 
 .form-group input::placeholder {
-    color: #adb5bd;
+    color: #6c757d; /* Darker gray for better contrast (was #adb5bd) */
 }
 
 .local-login-form .login-btn {

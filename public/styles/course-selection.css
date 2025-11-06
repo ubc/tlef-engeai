@@ -6,7 +6,7 @@
 
 /* Top Branding Bar */
 .top-branding {
-    background-color: #5C8A3A; /* CHBE green */
+    background-color: var(--color-chbe-green);
     padding: 1.5rem 10% 0 10% ;
     width: 100%;
 }
@@ -63,7 +63,7 @@
 
 /* Main Wrapper with Dark Background */
 .course-selection-wrapper {
-    background-color: #5C8A3A; /* CHBE green */
+    background-color: var(--color-chbe-green);
     min-height: calc(100vh - 60px);
     padding: 2rem 0;
     width: 100%;
@@ -178,7 +178,7 @@
 }
 
 .launch-btn {
-    background: #5C8A3A; /* CHBE green */
+    background: var(--color-chbe-green);
     color: white;
     border: none;
     padding: 0.75rem 2rem;
@@ -284,7 +284,7 @@
 }
 
 .retry-btn:hover {
-    background: #4a6b2f;
+    background: var(--color-chbe-green);
 }
 
 /* Responsive Design */

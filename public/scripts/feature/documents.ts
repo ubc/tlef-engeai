@@ -82,7 +82,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                         itemTitle: currentClass.frameType === 'byWeek' ? `Lecture ${i + 1}` : `Session ${i + 1}`,
                         learningObjectives: [],
                         additionalMaterials: [],
-                        completed: false,
                         createdAt: new Date(),
                         updatedAt: new Date()
                     }
@@ -192,9 +191,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const status = document.createElement('div');
         status.className = 'completion-status';
 
-        const sectionsCompleted = division.items.filter(c=> c.completed).length;
         const totalSections = division.items.length;
-        status.textContent = `${sectionsCompleted} / ${totalSections} Sections completed`;
+        status.textContent = totalSections === 1 ? '1 section' : `${totalSections} sections`;
         left.appendChild(title);
         left.appendChild(status);
 
@@ -220,6 +218,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const toggleInput = document.createElement('input');
         toggleInput.type = 'checkbox';
         toggleInput.checked = !!division.published;
+        toggleInput.setAttribute('aria-label', `Toggle publish status for ${division.title}`);
         const toggleSlider = document.createElement('span');
         toggleSlider.className = 'toggle-slider';
         toggleWrap.appendChild(toggleInput);
@@ -237,12 +236,61 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         expandIcon.id = `icon-${division.id}`;
         expandIcon.textContent = '▼';
 
-        // Wire toggle behaviour (update in-memory state and badge only)
-        toggleInput.addEventListener('change', (e) => {
+        // Wire toggle behaviour (update in-memory state, badge, and persist to backend)
+        toggleInput.addEventListener('change', async (e) => {
             const checked = (e.currentTarget as HTMLInputElement).checked;
+            const originalChecked = !checked; // Store original state for error rollback
+            
+            // Optimistically update UI
             division.published = checked;
             statusBadge.className = `content-status ${checked ? 'status-published' : 'status-draft'}`;
             statusBadge.textContent = checked ? 'Published' : 'Draft';
+            
+            // Persist to backend
+            try {
+                if (!currentClass || !currentClass.id) {
+                    throw new Error('Current class not found');
+                }
+                
+                const response = await fetch(`/api/courses/${currentClass.id}/divisions/${division.id}/published`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        published: checked
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Failed to update published status: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Update local data with backend response
+                    if (result.data) {
+                        division.published = result.data.published;
+                    }
+                    console.log(`✅ Division ${division.id} published status updated to ${checked}`);
+                } else {
+                    throw new Error(result.error || 'Failed to update published status');
+                }
+            } catch (error) {
+                // Revert UI on error
+                console.error('Error updating published status:', error);
+                toggleInput.checked = originalChecked;
+                division.published = originalChecked;
+                statusBadge.className = `content-status ${originalChecked ? 'status-published' : 'status-draft'}`;
+                statusBadge.textContent = originalChecked ? 'Published' : 'Draft';
+                
+                // Show error modal
+                const errorMessage = error instanceof Error ? error.message : 'Failed to update published status. Please try again.';
+                await showSimpleErrorModal(errorMessage, 'Update Published Status Error');
+            }
         });
 
         right.appendChild(addSessionBadge);
@@ -1449,11 +1497,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         deleteBadge.dataset.action = 'delete-section';
         deleteBadge.dataset.divisionId = divisionId;
         deleteBadge.dataset.contentId = content.id;
-        const status = document.createElement('div');
-        status.className = 'content-status status-completed';
-        status.textContent = 'Completed';
         statusRow.appendChild(deleteBadge);
-        statusRow.appendChild(status);
         header.appendChild(title);
         header.appendChild(statusRow);
 
@@ -1555,7 +1599,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const newContentTitle = `New Section ${division.items.length + 1}`;
         const minimalContentPayload = {
             title: newContentTitle,
-            completed: false,
             learningObjectives: [],
             additionalMaterials: []
         };
@@ -1604,6 +1647,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 const built = buildContentItemDOM(division.id, createdItem);
                 container.appendChild(built);
                 
+                // Render feather icons for the newly added section (including edit title button)
+                renderFeatherIcons();
+                
                 // Update header completion count
                 updateDivisionCompletion(division.id);
                 
@@ -1623,23 +1669,75 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         }
     }
 
-    function deleteSection(divisionId: string, contentId: string) {
+    async function deleteSection(divisionId: string, contentId: string) {
         const division = courseData.find(d => d.id === divisionId);
         if (!division) return;
-        if (!confirm('Delete this section?')) return;
-        division.items = division.items.filter(c => c.id !== contentId);
-        const item = document.getElementById(`content-item-${divisionId}-${contentId}`);
-        if (item && item.parentElement) item.parentElement.removeChild(item);
-        updateDivisionCompletion(divisionId);
+        
+        const content = division.items.find(c => c.id === contentId);
+        if (!content) return;
+        
+        // Show confirmation modal
+        const result = await showDeleteConfirmationModal('Section', content.title || 'Section');
+        
+        // If user cancelled, don't proceed
+        if (result.action !== 'delete') {
+            return;
+        }
+        
+        // Check if currentClass exists
+        if (!currentClass || !currentClass.id) {
+            await showErrorModal('Error', 'Current class not found. Cannot delete section.');
+            return;
+        }
+        
+        try {
+            // Call backend API to delete the section
+            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include'
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `Failed to delete section: ${response.statusText}`);
+            }
+            
+            const resultData = await response.json();
+            
+            if (resultData.success) {
+                // Remove from local state
+                division.items = division.items.filter(c => c.id !== contentId);
+                
+                // Remove from DOM
+                const item = document.getElementById(`content-item-${divisionId}-${contentId}`);
+                if (item && item.parentElement) {
+                    item.parentElement.removeChild(item);
+                }
+                
+                // Update completion status
+                updateDivisionCompletion(divisionId);
+                
+                // Show success message
+                await showSuccessModal('Success', 'Section deleted successfully.');
+            } else {
+                throw new Error(resultData.error || 'Failed to delete section');
+            }
+        } catch (error) {
+            console.error('Error deleting section:', error);
+            const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+            await showErrorModal('Error', `Failed to delete section: ${errorMessage}`);
+        }
     }
 
     function updateDivisionCompletion(divisionId: string) {
         const division = courseData.find(d => d.id === divisionId);
         if (!division) return;
-        const sectionsCompleted = division.items.filter(c => c.completed).length;
         const totalSections = division.items.length;
         const container = document.querySelector(`.week-header[data-division="${divisionId}"] .completion-status`) as HTMLElement | null;
-        if (container) container.textContent = `${sectionsCompleted} / ${totalSections} Sections completed`;
+        if (container) container.textContent = totalSections === 1 ? '1 section' : `${totalSections} sections`;
     }
 
     /**

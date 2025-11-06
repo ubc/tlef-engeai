@@ -98,7 +98,7 @@
 }
 
 .completion-status {
-    color: var(--text-secondary);
+    color: #525252; /* Darker gray for better contrast (was #6c757d) */
     font-size: 14px;
 }
 
@@ -185,9 +185,9 @@
 }
 
 .status-published {
-    background: rgba(76, 175, 80, 0.1);
-    color: var(--pinned-color);
-    border: 1px solid var(--pinned-color);
+    background: rgba(76, 175, 80, 0.2); /* Darker background for better contrast */
+    color: #3d5a26; /* Even darker green text for better contrast (was #4a6b2f) */
+    border: 1px solid #3d5a26; /* Darker border */
 }
 
 
@@ -227,7 +227,7 @@
 }
 
 .status-delete-all-divisions {
-    background: rgba(175, 76, 76, 0.1);
+    background: rgba(175, 76, 76, 0.2);
     color: var(--color-eng-red);
     border: 1px solid var(--color-eng-red);
     cursor: pointer;
@@ -235,25 +235,24 @@
 }
 
 .status-delete-all-divisions:hover {
-    background: rgba(175, 76, 76, 0.2);
+    background: rgba(175, 76, 76, 0.3);
     border-color: #c82333;
     transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(175, 76, 76, 0.3);
+    box-shadow: 0 2px 4px rgba(236, 106, 106, 0.3);
 }
 
 .status-delete-all-documents {
-    background-color: #ff6b35;
-    color: white;
-    border: 1px solid #ff6b35;
+    background-color: #ffe6df; /* Even darker orange for better contrast with white text (was #e85a2b) */
+    color: #a83b19;
+    border: 1px solid #a83b19;
     cursor: pointer;
     transition: all 0.3s ease;
 }
 
 .status-delete-all-documents:hover {
-    background-color: #ff5722;
-    border-color: #ff5722;
+    background-color: #ffd1c3; /* Even darker for hover state */
+    border-color: #a83b19;
     transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(255, 107, 53, 0.3);
 }
 
 .status-nuclear-clear {

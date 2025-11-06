@@ -18,7 +18,7 @@
 
 .add-chat-box .add-chat-btn {
     background: var(--background-2);
-    color: var(--color-chbe-green);
+    color: #3d5a26; /* Darker green for better contrast on #ECE5DD background (was var(--color-chbe-green)) */
     border: none;
     border-radius: 6px;
     cursor: pointer;
@@ -98,7 +98,7 @@
 
 .chat-list .chat-item.active {
     background-color: #e2d9cf;
-    color: rgb(103, 103, 103);
+    color: #4a4a4a; /* Darker color for better contrast (was rgb(103, 103, 103)) */
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18),
                 inset 0 -1px 0 rgba(255, 255, 255, 0.55);
 }
