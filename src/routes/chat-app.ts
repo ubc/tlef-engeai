@@ -53,6 +53,7 @@ import {
     RAG_ERROR_MESSAGE 
 } from '../functions/chat-prompts';
 import { memoryAgent } from '../memory-agent/memory-agent';
+import { isDeveloperMode, generateMockStreamingResponse } from '../functions/developer-mode';
 
 // Load environment variables
 dotenv.config();
@@ -372,6 +373,12 @@ class ChatApp {
         limit: number = 5, 
         scoreThreshold: number = 0.4
     ): Promise<RetrievedChunk[]> {
+        // Check if developer mode is enabled - skip RAG retrieval
+        if (isDeveloperMode()) {
+            console.log('[DEVELOPER-MODE] 🧪 Skipping RAG document retrieval');
+            return [];
+        }
+        
         if (!this.ragModule) {
 
             // DEBUG 18: Print the query
@@ -588,31 +595,40 @@ class ChatApp {
 
         let assistantResponse = '';
 
-        let conversationConfig: any = {
-            temperature: 0.7,
+        // Check if developer mode is enabled - use mock response instead of real LLM
+        if (isDeveloperMode()) {
+            console.log('[DEVELOPER-MODE] 🧪 Using mock streaming response instead of LLM');
+            assistantResponse = await generateMockStreamingResponse(onChunk);
+            console.log(`\n✅ Mock streaming completed. Full response length: ${assistantResponse.length}`);
+            console.log(`Full response: "${assistantResponse}"`);
+        } else {
+            // Normal LLM streaming
+            let conversationConfig: any = {
+                temperature: 0.7,
+            }
+
+            if (this.llmProvider === 'ollama') {
+                console.log('🔍 Ollama provider detected : JUJUJU');
+
+                conversationConfig.num_ctx = 32768;
+            }
+
+            const response = await conversation.stream(
+                (chunk: string) => {
+                    // console.log(`📦 Received chunk: "${chunk}"`);
+                    assistantResponse += chunk;
+                    onChunk(chunk);
+                }, 
+                conversationConfig
+            );
+            
+            console.log(`\n✅ Streaming completed. Full response length: ${assistantResponse.length}`);
+            console.log(`Full response: "${assistantResponse}"`);
         }
-
-        if (this.llmProvider === 'ollama') {
-            console.log('🔍 Ollama provider detected : JUJUJU');
-
-            conversationConfig.num_ctx = 32768;
-        }
-
-        const response = await conversation.stream(
-            (chunk: string) => {
-                // console.log(`📦 Received chunk: "${chunk}"`);
-                assistantResponse += chunk;
-                onChunk(chunk);
-            }, 
-            conversationConfig
-        );
-        
-        console.log(`\n✅ Streaming completed. Full response length: ${assistantResponse.length}`);
-        console.log(`Full response: "${assistantResponse}"`);
 
         // Add complete assistant response to conversation and history
         // Note: userId parameter is string but we'll parse it - should be numeric from session
-        const assistantMessage = this.addAssistantMessage(chatId, assistantResponse, parseInt(userId), courseName, retrievedDocumentTexts);
+        const assistantMessage = this.addAssistantMessage(chatId, assistantResponse, userId, courseName, retrievedDocumentTexts);
         
         // Analyze conversation and update struggle words using memory agent
         // Only analyzes user messages (system and user), not assistant responses
@@ -628,9 +644,8 @@ class ChatApp {
                 const systemPrompt = systemMessage?.content || '';
             
                 // Use parsed userId (should be numeric from session now)
-                const userIdNum = parseInt(userId) || 0;
                 await memoryAgent.analyzeAndUpdateStruggleWords(
-                    userIdNum,
+                    userId,
                     courseName,
                     systemPrompt,
                     userFullPrompt
@@ -665,8 +680,7 @@ class ChatApp {
         // Retrieve struggle words from memory agent
         let struggleWords: string[] = [];
         try {
-            const userIdNum = parseInt(userID) || 0;
-            struggleWords = await memoryAgent.getStruggleWords(userIdNum, courseName);
+            struggleWords = await memoryAgent.getStruggleWords(userID, courseName);
             console.log(`🧠 Retrieved ${struggleWords.length} struggle words for user ${userID}`);
         } catch (error) {
             console.error('❌ Error retrieving struggle words:', error);
@@ -751,7 +765,7 @@ class ChatApp {
         const chatMessage: ChatMessage = {
             id: messageId, // Use the generated message ID directly as string
             sender: 'bot',
-            userId: 0,
+            userId: '',
             courseName: '', // Will be set by the caller
             text: defaultMessageText,
             timestamp: Date.now()
@@ -812,7 +826,7 @@ class ChatApp {
         const chatMessage: ChatMessage = {
             id: messageId,
             sender: 'user',
-            userId: parseInt(userId) || 0,
+            userId: userId,
             courseName: '', // Will be set by the caller if needed
             text: message,
             timestamp: Date.now()
@@ -856,7 +870,7 @@ class ChatApp {
      * @param retrievedDocuments - Optional array of retrieved document texts
      * @returns ChatMessage - The created assistant message
      */
-    private addAssistantMessage(chatId: string, message: string, userId: number = 0, courseName: string = '', retrievedDocuments?: string[]): ChatMessage {
+    private addAssistantMessage(chatId: string, message: string, userId: string, courseName: string = '', retrievedDocuments?: string[]): ChatMessage {
         // Generate message ID
         const currentDate = new Date();
         const messageId = this.chatIDGenerator.messageID(message, chatId, currentDate);
@@ -976,8 +990,7 @@ class ChatApp {
             // Retrieve struggle words from memory agent
             let struggleWords: string[] = [];
             try {
-                const userIdNum = parseInt(userId) || 0;
-                struggleWords = await memoryAgent.getStruggleWords(userIdNum, courseName);
+                struggleWords = await memoryAgent.getStruggleWords(userId, courseName);
                 console.log(`🧠 Retrieved ${struggleWords.length} struggle words during chat restoration`);
             } catch (error) {
                 console.error('❌ Error retrieving struggle words during restore:', error);

@@ -54,7 +54,6 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
             
             const newCourseUserData: Partial<User> = {
                 name: globalUser.name,
-                puid: globalUser.puid,
                 userId: globalUser.userId,  // Reuse from GlobalUser
                 courseName: course.courseName,
                 courseId: course.id,

@@ -282,6 +282,26 @@ export class IDGenerator {
     }
 
     /**
+     * Generates a unique User ID for GlobalUser using the formula:
+     * puid + "-" + name + "-" + affiliation + "-global" -> uniqueIDGenerator
+     * 
+     * This generates a userId that is consistent across all courses for a user.
+     * The userId is stored in GlobalUser and then referenced in CourseUser.
+     *
+     * @param puid - Privacy-focused Unique Identifier
+     * @param name - User's full name
+     * @param affiliation - User's affiliation ('student' | 'faculty')
+     * @returns A 12-character hexadecimal string representing the unique user ID
+     */
+    globalUserID(puid: string, name: string, affiliation: string): string {
+        const hashInput = puid + "-" + name + "-" + affiliation + "-global";
+        return this.uniqueIDGenerator(hashInput);
+    }
+
+    /**
+     * @deprecated Use globalUserID instead. This method is kept for backward compatibility
+     * but CourseUser no longer contains puid, so this method cannot work correctly.
+     * 
      * Generates a unique User ID using the formula:
      * puid + "-" + name + "-" + role + "-" + activeCourseName -> uniqueIDGenerator
      *
@@ -289,7 +309,9 @@ export class IDGenerator {
      * @returns A 12-character hexadecimal string representing the unique user ID
      */
     userID(userDB: CourseUser): string {
-        const hashInput = userDB.puid + "-" + userDB.name + "-" + userDB.affiliation + "-" + userDB.courseName;
+        // This method is deprecated - CourseUser no longer has puid
+        // Use globalUserID instead for generating userId from GlobalUser data
+        const hashInput = userDB.name + "-" + userDB.affiliation + "-" + userDB.courseName;
         return this.uniqueIDGenerator(hashInput);
     }
       

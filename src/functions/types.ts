@@ -18,7 +18,7 @@
 export interface ChatMessage {
     id: string;
     sender: 'user' | 'bot';
-    userId: number;
+    userId: string;
     courseName: string;
     text: string;
     timestamp: number;
@@ -163,11 +163,11 @@ export interface AdditionalMaterial {
 /**
  * Course-specific user data structure
  * Stores user data specific to a particular course
+ * NOTE: PUID is NOT stored here for privacy - only userId is stored
  */
 export interface CourseUser {
     name: string;
-    puid: string;
-    userId: number;                // Obtained from GlobalUser
+    userId: string;                // Obtained from GlobalUser (string format)
     courseName: string;            // Full name: "APSC 099: Engineering for Kindergarten"
     courseId: string;              // Course unique ID
     userOnboarding: boolean;       // Course-specific onboarding status
@@ -187,7 +187,7 @@ export interface FlagReport {
     flagType: 'innacurate_response' | 'harassment' | 'inappropriate' | 'dishonesty' | 'interface bug' | 'other';
     reportType: string; // store the long explanation of the flag type
     chatContent: string;
-    userId: number;
+    userId: string;
     status: 'unresolved' | 'resolved';
     response?: string; // if resolved, the response from the instructor
     createdAt: Date;
@@ -198,11 +198,12 @@ export interface FlagReport {
 /**
  * Global user registry
  * Stores core user identity across all courses
+ * NOTE: This is the ONLY collection that should store PUID for privacy reasons
  */
 export interface GlobalUser {
     name: string;
-    puid: string;
-    userId: number;                // Generated using IDGenerator
+    puid: string;                   // Privacy-focused Unique Identifier - ONLY stored here
+    userId: string;                 // Generated using IDGenerator (string format)
     coursesEnrolled: string[];     // Array of course IDs
     affiliation: 'student' | 'faculty';
     status: 'active' | 'inactive';
@@ -227,7 +228,7 @@ export type User = CourseUser;
  */
 export interface MemoryAgentEntry {
     name: string;
-    userId: number;
+    userId: string;
     role: 'instructor' | 'TA' | 'Student';
     struggleWords: string[]; // Array of strings representing topics/concepts student struggles with
     createdAt: Date;

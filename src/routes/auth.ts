@@ -76,7 +76,7 @@ router.post('/saml/callback', (req: express.Request, res: express.Response, next
             globalUser = await mongoDB.createGlobalUser({
                 puid,
                 name,
-                userId: parseInt(mongoDB.idGenerator.uniqueIDGenerator(`${puid}-${name}-${affiliation}-global`).substring(0, 8), 16),
+                userId: mongoDB.idGenerator.globalUserID(puid, name, affiliation),
                 coursesEnrolled: [],
                 affiliation,
                 status: 'active'
@@ -160,7 +160,7 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                         globalUser = await mongoDB.createGlobalUser({
                             puid,
                             name,
-                            userId: parseInt(mongoDB.idGenerator.uniqueIDGenerator(`${puid}-${name}-${affiliation}-global`).substring(0, 8), 16),
+                            userId: mongoDB.idGenerator.globalUserID(puid, name, affiliation),
                             coursesEnrolled: [],
                             affiliation,
                             status: 'active'
@@ -305,8 +305,8 @@ router.get('/current-user', (req: express.Request, res: express.Response) => {
             username: (req as any).user.username,
             firstName: (req as any).user.firstName,
             lastName: (req as any).user.lastName,
-            affiliation: (req as any).user.affiliation,
-            puid: (req as any).user.puid
+            affiliation: (req as any).user.affiliation
+            // PUID removed for privacy - only userId is sent
         };
         
         const globalUser = (req.session as any).globalUser;
@@ -320,7 +320,7 @@ router.get('/current-user', (req: express.Request, res: express.Response) => {
         res.json({
             authenticated: true,
             user: userData,
-            globalUser: globalUser
+            globalUser: globalUser // Contains userId but NOT puid
         });
     } else {
         //START DEBUG LOG : DEBUG-CODE(AUTH-CURRENT-USER-FAIL)
@@ -347,9 +347,11 @@ router.get('/me', (req: express.Request, res: express.Response) => {
             username: (req as any).user.username,
             firstName: (req as any).user.firstName,
             lastName: (req as any).user.lastName,
-            affiliation: (req as any).user.affiliation,
-            puid: (req as any).user.puid
+            affiliation: (req as any).user.affiliation
+            // PUID removed for privacy - only userId is sent
         };
+        
+        const globalUser = (req.session as any).globalUser;
         
         //START DEBUG LOG : DEBUG-CODE(AUTH-ME-SUCCESS)
         console.log('[SERVER] ✅ User is authenticated');
@@ -359,7 +361,8 @@ router.get('/me', (req: express.Request, res: express.Response) => {
         
         res.json({
             authenticated: true,
-            user: userData
+            user: userData,
+            globalUser: globalUser // Contains userId but NOT puid
         });
     } else {
         //START DEBUG LOG : DEBUG-CODE(AUTH-ME-FAIL)

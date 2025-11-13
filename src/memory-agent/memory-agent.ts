@@ -21,6 +21,7 @@ import { AppConfig, loadConfig } from '../routes/config';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { MemoryAgentEntry } from '../functions/types';
 import { STRUGGLE_ANALYSIS_PROMPT } from './memory-agent-prompt';
+import { isDeveloperMode, getMockStruggleWords } from '../functions/developer-mode';
 
 
 export class MemoryAgent {
@@ -39,7 +40,7 @@ export class MemoryAgent {
      * @param courseName - The course name
      * @returns Promise<string[]> - Array of struggle words
      */
-    public async getStruggleWords(userId: number, courseName: string): Promise<string[]> {
+    public async getStruggleWords(userId: string, courseName: string): Promise<string[]> {
         try {
             const mongoDB = await EngEAI_MongoDB.getInstance();
             const entry = await mongoDB.getMemoryAgentEntry(courseName, userId);
@@ -63,7 +64,7 @@ export class MemoryAgent {
      * @param userId - The user ID
      * @param courseName - The course name
      */
-    private async ensureMemoryAgentEntryExists(userId: number, courseName: string): Promise<void> {
+    private async ensureMemoryAgentEntryExists(userId: string, courseName: string): Promise<void> {
         const mongoDB = await EngEAI_MongoDB.getInstance();
         
         // Check if entry exists
@@ -101,10 +102,10 @@ export class MemoryAgent {
      * @param courseName - The course name
      * @param newWords - New struggle words to add
      */
-    public async updateStruggleWords(userId: number, courseName: string, newWords: string[]): Promise<void> {
+    public async updateStruggleWords(userId: string, courseName: string, newWords: string[]): Promise<void> {
         try {
             // Validate userId
-            if (!userId || userId === 0) {
+            if (!userId || userId === '') {
                 console.warn(`[MEMORY-AGENT] ⚠️ Invalid userId: ${userId}, skipping struggle words update`);
                 return;
             }
@@ -155,14 +156,14 @@ export class MemoryAgent {
      * @param userMessages - Array of user messages to analyze
      */
     public async analyzeAndUpdateStruggleWords(
-        userId: number,
+        userId: string,
         courseName: string,
         systemPrompt: string,
         userMessages: string
     ): Promise<void> {
         try {
             // Validate userId
-            if (!userId || userId === 0) {
+            if (!userId || userId === '') {
                 console.warn(`[MEMORY-AGENT] ⚠️ Invalid userId: ${userId}, skipping struggle words analysis`);
                 return;
             }
@@ -172,6 +173,19 @@ export class MemoryAgent {
                 console.log(`userMessages: ${userMessages}`);
                 console.log(`[MEMORY-AGENT] ⚠️ No user messages to analyze`);
                 return;
+            }
+
+            // Check if developer mode is enabled - use mock struggle words instead of LLM analysis
+            if (isDeveloperMode()) {
+                console.log(`[MEMORY-AGENT] 🧪 Developer mode active - skipping LLM analysis, using mock struggle words`);
+                const mockStruggleWords = getMockStruggleWords();
+                console.log(`[MEMORY-AGENT] ✅ Using mock struggle words:`, mockStruggleWords);
+                
+                if (mockStruggleWords.length > 0) {
+                    // Update struggle words in database (ensures uniqueness)
+                    await this.updateStruggleWords(userId, courseName, mockStruggleWords);
+                }
+                return; // Early return - skip LLM analysis
             }
 
             // Format conversation text for analysis (only user messages)
