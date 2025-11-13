@@ -52,6 +52,7 @@ import {
     RAG_CONTEXT_SEPARATOR,
     RAG_ERROR_MESSAGE 
 } from '../functions/chat-prompts';
+import { memoryAgent } from '../memory-agent/memory-agent';
 
 // Load environment variables
 dotenv.config();
@@ -189,6 +190,7 @@ class ChatApp {
         };
         
         console.log(`📊 [CHAT-APP] 📋 STATE BEFORE CLEANUP:`, stateBeforeCleanup);
+
 
         // Remove from conversations map
         this.conversations.delete(chatId);
@@ -609,7 +611,36 @@ class ChatApp {
         console.log(`Full response: "${assistantResponse}"`);
 
         // Add complete assistant response to conversation and history
+        // Note: userId parameter is string but we'll parse it - should be numeric from session
         const assistantMessage = this.addAssistantMessage(chatId, assistantResponse, parseInt(userId), courseName, retrievedDocumentTexts);
+        
+        // Analyze conversation and update struggle words using memory agent
+        // Only analyzes user messages (system and user), not assistant responses
+        try {
+            // Get conversation to extract system prompt
+            const conversation = this.conversations.get(chatId);
+            if (!conversation) {
+                console.warn(`[CHAT-APP] ⚠️ Conversation not found for memory agent analysis, chatId: ${chatId}`);
+            } else {
+                // Get system prompt from conversation
+                const history = conversation.getHistory();
+                const systemMessage = history.find(msg => msg.role === 'system');
+                const systemPrompt = systemMessage?.content || '';
+            
+                // Use parsed userId (should be numeric from session now)
+                const userIdNum = parseInt(userId) || 0;
+                await memoryAgent.analyzeAndUpdateStruggleWords(
+                    userIdNum,
+                    courseName,
+                    systemPrompt,
+                    userFullPrompt
+                );
+                console.log(`🧠 Memory agent analysis completed for chat ${chatId}`);
+            }
+        } catch (error) {
+            console.error('❌ Error in memory agent analysis:', error);
+            // Don't throw - memory agent failure shouldn't break the chat flow
+        }
         
         // Check if this is the first user-AI exchange and update title if needed
         await this.updateChatTitleIfNeeded(chatId, assistantResponse, courseName, userId);
@@ -631,8 +662,20 @@ class ChatApp {
         this.conversations.set(chatId, this.llmModule.createConversation());
         this.chatHistory.set(chatId, []);
         
-        // Add default system message (now async to retrieve learning objectives)
-        await this.addDefaultSystemMessage(chatId, courseName);
+        // Retrieve struggle words from memory agent
+        let struggleWords: string[] = [];
+        try {
+            const userIdNum = parseInt(userID) || 0;
+            struggleWords = await memoryAgent.getStruggleWords(userIdNum, courseName);
+            console.log(`🧠 Retrieved ${struggleWords.length} struggle words for user ${userID}`);
+        } catch (error) {
+            console.error('❌ Error retrieving struggle words:', error);
+            // Continue without struggle words if retrieval fails
+        }
+        
+        // Add default system message (now async to retrieve learning objectives and include struggle words)
+        await this.addDefaultSystemMessage(chatId, courseName, struggleWords);
+        
         
         // Add default assistant message and get it
         const initAssistantMessage = this.addDefaultAssistantMessage(chatId);
@@ -660,7 +703,7 @@ class ChatApp {
     /**
      * this method directly add the Default System Message to the conversation
      */
-    private async addDefaultSystemMessage(chatId: string, courseName?: string): Promise<void> {
+    private async addDefaultSystemMessage(chatId: string, courseName?: string, struggleWords?: string[]): Promise<void> {
         const conversation = this.conversations.get(chatId);
         if (!conversation) {
             throw new Error('Conversation not found');
@@ -683,7 +726,7 @@ class ChatApp {
             }
         }
         
-        const defaultSystemMessage = getSystemPrompt(courseName, learningObjectives);
+        const defaultSystemMessage = getSystemPrompt(courseName, learningObjectives, struggleWords);
 
         try {
             conversation.addMessage('system', defaultSystemMessage);
@@ -930,8 +973,20 @@ class ChatApp {
                 // Continue without learning objectives if retrieval fails
             }
             
-            const defaultSystemMessage = getSystemPrompt(courseName, learningObjectives);
+            // Retrieve struggle words from memory agent
+            let struggleWords: string[] = [];
+            try {
+                const userIdNum = parseInt(userId) || 0;
+                struggleWords = await memoryAgent.getStruggleWords(userIdNum, courseName);
+                console.log(`🧠 Retrieved ${struggleWords.length} struggle words during chat restoration`);
+            } catch (error) {
+                console.error('❌ Error retrieving struggle words during restore:', error);
+                // Continue without struggle words if retrieval fails
+            }
+            
+            const defaultSystemMessage = getSystemPrompt(courseName, learningObjectives, struggleWords);
             conversation.addMessage('system', defaultSystemMessage);
+            
 
             // Restore all messages from MongoDB in order
             const restoredMessages: ChatMessage[] = [];
@@ -989,6 +1044,7 @@ class ChatApp {
 
             // Stop the inactivity timer for this chat
             this.stopChatTimer(chatId);
+
 
             // Remove from conversations map
             const conversationDeleted = this.conversations.delete(chatId);
@@ -1290,12 +1346,21 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
         // Get user from session
         const user = (req as any).user;
         const puid = user?.puid;
+        const globalUser = (req.session as any).globalUser;
+        
+        // Get numeric userId from globalUser (more reliable than parsing request body)
+        const numericUserId = globalUser?.userId;
+        
+        if (!numericUserId || numericUserId === 0) {
+            console.warn(`[CHAT-APP] ⚠️ Invalid userId from session: ${numericUserId}, falling back to parsing request body`);
+        }
         
         //START DEBUG LOG : DEBUG-CODE(SEND-MSG-001)
         console.log('\n💬 SENDING MESSAGE:');
         console.log('='.repeat(50));
         console.log(`Chat ID: ${chatId}`);
-        console.log(`User ID: ${userId}`);
+        console.log(`User ID (from body): ${userId}`);
+        console.log(`User ID (from session): ${numericUserId}`);
         console.log(`PUID: ${puid}`);
         console.log(`Course: ${courseName}`);
         console.log(`Message: ${message.substring(0, 100)}...`);
@@ -1303,13 +1368,13 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
         //END DEBUG LOG : DEBUG-CODE(SEND-MSG-001)
         
         // Validate input
-        if (!message || !userId) {
+        if (!message) {
             //START DEBUG LOG : DEBUG-CODE(SEND-MSG-002)
-            console.log('❌ VALIDATION FAILED: Missing required fields');
+            console.log('❌ VALIDATION FAILED: Missing message');
             //END DEBUG LOG : DEBUG-CODE(SEND-MSG-002)
             return res.status(400).json({ 
                 success: false, 
-                error: 'Message and userId are required' 
+                error: 'Message is required' 
             });
         }
 
@@ -1320,6 +1385,16 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             return res.status(401).json({ 
                 success: false, 
                 error: 'User not authenticated' 
+            });
+        }
+        
+        if (!numericUserId || numericUserId === 0) {
+            //START DEBUG LOG : DEBUG-CODE(SEND-MSG-003B)
+            console.log('❌ VALIDATION FAILED: UserId not found in session');
+            //END DEBUG LOG : DEBUG-CODE(SEND-MSG-003B)
+            return res.status(401).json({ 
+                success: false, 
+                error: 'User ID not found in session' 
             });
         }
 
@@ -1341,10 +1416,11 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             //END DEBUG LOG : DEBUG-CODE(SEND-MSG-005)
             
             // Send message through ChatApp and wait for complete response
+            // Use numericUserId from session (convert to string for sendUserMessage signature)
             const assistantMessage = await chatApp.sendUserMessage(
                 message,
                 chatId,
-                userId,
+                numericUserId.toString(),
                 courseName || 'APSC 099',
                 () => {} // Empty callback - not streaming to client
             );
@@ -1362,7 +1438,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             const userMessage: ChatMessage = {
                 id: userMessageId,
                 sender: 'user',
-                userId: parseInt(userId) || 0,
+                userId: numericUserId, // Use numeric userId from session
                 courseName: courseName,
                 text: message,
                 timestamp: Date.now()

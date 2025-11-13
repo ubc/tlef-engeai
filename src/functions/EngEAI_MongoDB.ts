@@ -1,6 +1,6 @@
 import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 import * as dotenv from 'dotenv';
-import { activeCourse, AdditionalMaterial, ContentDivision, courseItem, FlagReport, User, Chat, ChatMessage, GlobalUser, CourseUser, LearningObjective } from './types';
+import { activeCourse, AdditionalMaterial, ContentDivision, courseItem, FlagReport, User, Chat, ChatMessage, GlobalUser, CourseUser, LearningObjective, MemoryAgentEntry } from './types';
 import { IDGenerator } from './unique-id-generator';
 
 dotenv.config();
@@ -70,6 +70,10 @@ export class EngEAI_MongoDB {
             //create flags collection
             const flagsCollection = `${courseName}_flags`;
             await this.db.createCollection(flagsCollection);
+
+            //create memory-agent collection
+            const memoryAgentCollection = `${courseName}_memory-agent`;
+            await this.db.createCollection(memoryAgentCollection);
 
             // Create indexes for optimal performance
             try {
@@ -1547,5 +1551,153 @@ export class EngEAI_MongoDB {
         );
         
         return result as unknown as GlobalUser;
+    }
+
+    // ===========================================
+    // ========= MEMORY AGENT MANAGEMENT =========
+    // ===========================================
+
+    /**
+     * Get the memory-agent collection for a specific course
+     * @param courseName - The name of the course (e.g., "APSC 099")
+     * @returns Collection instance for the course memory-agent entries
+     */
+    private getMemoryAgentCollection(courseName: string): Collection {
+        const collectionName = `${courseName}_memory-agent`;
+        return this.db.collection(collectionName);
+    }
+
+    /**
+     * Create a new memory agent entry for a user
+     * @param courseName - The name of the course
+     * @param entry - The memory agent entry to create
+     */
+    public createMemoryAgentEntry = async (courseName: string, entry: MemoryAgentEntry): Promise<void> => {
+        console.log(`[MONGODB] 🧠 Creating memory agent entry for userId: ${entry.userId} in course: ${courseName}`);
+        
+        try {
+            const memoryAgentCollection = this.getMemoryAgentCollection(courseName);
+            await memoryAgentCollection.insertOne(entry as any);
+            
+            console.log(`[MONGODB] ✅ Memory agent entry created successfully for userId: ${entry.userId}`);
+        } catch (error) {
+            console.error(`[MONGODB] 🚨 Error creating memory agent entry:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get memory agent entry for a specific user
+     * @param courseName - The name of the course
+     * @param userId - The user ID
+     * @returns Memory agent entry if found, null otherwise
+     */
+    public getMemoryAgentEntry = async (courseName: string, userId: number): Promise<MemoryAgentEntry | null> => {
+        console.log(`[MONGODB] 🔍 Getting memory agent entry for userId: ${userId} in course: ${courseName}`);
+        
+        try {
+            const memoryAgentCollection = this.getMemoryAgentCollection(courseName);
+            const entry = await memoryAgentCollection.findOne({ userId: userId }) as MemoryAgentEntry | null;
+            
+            if (entry) {
+                console.log(`[MONGODB] ✅ Found memory agent entry for userId: ${userId}`);
+            } else {
+                console.log(`[MONGODB] ⚠️ Memory agent entry not found for userId: ${userId}`);
+            }
+            
+            return entry;
+        } catch (error) {
+            console.error(`[MONGODB] 🚨 Error getting memory agent entry:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Update struggle words for a user's memory agent entry
+     * @param courseName - The name of the course
+     * @param userId - The user ID
+     * @param struggleWords - Array of struggle words to update
+     */
+    public updateMemoryAgentStruggleWords = async (courseName: string, userId: number, struggleWords: string[]): Promise<void> => {
+        console.log(`[MONGODB] 🔄 Updating struggle words for userId: ${userId} in course: ${courseName}`);
+        console.log(`[MONGODB] 📝 New struggle words:`, struggleWords);
+        
+        try {
+            const memoryAgentCollection = this.getMemoryAgentCollection(courseName);
+            
+            const result = await memoryAgentCollection.findOneAndUpdate(
+                { userId: userId },
+                { 
+                    $set: { 
+                        struggleWords: struggleWords,
+                        updatedAt: new Date()
+                    }
+                },
+                { returnDocument: 'after' }
+            );
+            
+            if (!result) {
+                throw new Error(`Memory agent entry not found for userId: ${userId}`);
+            }
+            
+            console.log(`[MONGODB] ✅ Struggle words updated successfully for userId: ${userId}`);
+        } catch (error) {
+            console.error(`[MONGODB] 🚨 Error updating struggle words:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Map affiliation to role for memory agent
+     * @param affiliation - The user's affiliation ('student' or 'faculty')
+     * @returns The corresponding role ('Student', 'instructor', or 'TA')
+     */
+    private mapAffiliationToRole(affiliation: 'student' | 'faculty'): 'instructor' | 'TA' | 'Student' {
+        if (affiliation === 'student') {
+            return 'Student';
+        }
+        // For now, map 'faculty' to 'instructor'
+        // TODO: Add logic to distinguish between 'instructor' and 'TA' if needed
+        return 'instructor';
+    }
+
+    /**
+     * Initialize memory agent entry for a user when CourseUser is created
+     * @param courseName - The name of the course
+     * @param userId - The user ID
+     * @param name - The user's name
+     * @param affiliation - The user's affiliation ('student' or 'faculty')
+     */
+    public initializeMemoryAgentForUser = async (courseName: string, userId: number, name: string, affiliation: 'student' | 'faculty'): Promise<void> => {
+        console.log(`[MONGODB] 🧠 Initializing memory agent for userId: ${userId} in course: ${courseName}`);
+        
+        try {
+            // Check if entry already exists
+            const existingEntry = await this.getMemoryAgentEntry(courseName, userId);
+            
+            if (existingEntry) {
+                console.log(`[MONGODB] ⚠️ Memory agent entry already exists for userId: ${userId}, skipping initialization`);
+                return;
+            }
+            
+            // Map affiliation to role
+            const role = this.mapAffiliationToRole(affiliation);
+            
+            // Create new entry with empty struggle words
+            const newEntry: MemoryAgentEntry = {
+                name: name,
+                userId: userId,
+                role: role,
+                struggleWords: [],
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+            
+            await this.createMemoryAgentEntry(courseName, newEntry);
+            console.log(`[MONGODB] ✅ Memory agent initialized successfully for userId: ${userId} with role: ${role}`);
+        } catch (error) {
+            console.error(`[MONGODB] 🚨 Error initializing memory agent:`, error);
+            throw error;
+        }
     }
 }

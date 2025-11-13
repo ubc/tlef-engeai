@@ -555,7 +555,7 @@ async function createAPSC080(): Promise<activeCourse> {
         id: courseId,
         date: now,
         courseName: 'APSC 080: Introduction to Engineering',
-        courseSetup: true,
+        courseSetup: false,
         contentSetup: false, // Not completed onboarding
         flagSetup: false, // Not completed flag setup
         monitorSetup: false, // Not completed monitor setup

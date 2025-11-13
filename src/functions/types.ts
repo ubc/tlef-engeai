@@ -215,3 +215,21 @@ export interface GlobalUser {
  * @deprecated Use CourseUser instead
  */
 export type User = CourseUser;
+
+// ===========================================
+// ========= MEMORY AGENT DATA TYPE ==========
+// ===========================================
+
+/**
+ * Memory Agent Entry
+ * Stores struggle words/topics that a student has difficulty with
+ * Stored per-user in course-specific collections: {courseName}_memory-agent
+ */
+export interface MemoryAgentEntry {
+    name: string;
+    userId: number;
+    role: 'instructor' | 'TA' | 'Student';
+    struggleWords: string[]; // Array of strings representing topics/concepts student struggles with
+    createdAt: Date;
+    updatedAt: Date;
+}

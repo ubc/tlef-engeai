@@ -68,6 +68,20 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
             
             console.log(`[COURSE-ENTRY] CourseUser created`);
             
+            // Initialize memory agent entry for the user
+            try {
+                await mongoDB.initializeMemoryAgentForUser(
+                    course.courseName,
+                    globalUser.userId,
+                    globalUser.name,
+                    globalUser.affiliation
+                );
+                console.log(`[COURSE-ENTRY] Memory agent initialized for user`);
+            } catch (error) {
+                console.error(`[COURSE-ENTRY] ⚠️ Error initializing memory agent:`, error);
+                // Continue even if memory agent initialization fails
+            }
+            
             // 4. Add course to GlobalUser's enrolled list
             if (!globalUser.coursesEnrolled.includes(courseId)) {
                 await mongoDB.addCourseToGlobalUser(
