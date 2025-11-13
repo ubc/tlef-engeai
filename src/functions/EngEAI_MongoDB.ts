@@ -1531,6 +1531,18 @@ export class EngEAI_MongoDB {
     }
 
     /**
+     * Find a global user by userId
+     * Preferred method to avoid PUID usage in API endpoints
+     * 
+     * @param userId - The userId to look up (string format)
+     * @returns GlobalUser object if found, null otherwise
+     */
+    public findGlobalUserByUserId = async (userId: string): Promise<GlobalUser | null> => {
+        const collection = this.getGlobalUserCollection();
+        return await collection.findOne({ userId: userId }) as GlobalUser | null;
+    }
+
+    /**
      * Create a new global user
      */
     public createGlobalUser = async (userData: Partial<GlobalUser>): Promise<GlobalUser> => {

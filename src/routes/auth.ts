@@ -13,6 +13,7 @@ import { passport, samlStrategy, isSamlAvailable } from '../middleware/passport'
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { GlobalUser } from '../functions/types';
 import { IDGenerator } from '../functions/unique-id-generator';
+import { sanitizeGlobalUserForFrontend } from '../functions/user-utils';
 
 const router = express.Router();
 
@@ -87,7 +88,9 @@ router.post('/saml/callback', (req: express.Request, res: express.Response, next
             console.log('[AUTH] ✅ GlobalUser found:', globalUser.userId);
         }
         
-        // Store GlobalUser in session
+        // Store GlobalUser in session (backend only - PUID is safe here)
+        // NOTE: PUID is stored in session for backend use only
+        // When sending to frontend, we MUST sanitize using sanitizeGlobalUserForFrontend()
         (req.session as any).globalUser = globalUser;
 
         // IMPORTANT: Save session before redirect to ensure session is persisted
@@ -100,7 +103,7 @@ router.post('/saml/callback', (req: express.Request, res: express.Response, next
             // Redirect to course selection page
             console.log('[AUTH] 🚀 Session saved, redirecting to course selection');
             console.log('[AUTH] 📋 Session ID:', (req as any).sessionID);
-            res.redirect('/pages/course-selection.html');
+            res.redirect('/pages/course-selection.html'); // we will modify this after the MVP is released
         });
 
     } catch (error) {
@@ -170,7 +173,9 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                         console.log('[AUTH-LOCAL] ✅ GlobalUser found:', globalUser.userId);
                     }
 
-                    // Store GlobalUser in session
+                    // Store GlobalUser in session (backend only - PUID is safe here)
+                    // NOTE: PUID is stored in session for backend use only
+                    // When sending to frontend, we MUST sanitize using sanitizeGlobalUserForFrontend()
                     (req.session as any).globalUser = globalUser;
 
                     // CRITICAL: Save session before redirect
@@ -288,7 +293,7 @@ router.get('/logout/callback', (req: express.Request, res: express.Response) => 
 });
 
 // Get current user info (API endpoint)
-router.get('/current-user', (req: express.Request, res: express.Response) => {
+router.get('/current-user', async (req: express.Request, res: express.Response) => {
     //START DEBUG LOG : DEBUG-CODE(AUTH-CURRENT-USER)
     console.log('[SERVER] 🔍 /auth/current-user endpoint called');
     console.log('[SERVER] 📊 Request details:', {
@@ -301,27 +306,79 @@ router.get('/current-user', (req: express.Request, res: express.Response) => {
     //END DEBUG LOG : DEBUG-CODE(AUTH-CURRENT-USER)
     
     if ((req as any).isAuthenticated()) {
-        const userData = {
-            username: (req as any).user.username,
-            firstName: (req as any).user.firstName,
-            lastName: (req as any).user.lastName,
-            affiliation: (req as any).user.affiliation
-            // PUID removed for privacy - only userId is sent
-        };
-        
-        const globalUser = (req.session as any).globalUser;
-        
-        //START DEBUG LOG : DEBUG-CODE(AUTH-CURRENT-USER-SUCCESS)
-        console.log('[SERVER] ✅ User is authenticated');
-        console.log('[SERVER] 👤 Sending user data to frontend:', userData);
-        console.log('[SERVER] 🌍 GlobalUser:', globalUser);
-        //END DEBUG LOG : DEBUG-CODE(AUTH-CURRENT-USER-SUCCESS)
-        
-        res.json({
-            authenticated: true,
-            user: userData,
-            globalUser: globalUser // Contains userId but NOT puid
-        });
+        try {
+            // Get userId from session (stored during login) - frontend never has PUID
+            const sessionGlobalUser = (req.session as any).globalUser;
+            const userId = sessionGlobalUser?.userId;
+            
+            if (!userId) {
+                console.error('[SERVER] ❌ No userId found in session');
+                return res.status(500).json({ authenticated: false, error: 'User session incomplete - please log in again' });
+            }
+
+            // Query MongoDB to get GlobalUser from active-users collection using userId
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const globalUser = await mongoDB.findGlobalUserByUserId(userId);
+
+            if (!globalUser) {
+                console.error('[SERVER] ❌ GlobalUser not found in database');
+                return res.status(404).json({ authenticated: false, error: 'User not found in database' });
+            }
+
+            // Validate that session data matches the database record
+            const sessionUser = (req as any).user;
+            const validationErrors: string[] = [];
+
+            // Validate userId (required - this is what we used for lookup)
+            if (globalUser.userId !== userId) {
+                validationErrors.push(`userId mismatch: session=${userId}, database=${globalUser.userId}`);
+            }
+
+            // Validate affiliation
+            if (sessionUser.affiliation !== globalUser.affiliation) {
+                validationErrors.push(`Affiliation mismatch: session=${sessionUser.affiliation}, database=${globalUser.affiliation}`);
+            }
+
+            if (validationErrors.length > 0) {
+                console.error('[SERVER] ❌ User validation failed:', validationErrors);
+                return res.status(403).json({ 
+                    authenticated: false, 
+                    error: 'User data validation failed',
+                    details: validationErrors
+                });
+            }
+
+            // Build userData from database (source of truth)
+            const userData = {
+                name: globalUser.name, // From database
+                affiliation: globalUser.affiliation, // From database
+                userId: globalUser.userId // From database - this is the key field
+            };
+
+            //START DEBUG LOG : DEBUG-CODE(AUTH-CURRENT-USER-SUCCESS)
+            console.log('[SERVER] ✅ User is authenticated');
+            console.log('[SERVER] 👤 User data from database:', userData);
+            console.log('[SERVER] 🌍 GlobalUser from database:', {
+                userId: globalUser.userId,
+                name: globalUser.name,
+                affiliation: globalUser.affiliation,
+                status: globalUser.status,
+                coursesEnrolled: globalUser.coursesEnrolled.length
+            });
+            //END DEBUG LOG : DEBUG-CODE(AUTH-CURRENT-USER-SUCCESS)
+            
+            res.json({
+                authenticated: true,
+                user: userData,
+                globalUser: sanitizeGlobalUserForFrontend(globalUser)
+            });
+        } catch (error) {
+            console.error('[SERVER] 🚨 Error fetching user from database:', error);
+            res.status(500).json({ 
+                authenticated: false, 
+                error: 'Failed to fetch user data from database' 
+            });
+        }
     } else {
         //START DEBUG LOG : DEBUG-CODE(AUTH-CURRENT-USER-FAIL)
         console.log('[SERVER] ❌ User is not authenticated');
@@ -331,7 +388,7 @@ router.get('/current-user', (req: express.Request, res: express.Response) => {
 });
 
 // Get current user info (API endpoint) - Legacy endpoint
-router.get('/me', (req: express.Request, res: express.Response) => {
+router.get('/me', async (req: express.Request, res: express.Response) => {
     //START DEBUG LOG : DEBUG-CODE(AUTH-ME)
     console.log('[SERVER] 🔍 /auth/me endpoint called');
     console.log('[SERVER] 📊 Request details:', {
@@ -343,27 +400,79 @@ router.get('/me', (req: express.Request, res: express.Response) => {
     //END DEBUG LOG : DEBUG-CODE(AUTH-ME)
     
     if ((req as any).isAuthenticated()) {
-        const userData = {
-            username: (req as any).user.username,
-            firstName: (req as any).user.firstName,
-            lastName: (req as any).user.lastName,
-            affiliation: (req as any).user.affiliation
-            // PUID removed for privacy - only userId is sent
-        };
-        
-        const globalUser = (req.session as any).globalUser;
-        
-        //START DEBUG LOG : DEBUG-CODE(AUTH-ME-SUCCESS)
-        console.log('[SERVER] ✅ User is authenticated');
-        console.log('[SERVER] 👤 Sending user data to frontend:', userData);
-        console.log('[SERVER] 📋 Complete req.user object:', (req as any).user);
-        //END DEBUG LOG : DEBUG-CODE(AUTH-ME-SUCCESS)
-        
-        res.json({
-            authenticated: true,
-            user: userData,
-            globalUser: globalUser // Contains userId but NOT puid
-        });
+        try {
+            // Get userId from session (stored during login) - frontend never has PUID
+            const sessionGlobalUser = (req.session as any).globalUser;
+            const userId = sessionGlobalUser?.userId;
+            
+            if (!userId) {
+                console.error('[SERVER] ❌ No userId found in session');
+                return res.status(500).json({ authenticated: false, error: 'User session incomplete - please log in again' });
+            }
+
+            // Query MongoDB to get GlobalUser from active-users collection using userId
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const globalUser = await mongoDB.findGlobalUserByUserId(userId);
+
+            if (!globalUser) {
+                console.error('[SERVER] ❌ GlobalUser not found in database');
+                return res.status(404).json({ authenticated: false, error: 'User not found in database' });
+            }
+
+            // Validate that session data matches the database record
+            const sessionUser = (req as any).user;
+            const validationErrors: string[] = [];
+
+            // Validate userId (required - this is what we used for lookup)
+            if (globalUser.userId !== userId) {
+                validationErrors.push(`userId mismatch: session=${userId}, database=${globalUser.userId}`);
+            }
+
+            // Validate affiliation
+            if (sessionUser.affiliation !== globalUser.affiliation) {
+                validationErrors.push(`Affiliation mismatch: session=${sessionUser.affiliation}, database=${globalUser.affiliation}`);
+            }
+
+            if (validationErrors.length > 0) {
+                console.error('[SERVER] ❌ User validation failed:', validationErrors);
+                return res.status(403).json({ 
+                    authenticated: false, 
+                    error: 'User data validation failed',
+                    details: validationErrors
+                });
+            }
+
+            // Build userData from database (source of truth)
+            const userData = {
+                name: globalUser.name, // From database
+                affiliation: globalUser.affiliation, // From database
+                userId: globalUser.userId // From database - this is the key field
+            };
+
+            //START DEBUG LOG : DEBUG-CODE(AUTH-ME-SUCCESS)
+            console.log('[SERVER] ✅ User is authenticated');
+            console.log('[SERVER] 👤 User data from database:', userData);
+            console.log('[SERVER] 🌍 GlobalUser from database:', {
+                userId: globalUser.userId,
+                name: globalUser.name,
+                affiliation: globalUser.affiliation,
+                status: globalUser.status,
+                coursesEnrolled: globalUser.coursesEnrolled.length
+            });
+            //END DEBUG LOG : DEBUG-CODE(AUTH-ME-SUCCESS)
+            
+            res.json({
+                authenticated: true,
+                user: userData,
+                globalUser: sanitizeGlobalUserForFrontend(globalUser)
+            });
+        } catch (error) {
+            console.error('[SERVER] 🚨 Error fetching user from database:', error);
+            res.status(500).json({ 
+                authenticated: false, 
+                error: 'Failed to fetch user data from database' 
+            });
+        }
     } else {
         //START DEBUG LOG : DEBUG-CODE(AUTH-ME-FAIL)
         console.log('[SERVER] ❌ User is not authenticated');

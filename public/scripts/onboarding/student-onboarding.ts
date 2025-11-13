@@ -31,6 +31,7 @@ import { loadComponentHTML } from "../functions/api.js";
 import { User } from "../../../src/functions/types.js";
 import { showErrorModal, showHelpModal } from "../modal-overlay.js";
 import { getArtefactHandler } from "../feature/artefact.js";
+import { authService } from "../services/AuthService.js";
 
 // Declare feather for TypeScript
 declare const feather: any;
@@ -741,12 +742,18 @@ async function handleOnboardingCompletion(user: User): Promise<void> {
         // Mark onboarding as complete
         user.userOnboarding = true;
 
+        // Get userId from AuthService (PUID is not available in frontend for privacy reasons)
+        const authUser = authService.getUser();
+        if (!authUser || !authUser.userId) {
+            throw new Error('Unable to get user ID from authentication service');
+        }
+
         // Update user in database
         const response = await fetch('/api/user/update-onboarding', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                puid: user.puid,
+                userId: authUser.userId,
                 courseName: user.courseName,
                 userOnboarding: true
             })

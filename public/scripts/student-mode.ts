@@ -178,7 +178,7 @@ async function initializeChatInterface(user: any): Promise<void> {
     // Initialize the chat manager and wait for it to complete
     console.log('[STUDENT-MODE] 🚀 Initializing ChatManager with real user data...');
     console.log('[STUDENT-MODE] 📊 User context:', {
-        puid: user.puid,
+        userId: user.userId,
         courseName: user.courseName,
         affiliation: user.affiliation
     });
@@ -381,7 +381,7 @@ async function initializeChatInterface(user: any): Promise<void> {
         const profileCourse = document.getElementById('profile-course');
 
         if (profileName && authState.user) {
-            profileName.textContent = `${authState.user.firstName} ${authState.user.lastName}`;
+            profileName.textContent = authState.user.name;
         }
         
         if (profileAffiliation && authState.user) {

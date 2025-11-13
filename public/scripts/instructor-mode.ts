@@ -67,8 +67,7 @@ declare global {
 function createInstructorVirtualUser(): User {
     return {
         name: 'Instructor User',
-        puid: 'instructor-virt',
-        userId: 0, // Instructor ID
+        userId: '0', // Instructor ID
         courseId: currentClass.id || 'current-course',
         courseName: currentClass.courseName || 'APSC 099', // Fallback to default course
         userOnboarding: false, // Instructors don't need onboarding
@@ -643,9 +642,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             // Create instructor User object from auth data
             instructorUser = {
-                name: `${authState.user.firstName} ${authState.user.lastName}`,
-                puid: authState.user.puid,
-                userId: 0, // Will be fetched from database
+                name: authState.user.name,
+                userId: authState.user.userId, // Will be fetched from database
                 courseId: 'apsc-099',
                 courseName: currentClass.courseName,
                 userOnboarding: false,
@@ -659,7 +657,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             //START DEBUG LOG : DEBUG-CODE(002)
             console.log('👤 Instructor user data loaded:', {
                 name: instructorUser!.name,
-                puid: instructorUser!.puid,
+                userId: instructorUser!.userId,
                 courseName: instructorUser!.courseName
             });
             //END DEBUG LOG : DEBUG-CODE(002)
