@@ -73,3 +73,5 @@ TESTING-*
 STEP*
 
 donotchangethis.js
+prompt-test/*
+prompt-test/

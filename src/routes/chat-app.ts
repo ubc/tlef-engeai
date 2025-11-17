@@ -34,6 +34,8 @@
 import dotenv from 'dotenv';
 import express, { Request, Response } from 'express';
 import fetch from 'node-fetch';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { EmbeddingsModule, EmbeddingsConfig, EmbeddingProviderType } from 'ubc-genai-toolkit-embeddings';
 import { ConsoleLogger, LoggerInterface } from 'ubc-genai-toolkit-core';
@@ -590,6 +592,9 @@ class ChatApp {
         console.log(`  Average Tokens per Message: ~${Math.round(totalEstimatedTokens / history.length)}`);
         console.log(`==================================================\n`);
         
+        // Write conversation history to file in prompt-test folder
+        await this.writeConversationHistoryToFile(chatId, courseName, userId, history, totalCharacters, totalEstimatedTokens);
+        
         // Stream the response
         console.log(`\n🚀 Starting LLM streaming...`);
 
@@ -608,7 +613,6 @@ class ChatApp {
             }
 
             if (this.llmProvider === 'ollama') {
-                console.log('🔍 Ollama provider detected : JUJUJU');
 
                 conversationConfig.num_ctx = 32768;
             }
@@ -858,6 +862,98 @@ class ChatApp {
         }
         
         return chatMessage;
+    }
+
+    /**
+     * Write conversation history to files in prompt-test folder
+     * Creates both a formatted text file and a JSON file for analysis
+     * 
+     * @param chatId - The chat ID
+     * @param courseName - The course name
+     * @param userId - The user ID
+     * @param history - The conversation history array
+     * @param totalCharacters - Total character count
+     * @param totalEstimatedTokens - Total estimated token count
+     */
+    private async writeConversationHistoryToFile(
+        chatId: string,
+        courseName: string,
+        userId: string,
+        history: Message[],
+        totalCharacters: number,
+        totalEstimatedTokens: number
+    ): Promise<void> {
+        try {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const fileName = `conversation-history-${chatId}-${timestamp}.txt`;
+            const filePath = path.join(process.cwd(), 'prompt-test', fileName);
+            
+            // Create formatted text content
+            let fileContent = `CONVERSATION HISTORY\n`;
+            fileContent += `Chat ID: ${chatId}\n`;
+            fileContent += `Course: ${courseName}\n`;
+            fileContent += `User ID: ${userId}\n`;
+            fileContent += `Timestamp: ${new Date().toISOString()}\n`;
+            fileContent += `${'='.repeat(80)}\n\n`;
+            
+            fileContent += `TOKEN SUMMARY:\n`;
+            fileContent += `  Total Messages: ${history.length}\n`;
+            fileContent += `  Total Characters: ${totalCharacters}\n`;
+            fileContent += `  Estimated Total Tokens: ~${totalEstimatedTokens}\n`;
+            fileContent += `  Average Tokens per Message: ~${Math.round(totalEstimatedTokens / history.length)}\n`;
+            fileContent += `${'='.repeat(80)}\n\n`;
+            
+            history.forEach((msg, index) => {
+                const charCount = msg.content.length;
+                const estimatedTokens = Math.ceil(charCount / 4);
+                
+                fileContent += `MESSAGE ${index + 1}\n`;
+                fileContent += `${'-'.repeat(80)}\n`;
+                fileContent += `Role: ${msg.role}\n`;
+                fileContent += `Content Length: ${charCount} characters (~${estimatedTokens} tokens)\n`;
+                fileContent += `Timestamp: ${msg.timestamp || 'N/A'}\n`;
+                fileContent += `\nContent:\n${msg.content}\n`;
+                fileContent += `\n${'='.repeat(80)}\n\n`;
+            });
+            
+            // Ensure prompt-test directory exists
+            const promptTestDir = path.join(process.cwd(), 'prompt-test');
+            await fs.mkdir(promptTestDir, { recursive: true });
+            
+            // Write to file
+            await fs.writeFile(filePath, fileContent, 'utf-8');
+            console.log(`📄 Conversation history saved to: ${filePath}`);
+            
+            // Also save as JSON for programmatic access
+            const jsonFileName = `conversation-history-${chatId}-${timestamp}.json`;
+            const jsonFilePath = path.join(process.cwd(), 'prompt-test', jsonFileName);
+            const jsonContent = {
+                chatId,
+                courseName,
+                userId,
+                timestamp: new Date().toISOString(),
+                summary: {
+                    totalMessages: history.length,
+                    totalCharacters,
+                    estimatedTotalTokens: totalEstimatedTokens,
+                    averageTokensPerMessage: Math.round(totalEstimatedTokens / history.length)
+                },
+                messages: history.map((msg, index) => ({
+                    index: index + 1,
+                    role: msg.role,
+                    content: msg.content,
+                    contentLength: msg.content.length,
+                    estimatedTokens: Math.ceil(msg.content.length / 4),
+                    timestamp: msg.timestamp
+                }))
+            };
+            
+            await fs.writeFile(jsonFilePath, JSON.stringify(jsonContent, null, 2), 'utf-8');
+            console.log(`📄 Conversation history (JSON) saved to: ${jsonFilePath}`);
+        } catch (error) {
+            console.error(`❌ Error writing conversation history to file:`, error);
+            // Don't throw - file writing failure shouldn't break the chat flow
+        }
     }
 
     /**
