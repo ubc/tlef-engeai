@@ -7,7 +7,7 @@ import { renderFlagSetup } from "./onboarding/flag-setup.js";
 import { renderMonitorSetup } from "./onboarding/monitor-setup.js";
 import { initializeFlags } from "./feature/flags.js";
 import { initializeMonitorDashboard } from "./feature/monitor.js";
-import { ChatManager, createDefaultUser } from "./feature/chat.js";
+import { ChatManager } from "./feature/chat.js";
 import { authService } from './services/AuthService.js';
 import { showConfirmModal } from './modal-overlay.js';
 import { renderAbout } from './about/about.js';

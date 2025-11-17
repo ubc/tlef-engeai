@@ -43,9 +43,10 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
         console.log(`[COURSE-ENTRY] Course found: ${course.courseName}`);
         
         // 2. Check if CourseUser exists in {courseName}_users
-        let courseUser = await mongoDB.findStudentByPUID(
+        // Use userId instead of puid (CourseUser doesn't store puid for privacy)
+        let courseUser = await mongoDB.findStudentByUserId(
             course.courseName, 
-            globalUser.puid
+            globalUser.userId
         );
         
         // 3. If CourseUser doesn't exist, create it

@@ -30,17 +30,26 @@ router.get('/courses', asyncHandler(async (req: Request, res: Response) => {
 // POST /api/debug/reset - Reset dummy courses
 router.post('/reset', asyncHandler(async (req: Request, res: Response) => {
     try {
-        const success = await resetDummyCourses();
+        const result = await resetDummyCourses();
         
-        if (success) {
-            res.status(200).json({
-                success: true,
-                message: 'Dummy courses reset successfully'
-            });
+        if (result.success) {
+            if (result.skipped) {
+                res.status(200).json({
+                    success: true,
+                    skipped: true,
+                    message: result.message || 'Reset skipped - collection already exists with data'
+                });
+            } else {
+                res.status(200).json({
+                    success: true,
+                    skipped: false,
+                    message: result.message || 'Dummy courses reset successfully'
+                });
+            }
         } else {
             res.status(500).json({
                 success: false,
-                error: 'Failed to reset dummy courses'
+                error: result.message || 'Failed to reset dummy courses'
             });
         }
     } catch (error) {

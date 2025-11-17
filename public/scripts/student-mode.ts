@@ -1,7 +1,7 @@
 // public/scripts/student-mode.ts
 
 import { loadComponentHTML, renderFeatherIcons } from './functions/api.js';
-import { ChatManager, createUserFromAuthData } from './feature/chat.js';
+import { ChatManager } from './feature/chat.js';
 import { authService } from './services/AuthService.js';
 import { renderStudentOnboarding } from './onboarding/student-onboarding.js';
 import { initializeStudentFlagHistory } from './feature/student-flag-history.js';
@@ -389,7 +389,7 @@ async function initializeChatInterface(user: any): Promise<void> {
         }
         
         if (profileCourse && user) {
-            profileCourse.textContent = user.courseName || 'APSC 099: Engineering for Kindergarten';
+            profileCourse.textContent = user.courseName;
         }
     };
 

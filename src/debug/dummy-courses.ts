@@ -317,6 +317,32 @@ async function createAPSC080(): Promise<activeCourse> {
 }
 
 /**
+ * Checks if the active-course-list collection exists and has documents
+ */
+async function collectionExistsAndHasData(): Promise<boolean> {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const collectionName = 'active-course-list';
+        
+        // Check if collection exists
+        const collectionExists = await instance.db.listCollections({ name: collectionName }).hasNext();
+        
+        if (!collectionExists) {
+            return false;
+        }
+        
+        // Check if collection has any documents
+        const collection = instance.db.collection(collectionName);
+        const documentCount = await collection.countDocuments();
+        
+        return documentCount > 0;
+    } catch (error) {
+        console.error('Error checking if collection exists:', error);
+        return false;
+    }
+}
+
+/**
  * Checks if a course exists in the database
  */
 async function courseExists(courseId: string): Promise<boolean> {
@@ -382,6 +408,14 @@ export async function initializeDummyCourses(): Promise<void> {
     console.log('🔧 Initializing dummy courses...');
     
     try {
+        // Check if collection exists and has data
+        const collectionHasData = await collectionExistsAndHasData();
+        
+        if (collectionHasData) {
+            console.log('⚠️ Collection "active-course-list" already exists with data. Skipping initialization to preserve existing data.');
+            return;
+        }
+        
         // Create APSC 099 (Settled Course)
         const apsc099 = await createCHBE241();
         await createOrUpdateCourse(apsc099);
@@ -395,11 +429,25 @@ export async function initializeDummyCourses(): Promise<void> {
 
 /**
  * Resets dummy courses to their original state
+ * @returns Object with success status and optional message
  */
-export async function resetDummyCourses(): Promise<boolean> {
+export async function resetDummyCourses(): Promise<{ success: boolean; skipped?: boolean; message?: string }> {
     console.log('🔄 Resetting dummy courses...');
     
     try {
+        // Check if collection exists and has data
+        const collectionHasData = await collectionExistsAndHasData();
+        
+        if (collectionHasData) {
+            const message = 'Collection "active-course-list" already exists with data. Skipping reset to preserve existing data.';
+            console.log(`⚠️ ${message}`);
+            return { 
+                success: true, 
+                skipped: true, 
+                message 
+            };
+        }
+        
         // Delete existing courses
         const apsc099Id = idGenerator.uniqueIDGenerator('APSC099-Engineering-Kindergarten');
         const apsc080Id = idGenerator.uniqueIDGenerator('APSC080-Introduction-Engineering');
@@ -411,10 +459,17 @@ export async function resetDummyCourses(): Promise<boolean> {
         await initializeDummyCourses();
         
         console.log('✅ Dummy courses reset successfully');
-        return true;
+        return { 
+            success: true, 
+            skipped: false,
+            message: 'Dummy courses reset successfully'
+        };
     } catch (error) {
         console.error('❌ Error resetting dummy courses:', error);
-        return false;
+        return { 
+            success: false, 
+            message: error instanceof Error ? error.message : 'Unknown error occurred'
+        };
     }
 }
 

@@ -836,14 +836,28 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         
         try {
             // Get the topic/week instance and the content item
-            const instance_topicOrWeek = courseData.find(d => d.id === material.topicOrWeekId);
+            // Support both old 'divisionId' and new 'topicOrWeekId' for backward compatibility
+            const topicOrWeekId = material.topicOrWeekId || material.divisionId;
+            if (!topicOrWeekId) {
+                console.error('❌ Topic/Week ID not found in material:', material);
+                alert('Topic/Week ID is missing. Please try again.');
+                return;
+            }
+            
+            const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
             console.log('  - instance_topicOrWeek found:', !!instance_topicOrWeek);
             
-            const contentItem = instance_topicOrWeek?.items.find(c => c.id === material.itemId);
+            if (!instance_topicOrWeek) {
+                console.error('❌ Topic/Week instance not found for topicOrWeekId:', topicOrWeekId);
+                alert('Topic/Week instance not found. Please try again.');
+                return;
+            }
+            
+            const contentItem = instance_topicOrWeek.items.find(c => c.id === material.itemId);
             console.log('  - contentItem found:', !!contentItem);
             
             if (!contentItem) {
-                console.error('❌ Content item not found for itemId:', material.itemId);
+                console.error('❌ Content item not found for itemId:', material.itemId, 'in topic/week:', instance_topicOrWeek.title);
                 alert('Content item not found. Please try again.');
                 return;
             }
@@ -854,7 +868,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 name: material.name,
                 courseName: currentClass.courseName,
-                topicOrWeekTitle: instance_topicOrWeek?.title || 'Unknown Content',
+                topicOrWeekTitle: instance_topicOrWeek.title,
                 itemTitle: contentItem.title,
                 sourceType: material.sourceType,
                 file: material.file,
@@ -863,7 +877,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 date: new Date(),
                 // Add these three lines:
     courseId: currentClass.id,
-    topicOrWeekId: material.topicOrWeekId,
+    topicOrWeekId: topicOrWeekId,
     itemId: material.itemId
             };
 

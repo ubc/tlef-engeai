@@ -168,7 +168,7 @@ export interface AdditionalMaterial {
 export interface CourseUser {
     name: string;
     userId: string;                // Obtained from GlobalUser (string format)
-    courseName: string;            // Full name: "APSC 099: Engineering for Kindergarten"
+    courseName: string;            
     courseId: string;              // Course unique ID
     userOnboarding: boolean;       // Course-specific onboarding status
     affiliation: 'student' | 'faculty';

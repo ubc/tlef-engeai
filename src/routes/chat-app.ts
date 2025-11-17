@@ -1144,7 +1144,8 @@ router.get('/user/chats/metadata', asyncHandlerWithAuth(async (req: Request, res
         // Get user from session
         const user = (req as any).user;
         const puid = user?.puid;
-        const courseName = user?.activeCourseName || 'APSC 099: Engineering for Kindergarten';
+        const currentCourse = (req.session as any).currentCourse;
+        const courseName = currentCourse?.courseName;
         
         console.log('\n📊 LOADING USER CHAT METADATA:');
         console.log('='.repeat(50));
@@ -1160,9 +1161,31 @@ router.get('/user/chats/metadata', asyncHandlerWithAuth(async (req: Request, res
             });
         }
         
+        if (!courseName) {
+            console.log('❌ VALIDATION FAILED: Course name not found in session');
+            return res.status(400).json({ 
+                success: false, 
+                error: 'No active course selected' 
+            });
+        }
+        
         // Load chat metadata from MongoDB
         const mongoDB = await EngEAI_MongoDB.getInstance();
-        const chatMetadata = await mongoDB.getUserChatsMetadata(courseName, puid);
+        
+        // Get userId from GlobalUser using puid
+        const globalUser = await mongoDB.findGlobalUserByPUID(puid);
+        if (!globalUser || !globalUser.userId) {
+            console.log('❌ VALIDATION FAILED: GlobalUser not found for puid');
+            return res.status(401).json({ 
+                success: false, 
+                error: 'User not found' 
+            });
+        }
+        
+        const userId = globalUser.userId;
+        console.log(`[CHAT-METADATA] Converting puid to userId: ${puid} -> ${userId}`);
+        
+        const chatMetadata = await mongoDB.getUserChatsMetadata(courseName, userId);
         
         console.log(`✅ LOADED ${chatMetadata.length} CHAT METADATA FROM MONGODB`);
         console.log('='.repeat(50));
@@ -1191,7 +1214,8 @@ router.get('/user/chats', asyncHandlerWithAuth(async (req: Request, res: Respons
         // Get user from session
         const user = (req as any).user;
         const puid = user?.puid;
-        const courseName = user?.activeCourseName || 'APSC 099: Engineering for Kindergarten'; // Use full course name
+        const currentCourse = (req.session as any).currentCourse;
+        const courseName = currentCourse?.courseName;
         
         //START DEBUG LOG : DEBUG-CODE(LOAD-CHATS-001)
         console.log('\n📂 LOADING USER CHATS:');
@@ -1211,9 +1235,31 @@ router.get('/user/chats', asyncHandlerWithAuth(async (req: Request, res: Respons
             });
         }
         
+        if (!courseName) {
+            console.log('❌ VALIDATION FAILED: Course name not found in session');
+            return res.status(400).json({ 
+                success: false, 
+                error: 'No active course selected' 
+            });
+        }
+        
         // Load chats from MongoDB
         const mongoDB = await EngEAI_MongoDB.getInstance();
-        const chats = await mongoDB.getUserChats(courseName, puid);
+        
+        // Get userId from GlobalUser using puid
+        const globalUser = await mongoDB.findGlobalUserByPUID(puid);
+        if (!globalUser || !globalUser.userId) {
+            console.log('❌ VALIDATION FAILED: GlobalUser not found for puid');
+            return res.status(401).json({ 
+                success: false, 
+                error: 'User not found' 
+            });
+        }
+        
+        const userId = globalUser.userId;
+        console.log(`[LOAD-CHATS] Converting puid to userId: ${puid} -> ${userId}`);
+        
+        const chats = await mongoDB.getUserChats(courseName, userId);
         
         //START DEBUG LOG : DEBUG-CODE(LOAD-CHATS-003)
         console.log(`✅ LOADED ${chats.length} CHATS FROM MONGODB`);
@@ -1316,7 +1362,20 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
         // Save chat to MongoDB
         try {
             const mongoDB = await EngEAI_MongoDB.getInstance();
-            await mongoDB.addChatToUser(courseName, puid, newChat);
+            
+            // Get userId from GlobalUser using puid
+            const globalUser = await mongoDB.findGlobalUserByPUID(puid);
+            if (!globalUser || !globalUser.userId) {
+                throw new Error(`GlobalUser not found for puid: ${puid}`);
+            }
+            
+            const userId = globalUser.userId;
+            
+            //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-005-PRE)
+            console.log(`[NEW-CHAT] Converting puid to userId: ${puid} -> ${userId}`);
+            //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-005-PRE)
+            
+            await mongoDB.addChatToUser(courseName, userId, newChat);
             
             //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-005)
             console.log('✅ CHAT SAVED TO MONGODB SUCCESSFULLY');
@@ -1354,12 +1413,16 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
 router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { chatId } = req.params;
-        const { message, userId, courseName } = req.body;
+        const { message, userId } = req.body;
         
         // Get user from session
         const user = (req as any).user;
         const puid = user?.puid;
         const globalUser = (req.session as any).globalUser;
+        const currentCourse = (req.session as any).currentCourse;
+        
+        // Get courseName from session (source of truth), fallback to request body if needed
+        const courseName = currentCourse?.courseName || req.body.courseName;
         
         // Get numeric userId from globalUser (more reliable than parsing request body)
         const numericUserId = globalUser?.userId;
@@ -1430,11 +1493,18 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             
             // Send message through ChatApp and wait for complete response
             // Use numericUserId from session (convert to string for sendUserMessage signature)
+            if (!courseName) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'No active course selected'
+                });
+            }
+            
             const assistantMessage = await chatApp.sendUserMessage(
                 message,
                 chatId,
                 numericUserId.toString(),
-                courseName || 'APSC 099',
+                courseName,
                 () => {} // Empty callback - not streaming to client
             );
 
@@ -1460,9 +1530,17 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             // Save both messages to MongoDB
             const mongoDB = await EngEAI_MongoDB.getInstance();
             
+            // Get userId from GlobalUser using puid (needed for MongoDB operations)
+            const globalUser = await mongoDB.findGlobalUserByPUID(puid);
+            if (!globalUser || !globalUser.userId) {
+                throw new Error(`GlobalUser not found for puid: ${puid}`);
+            }
+            const userId = globalUser.userId;
+            console.log(`[SEND-MSG] Converting puid to userId: ${puid} -> ${userId}`);
+            
             try {
                 // Save user message
-                await mongoDB.addMessageToChat(courseName, puid, chatId, userMessage);
+                await mongoDB.addMessageToChat(courseName, userId, chatId, userMessage);
                 
                 //START DEBUG LOG : DEBUG-CODE(SEND-MSG-007)
                 console.log('✅ User message saved to MongoDB');
@@ -1471,7 +1549,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 //END DEBUG LOG : DEBUG-CODE(SEND-MSG-007)
                 
                 // Save assistant message
-                await mongoDB.addMessageToChat(courseName, puid, chatId, assistantMessage);
+                await mongoDB.addMessageToChat(courseName, userId, chatId, assistantMessage);
                 
                 //START DEBUG LOG : DEBUG-CODE(SEND-MSG-008)
                 console.log('✅ Assistant message saved to MongoDB');
@@ -1480,7 +1558,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 //END DEBUG LOG : DEBUG-CODE(SEND-MSG-008)
                 
                 // Check if chat title needs updating (first user-AI exchange)
-                await chatApp.updateChatTitleIfNeeded(chatId, assistantMessage.text, courseName, puid);
+                await chatApp.updateChatTitleIfNeeded(chatId, assistantMessage.text, courseName, userId);
                 
                 // Reset timer after successful message processing
                 chatApp.resetChatTimer(chatId);
@@ -1612,7 +1690,8 @@ router.post('/restore/:chatId', asyncHandlerWithAuth(async (req: Request, res: R
         // Get user from session
         const user = (req as any).user;
         const puid = user?.puid;
-        const courseName = user?.activeCourseName || 'APSC 099: Engineering for Kindergarten';
+        const currentCourse = (req.session as any).currentCourse;
+        const courseName = currentCourse?.courseName;
         
         console.log('\n🔄 CHAT RESTORATION REQUEST:');
         console.log('='.repeat(50));
@@ -1638,15 +1717,36 @@ router.post('/restore/:chatId', asyncHandlerWithAuth(async (req: Request, res: R
             });
         }
         
+        if (!courseName) {
+            console.log('❌ RESTORATION FAILED: Course name not found in session');
+            return res.status(400).json({
+                success: false,
+                error: 'No active course selected'
+            });
+        }
+        
+        // Get userId from GlobalUser using puid (needed for restore and chat retrieval)
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const globalUser = await mongoDB.findGlobalUserByPUID(puid);
+        if (!globalUser || !globalUser.userId) {
+            console.log('❌ RESTORATION FAILED: GlobalUser not found for puid');
+            return res.status(401).json({
+                success: false,
+                error: 'User not found'
+            });
+        }
+        
+        const userId = globalUser.userId;
+        console.log(`[RESTORE-CHAT] Converting puid to userId: ${puid} -> ${userId}`);
+        
         // Restore chat from database
-        const restored = await chatApp.restoreChatFromDatabase(chatId, courseName, puid);
+        const restored = await chatApp.restoreChatFromDatabase(chatId, courseName, userId);
         
         if (restored) {
             console.log(`✅ Chat ${chatId} restored successfully`);
             
             // Get the restored chat data from MongoDB to return in response
-            const mongoDB = await EngEAI_MongoDB.getInstance();
-            const userChats = await mongoDB.getUserChats(courseName, puid);
+            const userChats = await mongoDB.getUserChats(courseName, userId);
             const chatData = userChats.find(chat => chat.id === chatId);
             
             res.json({
@@ -1688,7 +1788,8 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
         // Get user from session
         const user = (req as any).user;
         const puid = user?.puid;
-        const courseName = user?.activeCourseName || 'APSC 099: Engineering for Kindergarten';
+        const currentCourse = (req.session as any).currentCourse;
+        const courseName = currentCourse?.courseName;
         
         //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-001)
         console.log('\n🗑️ SOFT DELETE CHAT REQUEST:');
@@ -1720,6 +1821,14 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
             });
         }
         
+        if (!courseName) {
+            console.log('❌ VALIDATION FAILED: Course name not found in session');
+            return res.status(400).json({
+                success: false,
+                error: 'No active course selected'
+            });
+        }
+        
         // Stop timer and remove from memory if exists (optional cleanup)
         // This doesn't block deletion if chat is not in memory (e.g., after server restart)
         if (chatApp.validateChatExists(chatId)) {
@@ -1738,7 +1847,18 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
         // This always happens, regardless of memory state
         try {
             const mongoDB = await EngEAI_MongoDB.getInstance();
-            await mongoDB.markChatAsDeleted(courseName, puid, chatId);
+            
+            // Get userId from GlobalUser using puid
+            const globalUser = await mongoDB.findGlobalUserByPUID(puid);
+            if (!globalUser || !globalUser.userId) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'User not found'
+                });
+            }
+            
+            const userId = globalUser.userId;
+            await mongoDB.markChatAsDeleted(courseName, userId, chatId);
             
             //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-006)
             console.log(`✅ Chat ${chatId} marked as deleted in database`);
