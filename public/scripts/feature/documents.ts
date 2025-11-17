@@ -20,8 +20,8 @@
  */
 
 import { 
-    ContentDivision, 
-    courseItem, 
+    TopicOrWeekInstance, 
+    TopicOrWeekItem, 
     AdditionalMaterial, 
     activeCourse 
 } from '../../../src/functions/types';
@@ -31,7 +31,7 @@ import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConf
 import { renderFeatherIcons } from '../functions/api.js';
 
 // In-memory store for the course data
-let courseData: ContentDivision[] = [];
+let courseData: TopicOrWeekInstance[] = [];
 
 // Function to initialize the documents page
 export async function initializeDocumentsPage( currentClass : activeCourse) {
@@ -56,17 +56,17 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @param currentClass the currently active class
      */
     function loadClassroomData( currentClass : activeCourse ) {
-        // If server provided divisions, trust them completely
-        if (currentClass.divisions && currentClass.divisions.length > 0) {
-            courseData = currentClass.divisions;
+        // If server provided topic/week instances, trust them completely
+        if (currentClass.topicOrWeekInstances && currentClass.topicOrWeekInstances.length > 0) {
+            courseData = currentClass.topicOrWeekInstances;
             return;
         }
 
-        // Fallback to generating defaults based on tilesNumber when no divisions are present
+        // Fallback to generating defaults based on tilesNumber when no topic/week instances are present
         const total = currentClass.tilesNumber;
         courseData = [];
         for (let i = 0; i < total; i++) {
-            const defaultDivision: ContentDivision = {
+            const defaultInstance: TopicOrWeekInstance = {
                 id: String(i + 1),
                 date: new Date(),
                 title: currentClass.frameType === 'byWeek' ? `Week ${i + 1}` : `Topic ${i + 1}`,
@@ -78,7 +78,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                         date: new Date(),
                         title: currentClass.frameType === 'byWeek' ? `Lecture ${i + 1}` : `Session ${i + 1}`,
                         courseName: currentClass.courseName,
-                        divisionTitle: currentClass.frameType === 'byWeek' ? `Week ${i + 1}` : `Topic ${i + 1}`,
+                        topicOrWeekTitle: currentClass.frameType === 'byWeek' ? `Week ${i + 1}` : `Topic ${i + 1}`,
                         itemTitle: currentClass.frameType === 'byWeek' ? `Lecture ${i + 1}` : `Session ${i + 1}`,
                         learningObjectives: [],
                         additionalMaterials: [],
@@ -89,7 +89,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
-            courseData.push(defaultDivision);
+            courseData.push(defaultInstance);
         }
     }
 
@@ -104,9 +104,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const payload = await res.json();
             if (payload && payload.success && payload.data) {
                 const course = payload.data;
-                // Update currentClass with latest divisions count and data
-                currentClass.divisions = course.divisions || currentClass.divisions;
-                currentClass.tilesNumber = (course.divisions && course.divisions.length) ? course.divisions.length : currentClass.tilesNumber;
+                // Update currentClass with latest topic/week instances count and data
+                currentClass.topicOrWeekInstances = course.topicOrWeekInstances || currentClass.topicOrWeekInstances;
+                currentClass.tilesNumber = (course.topicOrWeekInstances && course.topicOrWeekInstances.length) ? course.topicOrWeekInstances.length : currentClass.tilesNumber;
             }
         } catch (e) {
             console.warn('⚠️ Exception fetching latest course:', e);
@@ -127,9 +127,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // Clear existing children
         while (container.firstChild) container.removeChild(container.firstChild);
 
-        // Append each division element
-        courseData.forEach((division) => {
-            const el = createDivisionElement(division);
+        // Append each topic/week instance element
+        courseData.forEach((instance_topicOrWeek) => {
+            const el = createDivisionElement(instance_topicOrWeek);
             container.appendChild(el);
         });
         
@@ -138,21 +138,21 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     /**
-     * Create a division (week/topic) section element
+     * Create a topic/week instance (week/topic) section element
      * 
-     * @param division the division to create an element for
+     * @param instance_topicOrWeek the topic/week instance to create an element for
      * @returns the created element
      */
-    function createDivisionElement(division: ContentDivision): HTMLElement {
+    function createDivisionElement(instance_topicOrWeek: TopicOrWeekInstance): HTMLElement {
 
-        // create the wrapper for the division
+        // create the wrapper for the topic/week instance
         const wrapper = document.createElement('div');
-        wrapper.className = 'content-session';
+        wrapper.className = 'topic-or-week-instance';
 
-        // create the header for the division
+        // create the header for the topic/week instance
         const header = document.createElement('div');
-        header.className = 'week-header';
-        header.setAttribute('data-division', division.id);
+        header.className = 'topic-or-week-header';
+        header.setAttribute('data-topic-or-week-instance', instance_topicOrWeek.id);
         // Layout: make header a flexible row so left area can grow
         header.style.display = 'flex';
         header.style.alignItems = 'center';
@@ -160,13 +160,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         header.style.gap = '12px';
 
         // create the left side of the header
-        // display the title and the completed status of the division
+        // display the title and the completed status of the topic/week instance
         const left = document.createElement('div');
         // Left grows, prevents overflow clipping
         left.style.flex = '1 1 auto';
         left.style.minWidth = '0';
         const title = document.createElement('div');
-        title.className = 'week-title';
+        title.className = 'topic-or-week-title';
         // Title row as flex so input and buttons align and expand nicely
         title.style.display = 'flex';
         title.style.alignItems = 'center';
@@ -174,14 +174,14 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         
         // Create title text span
         const titleText = document.createElement('span');
-        titleText.textContent = division.title;
+        titleText.textContent = instance_topicOrWeek.title;
         title.appendChild(titleText);
         
         // Create rename icon (handled via delegated listener in setupEventListeners)
         const renameIcon = document.createElement('i');
         renameIcon.setAttribute('data-feather', 'edit-2');
         renameIcon.className = 'rename-icon';
-        renameIcon.setAttribute('data-division-id', division.id);
+        renameIcon.setAttribute('data-topic-or-week-instance-id', instance_topicOrWeek.id);
         renameIcon.style.cursor = 'pointer';
         renameIcon.style.marginLeft = '8px';
         renameIcon.style.width = '16px';
@@ -191,14 +191,14 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const status = document.createElement('div');
         status.className = 'completion-status';
 
-        const totalSections = division.items.length;
+        const totalSections = instance_topicOrWeek.items.length;
         status.textContent = totalSections === 1 ? '1 section' : `${totalSections} sections`;
         left.appendChild(title);
         left.appendChild(status);
 
         // create the right side of the header (add session, publish toggle/status, then expand arrow)
         const right = document.createElement('div');
-        right.className = 'week-status';
+        right.className = 'topic-or-week-status';
         // Right side does not grow
         right.style.flex = '0 0 auto';
 
@@ -209,16 +209,20 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // Prevent header toggle when clicking Add Section
         addSessionBadge.addEventListener('click', (e) => {
             e.stopPropagation();
-            addSection(division);
+            addSection(instance_topicOrWeek);
         });
 
         // Toggle switch
         const toggleWrap = document.createElement('label');
         toggleWrap.className = 'toggle-switch';
+        // Prevent accordion toggle when clicking the toggle switch
+        toggleWrap.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
         const toggleInput = document.createElement('input');
         toggleInput.type = 'checkbox';
-        toggleInput.checked = !!division.published;
-        toggleInput.setAttribute('aria-label', `Toggle publish status for ${division.title}`);
+        toggleInput.checked = !!instance_topicOrWeek.published;
+        toggleInput.setAttribute('aria-label', `Toggle publish status for ${instance_topicOrWeek.title}`);
         const toggleSlider = document.createElement('span');
         toggleSlider.className = 'toggle-slider';
         toggleWrap.appendChild(toggleInput);
@@ -226,14 +230,18 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
         // Published status
         const statusBadge = document.createElement('div');
-        const isPublished = !!division.published;
+        const isPublished = !!instance_topicOrWeek.published;
         statusBadge.className = `content-status ${isPublished ? 'status-published' : 'status-draft'}`;
         statusBadge.textContent = isPublished ? 'Published' : 'Draft';
+        // Prevent accordion toggle when clicking the status badge
+        statusBadge.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
 
         // Expand icon (arrow)
         const expandIcon = document.createElement('div');
         expandIcon.className = 'expand-icon';
-        expandIcon.id = `icon-${division.id}`;
+        expandIcon.id = `icon-${instance_topicOrWeek.id}`;
         expandIcon.textContent = '▼';
 
         // Wire toggle behaviour (update in-memory state, badge, and persist to backend)
@@ -242,7 +250,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const originalChecked = !checked; // Store original state for error rollback
             
             // Optimistically update UI
-            division.published = checked;
+            instance_topicOrWeek.published = checked;
             statusBadge.className = `content-status ${checked ? 'status-published' : 'status-draft'}`;
             statusBadge.textContent = checked ? 'Published' : 'Draft';
             
@@ -252,7 +260,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                     throw new Error('Current class not found');
                 }
                 
-                const response = await fetch(`/api/courses/${currentClass.id}/divisions/${division.id}/published`, {
+                const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${instance_topicOrWeek.id}/published`, {
                     method: 'PATCH',
                     headers: {
                         'Content-Type': 'application/json'
@@ -273,9 +281,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 if (result.success) {
                     // Update local data with backend response
                     if (result.data) {
-                        division.published = result.data.published;
+                        instance_topicOrWeek.published = result.data.published;
                     }
-                    console.log(`✅ Division ${division.id} published status updated to ${checked}`);
+                    console.log(`✅ Topic/Week instance ${instance_topicOrWeek.id} published status updated to ${checked}`);
                 } else {
                     throw new Error(result.error || 'Failed to update published status');
                 }
@@ -283,7 +291,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 // Revert UI on error
                 console.error('Error updating published status:', error);
                 toggleInput.checked = originalChecked;
-                division.published = originalChecked;
+                instance_topicOrWeek.published = originalChecked;
                 statusBadge.className = `content-status ${originalChecked ? 'status-published' : 'status-draft'}`;
                 statusBadge.textContent = originalChecked ? 'Published' : 'Draft';
                 
@@ -302,14 +310,14 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         header.appendChild(left);
         header.appendChild(right);
 
-        // create the content for the division
+        // create the content for the topic/week instance
         const contentEl = document.createElement('div');
-        contentEl.className = 'division-content';
-        contentEl.id = `content-division-${division.id}`;
+        contentEl.className = 'topic-or-week-item';
+        contentEl.id = `content-topic-or-week-instance-${instance_topicOrWeek.id}`;
 
-        //TODO: append all the content of the division.
-        division.items.forEach((content) => {
-            const item = buildContentItemDOM(division.id, content);
+        //TODO: append all the content of the topic/week instance.
+        instance_topicOrWeek.items.forEach((content) => {
+            const item = buildContentItemDOM(instance_topicOrWeek.id, content);
             contentEl.appendChild(item);
         });
 
@@ -374,29 +382,29 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const earlyRenameIcon = target.closest('.rename-icon') as HTMLElement | null;
             if (earlyRenameIcon) {
                 event.stopPropagation();
-                let divisionId = earlyRenameIcon.getAttribute('data-division-id') || '';
+                let topicOrWeekId = earlyRenameIcon.getAttribute('data-topic-or-week-instance-id') || '';
                 let itemId = earlyRenameIcon.getAttribute('data-item-id') || '';
 
                 // Derive from nearest containers if attributes are missing (feather replacement case)
                 const contentItem = earlyRenameIcon.closest('.content-item') as HTMLElement | null;
                 if (contentItem) {
-                    const ids = contentItem.id.split('-'); // content-item-divisionId-contentId
-                    if (!divisionId && ids[2]) divisionId = ids[2];
+                    const ids = contentItem.id.split('-'); // content-item-topicOrWeekId-contentId
+                    if (!topicOrWeekId && ids[2]) topicOrWeekId = ids[2];
                     if (!itemId && ids[3]) itemId = ids[3];
                 }
-                if (!divisionId) {
-                    const header = earlyRenameIcon.closest('.week-header') as HTMLElement | null;
-                    if (header) divisionId = header.getAttribute('data-division') || '';
+                if (!topicOrWeekId) {
+                    const header = earlyRenameIcon.closest('.topic-or-week-header') as HTMLElement | null;
+                    if (header) topicOrWeekId = header.getAttribute('data-topic-or-week-instance') || '';
                 }
-                if (!divisionId) return;
+                if (!topicOrWeekId) return;
 
                 if (itemId) {
-                    const division = courseData.find(d => d.id === divisionId);
-                    const item = division?.items.find(i => i.id === itemId);
-                    if (item) enterEditMode(divisionId, itemId, item.title);
+                    const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+                    const item = instance_topicOrWeek?.items.find(i => i.id === itemId);
+                    if (item) enterEditMode(topicOrWeekId, itemId, item.title);
                 } else {
-                    const division = courseData.find(d => d.id === divisionId);
-                    if (division) enterEditMode(divisionId, null, division.title);
+                    const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+                    if (instance_topicOrWeek) enterEditMode(topicOrWeekId, null, instance_topicOrWeek.title);
                 }
                 return; // Avoid header toggle
             }
@@ -408,25 +416,25 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 const contentItem = earlyOk.closest('.content-item') as HTMLElement | null;
                 if (contentItem) {
                     const ids = contentItem.id.split('-');
-                    const divisionId = ids[2] || '0';
+                    const topicOrWeekId = ids[2] || '0';
                     const itemId = ids[3] || '0';
                     const input = contentItem.querySelector('.title-edit-input') as HTMLInputElement | null;
                     if (!input) return;
                     const newTitle = input.value.trim();
                     if (!newTitle) { showErrorModal('Validation Error', 'Section name cannot be empty.'); return; }
                     if (newTitle.length > 100) { showErrorModal('Validation Error', 'Section name is too long (max 100 characters).'); return; }
-                    saveTitleChange(divisionId, itemId, newTitle);
+                    saveTitleChange(topicOrWeekId, itemId, newTitle);
                 } else {
-                    const header = earlyOk.closest('.week-header') as HTMLElement | null;
+                    const header = earlyOk.closest('.topic-or-week-header') as HTMLElement | null;
                     if (!header) return;
-                    const divisionId = header.getAttribute('data-division') || '0';
-                    const titleWrap = header.querySelector('.week-title') as HTMLElement | null;
+                    const topicOrWeekId = header.getAttribute('data-topic-or-week-instance') || '0';
+                    const titleWrap = header.querySelector('.topic-or-week-title') as HTMLElement | null;
                     const input = titleWrap?.querySelector('.title-edit-input') as HTMLInputElement | null;
                     if (!input) return;
                     const newTitle = input.value.trim();
                     if (!newTitle) { showErrorModal('Validation Error', 'Division name cannot be empty.'); return; }
                     if (newTitle.length > 100) { showErrorModal('Validation Error', 'Division name is too long (max 100 characters).'); return; }
-                    saveTitleChange(divisionId, null, newTitle);
+                    saveTitleChange(topicOrWeekId, null, newTitle);
                 }
                 return; // Avoid header toggle
             }
@@ -438,38 +446,38 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 const contentItem = earlyCancel.closest('.content-item') as HTMLElement | null;
                 if (contentItem) {
                     const ids = contentItem.id.split('-');
-                    const divisionId = ids[2] || '0';
+                    const topicOrWeekId = ids[2] || '0';
                     const itemId = ids[3] || '0';
-                    const division = courseData.find(d => d.id === divisionId);
-                    const item = division?.items.find(i => i.id === itemId);
-                    if (division && item) exitEditMode(divisionId, itemId, item.title);
+                    const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+                    const item = instance_topicOrWeek?.items.find(i => i.id === itemId);
+                    if (instance_topicOrWeek && item) exitEditMode(topicOrWeekId, itemId, item.title);
                 } else {
-                    const header = earlyCancel.closest('.week-header') as HTMLElement | null;
+                    const header = earlyCancel.closest('.topic-or-week-header') as HTMLElement | null;
                     if (!header) return;
-                    const divisionId = header.getAttribute('data-division') || '0';
-                    const division = courseData.find(d => d.id === divisionId);
-                    if (division) exitEditMode(divisionId, null, division.title);
+                    const topicOrWeekId = header.getAttribute('data-topic-or-week-instance') || '0';
+                    const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+                    if (instance_topicOrWeek) exitEditMode(topicOrWeekId, null, instance_topicOrWeek.title);
                 }
                 return; // Avoid header toggle
             }
 
-            // Division header toggles
-            const divisionHeader = target.closest('.week-header') as HTMLElement | null;
+            // Topic/Week Instance header toggles (accordion)
+            const divisionHeader = target.closest('.topic-or-week-header') as HTMLElement | null;
             if (divisionHeader) {
-                const divisionId = divisionHeader.getAttribute('data-division') || '0';
-                if (!divisionId) return;
-                console.log('🔍 DIVISION CLICKED - Division ID:', divisionId);
-                toggleDivision(divisionId);
+                const topicOrWeekId = divisionHeader.getAttribute('data-topic-or-week-instance') || '0';
+                if (!topicOrWeekId) return;
+                console.log('🔍 TOPIC/WEEK INSTANCE CLICKED - Topic/Week ID:', topicOrWeekId);
+                toggleDivision(topicOrWeekId);
                 return;
             }
 
             // Objectives accordion toggles
             const objectivesHeader = target.closest('.objectives-header') as HTMLElement | null;
             if (objectivesHeader) {
-                const divisionId = objectivesHeader.getAttribute('data-division') || '0';
+                const topicOrWeekId = objectivesHeader.getAttribute('data-topic-or-week-instance') || '0';
                 const contentId = objectivesHeader.getAttribute('data-content') || '0';
-                if (!divisionId || !contentId) return;
-                toggleObjectives(divisionId, contentId);
+                if (!topicOrWeekId || !contentId) return;
+                toggleObjectives(topicOrWeekId, contentId);
                 return;
             }
 
@@ -480,9 +488,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 //START DEBUG LOG : DEBUG-CODE(014)
                 console.log('🗑️ Delete section clicked via event delegation');
                 //END DEBUG LOG : DEBUG-CODE(014)
-                const sectionDivisionId = deleteSectionElement.dataset.divisionId || '0';
+                const sectionTopicOrWeekId = deleteSectionElement.dataset.topicOrWeekInstanceId || '0';
                 const sectionContentId = deleteSectionElement.dataset.contentId || '0';
-                deleteSection(sectionDivisionId, sectionContentId);
+                deleteSection(sectionTopicOrWeekId, sectionContentId);
                 return; // Prevent further event handling
             }
 
@@ -492,39 +500,39 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         if (renameIconEl) {
             event.stopPropagation();
             // Attributes on icon may be lost after feather replacement; derive robustly
-            let divisionId = renameIconEl.getAttribute('data-division-id') || '';
+            let topicOrWeekId = renameIconEl.getAttribute('data-topic-or-week-instance-id') || '';
             let itemId = renameIconEl.getAttribute('data-item-id') || '';
 
             // Try to derive from nearest content item if missing
             const contentItem = renameIconEl.closest('.content-item') as HTMLElement | null;
             if (contentItem) {
-                const ids = contentItem.id.split('-'); // content-item-divisionId-contentId
-                if (!divisionId && ids[2]) divisionId = ids[2];
+                    const ids = contentItem.id.split('-'); // content-item-topicOrWeekId-contentId
+                    if (!topicOrWeekId && ids[2]) topicOrWeekId = ids[2];
                 if (!itemId && ids[3]) itemId = ids[3];
             }
 
-            // For division header, derive from closest week-header
-            if (!divisionId) {
-                const header = renameIconEl.closest('.week-header') as HTMLElement | null;
+            // For topic/week instance header, derive from closest topic-or-week-header
+            if (!topicOrWeekId) {
+                const header = renameIconEl.closest('.topic-or-week-header') as HTMLElement | null;
                 if (header) {
-                    divisionId = header.getAttribute('data-division') || '';
+                    topicOrWeekId = header.getAttribute('data-topic-or-week-instance') || '';
                 }
             }
 
-            if (!divisionId) return;
+            if (!topicOrWeekId) return;
 
             if (itemId) {
                 // Item title edit
-                const division = courseData.find(d => d.id === divisionId);
-                const item = division?.items.find(i => i.id === itemId);
+                const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+                const item = instance_topicOrWeek?.items.find(i => i.id === itemId);
                 if (item) {
-                    enterEditMode(divisionId, itemId, item.title);
+                    enterEditMode(topicOrWeekId, itemId, item.title);
                 }
             } else {
-                // Division title edit
-                const division = courseData.find(d => d.id === divisionId);
-                if (division) {
-                    enterEditMode(divisionId, null, division.title);
+                // Topic/Week title edit
+                const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+                if (instance_topicOrWeek) {
+                    enterEditMode(topicOrWeekId, null, instance_topicOrWeek.title);
                 }
             }
             return; // Prevent header toggle
@@ -538,27 +546,27 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const contentItem = okButtonEl.closest('.content-item') as HTMLElement | null;
             if (contentItem) {
                 // Item OK
-                const ids = contentItem.id.split('-'); // content-item-divisionId-contentId
-                const divisionId = ids[2] || '0';
+                const ids = contentItem.id.split('-'); // content-item-topicOrWeekId-contentId
+                const topicOrWeekId = ids[2] || '0';
                 const itemId = ids[3] || '0';
                 const input = contentItem.querySelector('.title-edit-input') as HTMLInputElement | null;
                 if (!input) return;
                 const newTitle = input.value.trim();
                 if (!newTitle) { showErrorModal('Validation Error', 'Section name cannot be empty.'); return; }
                 if (newTitle.length > 100) { showErrorModal('Validation Error', 'Section name is too long (max 100 characters).'); return; }
-                saveTitleChange(divisionId, itemId, newTitle);
+                saveTitleChange(topicOrWeekId, itemId, newTitle);
             } else {
-                // Division OK
-                const header = okButtonEl.closest('.week-header') as HTMLElement | null;
+                // Topic/Week Instance OK
+                const header = okButtonEl.closest('.topic-or-week-header') as HTMLElement | null;
                 if (!header) return;
-                const divisionId = header.getAttribute('data-division') || '0';
-                const titleWrap = header.querySelector('.week-title') as HTMLElement | null;
+                const topicOrWeekId = header.getAttribute('data-topic-or-week-instance') || '0';
+                const titleWrap = header.querySelector('.topic-or-week-title') as HTMLElement | null;
                 const input = titleWrap?.querySelector('.title-edit-input') as HTMLInputElement | null;
                 if (!input) return;
                 const newTitle = input.value.trim();
-                if (!newTitle) { showErrorModal('Validation Error', 'Division name cannot be empty.'); return; }
-                if (newTitle.length > 100) { showErrorModal('Validation Error', 'Division name is too long (max 100 characters).'); return; }
-                saveTitleChange(divisionId, null, newTitle);
+                if (!newTitle) { showErrorModal('Validation Error', 'Topic/Week name cannot be empty.'); return; }
+                if (newTitle.length > 100) { showErrorModal('Validation Error', 'Topic/Week name is too long (max 100 characters).'); return; }
+                saveTitleChange(topicOrWeekId, null, newTitle);
             }
             return; // Prevent header toggle
         }
@@ -570,20 +578,20 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const contentItem = cancelButtonEl.closest('.content-item') as HTMLElement | null;
             if (contentItem) {
                 const ids = contentItem.id.split('-');
-                const divisionId = ids[2] || '0';
+                const topicOrWeekId = ids[2] || '0';
                 const itemId = ids[3] || '0';
-                const division = courseData.find(d => d.id === divisionId);
-                const item = division?.items.find(i => i.id === itemId);
-                if (division && item) {
-                    exitEditMode(divisionId, itemId, item.title);
+                const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+                const item = instance_topicOrWeek?.items.find(i => i.id === itemId);
+                if (instance_topicOrWeek && item) {
+                    exitEditMode(topicOrWeekId, itemId, item.title);
                 }
             } else {
-                const header = cancelButtonEl.closest('.week-header') as HTMLElement | null;
+                const header = cancelButtonEl.closest('.topic-or-week-header') as HTMLElement | null;
                 if (!header) return;
-                const divisionId = header.getAttribute('data-division') || '0';
-                const division = courseData.find(d => d.id === divisionId);
-                if (division) {
-                    exitEditMode(divisionId, null, division.title);
+                const topicOrWeekId = header.getAttribute('data-topic-or-week-instance') || '0';
+                const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+                if (instance_topicOrWeek) {
+                    exitEditMode(topicOrWeekId, null, instance_topicOrWeek.title);
                 }
             }
             return; // Prevent header toggle
@@ -596,29 +604,29 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 if (action) {
                     const objectiveItem = button.closest('.objective-item');
                     const headerElement = objectiveItem?.querySelector('.objective-header') as HTMLElement | null;
-                    const divisionId = button.dataset.week || headerElement?.dataset.division || '0';
+                    const topicOrWeekId = button.dataset.week || headerElement?.dataset.topicOrWeekInstance || '0';
                     const contentId = button.dataset.content || headerElement?.dataset.content || '0';
                     const objectiveIndex = parseInt(headerElement?.dataset.objective || '-1', 10);
 
                     switch (action) {
                         case 'add':
-                            addObjective(divisionId, contentId);
+                            addObjective(topicOrWeekId, contentId);
                             return; // Prevent further event handling
                         case 'edit':
                             event.stopPropagation();
-                            editObjective(divisionId, contentId, objectiveIndex);
+                            editObjective(topicOrWeekId, contentId, objectiveIndex);
                             return; // Prevent further event handling
                         case 'delete':
                             event.stopPropagation();
-                            deleteObjective(divisionId, contentId, objectiveIndex);
+                            deleteObjective(topicOrWeekId, contentId, objectiveIndex);
                             return; // Prevent further event handling
                         case 'save':
                             event.stopPropagation();
-                            saveObjective(divisionId, contentId, objectiveIndex);
+                            saveObjective(topicOrWeekId, contentId, objectiveIndex);
                             return; // Prevent further event handling
                         case 'cancel':
                             event.stopPropagation();
-                            cancelEdit(divisionId, contentId);
+                            cancelEdit(topicOrWeekId, contentId);
                             return; // Prevent further event handling
                         case 'delete-material':
                             event.stopPropagation();
@@ -627,13 +635,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                             const contentItem = button.closest('.content-item') as HTMLElement | null;
                             if (!contentItem) return;
                             
-                            const contentItemId = contentItem.id; // content-item-divisionId-contentId
-                            const ids = contentItemId.split('-'); // ['content', 'item', 'divisionId', 'contentId']
-                            const materialDivisionId = ids[2] || '0';
+                            const contentItemId = contentItem.id; // content-item-topicOrWeekId-contentId
+                            const ids = contentItemId.split('-'); // ['content', 'item', 'topicOrWeekId', 'contentId']
+                            const materialTopicOrWeekId = ids[2] || '0';
                             const materialContentId = ids[3] || '0';
                             
-                            console.log('DEBUG #13: divisionId : ', materialDivisionId, ' ; contentId : ', materialContentId, ' ; materialId : ', button.dataset.materialId);
-                            deleteAdditionalMaterial(materialDivisionId, materialContentId, button.dataset.materialId || '');
+                            console.log('DEBUG #13: topicOrWeekId : ', materialTopicOrWeekId, ' ; contentId : ', materialContentId, ' ; materialId : ', button.dataset.materialId);
+                            deleteAdditionalMaterial(materialTopicOrWeekId, materialContentId, button.dataset.materialId || '');
                             return; // Prevent further event handling
                     }
                 }
@@ -642,11 +650,11 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             // Individual objective item toggles
             const objectiveHeader = target.closest('.objective-header') as HTMLElement | null;
             if (objectiveHeader) {
-                const divisionId = objectiveHeader.getAttribute('data-division') || '0';
+                const topicOrWeekId = objectiveHeader.getAttribute('data-topic-or-week-instance') || '0';
                 const contentId = objectiveHeader.getAttribute('data-content') || '0';
                 const objectiveIndex = parseInt(objectiveHeader.getAttribute('data-objective') || '-1', 10);
-                if (!divisionId || !contentId || objectiveIndex < 0) return;
-                toggleObjectiveItem(divisionId, contentId, objectiveIndex);
+                if (!topicOrWeekId || !contentId || objectiveIndex < 0) return;
+                toggleObjectiveItem(topicOrWeekId, contentId, objectiveIndex);
                 return;
             }
             
@@ -655,23 +663,23 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             if (uploadArea) {
                 const contentItem = uploadArea.closest('.content-item') as HTMLElement | null;
                 if (!contentItem) return;
-                const ids = contentItem.id.split('-'); // content-item-divisionId-contentId
-                const divisionId = ids[2] || '0';
+                const ids = contentItem.id.split('-'); // content-item-topicOrWeekId-contentId
+                const topicOrWeekId = ids[2] || '0';
                 const contentId = ids[3] || '0';
-                if (!divisionId || !contentId) return;
-                console.log('🔍 UPLOAD AREA CLICKED - Division ID:', divisionId, 'Item ID:', contentId);
-                openUploadModal(divisionId, contentId, handleUploadMaterial);
+                if (!topicOrWeekId || !contentId) return;
+                console.log('🔍 UPLOAD AREA CLICKED - Topic/Week ID:', topicOrWeekId, 'Item ID:', contentId);
+                openUploadModal(topicOrWeekId, contentId, handleUploadMaterial);
                     return;
             }
 
             // Content item click -> log item info
             const contentItem = target.closest('.content-item') as HTMLElement | null;
             if (contentItem) {
-                const ids = contentItem.id.split('-'); // content-item-divisionId-contentId
-                const divisionId = ids[2] || '0';
+                const ids = contentItem.id.split('-'); // content-item-topicOrWeekId-contentId
+                const topicOrWeekId = ids[2] || '0';
                 const contentId = ids[3] || '0';
-                if (!divisionId || !contentId) return;
-                console.log('🔍 ITEM CLICKED - Division ID:', divisionId, 'Item ID:', contentId);
+                if (!topicOrWeekId || !contentId) return;
+                console.log('🔍 ITEM CLICKED - Topic/Week ID:', topicOrWeekId, 'Item ID:', contentId);
                 return;
             }
         };
@@ -696,10 +704,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 .filter(n => !Number.isNaN(n));
             const nextIdNum = (existingNumericIds.length ? Math.max(...existingNumericIds) : 0) + 1;
 
-            console.log('📡 Making API call to add division...');
-            console.log('🌐 API URL:', `/api/courses/${currentClass.id}/divisions`);
+            console.log('📡 Making API call to add topic/week instance...');
+            console.log('🌐 API URL:', `/api/courses/${currentClass.id}/topic-or-week-instances`);
 
-            const response = await fetch(`/api/courses/${currentClass.id}/divisions`, {
+            const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -726,15 +734,15 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 return;
             }
 
-            const createdDivision: ContentDivision = result.data;
+            const createdInstance: TopicOrWeekInstance = result.data;
 
             // Update local state
-            courseData.push(createdDivision);
+            courseData.push(createdInstance);
 
             // Append to DOM
             const container = document.getElementById('documents-container');
             if (container) {
-                const el = createDivisionElement(createdDivision);
+                const el = createDivisionElement(createdInstance);
                 container.appendChild(el);
                 // Re-render icons for newly added elements
                 renderFeatherIcons();
@@ -743,10 +751,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             // Update control panel labels (if frame type-dependent)
             updateDivisionButtonLabels(currentClass);
 
-            console.log('✅ Division added successfully');
+            console.log('✅ Topic/Week instance added successfully');
         } catch (error) {
-            console.error('❌ Exception caught while adding division:', error);
-            await showSimpleErrorModal('An error occurred while adding the division. Please try again.', 'Add Division Error');
+            console.error('❌ Exception caught while adding topic/week instance:', error);
+            await showSimpleErrorModal('An error occurred while adding the topic/week instance. Please try again.', 'Add Topic/Week Instance Error');
         }
     }
 
@@ -821,17 +829,17 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     async function handleUploadMaterial(material: any): Promise<void> {
         console.log('🔍 HANDLE UPLOAD MATERIAL CALLED - FUNCTION STARTED');
         console.log('  - material:', material);
-        console.log('  - material.divisionId:', material.divisionId);
+        console.log('  - material.topicOrWeekId:', material.topicOrWeekId);
         console.log('  - material.itemId:', material.itemId);
         console.log('  - courseData:', courseData);
         console.log('  - currentClass:', currentClass);
         
         try {
-            // Get the division and the content item
-            const division = courseData.find(d => d.id === material.divisionId);
-            console.log('  - division found:', !!division);
+            // Get the topic/week instance and the content item
+            const instance_topicOrWeek = courseData.find(d => d.id === material.topicOrWeekId);
+            console.log('  - instance_topicOrWeek found:', !!instance_topicOrWeek);
             
-            const contentItem = division?.items.find(c => c.id === material.itemId);
+            const contentItem = instance_topicOrWeek?.items.find(c => c.id === material.itemId);
             console.log('  - contentItem found:', !!contentItem);
             
             if (!contentItem) {
@@ -846,7 +854,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 name: material.name,
                 courseName: currentClass.courseName,
-                divisionTitle: division?.title || 'Unknown Content',
+                topicOrWeekTitle: instance_topicOrWeek?.title || 'Unknown Content',
                 itemTitle: contentItem.title,
                 sourceType: material.sourceType,
                 file: material.file,
@@ -855,7 +863,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 date: new Date(),
                 // Add these three lines:
     courseId: currentClass.id,
-    divisionId: material.divisionId,
+    topicOrWeekId: material.topicOrWeekId,
     itemId: material.itemId
             };
 
@@ -888,7 +896,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             contentItem.additionalMaterials.push(uploadResult.document);
 
             // Refresh the content item
-            refreshContentItem(material.divisionId, material.itemId);
+            refreshContentItem(material.topicOrWeekId, material.itemId);
 
             console.log('Material uploaded successfully:', uploadResult.document);
             console.log(`Generated ${uploadResult.chunksGenerated} chunks in Qdrant`);
@@ -901,14 +909,14 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     /**
-     * Toggle the expansion state of a division
+     * Toggle the expansion state of a topic/week instance
      * 
-     * @param divisionId the id of the division to toggle
+     * @param topicOrWeekId the id of the topic/week instance to toggle
      * @returns null
      */
-    function toggleDivision(divisionId: string) {
-        const content = document.getElementById(`content-division-${divisionId}`);
-        const icon = document.getElementById(`icon-${divisionId}`);
+    function toggleDivision(topicOrWeekId: string) {
+        const content = document.getElementById(`content-topic-or-week-instance-${topicOrWeekId}`);
+        const icon = document.getElementById(`icon-${topicOrWeekId}`);
         if (!content || !icon) return;
             content.classList.toggle('expanded');
             icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
@@ -917,13 +925,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     /**
      * Toggle the expansion state of the objectives for a content item
      * 
-     * @param divisionId the id of the division
+     * @param topicOrWeekId the id of the topic/week instance
      * @param contentId the id of the content item
      * @returns null
      */
-    function toggleObjectives(divisionId: string, contentId: string) {
-        const content = document.getElementById(`objectives-${divisionId}-${contentId}`);
-        const icon = document.getElementById(`obj-icon-${divisionId}-${contentId}`);
+    function toggleObjectives(topicOrWeekId: string, contentId: string) {
+        const content = document.getElementById(`objectives-${topicOrWeekId}-${contentId}`);
+        const icon = document.getElementById(`obj-icon-${topicOrWeekId}-${contentId}`);
         if (!content || !icon) return;
             content.classList.toggle('expanded');
             icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
@@ -932,14 +940,14 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     /**
      * Toggle the expansion state of an objective item
      * 
-     * @param divisionId the id of the division
+     * @param topicOrWeekId the id of the topic/week instance
      * @param contentId the id of the content item
      * @param index the index of the objective item
      * @returns null
      */
-    function toggleObjectiveItem(divisionId: string, contentId: string, index: number) {
-        const content = document.getElementById(`objective-content-${divisionId}-${contentId}-${index}`);
-        const icon = document.getElementById(`item-icon-${divisionId}-${contentId}-${index}`);
+    function toggleObjectiveItem(topicOrWeekId: string, contentId: string, index: number) {
+        const content = document.getElementById(`objective-content-${topicOrWeekId}-${contentId}-${index}`);
+        const icon = document.getElementById(`item-icon-${topicOrWeekId}-${contentId}-${index}`);
         if (!content || !icon) return;
             content.classList.toggle('expanded');
             icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
@@ -955,9 +963,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
         try {
             // Load learning objectives for each division and content item
-            for (const division of courseData) {
-                for (const contentItem of division.items) {
-                    await loadLearningObjectives(division.id, contentItem.id);
+            for (const instance_topicOrWeek of courseData) {
+                for (const contentItem of instance_topicOrWeek.items) {
+                    await loadLearningObjectives(instance_topicOrWeek.id, contentItem.id);
                 }
             }
         } catch (error) {
@@ -968,29 +976,29 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     /**
      * Load learning objectives from database for a specific content item
      * 
-     * @param divisionId the id of the division
+     * @param topicOrWeekId the id of the topic/week instance
      * @param contentId the id of the content item
      * @returns Promise<void>
      */
-    async function loadLearningObjectives(divisionId: string, contentId: string): Promise<void> {
+    async function loadLearningObjectives(topicOrWeekId: string, contentId: string): Promise<void> {
         if (!currentClass) return;
 
         try {
-            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives`, {
+            const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives`, {
                 method: 'GET'
             });
             const result = await response.json();
             
             if (result.success) {
-                // Find the division and content item
-                const division = courseData.find(d => d.id === divisionId);
-                const content = division?.items.find(c => c.id === contentId);
+                // Find the topic/week instance and content item
+                const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+                const content = instance_topicOrWeek?.items.find(c => c.id === contentId);
                 
                 if (content) {
                     // Update the learning objectives in local data
                     content.learningObjectives = result.data || [];
                     // Refresh the UI
-                    refreshContentItem(divisionId, contentId);
+                    refreshContentItem(topicOrWeekId, contentId);
                 }
             } else {
                 console.error('Failed to load learning objectives:', result.error);
@@ -1005,22 +1013,22 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     /**
      * Add a new objective to a content item
      * 
-     * @param divisionId the id of the division
+     * @param topicOrWeekId the id of the topic/week instance
      * @param contentId the id of the content item
      * @returns null
      */
-    async function addObjective(divisionId: string, contentId: string) {
+    async function addObjective(topicOrWeekId: string, contentId: string) {
         //START DEBUG LOG : DEBUG-CODE(015)
-        console.log('🎯 addObjective called with divisionId:', divisionId, 'contentId:', contentId);
+        console.log('🎯 addObjective called with topicOrWeekId:', topicOrWeekId, 'contentId:', contentId);
         console.log('🔍 Current class available:', !!currentClass);
         console.log('🔍 Current class ID:', currentClass?.id);
         console.log('🔍 Current class name:', currentClass?.courseName);
         //END DEBUG LOG : DEBUG-CODE(015)
         
-        const objectiveInput = document.getElementById(`new-title-${divisionId}-${contentId}`) as HTMLInputElement | null;
+        const objectiveInput = document.getElementById(`new-title-${topicOrWeekId}-${contentId}`) as HTMLInputElement | null;
         if (!objectiveInput) {
             //START DEBUG LOG : DEBUG-CODE(016)
-            console.error('❌ Objective input element not found for divisionId:', divisionId, 'contentId:', contentId);
+            console.error('❌ Objective input element not found for topicOrWeekId:', topicOrWeekId, 'contentId:', contentId);
             //END DEBUG LOG : DEBUG-CODE(016)
             return;
         }
@@ -1036,9 +1044,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         console.log('📝 Learning objective text:', learningObjective);
         //END DEBUG LOG : DEBUG-CODE(017)
 
-        // find the division and the content item
-        const division = courseData.find(d => d.id === divisionId);
-        const content = division?.items.find(c => c.id === contentId);
+        // find the topic/week instance and the content item
+        const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+        const content = instance_topicOrWeek?.items.find(c => c.id === contentId);
         if (!content || !currentClass) {
             //START DEBUG LOG : DEBUG-CODE(018)
             console.error('❌ Content or currentClass not found - content:', !!content, 'currentClass:', !!currentClass);
@@ -1054,7 +1062,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             LearningObjective: learningObjective,
             courseName: currentClass.courseName,
-            divisionTitle: division?.title || '',
+            topicOrWeekTitle: instance_topicOrWeek?.title || '',
             itemTitle: content.title,
             createdAt: new Date(),
             updatedAt: new Date()
@@ -1063,12 +1071,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         try {
             //START DEBUG LOG : DEBUG-CODE(020)
             console.log('📡 Making API call to add learning objective...');
-            console.log('🌐 API URL:', `/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives`);
+            console.log('🌐 API URL:', `/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives`);
             console.log('📦 Request body:', { learningObjective: newObjective });
             //END DEBUG LOG : DEBUG-CODE(020)
             
             // Call backend API to add learning objective
-            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives`, {
+            const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1096,7 +1104,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 // Clear the input field
                 objectiveInput.value = '';
                 // Reload learning objectives from database to ensure consistency
-                await loadLearningObjectives(divisionId, contentId);
+                await loadLearningObjectives(topicOrWeekId, contentId);
                 console.log('Learning objective added successfully');
             } else {
                 //START DEBUG LOG : DEBUG-CODE(024)
@@ -1116,22 +1124,22 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     /**
      * Edit an learning objective
      * 
-     * @param divisionId the id of the division
+     * @param topicOrWeekId the id of the topic/week instance
      * @param contentId the id of the content item
      * @param index the index of the objective item
      * @returns null
      */
-    function editObjective(divisionId: string, contentId: string, index: number) {
+    function editObjective(topicOrWeekId: string, contentId: string, index: number) {
         //START DEBUG LOG : DEBUG-CODE(036)
-        console.log('✏️ editObjective called with divisionId:', divisionId, 'contentId:', contentId, 'index:', index);
+        console.log('✏️ editObjective called with topicOrWeekId:', topicOrWeekId, 'contentId:', contentId, 'index:', index);
         //END DEBUG LOG : DEBUG-CODE(036)
         
-        const objective = courseData.find(d => d.id === divisionId)
+        const objective = courseData.find(d => d.id === topicOrWeekId)
                                     ?.items.find(c => c.id === contentId)
                                     ?.learningObjectives[index];
         if (!objective) {
             //START DEBUG LOG : DEBUG-CODE(037)
-            console.error('❌ Objective not found for edit - divisionId:', divisionId, 'contentId:', contentId, 'index:', index);
+            console.error('❌ Objective not found for edit - topicOrWeekId:', topicOrWeekId, 'contentId:', contentId, 'index:', index);
             //END DEBUG LOG : DEBUG-CODE(037)
             return;
         }
@@ -1140,11 +1148,11 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         console.log('✅ Found objective to edit:', objective.LearningObjective);
         //END DEBUG LOG : DEBUG-CODE(038)
 
-        let contentDiv = document.getElementById(`objective-content-${divisionId}-${contentId}-${index}`) as HTMLElement | null;
+        let contentDiv = document.getElementById(`objective-content-${topicOrWeekId}-${contentId}-${index}`) as HTMLElement | null;
         if (!contentDiv) {
             // If the target container doesn't exist (e.g., due to markup changes), create it on demand
             const headerEl = document.querySelector(
-                `.objective-header[data-division="${divisionId}"][data-content="${contentId}"][data-objective="${index}"]`
+                `.objective-header[data-topic-or-week-instance="${topicOrWeekId}"][data-content="${contentId}"][data-objective="${index}"]`
             ) as HTMLElement | null;
             const itemEl = headerEl?.parentElement as HTMLElement | null; // .objective-item
             if (!itemEl) {
@@ -1153,7 +1161,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             }
             contentDiv = document.createElement('div');
             contentDiv.className = 'objective-content';
-            contentDiv.id = `objective-content-${divisionId}-${contentId}-${index}`;
+            contentDiv.id = `objective-content-${topicOrWeekId}-${contentId}-${index}`;
             itemEl.appendChild(contentDiv);
         }
 
@@ -1170,7 +1178,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const objectiveInput = document.createElement('input');
         objectiveInput.type = 'text';
         objectiveInput.className = 'edit-input';
-        objectiveInput.id = `edit-title-${divisionId}-${contentId}-${index}`;
+        objectiveInput.id = `edit-title-${topicOrWeekId}-${contentId}-${index}`;
         objectiveInput.value = objective.LearningObjective;
 
         const actions = document.createElement('div');
@@ -1178,14 +1186,14 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const saveBtn = document.createElement('button');
         saveBtn.className = 'save-btn';
         saveBtn.dataset.action = 'save';
-        saveBtn.dataset.week = String(divisionId);
+        saveBtn.dataset.week = String(topicOrWeekId);
         saveBtn.dataset.content = String(contentId);
         saveBtn.dataset.objective = String(index);
         saveBtn.textContent = 'Save';
         const cancelBtn = document.createElement('button');
         cancelBtn.className = 'cancel-btn';
         cancelBtn.dataset.action = 'cancel';
-        cancelBtn.dataset.week = String(divisionId);
+        cancelBtn.dataset.week = String(topicOrWeekId);
         cancelBtn.dataset.content = String(contentId);
         cancelBtn.textContent = 'Cancel';
         actions.appendChild(saveBtn);
@@ -1207,17 +1215,17 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     /**
      * Save the edited objective
      * 
-     * @param divisionId the id of the division
+     * @param topicOrWeekId the id of the topic/week instance
      * @param contentId the id of the content item
      * @param index the index of the objective item
      * @returns null
      */
-    async function saveObjective(divisionId: string, contentId: string, index: number) {
+    async function saveObjective(topicOrWeekId: string, contentId: string, index: number) {
         //START DEBUG LOG : DEBUG-CODE(026)
-        console.log('💾 saveObjective called with divisionId:', divisionId, 'contentId:', contentId, 'index:', index);
+        console.log('💾 saveObjective called with topicOrWeekId:', topicOrWeekId, 'contentId:', contentId, 'index:', index);
         //END DEBUG LOG : DEBUG-CODE(026)
         
-        const learningObjective = (document.getElementById(`edit-title-${divisionId}-${contentId}-${index}`) as HTMLInputElement).value.trim();
+        const learningObjective = (document.getElementById(`edit-title-${topicOrWeekId}-${contentId}-${index}`) as HTMLInputElement).value.trim();
 
         if (!learningObjective) {
             alert('Learning objective cannot be empty.');
@@ -1228,7 +1236,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         console.log('📝 Updated learning objective text:', learningObjective);
         //END DEBUG LOG : DEBUG-CODE(027)
 
-        const objective = courseData.find(d => d.id === divisionId)
+        const objective = courseData.find(d => d.id === topicOrWeekId)
                                     ?.items.find(c => c.id === contentId)
                                     ?.learningObjectives[index];
         if (!objective || !currentClass) {
@@ -1249,12 +1257,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         try {
             //START DEBUG LOG : DEBUG-CODE(030)
             console.log('📡 Making API call to update learning objective...');
-            console.log('🌐 API URL:', `/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives/${objective.id}`);
+            console.log('🌐 API URL:', `/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objective.id}`);
             console.log('📦 Request body:', { updateData: updateData });
             //END DEBUG LOG : DEBUG-CODE(030)
             
             // Call backend API to update learning objective
-            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives/${objective.id}`, {
+            const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objective.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1280,7 +1288,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 //END DEBUG LOG : DEBUG-CODE(033)
                 
                 // Reload learning objectives from database to ensure consistency
-                await loadLearningObjectives(divisionId, contentId);
+                await loadLearningObjectives(topicOrWeekId, contentId);
                 console.log('Learning objective updated successfully');
             } else {
                 //START DEBUG LOG : DEBUG-CODE(034)
@@ -1300,30 +1308,30 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     /**
      * Cancel the edit of an objective
      * 
-     * @param divisionId the id of the division
+     * @param topicOrWeekId the id of the topic/week instance
      * @param contentId the id of the content item
      * @returns null
      */
-    function cancelEdit(divisionId: string, contentId: string) {
-        refreshContentItem(divisionId, contentId);
+    function cancelEdit(topicOrWeekId: string, contentId: string) {
+        refreshContentItem(topicOrWeekId, contentId);
     }
 
-    async function deleteObjective(divisionId: string, contentId: string, index: number) {
+    async function deleteObjective(topicOrWeekId: string, contentId: string, index: number) {
         //START DEBUG LOG : DEBUG-CODE(042)
-        console.log('🗑️ deleteObjective called with divisionId:', divisionId, 'contentId:', contentId, 'index:', index);
+        console.log('🗑️ deleteObjective called with topicOrWeekId:', topicOrWeekId, 'contentId:', contentId, 'index:', index);
         console.log('🔍 Current class available:', !!currentClass);
         console.log('🔍 Current class ID:', currentClass?.id);
         console.log('🔍 Current class name:', currentClass?.courseName);
         //END DEBUG LOG : DEBUG-CODE(042)
         
         // Get the objective to show its name in confirmation
-        const content = courseData.find(d => d.id === divisionId)
+        const content = courseData.find(d => d.id === topicOrWeekId)
                                         ?.items.find(c => c.id === contentId);
         const objective = content?.learningObjectives[index];
         
         if (!objective) {
             //START DEBUG LOG : DEBUG-CODE(043)
-            console.error('❌ Objective not found for deletion - divisionId:', divisionId, 'contentId:', contentId, 'index:', index);
+            console.error('❌ Objective not found for deletion - topicOrWeekId:', topicOrWeekId, 'contentId:', contentId, 'index:', index);
             //END DEBUG LOG : DEBUG-CODE(043)
             return;
         }
@@ -1347,7 +1355,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             console.log('✅ User confirmed deletion, proceeding with API call...');
             //END DEBUG LOG : DEBUG-CODE(046)
             
-            const content = courseData.find(d => d.id === divisionId)
+            const content = courseData.find(d => d.id === topicOrWeekId)
                                         ?.items.find(c => c.id === contentId);
             const objective = content?.learningObjectives[index];
             
@@ -1361,11 +1369,11 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             try {
                 //START DEBUG LOG : DEBUG-CODE(048)
                 console.log('📡 Making API call to delete learning objective...');
-                console.log('🌐 API URL:', `/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives/${objective.id}`);
+                console.log('🌐 API URL:', `/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objective.id}`);
                 //END DEBUG LOG : DEBUG-CODE(048)
                 
                 // Call backend API to delete learning objective
-                const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/objectives/${objective.id}`, {
+                const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objective.id}`, {
                     method: 'DELETE',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1388,7 +1396,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                     //END DEBUG LOG : DEBUG-CODE(051)
                     
                     // Reload learning objectives from database to ensure consistency
-                    await loadLearningObjectives(divisionId, contentId);
+                    await loadLearningObjectives(topicOrWeekId, contentId);
                     console.log('Learning objective deleted successfully');
                 } else {
                     //START DEBUG LOG : DEBUG-CODE(052)
@@ -1409,30 +1417,30 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     /**
      * Refresh a single content item instead of the whole page
      * 
-     * @param divisionId the id of the division
+     * @param topicOrWeekId the id of the topic/week instance
      * @param contentId the id of the content item
      * @returns null
      */
-    function refreshContentItem(divisionId: string, contentId: string) {
-        const division = courseData.find(d => d.id === divisionId);
-        const content = division?.items.find(c => c.id === contentId);
-        const itemContainer = document.getElementById(`content-item-${divisionId}-${contentId}`);
-        if (!division || !content || !itemContainer) return;
+    function refreshContentItem(topicOrWeekId: string, contentId: string) {
+        const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+        const content = instance_topicOrWeek?.items.find(c => c.id === contentId);
+        const itemContainer = document.getElementById(`content-item-${topicOrWeekId}-${contentId}`);
+        if (!instance_topicOrWeek || !content || !itemContainer) return;
         
         // Preserve accordion state before rebuilding
-        const objectivesContent = document.getElementById(`objectives-${divisionId}-${contentId}`);
+        const objectivesContent = document.getElementById(`objectives-${topicOrWeekId}-${contentId}`);
         const wasExpanded = objectivesContent?.classList.contains('expanded') || false;
         
         // Rebuild via DOM and replace
-        const built = buildContentItemDOM(divisionId, content);
+        const built = buildContentItemDOM(topicOrWeekId, content);
         const parent = itemContainer.parentElement;
         if (!parent) return;
         parent.replaceChild(built, itemContainer);
         
         // Restore accordion state after rebuilding
         if (wasExpanded) {
-            const newObjectivesContent = document.getElementById(`objectives-${divisionId}-${contentId}`);
-            const newIcon = document.getElementById(`obj-icon-${divisionId}-${contentId}`);
+            const newObjectivesContent = document.getElementById(`objectives-${topicOrWeekId}-${contentId}`);
+            const newIcon = document.getElementById(`obj-icon-${topicOrWeekId}-${contentId}`);
             if (newObjectivesContent && newIcon) {
                 newObjectivesContent.classList.add('expanded');
                 newIcon.style.transform = 'rotate(180deg)';
@@ -1443,15 +1451,15 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     /**
      * Build a content item DOM node (helper for refresh)
      * 
-     * @param divisionId the id of the division
+     * @param topicOrWeekId the id of the topic/week instance
      * @param content the content item to build the DOM for
      * @returns the created element
      */
-    function buildContentItemDOM(divisionId: string, content: courseItem): HTMLElement {
+    function buildContentItemDOM(topicOrWeekId: string, content: TopicOrWeekItem): HTMLElement {
         // Reuse the createContentItemElement pattern used at page render time
         const item = document.createElement('div');
         item.className = 'content-item';
-        item.id = `content-item-${divisionId}-${content.id}`;
+        item.id = `content-item-${topicOrWeekId}-${content.id}`;
         // Header
         const header = document.createElement('div');
         header.className = 'content-header';
@@ -1479,7 +1487,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const renameIcon = document.createElement('i');
         renameIcon.setAttribute('data-feather', 'edit-2');
         renameIcon.className = 'rename-icon';
-        renameIcon.setAttribute('data-division-id', divisionId);
+        renameIcon.setAttribute('data-topic-or-week-instance-id', topicOrWeekId);
         renameIcon.setAttribute('data-item-id', content.id);
         renameIcon.style.cursor = 'pointer';
         renameIcon.style.marginLeft = '8px';
@@ -1495,7 +1503,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         deleteBadge.className = 'content-status status-delete-section';
         deleteBadge.textContent = 'Delete Section';
         deleteBadge.dataset.action = 'delete-section';
-        deleteBadge.dataset.divisionId = divisionId;
+        deleteBadge.dataset.topicOrWeekInstanceId = topicOrWeekId;
         deleteBadge.dataset.contentId = content.id;
         statusRow.appendChild(deleteBadge);
         header.appendChild(title);
@@ -1515,7 +1523,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // create the header for the objectives
         const headerRow = document.createElement('div');
         headerRow.className = 'objectives-header';
-        headerRow.setAttribute('data-division', String(divisionId));
+        headerRow.setAttribute('data-topic-or-week-instance', String(topicOrWeekId));
         headerRow.setAttribute('data-content', String(content.id));
 
         // create the title for the objectives
@@ -1527,14 +1535,14 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const headerCount = document.createElement('div');
         headerCount.className = 'objectives-count';
         const countSpan = document.createElement('span');
-        countSpan.id = `count-${divisionId}-${content.id}`;
+        countSpan.id = `count-${topicOrWeekId}-${content.id}`;
         countSpan.textContent = String(content.learningObjectives.length);
 
         // create the expand icon for the objectives
         const countText = document.createTextNode(' objectives ');
         const expandSpan = document.createElement('span');
         expandSpan.className = 'expand-icon';
-        expandSpan.id = `obj-icon-${divisionId}-${content.id}`;
+        expandSpan.id = `obj-icon-${topicOrWeekId}-${content.id}`;
         expandSpan.textContent = '▼';
 
         // append the count, text, and expand icon to the header
@@ -1549,13 +1557,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // create the content for the objectives
         const objectivesContent = document.createElement('div');
         objectivesContent.className = 'objectives-content';
-        objectivesContent.id = `objectives-${divisionId}-${content.id}`;
-        objectivesContent.appendChild(createObjectivesListElement(divisionId, content.id));
+        objectivesContent.id = `objectives-${topicOrWeekId}-${content.id}`;
+        objectivesContent.appendChild(createObjectivesListElement(topicOrWeekId, content.id));
 
         // Add event listener for delete badge
         deleteBadge.addEventListener('click', (e) => {
             e.stopPropagation();
-            deleteSection(divisionId, content.id);
+            deleteSection(topicOrWeekId, content.id);
         });
         accordion.appendChild(headerRow);
         accordion.appendChild(objectivesContent);
@@ -1583,9 +1591,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     // ----- Sections management -----
-    async function addSection(division: ContentDivision) {
+    async function addSection(instance_topicOrWeek: TopicOrWeekInstance) {
         //START DEBUG LOG : DEBUG-CODE(054)
-        console.log('➕ addSection called for division:', division.id, division.title);
+        console.log('➕ addSection called for topic/week instance:', instance_topicOrWeek.id, instance_topicOrWeek.title);
         //END DEBUG LOG : DEBUG-CODE(054)
         
         if (!currentClass) {
@@ -1596,7 +1604,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         }
 
         // Prepare minimal payload; server assigns IDs and timestamps
-        const newContentTitle = `New Section ${division.items.length + 1}`;
+        const newContentTitle = `New Section ${instance_topicOrWeek.items.length + 1}`;
         const minimalContentPayload = {
             title: newContentTitle,
             learningObjectives: [],
@@ -1606,12 +1614,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         try {
             //START DEBUG LOG : DEBUG-CODE(056)
             console.log('📡 Making API call to add section...');
-            console.log('🌐 API URL:', `/api/courses/${currentClass.id}/divisions/${division.id}/items`);
+            console.log('🌐 API URL:', `/api/courses/${currentClass.id}/topic-or-week-instances/${instance_topicOrWeek.id}/items`);
             console.log('📦 Request body:', { contentItem: minimalContentPayload });
             //END DEBUG LOG : DEBUG-CODE(056)
             
             // Call backend API to add the section
-            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${division.id}/items`, {
+            const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${instance_topicOrWeek.id}/items`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1637,21 +1645,21 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 //END DEBUG LOG : DEBUG-CODE(059)
                 
                 // Use server-returned item (ensures IDs and timestamps are consistent)
-                const createdItem: courseItem = result.data;
+                const createdItem: TopicOrWeekItem = result.data;
                 // Add to local data only after successful database save
-                division.items.push(createdItem);
+                instance_topicOrWeek.items.push(createdItem);
                 
                 // Append to DOM
-                const container = document.getElementById(`content-division-${division.id}`);
+                const container = document.getElementById(`content-topic-or-week-instance-${instance_topicOrWeek.id}`);
                 if (!container) return;
-                const built = buildContentItemDOM(division.id, createdItem);
+                const built = buildContentItemDOM(instance_topicOrWeek.id, createdItem);
                 container.appendChild(built);
                 
                 // Render feather icons for the newly added section (including edit title button)
                 renderFeatherIcons();
                 
                 // Update header completion count
-                updateDivisionCompletion(division.id);
+                updateDivisionCompletion(instance_topicOrWeek.id);
                 
                 console.log('Section added successfully');
             } else {
@@ -1669,11 +1677,11 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         }
     }
 
-    async function deleteSection(divisionId: string, contentId: string) {
-        const division = courseData.find(d => d.id === divisionId);
-        if (!division) return;
+    async function deleteSection(topicOrWeekId: string, contentId: string) {
+        const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+        if (!instance_topicOrWeek) return;
         
-        const content = division.items.find(c => c.id === contentId);
+        const content = instance_topicOrWeek.items.find(c => c.id === contentId);
         if (!content) return;
         
         // Show confirmation modal
@@ -1692,7 +1700,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         
         try {
             // Call backend API to delete the section
-            const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}`, {
+            const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}`, {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1709,16 +1717,16 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             
             if (resultData.success) {
                 // Remove from local state
-                division.items = division.items.filter(c => c.id !== contentId);
+                instance_topicOrWeek.items = instance_topicOrWeek.items.filter(c => c.id !== contentId);
                 
                 // Remove from DOM
-                const item = document.getElementById(`content-item-${divisionId}-${contentId}`);
+                const item = document.getElementById(`content-item-${topicOrWeekId}-${contentId}`);
                 if (item && item.parentElement) {
                     item.parentElement.removeChild(item);
                 }
                 
                 // Update completion status
-                updateDivisionCompletion(divisionId);
+                updateDivisionCompletion(topicOrWeekId);
                 
                 // Show success message
                 await showSuccessModal('Success', 'Section deleted successfully.');
@@ -1732,33 +1740,33 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         }
     }
 
-    function updateDivisionCompletion(divisionId: string) {
-        const division = courseData.find(d => d.id === divisionId);
-        if (!division) return;
-        const totalSections = division.items.length;
-        const container = document.querySelector(`.week-header[data-division="${divisionId}"] .completion-status`) as HTMLElement | null;
+    function updateDivisionCompletion(topicOrWeekId: string) {
+        const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+        if (!instance_topicOrWeek) return;
+        const totalSections = instance_topicOrWeek.items.length;
+        const container = document.querySelector(`.topic-or-week-header[data-topic-or-week-instance="${topicOrWeekId}"] .completion-status`) as HTMLElement | null;
         if (container) container.textContent = totalSections === 1 ? '1 section' : `${totalSections} sections`;
     }
 
     /**
-     * Enter edit mode for a division or item title
+     * Enter edit mode for a topic/week instance or item title
      * 
-     * @param divisionId - The ID of the division
+     * @param topicOrWeekId - The ID of the topic/week instance
      * @param itemId - Optional item ID (if editing an item title)
      * @param currentTitle - The current title text
      */
-    function enterEditMode(divisionId: string, itemId: string | null, currentTitle: string): void {
+    function enterEditMode(topicOrWeekId: string, itemId: string | null, currentTitle: string): void {
         let titleSpan: HTMLElement | null = null;
         let titleContainer: HTMLElement | null = null;
         
         if (itemId) {
             // Editing an item title
-            titleSpan = document.querySelector(`#content-item-${divisionId}-${itemId} .content-title span`) as HTMLElement | null;
-            titleContainer = document.querySelector(`#content-item-${divisionId}-${itemId} .content-title`) as HTMLElement | null;
+            titleSpan = document.querySelector(`#content-item-${topicOrWeekId}-${itemId} .content-title span`) as HTMLElement | null;
+            titleContainer = document.querySelector(`#content-item-${topicOrWeekId}-${itemId} .content-title`) as HTMLElement | null;
         } else {
-            // Editing a division title
-            titleSpan = document.querySelector(`.week-header[data-division="${divisionId}"] .week-title span`) as HTMLElement | null;
-            titleContainer = document.querySelector(`.week-header[data-division="${divisionId}"] .week-title`) as HTMLElement | null;
+            // Editing a topic/week instance title
+            titleSpan = document.querySelector(`.topic-or-week-header[data-topic-or-week-instance="${topicOrWeekId}"] .topic-or-week-title span`) as HTMLElement | null;
+            titleContainer = document.querySelector(`.topic-or-week-header[data-topic-or-week-instance="${topicOrWeekId}"] .topic-or-week-title`) as HTMLElement | null;
         }
         
         if (!titleSpan || !titleContainer) {
@@ -1856,24 +1864,24 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             
             // Only proceed if title changed
             if (newTitle === originalTitle) {
-                exitEditMode(divisionId, itemId, originalTitle);
+                exitEditMode(topicOrWeekId, itemId, originalTitle);
                 return;
             }
             
             // Save the title change
-            await saveTitleChange(divisionId, itemId, newTitle);
+            await saveTitleChange(topicOrWeekId, itemId, newTitle);
         });
         
         // Handle Cancel button click
         cancelButton.addEventListener('click', (e) => {
             e.stopPropagation();
-            exitEditMode(divisionId, itemId, originalTitle);
+            exitEditMode(topicOrWeekId, itemId, originalTitle);
         });
         
         // Handle Escape key
         const escapeHandler = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
-                exitEditMode(divisionId, itemId, originalTitle);
+                exitEditMode(topicOrWeekId, itemId, originalTitle);
                 document.removeEventListener('keydown', escapeHandler);
             }
         };
@@ -1895,17 +1903,17 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     /**
      * Exit edit mode and restore display mode
      * 
-     * @param divisionId - The ID of the division
+     * @param topicOrWeekId - The ID of the topic/week instance
      * @param itemId - Optional item ID (if editing an item title)
      * @param title - The title to display
      */
-    function exitEditMode(divisionId: string, itemId: string | null, title: string): void {
+    function exitEditMode(topicOrWeekId: string, itemId: string | null, title: string): void {
         let titleContainer: HTMLElement | null = null;
         
         if (itemId) {
-            titleContainer = document.querySelector(`#content-item-${divisionId}-${itemId} .content-title`) as HTMLElement | null;
+            titleContainer = document.querySelector(`#content-item-${topicOrWeekId}-${itemId} .content-title`) as HTMLElement | null;
         } else {
-            titleContainer = document.querySelector(`.week-header[data-division="${divisionId}"] .week-title`) as HTMLElement | null;
+            titleContainer = document.querySelector(`.topic-or-week-header[data-topic-or-week-instance="${topicOrWeekId}"] .topic-or-week-title`) as HTMLElement | null;
         }
         
         if (!titleContainer) return;
@@ -1930,7 +1938,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const renameIcon = document.createElement('i');
         renameIcon.setAttribute('data-feather', 'edit-2');
         renameIcon.className = 'rename-icon';
-        renameIcon.setAttribute('data-division-id', divisionId);
+        renameIcon.setAttribute('data-topic-or-week-instance-id', topicOrWeekId);
         if (itemId) {
             renameIcon.setAttribute('data-item-id', itemId);
         }
@@ -1950,11 +1958,11 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     /**
      * Save title change via API
      * 
-     * @param divisionId - The ID of the division
+     * @param topicOrWeekId - The ID of the topic/week instance
      * @param itemId - Optional item ID (if updating an item title)
      * @param newTitle - The new title to save
      */
-    async function saveTitleChange(divisionId: string, itemId: string | null, newTitle: string): Promise<void> {
+    async function saveTitleChange(topicOrWeekId: string, itemId: string | null, newTitle: string): Promise<void> {
         if (!currentClass) {
             console.error('❌ No current class found for saving title');
             return;
@@ -1969,9 +1977,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             
             if (itemId) {
                 // Update item title
-                console.log(`📝 Saving item ${itemId} in division ${divisionId} with new title: "${newTitle}"`);
+                console.log(`📝 Saving item ${itemId} in topic/week instance ${topicOrWeekId} with new title: "${newTitle}"`);
                 
-                response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${itemId}/title`, {
+                response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${itemId}/title`, {
                     method: 'PATCH',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1991,8 +1999,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 
                 if (responseData.success) {
                     // Find and update item in local data
-                    const division = courseData.find(d => d.id === divisionId);
-                    const item = division?.items.find(i => i.id === itemId);
+                    const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+                    const item = instance_topicOrWeek?.items.find((i: TopicOrWeekItem) => i.id === itemId);
                     if (item) {
                         // Update title from backend response if available
                         const updatedTitle = responseData.data?.title || newTitle;
@@ -2003,7 +2011,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                         closeModal('success');
                         
                         // Exit edit mode with backend title
-                        exitEditMode(divisionId, itemId, updatedTitle);
+                        exitEditMode(topicOrWeekId, itemId, updatedTitle);
                         
                         console.log('✅ Item title saved successfully');
                     }
@@ -2011,10 +2019,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                     throw new Error(responseData.error || 'Failed to rename section');
                 }
             } else {
-                // Update division title
-                console.log(`📝 Saving division ${divisionId} with new title: "${newTitle}"`);
+                // Update topic/week instance title
+                console.log(`📝 Saving topic/week instance ${topicOrWeekId} with new title: "${newTitle}"`);
                 
-                response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/title`, {
+                response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/title`, {
                     method: 'PATCH',
                     headers: {
                         'Content-Type': 'application/json'
@@ -2033,20 +2041,20 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 responseData = await response.json();
                 
                 if (responseData.success) {
-                    // Find and update division in local data
-                    const division = courseData.find(d => d.id === divisionId);
-                    if (division) {
+                    // Find and update topic/week instance in local data
+                    const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+                    if (instance_topicOrWeek) {
                         // Update title from backend response if available
                         const updatedTitle = responseData.data?.title || newTitle;
-                        division.title = updatedTitle;
+                        instance_topicOrWeek.title = updatedTitle;
                         
                         // Close loading modal before exiting edit mode
                         closeModal('success');
                         
                         // Exit edit mode with backend title
-                        exitEditMode(divisionId, null, updatedTitle);
+                        exitEditMode(topicOrWeekId, null, updatedTitle);
                         
-                        console.log('✅ Division title saved successfully');
+                        console.log('✅ Topic/Week instance title saved successfully');
                     }
                 } else {
                     throw new Error(responseData.error || 'Failed to rename division');
@@ -2066,34 +2074,34 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     /**
-     * Rename a division (week/topic) - enters inline edit mode
+     * Rename a topic/week instance - enters inline edit mode
      * 
-     * @param division - The division to rename
+     * @param instance_topicOrWeek - The topic/week instance to rename
      */
-    async function renameDivision(division: ContentDivision): Promise<void> {
+    async function renameDivision(instance_topicOrWeek: TopicOrWeekInstance): Promise<void> {
         if (!currentClass) {
-            console.error('❌ No current class found for renaming division');
+            console.error('❌ No current class found for renaming topic/week instance');
             return;
         }
 
         // Enter inline edit mode
-        enterEditMode(division.id, null, division.title);
+        enterEditMode(instance_topicOrWeek.id, null, instance_topicOrWeek.title);
     }
 
     /**
      * Rename a course item (section) - enters inline edit mode
      * 
-     * @param divisionId - The ID of the division containing the item
+     * @param topicOrWeekId - The ID of the topic/week instance containing the item
      * @param item - The item to rename
      */
-    async function renameItem(divisionId: string, item: courseItem): Promise<void> {
+    async function renameItem(topicOrWeekId: string, item: TopicOrWeekItem): Promise<void> {
         if (!currentClass) {
             console.error('❌ No current class found for renaming item');
             return;
         }
 
         // Enter inline edit mode
-        enterEditMode(divisionId, item.id, item.title);
+        enterEditMode(topicOrWeekId, item.id, item.title);
     }
 
     // Make functions globally available for inline event handlers if needed,
@@ -2108,7 +2116,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @param content the content item to build the DOM for
      * @returns the created element
      */
-    function createAdditionalMaterialsElement(content: courseItem): HTMLElement | null {
+    function createAdditionalMaterialsElement(content: TopicOrWeekItem): HTMLElement | null {
         const items = content.additionalMaterials || [];
         if (items.length === 0) return null;
 
@@ -2244,7 +2252,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         if (result.action === 'delete') {
             try {
                 // Call backend API to soft delete from MongoDB
-                const response = await fetch(`/api/courses/${currentClass.id}/divisions/${divisionId}/items/${contentId}/materials/${materialId}`, {
+                const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${divisionId}/items/${contentId}/materials/${materialId}`, {
                     method: 'DELETE',
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -2268,12 +2276,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     // Build the Objectives list + Add form via DOM APIs
-    function createObjectivesListElement(divisionId: string, contentId: string): HTMLElement {
+    function createObjectivesListElement(topicOrWeekId: string, contentId: string): HTMLElement {
 
         // create the wrapper for the objectives
         const wrapper = document.createElement('div');
-        const division = courseData.find(d => d.id === divisionId);
-        const content = division?.items.find(c => c.id === contentId);
+        const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+        const content = instance_topicOrWeek?.items.find((c: TopicOrWeekItem) => c.id === contentId);
         if (!content) return wrapper;
 
         // create the list of objectives
@@ -2284,7 +2292,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             // create the header for the objective
             const header = document.createElement('div');
             header.className = 'objective-header';
-            header.setAttribute('data-division', String(divisionId));
+            header.setAttribute('data-topic-or-week-instance', String(topicOrWeekId));
             header.setAttribute('data-content', String(contentId));
             header.setAttribute('data-objective', String(index));
 
@@ -2308,7 +2316,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
             const expand = document.createElement('span');
             expand.className = 'expand-icon';
-            expand.id = `item-icon-${divisionId}-${contentId}-${index}`;
+            expand.id = `item-icon-${topicOrWeekId}-${contentId}-${index}`;
             expand.textContent = '▼';
 
             // append the edit, delete, and expand icon to the actions
@@ -2342,14 +2350,14 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const objectiveInput = document.createElement('input');
         objectiveInput.type = 'text';
         objectiveInput.className = 'objective-title-input';
-        objectiveInput.id = `new-title-${divisionId}-${contentId}`;
+        objectiveInput.id = `new-title-${topicOrWeekId}-${contentId}`;
         objectiveInput.placeholder = 'Enter the learning objective...';
 
         // create the add button for the add objective form
         const addBtn = document.createElement('button');
         addBtn.className = 'add-btn';
         addBtn.dataset.action = 'add';
-        addBtn.dataset.week = String(divisionId);
+        addBtn.dataset.week = String(topicOrWeekId);
         addBtn.dataset.content = String(contentId);
         addBtn.textContent = 'Add Objective';
 

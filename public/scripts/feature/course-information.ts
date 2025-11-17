@@ -17,7 +17,7 @@
  * @version: 2.0.0
  */
 
-import { activeCourse, ContentDivision } from "../../../src/functions/types.js";
+import { activeCourse, TopicOrWeekInstance } from "../../../src/functions/types.js";
 import { showErrorModal, showSuccessModal, showConfirmModal } from "../modal-overlay.js";
 import { renderFeatherIcons } from "../functions/api.js";
 
@@ -168,27 +168,27 @@ function updateContentCountDescription(frameType: 'byWeek' | 'byTopic'): void {
 }
 
 /**
- * Generates a unique ID for divisions
+ * Generates a unique ID for topic/week instances
  */
 function generateUniqueId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
 
 /**
- * Handles section count changes and updates divisions array
+ * Handles section count changes and updates topic/week instances array
  */
 async function handleSectionCountChange(
     newCount: number, 
     oldCount: number, 
     frameType: 'byWeek' | 'byTopic',
-    divisions: ContentDivision[],
+    topicOrWeekInstances: TopicOrWeekInstance[],
     courseName: string
-): Promise<ContentDivision[] | null> {
+): Promise<TopicOrWeekInstance[] | null> {
     // If decreasing, show confirmation modal
     if (newCount < oldCount) {
         const result = await showConfirmModal(
             "Confirm Reduction",
-            `Reducing sections will permanently delete the last ${oldCount - newCount} division(s). Are you sure?`,
+            `Reducing sections will permanently delete the last ${oldCount - newCount} topic/week instance(s). Are you sure?`,
             'Confirm',
             'Cancel'
         );
@@ -197,33 +197,33 @@ async function handleSectionCountChange(
             return null; // User cancelled
         }
         
-        // Keep only the first newCount divisions
-        return divisions.slice(0, newCount);
+        // Keep only the first newCount topic/week instances
+        return topicOrWeekInstances.slice(0, newCount);
     } 
-    // If increasing, add placeholder divisions
+    // If increasing, add placeholder topic/week instances
     else if (newCount > oldCount) {
-        const updatedDivisions = [...divisions];
-        const divisionPrefix = frameType === 'byWeek' ? 'Week' : 'Topic';
+        const updatedInstances = [...topicOrWeekInstances];
+        const instancePrefix = frameType === 'byWeek' ? 'Week' : 'Topic';
         
         for (let i = oldCount; i < newCount; i++) {
-            const newDivision: ContentDivision = {
+            const newInstance: TopicOrWeekInstance = {
                 id: generateUniqueId(),
                 date: new Date(),
-                title: `${divisionPrefix}: no name`,
+                title: `${instancePrefix}: no name`,
                 courseName: courseName,
                 published: false,
                 items: [],
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
-            updatedDivisions.push(newDivision);
+            updatedInstances.push(newInstance);
         }
         
-        return updatedDivisions;
+        return updatedInstances;
     }
     
     // No change
-    return divisions;
+    return topicOrWeekInstances;
 }
 
 /**
@@ -276,7 +276,7 @@ async function saveCourseInfo(courseData: activeCourse): Promise<boolean> {
                 instructors: courseData.instructors,
                 teachingAssistants: courseData.teachingAssistants,
                 tilesNumber: courseData.tilesNumber,
-                divisions: courseData.divisions
+                topicOrWeekInstances: courseData.topicOrWeekInstances
             })
         });
         
@@ -320,7 +320,7 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
             ...currentClass,
             instructors: [...currentClass.instructors],
             teachingAssistants: [...currentClass.teachingAssistants],
-            divisions: [...currentClass.divisions]
+            topicOrWeekInstances: [...currentClass.topicOrWeekInstances]
         };
         
         // Store the original count for comparison
@@ -420,15 +420,15 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
                 
                 // Handle section count changes if necessary
                 if (localCourseData.tilesNumber !== originalTilesNumber) {
-                    const updatedDivisions = await handleSectionCountChange(
+                    const updatedInstances = await handleSectionCountChange(
                         localCourseData.tilesNumber,
                         originalTilesNumber,
                         localCourseData.frameType,
-                        localCourseData.divisions,
+                        localCourseData.topicOrWeekInstances,
                         localCourseData.courseName
                     );
                     
-                    if (updatedDivisions === null) {
+                    if (updatedInstances === null) {
                         // User cancelled the operation
                         if (contentCountInput) {
                             contentCountInput.value = originalTilesNumber.toString();
@@ -437,7 +437,7 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
                         return;
                     }
                     
-                    localCourseData.divisions = updatedDivisions;
+                    localCourseData.topicOrWeekInstances = updatedInstances;
                 }
                 
                 const success = await saveCourseInfo(localCourseData);

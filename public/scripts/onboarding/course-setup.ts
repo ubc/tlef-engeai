@@ -26,7 +26,7 @@
  */
 
 import { loadComponentHTML } from "../functions/api.js";
-import { activeCourse, ContentDivision, courseItem, onBoardingScreen } from "../../../src/functions/types.js";
+import { activeCourse, TopicOrWeekInstance, TopicOrWeekItem, onBoardingScreen } from "../../../src/functions/types.js";
 import { showErrorModal, showHelpModal } from "../modal-overlay.js";
 
 
@@ -966,7 +966,7 @@ async function handleDatabaseSubmission(state: OnboardingState, onBoardingCourse
             teachingAssistants: onBoardingCourse.teachingAssistants,
             frameType: onBoardingCourse.frameType,
             tilesNumber: onBoardingCourse.tilesNumber,
-            divisions: []
+            topicOrWeekInstances: []
         };
         
         // Submit to database

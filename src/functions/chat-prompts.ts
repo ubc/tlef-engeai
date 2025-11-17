@@ -772,7 +772,7 @@ export function getSystemPrompt(courseName?: string, learningObjectives?: Learni
         prompt += 'The following are ALL learning objectives for this course, organized by week/topic and subsection:\n\n';
         
         learningObjectives.forEach((obj, index) => {
-            prompt += `${index + 1}. [${obj.divisionTitle} - ${obj.itemTitle}]: ${obj.LearningObjective}\n`;
+            prompt += `${index + 1}. [${obj.topicOrWeekTitle} - ${obj.itemTitle}]: ${obj.LearningObjective}\n`;
         });
         
         prompt += '\n</course_learning_objectives>\n';

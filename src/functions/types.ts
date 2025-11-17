@@ -31,7 +31,7 @@ export interface ChatMessage {
 export interface Chat {
     id: string;
     courseName: string;
-    divisionTitle: string;
+    topicOrWeekTitle: string;
     itemTitle: string;
     messages: ChatMessage[];
     isPinned: boolean;
@@ -69,7 +69,7 @@ export interface activeCourse {
     teachingAssistants: string[],
     frameType: frameType;
     tilesNumber: number;
-    divisions: ContentDivision[]; // previously content
+    topicOrWeekInstances: TopicOrWeekInstance[]; // previously content, previously divisions
 }
 
 /**
@@ -82,15 +82,15 @@ export type frameType =
 ;
 
 /**
- * The type of content division : by week or by topic
+ * The type of content instance : by week or by topic
  */
-export interface ContentDivision {
+export interface TopicOrWeekInstance {
     id : string;
     date : Date;
     title: string;
     courseName: string;
     published: boolean;
-    items: courseItem[]; // previously content
+    items: TopicOrWeekItem[]; // previously content, previously courseItem
     createdAt: Date;
     updatedAt: Date;
 }
@@ -98,12 +98,12 @@ export interface ContentDivision {
 /**
  * The type for a piece of course content (e.g., lecture, tutorial)
  */
-export interface courseItem {
+export interface TopicOrWeekItem {
     id: string;
     date: Date;
     title: string;
     courseName: string;
-    divisionTitle: string;
+    topicOrWeekTitle: string;
     itemTitle: string;
     completed?: boolean;
     learningObjectives: LearningObjective[];
@@ -120,7 +120,7 @@ export interface LearningObjective {
     id: string;
     LearningObjective: string;
     courseName: string;
-    divisionTitle: string;
+    topicOrWeekTitle: string;
     itemTitle: string;
     createdAt: Date;
     updatedAt: Date;
@@ -142,7 +142,7 @@ export interface AdditionalMaterial {
     date : Date,
     name: string;
     courseName: string;
-    divisionTitle: string;
+    topicOrWeekTitle: string;
     itemTitle: string;
     sourceType: AdditionalMaterialSource;
     file?: File;
@@ -156,7 +156,7 @@ export interface AdditionalMaterial {
     uploadedBy?: string; // Track who uploaded the material
     // Add these three optional fields:
     courseId?: string;
-    divisionId?: string;
+    topicOrWeekId?: string;
     itemId?: string;
 }
 

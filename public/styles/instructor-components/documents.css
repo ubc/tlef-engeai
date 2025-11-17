@@ -51,25 +51,24 @@
 /* Documents Content */
 .documents-container {
     background: var(--chat-bg);
-    border-radius: 12px;
-    border: 1px solid var(--border-color);
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     /* animation: slideInUp 0.3s 0.1s forwads; */
 }
 
-.content-session {
-    border-bottom: 1px solid var(--border-color);
-    margin: 10px;
+.topic-or-week-instance {
+    border: 1px solid var(--border-color);
+    margin-bottom: 20px;
     border-radius: 10px;
     overflow: hidden;
+    background: var(--chat-bg);
 }
 
-.content-session:last-child {
-    border-bottom: none;
+.topic-or-week-instance:last-child {
+    margin-bottom: 0;
 }
 
-.week-header {
+.topic-or-week-header {
     padding: 10px 20px;
     background: var(--background-2);
     cursor: pointer;
@@ -79,11 +78,11 @@
     align-items: center;
 }
 
-.week-header:hover {
+.topic-or-week-header:hover {
     background: var(--hover-bg);
 }
 
-.week-title {
+.topic-or-week-title {
     color: var(--text-primary);
     font-size: 18px;
     font-weight: 600;
@@ -91,7 +90,7 @@
     align-items: center;
 }
 
-.week-status {
+.topic-or-week-status {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -108,13 +107,13 @@
     transition: transform 0.3s ease;
 }
 
-.division-content {
+.topic-or-week-item {
     max-height: 0;
     overflow: hidden;
     transition: max-height 0.3s ease;
 }
 
-.division-content.expanded {
+.topic-or-week-item.expanded {
     max-height: 2000px;
 }
 
@@ -596,7 +595,7 @@ input:checked + .toggle-slider::before {
     color: var(--color-chbe-green);
 }
 
-.week-title .rename-icon,
+.topic-or-week-title .rename-icon,
 .content-title .rename-icon {
     display: inline-flex;
     align-items: center;

@@ -1,6 +1,6 @@
 import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 import * as dotenv from 'dotenv';
-import { activeCourse, AdditionalMaterial, ContentDivision, courseItem, FlagReport, User, Chat, ChatMessage, GlobalUser, CourseUser, LearningObjective, MemoryAgentEntry } from './types';
+import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, Chat, ChatMessage, GlobalUser, CourseUser, LearningObjective, MemoryAgentEntry } from './types';
 import { IDGenerator } from './unique-id-generator';
 
 dotenv.config();
@@ -153,24 +153,24 @@ export class EngEAI_MongoDB {
     }
 
     // Learning objectives methods
-    public addLearningObjective = async (courseId: string, divisionId: string, contentId: string, learningObjective: any) => {
-        console.log('🎯 [MONGODB] addLearningObjective called with:', { courseId, divisionId, contentId, learningObjective });
+    public addLearningObjective = async (courseId: string, topicOrWeekId: string, contentId: string, learningObjective: any) => {
+        console.log('🎯 [MONGODB] addLearningObjective called with:', { courseId, topicOrWeekId, contentId, learningObjective });
         
         const result = await this.getCourseCollection().findOneAndUpdate(
             { 
                 id: courseId,
-                'divisions.id': divisionId,
-                'divisions.items.id': contentId
+                'topicOrWeekInstances.id': topicOrWeekId,
+                'topicOrWeekInstances.items.id': contentId
             },
             { 
                 $push: { 
-                    'divisions.$[division].items.$[item].learningObjectives': learningObjective
+                    'topicOrWeekInstances.$[instance].items.$[item].learningObjectives': learningObjective
                 },
                 $set: { updatedAt: Date.now().toString() }
             },
             { 
                 arrayFilters: [
-                    { 'division.id': divisionId },
+                    { 'instance.id': topicOrWeekId },
                     { 'item.id': contentId }
                 ],
                 returnDocument: 'after' 
@@ -181,24 +181,24 @@ export class EngEAI_MongoDB {
         return result;
     }
 
-    public updateLearningObjective = async (courseId: string, divisionId: string, contentId: string, objectiveId: string, updateData: any) => {
+    public updateLearningObjective = async (courseId: string, topicOrWeekId: string, contentId: string, objectiveId: string, updateData: any) => {
         const result = await this.getCourseCollection().findOneAndUpdate(
             { 
                 id: courseId,
-                'divisions.id': divisionId,
-                'divisions.items.id': contentId,
-                'divisions.items.learningObjectives.id': objectiveId
+                'topicOrWeekInstances.id': topicOrWeekId,
+                'topicOrWeekInstances.items.id': contentId,
+                'topicOrWeekInstances.items.learningObjectives.id': objectiveId
             },
             { 
                 $set: { 
-                    'divisions.$[division].items.$[item].learningObjectives.$[objective].LearningObjective': updateData.LearningObjective,
-                    'divisions.$[division].items.$[item].learningObjectives.$[objective].updatedAt': Date.now().toString(),
+                    'topicOrWeekInstances.$[instance].items.$[item].learningObjectives.$[objective].LearningObjective': updateData.LearningObjective,
+                    'topicOrWeekInstances.$[instance].items.$[item].learningObjectives.$[objective].updatedAt': Date.now().toString(),
                     updatedAt: Date.now().toString()
                 }
             },
             { 
                 arrayFilters: [
-                    { 'division.id': divisionId },
+                    { 'instance.id': topicOrWeekId },
                     { 'item.id': contentId },
                     { 'objective.id': objectiveId }
                 ],
@@ -208,24 +208,24 @@ export class EngEAI_MongoDB {
         return result;
     }
 
-    public deleteLearningObjective = async (courseId: string, divisionId: string, contentId: string, objectiveId: string) => {
-        console.log('🗑️ [MONGODB] deleteLearningObjective called with:', { courseId, divisionId, contentId, objectiveId });
+    public deleteLearningObjective = async (courseId: string, topicOrWeekId: string, contentId: string, objectiveId: string) => {
+        console.log('🗑️ [MONGODB] deleteLearningObjective called with:', { courseId, topicOrWeekId, contentId, objectiveId });
         
         const result = await this.getCourseCollection().findOneAndUpdate(
             { 
                 id: courseId,
-                'divisions.id': divisionId,
-                'divisions.items.id': contentId
+                'topicOrWeekInstances.id': topicOrWeekId,
+                'topicOrWeekInstances.items.id': contentId
             },
             { 
                 $pull: { 
-                    'divisions.$[division].items.$[item].learningObjectives': { id: objectiveId }
+                    'topicOrWeekInstances.$[instance].items.$[item].learningObjectives': { id: objectiveId }
                 } as any,
                 $set: { updatedAt: Date.now().toString() }
             },
             { 
                 arrayFilters: [
-                    { 'division.id': divisionId },
+                    { 'instance.id': topicOrWeekId },
                     { 'item.id': contentId }
                 ],
                 returnDocument: 'after' 
@@ -239,21 +239,21 @@ export class EngEAI_MongoDB {
     /**
      * Get all learning objectives for an entire course
      * @param courseId - The course ID
-     * @returns Promise<LearningObjective[]> - All learning objectives across all divisions and items
+     * @returns Promise<LearningObjective[]> - All learning objectives across all topic/week instances and items
      */
     public getAllLearningObjectives = async (courseId: string): Promise<LearningObjective[]> => {
         const course = await this.getActiveCourse(courseId);
         
-        if (!course || !course.divisions) {
+        if (!course || !course.topicOrWeekInstances) {
             return [];
         }
         
         const allObjectives: LearningObjective[] = [];
         
-        // Iterate through all divisions and items to collect learning objectives
-        for (const division of course.divisions) {
-            if (division.items) {
-                for (const item of division.items) {
+        // Iterate through all topic/week instances and items to collect learning objectives
+        for (const instance of course.topicOrWeekInstances) {
+            if (instance.items) {
+                for (const item of instance.items) {
                     if (item.learningObjectives && item.learningObjectives.length > 0) {
                         allObjectives.push(...item.learningObjectives);
                     }
@@ -808,27 +808,27 @@ export class EngEAI_MongoDB {
         }
     }
 
-    public addContentItem = async (courseId: string, divisionId: string, contentItem: any) => {
+    public addContentItem = async (courseId: string, topicOrWeekId: string, contentItem: any) => {
         try {
-            console.log('📝 Adding content item to course:', courseId, 'division:', divisionId);
+            console.log('📝 Adding content item to course:', courseId, 'topic/week instance:', topicOrWeekId);
             
             const course = await this.getActiveCourse(courseId);
             if (!course) {
                 return { success: false, error: 'Course not found' };
             }
 
-            const division = course.divisions?.find((d: any) => d.id === divisionId);
-            if (!division) {
-                return { success: false, error: 'Division not found' };
+            const instance = course.topicOrWeekInstances?.find((d: any) => d.id === topicOrWeekId);
+            if (!instance) {
+                return { success: false, error: 'Topic/Week instance not found' };
             }
 
             // Initialize items array if it doesn't exist
-            if (!division.items) {
-                division.items = [];
+            if (!instance.items) {
+                instance.items = [];
             }
 
             // Add the new content item
-            division.items.push(contentItem);
+            instance.items.push(contentItem);
 
             // Update the course in the database
             const result = await this.updateActiveCourse(courseId, course as Partial<activeCourse>);
@@ -846,28 +846,28 @@ export class EngEAI_MongoDB {
 
     public addAdditionalMaterial = async (
         courseId: string, 
-        divisionId: string, 
+        topicOrWeekId: string, 
         itemId: string, 
         material: AdditionalMaterial
     ): Promise<any> => {
         try {
-            console.log('📄 Adding additional material to course:', courseId, 'division:', divisionId, 'item:', itemId);
+            console.log('📄 Adding additional material to course:', courseId, 'topic/week instance:', topicOrWeekId, 'item:', itemId);
             
             const result = await this.getCourseCollection().findOneAndUpdate(
                 { 
                     id: courseId,
-                    'divisions.id': divisionId,
-                    'divisions.items.id': itemId
+                    'topicOrWeekInstances.id': topicOrWeekId,
+                    'topicOrWeekInstances.items.id': itemId
                 },
                 { 
                     $push: { 
-                        'divisions.$[division].items.$[item].additionalMaterials': material as any
+                        'topicOrWeekInstances.$[instance].items.$[item].additionalMaterials': material as any
                     },
                     $set: { updatedAt: Date.now().toString() }
                 },
                 { 
                     arrayFilters: [
-                        { 'division.id': divisionId },
+                        { 'instance.id': topicOrWeekId },
                         { 'item.id': itemId }
                     ],
                     returnDocument: 'after' 
@@ -890,13 +890,13 @@ export class EngEAI_MongoDB {
                 { id: courseId },
                 { 
                     $unset: { 
-                        'divisions.$[division].items.$[item].additionalMaterials': 1 
+                        'topicOrWeekInstances.$[instance].items.$[item].additionalMaterials': 1 
                     },
                     $set: { updatedAt: Date.now().toString() }
                 },
                 { 
                     arrayFilters: [
-                        { 'division.id': { $exists: true } }, // Match all divisions that have an id
+                        { 'instance.id': { $exists: true } }, // Match all topic/week instances that have an id
                         { 'item.id': { $exists: true } }     // Match all items that have an id
                     ],
                     returnDocument: 'after' 

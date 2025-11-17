@@ -42,7 +42,7 @@ import { AppConfig, loadConfig } from './config';
 import { RAGModule, RetrievedChunk } from 'ubc-genai-toolkit-rag';
 import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
 import { IDGenerator } from '../functions/unique-id-generator';
-import { ChatMessage, Chat, LearningObjective, ContentDivision, courseItem } from '../functions/types';
+import { ChatMessage, Chat, LearningObjective, TopicOrWeekInstance, TopicOrWeekItem } from '../functions/types';
 import { asyncHandlerWithAuth } from '../middleware/asyncHandler';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { 
@@ -400,12 +400,12 @@ class ChatApp {
 
             // Extract published item titles
             const publishedItemTitles: string[] = [];
-            if (course.divisions) {
-                course.divisions
-                    .filter((division: ContentDivision) => division.published === true)
-                    .forEach((division: ContentDivision) => {
-                        if (division.items) {
-                            division.items.forEach((item: courseItem) => {
+            if (course.topicOrWeekInstances) {
+                course.topicOrWeekInstances
+                    .filter((instance_topicOrWeek: TopicOrWeekInstance) => instance_topicOrWeek.published === true)
+                    .forEach((instance_topicOrWeek: TopicOrWeekInstance) => {
+                        if (instance_topicOrWeek.items) {
+                            instance_topicOrWeek.items.forEach((item: TopicOrWeekItem) => {
                                 if (item.itemTitle && !publishedItemTitles.includes(item.itemTitle)) {
                                     publishedItemTitles.push(item.itemTitle);
                                 }
@@ -1306,7 +1306,7 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
         const newChat: Chat = {
             id: chatId,
             courseName: courseName,
-            divisionTitle: '', // Empty for now, will be set by user later
+            topicOrWeekTitle: '', // Empty for now, will be set by user later
             itemTitle: 'New Chat', // Set initial title as "New Chat"
             messages: [backendWelcomeMessage], // Use the proper backend welcome message with diagrams
             isPinned: false,

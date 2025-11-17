@@ -147,11 +147,11 @@ export class RAGApp {
 
                 // Create full instance of the document
                 fullDocument = {
-                    id: this.idGenerator.uploadContentID(document, document.itemTitle, document.divisionTitle, document.courseName),
+                    id: this.idGenerator.uploadContentID(document, document.itemTitle, document.topicOrWeekTitle, document.courseName),
                     date: new Date(),
                     name: document.name,
                     courseName: document.courseName,
-                    divisionTitle: document.divisionTitle,
+                    topicOrWeekTitle: document.topicOrWeekTitle,
                     itemTitle: document.itemTitle,
                     sourceType: 'file', // Change to 'file' since we created a file
                     text: document.text,
@@ -204,11 +204,11 @@ export class RAGApp {
 
                     // Create full instance of the document
                     fullDocument = {
-                        id: this.idGenerator.uploadContentID(document, document.itemTitle, document.divisionTitle, document.courseName),
+                        id: this.idGenerator.uploadContentID(document, document.itemTitle, document.topicOrWeekTitle, document.courseName),
                         date: new Date(),
                         name: document.name,
                         courseName: document.courseName,
-                        divisionTitle: document.divisionTitle,
+                        topicOrWeekTitle: document.topicOrWeekTitle,
                         itemTitle: document.itemTitle,
                         sourceType: document.sourceType,
                         file: document.file,
@@ -232,7 +232,7 @@ export class RAGApp {
                 date: fullDocument.date.toISOString(),
                 name: fullDocument.name,
                 courseName: fullDocument.courseName,
-                divisionTitle: fullDocument.divisionTitle,
+                topicOrWeekTitle: fullDocument.topicOrWeekTitle,
                 itemTitle: fullDocument.itemTitle,
                 sourceType: fullDocument.sourceType,
                 uploadedAt: new Date().toISOString(),
@@ -313,19 +313,19 @@ export class RAGApp {
      * 
      * @param materialId - The id of the material to delete
      * @param courseId - The course ID
-     * @param divisionId - The division ID
+     * @param topicOrWeekId - The topic/week instance ID
      * @param itemId - The item ID
      * @returns The result of the delete
      */
-    async deleteDocument(materialId: string, courseId: string, divisionId: string, itemId: string): Promise<boolean> {
+    async deleteDocument(materialId: string, courseId: string, topicOrWeekId: string, itemId: string): Promise<boolean> {
         try {
             // Get course to find the material and its qdrantId
             const course = await this.mongoDB.getActiveCourse(courseId);
             if (!course) {
                 throw new Error('Course not found');
             }
-            const division = course.divisions?.find((d: any) => d.id === divisionId);
-            const item = division?.items?.find((i: any) => i.id === itemId);
+            const instance_topicOrWeek = course.topicOrWeekInstances?.find((d: any) => d.id === topicOrWeekId);
+            const item = instance_topicOrWeek?.items?.find((i: any) => i.id === itemId);
             const material = item?.additionalMaterials?.find((m: any) => m.id === materialId);
             
             if (!material || !material.qdrantId) {
@@ -360,8 +360,8 @@ export class RAGApp {
             const errors: string[] = [];
 
             // Collect all qdrantIds from all materials
-            course.divisions?.forEach((division: any) => {
-                division.items?.forEach((item: any) => {
+            course.topicOrWeekInstances?.forEach((instance_topicOrWeek: any) => {
+                instance_topicOrWeek.items?.forEach((item: any) => {
                     item.additionalMaterials?.forEach((material: any) => {
                         if (material.qdrantId) {
                             qdrantIds.push(material.qdrantId);
@@ -411,8 +411,8 @@ export class RAGApp {
 
             // Collect all qdrantIds from all materials in the course
             this.logger.info('📊 Collecting document IDs from course materials...');
-            course.divisions?.forEach((division: any) => {
-                division.items?.forEach((item: any) => {
+            course.topicOrWeekInstances?.forEach((instance_topicOrWeek: any) => {
+                instance_topicOrWeek.items?.forEach((item: any) => {
                     item.additionalMaterials?.forEach((material: any) => {
                         mongoMaterialCount++;
                         if (material.qdrantId) {
@@ -604,10 +604,10 @@ const validateTextDocument = (req: Request, res: Response, next: Function) => {
     }
 
     // // Validate required fields
-    if (!doc.name || !doc.courseName || !doc.divisionTitle || !doc.itemTitle) {
+    if (!doc.name || !doc.courseName || !doc.topicOrWeekTitle || !doc.itemTitle) {
         return res.status(400).json({
             status: 400,
-            message: 'Missing required fields: name, courseName, divisionTitle, itemTitle'
+            message: 'Missing required fields: name, courseName, topicOrWeekTitle, itemTitle'
         });
     }
 
@@ -676,10 +676,10 @@ const validateFileDocument = (req: MulterRequest, res: Response, next: Function)
     }
 
     // Validate required fields
-    if (!doc.name || !doc.courseName || !doc.divisionTitle || !doc.itemTitle) {
+    if (!doc.name || !doc.courseName || !doc.topicOrWeekTitle || !doc.itemTitle) {
         return res.status(400).json({
             status: 400,
-            message: 'Missing required fields: name, courseName, divisionTitle, itemTitle'
+            message: 'Missing required fields: name, courseName, topicOrWeekTitle, itemTitle'
         });
     }
 
@@ -705,7 +705,7 @@ router.post('/documents/text', validateTextDocument, asyncHandlerWithAuth(async 
             date: new Date(),
             name: req.body.name,
             courseName: req.body.courseName,
-            divisionTitle: req.body.divisionTitle,
+            topicOrWeekTitle: req.body.topicOrWeekTitle,
             itemTitle: req.body.itemTitle,
             sourceType: 'text',
             text: req.body.text,
@@ -720,16 +720,16 @@ router.post('/documents/text', validateTextDocument, asyncHandlerWithAuth(async 
         // Store metadata in MongoDB if upload was successful
         if (result.uploaded && result.qdrantId) {
             try {
-                // Extract courseId, divisionId, and itemId from request body
-                const { courseId, divisionId, itemId } = req.body;
+                // Extract courseId, topicOrWeekId, and itemId from request body
+                const { courseId, topicOrWeekId, itemId } = req.body;
                 
                 console.log('🔍 BACKEND UPLOAD TEXT - MongoDB Storage Details:');
                 console.log('  CourseId:', courseId);
-                console.log('  DivisionId:', divisionId);
+                console.log('  TopicOrWeekId:', topicOrWeekId);
                 console.log('  ItemId:', itemId);
                 
-                if (!courseId || !divisionId || !itemId) {
-                    console.warn('Missing courseId, divisionId, or itemId for MongoDB storage');
+                if (!courseId || !topicOrWeekId || !itemId) {
+                    console.warn('Missing courseId, topicOrWeekId, or itemId for MongoDB storage');
                 } else {
                     // Add uploadedBy field from authenticated user
                     const materialWithUser = {
@@ -740,7 +740,7 @@ router.post('/documents/text', validateTextDocument, asyncHandlerWithAuth(async 
                     console.log('🔍 BACKEND UPLOAD TEXT - Material with User:');
                     console.log('  Material:', materialWithUser);
                     
-                    await ragApp['mongoDB'].addAdditionalMaterial(courseId, divisionId, itemId, materialWithUser);
+                    await ragApp['mongoDB'].addAdditionalMaterial(courseId, topicOrWeekId, itemId, materialWithUser);
                     console.log('✅ Document metadata stored in MongoDB');
                 }
             } catch (mongoError) {
@@ -806,7 +806,7 @@ router.post('/documents/file', upload.single('file'), validateFileDocument, asyn
             date: new Date(),
             name: req.body.name,
             courseName: req.body.courseName,
-            divisionTitle: req.body.divisionTitle,
+            topicOrWeekTitle: req.body.topicOrWeekTitle,
             itemTitle: req.body.itemTitle,
             sourceType: 'file',
             file: req.file as any, // Cast to any to handle multer file type
@@ -819,11 +819,11 @@ router.post('/documents/file', upload.single('file'), validateFileDocument, asyn
         // Store metadata in MongoDB if upload was successful
         if (result.uploaded && result.qdrantId) {
             try {
-                // Extract courseId, divisionId, and itemId from request body
-                const { courseId, divisionId, itemId } = req.body;
+                // Extract courseId, topicOrWeekId, and itemId from request body
+                const { courseId, topicOrWeekId, itemId } = req.body;
                 
-                if (!courseId || !divisionId || !itemId) {
-                    console.warn('Missing courseId, divisionId, or itemId for MongoDB storage');
+                if (!courseId || !topicOrWeekId || !itemId) {
+                    console.warn('Missing courseId, topicOrWeekId, or itemId for MongoDB storage');
                 } else {
                     // Add uploadedBy field from authenticated user
                     const materialWithUser = {
@@ -831,7 +831,7 @@ router.post('/documents/file', upload.single('file'), validateFileDocument, asyn
                         uploadedBy: (req.user as any)?.puid || 'system'
                     };
                     
-                    await ragApp['mongoDB'].addAdditionalMaterial(courseId, divisionId, itemId, materialWithUser);
+                    await ragApp['mongoDB'].addAdditionalMaterial(courseId, topicOrWeekId, itemId, materialWithUser);
                     console.log('✅ Document metadata stored in MongoDB');
                 }
             } catch (mongoError) {

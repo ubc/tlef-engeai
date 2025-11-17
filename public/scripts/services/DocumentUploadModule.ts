@@ -170,11 +170,11 @@ export class DocumentUploadModule {
                 return await this.uploadFile(document.file, {
                     name: document.name,
                     courseName: document.courseName,
-                    divisionTitle: document.divisionTitle,
+                    topicOrWeekTitle: document.topicOrWeekTitle,
                     itemTitle: document.itemTitle,
                     sourceType: document.sourceType,
                     courseId: document.courseId,
-                    divisionId: document.divisionId,
+                    topicOrWeekId: document.topicOrWeekId,
                     itemId: document.itemId
                 });
             } else if (document.sourceType === 'text' && document.text) {
@@ -185,11 +185,11 @@ export class DocumentUploadModule {
                 return await this.uploadText(document.text, {
                     name: document.name,
                     courseName: document.courseName,
-                    divisionTitle: document.divisionTitle,
+                    topicOrWeekTitle: document.topicOrWeekTitle,
                     itemTitle: document.itemTitle,
                     sourceType: document.sourceType,
                     courseId: document.courseId,
-                    divisionId: document.divisionId,
+                    topicOrWeekId: document.topicOrWeekId,
                     itemId: document.itemId
                 });
             } else {
@@ -228,12 +228,12 @@ export class DocumentUploadModule {
             formData.append('file', fileToUpload);
             formData.append('name', metadata.name);
             formData.append('courseName', metadata.courseName);
-            formData.append('divisionTitle', metadata.divisionTitle);
+            formData.append('topicOrWeekTitle', metadata.topicOrWeekTitle);
             formData.append('itemTitle', metadata.itemTitle);
             formData.append('sourceType', metadata.sourceType);
             // Add these three lines:
             formData.append('courseId', (metadata as any).courseId || '');
-            formData.append('divisionId', (metadata as any).divisionId || '');
+            formData.append('topicOrWeekId', (metadata as any).topicOrWeekId || '');
             formData.append('itemId', (metadata as any).itemId || '');
 
             this.progressCallback(30, 'Uploading file...');
@@ -306,7 +306,7 @@ export class DocumentUploadModule {
                 id: result.data?.id || this.generateId(),
                 name: result.data?.name || metadata.name,
                 courseName: metadata.courseName,
-                divisionTitle: metadata.divisionTitle,
+                topicOrWeekTitle: metadata.topicOrWeekTitle,
                 itemTitle: metadata.itemTitle,
                 sourceType: metadata.sourceType,
                 fileName: file.name,
@@ -345,12 +345,12 @@ export class DocumentUploadModule {
                 text: text,
                 name: metadata.name,
                 courseName: metadata.courseName,
-                divisionTitle: metadata.divisionTitle,
+                topicOrWeekTitle: metadata.topicOrWeekTitle,
                 itemTitle: metadata.itemTitle,
                 sourceType: metadata.sourceType,
                 // Add these three lines:
                 courseId: (metadata as any).courseId || '',
-                divisionId: (metadata as any).divisionId || '',
+                topicOrWeekId: (metadata as any).topicOrWeekId || '',
                 itemId: (metadata as any).itemId || ''
             };
 
@@ -417,7 +417,7 @@ export class DocumentUploadModule {
                 id: result.data?.id || this.generateId(),
                 name: result.data?.name || metadata.name,
                 courseName: metadata.courseName,
-                divisionTitle: metadata.divisionTitle,
+                topicOrWeekTitle: metadata.topicOrWeekTitle,
                 itemTitle: metadata.itemTitle,
                 sourceType: metadata.sourceType,
                 text: text,
