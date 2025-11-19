@@ -1503,32 +1503,53 @@ router.delete('/:courseId/wipe-mongodb', asyncHandlerWithAuth(async (req: Reques
         const courseName = (course as any).courseName;
         const droppedCollections: string[] = [];
         const errors: string[] = [];
+        const operations: string[] = [];
         
-        // Drop users collection
-        const usersCollectionName = `${courseName}_users`;
-        const usersDropResult = await mongoDB.dropCollection(usersCollectionName);
-        if (usersDropResult.success) {
-            droppedCollections.push(usersCollectionName);
-        } else {
-            errors.push(`Failed to drop ${usersCollectionName}: ${usersDropResult.error}`);
+        // 1. Delete course from active-course-list
+        try {
+            await mongoDB.deleteActiveCourse(course as any);
+            operations.push('Deleted course from active-course-list');
+            console.log(`✅ Deleted course ${courseId} from active-course-list`);
+        } catch (error) {
+            const errorMsg = `Failed to delete course from active-course-list: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            errors.push(errorMsg);
+            console.error(`❌ ${errorMsg}`);
         }
         
-        // Drop flags collection
-        const flagsCollectionName = `${courseName}_flags`;
-        const flagsDropResult = await mongoDB.dropCollection(flagsCollectionName);
-        if (flagsDropResult.success) {
-            droppedCollections.push(flagsCollectionName);
-        } else {
-            errors.push(`Failed to drop ${flagsCollectionName}: ${flagsDropResult.error}`);
+        // 2. Remove courseId from all users' coursesEnrolled in active-users
+        try {
+            const activeUsersCollection = mongoDB.db.collection('active-users');
+            const updateResult = await activeUsersCollection.updateMany(
+                { coursesEnrolled: { $in: [courseId] } },
+                { $pull: { coursesEnrolled: courseId } } as any
+            );
+            operations.push(`Removed course from ${updateResult.modifiedCount} user(s) in active-users`);
+            console.log(`✅ Removed course ${courseId} from ${updateResult.modifiedCount} user(s) in active-users`);
+        } catch (error) {
+            const errorMsg = `Failed to remove course from active-users: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            errors.push(errorMsg);
+            console.error(`❌ ${errorMsg}`);
         }
         
-        // Drop memory-agent collection
-        const memoryAgentCollectionName = `${courseName}_memory-agent`;
-        const memoryAgentDropResult = await mongoDB.dropCollection(memoryAgentCollectionName);
-        if (memoryAgentDropResult.success) {
-            droppedCollections.push(memoryAgentCollectionName);
-        } else {
-            errors.push(`Failed to drop ${memoryAgentCollectionName}: ${memoryAgentDropResult.error}`);
+        // 3. Get all collections in the database
+        const allCollections = await mongoDB.db.listCollections().toArray();
+        const courseCollectionPrefix = `${courseName}_`;
+        
+        // Filter collections that belong to this course (start with courseName_)
+        const courseCollections = allCollections
+            .map(col => col.name)
+            .filter(name => name.startsWith(courseCollectionPrefix));
+        
+        console.log(`📋 Found ${courseCollections.length} collection(s) for course ${courseName}:`, courseCollections);
+        
+        // 4. Drop all collections that belong to this course
+        for (const collectionName of courseCollections) {
+            const dropResult = await mongoDB.dropCollection(collectionName);
+            if (dropResult.success) {
+                droppedCollections.push(collectionName);
+            } else {
+                errors.push(`Failed to drop ${collectionName}: ${dropResult.error}`);
+            }
         }
         
         console.log(`✅ Wiped ${droppedCollections.length} MongoDB collections for course ${courseId}`);
@@ -1539,6 +1560,7 @@ router.delete('/:courseId/wipe-mongodb', asyncHandlerWithAuth(async (req: Reques
             data: {
                 courseId: courseId,
                 courseName: courseName,
+                operations: operations,
                 droppedCollections: droppedCollections,
                 errors: errors
             }

@@ -245,7 +245,6 @@ export class RAGApp {
                         if (item && item.learningObjectives) {
                             // Extract just the LearningObjective text from each objective
                             learningObjectives = item.learningObjectives.map((obj: any) => ({
-                                id: obj.id || '',
                                 text: obj.LearningObjective || obj.learningObjective || ''
                             }));
                         }

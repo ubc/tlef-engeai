@@ -2509,7 +2509,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             // Show confirmation modal with warning
             const result = await showDeleteConfirmationModal(
                 '🗑️ Wipe Mongo DB',
-                `all MongoDB collections (users, flags, memory-agent) for course "${currentClass.courseName}". This will permanently delete all user data, flags, and memory agent entries and is IRREVERSIBLE!`
+                `ALL MongoDB data for course "${currentClass.courseName}". This will permanently delete: the course from active-course-list, course enrollment from active-users, and ALL course-specific collections (users, flags, memory-agent, and any other collections). This is IRREVERSIBLE!`
             );
 
             if (result.action !== 'delete') {
