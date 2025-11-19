@@ -226,6 +226,37 @@ export class RAGApp {
                 throw new Error(`Unsupported source type: ${document.sourceType}`);
             }
 
+            // Get learning objectives from the course item
+            let learningObjectives: any[] = [];
+            try {
+                const course = await this.mongoDB.getCourseByName(fullDocument.courseName);
+                if (course) {
+                    // Find the topic/week instance that matches topicOrWeekTitle
+                    const topicOrWeekInstance = course.topicOrWeekInstances?.find(
+                        (instance: any) => instance.title === fullDocument.topicOrWeekTitle
+                    );
+                    
+                    if (topicOrWeekInstance) {
+                        // Find the item that matches itemTitle
+                        const item = topicOrWeekInstance.items?.find(
+                            (item: any) => item.title === fullDocument.itemTitle || item.itemTitle === fullDocument.itemTitle
+                        );
+                        
+                        if (item && item.learningObjectives) {
+                            // Extract just the LearningObjective text from each objective
+                            learningObjectives = item.learningObjectives.map((obj: any) => ({
+                                id: obj.id || '',
+                                text: obj.LearningObjective || obj.learningObjective || ''
+                            }));
+                        }
+                    }
+                }
+            } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                this.logger.warn(`⚠️ Could not retrieve learning objectives for ${fullDocument.itemTitle}: ${errorMessage}`);
+                // Continue without learning objectives
+            }
+
             // Upload to RAG with metadata
             const metadata = {
                 id: fullDocument.id,
@@ -236,6 +267,7 @@ export class RAGApp {
                 itemTitle: fullDocument.itemTitle,
                 sourceType: fullDocument.sourceType,
                 uploadedAt: new Date().toISOString(),
+                learningObjectives: learningObjectives
             };
 
             this.logger.info(`📤 Uploading document to RAG: ${fullDocument.name}`);

@@ -341,6 +341,7 @@ CONTENT RESTRICTIONS & SAFETY
 - Do NOT use markdown syntax (-, 1.) for lists—use HTML tags only
 - Do NOT use single-line display math ($$...$$)—use multi-line format
 - Do NOT include complex math formulas in Mermaid edge labels
+- Do NOT cite course material like "From document X, section Y, we learned that..." - always cite specific chapter
 
 **REQUIRED CONTENT:**
 - Always cite specific course material locations

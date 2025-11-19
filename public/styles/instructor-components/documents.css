@@ -270,6 +270,22 @@
     box-shadow: 0 4px 8px rgba(211, 47, 47, 0.4);
 }
 
+.status-wipe-mongodb {
+    background-color: #6a1b9a;
+    color: white;
+    border: 1px solid #4a148c;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: bold;
+}
+
+.status-wipe-mongodb:hover {
+    background-color: #4a148c;
+    border-color: #38006b;
+    transform: translateY(-1px) scale(1.05);
+    box-shadow: 0 4px 8px rgba(106, 27, 154, 0.4);
+}
+
 .learning-objectives {
     margin: 10px 0;
 }

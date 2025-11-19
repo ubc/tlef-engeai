@@ -1477,6 +1477,82 @@ router.delete('/:courseId/documents/all', asyncHandlerWithAuth(async (req: Reque
     }
 }));
 
+// DELETE /api/courses/:courseId/wipe-mongodb - Wipe all MongoDB collections for a course (REQUIRES AUTH - Instructors only)
+router.delete('/:courseId/wipe-mongodb', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const { courseId } = req.params;
+        
+        console.log('🔍 BACKEND WIPE MONGODB - Request Details:');
+        console.log('  Headers:', req.headers);
+        console.log('  Params:', req.params);
+        console.log('  User:', req.user);
+        console.log(`🗑️ Wiping all MongoDB collections for course ${courseId}`);
+        
+        // Get MongoDB instance
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        
+        // Get the course to get the courseName
+        const course = await mongoDB.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        const courseName = (course as any).courseName;
+        const droppedCollections: string[] = [];
+        const errors: string[] = [];
+        
+        // Drop users collection
+        const usersCollectionName = `${courseName}_users`;
+        const usersDropResult = await mongoDB.dropCollection(usersCollectionName);
+        if (usersDropResult.success) {
+            droppedCollections.push(usersCollectionName);
+        } else {
+            errors.push(`Failed to drop ${usersCollectionName}: ${usersDropResult.error}`);
+        }
+        
+        // Drop flags collection
+        const flagsCollectionName = `${courseName}_flags`;
+        const flagsDropResult = await mongoDB.dropCollection(flagsCollectionName);
+        if (flagsDropResult.success) {
+            droppedCollections.push(flagsCollectionName);
+        } else {
+            errors.push(`Failed to drop ${flagsCollectionName}: ${flagsDropResult.error}`);
+        }
+        
+        // Drop memory-agent collection
+        const memoryAgentCollectionName = `${courseName}_memory-agent`;
+        const memoryAgentDropResult = await mongoDB.dropCollection(memoryAgentCollectionName);
+        if (memoryAgentDropResult.success) {
+            droppedCollections.push(memoryAgentCollectionName);
+        } else {
+            errors.push(`Failed to drop ${memoryAgentCollectionName}: ${memoryAgentDropResult.error}`);
+        }
+        
+        console.log(`✅ Wiped ${droppedCollections.length} MongoDB collections for course ${courseId}`);
+        
+        res.json({
+            success: true,
+            message: 'MongoDB collections wiped successfully',
+            data: {
+                courseId: courseId,
+                courseName: courseName,
+                droppedCollections: droppedCollections,
+                errors: errors
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error wiping MongoDB collections:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to wipe MongoDB collections'
+        });
+    }
+}));
+
 // PATCH /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/title - Update topic/week instance title (REQUIRES AUTH)
 router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {

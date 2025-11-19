@@ -800,6 +800,27 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         console.log('🔧 Added nuclear clear handler');
     }
 
+    // Add event listener for wipe MongoDB button
+    const wipeMongoDBBtn = document.getElementById('wipe-mongodb-btn');
+    if (wipeMongoDBBtn) {
+        // Remove any existing event listeners to prevent accumulation
+        const existingWipeMongoDBHandler = (wipeMongoDBBtn as any)._wipeMongoDBHandler;
+        if (existingWipeMongoDBHandler) {
+            wipeMongoDBBtn.removeEventListener('click', existingWipeMongoDBHandler);
+            console.log('🔧 Removed existing wipe MongoDB handler');
+        }
+
+        // Create the wipe MongoDB handler function
+        const wipeMongoDBHandler = async () => {
+            await wipeMongoDBCollections();
+        };
+
+        // Store the handler reference and add the event listener
+        (wipeMongoDBBtn as any)._wipeMongoDBHandler = wipeMongoDBHandler;
+        wipeMongoDBBtn.addEventListener('click', wipeMongoDBHandler);
+        console.log('🔧 Added wipe MongoDB handler');
+    }
+
     // Add event listener for add division (Week/Topic) button
     const addDivisionBtn = document.getElementById('add-division-btn');
     if (addDivisionBtn) {
@@ -2471,6 +2492,95 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         } catch (error) {
             console.error('Error nuclear clearing RAG collection:', error);
             alert(`Failed to nuclear clear RAG collection: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    /**
+     * Wipes all MongoDB collections for the current course
+     * This will permanently delete users, flags, and memory-agent collections
+     */
+    async function wipeMongoDBCollections(): Promise<void> {
+        try {
+            if (!currentClass) {
+                alert('No course selected');
+                return;
+            }
+
+            // Show confirmation modal with warning
+            const result = await showDeleteConfirmationModal(
+                '🗑️ Wipe Mongo DB',
+                `all MongoDB collections (users, flags, memory-agent) for course "${currentClass.courseName}". This will permanently delete all user data, flags, and memory agent entries and is IRREVERSIBLE!`
+            );
+
+            if (result.action !== 'delete') {
+                console.log('Wipe MongoDB cancelled by user');
+                return;
+            }
+
+            console.log('🗑️ Starting wipe of MongoDB collections for course:', currentClass.id);
+
+            // Call the wipe MongoDB API endpoint
+            console.log('🔍 WIPE MONGODB - Request Details:');
+            console.log('  URL:', `/api/courses/${currentClass.id}/wipe-mongodb`);
+            console.log('  Method: DELETE');
+            
+            const response = await fetch(`/api/courses/${currentClass.id}/wipe-mongodb`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include'
+            });
+
+            console.log('🔍 WIPE MONGODB - Response Details:');
+            console.log('  Status:', response.status);
+            console.log('  Status Text:', response.statusText);
+
+            if (!response.ok) {
+                const responseText = await response.text();
+                console.log('🔍 WIPE MONGODB - Error Response Body (raw):');
+                console.log('  Raw Response:', responseText);
+                
+                try {
+                    const errorData = JSON.parse(responseText);
+                    console.log('🔍 WIPE MONGODB - Error Response Body (parsed):');
+                    console.log('  Parsed Error:', errorData);
+                    throw new Error(errorData.message || errorData.error || `HTTP ${response.status}`);
+                } catch (parseError) {
+                    console.log('🔍 WIPE MONGODB - JSON Parse Error:');
+                    console.log('  Parse Error:', parseError);
+                    throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
+                }
+            }
+
+            const responseText = await response.text();
+            console.log('🔍 WIPE MONGODB - Success Response Body (raw):');
+            console.log('  Raw Response:', responseText);
+            
+            let result_data;
+            try {
+                result_data = JSON.parse(responseText);
+                console.log('🔍 WIPE MONGODB - Success Response Body (parsed):');
+                console.log('  Parsed Result:', result_data);
+            } catch (parseError) {
+                console.log('🔍 WIPE MONGODB - JSON Parse Error:');
+                console.log('  Parse Error:', parseError);
+                throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
+            }
+            console.log('🗑️ MongoDB wipe completed:', result_data);
+
+            // Show success message
+            const droppedCount = result_data.data?.droppedCollections?.length || 0;
+            const errors = result_data.data?.errors || [];
+            let message = `🗑️ MongoDB collections wiped successfully! Dropped ${droppedCount} collection(s).`;
+            if (errors.length > 0) {
+                message += `\n\nErrors: ${errors.join(', ')}`;
+            }
+            alert(message);
+
+        } catch (error) {
+            console.error('Error wiping MongoDB collections:', error);
+            alert(`Failed to wipe MongoDB collections: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
 

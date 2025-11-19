@@ -470,12 +470,50 @@ class ChatApp {
         documents.forEach((doc, index) => {
             context += `\n--- Document ${index + 1} ---\n`;
             
-            const content = (doc as any).payload?.text || 
-                           (doc as any).text || 
-                           (doc as any).content || 
-                           '';
-            context += `Content: ${content}\n`;
+            // Parse metadata safely - extract only chapter and learning objectives
+            let chapter = '';
+            let learningObjectives: any[] = [];
             
+            try {
+                // Handle metadata - could be object or string
+                let metadataObj: any = {};
+                if (typeof doc.metadata === 'string') {
+                    metadataObj = JSON.parse(doc.metadata);
+                } else if (doc.metadata && typeof doc.metadata === 'object') {
+                    metadataObj = doc.metadata;
+                }
+                
+                // Extract chapter (topicOrWeekTitle)
+                chapter = metadataObj.topicOrWeekTitle || '';
+                
+                // Extract learning objectives
+                if (metadataObj.learningObjectives && Array.isArray(metadataObj.learningObjectives)) {
+                    learningObjectives = metadataObj.learningObjectives;
+                }
+            } catch (error) {
+                console.warn(`⚠️ Error parsing metadata for document ${index + 1}:`, error);
+                // Continue with empty values if parsing fails
+            }
+            
+            // Build formatted content with chapter and learning objectives BEFORE content
+            if (chapter) {
+                context += `chapter: ${chapter}\n`;
+            }
+            
+            if (learningObjectives.length > 0) {
+                context += `learningObjectives:\n`;
+                learningObjectives.forEach((obj, objIndex) => {
+                    const objectiveText = obj.text || obj.LearningObjective || obj.learningObjective || '';
+                    if (objectiveText) {
+                        context += `  ${objIndex + 1}. ${objectiveText}\n`;
+                    }
+                });
+            }
+            
+            // Content comes after chapter and learning objectives
+            context += `content: ${doc.content}\n`;
+            
+            context += `\n`;
         });
         
         context += '\n</course_materials>\n';
