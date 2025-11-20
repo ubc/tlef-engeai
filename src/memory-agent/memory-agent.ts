@@ -289,12 +289,12 @@ export class MemoryAgent {
             if (!response || !response.content) {
                 console.warn(`[MEMORY-AGENT] ⚠️ Empty response from LLM analysis`);
                 // Log to file even if response is empty
-                await this.logLLMInvocation(userId, courseName, MEMORY_AGENT_PROMPT, userMessages, '');
+                // await this.logLLMInvocation(userId, courseName, MEMORY_AGENT_PROMPT, userMessages, '');
                 return;
             }
             
             // Log the complete LLM invocation (request + response) to file
-            await this.logLLMInvocation(userId, courseName, MEMORY_AGENT_PROMPT, userMessages, response.content);
+            // await this.logLLMInvocation(userId, courseName, MEMORY_AGENT_PROMPT, userMessages, response.content);
 
             // Parse the JSON response and extract StruggleTopics array
             let struggleTopics: string[] = [];

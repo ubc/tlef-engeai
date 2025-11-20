@@ -560,7 +560,7 @@ export class ChatApp {
         });
         
         // Write conversation history to file in prompt-test folder
-        await this.writeConversationHistoryToFile(chatId, courseName, userId, history, totalCharacters, totalEstimatedTokens);
+        // await this.writeConversationHistoryToFile(chatId, courseName, userId, history, totalCharacters, totalEstimatedTokens);
         
         // Stream the response
         console.log(`\n🚀 Starting LLM streaming...`);
