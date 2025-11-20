@@ -479,25 +479,36 @@ async function clearAllDocuments(courseId: string): Promise<void> {
 
 /**
  * Resets dummy courses to their original state
- * Deletes all MongoDB collections except 'active-course-list' and 'active-users'
- * Then resets CHBE 241
+ * Wipes everything in active-course-list collection, then adds CHBE 241
+ * Deletes all MongoDB collections except 'active-users'
  * @returns Object with success status and optional message
  */
 export async function resetDummyCourses(): Promise<{ success: boolean; skipped?: boolean; message?: string }> {
     console.log('🔄 Resetting dummy courses...');
-    console.log('⚠️  This will delete ALL collections except active-course-list and active-users');
+    console.log('⚠️  This will wipe active-course-list and delete ALL collections except active-users');
     
     try {
         const mongoDB = await EngEAI_MongoDB.getInstance();
         
-        // Get all collections in the database
+        // Step 1: Clear all documents from active-course-list collection
+        console.log('🗑️  Clearing all courses from active-course-list...');
+        try {
+            const activeCourseListCollection = mongoDB.db.collection('active-course-list');
+            const deleteResult = await activeCourseListCollection.deleteMany({});
+            console.log(`✅ Deleted ${deleteResult.deletedCount} course(s) from active-course-list`);
+        } catch (error) {
+            console.error('❌ Error clearing active-course-list:', error);
+            throw error;
+        }
+        
+        // Step 2: Get all collections in the database
         const allCollections = await mongoDB.db.listCollections().toArray();
         const collectionNames = allCollections.map(col => col.name);
         
         console.log(`📋 Found ${collectionNames.length} collection(s) in database`);
         
-        // Collections to preserve
-        const preservedCollections = ['active-course-list', 'active-users'];
+        // Collections to preserve (only active-users now)
+        const preservedCollections = ['active-users'];
         
         // Filter out collections to preserve
         const collectionsToDrop = collectionNames.filter(
@@ -506,7 +517,7 @@ export async function resetDummyCourses(): Promise<{ success: boolean; skipped?:
         
         console.log(`🗑️  Dropping ${collectionsToDrop.length} collection(s) (preserving: ${preservedCollections.join(', ')})`);
         
-        // Drop all collections except the preserved ones
+        // Step 3: Drop all collections except the preserved ones
         const droppedCollections: string[] = [];
         const errors: string[] = [];
         
@@ -532,11 +543,11 @@ export async function resetDummyCourses(): Promise<{ success: boolean; skipped?:
             console.warn(`⚠️  ${errors.length} error(s) occurred during collection deletion`);
         }
         
-        // Reset CHBE 241 by recreating it
-        console.log('🔄 Resetting CHBE 241...');
+        // Step 4: Reset CHBE 241 by recreating it (this will add it back to active-course-list)
+        console.log('🔄 Recreating CHBE 241...');
         await initializeDummyCourses();
         
-        const message = `Dummy courses reset successfully. Dropped ${droppedCollections.length} collection(s). CHBE 241 has been reset.${errors.length > 0 ? ` (${errors.length} error(s) occurred)` : ''}`;
+        const message = `Dummy courses reset successfully. Wiped active-course-list, dropped ${droppedCollections.length} collection(s), and recreated CHBE 241.${errors.length > 0 ? ` (${errors.length} error(s) occurred)` : ''}`;
         console.log(`✅ ${message}`);
         
         return { 
