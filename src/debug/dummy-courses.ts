@@ -479,75 +479,70 @@ async function clearAllDocuments(courseId: string): Promise<void> {
 
 /**
  * Resets dummy courses to their original state
+ * Deletes all MongoDB collections except 'active-course-list' and 'active-users'
+ * Then resets CHBE 241
  * @returns Object with success status and optional message
  */
 export async function resetDummyCourses(): Promise<{ success: boolean; skipped?: boolean; message?: string }> {
     console.log('🔄 Resetting dummy courses...');
+    console.log('⚠️  This will delete ALL collections except active-course-list and active-users');
     
     try {
         const mongoDB = await EngEAI_MongoDB.getInstance();
         
-        // Get course IDs and names before deletion
-        const chbe241Id = idGenerator.uniqueIDGenerator('APSC099-Engineering-Kindergarten');
-        const apsc080Id = idGenerator.uniqueIDGenerator('APSC080-Introduction-Engineering');
+        // Get all collections in the database
+        const allCollections = await mongoDB.db.listCollections().toArray();
+        const collectionNames = allCollections.map(col => col.name);
         
-        // Get course names before deletion
-        const chbe241Course = await mongoDB.getActiveCourse(chbe241Id) as activeCourse | null;
-        const apsc080Course = await mongoDB.getActiveCourse(apsc080Id) as activeCourse | null;
+        console.log(`📋 Found ${collectionNames.length} collection(s) in database`);
         
-        const chbe241Name = chbe241Course?.courseName || 'CHBE 241: Material and Energy Balances';
-        const apsc080Name = apsc080Course?.courseName || 'APSC 080: Introduction to Engineering';
+        // Collections to preserve
+        const preservedCollections = ['active-course-list', 'active-users'];
         
-        // Clear chats, flags, and documents before deleting courses
-        try {
-            await clearAllChats(chbe241Name);
-        } catch (error) {
-            console.warn(`⚠️ Could not clear chats for ${chbe241Name}:`, error);
+        // Filter out collections to preserve
+        const collectionsToDrop = collectionNames.filter(
+            name => !preservedCollections.includes(name)
+        );
+        
+        console.log(`🗑️  Dropping ${collectionsToDrop.length} collection(s) (preserving: ${preservedCollections.join(', ')})`);
+        
+        // Drop all collections except the preserved ones
+        const droppedCollections: string[] = [];
+        const errors: string[] = [];
+        
+        for (const collectionName of collectionsToDrop) {
+            try {
+                const dropResult = await mongoDB.dropCollection(collectionName);
+                if (dropResult.success) {
+                    droppedCollections.push(collectionName);
+                    console.log(`✅ Dropped collection: ${collectionName}`);
+                } else {
+                    errors.push(`Failed to drop ${collectionName}: ${dropResult.error}`);
+                    console.error(`❌ Failed to drop ${collectionName}:`, dropResult.error);
+                }
+            } catch (error) {
+                const errorMsg = `Error dropping ${collectionName}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+                errors.push(errorMsg);
+                console.error(`❌ ${errorMsg}`);
+            }
         }
         
-        try {
-            await clearAllFlags(chbe241Name);
-        } catch (error) {
-            console.warn(`⚠️ Could not clear flags for ${chbe241Name}:`, error);
+        console.log(`✅ Dropped ${droppedCollections.length} collection(s) successfully`);
+        if (errors.length > 0) {
+            console.warn(`⚠️  ${errors.length} error(s) occurred during collection deletion`);
         }
         
-        try {
-            await clearAllDocuments(chbe241Id);
-        } catch (error) {
-            console.warn(`⚠️ Could not clear documents for ${chbe241Id}:`, error);
-        }
-        
-        // Clear data for APSC 080 if it exists
-        try {
-            await clearAllChats(apsc080Name);
-        } catch (error) {
-            console.warn(`⚠️ Could not clear chats for ${apsc080Name}:`, error);
-        }
-        
-        try {
-            await clearAllFlags(apsc080Name);
-        } catch (error) {
-            console.warn(`⚠️ Could not clear flags for ${apsc080Name}:`, error);
-        }
-        
-        try {
-            await clearAllDocuments(apsc080Id);
-        } catch (error) {
-            console.warn(`⚠️ Could not clear documents for ${apsc080Id}:`, error);
-        }
-        
-        // Delete existing courses
-        await deleteCourse(chbe241Id);
-        await deleteCourse(apsc080Id);
-        
-        // Recreate courses
+        // Reset CHBE 241 by recreating it
+        console.log('🔄 Resetting CHBE 241...');
         await initializeDummyCourses();
         
-        console.log('✅ Dummy courses reset successfully (courses, chats, flags, and documents cleared)');
+        const message = `Dummy courses reset successfully. Dropped ${droppedCollections.length} collection(s). CHBE 241 has been reset.${errors.length > 0 ? ` (${errors.length} error(s) occurred)` : ''}`;
+        console.log(`✅ ${message}`);
+        
         return { 
             success: true, 
             skipped: false,
-            message: 'Dummy courses reset successfully (courses, chats, flags, and documents cleared)'
+            message: message
         };
     } catch (error) {
         console.error('❌ Error resetting dummy courses:', error);
