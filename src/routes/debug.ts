@@ -27,7 +27,8 @@ router.get('/courses', asyncHandler(async (req: Request, res: Response) => {
     }
 }));
 
-// POST /api/debug/reset - Reset dummy courses
+// COMMENTED OUT: POST /api/debug/reset - Reset dummy courses
+/*
 router.post('/reset', asyncHandler(async (req: Request, res: Response) => {
     try {
         const result = await resetDummyCourses();
@@ -60,5 +61,6 @@ router.post('/reset', asyncHandler(async (req: Request, res: Response) => {
         });
     }
 }));
+*/
 
 export default router;

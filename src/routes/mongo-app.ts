@@ -1477,7 +1477,8 @@ router.delete('/:courseId/documents/all', asyncHandlerWithAuth(async (req: Reque
     }
 }));
 
-// DELETE /api/courses/:courseId/wipe-mongodb - Wipe all MongoDB collections for a course (REQUIRES AUTH - Instructors only)
+// COMMENTED OUT: DELETE /api/courses/:courseId/wipe-mongodb - Wipe all MongoDB collections for a course (REQUIRES AUTH - Instructors only)
+/*
 router.delete('/:courseId/wipe-mongodb', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { courseId } = req.params;
@@ -1574,6 +1575,7 @@ router.delete('/:courseId/wipe-mongodb', asyncHandlerWithAuth(async (req: Reques
         });
     }
 }));
+*/
 
 // PATCH /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/title - Update topic/week instance title (REQUIRES AUTH)
 router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {

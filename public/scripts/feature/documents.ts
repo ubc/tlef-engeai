@@ -779,7 +779,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         console.log('🔧 Added delete all documents handler');
     }
 
-    // Add event listener for nuclear clear button
+    // COMMENTED OUT: Add event listener for nuclear clear button
+    /*
     const nuclearClearBtn = document.getElementById('nuclear-clear-btn');
     if (nuclearClearBtn) {
         // Remove any existing event listeners to prevent accumulation
@@ -800,7 +801,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         console.log('🔧 Added nuclear clear handler');
     }
 
-    // Add event listener for wipe MongoDB button
+    // COMMENTED OUT: Add event listener for wipe MongoDB button
     const wipeMongoDBBtn = document.getElementById('wipe-mongodb-btn');
     if (wipeMongoDBBtn) {
         // Remove any existing event listeners to prevent accumulation
@@ -820,6 +821,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         wipeMongoDBBtn.addEventListener('click', wipeMongoDBHandler);
         console.log('🔧 Added wipe MongoDB handler');
     }
+    */
 
     // Add event listener for add division (Week/Topic) button
     const addDivisionBtn = document.getElementById('add-division-btn');
@@ -2407,8 +2409,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     /**
-     * Nuclear clear - delete entire RAG collection (nuclear option)
+     * COMMENTED OUT: Nuclear clear - delete entire RAG collection (nuclear option)
      */
+    /*
     async function nuclearClearDocuments(): Promise<void> {
         try {
             // Show confirmation modal with stronger warning
@@ -2494,11 +2497,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             alert(`Failed to nuclear clear RAG collection: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
+    */
 
     /**
-     * Wipes all MongoDB collections for the current course
+     * COMMENTED OUT: Wipes all MongoDB collections for the current course
      * This will permanently delete users, flags, and memory-agent collections
      */
+    /*
     async function wipeMongoDBCollections(): Promise<void> {
         try {
             if (!currentClass) {
@@ -2583,6 +2588,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             alert(`Failed to wipe MongoDB collections: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
+    */
 
     /**
      * Delete all documents from both MongoDB and Qdrant
