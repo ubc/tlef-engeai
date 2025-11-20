@@ -930,6 +930,72 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             console.log('[INSTRUCTOR-MODE] ✅ Course Information button listener attached');
         }
+
+        // Reset Dummy Courses button listener
+        const resetDummyBtn = document.getElementById('instructor-reset-dummy-btn');
+        if (resetDummyBtn) {
+            resetDummyBtn.addEventListener('click', async () => {
+                console.log('[INSTRUCTOR-MODE] 🔄 Reset Dummy Courses button clicked');
+                
+                // Show confirmation dialog
+                const result = await showConfirmModal(
+                    'Reset Dummy Courses',
+                    'Are you sure you want to reset the dummy courses? This will restore the courses to their original state based on dummy-courses.ts. This action cannot be undone.',
+                    'Reset',
+                    'Cancel'
+                );
+                
+                // Check if user confirmed (action will be 'reset' if confirmed, 'cancel' if cancelled)
+                // Also check for other cancellation actions like 'overlay', 'escape', 'close'
+                if (result.action === 'cancel' || result.action === 'overlay' || result.action === 'escape' || result.action === 'close') {
+                    console.log('[INSTRUCTOR-MODE] ❌ Reset cancelled by user');
+                    return;
+                }
+                
+                try {
+                    // Disable button during request
+                    (resetDummyBtn as HTMLButtonElement).disabled = true;
+                    const originalText = resetDummyBtn.querySelector('span')?.textContent;
+                    if (resetDummyBtn.querySelector('span')) {
+                        resetDummyBtn.querySelector('span')!.textContent = 'Resetting...';
+                    }
+                    
+                    // Call the API endpoint
+                    const response = await fetch('/api/debug/reset', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        credentials: 'include'
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        if (data.skipped) {
+                            alert(`⚠️ ${data.message || 'Reset skipped - collection already exists with data'}`);
+                        } else {
+                            alert(`✅ ${data.message || 'Dummy courses reset successfully'}`);
+                            // Reload the page to reflect changes
+                            window.location.reload();
+                        }
+                    } else {
+                        alert(`❌ Error: ${data.error || 'Failed to reset dummy courses'}`);
+                    }
+                } catch (error) {
+                    console.error('[INSTRUCTOR-MODE] 🚨 Error resetting dummy courses:', error);
+                    alert('❌ Failed to reset dummy courses. Please try again.');
+                } finally {
+                    // Re-enable button
+                    (resetDummyBtn as HTMLButtonElement).disabled = false;
+                    if (resetDummyBtn.querySelector('span')) {
+                        const originalText = resetDummyBtn.querySelector('span')?.textContent || 'Reset Dummy Courses';
+                        resetDummyBtn.querySelector('span')!.textContent = 'Reset Dummy Courses';
+                    }
+                }
+            });
+            console.log('[INSTRUCTOR-MODE] ✅ Reset Dummy Courses button listener attached');
+        }
     };
 
     // --- STATE RESTORATION ---
