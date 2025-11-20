@@ -971,7 +971,8 @@ router.delete('/wipe-all', asyncHandlerWithAuth(async (req: Request, res: Respon
     }
 }));
 
-// DELETE /api/rag/nuclear-clear - Nuclear clear entire RAG collection (REQUIRES AUTH)
+// COMMENTED OUT: DELETE /api/rag/nuclear-clear - Nuclear clear entire RAG collection (REQUIRES AUTH)
+/*
 router.delete('/nuclear-clear', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         console.log('🔍 BACKEND NUCLEAR CLEAR - Request Details:');
@@ -1006,6 +1007,7 @@ router.delete('/nuclear-clear', asyncHandlerWithAuth(async (req: Request, res: R
         });
     }
 }));
+*/
 
 // Note: Setup is now handled automatically in the QdrantUpload constructor
 
