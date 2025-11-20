@@ -22,7 +22,7 @@ import { LLMModule } from 'ubc-genai-toolkit-llm';
 import { AppConfig, loadConfig } from '../routes/config';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { MemoryAgentEntry } from '../functions/types';
-import { MEMORY_AGENT_PROMPT } from './memory-agent-prompt';
+import { getMemoryAgentPrompt } from './memory-agent-prompt';
 import { isDeveloperMode, getMockStruggleWords } from '../functions/developer-mode';
 
 
@@ -232,6 +232,7 @@ export class MemoryAgent {
         }
     }
 
+
     /**
      * Analyze user messages and update struggle words
      * Creates a conversation on-the-fly with a minimal system prompt and user messages,
@@ -273,11 +274,15 @@ export class MemoryAgent {
                 return; // Early return - skip LLM analysis
             }
 
+            // Retrieve existing struggle words to provide feedback to LLM
+            const existingStruggleWords = await this.getStruggleWords(userId, courseName);
+            console.log(`[MEMORY-AGENT] 📋 Existing struggle topics (${existingStruggleWords.length}):`, existingStruggleWords);
          
-            // Create conversation with minimal system prompt and conversation text
+            // Create conversation with system prompt that includes existing topics
             console.log(`[MEMORY-AGENT] 🔍 Analyzing conversation for struggle topics...`);
             const conversation = this.llmModule.createConversation();
-            conversation.addMessage('system', MEMORY_AGENT_PROMPT);
+            const systemPrompt = getMemoryAgentPrompt(existingStruggleWords);
+            conversation.addMessage('system', systemPrompt);
             
             conversation.addMessage('user', userMessages);
             
@@ -289,15 +294,14 @@ export class MemoryAgent {
             if (!response || !response.content) {
                 console.warn(`[MEMORY-AGENT] ⚠️ Empty response from LLM analysis`);
                 // Log to file even if response is empty
-                // await this.logLLMInvocation(userId, courseName, MEMORY_AGENT_PROMPT, userMessages, '');
+                // await this.logLLMInvocation(userId, courseName, systemPrompt, userMessages, '');
                 return;
             }
-            
-            // Log the complete LLM invocation (request + response) to file
-            // await this.logLLMInvocation(userId, courseName, MEMORY_AGENT_PROMPT, userMessages, response.content);
+        
 
             // Parse the JSON response and extract StruggleTopics array
             let struggleTopics: string[] = [];
+            let parseSuccess = false;
             try {
                 // Clean the response content
                 const jsonContent = response.content.trim();
@@ -308,6 +312,7 @@ export class MemoryAgent {
                 // Extract StruggleTopics array
                 if (parsed && Array.isArray(parsed.StruggleTopics)) {
                     struggleTopics = parsed.StruggleTopics;
+                    parseSuccess = true;
                 } else if (parsed && parsed.StruggleTopics === undefined) {
                     console.warn(`[MEMORY-AGENT] ⚠️ Response missing 'StruggleTopics' field`);
                     struggleTopics = [];
@@ -321,19 +326,24 @@ export class MemoryAgent {
                 struggleTopics = [];
             }
 
+            // // Log the complete LLM invocation (request + response) to file when response succeeds
+            // if (parseSuccess) {
+            //     await this.logLLMInvocation(userId, courseName, systemPrompt, userMessages, response.content);
+            // }
+
             // Normalize and filter struggle words
             const normalizedStruggleWords = struggleTopics
                 .map((word: string) => word.trim())
                 .filter((word: string) => word.length > 0)
                 .map((word: string) => word.toLowerCase()); // Normalize to lowercase
 
-            // Remove duplicates
+            // Remove exact duplicates
             const uniqueStruggleWords = Array.from(new Set(normalizedStruggleWords));
 
             console.log(`[MEMORY-AGENT] ✅ Extracted ${uniqueStruggleWords.length} struggle topics:`, uniqueStruggleWords);
             
             if (uniqueStruggleWords.length > 0) {
-                // Update struggle words in database (ensures uniqueness)
+                // Update struggle words in database (ensures uniqueness and avoids duplicates via LLM prompt)
                 await this.updateStruggleWords(userId, courseName, uniqueStruggleWords);
             } else {
                 console.log(`[MEMORY-AGENT] ℹ️ No struggle words extracted from conversation`);
