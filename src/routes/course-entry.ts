@@ -43,9 +43,10 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
         console.log(`[COURSE-ENTRY] Course found: ${course.courseName}`);
         
         // 2. Check if CourseUser exists in {courseName}_users
-        let courseUser = await mongoDB.findStudentByPUID(
+        // Use userId instead of puid (CourseUser doesn't store puid for privacy)
+        let courseUser = await mongoDB.findStudentByUserId(
             course.courseName, 
-            globalUser.puid
+            globalUser.userId
         );
         
         // 3. If CourseUser doesn't exist, create it
@@ -54,7 +55,6 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
             
             const newCourseUserData: Partial<User> = {
                 name: globalUser.name,
-                puid: globalUser.puid,
                 userId: globalUser.userId,  // Reuse from GlobalUser
                 courseName: course.courseName,
                 courseId: course.id,
@@ -67,6 +67,20 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
             courseUser = await mongoDB.createStudent(course.courseName, newCourseUserData) as any;
             
             console.log(`[COURSE-ENTRY] CourseUser created`);
+            
+            // Initialize memory agent entry for the user
+            try {
+                await mongoDB.initializeMemoryAgentForUser(
+                    course.courseName,
+                    globalUser.userId,
+                    globalUser.name,
+                    globalUser.affiliation
+                );
+                console.log(`[COURSE-ENTRY] Memory agent initialized for user`);
+            } catch (error) {
+                console.error(`[COURSE-ENTRY] ⚠️ Error initializing memory agent:`, error);
+                // Continue even if memory agent initialization fails
+            }
             
             // 4. Add course to GlobalUser's enrolled list
             if (!globalUser.coursesEnrolled.includes(courseId)) {

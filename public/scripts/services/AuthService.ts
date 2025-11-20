@@ -10,11 +10,9 @@
  */
 
 export interface User {
-    username: string;
-    firstName: string;
-    lastName: string;
+    name: string;
+    userId: string;
     affiliation: string;
-    puid: string;
 }
 
 export interface AuthState {
@@ -72,10 +70,9 @@ export class AuthService {
                 //START DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-SUCCESS)
                 console.log('[FRONTEND-AUTH] ✅ LOGIN SUCCESSFUL!');
                 console.log('[FRONTEND-AUTH] 👤 User information received from server:');
-                console.log('  📝 Username:', data.user.username);
-                console.log('  👨‍💼 Full Name:', data.user.firstName, data.user.lastName);
+                console.log('  📝 Name:', data.user.name);
                 console.log('  🏫 Affiliation:', data.user.affiliation);
-                console.log('  🆔 PUID:', data.user.puid);
+                console.log('  🆔 User ID:', data.user.userId);
                 console.log('[FRONTEND-AUTH] 💾 Stored in frontend state:', this.authState.user);
                 //END DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-SUCCESS)
             } else {
@@ -212,10 +209,9 @@ export class AuthService {
                 console.log(`[${pageName}] ✅ User authenticated, logging SAML data:`);
                 console.log('=====================================');
                 console.log('🔐 Authentication Source: SAML/CWL');
-                console.log('👨‍💼 Full Name:', `${authState.user.firstName} ${authState.user.lastName}`);
-                console.log('📧 Username:', authState.user.username);
+                console.log('📝 Name:', authState.user.name);
                 console.log('🏫 Affiliation:', authState.user.affiliation);
-                console.log('🆔 PUID (Personal University ID):', authState.user.puid);
+                console.log('🆔 User ID:', authState.user.userId);
                 console.log('⏰ Authentication Time:', new Date().toISOString());
                 console.log('🌐 Current Page:', window.location.pathname);
                 console.log('🔗 User Agent:', navigator.userAgent);

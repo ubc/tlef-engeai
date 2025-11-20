@@ -14,530 +14,207 @@
 
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { IDGenerator } from '../functions/unique-id-generator';
-import { activeCourse, ContentDivision, LearningObjective, AdditionalMaterial, FlagReport, CourseUser, GlobalUser } from '../functions/types';
+import { activeCourse, TopicOrWeekInstance, LearningObjective, AdditionalMaterial, FlagReport, CourseUser, GlobalUser, TopicOrWeekItem } from '../functions/types';
 
 const idGenerator = IDGenerator.getInstance();
 
-/**
- * Creates APSC 091 - PID for Engineers (Monitor Setup Course)
- * This course has completed course, content, and flag setup but needs monitor setup
- */
-async function createAPSC091(): Promise<activeCourse> {
-    const courseId = idGenerator.uniqueIDGenerator('APSC091-PID-Engineers');
-    const now = new Date();
-    
-    const course: activeCourse = {
-        id: courseId,
-        date: now,
-        courseName: 'APSC 091: PID for Engineers',
-        courseSetup: true,
-        contentSetup: true, // Completed onboarding
-        flagSetup: true, // Completed flag setup
-        monitorSetup: false, // Needs monitor setup
-        instructors: [
-            'Dr. Maria Rodriguez',
-            'Prof. James Wilson'
-        ],
-        teachingAssistants: [
-            'Alex Chen',
-            'Sarah Thompson',
-            'David Kim'
-        ],
-        frameType: 'byWeek',
-        tilesNumber: 12,
-        divisions: []
-    };
-
-    // Create 12 weekly modules with learning objectives
-    const weeklyModules = [
-        {
-            title: 'Week 1: Introduction to Control Systems',
-            objectives: [
-                'Understand the basic concepts of control systems',
-                'Identify different types of control systems',
-                'Learn about open-loop vs closed-loop control'
-            ]
-        },
-        {
-            title: 'Week 2: Mathematical Foundations',
-            objectives: [
-                'Review Laplace transforms and their applications',
-                'Understand transfer functions and system dynamics',
-                'Learn about poles and zeros in control systems'
-            ]
-        },
-        {
-            title: 'Week 3: PID Controller Basics',
-            objectives: [
-                'Understand the three components of PID control',
-                'Learn about proportional, integral, and derivative actions',
-                'Analyze the effects of each PID component'
-            ]
-        },
-        {
-            title: 'Week 4: PID Controller Design',
-            objectives: [
-                'Learn systematic approaches to PID tuning',
-                'Understand Ziegler-Nichols tuning methods',
-                'Practice manual tuning techniques'
-            ]
-        },
-        {
-            title: 'Week 5: Stability Analysis',
-            objectives: [
-                'Understand system stability concepts',
-                'Learn about Routh-Hurwitz stability criterion',
-                'Analyze stability margins and phase/gain margins'
-            ]
-        },
-        {
-            title: 'Week 6: Frequency Response Analysis',
-            objectives: [
-                'Learn about Bode plots and frequency response',
-                'Understand Nyquist plots and stability analysis',
-                'Practice frequency domain design techniques'
-            ]
-        },
-        {
-            title: 'Week 7: Advanced PID Techniques',
-            objectives: [
-                'Learn about PID variations and modifications',
-                'Understand anti-windup techniques',
-                'Explore cascade and feedforward control'
-            ]
-        },
-        {
-            title: 'Week 8: Digital PID Implementation',
-            objectives: [
-                'Understand digital control system implementation',
-                'Learn about sampling and discretization',
-                'Practice digital PID controller design'
-            ]
-        },
-        {
-            title: 'Week 9: Process Control Applications',
-            objectives: [
-                'Apply PID control to industrial processes',
-                'Understand process dynamics and modeling',
-                'Learn about controller selection criteria'
-            ]
-        },
-        {
-            title: 'Week 10: Motion Control Systems',
-            objectives: [
-                'Apply PID control to motion systems',
-                'Understand servo control and positioning',
-                'Learn about velocity and position control loops'
-            ]
-        },
-        {
-            title: 'Week 11: PID in Modern Control Systems',
-            objectives: [
-                'Explore PID in modern control architectures',
-                'Understand integration with SCADA systems',
-                'Learn about adaptive and intelligent PID control'
-            ]
-        },
-        {
-            title: 'Week 12: Capstone Project - PID Design',
-            objectives: [
-                'Design a complete PID control system',
-                'Implement and test PID controller performance',
-                'Present PID design project to class'
-            ]
-        }
-    ];
-
-    // Create divisions and learning objectives
-    for (let i = 0; i < 12; i++) {
-        const module = weeklyModules[i];
-        const divisionId = idGenerator.uniqueIDGenerator(`division-${i + 1}`);
-        const itemId = idGenerator.uniqueIDGenerator(`item-${i + 1}`);
-        
-        const learningObjectives: LearningObjective[] = module.objectives.map((objective, index) => ({
-            id: idGenerator.uniqueIDGenerator(`objective-${i + 1}-${index + 1}`),
-            LearningObjective: objective,
-            courseName: course.courseName,
-            divisionTitle: module.title,
-            itemTitle: module.title,
-            createdAt: now,
-            updatedAt: now
-        }));
-
-        const division: ContentDivision = {
-            id: divisionId,
-            date: now,
-            title: module.title,
-            courseName: course.courseName,
-            published: true,
-            createdAt: now,
-            updatedAt: now,
-            items: [{
-                id: itemId,
-                date: now,
-                title: module.title,
-                courseName: course.courseName,
-                divisionTitle: module.title,
-                itemTitle: module.title,
-                learningObjectives: learningObjectives,
-                additionalMaterials: [],
-                completed: true,
-                createdAt: now,
-                updatedAt: now
-            }]
-        };
-
-        course.divisions.push(division);
-    }
-
-    return course;
-}
-
-/**
- * Creates APSC 060 - Engineering Society (Flag Setup Course)
- * This course has completed course and content setup but needs flag setup
- */
-async function createAPSC060(): Promise<activeCourse> {
-    const courseId = idGenerator.uniqueIDGenerator('APSC060-Engineering-Society');
-    const now = new Date();
-    
-    const course: activeCourse = {
-        id: courseId,
-        date: now,
-        courseName: 'APSC 060: Engineering Society',
-        courseSetup: true,
-        contentSetup: true, // Completed onboarding
-        flagSetup: false, // Needs flag setup
-        monitorSetup: false, // Not yet set up
-        instructors: [
-            'Dr. Emily Rodriguez',
-            'Prof. David Thompson'
-        ],
-        teachingAssistants: [
-            'Sarah Chen',
-            'Michael Johnson',
-            'Lisa Wang'
-        ],
-        frameType: 'byWeek',
-        tilesNumber: 14,
-        divisions: []
-    };
-
-    // Create 14 weekly modules with learning objectives
-    const weeklyModules = [
-        {
-            title: 'Week 1: Introduction to Engineering Society',
-            objectives: [
-                'Understand the role of engineering in society',
-                'Explore the history of engineering professions',
-                'Identify key engineering organizations and societies'
-            ]
-        },
-        {
-            title: 'Week 2: Professional Ethics and Responsibility',
-            objectives: [
-                'Learn about engineering codes of ethics',
-                'Understand professional responsibility to society',
-                'Analyze ethical dilemmas in engineering practice'
-            ]
-        },
-        {
-            title: 'Week 3: Engineering and Public Policy',
-            objectives: [
-                'Explore how engineering influences public policy',
-                'Understand the role of engineers in government',
-                'Analyze case studies of engineering policy decisions'
-            ]
-        },
-        {
-            title: 'Week 4: Sustainability and Environmental Impact',
-            objectives: [
-                'Understand sustainable engineering practices',
-                'Learn about environmental impact assessment',
-                'Explore green engineering solutions'
-            ]
-        },
-        {
-            title: 'Week 5: Engineering and Social Justice',
-            objectives: [
-                'Examine how engineering affects different communities',
-                'Understand equity, diversity, and inclusion in engineering',
-                'Explore engineering solutions for social challenges'
-            ]
-        },
-        {
-            title: 'Week 6: Technology and Society',
-            objectives: [
-                'Analyze the societal impact of new technologies',
-                'Understand the digital divide and accessibility',
-                'Explore responsible innovation practices'
-            ]
-        },
-        {
-            title: 'Week 7: Engineering Communication',
-            objectives: [
-                'Learn effective communication with non-technical audiences',
-                'Understand the importance of public engagement',
-                'Practice presenting engineering concepts clearly'
-            ]
-        },
-        {
-            title: 'Week 8: Engineering and Global Development',
-            objectives: [
-                'Explore engineering solutions for global challenges',
-                'Understand appropriate technology concepts',
-                'Analyze international engineering projects'
-            ]
-        },
-        {
-            title: 'Week 9: Risk Management and Safety',
-            objectives: [
-                'Learn about risk assessment in engineering projects',
-                'Understand safety regulations and standards',
-                'Explore case studies of engineering failures'
-            ]
-        },
-        {
-            title: 'Week 10: Engineering and Innovation',
-            objectives: [
-                'Understand the innovation process in engineering',
-                'Explore intellectual property and patents',
-                'Learn about technology transfer and commercialization'
-            ]
-        },
-        {
-            title: 'Week 11: Engineering and Education',
-            objectives: [
-                'Explore the role of engineers in education',
-                'Understand STEM outreach and mentorship',
-                'Learn about engineering education policy'
-            ]
-        },
-        {
-            title: 'Week 12: Engineering and Healthcare',
-            objectives: [
-                'Examine the intersection of engineering and healthcare',
-                'Understand medical device regulation',
-                'Explore biomedical engineering applications'
-            ]
-        },
-        {
-            title: 'Week 13: Engineering and Transportation',
-            objectives: [
-                'Analyze transportation systems and their societal impact',
-                'Understand smart city concepts',
-                'Explore future transportation technologies'
-            ]
-        },
-        {
-            title: 'Week 14: Capstone Project - Engineering for Society',
-            objectives: [
-                'Design a solution to a real-world societal challenge',
-                'Apply engineering principles to social problems',
-                'Present findings to the engineering community'
-            ]
-        }
-    ];
-
-    // Create divisions and learning objectives
-    for (let i = 0; i < 14; i++) {
-        const module = weeklyModules[i];
-        const divisionId = idGenerator.uniqueIDGenerator(`division-${i + 1}`);
-        const itemId = idGenerator.uniqueIDGenerator(`item-${i + 1}`);
-        
-        const learningObjectives: LearningObjective[] = module.objectives.map((objective, index) => ({
-            id: idGenerator.uniqueIDGenerator(`objective-${i + 1}-${index + 1}`),
-            LearningObjective: objective,
-            courseName: course.courseName,
-            divisionTitle: module.title,
-            itemTitle: module.title,
-            createdAt: now,
-            updatedAt: now
-        }));
-
-        const division: ContentDivision = {
-            id: divisionId,
-            date: now,
-            title: module.title,
-            courseName: course.courseName,
-            published: true,
-            createdAt: now,
-            updatedAt: now,
-            items: [{
-                id: itemId,
-                date: now,
-                title: module.title,
-                courseName: course.courseName,
-                divisionTitle: module.title,
-                itemTitle: module.title,
-                learningObjectives: learningObjectives,
-                additionalMaterials: [],
-                completed: true,
-                createdAt: now,
-                updatedAt: now
-            }]
-        };
-
-        course.divisions.push(division);
-    }
-
-    return course;
-}
 
 /**
  * Creates APSC 099 - Engineering for Kindergarten (Settled Course)
  * This course has completed onboarding with learning objectives
  */
-async function createAPSC099(): Promise<activeCourse> {
+async function createCHBE241(): Promise<activeCourse> {
     const courseId = idGenerator.uniqueIDGenerator('APSC099-Engineering-Kindergarten');
     const now = new Date();
     
     const course: activeCourse = {
         id: courseId,
         date: now,
-        courseName: 'APSC 099: Engineering for Kindergarten',
+        courseName: 'CHBE 241: Material and Energy Balances',
         courseSetup:  true,
         contentSetup: true, // Completed onboarding
         flagSetup: true, // Completed flag setup
         monitorSetup: true, // Completed monitor setup
         instructors: [
-            'Dr. Sarah Johnson',
-            'Prof. Michael Chen'
+            'Alireza Bagherzadeh',
         ],
         teachingAssistants: [
-            'Alex Thompson',
-            'Emma Rodriguez',
-            'David Kim'
         ],
         frameType: 'byTopic',
         tilesNumber: 10,
-        divisions: []
+        topicOrWeekInstances: []
     };
 
-    // Create 10 modules with learning objectives
-    const modules = [
+
+    const topicOrWeekInstances = [
         {
-            title: 'Chapter 3: Processes & Process Variables',
-            objectives: [
-                'Calculate mass, molar and volumetric flows and convert between them',
-                'Distinguish between variables as _intensive _ and extensive',
-                'Define basic process variables: Density – Ch3.1, Flow rate – Ch 3.2, Chemical Composition – Ch 3.3,  Pressure (absolute and gauge) – Ch 3.4, Temperature – Ch 3.5',
-            ]
+            title: 'Chapter 2',
+            items: [
+                {
+                    title: 'Introduction to Engineering Calculations',
+                    objectives: [
+                        'Know the goals, format and expectations in this course',
+                        'Relate units of measure from various measurement systems and convert between them',
+                        'Choose appropriate units for variables based on dimensional consistency of equations'
+                    ]
+                }
+            ],
         },
         {
-            title: 'Module 2: Simple Machines',
-            objectives: [
-                'Recognize different types of simple machines',
-                'Understand how levers help us lift heavy objects',
-                'Identify wheels and axles in everyday objects'
-            ]
+            title: 'Chapter 3',
+            items: [
+                {
+                    title: 'Processes & Process Variables',
+                    objectives: [
+                        'Calculate mass, molar and volumetric flows and convert between them',
+                        'Distinguish between variables as _intensive _ and extensive',
+                        'Define basic process variables: Density – Ch3.1, Flow rate – Ch 3.2, Chemical Composition – Ch 3.3,  Pressure (absolute and gauge) – Ch 3.4, Temperature – Ch 3.5',
+                    ]
+                },
+            ],
         },
         {
-            title: 'Module 3: Water and Engineering',
-            objectives: [
-                'Explore how water flows and moves',
-                'Build simple water channels',
-                'Understand the concept of water pressure'
-            ]
+            title: 'Chapter 4',
+            items: [
+                {
+                    title: 'Part I (Process Types & Flowcharts)',
+                    objectives: [
+                        'Classify processes based on their time characteristics and stream configurations – Ch 4.1',
+                        'Apply the general mass balance equation to characterize systems – Ch 4.2',
+                        'Construct block flow diagrams for chemical processes – Ch 4.3a/b'
+                    ]
+                },
+                {
+                    title: 'Part II (DoF Analysis, St. St. Single and Multi-Unit Material Balances)',
+                    objectives: [
+                        'Determine the degree-of-freedom (DOF) of processes to understand whether they are under specified, adequately specified or over specified',
+                        'Apply a general procedure to organize process flow calculations',
+                        'Evaluate overall process economics using four basic figures of merit'
+                    ]
+                },
+                {
+                    title: 'Part III (Systems involving Chemical Reactions)',
+                    objectives: [
+                        'Manipulate chemical reactions to balance reaction stoichiometry – Ch 4.6a Characterize reactor performance using limiting and excess reactants as well as fractional conversion – Ch 4.6b',
+                        'Use extent of reaction in order to characterize a chemical reaction – Ch 4.6b',
+                        'Calculate the equilibrium constant for a given chemical system – Ch 4.6c',
+                        'Analyze scenarios with multiple reactions using selectivity, and yield – Ch 4.6d'
+                    ]
+                },
+                {
+                    title: 'Part IV (DOF Analysis for Reactive Systems)',
+                    objectives: [
+                        '**Determine** _degrees of freedom_ using extent of reaction or atomic species approach for reactive systems and fully Solve them – Ch 4.7',
+                    ]
+                },
+                {
+                    title: 'Part V (Recycle, Bypass, and Purge Streams)',
+                    objectives: [
+                        'Identify recycle, purge and bypass streams in chemical processes – Ch 4.7f/g',
+                        'Solve material balances problems involving recycle, purge and/or bypass streams'
+                    ]
+                },
+                {
+                    title: 'Part VI (Combustion Reactions)',
+                    objectives: [
+                        'Apply combustion concepts such as incomplete (partial) combustion, theoretical air/O2 and excess air/O2 to analyze combustion reactions – Ch 4.8',
+                    ]
+                }
+            ],
         },
-        {
-            title: 'Module 4: Bridges and Structures',
-            objectives: [
-                'Learn about different types of bridges',
-                'Build a simple bridge using craft materials',
-                'Test the strength of different bridge designs'
-            ]
-        },
-        {
-            title: 'Module 5: Energy and Motion',
-            objectives: [
-                'Understand what energy is and how it moves things',
-                'Explore different ways to make things move',
-                'Build a simple windmill or water wheel'
-            ]
-        },
-        {
-            title: 'Module 6: Materials and Properties',
-            objectives: [
-                'Identify different materials and their properties',
-                'Test which materials are strong, flexible, or waterproof',
-                'Choose appropriate materials for different projects'
-            ]
-        },
-        {
-            title: 'Module 7: Transportation Engineering',
-            objectives: [
-                'Learn about different types of vehicles',
-                'Understand how wheels and engines work together',
-                'Design a simple vehicle using recycled materials'
-            ]
-        },
-        {
-            title: 'Module 8: Environmental Engineering',
-            objectives: [
-                'Understand how engineers help protect the environment',
-                'Learn about recycling and reusing materials',
-                'Design a solution to reduce waste'
-            ]
-        },
-        {
-            title: 'Module 9: Communication and Signals',
-            objectives: [
-                'Learn about different ways to send messages',
-                'Understand how signals and codes work',
-                'Create a simple communication device'
-            ]
-        },
-        {
-            title: 'Module 10: Future Engineers',
-            objectives: [
-                'Explore what engineers do in different fields',
-                'Design a solution to a real-world problem',
-                'Present engineering ideas to classmates'
-            ]
-        }
     ];
 
-    // Create divisions and learning objectives
-    for (let i = 0; i < 10; i++) {
-        const module = modules[i];
-        const divisionId = idGenerator.uniqueIDGenerator(`division-${i + 1}`);
-        const itemId = idGenerator.uniqueIDGenerator(`item-${i + 1}`);
+    // Create topic/week instances and learning objectives
+    for (let i = 0; i < topicOrWeekInstances.length; i++) {
+        const instanceData = topicOrWeekInstances[i];
         
-        const learningObjectives: LearningObjective[] = module.objectives.map((objective, index) => ({
-            id: idGenerator.uniqueIDGenerator(`objective-${i + 1}-${index + 1}`),
-            LearningObjective: objective,
-            courseName: course.courseName,
-            divisionTitle: module.title,
-            itemTitle: module.title,
-            createdAt: now,
-            updatedAt: now
-        }));
+        // Process each item in the topic/week instance
+        for (let j = 0; j < instanceData.items.length; j++) {
+            const itemData = instanceData.items[j];
+            const topicOrWeekId = idGenerator.topicOrWeekID({
+                id: idGenerator.uniqueIDGenerator(`topic-or-week-${i + 1}`),
+                date: now,
+                title: instanceData.title,
+                courseName: course.courseName,
+                published: true,
+                items: [],
+                createdAt: now,
+                updatedAt: now
+            }, course.courseName);
+            const itemId = idGenerator.itemID({
+                id: idGenerator.uniqueIDGenerator(`item-${i + 1}-${j + 1}`),
+                date: now,
+                title: itemData.title,
+                courseName: course.courseName,
+                topicOrWeekTitle: instanceData.title,
+                itemTitle: itemData.title,
+                learningObjectives: [],
+                additionalMaterials: [],
+                createdAt: now,
+                updatedAt: now
+            }, instanceData.title, course.courseName);
+            
+            const learningObjectives: LearningObjective[] = itemData.objectives.map((objective, index) => {
+                // Create a temporary learning objective object to generate ID
+                const tempObjective: LearningObjective = {
+                    id: '', // Will be set after ID generation
+                    LearningObjective: objective,
+                    courseName: course.courseName,
+                    topicOrWeekTitle: instanceData.title,
+                    itemTitle: itemData.title,
+                    createdAt: now,
+                    updatedAt: now
+                };
+                
+                // Generate ID using the complete learning objective object
+                const objectiveId = idGenerator.learningObjectiveID(
+                    tempObjective,
+                    itemData.title,
+                    instanceData.title,
+                    course.courseName
+                );
+                
+                // Return the complete learning objective with generated ID
+                return {
+                    ...tempObjective,
+                    id: objectiveId
+                };
+            });
 
-        const division: ContentDivision = {
-            id: divisionId,
-            date: now,
-            title: module.title,
-            courseName: course.courseName,
-            published: true,
-            createdAt: now,
-            updatedAt: now,
-            items: [{
+            // Find or create the topic/week instance
+            let instance = course.topicOrWeekInstances.find(inst => inst.title === instanceData.title);
+            
+            if (!instance) {
+                instance = {
+                    id: topicOrWeekId,
+                    date: now,
+                    title: instanceData.title,
+                    courseName: course.courseName,
+                    published: true,
+                    createdAt: now,
+                    updatedAt: now,
+                    items: []
+                };
+                course.topicOrWeekInstances.push(instance);
+            }
+
+            // Add the item to the instance
+            const item: TopicOrWeekItem = {
                 id: itemId,
                 date: now,
-                title: module.title,
+                title: itemData.title,
                 courseName: course.courseName,
-                divisionTitle: module.title,
-                itemTitle: module.title,
+                topicOrWeekTitle: instanceData.title,
+                itemTitle: itemData.title,
                 learningObjectives: learningObjectives,
                 additionalMaterials: [],
                 completed: true,
                 createdAt: now,
                 updatedAt: now
-            }]
-        };
+            };
 
-        course.divisions.push(division);
+            instance.items.push(item);
+        }
     }
 
     return course;
@@ -555,7 +232,7 @@ async function createAPSC080(): Promise<activeCourse> {
         id: courseId,
         date: now,
         courseName: 'APSC 080: Introduction to Engineering',
-        courseSetup: true,
+        courseSetup: false,
         contentSetup: false, // Not completed onboarding
         flagSetup: false, // Not completed flag setup
         monitorSetup: false, // Not completed monitor setup
@@ -572,7 +249,7 @@ async function createAPSC080(): Promise<activeCourse> {
         ],
         frameType: 'byTopic',
         tilesNumber: 10,
-        divisions: []
+        topicOrWeekInstances: []
     };
 
     // Create 10 empty modules (ready for onboarding)
@@ -590,11 +267,17 @@ async function createAPSC080(): Promise<activeCourse> {
     ];
 
     for (let i = 0; i < 10; i++) {
-        const divisionId = idGenerator.uniqueIDGenerator(`division-${i + 1}`);
-        const itemId = idGenerator.uniqueIDGenerator(`item-${i + 1}`);
-        
-        const division: ContentDivision = {
-            id: divisionId,
+        const instanceData: TopicOrWeekInstance = {
+            id: idGenerator.topicOrWeekID({
+                id: idGenerator.uniqueIDGenerator(`topic-or-week-${i + 1}`),
+                date: now,
+                title: moduleTitles[i],
+                courseName: course.courseName,
+                published: false,
+                items: [],
+                createdAt: now,
+                updatedAt: now
+            }, course.courseName),
             date: now,
             title: moduleTitles[i],
             courseName: course.courseName,
@@ -602,11 +285,22 @@ async function createAPSC080(): Promise<activeCourse> {
             createdAt: now,
             updatedAt: now,
             items: [{
-                id: itemId,
+                id: idGenerator.itemID({
+                    id: idGenerator.uniqueIDGenerator(`item-${i + 1}`),
+                    date: now,
+                    title: moduleTitles[i],
+                    courseName: course.courseName,
+                    topicOrWeekTitle: moduleTitles[i],
+                    itemTitle: moduleTitles[i],
+                    learningObjectives: [],
+                    additionalMaterials: [],
+                    createdAt: now,
+                    updatedAt: now
+                }, moduleTitles[i], course.courseName),
                 date: now,
                 title: moduleTitles[i],
                 courseName: course.courseName,
-                divisionTitle: moduleTitles[i],
+                topicOrWeekTitle: moduleTitles[i],
                 itemTitle: moduleTitles[i],
                 learningObjectives: [],
                 additionalMaterials: [],
@@ -616,10 +310,36 @@ async function createAPSC080(): Promise<activeCourse> {
             }]
         };
 
-        course.divisions.push(division);
+        course.topicOrWeekInstances.push(instanceData);
     }
 
     return course;
+}
+
+/**
+ * Checks if the active-course-list collection exists and has documents
+ */
+async function collectionExistsAndHasData(): Promise<boolean> {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const collectionName = 'active-course-list';
+        
+        // Check if collection exists
+        const collectionExists = await instance.db.listCollections({ name: collectionName }).hasNext();
+        
+        if (!collectionExists) {
+            return false;
+        }
+        
+        // Check if collection has any documents
+        const collection = instance.db.collection(collectionName);
+        const documentCount = await collection.countDocuments();
+        
+        return documentCount > 0;
+    } catch (error) {
+        console.error('Error checking if collection exists:', error);
+        return false;
+    }
 }
 
 /**
@@ -688,13 +408,18 @@ export async function initializeDummyCourses(): Promise<void> {
     console.log('🔧 Initializing dummy courses...');
     
     try {
-        // Create APSC 099 (Settled Course)
-        const apsc099 = await createAPSC099();
-        await createOrUpdateCourse(apsc099);
+        // Check if collection exists and has data
+        const collectionHasData = await collectionExistsAndHasData();
         
-        // Create APSC 080 (Onboarding Course)
-        const apsc080 = await createAPSC080();
-        await createOrUpdateCourse(apsc080);
+        if (collectionHasData) {
+            console.log('⚠️ Collection "active-course-list" already exists with data. Skipping initialization to preserve existing data.');
+            return;
+        }
+        
+        // Create APSC 099 (Settled Course)
+        const apsc099 = await createCHBE241();
+        await createOrUpdateCourse(apsc099);
+
         
         console.log('✅ Dummy courses initialized successfully');
     } catch (error) {
@@ -704,11 +429,25 @@ export async function initializeDummyCourses(): Promise<void> {
 
 /**
  * Resets dummy courses to their original state
+ * @returns Object with success status and optional message
  */
-export async function resetDummyCourses(): Promise<boolean> {
+export async function resetDummyCourses(): Promise<{ success: boolean; skipped?: boolean; message?: string }> {
     console.log('🔄 Resetting dummy courses...');
     
     try {
+        // Check if collection exists and has data
+        const collectionHasData = await collectionExistsAndHasData();
+        
+        if (collectionHasData) {
+            const message = 'Collection "active-course-list" already exists with data. Skipping reset to preserve existing data.';
+            console.log(`⚠️ ${message}`);
+            return { 
+                success: true, 
+                skipped: true, 
+                message 
+            };
+        }
+        
         // Delete existing courses
         const apsc099Id = idGenerator.uniqueIDGenerator('APSC099-Engineering-Kindergarten');
         const apsc080Id = idGenerator.uniqueIDGenerator('APSC080-Introduction-Engineering');
@@ -720,10 +459,17 @@ export async function resetDummyCourses(): Promise<boolean> {
         await initializeDummyCourses();
         
         console.log('✅ Dummy courses reset successfully');
-        return true;
+        return { 
+            success: true, 
+            skipped: false,
+            message: 'Dummy courses reset successfully'
+        };
     } catch (error) {
         console.error('❌ Error resetting dummy courses:', error);
-        return false;
+        return { 
+            success: false, 
+            message: error instanceof Error ? error.message : 'Unknown error occurred'
+        };
     }
 }
 

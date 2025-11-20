@@ -293,13 +293,18 @@ class DebugCoursesManager {
             console.log('📡 Reset API response:', result);
             
             if (result.success) {
-                console.log('✅ Reset successful, showing success message');
-                this.showSuccess('Debug courses reset successfully! (Mock Course Onboarding unaffected)');
+                if (result.skipped) {
+                    console.log('⚠️ Reset skipped - collection already exists');
+                    this.showSuccess(result.message || 'Reset skipped - collection already exists with data. Existing data preserved.');
+                } else {
+                    console.log('✅ Reset successful, showing success message');
+                    this.showSuccess(result.message || 'Debug courses reset successfully! (Mock Course Onboarding unaffected)');
+                }
                 console.log('🔄 Reloading debug courses...');
                 await this.loadDebugCourses();
             } else {
                 console.error('❌ Reset failed:', result.error);
-                this.showError('Failed to reset debug courses: ' + result.error);
+                this.showError('Failed to reset debug courses: ' + (result.error || 'Unknown error'));
             }
         } catch (error) {
             console.error('❌ Error resetting debug courses:', error);

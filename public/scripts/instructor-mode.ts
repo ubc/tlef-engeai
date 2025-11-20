@@ -7,7 +7,7 @@ import { renderFlagSetup } from "./onboarding/flag-setup.js";
 import { renderMonitorSetup } from "./onboarding/monitor-setup.js";
 import { initializeFlags } from "./feature/flags.js";
 import { initializeMonitorDashboard } from "./feature/monitor.js";
-import { ChatManager, createDefaultUser } from "./feature/chat.js";
+import { ChatManager } from "./feature/chat.js";
 import { authService } from './services/AuthService.js';
 import { showConfirmModal } from './modal-overlay.js';
 import { renderAbout } from './about/about.js';
@@ -29,18 +29,18 @@ let currentClass : activeCourse =
 {
     id: '',
     date: new Date(),
-    courseSetup : false,
-    contentSetup : false,
-    flagSetup : false,
-    monitorSetup : false,
-    courseName:'APSC 099: Engineering for Kindergarten',
+    courseSetup : true,
+    contentSetup : true,
+    flagSetup : true,
+    monitorSetup : true,
+    courseName:'CHBE 241: Material and Energy Balances',
     instructors: [
     ],
     teachingAssistants: [
     ],
     frameType: 'byTopic',
     tilesNumber: 12,
-    divisions: [
+    topicOrWeekInstances: [
     ]
 }
 
@@ -57,27 +57,6 @@ declare global {
         loadChatWindow: () => Promise<void>;
         currentClass: activeCourse;
     }
-}
-
-/**
- * Create a virtual student entity for instructor mode using active course context
- * This ensures consistency with the existing ChatManager structure
- * @deprecated No longer needed - using real instructor User from authentication
- */
-function createInstructorVirtualUser(): User {
-    return {
-        name: 'Instructor User',
-        puid: 'instructor-virt',
-        userId: 0, // Instructor ID
-        courseId: currentClass.id || 'current-course',
-        courseName: currentClass.courseName || 'APSC 099', // Fallback to default course
-        userOnboarding: false, // Instructors don't need onboarding
-        affiliation: 'faculty',
-        status: 'active',
-        chats: [],
-        createdAt: new Date(),
-        updatedAt: new Date()
-    };
 }
 
 
@@ -103,27 +82,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     console.log('[INSTRUCTOR-MODE] 🚀 Loading instructor mode...');
 
-    // Check for debug course in sessionStorage
-    const debugCourseData = sessionStorage.getItem('debugCourse');
-    if (debugCourseData) {
+    /**
+     * Load the current course from session or fallback sources
+     * Priority: 1) Session course, 2) Debug course
+     */
+    async function loadCurrentCourse(): Promise<void> {
         try {
-            const debugCourse = JSON.parse(debugCourseData);
-            currentClass = debugCourse;
-            console.log('Loaded debug course:', debugCourse.courseName);
-            
-            // Clear the debug course from sessionStorage after loading
-            sessionStorage.removeItem('debugCourse');
-        } catch (error) {
-            console.error('Error parsing debug course data:', error);
-        }
-    } else {
-        // Load APSC 099 course from database (no debug course in session)
-        //START DEBUG LOG : DEBUG-CODE(INSTRUCTOR-LOAD-001)
-        console.log('[INSTRUCTOR-MODE] 📚 No debug course, loading APSC 099 from database...');
-        //END DEBUG LOG : DEBUG-CODE(INSTRUCTOR-LOAD-001)
-        
-        try {
-            const response = await fetch('/api/courses?name=APSC 099: Engineering for Kindergarten', {
+            // Priority 1: Try to get current course from session (set by course selection)
+            console.log('[INSTRUCTOR-MODE] 🔍 Checking for current course in session...');
+            const sessionResponse = await fetch('/api/course/current', {
                 method: 'GET',
                 credentials: 'include',
                 headers: {
@@ -131,40 +98,75 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
             
-            if (!response.ok) {
-                throw new Error(`Failed to load course: ${response.statusText}`);
+            if (sessionResponse.ok) {
+                const sessionData = await sessionResponse.json();
+                if (sessionData.course && sessionData.course.courseName) {
+                    console.log('[INSTRUCTOR-MODE] ✅ Found course in session:', sessionData.course.courseName);
+                    
+                    // Fetch full course data using the course name from session
+                    const courseResponse = await fetch(`/api/courses?name=${encodeURIComponent(sessionData.course.courseName)}`, {
+                        method: 'GET',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (courseResponse.ok) {
+                        const courseResult = await courseResponse.json();
+                        if (courseResult.success && courseResult.data) {
+                            currentClass = courseResult.data;
+                            console.log('[INSTRUCTOR-MODE] ✅ Course loaded from session:', currentClass.courseName);
+                            console.log('[INSTRUCTOR-MODE] 📊 Course Data:', {
+                                id: currentClass.id,
+                                courseName: currentClass.courseName,
+                                courseSetup: currentClass.courseSetup,
+                                contentSetup: currentClass.contentSetup,
+                                flagSetup: currentClass.flagSetup,
+                                monitorSetup: currentClass.monitorSetup
+                            });
+                            return; // Successfully loaded, exit function
+                        }
+                    }
+                }
             }
             
-            const result = await response.json();
-            
-            if (result.success && result.data) {
-                currentClass = result.data;
-                
-                //START DEBUG LOG : DEBUG-CODE(INSTRUCTOR-LOAD-002)
-                console.log('[INSTRUCTOR-MODE] ✅ APSC 099 course loaded from database');
-                console.log('[INSTRUCTOR-MODE] 📊 Course Data:', {
-                    id: currentClass.id,
-                    courseName: currentClass.courseName,
-                    courseSetup: currentClass.courseSetup,
-                    contentSetup: currentClass.contentSetup,
-                    flagSetup: currentClass.flagSetup,
-                    monitorSetup: currentClass.monitorSetup
-                });
-                //END DEBUG LOG : DEBUG-CODE(INSTRUCTOR-LOAD-002)
-            } else {
-                //START DEBUG LOG : DEBUG-CODE(INSTRUCTOR-LOAD-003)
-                console.error('[INSTRUCTOR-MODE] ❌ Failed to load APSC 099 course:', result.error);
-                //END DEBUG LOG : DEBUG-CODE(INSTRUCTOR-LOAD-003)
+            // Priority 2: Check for debug course in sessionStorage
+            console.log('[INSTRUCTOR-MODE] 🔍 No session course, checking for debug course...');
+            const debugCourseData = sessionStorage.getItem('debugCourse');
+            if (debugCourseData) {
+                try {
+                    const debugCourse = JSON.parse(debugCourseData);
+                    currentClass = debugCourse;
+                    console.log('[INSTRUCTOR-MODE] ✅ Loaded debug course:', debugCourse.courseName);
+                    
+                    // Clear the debug course from sessionStorage after loading
+                    sessionStorage.removeItem('debugCourse');
+                    return; // Successfully loaded, exit function
+                } catch (error) {
+                    console.error('[INSTRUCTOR-MODE] ❌ Error parsing debug course data:', error);
+                }
             }
+            
+            // If all attempts failed, log error but keep default currentClass
+            console.error('[INSTRUCTOR-MODE] ❌ Failed to load course from session or debug course');
+            
         } catch (error) {
-            //START DEBUG LOG : DEBUG-CODE(INSTRUCTOR-LOAD-004)
-            console.error('[INSTRUCTOR-MODE] 🚨 Error loading course from database:', error);
-            //END DEBUG LOG : DEBUG-CODE(INSTRUCTOR-LOAD-004)
+            console.error('[INSTRUCTOR-MODE] 🚨 Error loading course:', error);
+            // Keep default currentClass if all loading attempts fail
         }
     }
+    
+    // Load the current course
+    await loadCurrentCourse();
 
     // Make currentClass globally accessible for onboarding completion
     window.currentClass = currentClass;
+    
+    // Remove onboarding-active class if all setup is complete
+    if (currentClass.courseSetup && currentClass.contentSetup && currentClass.flagSetup && currentClass.monitorSetup) {
+        document.body.classList.remove('onboarding-active');
+    }
 
     // Listen for document setup completion event
     window.addEventListener('documentSetupComplete', () => {
@@ -490,34 +492,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // Attempt to load CHBE220 class data from JSON and assign to state
-    console.log("Attempting to load class data");
-
-
-
-    // Load course data from database
-    getCourse('APSC 099: Engineering for Kindergarten').then((data: activeCourse) => {
-        console.log("✅ Loaded course data: ", JSON.stringify(data));
-        currentClass = data;
-        
-        // Make currentClass globally accessible for flags.ts
-        window.currentClass = currentClass;
-        
-        // Check if onboarding is needed
-        if (currentClass.courseSetup && currentClass.contentSetup && currentClass.flagSetup && currentClass.monitorSetup) {
-            // All setup complete, show main interface
-            document.body.classList.remove('onboarding-active');
-            updateUI();
-        } else {
-            // Show appropriate onboarding step
-            updateUI();
-        }
-    }).catch((error) => {
-        console.error("❌ Error loading course data:", error);
-        // Fallback to hardcoded data if API fails
-        console.log("🔄 Using fallback course data");
-        updateUI();
-    });
+    // Course is already loaded by loadCurrentCourse() at the top of DOMContentLoaded
+    // No need for duplicate loading here
 
 
     // fetch('/api/courses/courses/CHBE241')
@@ -643,9 +619,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             // Create instructor User object from auth data
             instructorUser = {
-                name: `${authState.user.firstName} ${authState.user.lastName}`,
-                puid: authState.user.puid,
-                userId: 0, // Will be fetched from database
+                name: authState.user.name,
+                userId: authState.user.userId, // Will be fetched from database
                 courseId: 'apsc-099',
                 courseName: currentClass.courseName,
                 userOnboarding: false,
@@ -659,7 +634,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             //START DEBUG LOG : DEBUG-CODE(002)
             console.log('👤 Instructor user data loaded:', {
                 name: instructorUser!.name,
-                puid: instructorUser!.puid,
+                userId: instructorUser!.userId,
                 courseName: instructorUser!.courseName
             });
             //END DEBUG LOG : DEBUG-CODE(002)

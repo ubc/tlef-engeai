@@ -7,6 +7,7 @@
 import express, { Request, Response } from 'express';
 import { asyncHandlerWithAuth } from '../middleware/asyncHandler';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
+import { sanitizeGlobalUserForFrontend } from '../functions/user-utils';
 
 const router = express.Router();
 
@@ -24,17 +25,19 @@ router.get('/current', asyncHandlerWithAuth(async (req: Request, res: Response) 
             return res.status(404).json({ error: 'No current course or user found' });
         }
         
-        // Get CourseUser from course-specific collection
+        // Get CourseUser from course-specific collection using userId (not PUID)
         const mongoDB = await EngEAI_MongoDB.getInstance();
-        const courseUser = await mongoDB.findStudentByPUID(currentCourse.courseName, globalUser.puid);
+        const courseUser = await mongoDB.findStudentByUserId(currentCourse.courseName, globalUser.userId);
         
         if (!courseUser) {
             return res.status(404).json({ error: 'CourseUser not found' });
         }
         
+        // Sanitize globalUser to remove PUID before sending to frontend
+        // PUID is stored in session/backend but must NEVER be exposed to frontend
         return res.json({
             courseUser,
-            globalUser,
+            globalUser: sanitizeGlobalUserForFrontend(globalUser),
             currentCourse
         });
         
@@ -53,15 +56,22 @@ router.get('/current', asyncHandlerWithAuth(async (req: Request, res: Response) 
  */
 router.post('/update-onboarding', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const { puid, courseName, userOnboarding } = req.body;
+        const { userId, courseName, userOnboarding } = req.body;
         
-        console.log(`[UPDATE-ONBOARDING] Updating user ${puid} in course ${courseName}`);
+        if (!userId || !courseName) {
+            return res.status(400).json({
+                success: false,
+                error: 'userId and courseName are required'
+            });
+        }
+        
+        console.log(`[UPDATE-ONBOARDING] Updating user ${userId} in course ${courseName}`);
         
         const mongoDB = await EngEAI_MongoDB.getInstance();
         const userCollection = mongoDB.db.collection(`${courseName}_users`);
         
         const result = await userCollection.findOneAndUpdate(
-            { puid: puid },
+            { userId: userId },
             { 
                 $set: { 
                     userOnboarding: userOnboarding,

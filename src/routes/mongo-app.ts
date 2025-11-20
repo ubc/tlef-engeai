@@ -33,7 +33,7 @@
 import express, { Request, Response } from 'express';
 import { asyncHandler, asyncHandlerWithAuth } from '../middleware/asyncHandler';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
-import { activeCourse, AdditionalMaterial, ContentDivision, courseItem, FlagReport } from '../functions/types';
+import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport } from '../functions/types';
 import { IDGenerator } from '../functions/unique-id-generator';
 import dotenv from 'dotenv';
 
@@ -118,10 +118,10 @@ const validateCourse = (req: Request, res: Response, next: Function) => {
         });
     }
 
-    if (!Array.isArray(course.divisions)) {
+    if (!Array.isArray(course.topicOrWeekInstances)) {
         return res.status(400).json({
             success: false,
-            error: 'divisions is required and must be an array'
+            error: 'topicOrWeekInstances is required and must be an array'
         });
     }
 
@@ -206,17 +206,17 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
         const id = instance.idGenerator.courseID(tempActiveClass);
 
         //create  coursecontent based on the frametype and tilesNumber
-        const courseContent : ContentDivision[] = [];
+        const courseContent : TopicOrWeekInstance[] = [];
         if (req.body.frameType === 'byWeek') {
             for (let i = 0; i < req.body.tilesNumber; i++) {
 
                 //mock lecture 1
-                const courseContentLecture1: courseItem = {
+                const courseContentLecture1: TopicOrWeekItem = {
                     id: '',
                     date: new Date(),
                     title: `Lecture 1`,
                     courseName: req.body.name,
-                    divisionTitle: `Week ${i + 1}`,
+                    topicOrWeekTitle: `Week ${i + 1}`,
                     itemTitle: `Lecture 1`,
                     learningObjectives: [],
                     additionalMaterials: [],
@@ -226,12 +226,12 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
 
 
                 //mock lecture 2
-                const courseContentLecture2: courseItem = {
+                const courseContentLecture2: TopicOrWeekItem = {
                     id: '',
                     date: new Date(),
                     title: `Lecture 2`,
                     courseName: req.body.name,
-                    divisionTitle: `Week ${i + 1}`,
+                    topicOrWeekTitle: `Week ${i + 1}`,
                     itemTitle: `Lecture 2`,
                     learningObjectives: [],
                     additionalMaterials: [],
@@ -240,12 +240,12 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
                 }
 
                 //mock lecture 3
-                const courseContentLecture3: courseItem = {
+                const courseContentLecture3: TopicOrWeekItem = {
                     id: '',
                     date: new Date(),
                     title: `Lecture 3`,
                     courseName: req.body.name,
-                    divisionTitle: `Week ${i + 1}`,
+                    topicOrWeekTitle: `Week ${i + 1}`,
                     itemTitle: `Lecture 3`,
                     learningObjectives: [],
                     additionalMaterials: [],
@@ -254,7 +254,7 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
                 }
 
                 //mock content
-                const contentMock: ContentDivision = {
+                const contentMock: TopicOrWeekInstance = {
                     id: '',
                     date: new Date(),
                     title: `Week ${i + 1}`,
@@ -271,7 +271,7 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
                 courseContentLecture3.id = instance.idGenerator.itemID(courseContentLecture3, contentMock.title, req.body.name);
 
                 courseContent.push({
-                    id: instance.idGenerator.divisionID(contentMock, req.body.name),
+                    id: instance.idGenerator.topicOrWeekID(contentMock, req.body.name),
                     date: new Date(),
                     title: `Week ${i + 1}`,
                     courseName: req.body.name,
@@ -285,12 +285,12 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
             for (let i = 0; i < req.body.tilesNumber; i++) {
 
                 //mock topic 1
-                const courseContentTopic1: courseItem = {
+                const courseContentTopic1: TopicOrWeekItem = {
                     id: '',
                     date: new Date(),
                     title: `Topic ${i + 1}`,
                     courseName: req.body.name,
-                    divisionTitle: `Topic ${i + 1}`,
+                    topicOrWeekTitle: `Topic ${i + 1}`,
                     itemTitle: `Topic ${i + 1}`,
                     learningObjectives: [],
                     additionalMaterials: [],
@@ -298,8 +298,8 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
                     updatedAt: new Date(),
                 }
 
-                //mock course division
-                const contentMock: ContentDivision = {
+                //mock course topic/week instance
+                const contentMock: TopicOrWeekInstance = {
                     id: '',
                     date: new Date(),
                     title: `Topic ${i + 1}`,
@@ -314,7 +314,7 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
                 courseContentTopic1.id = instance.idGenerator.itemID(courseContentTopic1, contentMock.title, req.body.name);
 
                 courseContent.push({
-                    id: instance.idGenerator.divisionID(contentMock, req.body.name),
+                    id: instance.idGenerator.topicOrWeekID(contentMock, req.body.name),
                     date: new Date(),
                     title: `Topic ${i + 1}`,
                     courseName: req.body.name,
@@ -327,7 +327,7 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
         }
 
         //add the coursecontent to the body
-        req.body.divisions = courseContent;
+        req.body.topicOrWeekInstances = courseContent;
 
         const courseData: activeCourse = {
             ...req.body, //spread the properties of the body first
@@ -497,7 +497,7 @@ router.delete('/:id/restart-onboarding', asyncHandlerWithAuth(async (req: Reques
             teachingAssistants: [], // Empty array
             frameType: 'byTopic', // Default frame type
             tilesNumber: 0, // Empty/zero tiles
-            divisions: [] // Empty divisions array
+            topicOrWeekInstances: [] // Empty topic/week instances array
         };
         
         // Create the new course (this also creates the users and flags collections)
@@ -542,8 +542,8 @@ router.delete('/:id', asyncHandlerWithAuth(async (req: Request, res: Response) =
     });
 }));
 
-// POST /api/courses/:courseId/divisions - Add a new division (Week/Topic) (REQUIRES AUTH)
-router.post('/:courseId/divisions', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+// POST /api/courses/:courseId/topic-or-week-instances - Add a new topic/week instance (REQUIRES AUTH)
+router.post('/:courseId/topic-or-week-instances', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId } = req.params;
@@ -554,8 +554,8 @@ router.post('/:courseId/divisions', asyncHandlerWithAuth(async (req: Request, re
             return res.status(404).json({ success: false, error: 'Course not found' });
         }
 
-        const divisions: ContentDivision[] = (course.divisions as unknown as ContentDivision[]) || [];
-        const existingNumericIds = divisions
+        const instances: TopicOrWeekInstance[] = (course.topicOrWeekInstances as unknown as TopicOrWeekInstance[]) || [];
+        const existingNumericIds = instances
             .map(d => parseInt(d.id as unknown as string, 10))
             .filter(n => !Number.isNaN(n));
         const nextIdNum = (existingNumericIds.length ? Math.max(...existingNumericIds) : 0) + 1;
@@ -569,7 +569,7 @@ router.post('/:courseId/divisions', asyncHandlerWithAuth(async (req: Request, re
         const defaultItemTitle = isByWeek ? 'Lecture 1' : 'Session 1';
         const now = new Date();
 
-        const newDivision: ContentDivision = {
+        const newInstance: TopicOrWeekInstance = {
             id: nextId,
             date: now,
             title: resolvedTitle,
@@ -581,33 +581,33 @@ router.post('/:courseId/divisions', asyncHandlerWithAuth(async (req: Request, re
                     date: now,
                     title: defaultItemTitle,
                     courseName: (course as any).courseName,
-                    divisionTitle: resolvedTitle,
+                    topicOrWeekTitle: resolvedTitle,
                     itemTitle: defaultItemTitle,
                     learningObjectives: [],
                     additionalMaterials: [],
                     createdAt: now,
                     updatedAt: now
-                } as unknown as courseItem
+                } as unknown as TopicOrWeekItem
             ],
             createdAt: now,
             updatedAt: now
-        } as unknown as ContentDivision;
+        } as unknown as TopicOrWeekInstance;
 
-        const updatedDivisions = [...divisions, newDivision];
-        await instance.updateActiveCourse(courseId, { divisions: updatedDivisions } as any);
+        const updatedInstances = [...instances, newInstance];
+        await instance.updateActiveCourse(courseId, { topicOrWeekInstances: updatedInstances } as any);
 
-        return res.status(201).json({ success: true, data: newDivision, message: 'Division added successfully' });
+        return res.status(201).json({ success: true, data: newInstance, message: 'Topic/Week instance added successfully' });
     } catch (error) {
-        console.error('Error adding division:', error);
-        return res.status(500).json({ success: false, error: 'Failed to add division' });
+        console.error('Error adding topic/week instance:', error);
+        return res.status(500).json({ success: false, error: 'Failed to add topic/week instance' });
     }
 }));
 
-// POST /api/courses/:courseId/divisions/:divisionId/items - Add a new content item (section) to a division (REQUIRES AUTH)
-router.post('/:courseId/divisions/:divisionId/items', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+// POST /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items - Add a new content item (section) to a topic/week instance (REQUIRES AUTH)
+router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, divisionId } = req.params;
+        const { courseId, topicOrWeekId } = req.params;
         const { contentItem } = req.body || {};
 
         if (!contentItem || typeof contentItem.title !== 'string' || !contentItem.title.trim()) {
@@ -619,36 +619,36 @@ router.post('/:courseId/divisions/:divisionId/items', asyncHandlerWithAuth(async
             return res.status(404).json({ success: false, error: 'Course not found' });
         }
 
-        const divisions: ContentDivision[] = (course.divisions as unknown as ContentDivision[]) || [];
-        const division = divisions.find(d => (d.id as unknown as string) === divisionId);
-        if (!division) {
-            return res.status(404).json({ success: false, error: 'Division not found' });
+        const instances: TopicOrWeekInstance[] = (course.topicOrWeekInstances as unknown as TopicOrWeekInstance[]) || [];
+        const topicOrWeekInstance = instances.find(d => (d.id as unknown as string) === topicOrWeekId);
+        if (!topicOrWeekInstance) {
+            return res.status(404).json({ success: false, error: 'Topic/Week instance not found' });
         }
 
-        const existingNumericIds = (division.items as unknown as courseItem[])
+        const existingNumericIds = (topicOrWeekInstance.items as unknown as TopicOrWeekItem[])
             .map(i => parseInt((i.id as unknown as string), 10))
             .filter(n => !Number.isNaN(n));
         const nextItemIdNum = (existingNumericIds.length ? Math.max(...existingNumericIds) : 0) + 1;
         const nextItemId = String(nextItemIdNum);
 
         const now = new Date();
-        const newItem: courseItem = {
+        const newItem: TopicOrWeekItem = {
             id: nextItemId,
             date: now,
             title: contentItem.title.trim(),
             courseName: (course as any).courseName,
-            divisionTitle: (division as any).title,
+            topicOrWeekTitle: (topicOrWeekInstance as any).title,
             itemTitle: contentItem.title.trim(),
             learningObjectives: Array.isArray(contentItem.learningObjectives) ? contentItem.learningObjectives : [],
             additionalMaterials: Array.isArray(contentItem.additionalMaterials) ? contentItem.additionalMaterials : [],
             createdAt: now,
             updatedAt: now
-        } as unknown as courseItem;
+        } as unknown as TopicOrWeekItem;
 
-        (division.items as any) = [ ...(division.items as any || []), newItem ];
-        (division as any).updatedAt = now;
+        (topicOrWeekInstance.items as any) = [ ...(topicOrWeekInstance.items as any || []), newItem ];
+        (topicOrWeekInstance as any).updatedAt = now;
 
-        await instance.updateActiveCourse(courseId, { divisions } as any);
+        await instance.updateActiveCourse(courseId, { topicOrWeekInstances: instances } as any);
 
         return res.status(201).json({ success: true, data: newItem, message: 'Content item added successfully' });
     } catch (error) {
@@ -657,11 +657,11 @@ router.post('/:courseId/divisions/:divisionId/items', asyncHandlerWithAuth(async
     }
 }));
 
-// GET /api/courses/:courseId/divisions/:divisionId/items/:itemId/objectives - Get learning objectives for a course item
-router.get('/:courseId/divisions/:divisionId/items/:itemId/objectives', asyncHandler(async (req: Request, res: Response) => {
+// GET /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives - Get learning objectives for a course item
+router.get('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives', asyncHandler(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, divisionId, itemId } = req.params;
+        const { courseId, topicOrWeekId, itemId } = req.params;
         
         const course = await instance.getActiveCourse(courseId);
         
@@ -672,16 +672,16 @@ router.get('/:courseId/divisions/:divisionId/items/:itemId/objectives', asyncHan
             });
         }
         
-        // Find the specific division and content item
-        const division = course.divisions?.find((d: any) => d.id === divisionId);
-        if (!division) {
+        // Find the specific topic/week instance and content item
+        const instance_topicOrWeek = course.topicOrWeekInstances?.find((d: any) => d.id === topicOrWeekId);
+        if (!instance_topicOrWeek) {
             return res.status(404).json({
                 success: false,
-                error: 'Division not found'
+                error: 'Topic/Week instance not found'
             });
         }
         
-        const contentItem = division.items?.find((item: any) => item.id === itemId);
+        const contentItem = instance_topicOrWeek.items?.find((item: any) => item.id === itemId);
         if (!contentItem) {
             return res.status(404).json({
                 success: false,
@@ -703,15 +703,15 @@ router.get('/:courseId/divisions/:divisionId/items/:itemId/objectives', asyncHan
     }
 }));
 
-// POST /api/courses/:courseId/divisions/:divisionId/items/:itemId/objectives - Add a learning objective (REQUIRES AUTH)
-router.post('/:courseId/divisions/:divisionId/items/:itemId/objectives', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+// POST /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives - Add a learning objective (REQUIRES AUTH)
+router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         console.log('🎯 [BACKEND] Add learning objective request received');
         console.log('🔍 [BACKEND] Request params:', req.params);
         console.log('🔍 [BACKEND] Request body:', req.body);
         
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, divisionId, itemId } = req.params;
+        const { courseId, topicOrWeekId, itemId } = req.params;
         const { learningObjective } = req.body;
         
         if (!learningObjective) {
@@ -734,9 +734,9 @@ router.post('/:courseId/divisions/:divisionId/items/:itemId/objectives', asyncHa
         learningObjective.createdAt = learningObjective.createdAt || new Date();
         learningObjective.updatedAt = new Date();
         
-        console.log('📡 [BACKEND] Calling addLearningObjective with:', { courseId, divisionId, itemId, learningObjective });
+        console.log('📡 [BACKEND] Calling addLearningObjective with:', { courseId, topicOrWeekId, itemId, learningObjective });
         
-        const result = await instance.addLearningObjective(courseId, divisionId, itemId, learningObjective);
+        const result = await instance.addLearningObjective(courseId, topicOrWeekId, itemId, learningObjective);
         
         console.log('✅ [BACKEND] Add learning objective result:', result);
         
@@ -754,11 +754,11 @@ router.post('/:courseId/divisions/:divisionId/items/:itemId/objectives', asyncHa
     }
 }));
 
-// PUT /api/courses/:courseId/divisions/:divisionId/items/:itemId/objectives/:objectiveId - Update a learning objective (REQUIRES AUTH)
-router.put('/:courseId/divisions/:divisionId/items/:itemId/objectives/:objectiveId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+// PUT /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId - Update a learning objective (REQUIRES AUTH)
+router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, divisionId, itemId, objectiveId } = req.params;
+        const { courseId, topicOrWeekId, itemId, objectiveId } = req.params;
         const { updateData } = req.body;
         
         if (!updateData) {
@@ -778,7 +778,7 @@ router.put('/:courseId/divisions/:divisionId/items/:itemId/objectives/:objective
         }
         updateData.LearningObjective = sanitizedText;
         
-        const result = await instance.updateLearningObjective(courseId, divisionId, itemId, objectiveId, updateData);
+        const result = await instance.updateLearningObjective(courseId, topicOrWeekId, itemId, objectiveId, updateData);
         
         res.status(200).json({
             success: true,
@@ -794,18 +794,18 @@ router.put('/:courseId/divisions/:divisionId/items/:itemId/objectives/:objective
     }
 }));
 
-// DELETE /api/courses/:courseId/divisions/:divisionId/items/:itemId/objectives/:objectiveId - Delete a learning objective (REQUIRES AUTH)
-router.delete('/:courseId/divisions/:divisionId/items/:itemId/objectives/:objectiveId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+// DELETE /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId - Delete a learning objective (REQUIRES AUTH)
+router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         console.log('🗑️ [BACKEND] Delete learning objective request received');
         console.log('🔍 [BACKEND] Request params:', req.params);
         
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, divisionId, itemId, objectiveId } = req.params;
+        const { courseId, topicOrWeekId, itemId, objectiveId } = req.params;
         
-        console.log('📡 [BACKEND] Calling deleteLearningObjective with:', { courseId, divisionId, itemId, objectiveId });
+        console.log('📡 [BACKEND] Calling deleteLearningObjective with:', { courseId, topicOrWeekId, itemId, objectiveId });
         
-        const result = await instance.deleteLearningObjective(courseId, divisionId, itemId, objectiveId);
+        const result = await instance.deleteLearningObjective(courseId, topicOrWeekId, itemId, objectiveId);
         
         console.log('✅ [BACKEND] Delete learning objective result:', result);
         
@@ -1304,12 +1304,12 @@ router.get('/:courseId/flags/student/:userId', asyncHandlerWithAuth(async (req: 
     }
 }));
 
-// DELETE /api/courses/:courseId/divisions/:divisionId/items/:itemId/materials/:materialId - Delete a material (REQUIRES AUTH)
-router.delete('/:courseId/divisions/:divisionId/items/:itemId/materials/:materialId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+// DELETE /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/materials/:materialId - Delete a material (REQUIRES AUTH)
+router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/materials/:materialId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const { courseId, divisionId, itemId, materialId } = req.params;
+        const { courseId, topicOrWeekId, itemId, materialId } = req.params;
         
-        console.log(`🗑️ Deleting material ${materialId} from course ${courseId}, division ${divisionId}, item ${itemId}`);
+        console.log(`🗑️ Deleting material ${materialId} from course ${courseId}, topic/week instance ${topicOrWeekId}, item ${itemId}`);
         
         // Get MongoDB instance
         const mongoDB = await EngEAI_MongoDB.getInstance();
@@ -1323,17 +1323,17 @@ router.delete('/:courseId/divisions/:divisionId/items/:itemId/materials/:materia
             });
         }
         
-        // Find the division
-        const division = course.divisions?.find((d: any) => d.id === divisionId);
-        if (!division) {
+        // Find the topic/week instance
+        const instance_topicOrWeek = course.topicOrWeekInstances?.find((d: any) => d.id === topicOrWeekId);
+        if (!instance_topicOrWeek) {
             return res.status(404).json({
                 success: false,
-                error: 'Division not found'
+                error: 'Topic/Week instance not found'
             });
         }
         
         // Find the content item
-        const contentItem = division.items?.find((item: any) => item.id === itemId);
+        const contentItem = instance_topicOrWeek.items?.find((item: any) => item.id === itemId);
         if (!contentItem) {
             return res.status(404).json({
                 success: false,
@@ -1355,7 +1355,7 @@ router.delete('/:courseId/divisions/:divisionId/items/:itemId/materials/:materia
             try {
                 const { RAGApp } = await import('../routes/RAG-App.js');
                 const ragApp = await RAGApp.getInstance();
-                await ragApp.deleteDocument(materialId, courseId, divisionId, itemId);
+                await ragApp.deleteDocument(materialId, courseId, topicOrWeekId, itemId);
                 console.log(`✅ Material ${materialId} deleted from Qdrant`);
             } catch (qdrantError) {
                 console.error('Failed to delete from Qdrant:', qdrantError);
@@ -1438,8 +1438,8 @@ router.delete('/:courseId/documents/all', asyncHandlerWithAuth(async (req: Reque
         
         // Clear all additionalMaterials arrays in MongoDB
         let totalDeleted = 0;
-        course.divisions?.forEach((division: any) => {
-            division.items?.forEach((item: any) => {
+        course.topicOrWeekInstances?.forEach((instance_topicOrWeek: any) => {
+            instance_topicOrWeek.items?.forEach((item: any) => {
                 if (item.additionalMaterials && item.additionalMaterials.length > 0) {
                     totalDeleted += item.additionalMaterials.length;
                     item.additionalMaterials = [];
@@ -1477,11 +1477,109 @@ router.delete('/:courseId/documents/all', asyncHandlerWithAuth(async (req: Reque
     }
 }));
 
-// PATCH /api/courses/:courseId/divisions/:divisionId/title - Update division title (REQUIRES AUTH)
-router.patch('/:courseId/divisions/:divisionId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+// DELETE /api/courses/:courseId/wipe-mongodb - Wipe all MongoDB collections for a course (REQUIRES AUTH - Instructors only)
+router.delete('/:courseId/wipe-mongodb', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const { courseId } = req.params;
+        
+        console.log('🔍 BACKEND WIPE MONGODB - Request Details:');
+        console.log('  Headers:', req.headers);
+        console.log('  Params:', req.params);
+        console.log('  User:', req.user);
+        console.log(`🗑️ Wiping all MongoDB collections for course ${courseId}`);
+        
+        // Get MongoDB instance
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        
+        // Get the course to get the courseName
+        const course = await mongoDB.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        const courseName = (course as any).courseName;
+        const droppedCollections: string[] = [];
+        const errors: string[] = [];
+        const operations: string[] = [];
+        
+        // 1. Delete course from active-course-list
+        try {
+            await mongoDB.deleteActiveCourse(course as any);
+            operations.push('Deleted course from active-course-list');
+            console.log(`✅ Deleted course ${courseId} from active-course-list`);
+        } catch (error) {
+            const errorMsg = `Failed to delete course from active-course-list: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            errors.push(errorMsg);
+            console.error(`❌ ${errorMsg}`);
+        }
+        
+        // 2. Remove courseId from all users' coursesEnrolled in active-users
+        try {
+            const activeUsersCollection = mongoDB.db.collection('active-users');
+            const updateResult = await activeUsersCollection.updateMany(
+                { coursesEnrolled: { $in: [courseId] } },
+                { $pull: { coursesEnrolled: courseId } } as any
+            );
+            operations.push(`Removed course from ${updateResult.modifiedCount} user(s) in active-users`);
+            console.log(`✅ Removed course ${courseId} from ${updateResult.modifiedCount} user(s) in active-users`);
+        } catch (error) {
+            const errorMsg = `Failed to remove course from active-users: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            errors.push(errorMsg);
+            console.error(`❌ ${errorMsg}`);
+        }
+        
+        // 3. Get all collections in the database
+        const allCollections = await mongoDB.db.listCollections().toArray();
+        const courseCollectionPrefix = `${courseName}_`;
+        
+        // Filter collections that belong to this course (start with courseName_)
+        const courseCollections = allCollections
+            .map(col => col.name)
+            .filter(name => name.startsWith(courseCollectionPrefix));
+        
+        console.log(`📋 Found ${courseCollections.length} collection(s) for course ${courseName}:`, courseCollections);
+        
+        // 4. Drop all collections that belong to this course
+        for (const collectionName of courseCollections) {
+            const dropResult = await mongoDB.dropCollection(collectionName);
+            if (dropResult.success) {
+                droppedCollections.push(collectionName);
+            } else {
+                errors.push(`Failed to drop ${collectionName}: ${dropResult.error}`);
+            }
+        }
+        
+        console.log(`✅ Wiped ${droppedCollections.length} MongoDB collections for course ${courseId}`);
+        
+        res.json({
+            success: true,
+            message: 'MongoDB collections wiped successfully',
+            data: {
+                courseId: courseId,
+                courseName: courseName,
+                operations: operations,
+                droppedCollections: droppedCollections,
+                errors: errors
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error wiping MongoDB collections:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to wipe MongoDB collections'
+        });
+    }
+}));
+
+// PATCH /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/title - Update topic/week instance title (REQUIRES AUTH)
+router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, divisionId } = req.params;
+        const { courseId, topicOrWeekId } = req.params;
         const { title } = req.body;
         
         // Validate input
@@ -1518,47 +1616,47 @@ router.patch('/:courseId/divisions/:divisionId/title', asyncHandlerWithAuth(asyn
             });
         }
         
-        // Find the division
-        const division = course.divisions?.find((d: ContentDivision) => d.id === divisionId);
+        // Find the topic/week instance
+        const topicOrWeekInstance = course.topicOrWeekInstances?.find((d: TopicOrWeekInstance) => d.id === topicOrWeekId);
         
-        if (!division) {
+        if (!topicOrWeekInstance) {
             return res.status(404).json({
                 success: false,
-                error: 'Division not found'
+                error: 'Topic/Week instance not found'
             });
         }
         
-        // Update the division title
-        division.title = trimmedTitle;
-        division.updatedAt = new Date();
+        // Update the topic/week instance title
+        topicOrWeekInstance.title = trimmedTitle;
+        topicOrWeekInstance.updatedAt = new Date();
         
         // Save the updated course
         const updatedCourse = await instance.updateActiveCourse(courseId, {
-            divisions: course.divisions
+            topicOrWeekInstances: course.topicOrWeekInstances
         });
         
-        console.log(`✅ Division ${divisionId} title updated to "${trimmedTitle}"`);
+        console.log(`✅ Topic/Week instance ${topicOrWeekId} title updated to "${trimmedTitle}"`);
         
         res.status(200).json({
             success: true,
-            data: division,
-            message: 'Division title updated successfully'
+            data: topicOrWeekInstance,
+            message: 'Topic/Week instance title updated successfully'
         });
         
     } catch (error) {
-        console.error('Error updating division title:', error);
+        console.error('Error updating topic/week instance title:', error);
         res.status(500).json({
             success: false,
-            error: 'Failed to update division title'
+            error: 'Failed to update topic/week instance title'
         });
     }
 }));
 
-// PATCH /api/courses/:courseId/divisions/:divisionId/published - Update division published status (REQUIRES AUTH)
-router.patch('/:courseId/divisions/:divisionId/published', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+// PATCH /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/published - Update topic/week instance published status (REQUIRES AUTH)
+router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/published', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, divisionId } = req.params;
+        const { courseId, topicOrWeekId } = req.params;
         const { published } = req.body;
         
         // Validate input
@@ -1579,47 +1677,47 @@ router.patch('/:courseId/divisions/:divisionId/published', asyncHandlerWithAuth(
             });
         }
         
-        // Find the division
-        const division = course.divisions?.find((d: ContentDivision) => d.id === divisionId);
+        // Find the topic/week instance
+        const topicOrWeekInstance = course.topicOrWeekInstances?.find((d: TopicOrWeekInstance) => d.id === topicOrWeekId);
         
-        if (!division) {
+        if (!topicOrWeekInstance) {
             return res.status(404).json({
                 success: false,
-                error: 'Division not found'
+                error: 'Topic/Week instance not found'
             });
         }
         
-        // Update the division published status
-        division.published = published;
-        division.updatedAt = new Date();
+        // Update the topic/week instance published status
+        topicOrWeekInstance.published = published;
+        topicOrWeekInstance.updatedAt = new Date();
         
         // Save the updated course
         const updatedCourse = await instance.updateActiveCourse(courseId, {
-            divisions: course.divisions
+            topicOrWeekInstances: course.topicOrWeekInstances
         });
         
-        console.log(`✅ Division ${divisionId} published status updated to ${published}`);
+        console.log(`✅ Topic/Week instance ${topicOrWeekId} published status updated to ${published}`);
         
         res.status(200).json({
             success: true,
-            data: division,
-            message: 'Division published status updated successfully'
+            data: topicOrWeekInstance,
+            message: 'Topic/Week instance published status updated successfully'
         });
         
     } catch (error) {
-        console.error('Error updating division published status:', error);
+        console.error('Error updating topic/week instance published status:', error);
         res.status(500).json({
             success: false,
-            error: 'Failed to update division published status'
+            error: 'Failed to update topic/week instance published status'
         });
     }
 }));
 
-// PATCH /api/courses/:courseId/divisions/:divisionId/items/:itemId/title - Update item title (REQUIRES AUTH)
-router.patch('/:courseId/divisions/:divisionId/items/:itemId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+// PATCH /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/title - Update item title (REQUIRES AUTH)
+router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, divisionId, itemId } = req.params;
+        const { courseId, topicOrWeekId, itemId } = req.params;
         const { title } = req.body;
         
         // Validate input
@@ -1656,18 +1754,18 @@ router.patch('/:courseId/divisions/:divisionId/items/:itemId/title', asyncHandle
             });
         }
         
-        // Find the division
-        const division = course.divisions?.find((d: ContentDivision) => d.id === divisionId);
+        // Find the topic/week instance
+        const topicOrWeekInstance = course.topicOrWeekInstances?.find((d: TopicOrWeekInstance) => d.id === topicOrWeekId);
         
-        if (!division) {
+        if (!topicOrWeekInstance) {
             return res.status(404).json({
                 success: false,
-                error: 'Division not found'
+                error: 'Topic/Week instance not found'
             });
         }
         
         // Find the item
-        const item = division.items?.find((i: courseItem) => i.id === itemId);
+        const item = topicOrWeekInstance.items?.find((i: TopicOrWeekItem) => i.id === itemId);
         
         if (!item) {
             return res.status(404).json({
@@ -1680,11 +1778,11 @@ router.patch('/:courseId/divisions/:divisionId/items/:itemId/title', asyncHandle
         item.title = trimmedTitle;
         item.itemTitle = trimmedTitle;
         item.updatedAt = new Date();
-        division.updatedAt = new Date();
+        topicOrWeekInstance.updatedAt = new Date();
         
         // Save the updated course
         const updatedCourse = await instance.updateActiveCourse(courseId, {
-            divisions: course.divisions
+            topicOrWeekInstances: course.topicOrWeekInstances
         });
         
         console.log(`✅ Item ${itemId} title updated to "${trimmedTitle}"`);
@@ -1704,20 +1802,20 @@ router.patch('/:courseId/divisions/:divisionId/items/:itemId/title', asyncHandle
     }
 }));
 
-// DELETE /api/courses/:courseId/divisions/:divisionId/items/:itemId - Delete a content item (section) (REQUIRES AUTH)
-router.delete('/:courseId/divisions/:divisionId/items/:itemId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+// DELETE /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId - Delete a content item (section) (REQUIRES AUTH)
+router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         console.log('🗑️ [BACKEND] Delete content item request received');
         console.log('🔍 [BACKEND] Request params:', req.params);
         
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, divisionId, itemId } = req.params;
+        const { courseId, topicOrWeekId, itemId } = req.params;
         
         // Validate input
-        if (!courseId || !divisionId || !itemId) {
+        if (!courseId || !topicOrWeekId || !itemId) {
             return res.status(400).json({
                 success: false,
-                error: 'Course ID, Division ID, and Item ID are required'
+                error: 'Course ID, Topic/Week Instance ID, and Item ID are required'
             });
         }
         
@@ -1731,18 +1829,18 @@ router.delete('/:courseId/divisions/:divisionId/items/:itemId', asyncHandlerWith
             });
         }
         
-        // Find the division
-        const division = course.divisions?.find((d: ContentDivision) => d.id === divisionId);
+        // Find the topic/week instance
+        const topicOrWeekInstance = course.topicOrWeekInstances?.find((d: TopicOrWeekInstance) => d.id === topicOrWeekId);
         
-        if (!division) {
+        if (!topicOrWeekInstance) {
             return res.status(404).json({
                 success: false,
-                error: 'Division not found'
+                error: 'Topic/Week instance not found'
             });
         }
         
         // Find the item
-        const item = division.items?.find((i: courseItem) => i.id === itemId);
+        const item = topicOrWeekInstance.items?.find((i: TopicOrWeekItem) => i.id === itemId);
         
         if (!item) {
             return res.status(404).json({
@@ -1751,23 +1849,23 @@ router.delete('/:courseId/divisions/:divisionId/items/:itemId', asyncHandlerWith
             });
         }
         
-        // Remove the item from the division
-        division.items = division.items.filter((i: courseItem) => i.id !== itemId);
-        division.updatedAt = new Date();
+        // Remove the item from the topic/week instance
+        topicOrWeekInstance.items = topicOrWeekInstance.items.filter((i: TopicOrWeekItem) => i.id !== itemId);
+        topicOrWeekInstance.updatedAt = new Date();
         
         // Save the updated course
         const updatedCourse = await instance.updateActiveCourse(courseId, {
-            divisions: course.divisions
+            topicOrWeekInstances: course.topicOrWeekInstances
         });
         
-        console.log(`✅ Content item ${itemId} deleted successfully from division ${divisionId}`);
+        console.log(`✅ Content item ${itemId} deleted successfully from topic/week instance ${topicOrWeekId}`);
         
         res.status(200).json({
             success: true,
             data: {
                 deletedItemId: itemId,
-                divisionId: divisionId,
-                remainingItems: division.items.length
+                topicOrWeekId: topicOrWeekId,
+                remainingItems: topicOrWeekInstance.items.length
             },
             message: 'Content item deleted successfully'
         });

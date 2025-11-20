@@ -18,7 +18,7 @@
 export interface ChatMessage {
     id: string;
     sender: 'user' | 'bot';
-    userId: number;
+    userId: string;
     courseName: string;
     text: string;
     timestamp: number;
@@ -31,7 +31,7 @@ export interface ChatMessage {
 export interface Chat {
     id: string;
     courseName: string;
-    divisionTitle: string;
+    topicOrWeekTitle: string;
     itemTitle: string;
     messages: ChatMessage[];
     isPinned: boolean;
@@ -69,7 +69,7 @@ export interface activeCourse {
     teachingAssistants: string[],
     frameType: frameType;
     tilesNumber: number;
-    divisions: ContentDivision[]; // previously content
+    topicOrWeekInstances: TopicOrWeekInstance[]; // previously content, previously divisions
 }
 
 /**
@@ -82,15 +82,15 @@ export type frameType =
 ;
 
 /**
- * The type of content division : by week or by topic
+ * The type of content instance : by week or by topic
  */
-export interface ContentDivision {
+export interface TopicOrWeekInstance {
     id : string;
     date : Date;
     title: string;
     courseName: string;
     published: boolean;
-    items: courseItem[]; // previously content
+    items: TopicOrWeekItem[]; // previously content, previously courseItem
     createdAt: Date;
     updatedAt: Date;
 }
@@ -98,12 +98,12 @@ export interface ContentDivision {
 /**
  * The type for a piece of course content (e.g., lecture, tutorial)
  */
-export interface courseItem {
+export interface TopicOrWeekItem {
     id: string;
     date: Date;
     title: string;
     courseName: string;
-    divisionTitle: string;
+    topicOrWeekTitle: string;
     itemTitle: string;
     completed?: boolean;
     learningObjectives: LearningObjective[];
@@ -120,7 +120,7 @@ export interface LearningObjective {
     id: string;
     LearningObjective: string;
     courseName: string;
-    divisionTitle: string;
+    topicOrWeekTitle: string;
     itemTitle: string;
     createdAt: Date;
     updatedAt: Date;
@@ -142,7 +142,7 @@ export interface AdditionalMaterial {
     date : Date,
     name: string;
     courseName: string;
-    divisionTitle: string;
+    topicOrWeekTitle: string;
     itemTitle: string;
     sourceType: AdditionalMaterialSource;
     file?: File;
@@ -156,19 +156,19 @@ export interface AdditionalMaterial {
     uploadedBy?: string; // Track who uploaded the material
     // Add these three optional fields:
     courseId?: string;
-    divisionId?: string;
+    topicOrWeekId?: string;
     itemId?: string;
 }
 
 /**
  * Course-specific user data structure
  * Stores user data specific to a particular course
+ * NOTE: PUID is NOT stored here for privacy - only userId is stored
  */
 export interface CourseUser {
     name: string;
-    puid: string;
-    userId: number;                // Obtained from GlobalUser
-    courseName: string;            // Full name: "APSC 099: Engineering for Kindergarten"
+    userId: string;                // Obtained from GlobalUser (string format)
+    courseName: string;            
     courseId: string;              // Course unique ID
     userOnboarding: boolean;       // Course-specific onboarding status
     affiliation: 'student' | 'faculty';
@@ -187,7 +187,7 @@ export interface FlagReport {
     flagType: 'innacurate_response' | 'harassment' | 'inappropriate' | 'dishonesty' | 'interface bug' | 'other';
     reportType: string; // store the long explanation of the flag type
     chatContent: string;
-    userId: number;
+    userId: string;
     status: 'unresolved' | 'resolved';
     response?: string; // if resolved, the response from the instructor
     createdAt: Date;
@@ -198,11 +198,12 @@ export interface FlagReport {
 /**
  * Global user registry
  * Stores core user identity across all courses
+ * NOTE: This is the ONLY collection that should store PUID for privacy reasons
  */
 export interface GlobalUser {
     name: string;
-    puid: string;
-    userId: number;                // Generated using IDGenerator
+    puid: string;                   // Privacy-focused Unique Identifier - ONLY stored here
+    userId: string;                 // Generated using IDGenerator (string format)
     coursesEnrolled: string[];     // Array of course IDs
     affiliation: 'student' | 'faculty';
     status: 'active' | 'inactive';
@@ -215,3 +216,21 @@ export interface GlobalUser {
  * @deprecated Use CourseUser instead
  */
 export type User = CourseUser;
+
+// ===========================================
+// ========= MEMORY AGENT DATA TYPE ==========
+// ===========================================
+
+/**
+ * Memory Agent Entry
+ * Stores struggle words/topics that a student has difficulty with
+ * Stored per-user in course-specific collections: {courseName}_memory-agent
+ */
+export interface MemoryAgentEntry {
+    name: string;
+    userId: string;
+    role: 'instructor' | 'TA' | 'Student';
+    struggleTopics: string[]; // Array of strings representing topics/concepts student struggles with
+    createdAt: Date;
+    updatedAt: Date;
+}

@@ -153,10 +153,9 @@ class AuthManager {
         if (this.userDetails) {
             this.userDetails.innerHTML = `
                 <div class="user-details-content">
-                    <p><strong>Name:</strong> ${user.firstName} ${user.lastName}</p>
-                    <p><strong>Username:</strong> ${user.username}</p>
+                    <p><strong>Name:</strong> ${user.name}</p>
                     <p><strong>Affiliation:</strong> ${user.affiliation}</p>
-                    <p><strong>PUID:</strong> ${user.puid}</p>
+                    <p><strong>User ID:</strong> ${user.userId}</p>
                 </div>
             `;
         }

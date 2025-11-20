@@ -71,3 +71,7 @@ ROUTING_MIGRATION_PLAN.md
 test-*
 TESTING-*
 STEP*
+
+donotchangethis.js
+prompt-test/*
+prompt-test/

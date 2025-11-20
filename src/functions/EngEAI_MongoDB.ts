@@ -1,6 +1,6 @@
 import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 import * as dotenv from 'dotenv';
-import { activeCourse, AdditionalMaterial, ContentDivision, courseItem, FlagReport, User, Chat, ChatMessage, GlobalUser, CourseUser, LearningObjective } from './types';
+import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, Chat, ChatMessage, GlobalUser, CourseUser, LearningObjective, MemoryAgentEntry } from './types';
 import { IDGenerator } from './unique-id-generator';
 
 dotenv.config();
@@ -70,6 +70,10 @@ export class EngEAI_MongoDB {
             //create flags collection
             const flagsCollection = `${courseName}_flags`;
             await this.db.createCollection(flagsCollection);
+
+            //create memory-agent collection
+            const memoryAgentCollection = `${courseName}_memory-agent`;
+            await this.db.createCollection(memoryAgentCollection);
 
             // Create indexes for optimal performance
             try {
@@ -149,24 +153,24 @@ export class EngEAI_MongoDB {
     }
 
     // Learning objectives methods
-    public addLearningObjective = async (courseId: string, divisionId: string, contentId: string, learningObjective: any) => {
-        console.log('🎯 [MONGODB] addLearningObjective called with:', { courseId, divisionId, contentId, learningObjective });
+    public addLearningObjective = async (courseId: string, topicOrWeekId: string, contentId: string, learningObjective: any) => {
+        console.log('🎯 [MONGODB] addLearningObjective called with:', { courseId, topicOrWeekId, contentId, learningObjective });
         
         const result = await this.getCourseCollection().findOneAndUpdate(
             { 
                 id: courseId,
-                'divisions.id': divisionId,
-                'divisions.items.id': contentId
+                'topicOrWeekInstances.id': topicOrWeekId,
+                'topicOrWeekInstances.items.id': contentId
             },
             { 
                 $push: { 
-                    'divisions.$[division].items.$[item].learningObjectives': learningObjective
+                    'topicOrWeekInstances.$[instance].items.$[item].learningObjectives': learningObjective
                 },
                 $set: { updatedAt: Date.now().toString() }
             },
             { 
                 arrayFilters: [
-                    { 'division.id': divisionId },
+                    { 'instance.id': topicOrWeekId },
                     { 'item.id': contentId }
                 ],
                 returnDocument: 'after' 
@@ -177,24 +181,24 @@ export class EngEAI_MongoDB {
         return result;
     }
 
-    public updateLearningObjective = async (courseId: string, divisionId: string, contentId: string, objectiveId: string, updateData: any) => {
+    public updateLearningObjective = async (courseId: string, topicOrWeekId: string, contentId: string, objectiveId: string, updateData: any) => {
         const result = await this.getCourseCollection().findOneAndUpdate(
             { 
                 id: courseId,
-                'divisions.id': divisionId,
-                'divisions.items.id': contentId,
-                'divisions.items.learningObjectives.id': objectiveId
+                'topicOrWeekInstances.id': topicOrWeekId,
+                'topicOrWeekInstances.items.id': contentId,
+                'topicOrWeekInstances.items.learningObjectives.id': objectiveId
             },
             { 
                 $set: { 
-                    'divisions.$[division].items.$[item].learningObjectives.$[objective].LearningObjective': updateData.LearningObjective,
-                    'divisions.$[division].items.$[item].learningObjectives.$[objective].updatedAt': Date.now().toString(),
+                    'topicOrWeekInstances.$[instance].items.$[item].learningObjectives.$[objective].LearningObjective': updateData.LearningObjective,
+                    'topicOrWeekInstances.$[instance].items.$[item].learningObjectives.$[objective].updatedAt': Date.now().toString(),
                     updatedAt: Date.now().toString()
                 }
             },
             { 
                 arrayFilters: [
-                    { 'division.id': divisionId },
+                    { 'instance.id': topicOrWeekId },
                     { 'item.id': contentId },
                     { 'objective.id': objectiveId }
                 ],
@@ -204,24 +208,24 @@ export class EngEAI_MongoDB {
         return result;
     }
 
-    public deleteLearningObjective = async (courseId: string, divisionId: string, contentId: string, objectiveId: string) => {
-        console.log('🗑️ [MONGODB] deleteLearningObjective called with:', { courseId, divisionId, contentId, objectiveId });
+    public deleteLearningObjective = async (courseId: string, topicOrWeekId: string, contentId: string, objectiveId: string) => {
+        console.log('🗑️ [MONGODB] deleteLearningObjective called with:', { courseId, topicOrWeekId, contentId, objectiveId });
         
         const result = await this.getCourseCollection().findOneAndUpdate(
             { 
                 id: courseId,
-                'divisions.id': divisionId,
-                'divisions.items.id': contentId
+                'topicOrWeekInstances.id': topicOrWeekId,
+                'topicOrWeekInstances.items.id': contentId
             },
             { 
                 $pull: { 
-                    'divisions.$[division].items.$[item].learningObjectives': { id: objectiveId }
+                    'topicOrWeekInstances.$[instance].items.$[item].learningObjectives': { id: objectiveId }
                 } as any,
                 $set: { updatedAt: Date.now().toString() }
             },
             { 
                 arrayFilters: [
-                    { 'division.id': divisionId },
+                    { 'instance.id': topicOrWeekId },
                     { 'item.id': contentId }
                 ],
                 returnDocument: 'after' 
@@ -235,21 +239,21 @@ export class EngEAI_MongoDB {
     /**
      * Get all learning objectives for an entire course
      * @param courseId - The course ID
-     * @returns Promise<LearningObjective[]> - All learning objectives across all divisions and items
+     * @returns Promise<LearningObjective[]> - All learning objectives across all topic/week instances and items
      */
     public getAllLearningObjectives = async (courseId: string): Promise<LearningObjective[]> => {
         const course = await this.getActiveCourse(courseId);
         
-        if (!course || !course.divisions) {
+        if (!course || !course.topicOrWeekInstances) {
             return [];
         }
         
         const allObjectives: LearningObjective[] = [];
         
-        // Iterate through all divisions and items to collect learning objectives
-        for (const division of course.divisions) {
-            if (division.items) {
-                for (const item of division.items) {
+        // Iterate through all topic/week instances and items to collect learning objectives
+        for (const instance of course.topicOrWeekInstances) {
+            if (instance.items) {
+                for (const item of instance.items) {
                     if (item.learningObjectives && item.learningObjectives.length > 0) {
                         allObjectives.push(...item.learningObjectives);
                     }
@@ -804,27 +808,27 @@ export class EngEAI_MongoDB {
         }
     }
 
-    public addContentItem = async (courseId: string, divisionId: string, contentItem: any) => {
+    public addContentItem = async (courseId: string, topicOrWeekId: string, contentItem: any) => {
         try {
-            console.log('📝 Adding content item to course:', courseId, 'division:', divisionId);
+            console.log('📝 Adding content item to course:', courseId, 'topic/week instance:', topicOrWeekId);
             
             const course = await this.getActiveCourse(courseId);
             if (!course) {
                 return { success: false, error: 'Course not found' };
             }
 
-            const division = course.divisions?.find((d: any) => d.id === divisionId);
-            if (!division) {
-                return { success: false, error: 'Division not found' };
+            const instance = course.topicOrWeekInstances?.find((d: any) => d.id === topicOrWeekId);
+            if (!instance) {
+                return { success: false, error: 'Topic/Week instance not found' };
             }
 
             // Initialize items array if it doesn't exist
-            if (!division.items) {
-                division.items = [];
+            if (!instance.items) {
+                instance.items = [];
             }
 
             // Add the new content item
-            division.items.push(contentItem);
+            instance.items.push(contentItem);
 
             // Update the course in the database
             const result = await this.updateActiveCourse(courseId, course as Partial<activeCourse>);
@@ -842,28 +846,28 @@ export class EngEAI_MongoDB {
 
     public addAdditionalMaterial = async (
         courseId: string, 
-        divisionId: string, 
+        topicOrWeekId: string, 
         itemId: string, 
         material: AdditionalMaterial
     ): Promise<any> => {
         try {
-            console.log('📄 Adding additional material to course:', courseId, 'division:', divisionId, 'item:', itemId);
+            console.log('📄 Adding additional material to course:', courseId, 'topic/week instance:', topicOrWeekId, 'item:', itemId);
             
             const result = await this.getCourseCollection().findOneAndUpdate(
                 { 
                     id: courseId,
-                    'divisions.id': divisionId,
-                    'divisions.items.id': itemId
+                    'topicOrWeekInstances.id': topicOrWeekId,
+                    'topicOrWeekInstances.items.id': itemId
                 },
                 { 
                     $push: { 
-                        'divisions.$[division].items.$[item].additionalMaterials': material as any
+                        'topicOrWeekInstances.$[instance].items.$[item].additionalMaterials': material as any
                     },
                     $set: { updatedAt: Date.now().toString() }
                 },
                 { 
                     arrayFilters: [
-                        { 'division.id': divisionId },
+                        { 'instance.id': topicOrWeekId },
                         { 'item.id': itemId }
                     ],
                     returnDocument: 'after' 
@@ -886,13 +890,13 @@ export class EngEAI_MongoDB {
                 { id: courseId },
                 { 
                     $unset: { 
-                        'divisions.$[division].items.$[item].additionalMaterials': 1 
+                        'topicOrWeekInstances.$[instance].items.$[item].additionalMaterials': 1 
                     },
                     $set: { updatedAt: Date.now().toString() }
                 },
                 { 
                     arrayFilters: [
-                        { 'division.id': { $exists: true } }, // Match all divisions that have an id
+                        { 'instance.id': { $exists: true } }, // Match all topic/week instances that have an id
                         { 'item.id': { $exists: true } }     // Match all items that have an id
                     ],
                     returnDocument: 'after' 
@@ -934,14 +938,14 @@ export class EngEAI_MongoDB {
     /**
      * Find a user by userId in a specific course and return user details
      * @param courseName - The name of the course
-     * @param userId - The userId to look up
-     * @returns User object with name, puid, and affiliation if found, null otherwise
+     * @param userId - The userId to look up (string format)
+     * @returns User object with name and affiliation if found, null otherwise
+     * NOTE: PUID is not returned for privacy - only userId is used
      */
-    public findUserByUserId = async (courseName: string, userId: number): Promise<{
+    public findUserByUserId = async (courseName: string, userId: string): Promise<{
         name: string;
-        puid: string;
         affiliation: string;
-        userId: number;
+        userId: string;
     } | null> => {
         //START DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID)
         console.log(`[MONGODB] 🔍 Finding user with userId: ${userId} in course: ${courseName}`);
@@ -953,12 +957,11 @@ export class EngEAI_MongoDB {
             
             if (user) {
                 //START DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID-SUCCESS)
-                console.log(`[MONGODB] ✅ Found user:`, { name: user.name, puid: user.puid, affiliation: user.affiliation });
+                console.log(`[MONGODB] ✅ Found user:`, { name: user.name, userId: user.userId, affiliation: user.affiliation });
                 //END DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID-SUCCESS)
                 
                 return {
                     name: user.name,
-                    puid: user.puid,
                     affiliation: user.affiliation,
                     userId: user.userId
                 };
@@ -980,14 +983,14 @@ export class EngEAI_MongoDB {
     /**
      * Batch lookup multiple users by their userIds
      * @param courseName - The name of the course
-     * @param userIds - Array of userIds to look up
+     * @param userIds - Array of userIds to look up (string format)
      * @returns Map of userId to user details
+     * NOTE: PUID is not returned for privacy - only userId is used
      */
-    public batchFindUsersByUserIds = async (courseName: string, userIds: number[]): Promise<Map<number, {
+    public batchFindUsersByUserIds = async (courseName: string, userIds: string[]): Promise<Map<string, {
         name: string;
-        puid: string;
         affiliation: string;
-        userId: number;
+        userId: string;
     }>> => {
         //START DEBUG LOG : DEBUG-CODE(BATCH-FIND-USERS)
         console.log(`[MONGODB] 🔍 Batch finding ${userIds.length} users in course: ${courseName}`);
@@ -997,17 +1000,15 @@ export class EngEAI_MongoDB {
             const userCollection = this.getUserCollection(courseName);
             const users = await userCollection.find({ userId: { $in: userIds } }).toArray();
             
-            const userMap = new Map<number, {
+            const userMap = new Map<string, {
                 name: string;
-                puid: string;
                 affiliation: string;
-                userId: number;
+                userId: string;
             }>();
             
             for (const user of users) {
                 userMap.set(user.userId, {
                     name: user.name,
-                    puid: user.puid,
                     affiliation: user.affiliation,
                     userId: user.userId
                 });
@@ -1033,7 +1034,6 @@ export class EngEAI_MongoDB {
      */
     public getFlagReportsWithUserNames = async (courseName: string): Promise<Array<FlagReport & {
         userName?: string;
-        userPuid?: string;
         userAffiliation?: string;
     }>> => {
         //START DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES)
@@ -1055,12 +1055,12 @@ export class EngEAI_MongoDB {
             const userMap = await this.batchFindUsersByUserIds(courseName, userIds);
             
             // Combine flag reports with user information
+            // NOTE: PUID is not included for privacy
             const flagsWithNames = flagReports.map(flag => {
                 const userInfo = userMap.get(flag.userId);
                 return {
                     ...flag,
                     userName: userInfo?.name || 'Unknown User',
-                    userPuid: userInfo?.puid || 'Unknown PUID',
                     userAffiliation: userInfo?.affiliation || 'Unknown'
                 };
             });
@@ -1079,6 +1079,41 @@ export class EngEAI_MongoDB {
     }
 
     /**
+     * Find a student by userId in a specific course
+     * @param courseName - The name of the course (e.g., "APSC 099")
+     * @param userId - The userId of the student (string format)
+     * @returns User object if found, null otherwise
+     */
+    public findStudentByUserId = async (courseName: string, userId: string) => {
+        //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID)
+        console.log(`[MONGODB] 🔍 Finding student with userId: ${userId} in course: ${courseName}`);
+        //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID)
+        
+        try {
+            const userCollection = this.getUserCollection(courseName);
+            const student = await userCollection.findOne({ userId: userId });
+            
+            if (student) {
+                //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID-SUCCESS)
+                console.log(`[MONGODB] ✅ Found existing student:`, student);
+                //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID-SUCCESS)
+            } else {
+                //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID-NOT-FOUND)
+                console.log(`[MONGODB] ❌ Student with userId ${userId} not found in course ${courseName}`);
+                //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID-NOT-FOUND)
+            }
+            
+            return student;
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID-ERROR)
+            console.error(`[MONGODB] 🚨 Error finding student with userId ${userId}:`, error);
+            //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID-ERROR)
+            throw error;
+        }
+    }
+
+    /**
+     * @deprecated Use findStudentByUserId instead. This method is kept for backward compatibility during migration.
      * Find a student by PUID in a specific course
      * @param courseName - The name of the course (e.g., "APSC 099")
      * @param puid - The PUID of the student
@@ -1126,11 +1161,13 @@ export class EngEAI_MongoDB {
         try {
             const userCollection = this.getUserCollection(courseName);
             
-            // Generate unique ID for the student
+            // Generate unique ID for the student (using course-specific ID)
             const studentId = this.idGenerator.userID(userData as User);
             
+            // Create student object WITHOUT puid (privacy - only userId is stored)
+            const { puid, ...userDataWithoutPuid } = userData as any;
             const newStudent: User = {
-                ...userData,
+                ...userDataWithoutPuid,
                 id: studentId,
                 createdAt: new Date(),
                 updatedAt: new Date()
@@ -1139,7 +1176,7 @@ export class EngEAI_MongoDB {
             const result = await userCollection.insertOne(newStudent as any);
             
             //START DEBUG LOG : DEBUG-CODE(CREATE-STUDENT-SUCCESS)
-            console.log(`[MONGODB] ✅ Created new student with ID: ${studentId}`, result);
+            console.log(`[MONGODB] ✅ Created new student with ID: ${studentId} (userId: ${newStudent.userId})`);
             //END DEBUG LOG : DEBUG-CODE(CREATE-STUDENT-SUCCESS)
             
             return newStudent;
@@ -1156,23 +1193,23 @@ export class EngEAI_MongoDB {
     // =====================================
 
     /**
-     * Get all chats for a specific user by PUID
+     * Get all chats for a specific user by userId
      * @param courseName - The name of the course
-     * @param puid - The PUID of the user
+     * @param userId - The userId of the user (string format)
      * @returns Array of Chat objects (excluding soft-deleted chats)
      */
-    public getUserChats = async (courseName: string, puid: string): Promise<Chat[]> => {
+    public getUserChats = async (courseName: string, userId: string): Promise<Chat[]> => {
         //START DEBUG LOG : DEBUG-CODE(GET-USER-CHATS)
-        console.log(`[MONGODB] 📋 Getting chats for user PUID: ${puid} in course: ${courseName}`);
+        console.log(`[MONGODB] 📋 Getting chats for user userId: ${userId} in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(GET-USER-CHATS)
         
         try {
             const userCollection = this.getUserCollection(courseName);
-            const user = await userCollection.findOne({ puid: puid });
+            const user = await userCollection.findOne({ userId: userId });
             
             if (!user) {
                 //START DEBUG LOG : DEBUG-CODE(GET-USER-CHATS-NO-USER)
-                console.log(`[MONGODB] ⚠️ User not found with PUID: ${puid}`);
+                console.log(`[MONGODB] ⚠️ User not found with userId: ${userId}`);
                 //END DEBUG LOG : DEBUG-CODE(GET-USER-CHATS-NO-USER)
                 return [];
             }
@@ -1197,20 +1234,20 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Get chat metadata for a specific user by PUID (without full message history)
+     * Get chat metadata for a specific user by userId (without full message history)
      * @param courseName - The name of the course
-     * @param puid - The PUID of the user
+     * @param userId - The userId of the user (string format)
      * @returns Array of chat metadata objects (excluding soft-deleted chats)
      */
-    public getUserChatsMetadata = async (courseName: string, puid: string): Promise<any[]> => {
-        console.log(`[MONGODB] 📊 Getting chat metadata for user PUID: ${puid} in course: ${courseName}`);
+    public getUserChatsMetadata = async (courseName: string, userId: string): Promise<any[]> => {
+        console.log(`[MONGODB] 📊 Getting chat metadata for user userId: ${userId} in course: ${courseName}`);
         
         try {
             const userCollection = this.getUserCollection(courseName);
-            const user = await userCollection.findOne({ puid: puid });
+            const user = await userCollection.findOne({ userId: userId });
             
             if (!user) {
-                console.log(`[MONGODB] ⚠️ User not found with PUID: ${puid}`);
+                console.log(`[MONGODB] ⚠️ User not found with userId: ${userId}`);
                 return [];
             }
             
@@ -1244,19 +1281,19 @@ export class EngEAI_MongoDB {
     /**
      * Add a new chat to a user's chats array
      * @param courseName - The name of the course
-     * @param puid - The PUID of the user
+     * @param userId - The userId of the user (string format)
      * @param chat - The chat object to add
      */
-    public addChatToUser = async (courseName: string, puid: string, chat: Chat): Promise<void> => {
+    public addChatToUser = async (courseName: string, userId: string, chat: Chat): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(ADD-CHAT-TO-USER)
-        console.log(`[MONGODB] ➕ Adding chat ${chat.id} to user PUID: ${puid} in course: ${courseName}`);
+        console.log(`[MONGODB] ➕ Adding chat ${chat.id} to user userId: ${userId} in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(ADD-CHAT-TO-USER)
         
         try {
             const userCollection = this.getUserCollection(courseName);
             
             const result = await userCollection.updateOne(
-                { puid: puid },
+                { userId: userId },
                 { 
                     $push: { chats: chat } as any,
                     $set: { updatedAt: new Date() }
@@ -1264,7 +1301,7 @@ export class EngEAI_MongoDB {
             );
             
             if (result.matchedCount === 0) {
-                throw new Error(`User not found with PUID: ${puid}`);
+                throw new Error(`User not found with userId: ${userId}`);
             }
             
             //START DEBUG LOG : DEBUG-CODE(ADD-CHAT-TO-USER-SUCCESS)
@@ -1281,20 +1318,20 @@ export class EngEAI_MongoDB {
     /**
      * Update an existing chat in user's chats array
      * @param courseName - The name of the course
-     * @param puid - The PUID of the user
+     * @param userId - The userId of the user (string format)
      * @param chatId - The ID of the chat to update
      * @param chat - The updated chat object
      */
-    public updateUserChat = async (courseName: string, puid: string, chatId: string, chat: Chat): Promise<void> => {
+    public updateUserChat = async (courseName: string, userId: string, chatId: string, chat: Chat): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(UPDATE-USER-CHAT)
-        console.log(`[MONGODB] 🔄 Updating chat ${chatId} for user PUID: ${puid} in course: ${courseName}`);
+        console.log(`[MONGODB] 🔄 Updating chat ${chatId} for user userId: ${userId} in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(UPDATE-USER-CHAT)
         
         try {
             const userCollection = this.getUserCollection(courseName);
             
             const result = await userCollection.updateOne(
-                { puid: puid, 'chats.id': chatId },
+                { userId: userId, 'chats.id': chatId },
                 { 
                     $set: { 
                         'chats.$': chat,
@@ -1304,7 +1341,7 @@ export class EngEAI_MongoDB {
             );
             
             if (result.matchedCount === 0) {
-                throw new Error(`Chat not found with ID: ${chatId} for user PUID: ${puid}`);
+                throw new Error(`Chat not found with ID: ${chatId} for user userId: ${userId}`);
             }
             
             //START DEBUG LOG : DEBUG-CODE(UPDATE-USER-CHAT-SUCCESS)
@@ -1321,20 +1358,20 @@ export class EngEAI_MongoDB {
     /**
      * Add a message to a specific chat in user's chats array
      * @param courseName - The name of the course
-     * @param puid - The PUID of the user
+     * @param userId - The userId of the user (string format)
      * @param chatId - The ID of the chat
      * @param message - The message to add
      */
-    public addMessageToChat = async (courseName: string, puid: string, chatId: string, message: ChatMessage): Promise<void> => {
+    public addMessageToChat = async (courseName: string, userId: string, chatId: string, message: ChatMessage): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(ADD-MESSAGE-TO-CHAT)
-        console.log(`[MONGODB] 💬 Adding message to chat ${chatId} for user PUID: ${puid}`);
+        console.log(`[MONGODB] 💬 Adding message to chat ${chatId} for user userId: ${userId}`);
         //END DEBUG LOG : DEBUG-CODE(ADD-MESSAGE-TO-CHAT)
         
         try {
             const userCollection = this.getUserCollection(courseName);
             
             const result = await userCollection.updateOne(
-                { puid: puid, 'chats.id': chatId },
+                { userId: userId, 'chats.id': chatId },
                 { 
                     $push: { 'chats.$.messages': message } as any,
                     $set: { updatedAt: new Date() }
@@ -1342,7 +1379,7 @@ export class EngEAI_MongoDB {
             );
             
             if (result.matchedCount === 0) {
-                throw new Error(`Chat not found with ID: ${chatId} for user PUID: ${puid}`);
+                throw new Error(`Chat not found with ID: ${chatId} for user userId: ${userId}`);
             }
             
             //START DEBUG LOG : DEBUG-CODE(ADD-MESSAGE-TO-CHAT-SUCCESS)
@@ -1359,20 +1396,20 @@ export class EngEAI_MongoDB {
     /**
      * Update chat title in user's chats array
      * @param courseName - The name of the course
-     * @param puid - The PUID of the user
+     * @param userId - The userId of the user (string format)
      * @param chatId - The ID of the chat to update
      * @param newTitle - The new title for the chat
      */
-    public updateChatTitle = async (courseName: string, puid: string, chatId: string, newTitle: string): Promise<void> => {
+    public updateChatTitle = async (courseName: string, userId: string, chatId: string, newTitle: string): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-TITLE)
-        console.log(`[MONGODB] 📝 Updating chat title for chat ${chatId} to "${newTitle}" for user PUID: ${puid} in course: ${courseName}`);
+        console.log(`[MONGODB] 📝 Updating chat title for chat ${chatId} to "${newTitle}" for user userId: ${userId} in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-TITLE)
         
         try {
             const userCollection = this.getUserCollection(courseName);
             
             const result = await userCollection.updateOne(
-                { puid: puid, 'chats.id': chatId },
+                { userId: userId, 'chats.id': chatId },
                 { 
                     $set: { 
                         'chats.$.itemTitle': newTitle,
@@ -1382,7 +1419,7 @@ export class EngEAI_MongoDB {
             );
             
             if (result.matchedCount === 0) {
-                throw new Error(`Chat not found with ID: ${chatId} for user PUID: ${puid}`);
+                throw new Error(`Chat not found with ID: ${chatId} for user userId: ${userId}`);
             }
             
             //START DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-TITLE-SUCCESS)
@@ -1400,19 +1437,19 @@ export class EngEAI_MongoDB {
      * Mark a chat as deleted (soft delete) instead of removing it
      * This preserves chat history for audit/analytics while hiding it from users
      * @param courseName - The name of the course
-     * @param puid - The PUID of the user
+     * @param userId - The userId of the user (string format)
      * @param chatId - The ID of the chat to mark as deleted
      */
-    public markChatAsDeleted = async (courseName: string, puid: string, chatId: string): Promise<void> => {
+    public markChatAsDeleted = async (courseName: string, userId: string, chatId: string): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(MARK-CHAT-DELETED)
-        console.log(`[MONGODB] 🗑️ Marking chat ${chatId} as deleted for user PUID: ${puid} in course: ${courseName}`);
+        console.log(`[MONGODB] 🗑️ Marking chat ${chatId} as deleted for user userId: ${userId} in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(MARK-CHAT-DELETED)
         
         try {
             const userCollection = this.getUserCollection(courseName);
             
             const result = await userCollection.updateOne(
-                { puid: puid, 'chats.id': chatId },
+                { userId: userId, 'chats.id': chatId },
                 { 
                     $set: { 
                         'chats.$.isDeleted': true,
@@ -1422,7 +1459,7 @@ export class EngEAI_MongoDB {
             );
             
             if (result.matchedCount === 0) {
-                throw new Error(`Chat not found with ID: ${chatId} for user PUID: ${puid}`);
+                throw new Error(`Chat not found with ID: ${chatId} for user userId: ${userId}`);
             }
             
             //START DEBUG LOG : DEBUG-CODE(MARK-CHAT-DELETED-SUCCESS)
@@ -1440,19 +1477,19 @@ export class EngEAI_MongoDB {
      * Delete a chat from user's chats array (HARD DELETE - kept for backward compatibility)
      * @deprecated Use markChatAsDeleted() instead for soft delete
      * @param courseName - The name of the course
-     * @param puid - The PUID of the user
+     * @param userId - The userId of the user (string format)
      * @param chatId - The ID of the chat to delete
      */
-    public deleteChatFromUser = async (courseName: string, puid: string, chatId: string): Promise<void> => {
+    public deleteChatFromUser = async (courseName: string, userId: string, chatId: string): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER)
-        console.log(`[MONGODB] 🗑️ Deleting chat ${chatId} from user PUID: ${puid} in course: ${courseName}`);
+        console.log(`[MONGODB] 🗑️ Deleting chat ${chatId} from user userId: ${userId} in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER)
         
         try {
             const userCollection = this.getUserCollection(courseName);
             
             const result = await userCollection.updateOne(
-                { puid: puid },
+                { userId: userId },
                 { 
                     $pull: { chats: { id: chatId } } as any,
                     $set: { updatedAt: new Date() }
@@ -1460,7 +1497,7 @@ export class EngEAI_MongoDB {
             );
             
             if (result.matchedCount === 0) {
-                throw new Error(`User not found with PUID: ${puid}`);
+                throw new Error(`User not found with userId: ${userId}`);
             }
             
             //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER-SUCCESS)
@@ -1491,6 +1528,18 @@ export class EngEAI_MongoDB {
     public findGlobalUserByPUID = async (puid: string): Promise<GlobalUser | null> => {
         const collection = this.getGlobalUserCollection();
         return await collection.findOne({ puid: puid }) as GlobalUser | null;
+    }
+
+    /**
+     * Find a global user by userId
+     * Preferred method to avoid PUID usage in API endpoints
+     * 
+     * @param userId - The userId to look up (string format)
+     * @returns GlobalUser object if found, null otherwise
+     */
+    public findGlobalUserByUserId = async (userId: string): Promise<GlobalUser | null> => {
+        const collection = this.getGlobalUserCollection();
+        return await collection.findOne({ userId: userId }) as GlobalUser | null;
     }
 
     /**
@@ -1547,5 +1596,153 @@ export class EngEAI_MongoDB {
         );
         
         return result as unknown as GlobalUser;
+    }
+
+    // ===========================================
+    // ========= MEMORY AGENT MANAGEMENT =========
+    // ===========================================
+
+    /**
+     * Get the memory-agent collection for a specific course
+     * @param courseName - The name of the course (e.g., "APSC 099")
+     * @returns Collection instance for the course memory-agent entries
+     */
+    private getMemoryAgentCollection(courseName: string): Collection {
+        const collectionName = `${courseName}_memory-agent`;
+        return this.db.collection(collectionName);
+    }
+
+    /**
+     * Create a new memory agent entry for a user
+     * @param courseName - The name of the course
+     * @param entry - The memory agent entry to create
+     */
+    public createMemoryAgentEntry = async (courseName: string, entry: MemoryAgentEntry): Promise<void> => {
+        console.log(`[MONGODB] 🧠 Creating memory agent entry for userId: ${entry.userId} in course: ${courseName}`);
+        
+        try {
+            const memoryAgentCollection = this.getMemoryAgentCollection(courseName);
+            await memoryAgentCollection.insertOne(entry as any);
+            
+            console.log(`[MONGODB] ✅ Memory agent entry created successfully for userId: ${entry.userId}`);
+        } catch (error) {
+            console.error(`[MONGODB] 🚨 Error creating memory agent entry:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get memory agent entry for a specific user
+     * @param courseName - The name of the course
+     * @param userId - The user ID
+     * @returns Memory agent entry if found, null otherwise
+     */
+    public getMemoryAgentEntry = async (courseName: string, userId: string): Promise<MemoryAgentEntry | null> => {
+        console.log(`[MONGODB] 🔍 Getting memory agent entry for userId: ${userId} in course: ${courseName}`);
+        
+        try {
+            const memoryAgentCollection = this.getMemoryAgentCollection(courseName);
+            const entry = await memoryAgentCollection.findOne({ userId: userId }) as MemoryAgentEntry | null;
+            
+            if (entry) {
+                console.log(`[MONGODB] ✅ Found memory agent entry for userId: ${userId}`);
+            } else {
+                console.log(`[MONGODB] ⚠️ Memory agent entry not found for userId: ${userId}`);
+            }
+            
+            return entry;
+        } catch (error) {
+            console.error(`[MONGODB] 🚨 Error getting memory agent entry:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Update struggle words for a user's memory agent entry
+     * @param courseName - The name of the course
+     * @param userId - The user ID
+     * @param struggleTopics - Array of struggle words to update
+     */
+    public updateMemoryAgentStruggleWords = async (courseName: string, userId: string, struggleTopics: string[]): Promise<void> => {
+        console.log(`[MONGODB] 🔄 Updating struggle words for userId: ${userId} in course: ${courseName}`);
+        console.log(`[MONGODB] 📝 New struggle words:`, struggleTopics);
+        
+        try {
+            const memoryAgentCollection = this.getMemoryAgentCollection(courseName);
+            
+            const result = await memoryAgentCollection.findOneAndUpdate(
+                { userId: userId },
+                { 
+                    $set: { 
+                        struggleTopics: struggleTopics,
+                        updatedAt: new Date()
+                    }
+                },
+                { returnDocument: 'after' }
+            );
+            
+            if (!result) {
+                throw new Error(`Memory agent entry not found for userId: ${userId}`);
+            }
+            
+            console.log(`[MONGODB] ✅ Struggle words updated successfully for userId: ${userId}`);
+        } catch (error) {
+            console.error(`[MONGODB] 🚨 Error updating struggle words:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Map affiliation to role for memory agent
+     * @param affiliation - The user's affiliation ('student' or 'faculty')
+     * @returns The corresponding role ('Student', 'instructor', or 'TA')
+     */
+    private mapAffiliationToRole(affiliation: 'student' | 'faculty'): 'instructor' | 'TA' | 'Student' {
+        if (affiliation === 'student') {
+            return 'Student';
+        }
+        // For now, map 'faculty' to 'instructor'
+        // TODO: Add logic to distinguish between 'instructor' and 'TA' if needed
+        return 'instructor';
+    }
+
+    /**
+     * Initialize memory agent entry for a user when CourseUser is created
+     * @param courseName - The name of the course
+     * @param userId - The user ID
+     * @param name - The user's name
+     * @param affiliation - The user's affiliation ('student' or 'faculty')
+     */
+    public initializeMemoryAgentForUser = async (courseName: string, userId: string, name: string, affiliation: 'student' | 'faculty'): Promise<void> => {
+        console.log(`[MONGODB] 🧠 Initializing memory agent for userId: ${userId} in course: ${courseName}`);
+        
+        try {
+            // Check if entry already exists
+            const existingEntry = await this.getMemoryAgentEntry(courseName, userId);
+            
+            if (existingEntry) {
+                console.log(`[MONGODB] ⚠️ Memory agent entry already exists for userId: ${userId}, skipping initialization`);
+                return;
+            }
+            
+            // Map affiliation to role
+            const role = this.mapAffiliationToRole(affiliation);
+            
+            // Create new entry with empty struggle words
+            const newEntry: MemoryAgentEntry = {
+                name: name,
+                userId: userId,
+                role: role,
+                struggleTopics: [],
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+            
+            await this.createMemoryAgentEntry(courseName, newEntry);
+            console.log(`[MONGODB] ✅ Memory agent initialized successfully for userId: ${userId} with role: ${role}`);
+        } catch (error) {
+            console.error(`[MONGODB] 🚨 Error initializing memory agent:`, error);
+            throw error;
+        }
     }
 }

@@ -26,8 +26,8 @@
 
 import { 
     activeCourse, 
-    ContentDivision, 
-    courseItem, 
+    TopicOrWeekInstance, 
+    TopicOrWeekItem, 
     LearningObjective, 
     AdditionalMaterial, 
     CourseUser
@@ -52,7 +52,7 @@ import {
  *
  * // Generate IDs for different content levels
  * const courseId = generator.courseID(course);
- * const divisionId = generator.divisionID(division, 'CHBE241');
+ * const topicOrWeekId = generator.topicOrWeekID(instance, 'CHBE241');
  * ```
  */
 export class IDGenerator {
@@ -100,71 +100,71 @@ export class IDGenerator {
 
 
     /**
-     * Generates a unique Division ID using the formula:
-     * divisiontitle + "-" + coursename + "-" + divisionbuilddate (full ISO string with milliseconds) -> uniqueIDGenerator
+     * Generates a unique Topic/Week Instance ID using the formula:
+     * topicOrWeekTitle + "-" + coursename + "-" + instanceBuildDate (full ISO string with milliseconds) -> uniqueIDGenerator
      *
      *
-     * @param contentDivision - The content division object containing title and date information
+     * @param topicOrWeekInstance - The topic or week instance object containing title and date information
      * @param courseName - The name of the parent course for hierarchical uniqueness
-     * @returns A 12-character hexadecimal string representing the unique division ID
+     * @returns A 12-character hexadecimal string representing the unique topic/week instance ID
      */
-    divisionID(contentDivision: ContentDivision, courseName: string): string {
-        const divisionTitle = contentDivision.title;
-        const divisionDate = contentDivision.date.toISOString(); // Full ISO string with milliseconds
-        const hashInput = divisionTitle + "-" + courseName + "-" + divisionDate;
+    topicOrWeekID(topicOrWeekInstance: TopicOrWeekInstance, courseName: string): string {
+        const topicOrWeekTitle = topicOrWeekInstance.title;
+        const instanceDate = topicOrWeekInstance.date.toISOString(); // Full ISO string with milliseconds
+        const hashInput = topicOrWeekTitle + "-" + courseName + "-" + instanceDate;
 
         return this.uniqueIDGenerator(hashInput);
     }
 
     /**
      * Generates a unique Item ID using the formula:
-     * itemtitle + "-" + divisiontitle + "-" + coursename + "-" + itembuilddate (full ISO string with milliseconds) -> uniqueIDGenerator
+     * itemtitle + "-" + topicOrWeekTitle + "-" + coursename + "-" + itembuilddate (full ISO string with milliseconds) -> uniqueIDGenerator
      *
-     * @param courseItem - The course content object containing title and date information
-     * @param divisionTitle - The title of the parent content division
+     * @param topicOrWeekItem - The course content object containing title and date information
+     * @param topicOrWeekTitle - The title of the parent topic or week instance
      * @param courseName - The name of the course for hierarchical uniqueness
      * @returns A 12-character hexadecimal string representing the unique item ID
      */
-    itemID(courseItem: courseItem, divisionTitle: string, courseName: string): string {
-        const itemTitle = courseItem.title;
-        const itemDate = courseItem.date.toISOString(); // Full ISO string with milliseconds
-        const hashInput = itemTitle + "-" + divisionTitle + "-" + courseName + "-" + itemDate;
+    itemID(topicOrWeekItem: TopicOrWeekItem, topicOrWeekTitle: string, courseName: string): string {
+        const itemTitle = topicOrWeekItem.title;
+        const itemDate = topicOrWeekItem.date.toISOString(); // Full ISO string with milliseconds
+        const hashInput = itemTitle + "-" + topicOrWeekTitle + "-" + courseName + "-" + itemDate;
 
         return this.uniqueIDGenerator(hashInput);
     }
 
     /**
      * Generates a unique Learning Objective ID using the formula:
-     * learningobjectivestitle + "-" + itemtitle + "-" + divisiontitle + "-" + coursename + "-" + learningobjectivebuilddate (full ISO string with milliseconds) -> uniqueIDGenerator
+     * learningobjectivestitle + "-" + itemtitle + "-" + topicOrWeekTitle + "-" + coursename + "-" + learningobjectivebuilddate (full ISO string with milliseconds) -> uniqueIDGenerator
      *
      * @param learningObjective - The learning objective object containing title and date information
      * @param itemTitle - The title of the parent course item
-     * @param divisionTitle - The title of the parent content division
+     * @param topicOrWeekTitle - The title of the parent topic or week instance
      * @param courseName - The name of the course for hierarchical uniqueness
      * @returns A 12-character hexadecimal string representing the unique learning objective ID
      */
-    learningObjectiveID(learningObjective: LearningObjective, itemTitle: string, divisionTitle: string, courseName: string): string {
+    learningObjectiveID(learningObjective: LearningObjective, itemTitle: string, topicOrWeekTitle: string, courseName: string): string {
         const learningObjectiveTitle = learningObjective.LearningObjective;
         const learningObjectiveDate = learningObjective.createdAt.toISOString(); // Full ISO string with milliseconds
-        const hashInput = learningObjectiveTitle + "-" + itemTitle + "-" + divisionTitle + "-" + courseName + "-" + learningObjectiveDate;
+        const hashInput = learningObjectiveTitle + "-" + itemTitle + "-" + topicOrWeekTitle + "-" + courseName + "-" + learningObjectiveDate;
 
         return this.uniqueIDGenerator(hashInput);
     }
 
     /**
      * Generates a unique Upload Content ID using the formula:
-     * uploadcontenttitle + "-" + itemtitle + "-" + divisiontitle + "-" + coursename + "-" + uploadcontentdate (full ISO string with milliseconds) -> uniqueIDGenerator
+     * uploadcontenttitle + "-" + itemtitle + "-" + topicOrWeekTitle + "-" + coursename + "-" + uploadcontentdate (full ISO string with milliseconds) -> uniqueIDGenerator
      *
      * @param additionalMaterial - The additional material/upload content object containing name and date information
      * @param itemTitle - The title of the parent course item
-     * @param divisionTitle - The title of the parent content division
+     * @param topicOrWeekTitle - The title of the parent topic or week instance
      * @param courseName - The name of the course for hierarchical uniqueness
      * @returns A 12-character hexadecimal string representing the unique upload content ID
      */
-    uploadContentID(additionalMaterial: AdditionalMaterial, itemTitle: string, divisionTitle: string, courseName: string): string {
+    uploadContentID(additionalMaterial: AdditionalMaterial, itemTitle: string, topicOrWeekTitle: string, courseName: string): string {
         const uploadContentTitle = additionalMaterial.name;
         const uploadContentDate = additionalMaterial.date.toISOString(); // Full ISO string with milliseconds
-        const hashInput = uploadContentTitle + "-" + itemTitle + "-" + divisionTitle + "-" + courseName + "-" + uploadContentDate;
+        const hashInput = uploadContentTitle + "-" + itemTitle + "-" + topicOrWeekTitle + "-" + courseName + "-" + uploadContentDate;
 
         return this.uniqueIDGenerator(hashInput);
     }
@@ -282,6 +282,26 @@ export class IDGenerator {
     }
 
     /**
+     * Generates a unique User ID for GlobalUser using the formula:
+     * puid + "-" + name + "-" + affiliation + "-global" -> uniqueIDGenerator
+     * 
+     * This generates a userId that is consistent across all courses for a user.
+     * The userId is stored in GlobalUser and then referenced in CourseUser.
+     *
+     * @param puid - Privacy-focused Unique Identifier
+     * @param name - User's full name
+     * @param affiliation - User's affiliation ('student' | 'faculty')
+     * @returns A 12-character hexadecimal string representing the unique user ID
+     */
+    globalUserID(puid: string, name: string, affiliation: string): string {
+        const hashInput = puid + "-" + name + "-" + affiliation + "-global";
+        return this.uniqueIDGenerator(hashInput);
+    }
+
+    /**
+     * @deprecated Use globalUserID instead. This method is kept for backward compatibility
+     * but CourseUser no longer contains puid, so this method cannot work correctly.
+     * 
      * Generates a unique User ID using the formula:
      * puid + "-" + name + "-" + role + "-" + activeCourseName -> uniqueIDGenerator
      *
@@ -289,7 +309,9 @@ export class IDGenerator {
      * @returns A 12-character hexadecimal string representing the unique user ID
      */
     userID(userDB: CourseUser): string {
-        const hashInput = userDB.puid + "-" + userDB.name + "-" + userDB.affiliation + "-" + userDB.courseName;
+        // This method is deprecated - CourseUser no longer has puid
+        // Use globalUserID instead for generating userId from GlobalUser data
+        const hashInput = userDB.name + "-" + userDB.affiliation + "-" + userDB.courseName;
         return this.uniqueIDGenerator(hashInput);
     }
       

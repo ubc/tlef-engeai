@@ -9,7 +9,7 @@
 
 import { loadComponentHTML, renderFeatherIcons } from "../functions/api.js";
 import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, CreateChatRequest } from "../functions/chat-api.js";
-import { Chat, ChatMessage, User, activeCourse } from "../../../src/functions/types.js";
+import { Chat, ChatMessage, CourseUser, activeCourse } from "../../../src/functions/types.js";
 import { RenderChat } from "./render-chat.js";
 import { showDisclaimerModal, showDeleteConfirmationModal, showSimpleErrorModal } from "../modal-overlay.js";
 
@@ -132,7 +132,7 @@ export function renderLatexInHtmlContent(element: HTMLElement): void {
  */
 export interface ChatManagerConfig {
     isInstructor: boolean;
-    userContext: User;  // Always use User for both students and instructors
+    userContext: CourseUser;  // Always use CourseUser for both students and instructors
     onModeSpecificCallback?: (action: string, data?: any) => void;
 }
 
@@ -246,7 +246,7 @@ export class ChatManager {
 
         this.log('INFO', '🚀 INITIALIZING CHAT MANAGER - First time user login');
         this.log('DEBUG', 'User context:', {
-            userId: this.config.userContext.puid,
+            userId: this.config.userContext.userId,
             courseName: this.config.userContext.courseName,
             userName: this.config.userContext.name,
             isInstructor: this.config.isInstructor
@@ -257,7 +257,7 @@ export class ChatManager {
         // Load initial chats from server
         try {
             const courseName = this.config.userContext.courseName;
-            const userId = this.config.userContext.puid;
+            const userId = this.config.userContext.userId;
             
             this.log('DEBUG', '📥 Loading chat metadata from server...');
             
@@ -270,22 +270,11 @@ export class ChatManager {
             this.chats = [];
             this.loadedChatIds.clear(); // Clear any previously loaded chats
             
-            // If metadata exists, set first chat as "pending load" active chat
+            // Don't auto-select any chat on initial load - user must explicitly choose one
+            this.activeChatId = null;
             if (this.chatMetadata.length > 0) {
-                // Sort by pinned status and timestamp to get the most relevant chat
-                const sortedMetadata = [...this.chatMetadata].sort((a, b) => {
-                    // Pinned chats first
-                    if (a.isPinned !== b.isPinned) {
-                        return b.isPinned ? 1 : -1;
-                    }
-                    // Then by most recent
-                    return b.lastMessageTimestamp - a.lastMessageTimestamp;
-                });
-                
-                this.activeChatId = sortedMetadata[0].id;
-                this.log('INFO', `🎯 Set initial active chat: ${this.activeChatId} (${sortedMetadata[0].itemTitle})`);
+                this.log('INFO', `📋 Loaded ${this.chatMetadata.length} chats - no chat selected initially`);
             } else {
-                this.activeChatId = null;
                 this.log('INFO', '📭 No existing chats found - user will see welcome screen');
             }
             
@@ -424,7 +413,7 @@ export class ChatManager {
         
         try {
             const chatRequest: CreateChatRequest = {
-                userID: this.config.userContext.puid,
+                userID: this.config.userContext.userId,
                 courseName: this.config.userContext.courseName,
                 date: new Date().toISOString().split('T')[0]
             };
@@ -561,7 +550,7 @@ export class ChatManager {
                 },
                 body: JSON.stringify({
                     message: text,
-                    userId: this.config.userContext.puid,
+                    userId: this.config.userContext.userId,
                     courseName: this.config.userContext.courseName
                 }),
             });
@@ -1202,7 +1191,7 @@ export class ChatManager {
             //END DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA)
             
             const courseName = this.config.userContext.courseName;
-            const userId = this.config.userContext.puid;
+            const userId = this.config.userContext.userId;
             
             // Load fresh chat data from server
             const freshChats = await this.loadChatsFromServer(userId, courseName);
@@ -2344,43 +2333,4 @@ export class ChatManager {
 
 }
 
-/**
- * Utility function to create a default user context
- * @deprecated Use createUserFromAuthData instead for real user data
- */
-export function createDefaultUser(): User {
-    return {
-        name: 'Student User',
-        puid: 'student-user',
-        userId: 1,
-        courseId: 'default-course',
-        courseName: 'APSC 099: Engineering for Kindergarten',
-        userOnboarding: false, // Student onboarding status
-        affiliation: 'student',
-        status: 'active',
-        chats: [],
-        createdAt: new Date(),
-        updatedAt: new Date()
-    };
-}
 
-/**
- * Create User object from AuthService user data
- * @param authUser - User data from AuthService
- * @returns User object compatible with ChatManager
- */
-export function createUserFromAuthData(authUser: any): User {
-    return {
-        name: `${authUser.firstName} ${authUser.lastName}`,
-        puid: authUser.puid,
-        userId: 0, // Will be generated by backend
-        courseId: 'apsc-099',
-        courseName: 'APSC 099: Engineering for Kindergarten', // Default course name
-        userOnboarding: false,
-        affiliation: 'student',
-        status: 'active',
-        chats: [],
-        createdAt: new Date(),
-        updatedAt: new Date()
-    };
-}

@@ -954,18 +954,18 @@ export function closeModal(action: string = 'close'): void {
 /**
  * Opens a document upload modal for adding course materials
  * 
- * @param divisionId - The ID of the division
+ * @param topicOrWeekId - The ID of the topic/week instance
  * @param itemId - The ID of the content item
  * @param onUpload - Callback function called when upload is successful
  * @returns Promise<void>
  */
 export async function openUploadModal(
-    divisionId: string, 
+    topicOrWeekId: string, 
     itemId: string, 
     onUpload?: (material: any) => void
 ): Promise<void> {
     console.log('🔍 OPEN UPLOAD MODAL CALLED');
-    console.log('  - divisionId:', divisionId);
+    console.log('  - topicOrWeekId:', topicOrWeekId);
     console.log('  - itemId:', itemId);
     console.log('  - onUpload callback provided:', !!onUpload);
     console.log('  - onUpload callback type:', typeof onUpload);
@@ -1314,7 +1314,7 @@ export async function openUploadModal(
             const material = {
                 id: '',
                 name: name,
-                divisionId: divisionId,
+                topicOrWeekId: topicOrWeekId,
                 itemId: itemId,
                 sourceType: currentMethod,
                 file: currentMethod === 'file' ? selectedFile : null,
@@ -1325,7 +1325,7 @@ export async function openUploadModal(
 
             console.log('🔍 MATERIAL OBJECT CREATED IN UPLOAD MODAL:');
             console.log('  - material:', material);
-            console.log('  - material.divisionId:', material.divisionId);
+            console.log('  - material.topicOrWeekId:', material.topicOrWeekId);
             console.log('  - material.itemId:', material.itemId);
 
             // Call the upload callback if provided and wait for completion

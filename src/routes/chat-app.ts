@@ -33,1019 +33,19 @@
 
 import dotenv from 'dotenv';
 import express, { Request, Response } from 'express';
-import fetch from 'node-fetch';
-import { QdrantClient } from '@qdrant/js-client-rest';
-import { EmbeddingsModule, EmbeddingsConfig, EmbeddingProviderType } from 'ubc-genai-toolkit-embeddings';
-import { ConsoleLogger, LoggerInterface } from 'ubc-genai-toolkit-core';
-import { LLMConfig, LLMModule, Message, ProviderType } from 'ubc-genai-toolkit-llm';
-import { AppConfig, loadConfig } from './config';
-import { RAGModule, RetrievedChunk } from 'ubc-genai-toolkit-rag';
-import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
+import {loadConfig } from './config';
 import { IDGenerator } from '../functions/unique-id-generator';
-import { ChatMessage, Chat, LearningObjective, ContentDivision, courseItem } from '../functions/types';
+import { ChatMessage, Chat } from '../functions/types';
 import { asyncHandlerWithAuth } from '../middleware/asyncHandler';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
-import { 
-    getSystemPrompt, 
-    getInitialAssistantMessage, 
-    formatRAGPrompt, 
-    RAG_CONTEXT_SEPARATOR,
-    RAG_ERROR_MESSAGE 
-} from '../functions/chat-prompts';
+import { ChatApp } from '../functions/ChatApp';
 
 // Load environment variables
 dotenv.config();
 
 const router = express.Router();
 
-/**
- * Interface for RAG request body
- */
-interface RAGRequest {
-    messages: Array<{
-        role: 'user' | 'assistant' | 'system';
-        content: string;
-    }>;
-    courseName?: string;
-    enableRAG?: boolean;
-    maxDocuments?: number;
-    scoreThreshold?: number;
-}
-
-/**
- * Interface for retrieved document
- */
-interface RetrievedDocument {
-    id: string;
-    score: number;
-    payload: {
-        text: string;
-        courseName?: string;
-        contentTitle?: string;
-        subContentTitle?: string;
-        chunkNumber?: number;
-    };
-}
-
-interface initChatRequest {
-    userID: string;
-    courseName: string;
-    date: Date;
-    chatId: string;
-    initAssistantMessage: ChatMessage;
-}
-
 const appConfig = loadConfig();
-
-
-class ChatApp {
-    private llmModule: LLMModule;
-    private ragModule: RAGModule | null = null;
-    private logger: LoggerInterface;
-    private debug: boolean;
-    private conversations : Map<string, Conversation>; // it maps chatId to conversation
-    private chatHistory : Map<string, ChatMessage[]>; // it maps chatId to chat history
-    private chatID : string[];
-    private chatIDGenerator: IDGenerator;
-    private ragConfig: any;
-    private llmProvider: any;
-    private chatTimers: Map<string, NodeJS.Timeout>; // Maps chatId to cleanup timer
-    private chatInactivityTimeout: number = 5 * 60 * 1000; // 5 minutes in milliseconds
-
-    constructor(config: AppConfig) {
-        this.llmModule = new LLMModule(config.llmConfig);
-        this.logger = config.logger;
-        this.debug = config.debug;
-        this.ragConfig = config.ragConfig;
-        this.conversations = new Map(); 
-        this.chatHistory = new Map();
-        this.chatID = [];
-        this.chatIDGenerator = IDGenerator.getInstance();
-        this.llmProvider = config.llmConfig.provider;
-        this.chatTimers = new Map();
-            
-        // Initialize RAG module asynchronously
-        this.initializeRAG();
-    }
-
-    /**
-     * Initialize RAG module asynchronously
-     */
-    private async initializeRAG() {
-        try {
-            this.ragModule = await RAGModule.create(this.ragConfig);
-            // this.logger.debug('RAG module initialized successfully');
-        } catch (error) {
-            this.logger.error('Failed to initialize RAG module:', error as any);
-            this.ragModule = null;
-        }
-    }
-
-    /**
-     * Reset the inactivity timer for a chat
-     * Clears existing timer and creates a new one for 5 minutes
-     * 
-     * @param chatId - The chat ID to reset timer for
-     */
-    public resetChatTimer(chatId: string): void {
-        // Clear existing timer if present
-        if (this.chatTimers.has(chatId)) {
-            const existingTimer = this.chatTimers.get(chatId);
-            if (existingTimer) {
-                clearTimeout(existingTimer);
-            }
-        }
-
-        // Create new timer that will clean up the chat after inactivity
-        const timer = setTimeout(() => {
-            this.cleanupInactiveChat(chatId);
-        }, this.chatInactivityTimeout);
-
-        // Store the timer reference
-        this.chatTimers.set(chatId, timer);
-
-        // Log timer reset for debugging
-        console.log(`🕐 Timer reset for chat ${chatId} - will cleanup in ${this.chatInactivityTimeout / 1000 / 60} minutes`);
-    }
-
-    /**
-     * Clean up an inactive chat from memory
-     * Removes chat from all maps and arrays, clears its timer
-     * 
-     * @param chatId - The chat ID to clean up
-     */
-    private cleanupInactiveChat(chatId: string): void {
-        const timestamp = new Date().toISOString();
-        console.log(`🧹 [CHAT-APP] ⏰ TIME LIMIT EXCEEDED - Cleaning up inactive chat: ${chatId} at ${timestamp}`);
-        
-        // Log state before cleanup
-        const stateBeforeCleanup = {
-            totalConversations: this.conversations.size,
-            totalChatHistory: this.chatHistory.size,
-            totalChatIDs: this.chatID.length,
-            totalTimers: this.chatTimers.size,
-            activeChatIds: Array.from(this.chatID),
-            activeTimerIds: Array.from(this.chatTimers.keys())
-        };
-        
-        console.log(`📊 [CHAT-APP] 📋 STATE BEFORE CLEANUP:`, stateBeforeCleanup);
-
-        // Remove from conversations map
-        this.conversations.delete(chatId);
-        
-        // Remove from chat history map
-        this.chatHistory.delete(chatId);
-        
-        // Remove from chatID array
-        const index = this.chatID.indexOf(chatId);
-        if (index > -1) {
-            this.chatID.splice(index, 1);
-        }
-        
-        // Remove timer from chatTimers map
-        this.chatTimers.delete(chatId);
-
-        // Log state after cleanup
-        const stateAfterCleanup = {
-            totalConversations: this.conversations.size,
-            totalChatHistory: this.chatHistory.size,
-            totalChatIDs: this.chatID.length,
-            totalTimers: this.chatTimers.size,
-            activeChatIds: Array.from(this.chatID),
-            activeTimerIds: Array.from(this.chatTimers.keys())
-        };
-        
-        console.log(`📊 [CHAT-APP] 📋 STATE AFTER CLEANUP:`, stateAfterCleanup);
-        console.log(`✅ [CHAT-APP] 🧹 Chat ${chatId} cleaned up successfully. Remaining active chats: ${this.chatID.length}`);
-        console.log('─'.repeat(80));
-        
-        // TODO: Remove after testing lazy loading functionality
-        // this.logActiveChats('CHAT CLEANED UP (TIMER EXPIRED)');
-    }
-
-    /**
-     * Stop the inactivity timer for a chat
-     * Used when explicitly deleting a chat
-     * 
-     * @param chatId - The chat ID to stop timer for
-     */
-    public stopChatTimer(chatId: string): void {
-        if (this.chatTimers.has(chatId)) {
-            const timer = this.chatTimers.get(chatId);
-            if (timer) {
-                clearTimeout(timer);
-            }
-            this.chatTimers.delete(chatId);
-            console.log(`⏹️ Timer stopped for chat ${chatId}`);
-        }
-    }
-
-    /**
-     * Generate chat title from AI response text
-     * Extracts first 10 words from the response, cleaning up special characters
-     * 
-     * @param responseText - The AI response text
-     * @returns Clean title string with first 10 words
-     */
-    private generateChatTitleFromResponse(responseText: string): string {
-        //START DEBUG LOG : DEBUG-CODE(GENERATE-TITLE)
-        console.log(`[CHAT-APP] 📝 Generating title from response: "${responseText.substring(0, 100)}..."`);
-        //END DEBUG LOG : DEBUG-CODE(GENERATE-TITLE)
-        
-        try {
-            // Remove LaTeX delimiters ($ and $$)
-            let cleanText = responseText.replace(/\$\$.*?\$\$/g, ''); // Remove block math
-            cleanText = cleanText.replace(/\$.*?\$/g, ''); // Remove inline math
-            
-            // Remove HTML tags and special characters
-            cleanText = cleanText.replace(/<[^>]*>/g, ''); // Remove HTML tags
-            cleanText = cleanText.replace(/[^\w\s]/g, ' '); // Replace special chars with spaces
-            
-            // Clean up multiple spaces and trim
-            cleanText = cleanText.replace(/\s+/g, ' ').trim();
-            
-            // Split into words and take first 10
-            const words = cleanText.split(' ').filter(word => word.length > 0);
-            const title = words.slice(0, 10).join(' ');
-            
-            //START DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-SUCCESS)
-            console.log(`[CHAT-APP] ✅ Generated title: "${title}"`);
-            //END DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-SUCCESS)
-            
-            return title || 'New Chat'; // Fallback to "New Chat" if empty
-        } catch (error) {
-            //START DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-ERROR)
-            console.error(`[CHAT-APP] 🚨 Error generating title:`, error);
-            //END DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-ERROR)
-            return 'New Chat'; // Fallback to "New Chat" on error
-        }
-    }
-
-    /**
-     * DEBUG LOGGER - Print list of active chat IDs
-     * TODO: Remove after testing lazy loading functionality
-     */
-    private logActiveChats(event: string): void {
-        console.log('\n' + '='.repeat(60));
-        console.log(`🔍 DEBUG - ACTIVE CHATS @ ${event}`);
-        console.log('='.repeat(60));
-        console.log(`Total Active Chats: ${this.chatID.length}`);
-        console.log(`Active Chat IDs: [${this.chatID.join(', ')}]`);
-        console.log(`Conversations Map Size: ${this.conversations.size}`);
-        console.log(`Chat History Map Size: ${this.chatHistory.size}`);
-        console.log(`Active Timers: ${this.chatTimers.size}`);
-        console.log('='.repeat(60) + '\n');
-    }
-
-    /**
-     * Update chat title if this is the first user-AI exchange
-     * Only updates title if current title is "New Chat" or empty
-     * 
-     * @param chatId - The chat ID
-     * @param assistantResponse - The AI response text
-     * @param courseName - The course name
-     * @param userId - The user ID
-     */
-    public async updateChatTitleIfNeeded(chatId: string, assistantResponse: string, courseName: string, userId: string): Promise<void> {
-        //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-CHECK)
-        console.log(`[CHAT-APP] 🔍 Checking if title needs update for chat ${chatId}`);
-        //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-CHECK)
-        
-        try {
-            // Get current chat from MongoDB to check title
-            const mongoDB = await EngEAI_MongoDB.getInstance();
-            const userChats = await mongoDB.getUserChats(courseName, userId);
-            const currentChat = userChats.find(chat => chat.id === chatId);
-            
-            if (!currentChat) {
-                //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-NO-CHAT)
-                console.log(`[CHAT-APP] ⚠️ Chat ${chatId} not found in MongoDB`);
-                //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-NO-CHAT)
-                return;
-            }
-            
-            // Check if title needs updating (is "New Chat" or empty)
-            const currentTitle = currentChat.itemTitle || '';
-            const needsUpdate = currentTitle === 'New Chat' || currentTitle === '';
-            
-            //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-DECISION)
-            console.log(`[CHAT-APP] 📊 Title update decision: current="${currentTitle}", needsUpdate=${needsUpdate}`);
-            //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-DECISION)
-            
-            if (needsUpdate) {
-                // Generate new title from AI response
-                const newTitle = this.generateChatTitleFromResponse(assistantResponse);
-                
-                // Update title in MongoDB
-                await mongoDB.updateChatTitle(courseName, userId, chatId, newTitle);
-                
-                //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-SUCCESS)
-                console.log(`[CHAT-APP] ✅ Chat title updated from "${currentTitle}" to "${newTitle}"`);
-                //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-SUCCESS)
-            } else {
-                //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-SKIP)
-                console.log(`[CHAT-APP] ⏭️ Title update skipped - current title is not "New Chat"`);
-                //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-SKIP)
-            }
-        } catch (error) {
-            //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-ERROR)
-            console.error(`[CHAT-APP] 🚨 Error updating chat title:`, error);
-            //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-ERROR)
-            // Don't throw error - title update failure shouldn't break the chat flow
-        }
-    }
-
-    /**
-     * Retrieve relevant documents using RAG
-     * 
-     * @param query - The user's query
-     * @param courseName - The course name for context
-     * @param limit - Maximum number of documents to retrieve
-     * @param scoreThreshold - Minimum similarity score threshold
-     * @returns Array of retrieved documents
-     */
-    private async retrieveRelevantDocuments(
-        query: string, 
-        courseName: string, 
-        limit: number = 5, 
-        scoreThreshold: number = 0.4
-    ): Promise<RetrievedChunk[]> {
-        if (!this.ragModule) {
-
-            // DEBUG 18: Print the query
-            console.log(`DEBUG #118: RAG Query:`, query);
-            //END DEBUG 18
-            // this.logger.warn('RAG module not available, skipping document retrieval');
-            return [];
-        }
-
-        try {
-            // Get course from MongoDB to check published status
-            const mongoDB = await EngEAI_MongoDB.getInstance();
-            const course = await mongoDB.getCourseByName(courseName);
-            
-            if (!course) {
-                this.logger.warn(`Course not found: ${courseName}, skipping document retrieval`);
-                return [];
-            }
-
-            // Extract published item titles
-            const publishedItemTitles: string[] = [];
-            if (course.divisions) {
-                course.divisions
-                    .filter((division: ContentDivision) => division.published === true)
-                    .forEach((division: ContentDivision) => {
-                        if (division.items) {
-                            division.items.forEach((item: courseItem) => {
-                                if (item.itemTitle && !publishedItemTitles.includes(item.itemTitle)) {
-                                    publishedItemTitles.push(item.itemTitle);
-                                }
-                            });
-                        }
-                    });
-            }
-
-            // If no published items exist, return empty array
-            if (publishedItemTitles.length === 0) {
-                this.logger.debug(`No published items found for course: ${courseName}`);
-                return [];
-            }
-
-            // Build filter for RAG retrieval
-            // Qdrant filter format: must conditions with match clauses
-            const filter: Record<string, any> = {
-                must: [
-                    { key: "courseName", match: { value: courseName } },
-                    { key: "itemTitle", match: { any: publishedItemTitles } }
-                ]
-            };
-
-            // Add course context to the query for better retrieval
-            const contextualQuery = ` ${query}`;
-            
-
-            const results = await this.ragModule.retrieveContext(contextualQuery, {
-                limit: limit,
-                scoreThreshold: scoreThreshold,
-                filter: filter
-            });
-
-            // DEBUG 19: Print the results
-            console.log(`DEBUG #119: RAG Results:`, results);
-            console.log(`DEBUG #119: RAG Results length:`, results.length);
-            //END DEBUG 19
-
-            return results;
-        } catch (error) {
-            this.logger.debug(`❌ RAG Error:`, error as any);
-            this.logger.error('Error retrieving documents:', error as any);
-            return [];
-        }
-    }
-
-    /**
-     * Format retrieved documents for context injection
-     * 
-     * @param documents - Array of retrieved documents
-     * @returns Formatted context string
-     */
-    private formatDocumentsForContext(documents: RetrievedChunk[]): string {
-        if (documents.length === 0) {
-            return '';
-        }
-
-        let context = '\n\n<course_materials>\n';
-        
-        documents.forEach((doc, index) => {
-            context += `\n--- Document ${index + 1} ---\n`;
-            
-            const content = (doc as any).payload?.text || 
-                           (doc as any).text || 
-                           (doc as any).content || 
-                           '';
-            context += `Content: ${content}\n`;
-            
-        });
-        
-        context += '\n</course_materials>\n';
-
-        // console.log(`DEBUG #287: Formatted documents for context: ${context}`);
-        return context;
-    }
-    /**
-     * Send a user message and get response from LLM with RAG context
-     * 
-     * @param message - The user's message
-     * @param chatId - The chat ID
-     * @param userId - The user ID
-     * @param courseName - The course name for RAG context
-     * @param onChunk - Optional callback function for streaming chunks (defaults to no-op)
-     * @returns Promise<ChatMessage> - The complete assistant's response message
-     */
-    public async sendUserMessage(
-        message: string, 
-        chatId: string, 
-        userId: string, 
-        courseName: string,
-        onChunk: (chunk: string) => void
-    ): Promise<ChatMessage> {
-        // Reset the inactivity timer since user is actively using this chat
-        this.resetChatTimer(chatId);
-        
-        // TODO: Remove after testing lazy loading functionality
-        // this.logActiveChats('MESSAGE SENT (TIMER RESET)');
-
-        // Validate chat exists
-        if (!this.conversations.has(chatId)) {
-            throw new Error('Chat not found');
-        }
-
-        // Check rate limiting (50 messages per chat)
-        const chatHistory = this.chatHistory.get(chatId);
-        if (chatHistory && chatHistory.length >= 50) {
-            throw new Error('Rate limit exceeded: Maximum 50 messages per chat');
-        }
-
-        // Get conversation
-        const conversation = this.conversations.get(chatId);
-        if (!conversation) {
-            throw new Error('Conversation not found');
-        }
-
-        // Retrieve relevant documents using RAG with limited context
-        let ragContext = '';
-        let documentsLength = 0;
-        let retrievedDocumentTexts: string[] = [];  // NEW: Store document texts
-
-
-        try {
-            const documents = await this.retrieveRelevantDocuments(message, courseName, 3, 0.4); // Limit to 2 docs, higher threshold
-            ragContext = this.formatDocumentsForContext(documents);
-            documentsLength = documents.length;
-            
-            // NEW: Extract full text content from each retrieved document
-            documents.forEach((doc) => {
-                const content = (doc as any).payload?.text || 
-                               (doc as any).text || 
-                               (doc as any).content || 
-                               '';
-                if (content) {
-                    retrievedDocumentTexts.push(content);
-                }
-            });
-            
-            console.log(`📚 Captured ${retrievedDocumentTexts.length} documents for storage`);
-        } catch (error) {
-            console.log(`❌ RAG Context Error:`, error);
-            this.logger.error('Error retrieving RAG documents:', error as any);
-            // Continue without RAG context if retrieval fails
-        }
-
-        //construct the user full prompt using abstracted RAG formatting
-        let userFullPrompt = '';
-        if (documentsLength > 0) {  
-            userFullPrompt = formatRAGPrompt(ragContext, message);
-        }
-        else {
-            userFullPrompt = message;
-        }
-
-        //send whole user prompt to the LLM
-        conversation.addMessage('user', userFullPrompt);
-
-        // Print the entire conversation history for debugging
-        console.log(`\n📋 CONVERSATION HISTORY DEBUG:`);
-        console.log(`==================================================`);
-        const history = conversation.getHistory();
-        let totalCharacters = 0;
-        let totalEstimatedTokens = 0;
-        
-        history.forEach((msg, index) => {
-            const charCount = msg.content.length;
-            const estimatedTokens = Math.ceil(charCount / 4); // Rough estimate: ~4 chars per token
-            totalCharacters += charCount;
-            totalEstimatedTokens += estimatedTokens;
-            
-            console.log(`Message ${index + 1}:`);
-            console.log(`  Role: ${msg.role}`);
-            console.log(`  Content Length: ${charCount} characters (~${estimatedTokens} tokens)`);
-            console.log(`  Content Preview: "${msg.content}"`);
-            console.log(`  Timestamp: ${msg.timestamp}`);
-            console.log(`---`);
-        });
-        
-        console.log(`📊 TOKEN SUMMARY:`);
-        console.log(`  Total Messages: ${history.length}`);
-        console.log(`  Total Characters: ${totalCharacters}`);
-        console.log(`  Estimated Total Tokens: ~${totalEstimatedTokens}`);
-        console.log(`  Average Tokens per Message: ~${Math.round(totalEstimatedTokens / history.length)}`);
-        console.log(`==================================================\n`);
-        
-        // Stream the response
-        console.log(`\n🚀 Starting LLM streaming...`);
-
-        let assistantResponse = '';
-
-        let conversationConfig: any = {
-            temperature: 0.7,
-        }
-
-        if (this.llmProvider === 'ollama') {
-            console.log('🔍 Ollama provider detected : JUJUJU');
-
-            conversationConfig.num_ctx = 32768;
-        }
-
-        const response = await conversation.stream(
-            (chunk: string) => {
-                // console.log(`📦 Received chunk: "${chunk}"`);
-                assistantResponse += chunk;
-                onChunk(chunk);
-            }, 
-            conversationConfig
-        );
-        
-        console.log(`\n✅ Streaming completed. Full response length: ${assistantResponse.length}`);
-        console.log(`Full response: "${assistantResponse}"`);
-
-        // Add complete assistant response to conversation and history
-        const assistantMessage = this.addAssistantMessage(chatId, assistantResponse, parseInt(userId), courseName, retrievedDocumentTexts);
-        
-        // Check if this is the first user-AI exchange and update title if needed
-        await this.updateChatTitleIfNeeded(chatId, assistantResponse, courseName, userId);
-        
-        return assistantMessage;
-    }
-
-    public async initializeConversation(userID: string, courseName: string, date: Date): Promise<initChatRequest> {
-        //create chatID from the user ID
-        const chatId = this.chatIDGenerator.chatID(userID, courseName, date);
-
-        // Add chatId to active chats array (only if not already present)
-        if (!this.chatID.includes(chatId)) {
-            this.chatID.push(chatId);
-        } else {
-            console.log(`⚠️ Chat ${chatId} already exists in chatID array, skipping duplicate addition`);
-        }
-        
-        this.conversations.set(chatId, this.llmModule.createConversation());
-        this.chatHistory.set(chatId, []);
-        
-        // Add default system message (now async to retrieve learning objectives)
-        await this.addDefaultSystemMessage(chatId, courseName);
-        
-        // Add default assistant message and get it
-        const initAssistantMessage = this.addDefaultAssistantMessage(chatId);
-        
-        // Set the course name on the assistant message
-        initAssistantMessage.courseName = courseName;
-
-        // Start the inactivity timer for this new chat
-        this.resetChatTimer(chatId);
-
-        // TODO: Remove after testing lazy loading functionality
-        // this.logActiveChats('NEW CHAT CREATED');
-
-        const initChatRequest: initChatRequest = {
-            userID: userID,
-            courseName: courseName,
-            date: date,
-            chatId: chatId,
-            initAssistantMessage: initAssistantMessage
-        }
-        
-        return initChatRequest;
-    }
-
-    /**
-     * this method directly add the Default System Message to the conversation
-     */
-    private async addDefaultSystemMessage(chatId: string, courseName?: string): Promise<void> {
-        const conversation = this.conversations.get(chatId);
-        if (!conversation) {
-            throw new Error('Conversation not found');
-        }
-        
-        // Retrieve all learning objectives for the course
-        let learningObjectives: LearningObjective[] = [];
-        if (courseName) {
-            try {
-                const mongoDB = await EngEAI_MongoDB.getInstance();
-                // Get course by name to extract courseId
-                const course = await mongoDB.getCourseByName(courseName);
-                if (course && course.id) {
-                    learningObjectives = await mongoDB.getAllLearningObjectives(course.id);
-                    console.log(`📚 Retrieved ${learningObjectives.length} learning objectives for system prompt`);
-                }
-            } catch (error) {
-                console.error('❌ Error retrieving learning objectives:', error);
-                // Continue without learning objectives if retrieval fails
-            }
-        }
-        
-        const defaultSystemMessage = getSystemPrompt(courseName, learningObjectives);
-
-        try {
-            conversation.addMessage('system', defaultSystemMessage);
-        } catch (error) {
-            console.error('Error adding default message:', error);
-        }
-    }
-
-    /**
-     * this method directly add the Default Assistant Message to the conversation and the message is added to the chat history
-     * 
-     * return the message object, so this message can be passed to the client when initiate a chat
-     */
-    private addDefaultAssistantMessage(chatId: string): ChatMessage {
-        const defaultMessageText = getInitialAssistantMessage();
-        
-        // Generate message ID using the first 10 words, chatID, and current date
-        const currentDate = new Date();
-        const messageId = this.chatIDGenerator.messageID(defaultMessageText, chatId, currentDate);
-        
-        // Create the ChatMessage object
-        const chatMessage: ChatMessage = {
-            id: messageId, // Use the generated message ID directly as string
-            sender: 'bot',
-            userId: 0,
-            courseName: '', // Will be set by the caller
-            text: defaultMessageText,
-            timestamp: Date.now()
-        };
-        
-        try {
-            // Add message to conversation
-            if (this.conversations.has(chatId)) {
-                const conversation = this.conversations.get(chatId);
-                if (conversation) {
-                    conversation.addMessage('assistant', defaultMessageText);
-                }
-            }
-            
-            // Add message to chat history with proper error handling
-            try {
-                if (this.chatHistory.has(chatId)) {
-                    const existingHistory = this.chatHistory.get(chatId);
-                    if (existingHistory) {
-                        existingHistory.push(chatMessage);
-                    } else {
-                        // If the chatId exists but the array is null/undefined, create a new array
-                        this.chatHistory.set(chatId, [chatMessage]);
-                    }
-                } else {
-                    // If chatId doesn't exist, create a new entry
-                    this.chatHistory.set(chatId, [chatMessage]);
-                }
-            } catch (historyError) {
-                console.error('Error adding message to chat history:', historyError);
-                // Ensure the chat history is properly initialized even if there was an error
-                if (!this.chatHistory.has(chatId)) {
-                    this.chatHistory.set(chatId, [chatMessage]);
-                }
-            }
-            
-        } catch (error) {
-            console.error('Error adding default assistant message:', error);
-        }
-        
-        return chatMessage;
-    }
-
-    /**
-     * Add a user message to conversation and chat history
-     * 
-     * @param chatId - The chat ID
-     * @param message - The user's message
-     * @param userId - The user ID
-     * @returns ChatMessage - The created user message
-     */
-    private addUserMessage(chatId: string, message: string, userId: string): ChatMessage {
-        // Generate message ID
-        const currentDate = new Date();
-        const messageId = this.chatIDGenerator.messageID(message, chatId, currentDate);
-        
-        // Create the ChatMessage object
-        const chatMessage: ChatMessage = {
-            id: messageId,
-            sender: 'user',
-            userId: parseInt(userId) || 0,
-            courseName: '', // Will be set by the caller if needed
-            text: message,
-            timestamp: Date.now()
-        };
-        
-        try {
-            // Add message to conversation
-            if (this.conversations.has(chatId)) {
-                const conversation = this.conversations.get(chatId);
-                if (conversation) {
-                    conversation.addMessage('user', message);
-                }
-            }
-            
-            // Add message to chat history
-            if (this.chatHistory.has(chatId)) {
-                const existingHistory = this.chatHistory.get(chatId);
-                if (existingHistory) {
-                    existingHistory.push(chatMessage);
-                } else {
-                    this.chatHistory.set(chatId, [chatMessage]);
-                }
-            } else {
-                this.chatHistory.set(chatId, [chatMessage]);
-            }
-            
-        } catch (error) {
-            console.error('Error adding user message:', error);
-        }
-        
-        return chatMessage;
-    }
-
-    /**
-     * Add an assistant message to conversation and chat history
-     * 
-     * @param chatId - The chat ID
-     * @param message - The assistant's message
-     * @param userId - Optional user ID (defaults to 0)
-     * @param courseName - Optional course name (defaults to empty string)
-     * @param retrievedDocuments - Optional array of retrieved document texts
-     * @returns ChatMessage - The created assistant message
-     */
-    private addAssistantMessage(chatId: string, message: string, userId: number = 0, courseName: string = '', retrievedDocuments?: string[]): ChatMessage {
-        // Generate message ID
-        const currentDate = new Date();
-        const messageId = this.chatIDGenerator.messageID(message, chatId, currentDate);
-        
-        // Create the ChatMessage object
-        const chatMessage: ChatMessage = {
-            id: messageId,
-            sender: 'bot',
-            userId: userId,
-            courseName: courseName,
-            text: message,
-            timestamp: Date.now(),
-            retrievedDocuments: retrievedDocuments  // NEW: Add retrieved documents
-        };
-        
-        try {
-            // Add message to conversation
-            if (this.conversations.has(chatId)) {
-                const conversation = this.conversations.get(chatId);
-                if (conversation) {
-                    conversation.addMessage('assistant', message);
-                }
-            }
-            
-            // Add message to chat history
-            if (this.chatHistory.has(chatId)) {
-                const existingHistory = this.chatHistory.get(chatId);
-                if (existingHistory) {
-                    existingHistory.push(chatMessage);
-                } else {
-                    this.chatHistory.set(chatId, [chatMessage]);
-                }
-            } else {
-                this.chatHistory.set(chatId, [chatMessage]);
-            }
-            
-        } catch (error) {
-            console.error('Error adding assistant message:', error);
-        }
-        
-        return chatMessage;
-    }
-
-    /**
-     * Get chat history for a specific chat
-     * 
-     * @param chatId - The chat ID
-     * @returns ChatMessage[] - Array of messages in the chat
-     */
-    public getChatHistory(chatId: string): ChatMessage[] {
-        return this.chatHistory.get(chatId) || [];
-    }
-
-    /**
-     * Validate if a chat exists
-     * 
-     * @param chatId - The chat ID to validate
-     * @returns boolean - True if chat exists, false otherwise
-     */
-    public validateChatExists(chatId: string): boolean {
-        return this.conversations.has(chatId);
-    }
-
-    /**
-     * Restore a chat from MongoDB with full conversation context
-     * 
-     * @param chatId - The chat ID to restore
-     * @param courseName - The course name
-     * @param userId - The user ID
-     * @returns Promise<boolean> - True if restoration was successful, false otherwise
-     */
-    public async restoreChatFromDatabase(chatId: string, courseName: string, userId: string): Promise<boolean> {
-        // Check if chat already exists in memory
-        if (this.conversations.has(chatId)) {
-            console.log(`📋 Chat ${chatId} already exists in memory, resetting timer`);
-            this.resetChatTimer(chatId);
-            return true;
-        }
-
-        try {
-            // Get MongoDB instance
-            const mongoDB = await EngEAI_MongoDB.getInstance();
-            
-            // Fetch chat data from MongoDB
-            const userChats = await mongoDB.getUserChats(courseName, userId);
-            const chatData = userChats.find(chat => chat.id === chatId);
-            
-            if (!chatData) {
-                console.log(`❌ Chat ${chatId} not found in MongoDB`);
-                return false;
-            }
-
-            if (chatData.isDeleted) {
-                console.log(`❌ Chat ${chatId} is marked as deleted`);
-                return false;
-            }
-
-            console.log(`🔄 Restoring chat ${chatId} from MongoDB with ${chatData.messages.length} messages`);
-
-            // Create new conversation
-            const conversation = this.llmModule.createConversation();
-            
-            // Add system message first (same as in initializeConversation)
-            // Retrieve learning objectives for the course
-            let learningObjectives: LearningObjective[] = [];
-            try {
-                const course = await mongoDB.getCourseByName(courseName);
-                if (course && course.id) {
-                    learningObjectives = await mongoDB.getAllLearningObjectives(course.id);
-                    console.log(`📚 Retrieved ${learningObjectives.length} learning objectives during chat restoration`);
-                }
-            } catch (error) {
-                console.error('❌ Error retrieving learning objectives during restore:', error);
-                // Continue without learning objectives if retrieval fails
-            }
-            
-            const defaultSystemMessage = getSystemPrompt(courseName, learningObjectives);
-            conversation.addMessage('system', defaultSystemMessage);
-
-            // Restore all messages from MongoDB in order
-            const restoredMessages: ChatMessage[] = [];
-            for (const message of chatData.messages) {
-                // Determine role based on sender
-                const role = message.sender === 'user' ? 'user' : 'assistant';
-                
-                // Add to conversation
-                conversation.addMessage(role, message.text);
-                
-                // Add to local chat history
-                restoredMessages.push(message);
-            }
-
-            // Store conversation in memory
-            this.conversations.set(chatId, conversation);
-            this.chatHistory.set(chatId, restoredMessages);
-            
-            // Add chatId to active chats array (only if not already present)
-            if (!this.chatID.includes(chatId)) {
-                this.chatID.push(chatId);
-            } else {
-                console.log(`⚠️ Chat ${chatId} already exists in chatID array, skipping duplicate addition`);
-            }
-            
-            // Start the inactivity timer
-            this.resetChatTimer(chatId);
-
-            console.log(`✅ Chat ${chatId} restored successfully with ${restoredMessages.length} messages`);
-            
-            // TODO: Remove after testing lazy loading functionality
-            // this.logActiveChats('CHAT RESTORED FROM DB');
-            
-            return true;
-
-        } catch (error) {
-            console.error(`❌ Error restoring chat ${chatId}:`, error);
-            return false;
-        }
-    }
-
-    /**
-     * Delete a chat and all its associated data
-     * 
-     * @param chatId - The chat ID to delete
-     * @returns boolean - True if deletion was successful, false otherwise
-     */
-    public deleteChat(chatId: string): boolean {
-        try {
-            // Validate chat exists before attempting deletion
-            if (!this.validateChatExists(chatId)) {
-                this.logger.warn(`Attempted to delete non-existent chat: ${chatId}`);
-                return false;
-            }
-
-            // Stop the inactivity timer for this chat
-            this.stopChatTimer(chatId);
-
-            // Remove from conversations map
-            const conversationDeleted = this.conversations.delete(chatId);
-            
-            // Remove from chat history map
-            const historyDeleted = this.chatHistory.delete(chatId);
-            
-            // Remove from chatID array
-            const index = this.chatID.indexOf(chatId);
-            let arrayDeleted = false;
-            if (index > -1) {
-                this.chatID.splice(index, 1);
-                arrayDeleted = true;
-            }
-            
-            // Log the deletion
-            console.log(`🗑️ CHAT DELETION SUCCESSFUL:`);
-            console.log(`   Chat ID: ${chatId}`);
-            console.log(`   Conversation deleted: ${conversationDeleted}`);
-            console.log(`   History deleted: ${historyDeleted}`);
-            console.log(`   Array entry deleted: ${arrayDeleted}`);
-            console.log(`   Remaining active chats: ${this.chatID.length}`);
-            
-            this.logger.info(`Chat ${chatId} deleted successfully`);
-            
-            // TODO: Remove after testing lazy loading functionality
-            // this.logActiveChats('CHAT EXPLICITLY DELETED');
-            
-            return true;
-            
-        } catch (error) {
-            console.error(`🗑️ FAILED TO DELETE CHAT ${chatId}:`, error);
-            this.logger.error(`Failed to delete chat ${chatId}: ${error}`);
-            return false;
-        }
-    }
-
-    /**
-     * Clean up all active timers on server shutdown
-     * Called by process signal handlers to prevent memory leaks
-     */
-    public cleanup(): void {
-        console.log('🧹 Cleaning up all active chat timers...');
-        let timerCount = 0;
-        
-        for (const [chatId, timer] of this.chatTimers) {
-            if (timer) {
-                clearTimeout(timer);
-                timerCount++;
-            }
-        }
-        
-        this.chatTimers.clear();
-        console.log(`✅ Cleaned up ${timerCount} active timers`);
-    }
-
-}
 
 const chatApp = new ChatApp(appConfig);
 
@@ -1075,7 +75,8 @@ router.get('/user/chats/metadata', asyncHandlerWithAuth(async (req: Request, res
         // Get user from session
         const user = (req as any).user;
         const puid = user?.puid;
-        const courseName = user?.activeCourseName || 'APSC 099: Engineering for Kindergarten';
+        const currentCourse = (req.session as any).currentCourse;
+        const courseName = currentCourse?.courseName;
         
         console.log('\n📊 LOADING USER CHAT METADATA:');
         console.log('='.repeat(50));
@@ -1091,9 +92,31 @@ router.get('/user/chats/metadata', asyncHandlerWithAuth(async (req: Request, res
             });
         }
         
+        if (!courseName) {
+            console.log('❌ VALIDATION FAILED: Course name not found in session');
+            return res.status(400).json({ 
+                success: false, 
+                error: 'No active course selected' 
+            });
+        }
+        
         // Load chat metadata from MongoDB
         const mongoDB = await EngEAI_MongoDB.getInstance();
-        const chatMetadata = await mongoDB.getUserChatsMetadata(courseName, puid);
+        
+        // Get userId from GlobalUser using puid
+        const globalUser = await mongoDB.findGlobalUserByPUID(puid);
+        if (!globalUser || !globalUser.userId) {
+            console.log('❌ VALIDATION FAILED: GlobalUser not found for puid');
+            return res.status(401).json({ 
+                success: false, 
+                error: 'User not found' 
+            });
+        }
+        
+        const userId = globalUser.userId;
+        console.log(`[CHAT-METADATA] Converting puid to userId: ${puid} -> ${userId}`);
+        
+        const chatMetadata = await mongoDB.getUserChatsMetadata(courseName, userId);
         
         console.log(`✅ LOADED ${chatMetadata.length} CHAT METADATA FROM MONGODB`);
         console.log('='.repeat(50));
@@ -1122,7 +145,8 @@ router.get('/user/chats', asyncHandlerWithAuth(async (req: Request, res: Respons
         // Get user from session
         const user = (req as any).user;
         const puid = user?.puid;
-        const courseName = user?.activeCourseName || 'APSC 099: Engineering for Kindergarten'; // Use full course name
+        const currentCourse = (req.session as any).currentCourse;
+        const courseName = currentCourse?.courseName;
         
         //START DEBUG LOG : DEBUG-CODE(LOAD-CHATS-001)
         console.log('\n📂 LOADING USER CHATS:');
@@ -1142,9 +166,31 @@ router.get('/user/chats', asyncHandlerWithAuth(async (req: Request, res: Respons
             });
         }
         
+        if (!courseName) {
+            console.log('❌ VALIDATION FAILED: Course name not found in session');
+            return res.status(400).json({ 
+                success: false, 
+                error: 'No active course selected' 
+            });
+        }
+        
         // Load chats from MongoDB
         const mongoDB = await EngEAI_MongoDB.getInstance();
-        const chats = await mongoDB.getUserChats(courseName, puid);
+        
+        // Get userId from GlobalUser using puid
+        const globalUser = await mongoDB.findGlobalUserByPUID(puid);
+        if (!globalUser || !globalUser.userId) {
+            console.log('❌ VALIDATION FAILED: GlobalUser not found for puid');
+            return res.status(401).json({ 
+                success: false, 
+                error: 'User not found' 
+            });
+        }
+        
+        const userId = globalUser.userId;
+        console.log(`[LOAD-CHATS] Converting puid to userId: ${puid} -> ${userId}`);
+        
+        const chats = await mongoDB.getUserChats(courseName, userId);
         
         //START DEBUG LOG : DEBUG-CODE(LOAD-CHATS-003)
         console.log(`✅ LOADED ${chats.length} CHATS FROM MONGODB`);
@@ -1237,7 +283,7 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
         const newChat: Chat = {
             id: chatId,
             courseName: courseName,
-            divisionTitle: '', // Empty for now, will be set by user later
+            topicOrWeekTitle: '', // Empty for now, will be set by user later
             itemTitle: 'New Chat', // Set initial title as "New Chat"
             messages: [backendWelcomeMessage], // Use the proper backend welcome message with diagrams
             isPinned: false,
@@ -1247,7 +293,20 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
         // Save chat to MongoDB
         try {
             const mongoDB = await EngEAI_MongoDB.getInstance();
-            await mongoDB.addChatToUser(courseName, puid, newChat);
+            
+            // Get userId from GlobalUser using puid
+            const globalUser = await mongoDB.findGlobalUserByPUID(puid);
+            if (!globalUser || !globalUser.userId) {
+                throw new Error(`GlobalUser not found for puid: ${puid}`);
+            }
+            
+            const userId = globalUser.userId;
+            
+            //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-005-PRE)
+            console.log(`[NEW-CHAT] Converting puid to userId: ${puid} -> ${userId}`);
+            //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-005-PRE)
+            
+            await mongoDB.addChatToUser(courseName, userId, newChat);
             
             //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-005)
             console.log('✅ CHAT SAVED TO MONGODB SUCCESSFULLY');
@@ -1285,17 +344,30 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
 router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { chatId } = req.params;
-        const { message, userId, courseName } = req.body;
+        const { message, userId } = req.body;
         
         // Get user from session
         const user = (req as any).user;
         const puid = user?.puid;
+        const globalUser = (req.session as any).globalUser;
+        const currentCourse = (req.session as any).currentCourse;
+        
+        // Get courseName from session (source of truth), fallback to request body if needed
+        const courseName = currentCourse?.courseName || req.body.courseName;
+        
+        // Get numeric userId from globalUser (more reliable than parsing request body)
+        const numericUserId = globalUser?.userId;
+        
+        if (!numericUserId || numericUserId === 0) {
+            console.warn(`[CHAT-APP] ⚠️ Invalid userId from session: ${numericUserId}, falling back to parsing request body`);
+        }
         
         //START DEBUG LOG : DEBUG-CODE(SEND-MSG-001)
         console.log('\n💬 SENDING MESSAGE:');
         console.log('='.repeat(50));
         console.log(`Chat ID: ${chatId}`);
-        console.log(`User ID: ${userId}`);
+        console.log(`User ID (from body): ${userId}`);
+        console.log(`User ID (from session): ${numericUserId}`);
         console.log(`PUID: ${puid}`);
         console.log(`Course: ${courseName}`);
         console.log(`Message: ${message.substring(0, 100)}...`);
@@ -1303,13 +375,13 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
         //END DEBUG LOG : DEBUG-CODE(SEND-MSG-001)
         
         // Validate input
-        if (!message || !userId) {
+        if (!message) {
             //START DEBUG LOG : DEBUG-CODE(SEND-MSG-002)
-            console.log('❌ VALIDATION FAILED: Missing required fields');
+            console.log('❌ VALIDATION FAILED: Missing message');
             //END DEBUG LOG : DEBUG-CODE(SEND-MSG-002)
             return res.status(400).json({ 
                 success: false, 
-                error: 'Message and userId are required' 
+                error: 'Message is required' 
             });
         }
 
@@ -1320,6 +392,16 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             return res.status(401).json({ 
                 success: false, 
                 error: 'User not authenticated' 
+            });
+        }
+        
+        if (!numericUserId || numericUserId === 0) {
+            //START DEBUG LOG : DEBUG-CODE(SEND-MSG-003B)
+            console.log('❌ VALIDATION FAILED: UserId not found in session');
+            //END DEBUG LOG : DEBUG-CODE(SEND-MSG-003B)
+            return res.status(401).json({ 
+                success: false, 
+                error: 'User ID not found in session' 
             });
         }
 
@@ -1341,11 +423,19 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             //END DEBUG LOG : DEBUG-CODE(SEND-MSG-005)
             
             // Send message through ChatApp and wait for complete response
+            // Use numericUserId from session (convert to string for sendUserMessage signature)
+            if (!courseName) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'No active course selected'
+                });
+            }
+            
             const assistantMessage = await chatApp.sendUserMessage(
                 message,
                 chatId,
-                userId,
-                courseName || 'APSC 099',
+                numericUserId.toString(),
+                courseName,
                 () => {} // Empty callback - not streaming to client
             );
 
@@ -1362,7 +452,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             const userMessage: ChatMessage = {
                 id: userMessageId,
                 sender: 'user',
-                userId: parseInt(userId) || 0,
+                userId: numericUserId, // Use numeric userId from session
                 courseName: courseName,
                 text: message,
                 timestamp: Date.now()
@@ -1371,9 +461,17 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             // Save both messages to MongoDB
             const mongoDB = await EngEAI_MongoDB.getInstance();
             
+            // Get userId from GlobalUser using puid (needed for MongoDB operations)
+            const globalUser = await mongoDB.findGlobalUserByPUID(puid);
+            if (!globalUser || !globalUser.userId) {
+                throw new Error(`GlobalUser not found for puid: ${puid}`);
+            }
+            const userId = globalUser.userId;
+            console.log(`[SEND-MSG] Converting puid to userId: ${puid} -> ${userId}`);
+            
             try {
                 // Save user message
-                await mongoDB.addMessageToChat(courseName, puid, chatId, userMessage);
+                await mongoDB.addMessageToChat(courseName, userId, chatId, userMessage);
                 
                 //START DEBUG LOG : DEBUG-CODE(SEND-MSG-007)
                 console.log('✅ User message saved to MongoDB');
@@ -1382,7 +480,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 //END DEBUG LOG : DEBUG-CODE(SEND-MSG-007)
                 
                 // Save assistant message
-                await mongoDB.addMessageToChat(courseName, puid, chatId, assistantMessage);
+                await mongoDB.addMessageToChat(courseName, userId, chatId, assistantMessage);
                 
                 //START DEBUG LOG : DEBUG-CODE(SEND-MSG-008)
                 console.log('✅ Assistant message saved to MongoDB');
@@ -1391,7 +489,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 //END DEBUG LOG : DEBUG-CODE(SEND-MSG-008)
                 
                 // Check if chat title needs updating (first user-AI exchange)
-                await chatApp.updateChatTitleIfNeeded(chatId, assistantMessage.text, courseName, puid);
+                await chatApp.updateChatTitleIfNeeded(chatId, assistantMessage.text, courseName, userId);
                 
                 // Reset timer after successful message processing
                 chatApp.resetChatTimer(chatId);
@@ -1523,7 +621,8 @@ router.post('/restore/:chatId', asyncHandlerWithAuth(async (req: Request, res: R
         // Get user from session
         const user = (req as any).user;
         const puid = user?.puid;
-        const courseName = user?.activeCourseName || 'APSC 099: Engineering for Kindergarten';
+        const currentCourse = (req.session as any).currentCourse;
+        const courseName = currentCourse?.courseName;
         
         console.log('\n🔄 CHAT RESTORATION REQUEST:');
         console.log('='.repeat(50));
@@ -1549,15 +648,36 @@ router.post('/restore/:chatId', asyncHandlerWithAuth(async (req: Request, res: R
             });
         }
         
+        if (!courseName) {
+            console.log('❌ RESTORATION FAILED: Course name not found in session');
+            return res.status(400).json({
+                success: false,
+                error: 'No active course selected'
+            });
+        }
+        
+        // Get userId from GlobalUser using puid (needed for restore and chat retrieval)
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const globalUser = await mongoDB.findGlobalUserByPUID(puid);
+        if (!globalUser || !globalUser.userId) {
+            console.log('❌ RESTORATION FAILED: GlobalUser not found for puid');
+            return res.status(401).json({
+                success: false,
+                error: 'User not found'
+            });
+        }
+        
+        const userId = globalUser.userId;
+        console.log(`[RESTORE-CHAT] Converting puid to userId: ${puid} -> ${userId}`);
+        
         // Restore chat from database
-        const restored = await chatApp.restoreChatFromDatabase(chatId, courseName, puid);
+        const restored = await chatApp.restoreChatFromDatabase(chatId, courseName, userId);
         
         if (restored) {
             console.log(`✅ Chat ${chatId} restored successfully`);
             
             // Get the restored chat data from MongoDB to return in response
-            const mongoDB = await EngEAI_MongoDB.getInstance();
-            const userChats = await mongoDB.getUserChats(courseName, puid);
+            const userChats = await mongoDB.getUserChats(courseName, userId);
             const chatData = userChats.find(chat => chat.id === chatId);
             
             res.json({
@@ -1599,7 +719,8 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
         // Get user from session
         const user = (req as any).user;
         const puid = user?.puid;
-        const courseName = user?.activeCourseName || 'APSC 099: Engineering for Kindergarten';
+        const currentCourse = (req.session as any).currentCourse;
+        const courseName = currentCourse?.courseName;
         
         //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-001)
         console.log('\n🗑️ SOFT DELETE CHAT REQUEST:');
@@ -1631,6 +752,14 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
             });
         }
         
+        if (!courseName) {
+            console.log('❌ VALIDATION FAILED: Course name not found in session');
+            return res.status(400).json({
+                success: false,
+                error: 'No active course selected'
+            });
+        }
+        
         // Stop timer and remove from memory if exists (optional cleanup)
         // This doesn't block deletion if chat is not in memory (e.g., after server restart)
         if (chatApp.validateChatExists(chatId)) {
@@ -1649,7 +778,18 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
         // This always happens, regardless of memory state
         try {
             const mongoDB = await EngEAI_MongoDB.getInstance();
-            await mongoDB.markChatAsDeleted(courseName, puid, chatId);
+            
+            // Get userId from GlobalUser using puid
+            const globalUser = await mongoDB.findGlobalUserByPUID(puid);
+            if (!globalUser || !globalUser.userId) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'User not found'
+                });
+            }
+            
+            const userId = globalUser.userId;
+            await mongoDB.markChatAsDeleted(courseName, userId, chatId);
             
             //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-006)
             console.log(`✅ Chat ${chatId} marked as deleted in database`);

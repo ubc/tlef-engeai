@@ -23,7 +23,7 @@
  */
 
 import { loadComponentHTML } from "../functions/api.js";
-import { activeCourse, LearningObjective, AdditionalMaterial } from "../../../src/functions/types.js";
+import { activeCourse, LearningObjective, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem } from "../../../src/functions/types.js";
 import { showErrorModal, showHelpModal, showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal } from "../modal-overlay.js";
 
 // ===========================================
@@ -159,14 +159,14 @@ async function initializeDocumentSetup(state: DocumentSetupState, instructorCour
  * @param instructorCourse - The instructor course object
  */
 function initializeCourseData(instructorCourse: activeCourse): void {
-    // Initialize divisions array if it doesn't exist
-    if (!instructorCourse.divisions) {
-        instructorCourse.divisions = [];
+    // Initialize topic/week instances array if it doesn't exist
+    if (!instructorCourse.topicOrWeekInstances) {
+        instructorCourse.topicOrWeekInstances = [];
     }
 
-    // Initialize learning objectives for each division if they don't exist
-    instructorCourse.divisions.forEach(division => {
-        division.items.forEach(item => {
+    // Initialize learning objectives for each topic/week instance if they don't exist
+    instructorCourse.topicOrWeekInstances.forEach((instance_topicOrWeek: TopicOrWeekInstance) => {
+        instance_topicOrWeek.items.forEach((item: TopicOrWeekItem) => {
             if (!item.learningObjectives) {
                 item.learningObjectives = [];
             }
@@ -592,12 +592,12 @@ async function addDemoObjective(): Promise<void> {
         return;
     }
     
-    // Get the first division and first item
-    const firstDivision = currentCourse.divisions?.[0];
-    const firstItem = firstDivision?.items?.[0];
+    // Get the first topic/week instance and first item
+    const firstInstance = currentCourse.topicOrWeekInstances?.[0];
+    const firstItem = firstInstance?.items?.[0];
     
-    if (!firstDivision || !firstItem) {
-        console.error('No first division or first item found');
+    if (!firstInstance || !firstItem) {
+        console.error('No first topic/week instance or first item found');
         return;
     }
     
@@ -606,7 +606,7 @@ async function addDemoObjective(): Promise<void> {
         id: `obj-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         LearningObjective: learningObjective,
         courseName: currentCourse.courseName,
-        divisionTitle: firstDivision.title,
+        topicOrWeekTitle: firstInstance.title,
         itemTitle: firstItem.title,
         createdAt: new Date(),
         updatedAt: new Date()
@@ -632,7 +632,7 @@ async function addDemoObjective(): Promise<void> {
         const result = await addLearningObjectiveToBackend(
             newObjective, 
             currentCourse.id, 
-            firstDivision.id, 
+            firstInstance.id, 
             firstItem.id
         );
         
@@ -681,20 +681,20 @@ async function removeDemoObjective(index: number): Promise<void> {
     demoObjectives.splice(index, 1);
     updateDemoObjectivesDisplay();
     
-    // Remove from real course data (first division, first item)
+    // Remove from real course data (first topic/week instance, first item)
     const course = getCurrentCourse();
-    if (course?.divisions?.[0]?.items?.[0]) {
-        const firstItem = course.divisions[0].items[0];
+    if (course?.topicOrWeekInstances?.[0]?.items?.[0]) {
+        const firstItem = course.topicOrWeekInstances[0].items[0];
         if (firstItem.learningObjectives) {
             // Find and remove the objective from real data
-            const realObjectiveIndex = firstItem.learningObjectives.findIndex(obj => obj.id === objectiveToRemove.id);
+            const realObjectiveIndex = firstItem.learningObjectives.findIndex((obj: LearningObjective) => obj.id === objectiveToRemove.id);
             if (realObjectiveIndex !== -1) {
                 try {
                     // Delete from database
                     await deleteLearningObjectiveFromBackend(
                         objectiveToRemove.id,
                         course.id,
-                        course.divisions[0].id,
+                        course.topicOrWeekInstances[0].id,
                         firstItem.id
                     );
                     
@@ -733,10 +733,10 @@ async function clearDemoObjectives(): Promise<void> {
     
     if (objectiveInput) objectiveInput.value = '';
     
-    // Clear from real course data (first division, first item)
+    // Clear from real course data (first topic/week instance, first item)
     const course = getCurrentCourse();
-    if (course?.divisions?.[0]?.items?.[0]) {
-        const firstItem = course.divisions[0].items[0];
+    if (course?.topicOrWeekInstances?.[0]?.items?.[0]) {
+        const firstItem = course.topicOrWeekInstances[0].items[0];
         if (firstItem.learningObjectives) {
             // Delete each learning objective from database
             for (const objective of firstItem.learningObjectives) {
@@ -744,7 +744,7 @@ async function clearDemoObjectives(): Promise<void> {
                     await deleteLearningObjectiveFromBackend(
                         objective.id,
                         course.id,
-                        course.divisions[0].id,
+                        course.topicOrWeekInstances[0].id,
                         firstItem.id
                     );
                 } catch (error) {
@@ -950,13 +950,13 @@ async function simulateBackendProcessing(files: DemoFile[]): Promise<{ success: 
  * 
  * @param objective - Learning objective to add
  * @param courseId - Course ID
- * @param divisionId - Division ID
+ * @param topicOrWeekId - Topic/Week Instance ID
  * @param contentId - Content ID
  * @returns Promise with result
  */
-async function addLearningObjectiveToBackend(objective: LearningObjective, courseId: string, divisionId: string, contentId: string): Promise<{ success: boolean; id?: string }> {
+async function addLearningObjectiveToBackend(objective: LearningObjective, courseId: string, topicOrWeekId: string, contentId: string): Promise<{ success: boolean; id?: string }> {
     try {
-        const response = await fetch(`/api/courses/${courseId}/divisions/${divisionId}/items/${contentId}/objectives`, {
+        const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -992,13 +992,13 @@ async function addLearningObjectiveToBackend(objective: LearningObjective, cours
  * 
  * @param objectiveId - ID of objective to delete
  * @param courseId - Course ID
- * @param divisionId - Division ID
+ * @param topicOrWeekId - Topic/Week Instance ID
  * @param contentId - Content ID
  * @returns Promise with result
  */
-async function deleteLearningObjectiveFromBackend(objectiveId: string, courseId: string, divisionId: string, contentId: string): Promise<{ success: boolean }> {
+async function deleteLearningObjectiveFromBackend(objectiveId: string, courseId: string, topicOrWeekId: string, contentId: string): Promise<{ success: boolean }> {
     try {
-        const response = await fetch(`/api/courses/${courseId}/divisions/${divisionId}/items/${contentId}/objectives/${objectiveId}`, {
+        const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objectiveId}`, {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json'
