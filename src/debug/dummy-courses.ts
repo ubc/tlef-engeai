@@ -408,22 +408,72 @@ export async function initializeDummyCourses(): Promise<void> {
     console.log('🔧 Initializing dummy courses...');
     
     try {
-        // Check if collection exists and has data
-        const collectionHasData = await collectionExistsAndHasData();
-        
-        if (collectionHasData) {
-            console.log('⚠️ Collection "active-course-list" already exists with data. Skipping initialization to preserve existing data.');
-            return;
-        }
-        
         // Create APSC 099 (Settled Course)
-        const apsc099 = await createCHBE241();
-        await createOrUpdateCourse(apsc099);
+        const chbe241 = await createCHBE241();
+        await createOrUpdateCourse(chbe241);
 
         
         console.log('✅ Dummy courses initialized successfully');
     } catch (error) {
         console.error('❌ Error initializing dummy courses:', error);
+    }
+}
+
+/**
+ * Clears all chats from all users in a course
+ * @param courseName - The course name
+ */
+async function clearAllChats(courseName: string): Promise<void> {
+    try {
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const userCollectionName = `${courseName}_users`;
+        const userCollection = mongoDB.db.collection(userCollectionName);
+        
+        // Clear chats array for all users in the course
+        const result = await userCollection.updateMany(
+            {},
+            {
+                $set: { 
+                    chats: [],
+                    updatedAt: new Date()
+                }
+            }
+        );
+        
+        console.log(`🗑️ Cleared chats from ${result.modifiedCount} users in course: ${courseName}`);
+    } catch (error) {
+        console.error(`❌ Error clearing chats for course ${courseName}:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Clears all flags for a course
+ * @param courseName - The course name
+ */
+async function clearAllFlags(courseName: string): Promise<void> {
+    try {
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        await mongoDB.deleteAllFlagReports(courseName);
+        console.log(`🗑️ Cleared all flags for course: ${courseName}`);
+    } catch (error) {
+        console.error(`❌ Error clearing flags for course ${courseName}:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Clears all documents (additional materials) for a course
+ * @param courseId - The course ID
+ */
+async function clearAllDocuments(courseId: string): Promise<void> {
+    try {
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        await mongoDB.clearAllAdditionalMaterials(courseId);
+        console.log(`🗑️ Cleared all documents for course: ${courseId}`);
+    } catch (error) {
+        console.error(`❌ Error clearing documents for course ${courseId}:`, error);
+        throw error;
     }
 }
 
@@ -435,34 +485,69 @@ export async function resetDummyCourses(): Promise<{ success: boolean; skipped?:
     console.log('🔄 Resetting dummy courses...');
     
     try {
-        // Check if collection exists and has data
-        const collectionHasData = await collectionExistsAndHasData();
+        const mongoDB = await EngEAI_MongoDB.getInstance();
         
-        if (collectionHasData) {
-            const message = 'Collection "active-course-list" already exists with data. Skipping reset to preserve existing data.';
-            console.log(`⚠️ ${message}`);
-            return { 
-                success: true, 
-                skipped: true, 
-                message 
-            };
+        // Get course IDs and names before deletion
+        const chbe241Id = idGenerator.uniqueIDGenerator('APSC099-Engineering-Kindergarten');
+        const apsc080Id = idGenerator.uniqueIDGenerator('APSC080-Introduction-Engineering');
+        
+        // Get course names before deletion
+        const chbe241Course = await mongoDB.getActiveCourse(chbe241Id) as activeCourse | null;
+        const apsc080Course = await mongoDB.getActiveCourse(apsc080Id) as activeCourse | null;
+        
+        const chbe241Name = chbe241Course?.courseName || 'CHBE 241: Material and Energy Balances';
+        const apsc080Name = apsc080Course?.courseName || 'APSC 080: Introduction to Engineering';
+        
+        // Clear chats, flags, and documents before deleting courses
+        try {
+            await clearAllChats(chbe241Name);
+        } catch (error) {
+            console.warn(`⚠️ Could not clear chats for ${chbe241Name}:`, error);
+        }
+        
+        try {
+            await clearAllFlags(chbe241Name);
+        } catch (error) {
+            console.warn(`⚠️ Could not clear flags for ${chbe241Name}:`, error);
+        }
+        
+        try {
+            await clearAllDocuments(chbe241Id);
+        } catch (error) {
+            console.warn(`⚠️ Could not clear documents for ${chbe241Id}:`, error);
+        }
+        
+        // Clear data for APSC 080 if it exists
+        try {
+            await clearAllChats(apsc080Name);
+        } catch (error) {
+            console.warn(`⚠️ Could not clear chats for ${apsc080Name}:`, error);
+        }
+        
+        try {
+            await clearAllFlags(apsc080Name);
+        } catch (error) {
+            console.warn(`⚠️ Could not clear flags for ${apsc080Name}:`, error);
+        }
+        
+        try {
+            await clearAllDocuments(apsc080Id);
+        } catch (error) {
+            console.warn(`⚠️ Could not clear documents for ${apsc080Id}:`, error);
         }
         
         // Delete existing courses
-        const apsc099Id = idGenerator.uniqueIDGenerator('APSC099-Engineering-Kindergarten');
-        const apsc080Id = idGenerator.uniqueIDGenerator('APSC080-Introduction-Engineering');
-        
-        await deleteCourse(apsc099Id);
+        await deleteCourse(chbe241Id);
         await deleteCourse(apsc080Id);
         
         // Recreate courses
         await initializeDummyCourses();
         
-        console.log('✅ Dummy courses reset successfully');
+        console.log('✅ Dummy courses reset successfully (courses, chats, flags, and documents cleared)');
         return { 
             success: true, 
             skipped: false,
-            message: 'Dummy courses reset successfully'
+            message: 'Dummy courses reset successfully (courses, chats, flags, and documents cleared)'
         };
     } catch (error) {
         console.error('❌ Error resetting dummy courses:', error);
