@@ -1,8 +1,7 @@
 /**
- * Prompt for LLM to analyze conversation and extract struggle topics
+ * Base memory agent prompt template
  */
-export const MEMORY_AGENT_PROMPT = 
-`You are a memory agent. You are tasked with analyzing a conversation between a student and an AI tutor. 
+const BASE_MEMORY_AGENT_PROMPT = `You are a memory agent. You are tasked with analyzing a conversation between a student and an AI tutor. 
 You will be given a conversation and you will need to extract the single most important topic that the student is struggling with or having difficulty understanding.
 
 IMPORTANT: This analysis only occurs after a conversation has more than 5 messages. You will be analyzing only the last 3 messages from the conversation:
@@ -36,24 +35,55 @@ Example (no topics):
 
 The reason you are doing this is because we want to use the StruggleTopics to update the system prompt for the next chat, 
 so that the AI tutor can focus teaching on the topics that the student is struggling with less socratic teaching and more direct teaching.
-
-Conversation:
 `;
 
+/**
+ * Builds the duplicate avoidance section for existing struggle topics
+ * Focuses on the logic for preventing duplicate or similar topics
+ * 
+ * @param existingStruggleTopics - Array of existing struggle topics
+ * @returns Formatted section explaining duplicate avoidance rules
+ */
+const buildDuplicateAvoidanceSection = (existingStruggleTopics: string[]): string => {
+    if (existingStruggleTopics.length === 0) {
+        return '';
+    }
 
-// `Analyze the following conversation between a student and an AI tutor. Identify specific topics, concepts, or subject areas that the student appears to be struggling with or having difficulty understanding.
+    const topicsList = existingStruggleTopics
+        .map((topic, idx) => `  ${idx + 1}. ${topic}`)
+        .join('\n');
 
-// Focus on:
-// - Technical concepts or topics the student asked questions about
-// - Areas where the student seemed confused or needed clarification
-// - Topics that required multiple explanations or follow-up questions
-// - Subject matter the student explicitly mentioned having trouble with
+    return `
 
-// Return ONLY a comma-separated list of topic names (no explanations, no numbering, no additional text). Each topic should be a concise phrase (1-3 words) representing a specific concept or subject area.
+CRITICAL - Duplicate Avoidance Rules:
+The following struggle topics have already been identified for this student. DO NOT add topics that are:
 
-// Example format: "thermodynamics, Nernst equation, pressure measurements, mass flow rates"
+1. Exact matches - topics that are identical to any in the list below
+2. Semantic variations - topics that are conceptually the same but worded differently
+   Example: If "thermodynamics" is listed, do NOT add:
+   - "thermodynamic principles"
+   - "thermodynamic concepts"
+   - "thermodynamics basics"
+   - Any other variation of thermodynamics
+3. Substrings or superstrings - topics where one is contained within another
+   Example: If "mass flow rates" exists, do NOT add "flow rates" or "mass flow rate calculations"
 
-// Conversation:
-// `;
+Existing struggle topics for this student:
+${topicsList}
 
+IMPORTANT: Only add a NEW topic if it is genuinely different from ALL existing topics listed above.
+If the conversation is about a topic that's already listed or is a variation of an existing topic, return an empty array.
+`;
+};
+
+/**
+ * Prompt for LLM to analyze conversation and extract struggle topics
+ * @param existingStruggleTopics - Array of existing struggle topics to avoid duplicates
+ */
+export const getMemoryAgentPrompt = (existingStruggleTopics: string[] = []): string => {
+    const duplicateAvoidanceSection = buildDuplicateAvoidanceSection(existingStruggleTopics);
+    
+    // Append the duplicate avoidance section after the examples
+    return BASE_MEMORY_AGENT_PROMPT + duplicateAvoidanceSection + '\n\nConversation:\n';
+};
 
