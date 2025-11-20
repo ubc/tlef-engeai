@@ -1661,11 +1661,11 @@ export class EngEAI_MongoDB {
      * Update struggle words for a user's memory agent entry
      * @param courseName - The name of the course
      * @param userId - The user ID
-     * @param struggleWords - Array of struggle words to update
+     * @param struggleTopics - Array of struggle words to update
      */
-    public updateMemoryAgentStruggleWords = async (courseName: string, userId: string, struggleWords: string[]): Promise<void> => {
+    public updateMemoryAgentStruggleWords = async (courseName: string, userId: string, struggleTopics: string[]): Promise<void> => {
         console.log(`[MONGODB] 🔄 Updating struggle words for userId: ${userId} in course: ${courseName}`);
-        console.log(`[MONGODB] 📝 New struggle words:`, struggleWords);
+        console.log(`[MONGODB] 📝 New struggle words:`, struggleTopics);
         
         try {
             const memoryAgentCollection = this.getMemoryAgentCollection(courseName);
@@ -1674,7 +1674,7 @@ export class EngEAI_MongoDB {
                 { userId: userId },
                 { 
                     $set: { 
-                        struggleWords: struggleWords,
+                        struggleTopics: struggleTopics,
                         updatedAt: new Date()
                     }
                 },
@@ -1733,7 +1733,7 @@ export class EngEAI_MongoDB {
                 name: name,
                 userId: userId,
                 role: role,
-                struggleWords: [],
+                struggleTopics: [],
                 createdAt: new Date(),
                 updatedAt: new Date()
             };

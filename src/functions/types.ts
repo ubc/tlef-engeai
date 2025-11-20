@@ -230,7 +230,7 @@ export interface MemoryAgentEntry {
     name: string;
     userId: string;
     role: 'instructor' | 'TA' | 'Student';
-    struggleWords: string[]; // Array of strings representing topics/concepts student struggles with
+    struggleTopics: string[]; // Array of strings representing topics/concepts student struggles with
     createdAt: Date;
     updatedAt: Date;
 }

@@ -475,18 +475,18 @@ export function formatRAGPrompt(context: string, userMessage: string): string {
 /**
  * Format struggle words section for system prompt
  * Provides instructions for handling topics the student struggles with
- * @param struggleWords - Array of struggle words/topics the student has difficulty with
+ * @param struggleTopics - Array of struggle words/topics the student has difficulty with
  * @returns Formatted prompt string for struggle words section
  */
-export function formatStruggleWordsPrompt(struggleWords: string[]): string {
-    if (!struggleWords || struggleWords.length === 0) {
+export function formatStruggleWordsPrompt(struggleTopics: string[]): string {
+    if (!struggleTopics || struggleTopics.length === 0) {
         return '';
     }
     
-    const struggleWordsList = struggleWords.join(', ');
+    const struggleTopicsList = struggleTopics.join(', ');
     
-    return `\n\nStudent struggles with: ${struggleWordsList}` +
-        `\n\nIMPORTANT: When the student asks questions about any of these struggle topics (${struggleWordsList}), STOP using Socratic questioning and instead provide direct, clear explanations with concrete examples. These are topics the student has already demonstrated difficulty with, so they need direct guidance rather than guided discovery.` +
+    return `\n\nStudent struggles with: ${struggleTopicsList}` +
+        `\n\nIMPORTANT: When the student asks questions about any of these struggle topics (${struggleTopicsList}), STOP using Socratic questioning and instead provide direct, clear explanations with concrete examples. These are topics the student has already demonstrated difficulty with, so they need direct guidance rather than guided discovery.` +
         `\n\n- Provide clear, step-by-step explanations` +
         `\n- Include at least one concrete, worked example` +
         `\n- Use specific numbers and values in your examples` +
@@ -498,10 +498,10 @@ export function formatStruggleWordsPrompt(struggleWords: string[]): string {
  * Helper function to get system prompt with optional course-specific context, learning objectives, and struggle words
  * @param courseName - Optional course name for context
  * @param learningObjectives - Optional array of learning objectives to append
- * @param struggleWords - Optional array of struggle words/topics the student has difficulty with
+ * @param struggleTopics - Optional array of struggle words/topics the student has difficulty with
  * @returns System prompt string
  */
-export function getSystemPrompt(courseName?: string, learningObjectives?: LearningObjective[], struggleWords?: string[]): string {
+export function getSystemPrompt(courseName?: string, learningObjectives?: LearningObjective[], struggleTopics?: string[]): string {
     let prompt = SYSTEM_PROMPT;
     
     if (courseName) {
@@ -520,8 +520,8 @@ export function getSystemPrompt(courseName?: string, learningObjectives?: Learni
         prompt += '\nWhen helping students, reference these learning objectives to ensure alignment with course goals.';
     }
     
-    if (struggleWords && struggleWords.length > 0) {
-        prompt += formatStruggleWordsPrompt(struggleWords);
+    if (struggleTopics && struggleTopics.length > 0) {
+        prompt += formatStruggleWordsPrompt(struggleTopics);
     }
     
     return prompt;

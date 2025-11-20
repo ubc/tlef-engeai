@@ -52,7 +52,7 @@ export class MemoryAgent {
                 return [];
             }
             
-            return entry.struggleWords || [];
+            return entry.struggleTopics || [];
         } catch (error) {
             console.error(`[MEMORY-AGENT] 🚨 Error getting struggle words:`, error);
             return [];
@@ -119,7 +119,7 @@ export class MemoryAgent {
             
             // Get existing struggle words
             const existingEntry = await mongoDB.getMemoryAgentEntry(courseName, userId);
-            const existingWords = existingEntry?.struggleWords || [];
+            const existingWords = existingEntry?.struggleTopics || [];
             
             // Normalize words for comparison
             const normalizeWord = (word: string): string => {
@@ -297,7 +297,7 @@ export class MemoryAgent {
             await this.logLLMInvocation(userId, courseName, MEMORY_AGENT_PROMPT, userMessages, response.content);
 
             // Parse the JSON response and extract StruggleTopics array
-            let struggleWords: string[] = [];
+            let struggleTopics: string[] = [];
             try {
                 // Clean the response content
                 const jsonContent = response.content.trim();
@@ -307,22 +307,22 @@ export class MemoryAgent {
                 
                 // Extract StruggleTopics array
                 if (parsed && Array.isArray(parsed.StruggleTopics)) {
-                    struggleWords = parsed.StruggleTopics;
+                    struggleTopics = parsed.StruggleTopics;
                 } else if (parsed && parsed.StruggleTopics === undefined) {
                     console.warn(`[MEMORY-AGENT] ⚠️ Response missing 'StruggleTopics' field`);
-                    struggleWords = [];
+                    struggleTopics = [];
                 } else {
                     console.warn(`[MEMORY-AGENT] ⚠️ 'StruggleTopics' is not an array in response`);
-                    struggleWords = [];
+                    struggleTopics = [];
                 }
             } catch (jsonError) {
                 console.error(`[MEMORY-AGENT] 🚨 Error parsing JSON response:`, jsonError);
                 console.error(`[MEMORY-AGENT] Response content:`, response.content);
-                struggleWords = [];
+                struggleTopics = [];
             }
 
             // Normalize and filter struggle words
-            const normalizedStruggleWords = struggleWords
+            const normalizedStruggleWords = struggleTopics
                 .map((word: string) => word.trim())
                 .filter((word: string) => word.length > 0)
                 .map((word: string) => word.toLowerCase()); // Normalize to lowercase

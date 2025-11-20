@@ -695,17 +695,17 @@ export class ChatApp {
         this.chatHistory.set(chatId, []);
         
         // Retrieve struggle words from memory agent
-        let struggleWords: string[] = [];
+        let struggleTopics: string[] = [];
         try {
-            struggleWords = await memoryAgent.getStruggleWords(userID, courseName);
-            console.log(`🧠 Retrieved ${struggleWords.length} struggle words for user ${userID}`);
+            struggleTopics = await memoryAgent.getStruggleWords(userID, courseName);
+            console.log(`🧠 Retrieved ${struggleTopics.length} struggle words for user ${userID}`);
         } catch (error) {
             console.error('❌ Error retrieving struggle words:', error);
             // Continue without struggle words if retrieval fails
         }
         
         // Add default system message (now async to retrieve learning objectives and include struggle words)
-        await this.addDefaultSystemMessage(chatId, courseName, struggleWords);
+        await this.addDefaultSystemMessage(chatId, courseName, struggleTopics);
         
         
         // Add default assistant message and get it
@@ -734,7 +734,7 @@ export class ChatApp {
     /**
      * this method directly add the Default System Message to the conversation
      */
-    private async addDefaultSystemMessage(chatId: string, courseName?: string, struggleWords?: string[]): Promise<void> {
+    private async addDefaultSystemMessage(chatId: string, courseName?: string, struggleTopics?: string[]): Promise<void> {
         const conversation = this.conversations.get(chatId);
         if (!conversation) {
             throw new Error('Conversation not found');
@@ -757,7 +757,7 @@ export class ChatApp {
             }
         }
         
-        const defaultSystemMessage = getSystemPrompt(courseName, learningObjectives, struggleWords);
+        const defaultSystemMessage = getSystemPrompt(courseName, learningObjectives, struggleTopics);
 
         try {
             conversation.addMessage('system', defaultSystemMessage);
@@ -1097,16 +1097,16 @@ export class ChatApp {
             }
             
             // Retrieve struggle words from memory agent
-            let struggleWords: string[] = [];
+            let struggleTopics: string[] = [];
             try {
-                struggleWords = await memoryAgent.getStruggleWords(userId, courseName);
-                console.log(`🧠 Retrieved ${struggleWords.length} struggle words during chat restoration`);
+                struggleTopics = await memoryAgent.getStruggleWords(userId, courseName);
+                console.log(`🧠 Retrieved ${struggleTopics.length} struggle words during chat restoration`);
             } catch (error) {
                 console.error('❌ Error retrieving struggle words during restore:', error);
                 // Continue without struggle words if retrieval fails
             }
             
-            const defaultSystemMessage = getSystemPrompt(courseName, learningObjectives, struggleWords);
+            const defaultSystemMessage = getSystemPrompt(courseName, learningObjectives, struggleTopics);
             conversation.addMessage('system', defaultSystemMessage);
             
 
