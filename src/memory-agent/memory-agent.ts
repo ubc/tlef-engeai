@@ -16,11 +16,13 @@
  * @version: 1.0.0
  * @since: 2025-01-27
  */
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { LLMModule } from 'ubc-genai-toolkit-llm';
 import { AppConfig, loadConfig } from '../routes/config';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { MemoryAgentEntry } from '../functions/types';
-import { STRUGGLE_ANALYSIS_PROMPT } from './memory-agent-prompt';
+import { MEMORY_AGENT_PROMPT } from './memory-agent-prompt';
 import { isDeveloperMode, getMockStruggleWords } from '../functions/developer-mode';
 
 
@@ -94,13 +96,13 @@ export class MemoryAgent {
     }
 
     /**
-     * Update struggle words for a user
-     * Merges new words with existing words and ensures uniqueness
+     * Update struggle words for a user (idempotent)
+     * Only adds words that don't already exist in the database
      * Creates memory agent entry if it doesn't exist
      * 
      * @param userId - The user ID
      * @param courseName - The course name
-     * @param newWords - New struggle words to add
+     * @param newWords - New struggle words to add (only new words will be added)
      */
     public async updateStruggleWords(userId: string, courseName: string, newWords: string[]): Promise<void> {
         try {
@@ -119,7 +121,7 @@ export class MemoryAgent {
             const existingEntry = await mongoDB.getMemoryAgentEntry(courseName, userId);
             const existingWords = existingEntry?.struggleWords || [];
             
-            // Normalize and merge words
+            // Normalize words for comparison
             const normalizeWord = (word: string): string => {
                 return word.trim().toLowerCase();
             };
@@ -127,8 +129,18 @@ export class MemoryAgent {
             const normalizedExisting = existingWords.map(normalizeWord);
             const normalizedNew = newWords.map(normalizeWord).filter(word => word.length > 0);
             
-            // Merge and deduplicate using Set
-            const allWords = [...normalizedExisting, ...normalizedNew];
+            // Filter out words that already exist (idempotent behavior)
+            const existingSet = new Set(normalizedExisting);
+            const wordsToAdd = normalizedNew.filter(word => !existingSet.has(word));
+            
+            // If no new words to add, skip database update
+            if (wordsToAdd.length === 0) {
+                console.log(`[MEMORY-AGENT] ℹ️ No new struggle words to add for userId: ${userId}. All words already exist.`);
+                return;
+            }
+            
+            // Merge existing words with new words (only new ones)
+            const allWords = [...normalizedExisting, ...wordsToAdd];
             const uniqueWords = Array.from(new Set(allWords));
             
             // Sort for consistency
@@ -137,8 +149,7 @@ export class MemoryAgent {
             // Update in database
             await mongoDB.updateMemoryAgentStruggleWords(courseName, userId, uniqueWords);
             
-            const addedCount = uniqueWords.length - normalizedExisting.length;
-            console.log(`[MEMORY-AGENT] ✅ Updated struggle words for userId: ${userId}. Total: ${uniqueWords.length} words (${addedCount > 0 ? `+${addedCount} new` : 'no new words'})`);
+            console.log(`[MEMORY-AGENT] ✅ Updated struggle words for userId: ${userId}. Total: ${uniqueWords.length} words (+${wordsToAdd.length} new, ${normalizedExisting.length} existing)`);
         } catch (error) {
             console.error(`[MEMORY-AGENT] 🚨 Error updating struggle words:`, error);
             throw error;
@@ -146,19 +157,93 @@ export class MemoryAgent {
     }
 
     /**
+     * Log the LLM invocation for memory agent analysis
+     * Saves the system and user messages, and optionally the LLM response, to a file for debugging
+     * 
+     * @param userId - The user ID
+     * @param courseName - The course name
+     * @param systemPrompt - The memory agent's system prompt (minimal, not the chat's system prompt)
+     * @param userMessage - The user message (analysis prompt) being sent
+     * @param response - Optional LLM response content to include in the log
+     */
+    private async logLLMInvocation(
+        userId: string,
+        courseName: string,
+        systemPrompt: string,
+        userMessage: string,
+        response?: string
+    ): Promise<void> {
+        try {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const fileName = `memory-agent-invocation-${userId}-${timestamp}.txt`;
+            const filePath = path.join(process.cwd(), 'prompt-test', fileName);
+            
+            // Ensure prompt-test directory exists
+            const promptTestDir = path.join(process.cwd(), 'prompt-test');
+            await fs.mkdir(promptTestDir, { recursive: true });
+            
+            // Format the log content
+            let logContent = `Memory Agent LLM Invocation Log\n`;
+            logContent += `${'='.repeat(80)}\n\n`;
+            logContent += `Timestamp: ${new Date().toISOString()}\n`;
+            logContent += `User ID: ${userId}\n`;
+            logContent += `Course Name: ${courseName}\n`;
+            logContent += `\n${'='.repeat(80)}\n\n`;
+            
+            // System message
+            logContent += `SYSTEM MESSAGE:\n`;
+            logContent += `${'-'.repeat(80)}\n`;
+            logContent += `Content Length: ${systemPrompt.length} characters (~${Math.ceil(systemPrompt.length / 4)} tokens)\n\n`;
+            logContent += `${systemPrompt}\n`;
+            logContent += `\n${'='.repeat(80)}\n\n`;
+            
+            // User message
+            logContent += `USER MESSAGE (Analysis Prompt):\n`;
+            logContent += `${'-'.repeat(80)}\n`;
+            logContent += `Content Length: ${userMessage.length} characters (~${Math.ceil(userMessage.length / 4)} tokens)\n\n`;
+            logContent += `${userMessage}\n`;
+            logContent += `\n${'='.repeat(80)}\n\n`;
+            
+            // LLM response (if provided)
+            if (response !== undefined) {
+                logContent += `LLM RESPONSE:\n`;
+                logContent += `${'-'.repeat(80)}\n`;
+                logContent += `Content Length: ${response.length} characters (~${Math.ceil(response.length / 4)} tokens)\n\n`;
+                logContent += `${response}\n`;
+                logContent += `\n${'='.repeat(80)}\n`;
+            }
+            
+            // Write to file
+            await fs.writeFile(filePath, logContent, 'utf-8');
+            console.log(`[MEMORY-AGENT] 📄 LLM invocation logged to: ${filePath}`);
+            
+            // Also log to console for immediate visibility (only request details, not response)
+            console.log(`[MEMORY-AGENT] 📤 LLM Invocation Details:`);
+            console.log(`[MEMORY-AGENT]   System Prompt Length: ${systemPrompt.length} chars (~${Math.ceil(systemPrompt.length / 4)} tokens)`);
+            console.log(`[MEMORY-AGENT]   User Message Length: ${userMessage.length} chars (~${Math.ceil(userMessage.length / 4)} tokens)`);
+            if (response !== undefined) {
+                console.log(`[MEMORY-AGENT]   Response Length: ${response.length} chars (~${Math.ceil(response.length / 4)} tokens)`);
+            }
+            console.log(`[MEMORY-AGENT]   System Prompt Preview: ${systemPrompt.substring(0, 100)}...`);
+            console.log(`[MEMORY-AGENT]   User Message Preview: ${userMessage.substring(0, 100)}...`);
+        } catch (error) {
+            console.error(`[MEMORY-AGENT] 🚨 Error logging LLM invocation:`, error);
+            // Don't throw - logging failure shouldn't break the analysis flow
+        }
+    }
+
+    /**
      * Analyze user messages and update struggle words
-     * Creates a conversation on-the-fly with system prompt and user messages,
+     * Creates a conversation on-the-fly with a minimal system prompt and user messages,
      * sends to LLM for analysis, and updates MongoDB with unique struggle words
      * 
      * @param userId - The user ID
      * @param courseName - The course name
-     * @param systemPrompt - The system prompt from the chat conversation
-     * @param userMessages - Array of user messages to analyze
+     * @param userMessages - Formatted conversation messages to analyze (without RAG content)
      */
     public async analyzeAndUpdateStruggleWords(
         userId: string,
         courseName: string,
-        systemPrompt: string,
         userMessages: string
     ): Promise<void> {
         try {
@@ -188,34 +273,62 @@ export class MemoryAgent {
                 return; // Early return - skip LLM analysis
             }
 
-            // Format conversation text for analysis (only user messages)
-            const conversationText = `Student: ${userMessages}`;
-
-            // Create conversation with system prompt (for context) and analysis prompt
+         
+            // Create conversation with minimal system prompt and conversation text
             console.log(`[MEMORY-AGENT] 🔍 Analyzing conversation for struggle topics...`);
             const conversation = this.llmModule.createConversation();
-            conversation.addMessage('system', systemPrompt);
+            conversation.addMessage('system', MEMORY_AGENT_PROMPT);
             
-            const analysisPrompt = STRUGGLE_ANALYSIS_PROMPT + conversationText;
-            conversation.addMessage('user', analysisPrompt);
+            conversation.addMessage('user', userMessages);
+            
+
             
             // Get response from LLM
             const response = await conversation.send();
             
             if (!response || !response.content) {
                 console.warn(`[MEMORY-AGENT] ⚠️ Empty response from LLM analysis`);
+                // Log to file even if response is empty
+                await this.logLLMInvocation(userId, courseName, MEMORY_AGENT_PROMPT, userMessages, '');
                 return;
             }
+            
+            // Log the complete LLM invocation (request + response) to file
+            await this.logLLMInvocation(userId, courseName, MEMORY_AGENT_PROMPT, userMessages, response.content);
 
-            // Parse the comma-separated response into array
-            const struggleWords = response.content
-                .split(',')
+            // Parse the JSON response and extract StruggleTopics array
+            let struggleWords: string[] = [];
+            try {
+                // Clean the response content
+                const jsonContent = response.content.trim();
+                
+                // Parse JSON
+                const parsed = JSON.parse(jsonContent);
+                
+                // Extract StruggleTopics array
+                if (parsed && Array.isArray(parsed.StruggleTopics)) {
+                    struggleWords = parsed.StruggleTopics;
+                } else if (parsed && parsed.StruggleTopics === undefined) {
+                    console.warn(`[MEMORY-AGENT] ⚠️ Response missing 'StruggleTopics' field`);
+                    struggleWords = [];
+                } else {
+                    console.warn(`[MEMORY-AGENT] ⚠️ 'StruggleTopics' is not an array in response`);
+                    struggleWords = [];
+                }
+            } catch (jsonError) {
+                console.error(`[MEMORY-AGENT] 🚨 Error parsing JSON response:`, jsonError);
+                console.error(`[MEMORY-AGENT] Response content:`, response.content);
+                struggleWords = [];
+            }
+
+            // Normalize and filter struggle words
+            const normalizedStruggleWords = struggleWords
                 .map((word: string) => word.trim())
                 .filter((word: string) => word.length > 0)
                 .map((word: string) => word.toLowerCase()); // Normalize to lowercase
 
             // Remove duplicates
-            const uniqueStruggleWords = Array.from(new Set(struggleWords));
+            const uniqueStruggleWords = Array.from(new Set(normalizedStruggleWords));
 
             console.log(`[MEMORY-AGENT] ✅ Extracted ${uniqueStruggleWords.length} struggle topics:`, uniqueStruggleWords);
             

@@ -270,22 +270,11 @@ export class ChatManager {
             this.chats = [];
             this.loadedChatIds.clear(); // Clear any previously loaded chats
             
-            // If metadata exists, set first chat as "pending load" active chat
+            // Don't auto-select any chat on initial load - user must explicitly choose one
+            this.activeChatId = null;
             if (this.chatMetadata.length > 0) {
-                // Sort by pinned status and timestamp to get the most relevant chat
-                const sortedMetadata = [...this.chatMetadata].sort((a, b) => {
-                    // Pinned chats first
-                    if (a.isPinned !== b.isPinned) {
-                        return b.isPinned ? 1 : -1;
-                    }
-                    // Then by most recent
-                    return b.lastMessageTimestamp - a.lastMessageTimestamp;
-                });
-                
-                this.activeChatId = sortedMetadata[0].id;
-                this.log('INFO', `🎯 Set initial active chat: ${this.activeChatId} (${sortedMetadata[0].itemTitle})`);
+                this.log('INFO', `📋 Loaded ${this.chatMetadata.length} chats - no chat selected initially`);
             } else {
-                this.activeChatId = null;
                 this.log('INFO', '📭 No existing chats found - user will see welcome screen');
             }
             
