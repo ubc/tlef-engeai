@@ -485,12 +485,61 @@ async function clearAllDocuments(courseId: string): Promise<void> {
  */
 export async function resetDummyCourses(): Promise<{ success: boolean; skipped?: boolean; message?: string }> {
     console.log('🔄 Resetting dummy courses...');
-    console.log('⚠️  This will wipe active-course-list and delete ALL collections except active-users');
+    console.log('⚠️  This will wipe active-course-list, delete all Qdrant documents, and delete ALL collections except active-users');
     
     try {
         const mongoDB = await EngEAI_MongoDB.getInstance();
         
-        // Step 1: Clear all documents from active-course-list collection
+        // Step 1: Get all active courses before deleting them (needed to clear Qdrant documents)
+        console.log('📋 Getting all active courses to clear Qdrant documents...');
+        let allCourses: activeCourse[] = [];
+        let totalQdrantDeleted = 0;
+        const qdrantErrors: string[] = [];
+        
+        try {
+            allCourses = await mongoDB.getAllActiveCourses() as unknown as activeCourse[];
+            console.log(`📋 Found ${allCourses.length} course(s) to clear from Qdrant`);
+        } catch (error) {
+            console.warn('⚠️  Could not get active courses (collection may not exist):', error);
+        }
+        
+        // Step 2: Clear Qdrant documents for all courses
+        if (allCourses.length > 0) {
+            console.log('🗑️  Clearing Qdrant documents for all courses...');
+            try {
+                const { RAGApp } = await import('../routes/RAG-App.js');
+                const ragApp = await RAGApp.getInstance();
+                
+                for (const course of allCourses) {
+                    try {
+                        if (course.id) {
+                            const qdrantResult = await ragApp.deleteAllDocumentsForCourse(course.id);
+                            totalQdrantDeleted += qdrantResult.deletedCount;
+                            if (qdrantResult.errors && qdrantResult.errors.length > 0) {
+                                qdrantErrors.push(...qdrantResult.errors);
+                            }
+                            console.log(`✅ Deleted ${qdrantResult.deletedCount} Qdrant document(s) for course: ${course.courseName}`);
+                        }
+                    } catch (error) {
+                        const errorMsg = `Failed to clear Qdrant for course ${course.courseName}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+                        qdrantErrors.push(errorMsg);
+                        console.error(`❌ ${errorMsg}`);
+                    }
+                }
+                
+                console.log(`✅ Deleted ${totalQdrantDeleted} total Qdrant document(s) across all courses`);
+                if (qdrantErrors.length > 0) {
+                    console.warn(`⚠️  ${qdrantErrors.length} error(s) occurred during Qdrant cleanup`);
+                }
+            } catch (error) {
+                console.error('❌ Error clearing Qdrant documents:', error);
+                // Continue with MongoDB cleanup even if Qdrant fails
+            }
+        } else {
+            console.log('ℹ️  No courses found, skipping Qdrant cleanup');
+        }
+        
+        // Step 3: Clear all documents from active-course-list collection
         console.log('🗑️  Clearing all courses from active-course-list...');
         try {
             const activeCourseListCollection = mongoDB.db.collection('active-course-list');
@@ -501,7 +550,7 @@ export async function resetDummyCourses(): Promise<{ success: boolean; skipped?:
             throw error;
         }
         
-        // Step 2: Get all collections in the database
+        // Step 4: Get all collections in the database
         const allCollections = await mongoDB.db.listCollections().toArray();
         const collectionNames = allCollections.map(col => col.name);
         
@@ -517,7 +566,7 @@ export async function resetDummyCourses(): Promise<{ success: boolean; skipped?:
         
         console.log(`🗑️  Dropping ${collectionsToDrop.length} collection(s) (preserving: ${preservedCollections.join(', ')})`);
         
-        // Step 3: Drop all collections except the preserved ones
+        // Step 5: Drop all collections except the preserved ones
         const droppedCollections: string[] = [];
         const errors: string[] = [];
         
@@ -543,11 +592,15 @@ export async function resetDummyCourses(): Promise<{ success: boolean; skipped?:
             console.warn(`⚠️  ${errors.length} error(s) occurred during collection deletion`);
         }
         
-        // Step 4: Reset CHBE 241 by recreating it (this will add it back to active-course-list)
+        // Step 6: Reset CHBE 241 by recreating it (this will add it back to active-course-list)
         console.log('🔄 Recreating CHBE 241...');
         await initializeDummyCourses();
         
-        const message = `Dummy courses reset successfully. Wiped active-course-list, dropped ${droppedCollections.length} collection(s), and recreated CHBE 241.${errors.length > 0 ? ` (${errors.length} error(s) occurred)` : ''}`;
+        let message = `Dummy courses reset successfully. Deleted ${totalQdrantDeleted} Qdrant document(s), wiped active-course-list, dropped ${droppedCollections.length} collection(s), and recreated CHBE 241.`;
+        if (qdrantErrors.length > 0 || errors.length > 0) {
+            const allErrors = [...qdrantErrors, ...errors];
+            message += ` (${allErrors.length} error(s) occurred)`;
+        }
         console.log(`✅ ${message}`);
         
         return { 

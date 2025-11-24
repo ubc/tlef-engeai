@@ -2410,6 +2410,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
     /**
      * COMMENTED OUT: Nuclear clear - delete entire RAG collection (nuclear option)
+     * Nuclear clear functionality is now included in the Reset Dummy Courses feature
      */
     /*
     async function nuclearClearDocuments(): Promise<void> {
