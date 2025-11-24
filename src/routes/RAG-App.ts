@@ -972,6 +972,7 @@ router.delete('/wipe-all', asyncHandlerWithAuth(async (req: Request, res: Respon
 }));
 
 // COMMENTED OUT: DELETE /api/rag/nuclear-clear - Nuclear clear entire RAG collection (REQUIRES AUTH)
+// Nuclear clear functionality is now included in the Reset Dummy Courses feature
 /*
 router.delete('/nuclear-clear', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {

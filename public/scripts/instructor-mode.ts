@@ -931,8 +931,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log('[INSTRUCTOR-MODE] ✅ Course Information button listener attached');
         }
 
-        // COMMENTED OUT: Reset Dummy Courses button listener
-        /*
+        // Reset Dummy Courses button listener
         const resetDummyBtn = document.getElementById('instructor-reset-dummy-btn');
         if (resetDummyBtn) {
             resetDummyBtn.addEventListener('click', async () => {
@@ -997,7 +996,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             console.log('[INSTRUCTOR-MODE] ✅ Reset Dummy Courses button listener attached');
         }
-        */
     };
 
     // --- STATE RESTORATION ---
