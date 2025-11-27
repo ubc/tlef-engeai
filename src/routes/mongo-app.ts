@@ -1909,4 +1909,80 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
     }
 }));
 
+/**
+ * GET /api/courses/export/database - Export entire database hierarchically
+ * Downloads all collections and their documents in a hierarchical text format
+ */
+router.get('/export/database', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        
+        // Get all collection names from the database
+        const collections = await mongoDB.db.listCollections().toArray();
+        
+        // Build hierarchical database export
+        let exportText = '';
+        
+        // Sort collections alphabetically for consistent output
+        const sortedCollections = collections
+            .map(c => c.name)
+            .sort();
+        
+        for (const collectionName of sortedCollections) {
+            // Add collection name as header
+            exportText += `${collectionName}\n`;
+            
+            try {
+                // Get all documents from the collection
+                const collection = mongoDB.db.collection(collectionName);
+                const documents = await collection.find({}).toArray();
+                
+                if (documents.length === 0) {
+                    // Empty collection - just add blank line
+                    exportText += '\n';
+                } else {
+                    // Format each document
+                    for (let i = 0; i < documents.length; i++) {
+                        const doc = documents[i];
+                        
+                        // Convert MongoDB document to JSON string with proper formatting
+                        const docJson = JSON.stringify(doc, null, 2);
+                        
+                        // Add document with indentation
+                        exportText += `${docJson}\n`;
+                        
+                        // Add separator between documents (except last one)
+                        if (i < documents.length - 1) {
+                            exportText += '\n';
+                        }
+                    }
+                }
+                
+                // Add spacing between collections
+                exportText += '\n\n';
+                
+            } catch (collectionError) {
+                console.error(`Error reading collection ${collectionName}:`, collectionError);
+                exportText += `[Error reading collection: ${collectionError instanceof Error ? collectionError.message : 'Unknown error'}]\n\n\n`;
+            }
+        }
+        
+        // Set response headers for file download
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        const filename = `database-export-${timestamp}.txt`;
+        
+        res.setHeader('Content-Type', 'text/plain');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(exportText);
+        
+    } catch (error) {
+        console.error('Error exporting database:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to export database',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
 

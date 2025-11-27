@@ -978,6 +978,74 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             console.log('[INSTRUCTOR-MODE] ✅ Reset Dummy Courses button listener attached');
         }
+
+        // Download Database button listener
+        const downloadDbBtn = document.getElementById('instructor-download-db-btn');
+        if (downloadDbBtn) {
+            downloadDbBtn.addEventListener('click', async () => {
+                console.log('[INSTRUCTOR-MODE] 📥 Download Database button clicked');
+                
+                try {
+                    // Disable button during request
+                    (downloadDbBtn as HTMLButtonElement).disabled = true;
+                    const originalText = downloadDbBtn.querySelector('span')?.textContent;
+                    if (downloadDbBtn.querySelector('span')) {
+                        downloadDbBtn.querySelector('span')!.textContent = 'Downloading...';
+                    }
+                    
+                    // Call the API endpoint to download database
+                    const response = await fetch('/api/courses/export/database', {
+                        method: 'GET',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({ error: 'Failed to download database' }));
+                        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                    }
+                    
+                    // Get the text content from response
+                    const textContent = await response.text();
+                    
+                    // Get filename from Content-Disposition header or use default
+                    const contentDisposition = response.headers.get('Content-Disposition');
+                    let filename = 'database-export.txt';
+                    if (contentDisposition) {
+                        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+                        if (filenameMatch) {
+                            filename = filenameMatch[1];
+                        }
+                    }
+                    
+                    // Create a blob and download it
+                    const blob = new Blob([textContent], { type: 'text/plain' });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                    
+                    console.log('[INSTRUCTOR-MODE] ✅ Database downloaded successfully');
+                    
+                } catch (error) {
+                    console.error('[INSTRUCTOR-MODE] 🚨 Error downloading database:', error);
+                    alert(`❌ Failed to download database: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                } finally {
+                    // Re-enable button
+                    (downloadDbBtn as HTMLButtonElement).disabled = false;
+                    if (downloadDbBtn.querySelector('span')) {
+                        downloadDbBtn.querySelector('span')!.textContent = 'Download Database';
+                    }
+                }
+            });
+            console.log('[INSTRUCTOR-MODE] ✅ Download Database button listener attached');
+        }
     };
 
     // --- STATE RESTORATION ---
