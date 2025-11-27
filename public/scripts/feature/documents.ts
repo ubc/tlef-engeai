@@ -849,7 +849,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @param material - The material object from the upload modal
      * @returns Promise<void>
      */
-    async function handleUploadMaterial(material: any): Promise<void> {
+    async function handleUploadMaterial(material: any): Promise<{ success: boolean; chunksGenerated?: number } | void> {
         console.log('🔍 HANDLE UPLOAD MATERIAL CALLED - FUNCTION STARTED');
         console.log('  - material:', material);
         console.log('  - material.topicOrWeekId:', material.topicOrWeekId);
@@ -863,7 +863,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const topicOrWeekId = material.topicOrWeekId || material.divisionId;
             if (!topicOrWeekId) {
                 console.error('❌ Topic/Week ID not found in material:', material);
-                alert('Topic/Week ID is missing. Please try again.');
+                await showSimpleErrorModal('Topic/Week ID is missing. Please try again.', 'Upload Error');
                 return;
             }
             
@@ -872,7 +872,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             
             if (!instance_topicOrWeek) {
                 console.error('❌ Topic/Week instance not found for topicOrWeekId:', topicOrWeekId);
-                alert('Topic/Week instance not found. Please try again.');
+                await showSimpleErrorModal('Topic/Week instance not found. Please try again.', 'Upload Error');
                 return;
             }
             
@@ -881,7 +881,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             
             if (!contentItem) {
                 console.error('❌ Content item not found for itemId:', material.itemId, 'in topic/week:', instance_topicOrWeek.title);
-                alert('Content item not found. Please try again.');
+                await showSimpleErrorModal('Content item not found. Please try again.', 'Upload Error');
                 return;
             }
             if (!contentItem.additionalMaterials) contentItem.additionalMaterials = [];
@@ -919,13 +919,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             
             if (!uploadResult.success) {
                 console.error(`Upload failed: ${uploadResult.error}`);
-                alert(`Failed to upload content: ${uploadResult.error}`);
+                await showSimpleErrorModal(`Failed to upload content: ${uploadResult.error}`, 'Upload Error');
                 return;
             }
 
             if (!uploadResult.document) {
                 console.error('Upload succeeded but no document returned');
-                alert('Upload succeeded but no document was returned. Please try again.');
+                await showSimpleErrorModal('Upload succeeded but no document was returned. Please try again.', 'Upload Error');
                 return;
             }
 
@@ -937,11 +937,15 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
             console.log('Material uploaded successfully:', uploadResult.document);
             console.log(`Generated ${uploadResult.chunksGenerated} chunks in Qdrant`);
-            alert(`Document uploaded successfully! Generated ${uploadResult.chunksGenerated} searchable chunks.`);
+            
+            // Return success info instead of showing modal here
+            // The upload modal handler will show the success modal after closing the upload modal
+            return { success: true, chunksGenerated: uploadResult.chunksGenerated };
             
         } catch (error) {
             console.error('Error in upload process:', error);
-            alert('An error occurred during upload. Please try again.');
+            await showSimpleErrorModal('An error occurred during upload. Please try again.', 'Upload Error');
+            throw error; // Re-throw so modal handler can catch it
         }
     }
 
@@ -1073,7 +1077,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // get the learning objective from the input field
         const learningObjective = objectiveInput.value.trim();
         if (!learningObjective) {
-            alert('Please fill in the learning objective.');
+            await showSimpleErrorModal('Please fill in the learning objective.', 'Validation Error');
             return;
         }
 
@@ -1265,7 +1269,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const learningObjective = (document.getElementById(`edit-title-${topicOrWeekId}-${contentId}-${index}`) as HTMLInputElement).value.trim();
 
         if (!learningObjective) {
-            alert('Learning objective cannot be empty.');
+            await showSimpleErrorModal('Learning objective cannot be empty.', 'Validation Error');
             return;
         }
 
@@ -2491,11 +2495,11 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             renderDocumentsPage();
 
             // Show success message
-            alert(`💥 Nuclear clear completed! Entire RAG collection deleted. Removed ${result_data.data?.deletedCount || 0} documents from the entire system.`);
+            await showSuccessModal(`💥 Nuclear clear completed! Entire RAG collection deleted. Removed ${result_data.data?.deletedCount || 0} documents from the entire system.`, 'Nuclear Clear Success');
 
         } catch (error) {
             console.error('Error nuclear clearing RAG collection:', error);
-            alert(`Failed to nuclear clear RAG collection: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            await showSimpleErrorModal(`Failed to nuclear clear RAG collection: ${error instanceof Error ? error.message : 'Unknown error'}`, 'Nuclear Clear Error');
         }
     }
     */
@@ -2508,7 +2512,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     async function wipeMongoDBCollections(): Promise<void> {
         try {
             if (!currentClass) {
-                alert('No course selected');
+                await showSimpleErrorModal('No course selected', 'Selection Error');
                 return;
             }
 
@@ -2582,11 +2586,11 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             if (errors.length > 0) {
                 message += `\n\nErrors: ${errors.join(', ')}`;
             }
-            alert(message);
+            await showSuccessModal(message, 'Database Wipe Success');
 
         } catch (error) {
             console.error('Error wiping MongoDB collections:', error);
-            alert(`Failed to wipe MongoDB collections: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            await showSimpleErrorModal(`Failed to wipe MongoDB collections: ${error instanceof Error ? error.message : 'Unknown error'}`, 'Database Error');
         }
     }
     */
@@ -2679,11 +2683,11 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             renderDocumentsPage();
 
             // Show success message
-            alert(`Successfully wiped all documents from RAG database for course "${currentClass.courseName}"! Deleted ${result_data.data?.deletedCount || 0} documents.`);
+            await showSuccessModal(`Successfully wiped all documents from RAG database for course "${currentClass.courseName}"! Deleted ${result_data.data?.deletedCount || 0} documents.`, 'Database Wipe Success');
 
         } catch (error) {
             console.error('Error deleting all documents:', error);
-            alert(`Failed to delete documents: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            await showSimpleErrorModal(`Failed to delete documents: ${error instanceof Error ? error.message : 'Unknown error'}`, 'Delete Error');
         }
     }
 }

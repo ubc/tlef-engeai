@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import {asyncHandler} from '../middleware/asyncHandler';
-import { getDummyCourses, resetDummyCourses } from '../debug/dummy-courses';
+import { getDummyCourses, resetDummyCourses, registerCurrentUserToCHBE241 } from '../debug/dummy-courses';
 
 const router = Router();
 
@@ -33,17 +33,39 @@ router.post('/reset', asyncHandler(async (req: Request, res: Response) => {
         const result = await resetDummyCourses();
         
         if (result.success) {
+            // After successful reset, attempt to register current user to CHBE 241
+            let userRegistrationMsg = '';
+            const globalUser = (req.session as any).globalUser;
+            
+            if (globalUser) {
+                try {
+                    const registrationResult = await registerCurrentUserToCHBE241(globalUser);
+                    if (registrationResult.success) {
+                        userRegistrationMsg = ` ${registrationResult.message || 'User registered to CHBE 241'}`;
+                    } else {
+                        console.warn(`[DEBUG-RESET] ⚠️ User registration failed: ${registrationResult.message}`);
+                        userRegistrationMsg = ` (User registration skipped: ${registrationResult.message})`;
+                    }
+                } catch (registrationError) {
+                    console.error('[DEBUG-RESET] ⚠️ Error during user registration:', registrationError);
+                    userRegistrationMsg = ' (User registration failed - see server logs)';
+                    // Continue - don't fail the reset operation
+                }
+            } else {
+                console.log('[DEBUG-RESET] ℹ️ No user in session, skipping user registration');
+            }
+            
             if (result.skipped) {
                 res.status(200).json({
                     success: true,
                     skipped: true,
-                    message: result.message || 'Reset skipped - collection already exists with data'
+                    message: (result.message || 'Reset skipped - collection already exists with data') + userRegistrationMsg
                 });
             } else {
                 res.status(200).json({
                     success: true,
                     skipped: false,
-                    message: result.message || 'Dummy courses reset successfully'
+                    message: (result.message || 'Dummy courses reset successfully') + userRegistrationMsg
                 });
             }
         } else {

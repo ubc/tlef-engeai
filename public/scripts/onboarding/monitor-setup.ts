@@ -242,14 +242,20 @@ function setupNavigation(state: MonitorSetupState): void {
     const nextBtn = document.getElementById('nextBtn');
     const backBtn = document.getElementById('backBtn');
 
-    nextBtn?.addEventListener('click', () => {
-        if (state.currentStep < state.totalSteps) {
-            showStep(state, state.currentStep + 1);
-        } else if (state.currentStep === state.totalSteps) {
-            // Complete the monitor setup onboarding
-            completeMonitorSetup();
-        }
-    });
+    if (nextBtn) {
+        nextBtn.addEventListener('click', async () => {
+            console.log('[MONITOR-SETUP] Next button clicked, currentStep:', state.currentStep, 'totalSteps:', state.totalSteps);
+            if (state.currentStep < state.totalSteps) {
+                showStep(state, state.currentStep + 1);
+            } else if (state.currentStep === state.totalSteps) {
+                // Complete the monitor setup onboarding
+                console.log('[MONITOR-SETUP] On final step, calling completeMonitorSetup');
+                await completeMonitorSetup();
+            }
+        });
+    } else {
+        console.error('[MONITOR-SETUP] ❌ Next button not found!');
+    }
 
     backBtn?.addEventListener('click', () => {
         if (state.currentStep > 1) {
@@ -340,8 +346,8 @@ function updateStepIndicators(currentStep: number): void {
  * @param currentStep - The current step number
  */
 function updateNavigationButtons(state: MonitorSetupState, currentStep: number): void {
-    const nextBtn = document.getElementById('nextBtn');
-    const backBtn = document.getElementById('backBtn');
+    const nextBtn = document.getElementById('nextBtn') as HTMLButtonElement;
+    const backBtn = document.getElementById('backBtn') as HTMLButtonElement;
 
     if (backBtn) {
         backBtn.style.display = currentStep > 1 ? 'flex' : 'none';
@@ -349,11 +355,14 @@ function updateNavigationButtons(state: MonitorSetupState, currentStep: number):
 
     if (nextBtn) {
         if (currentStep === state.totalSteps) {
-            nextBtn.textContent = 'Complete';
-            nextBtn.innerHTML = 'Complete <i data-feather="check"></i>';
+            nextBtn.textContent = 'Complete Setup';
+            nextBtn.innerHTML = 'Complete Setup <i data-feather="check"></i>';
+            // Ensure button is enabled on final step
+            nextBtn.disabled = false;
         } else {
             nextBtn.textContent = 'Next';
             nextBtn.innerHTML = 'Next <i data-feather="chevron-right"></i>';
+            nextBtn.disabled = false;
         }
     }
 }

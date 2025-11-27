@@ -89,11 +89,24 @@ const validateCourse = (req: Request, res: Response, next: Function) => {
         });
     }
 
-    if (!course.date || !(course.date instanceof Date)) {
+    // Accept Date object or date string (from JSON)
+    if (!course.date) {
         return res.status(400).json({
             success: false,
-            error: 'Date is required and must be a Date object'
+            error: 'Date is required'
         });
+    }
+    
+    // Convert string to Date if needed (JSON.stringify converts Date to string)
+    if (!(course.date instanceof Date)) {
+        if (typeof course.date === 'string') {
+            course.date = new Date(course.date);
+        } else {
+            return res.status(400).json({
+                success: false,
+                error: 'Date must be a Date object or valid date string'
+            });
+        }
     }
 
     // Validate new fields
@@ -180,12 +193,26 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
         });
     }
 
-    if (!course.date || !(course.date instanceof Date)) {
-        console.log("🔴 Date is required and must be a Date object");
+    // Accept Date object or date string (from JSON)
+    if (!course.date) {
+        console.log("🔴 Date is required");
         return res.status(400).json({
             success: false,
-            error: 'Date is required and must be a Date object'
+            error: 'Date is required'
         });
+    }
+    
+    // Convert string to Date if needed (JSON.stringify converts Date to string)
+    if (!(course.date instanceof Date)) {
+        if (typeof course.date === 'string') {
+            course.date = new Date(course.date);
+        } else {
+            console.log("🔴 Date must be a Date object or valid date string");
+            return res.status(400).json({
+                success: false,
+                error: 'Date must be a Date object or valid date string'
+            });
+        }
     }
 
     next();

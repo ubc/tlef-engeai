@@ -212,7 +212,12 @@ function setupNavigationListeners(state: DocumentSetupState, instructorCourse: a
     }
 
     if (nextBtn) {
-        nextBtn.addEventListener('click', () => handleNextNavigation(state, instructorCourse));
+        nextBtn.addEventListener('click', async () => {
+            console.log('[DOCUMENT-SETUP] Next button clicked, currentStep:', state.currentStep, 'totalSteps:', state.totalSteps);
+            await handleNextNavigation(state, instructorCourse);
+        });
+    } else {
+        console.error('[DOCUMENT-SETUP] ❌ Next button not found!');
     }
 }
 
@@ -334,8 +339,14 @@ function handleBackNavigation(state: DocumentSetupState): void {
  * @param instructorCourse - The instructor course object
  */
 async function handleNextNavigation(state: DocumentSetupState, instructorCourse: activeCourse): Promise<void> {
+    console.log('[DOCUMENT-SETUP] handleNextNavigation called, currentStep:', state.currentStep, 'totalSteps:', state.totalSteps);
+    
     // Validate current step before proceeding
-    if (!(await validateCurrentStep(state))) {
+    const isValid = await validateCurrentStep(state);
+    console.log('[DOCUMENT-SETUP] Validation result:', isValid);
+    
+    if (!isValid) {
+        console.log('[DOCUMENT-SETUP] Validation failed, stopping navigation');
         return;
     }
 
@@ -349,6 +360,7 @@ async function handleNextNavigation(state: DocumentSetupState, instructorCourse:
         console.log(`➡️ Navigated to step ${state.currentStep}`);
     } else {
         // Final completion
+        console.log('[DOCUMENT-SETUP] On final step, calling handleFinalCompletion');
         await handleFinalCompletion(state, instructorCourse);
     }
 }
@@ -435,8 +447,8 @@ async function handleFinalCompletion(state: DocumentSetupState, instructorCourse
         // Mark content setup as complete
         instructorCourse.contentSetup = true;
         
-        // Remove onboarding-active class to show instructor sidebar
-        document.body.classList.remove('onboarding-active');
+        // Keep onboarding-active class - sidebar should remain hidden until ALL onboarding is complete
+        // The class will be removed by instructor-mode.ts when all setup steps are done
         
         // Dispatch completion event
         window.dispatchEvent(new CustomEvent('documentSetupComplete'));
@@ -546,8 +558,11 @@ function updateNavigationButtons(state: DocumentSetupState): void {
     if (nextBtn) {
         if (state.currentStep === state.totalSteps) {
             nextBtn.textContent = 'Complete Setup';
+            // Ensure button is enabled on final step
+            nextBtn.disabled = false;
         } else {
             nextBtn.textContent = 'Next';
+            nextBtn.disabled = false;
         }
     }
 }
@@ -814,8 +829,9 @@ async function openDemoUploadModal() {
  * Handles demo upload from the modal
  * 
  * @param material - The material object from the upload modal
+ * @returns Promise that resolves when the demo file is added
  */
-function handleDemoUpload(material: any) {
+async function handleDemoUpload(material: any): Promise<void> {
     const demoFile: DemoFile = {
         id: `demo-file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         name: material.fileName || material.name || 'Text Content',

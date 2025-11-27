@@ -170,7 +170,12 @@ function setupNavigationListeners(state: FlagSetupState, instructorCourse: activ
     }
 
     if (nextBtn) {
-        nextBtn.addEventListener('click', () => handleNextNavigation(state, instructorCourse));
+        nextBtn.addEventListener('click', async () => {
+            console.log('[FLAG-SETUP] Next button clicked, currentStep:', state.currentStep, 'totalSteps:', state.totalSteps);
+            await handleNextNavigation(state, instructorCourse);
+        });
+    } else {
+        console.error('[FLAG-SETUP] ❌ Next button not found!');
     }
 }
 
@@ -573,8 +578,14 @@ function handleBackNavigation(state: FlagSetupState): void {
  * @param instructorCourse - The instructor course object
  */
 async function handleNextNavigation(state: FlagSetupState, instructorCourse: activeCourse): Promise<void> {
+    console.log('[FLAG-SETUP] handleNextNavigation called, currentStep:', state.currentStep, 'totalSteps:', state.totalSteps);
+    
     // Validate current step before proceeding
-    if (!(await validateCurrentStep(state))) {
+    const isValid = await validateCurrentStep(state);
+    console.log('[FLAG-SETUP] Validation result:', isValid);
+    
+    if (!isValid) {
+        console.log('[FLAG-SETUP] Validation failed, stopping navigation');
         return;
     }
 
@@ -588,6 +599,7 @@ async function handleNextNavigation(state: FlagSetupState, instructorCourse: act
         console.log(`➡️ Navigated to step ${state.currentStep}`);
     } else {
         // Final completion
+        console.log('[FLAG-SETUP] On final step, calling handleFinalCompletion');
         await handleFinalCompletion(state, instructorCourse);
     }
 }
@@ -749,22 +761,28 @@ function updateNavigationButtons(state: FlagSetupState): void {
     if (nextBtn) {
         if (state.currentStep === state.totalSteps) {
             nextBtn.textContent = 'Complete Setup';
+            // Ensure button is enabled on final step
+            nextBtn.disabled = false;
         } else {
             nextBtn.textContent = 'Next';
-        }
-        
-        // Check if next step requires completion of current step
-        const nextStepElement = document.getElementById(`content-step-${state.currentStep + 1}`);
-        if (nextStepElement) {
-            const requiresCompletion = nextStepElement.getAttribute('data-requires-completion');
-            if (requiresCompletion) {
-                const requiredStep = parseInt(requiresCompletion);
-                if (!state.completedSteps.has(requiredStep)) {
-                    nextBtn.disabled = true;
-                    nextBtn.textContent = 'Complete Previous Step First';
+            
+            // Check if next step requires completion of current step
+            const nextStepElement = document.getElementById(`content-step-${state.currentStep + 1}`);
+            if (nextStepElement) {
+                const requiresCompletion = nextStepElement.getAttribute('data-requires-completion');
+                if (requiresCompletion) {
+                    const requiredStep = parseInt(requiresCompletion);
+                    if (!state.completedSteps.has(requiredStep)) {
+                        nextBtn.disabled = true;
+                        nextBtn.textContent = 'Complete Previous Step First';
+                    } else {
+                        nextBtn.disabled = false;
+                    }
                 } else {
                     nextBtn.disabled = false;
                 }
+            } else {
+                nextBtn.disabled = false;
             }
         }
     }

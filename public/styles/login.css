@@ -1,5 +1,10 @@
 /* styles/login.css */
 
+/* Red background for main login page */
+body.main-login-page {
+    background-color: var(--color-chbe-green);
+}
+
 .login-container {
     display: flex;
     justify-content: center;

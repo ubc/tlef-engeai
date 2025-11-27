@@ -1399,6 +1399,229 @@
     font-size: 1.1rem;
 }
 
+/* ===========================================
+   REPORT CARD STYLES (Flag Setup Onboarding)
+   Inspired by flag-message.css
+   =========================================== */
+
+.reports-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    width: 100%;
+}
+
+.report-card {
+    display: flex;
+    flex-direction: column;
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    cursor: pointer;
+}
+
+.report-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-color: var(--color-chbe-green);
+}
+
+.report-card.unresolved {
+    border-left: 4px solid #ffc107;
+}
+
+.report-card.resolved {
+    border-left: 4px solid var(--color-chbe-green);
+}
+
+/* Report Header Row */
+.report-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: var(--background-2);
+    border-bottom: 1px solid var(--border-color);
+    gap: 1rem;
+}
+
+.report-time {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.report-type {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    flex: 1;
+    text-align: right;
+}
+
+/* Chat Content (Flag Message) */
+.chat-content {
+    flex: 1 1 auto;
+    overflow: auto;
+    color: var(--text-primary);
+    background: var(--background-2);
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin: 0.75rem 1rem;
+    line-height: 1.5;
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Report Footer */
+.report-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: var(--chat-bg);
+    border-top: 1px solid var(--border-color);
+    gap: 1rem;
+}
+
+.student-name {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.status-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeaa7;
+}
+
+.status-badge.resolved {
+    background-color: rgba(92, 138, 58, 0.1);
+    color: var(--color-chbe-green);
+    border: 1px solid rgba(92, 138, 58, 0.3);
+}
+
+.expand-arrow {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.report-card.active .expand-arrow {
+    transform: rotate(180deg);
+}
+
+/* Expanded Content */
+.expanded-content {
+    border-top: 1px solid var(--border-color);
+    background: var(--chat-bg);
+    animation: slideDown 0.3s ease;
+    padding: 1rem;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+    }
+    to {
+        opacity: 1;
+        max-height: 1000px;
+    }
+}
+
+/* Response Section (inspired by flag-message.css flag-bottom) */
+.response-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 1rem;
+}
+
+.response-header {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.response-textarea {
+    width: 100%;
+    min-height: 100px;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    resize: vertical;
+    background: var(--chat-bg);
+    color: var(--text-primary);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.response-textarea:focus {
+    outline: none;
+    border-color: var(--color-chbe-green);
+    box-shadow: 0 0 0 3px rgba(92, 138, 58, 0.1);
+}
+
+.response-textarea::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+/* Response Actions (inspired by flag-message.css flag-actions) */
+.response-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.resolve-button {
+    padding: 0.6rem 1.25rem;
+    border-radius: 8px;
+    border: 1px solid var(--color-chbe-green);
+    background: var(--color-chbe-green);
+    color: white;
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.resolve-button:hover {
+    background: #4a6b2f;
+    border-color: #4a6b2f;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(92, 138, 58, 0.3);
+}
+
+.resolve-button:active {
+    transform: translateY(0);
+}
+
+.resolve-button:disabled {
+    background: #adb5bd;
+    border-color: #adb5bd;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
 /* High contrast mode support */
 @media (prefers-contrast: high) {
     .step-circle.completed {
