@@ -49,13 +49,13 @@ export class MemoryAgent {
             
             if (!entry) {
                 console.log(`[MEMORY-AGENT] ⚠️ No memory agent entry found for userId: ${userId}`);
-                return [];
+                return ['---THE STRUGGLE WORD IS NOT PROPERLY ATTACHED TO THE USER---'];
             }
             
             return entry.struggleTopics || [];
         } catch (error) {
             console.error(`[MEMORY-AGENT] 🚨 Error getting struggle words:`, error);
-            return [];
+            return ['---THE STRUGGLE WORD IS NOT PROPERLY ATTACHED (ERROR ENCOUNTERED) TO THE USER---'];
         }
     }
 

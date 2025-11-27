@@ -19,7 +19,7 @@ html {
 body {
     margin: 0;
     font-family: var(--font-family);
-    background-color:blue;
+    background-color:yellow;
     color: #212529;
     line-height: 1.6;
     overflow-x: hidden; /* Prevent horizontal scroll on body */
