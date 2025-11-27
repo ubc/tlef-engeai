@@ -506,14 +506,84 @@ export class ChatApp {
             throw new Error('Conversation not found');
         }
 
-        // Retrieve relevant documents using RAG with limited context
+        // ====================================================================
+        // STEP 1: MEMORY AGENT ANALYSIS (runs BEFORE adding current message)
+        // Analyzes the PREVIOUS complete exchange from conversation history
+        // ====================================================================
+        try {
+            // Read conversation history BEFORE modifying anything (no race conditions)
+            const historyBeforeAdding = conversation.getHistory();
+            
+            // Count messages excluding system message
+            const nonSystemMessagesBefore = historyBeforeAdding.filter(msg => msg.role !== 'system');
+            const messageCountBeforeAdding = nonSystemMessagesBefore.length;
+
+            const MEMORY_AGENT_MIN_MESSAGES_THRESHOLD = 6; // change this later, by retrieving the data from .env file
+            
+            // Only analyze if conversation has more than threshold messages (previous exchanges)
+            if (messageCountBeforeAdding > MEMORY_AGENT_MIN_MESSAGES_THRESHOLD) {
+                // Extract last 3 messages from PREVIOUS complete exchange:
+                // - Previous user message
+                // - Previous LLM response  
+                // - User message before that
+                const lastMessages = nonSystemMessagesBefore.slice(-3);
+                
+                // Format the last 3 messages for analysis
+                // Pattern: User prompt -> LLM response -> User prompt
+                // Remove RAG document content from user messages to focus on actual conversation
+                let formattedMessages = '';
+                lastMessages.forEach((msg) => {
+                    const role = msg.role === 'user' ? 'Student' : 'AI Tutor';
+                    let content = msg.content;
+                    
+                    // Remove RAG document content from user messages
+                    // RAG format: <course_materials>...</course_materials>\n\n---\n\n[bridge prompt]Student's question: [actual question]
+                    if (role === 'Student' && content.includes('<course_materials>')) {
+                        // Remove <course_materials> tags and all content inside them
+                        content = content.replace(/<course_materials>[\s\S]*?<\/course_materials>/g, '');
+                        
+                        // Remove the separator and bridge prompt
+                        content = content.replace(/\n\n---\n\n/g, '');
+                        content = content.replace(/Based on the course materials[\s\S]*?Student's question:/g, '');
+                        
+                        // Extract only the actual user question (after "Student's question:" if it still exists)
+                        const questionMarker = 'Student\'s question:';
+                        const questionIndex = content.indexOf(questionMarker);
+                        if (questionIndex !== -1) {
+                            content = content.substring(questionIndex + questionMarker.length).trim();
+                        }
+                        
+                        // Clean up any remaining whitespace
+                        content = content.trim();
+                    }
+                    
+                    formattedMessages += `${role}: ${content}\n\n`;
+                });
+                
+                // Run memory agent analysis on PREVIOUS exchange
+                await memoryAgent.analyzeAndUpdateStruggleWords(
+                    userId,
+                    courseName,
+                    formattedMessages.trim()
+                );
+                console.log(`🧠 Memory agent analysis completed for chat ${chatId} (analyzed last 3 of ${messageCountBeforeAdding} messages from previous exchange)`);
+            } else {
+                console.log(`[CHAT-APP] ℹ️ Memory agent skipped: conversation has ${messageCountBeforeAdding} messages (requires >${MEMORY_AGENT_MIN_MESSAGES_THRESHOLD})`);
+            }
+        } catch (error) {
+            console.error('❌ Error in memory agent analysis:', error);
+            // Don't throw - memory agent failure shouldn't break the chat flow
+        }
+
+        // ====================================================================
+        // STEP 2: RAG DOCUMENT RETRIEVAL (for CURRENT user message)
+        // ====================================================================
         let ragContext = '';
         let documentsLength = 0;
         let retrievedDocumentTexts: string[] = [];  // NEW: Store document texts
 
-
         try {
-            const documents = await this.retrieveRelevantDocuments(message, courseName, 3, 0.4); // Limit to 2 docs, higher threshold
+            const documents = await this.retrieveRelevantDocuments(message, courseName, 3, 0.4); // Limit to 3 docs, threshold 0.4
             ragContext = this.formatDocumentsForContext(documents);
             documentsLength = documents.length;
             
@@ -535,7 +605,9 @@ export class ChatApp {
             // Continue without RAG context if retrieval fails
         }
 
-        //construct the user full prompt using abstracted RAG formatting
+        // ====================================================================
+        // STEP 3: FORMAT USER PROMPT WITH RAG CONTEXT
+        // ====================================================================
         let userFullPrompt = '';
         if (documentsLength > 0) {  
             userFullPrompt = formatRAGPrompt(ragContext, message);
@@ -544,7 +616,9 @@ export class ChatApp {
             userFullPrompt = message;
         }
 
-        //send whole user prompt to the LLM
+        // ====================================================================
+        // STEP 4: ADD USER MESSAGE TO CONVERSATION
+        // ====================================================================
         conversation.addMessage('user', userFullPrompt);
 
         // Calculate token statistics for file logging
@@ -597,82 +671,11 @@ export class ChatApp {
             console.log(`Full response: "${assistantResponse}"`);
         }
 
-        // Add complete assistant response to conversation and history
+        // ====================================================================
+        // STEP 5: ADD ASSISTANT MESSAGE TO CONVERSATION AND HISTORY
+        // ====================================================================
         // Note: userId parameter is string but we'll parse it - should be numeric from session
         const assistantMessage = this.addAssistantMessage(chatId, assistantResponse, userId, courseName, retrievedDocumentTexts);
-        
-        // Analyze conversation and update struggle words using memory agent
-        // Only runs after conversation has more than 5 messages (excluding system)
-        // Analyzes only the last 3 messages: User's last prompt, LLM latest response, User's previous prompt
-        try {
-            // Get conversation to extract system prompt and check message count
-            const conversation = this.conversations.get(chatId);
-            if (!conversation) {
-                console.warn(`[CHAT-APP] ⚠️ Conversation not found for memory agent analysis, chatId: ${chatId}`);
-            } else {
-                // Get conversation history
-                const history = conversation.getHistory();
-
-                // Count messages excluding system message
-                const nonSystemMessages = history.filter(msg => msg.role !== 'system');
-                const messageCount = nonSystemMessages.length;
-
-                const MEMORY_AGENT_MIN_MESSAGES_THRESHOLD = 6; // change this later, by retrieving the data from .env file
-                
-                // Only analyze if conversation has more than 5 messages
-                if (messageCount <= MEMORY_AGENT_MIN_MESSAGES_THRESHOLD) {
-                    console.log(`[CHAT-APP] ℹ️ Memory agent skipped: conversation has ${messageCount} messages (requires >${MEMORY_AGENT_MIN_MESSAGES_THRESHOLD})`);
-                } else {
-                    // Extract last 3 messages: User's last prompt, LLM latest response, User's previous prompt
-                    // Get the last 3 non-system messages in reverse order (most recent first)
-                    const lastMessages = nonSystemMessages.slice(-3);
-                    
-                    // Format the last 3 messages for analysis
-                    // Pattern: User prompt -> LLM response -> User prompt (or similar)
-                    // Remove RAG document content from user messages to focus on actual conversation
-                    let formattedMessages = '';
-                    lastMessages.forEach((msg, index) => {
-                        const role = msg.role === 'user' ? 'Student' : 'AI Tutor';
-                        let content = msg.content;
-                        
-                        // Remove RAG document content from user messages
-                        // RAG format: <course_materials>...</course_materials>\n\n---\n\n[bridge prompt]Student's question: [actual question]
-                        if (role === 'Student' && content.includes('<course_materials>')) {
-                            // Remove <course_materials> tags and all content inside them
-                            content = content.replace(/<course_materials>[\s\S]*?<\/course_materials>/g, '');
-                            
-                            // Remove the separator and bridge prompt
-                            content = content.replace(/\n\n---\n\n/g, '');
-                            content = content.replace(/Based on the course materials[\s\S]*?Student's question:/g, '');
-                            
-                            // Extract only the actual user question (after "Student's question:" if it still exists)
-                            const questionMarker = 'Student\'s question:';
-                            const questionIndex = content.indexOf(questionMarker);
-                            if (questionIndex !== -1) {
-                                content = content.substring(questionIndex + questionMarker.length).trim();
-                            }
-                            
-                            // Clean up any remaining whitespace
-                            content = content.trim();
-                        }
-                        
-                        formattedMessages += `${role}: ${content}\n\n`;
-                    });
-                
-                    // Use parsed userId (should be numeric from session now)
-                    // Memory agent will use its own internal system prompt
-                    await memoryAgent.analyzeAndUpdateStruggleWords(
-                        userId,
-                        courseName,
-                        formattedMessages.trim()
-                    );
-                    console.log(`🧠 Memory agent analysis completed for chat ${chatId} (analyzed last 3 of ${messageCount} messages)`);
-                }
-            }
-        } catch (error) {
-            console.error('❌ Error in memory agent analysis:', error);
-            // Don't throw - memory agent failure shouldn't break the chat flow
-        }
         
         // Check if this is the first user-AI exchange and update title if needed
         await this.updateChatTitleIfNeeded(chatId, assistantResponse, courseName, userId);

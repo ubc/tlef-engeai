@@ -314,7 +314,7 @@ export class EngEAI_MongoDB {
      * @param courseName - The name of the course
      * @returns Object with users, flags, and memoryAgent collection names
      */
-    private async getCollectionNames(courseName: string): Promise<{users: string, flags: string, memoryAgent: string}> {
+    public async getCollectionNames(courseName: string): Promise<{users: string, flags: string, memoryAgent: string}> {
         // Check cache first
         if (this.collectionNamesCache.has(courseName)) {
             return this.collectionNamesCache.get(courseName)!;
@@ -1715,77 +1715,40 @@ export class EngEAI_MongoDB {
             await memoryAgentCollection.insertOne(entry as any);
             
             console.log(`[MONGODB] ✅ Memory agent entry created successfully for userId: ${entry.userId}`);
-        } catch (error) {
+        } catch (error: any) {
+            // Handle duplicate key error (MongoDB error code 11000) - entry already exists
+            // This can happen in race conditions, so we treat it as idempotent success
+            if (error.code === 11000 || error.code === 11001) {
+                console.log(`[MONGODB] ℹ️ Memory agent entry already exists for userId: ${entry.userId} (duplicate key error - treating as success)`);
+                return; // Idempotent - entry exists, which is what we want
+            }
+            
             console.error(`[MONGODB] 🚨 Error creating memory agent entry:`, error);
             throw error;
         }
     }
 
     /**
-     * Get memory agent entry for a specific user
-     * Automatically creates entry if it doesn't exist (only if CourseUser exists - maintains invariant)
+     * Get memory agent entry for a specific user (READ-ONLY)
+     * Does NOT create entries - use initializeMemoryAgentForUser or ensureMemoryAgentEntryExists for creation
      * @param courseName - The name of the course
      * @param userId - The user ID
-     * @returns Memory agent entry if found or created, null if CourseUser doesn't exist
+     * @returns Memory agent entry if found, null if not found
      */
     public getMemoryAgentEntry = async (courseName: string, userId: string): Promise<MemoryAgentEntry | null> => {
         console.log(`[MONGODB] 🔍 Getting memory agent entry for userId: ${userId} in course: ${courseName}`);
         
         try {
             const memoryAgentCollection = await this.getMemoryAgentCollection(courseName);
-            let entry = await memoryAgentCollection.findOne({ userId: userId }) as MemoryAgentEntry | null;
+            const entry = await memoryAgentCollection.findOne({ userId: userId }) as MemoryAgentEntry | null;
             
             if (entry) {
                 console.log(`[MONGODB] ✅ Found memory agent entry for userId: ${userId}`);
-                return entry;
+            } else {
+                console.log(`[MONGODB] ⚠️ Memory agent entry not found for userId: ${userId}`);
             }
             
-            // Entry not found - attempt to create if CourseUser exists (maintains invariant)
-            console.log(`[MONGODB] ⚠️ Memory agent entry not found for userId: ${userId}, checking if CourseUser exists...`);
-            
-            try {
-                // Check if CourseUser exists first (invariant: memory agent entry requires CourseUser)
-                const userInfo = await this.findUserByUserId(courseName, userId);
-                
-                if (!userInfo) {
-                    console.log(`[MONGODB] ⚠️ CourseUser not found for userId: ${userId}, cannot create memory agent entry (invariant maintained)`);
-                    return null;
-                }
-                
-                // CourseUser exists - create memory agent entry
-                console.log(`[MONGODB] 📝 CourseUser found, creating memory agent entry for userId: ${userId}`);
-                
-                // Map affiliation to role
-                const role = this.mapAffiliationToRole(userInfo.affiliation as 'student' | 'faculty');
-                
-                // Create new entry with empty struggle words
-                const newEntry: MemoryAgentEntry = {
-                    name: userInfo.name,
-                    userId: userId,
-                    role: role,
-                    struggleTopics: [],
-                    createdAt: new Date(),
-                    updatedAt: new Date()
-                };
-                
-                await this.createMemoryAgentEntry(courseName, newEntry);
-                console.log(`[MONGODB] ✅ Created memory agent entry for userId: ${userId} with role: ${role}`);
-                
-                // Retrieve the newly created entry
-                entry = await memoryAgentCollection.findOne({ userId: userId }) as MemoryAgentEntry | null;
-                
-                if (entry) {
-                    console.log(`[MONGODB] ✅ Retrieved newly created memory agent entry for userId: ${userId}`);
-                } else {
-                    console.log(`[MONGODB] ⚠️ Failed to retrieve newly created memory agent entry for userId: ${userId}`);
-                }
-                
-                return entry;
-            } catch (createError) {
-                // If creation fails, log but don't throw - return null instead
-                console.error(`[MONGODB] ⚠️ Error creating memory agent entry for userId: ${userId}:`, createError);
-                return null;
-            }
+            return entry;
         } catch (error) {
             console.error(`[MONGODB] 🚨 Error getting memory agent entry:`, error);
             throw error;
@@ -1852,11 +1815,11 @@ export class EngEAI_MongoDB {
         console.log(`[MONGODB] 🧠 Initializing memory agent for userId: ${userId} in course: ${courseName}`);
         
         try {
-            // Check if entry already exists
+            // Check if entry already exists (idempotent check)
             const existingEntry = await this.getMemoryAgentEntry(courseName, userId);
             
             if (existingEntry) {
-                console.log(`[MONGODB] ⚠️ Memory agent entry already exists for userId: ${userId}, skipping initialization`);
+                console.log(`[MONGODB] ℹ️ Memory agent entry already exists for userId: ${userId}, skipping initialization (idempotent)`);
                 return;
             }
             
@@ -1873,9 +1836,12 @@ export class EngEAI_MongoDB {
                 updatedAt: new Date()
             };
             
+            // createMemoryAgentEntry handles duplicate key errors gracefully (idempotent)
             await this.createMemoryAgentEntry(courseName, newEntry);
             console.log(`[MONGODB] ✅ Memory agent initialized successfully for userId: ${userId} with role: ${role}`);
         } catch (error) {
+            // If error is not a duplicate key error, throw it
+            // Duplicate key errors are already handled in createMemoryAgentEntry
             console.error(`[MONGODB] 🚨 Error initializing memory agent:`, error);
             throw error;
         }

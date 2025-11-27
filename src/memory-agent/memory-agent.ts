@@ -44,11 +44,14 @@ export class MemoryAgent {
      */
     public async getStruggleWords(userId: string, courseName: string): Promise<string[]> {
         try {
+            // Ensure memory agent entry exists before retrieving (prevents race conditions)
+            await this.ensureMemoryAgentEntryExists(userId, courseName);
+            
             const mongoDB = await EngEAI_MongoDB.getInstance();
             const entry = await mongoDB.getMemoryAgentEntry(courseName, userId);
             
             if (!entry) {
-                console.log(`[MEMORY-AGENT] ⚠️ No memory agent entry found for userId: ${userId}`);
+                console.log(`[MEMORY-AGENT] ⚠️ No memory agent entry found for userId: ${userId} after ensuring existence`);
                 return ['---THE STRUGGLE WORD IS NOT PROPERLY ATTACHED TO THE USER---'];
             }
             

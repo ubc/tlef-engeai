@@ -486,22 +486,23 @@ router.delete('/:id/restart-onboarding', asyncHandlerWithAuth(async (req: Reques
         const course = existingCourse as unknown as activeCourse;
         const courseName = course.courseName; // Preserve course name
         
+        // Get collection names before deleting the course (to use stored names if available)
+        const collectionNames = await instance.getCollectionNames(courseName);
+        
         // Remove course from active-course-list
         await instance.deleteActiveCourse(course);
         
         // Drop the users collection
-        const usersCollectionName = `${courseName}_users`;
-        const usersDropResult = await instance.dropCollection(usersCollectionName);
+        const usersDropResult = await instance.dropCollection(collectionNames.users);
         if (!usersDropResult.success) {
-            console.error(`Failed to drop ${usersCollectionName}:`, usersDropResult.error);
+            console.error(`Failed to drop ${collectionNames.users}:`, usersDropResult.error);
             // Continue with other operations even if one fails
         }
         
         // Drop the flags collection
-        const flagsCollectionName = `${courseName}_flags`;
-        const flagsDropResult = await instance.dropCollection(flagsCollectionName);
+        const flagsDropResult = await instance.dropCollection(collectionNames.flags);
         if (!flagsDropResult.success) {
-            console.error(`Failed to drop ${flagsCollectionName}:`, flagsDropResult.error);
+            console.error(`Failed to drop ${collectionNames.flags}:`, flagsDropResult.error);
             // Continue with other operations even if one fails
         }
         
