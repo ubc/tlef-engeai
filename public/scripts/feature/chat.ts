@@ -167,6 +167,9 @@ export class ChatManager {
     private domMessageIds: Set<string> = new Set(); // Track which messages are in DOM
     private lastRenderedMessageCount: number = 0; // Track last rendered count for active chat
     
+    // Streaming configuration
+    private readonly STREAM_DELAY_MS = 15; // Delay between words (milliseconds) - adjust for faster/slower streaming
+    
     // ===== LOGGING HELPER METHODS =====
     
     /**
@@ -582,16 +585,31 @@ export class ChatManager {
             
             if (data.assistantMessage) {
                 //START DEBUG LOG : DEBUG-CODE(NON-STREAMING-ARTEFACT)
-                console.log('🎨 Processing non-streaming assistant message for artefacts');
+                console.log('🎨 Processing assistant message for streaming');
                 console.log('🎨 Message ID:', data.assistantMessage.id);
                 console.log('🎨 Message text length:', data.assistantMessage.text.length);
                 console.log('🎨 Contains artefact tags:', data.assistantMessage.text.includes('<Artefact>'));
                 //END DEBUG LOG : DEBUG-CODE(NON-STREAMING-ARTEFACT)
                 
-                // Add the assistant message directly - artefacts will be processed in addMessageToDOM
+                // Add the assistant message to the array (with full text for data consistency)
                 activeChat.messages.push(data.assistantMessage);
-                this.addMessageToDOM(data.assistantMessage, activeChat);
-                onComplete?.(data.assistantMessage);
+                
+                // Create message element with empty content initially for streaming effect
+                const messageWithEmptyText = {
+                    ...data.assistantMessage,
+                    text: '' // Start with empty text - will be streamed in
+                };
+                this.addMessageToDOM(messageWithEmptyText, activeChat);
+                
+                // Stream the text word-by-word to simulate ChatGPT/Claude-like effect
+                await this.streamTextToDOM(
+                    data.assistantMessage.text,
+                    data.assistantMessage.id,
+                    () => {
+                        // Streaming complete - message already has full text in array
+                        onComplete?.(data.assistantMessage);
+                    }
+                );
             }
 
             // Refresh chat data from server to get updated title
@@ -877,6 +895,82 @@ export class ChatManager {
         
         renderFeatherIcons();
         this.scrollToBottom();
+    }
+
+    /**
+     * Stream text word-by-word to simulate ChatGPT/Claude-like streaming effect
+     * @param fullText - The complete text to stream
+     * @param messageId - The ID of the message element to update
+     * @param onComplete - Optional callback when streaming completes
+     */
+    private async streamTextToDOM(fullText: string, messageId: string, onComplete?: () => void): Promise<void> {
+        const messageEl = document.getElementById(`msg-${messageId}`);
+        if (!messageEl) {
+            console.warn(`[CHAT-MANAGER] Message element not found for ID: ${messageId}`);
+            onComplete?.();
+            return;
+        }
+
+        const contentEl = messageEl.querySelector('.message-content') as HTMLElement;
+        if (!contentEl) {
+            console.warn(`[CHAT-MANAGER] Message content element not found for ID: ${messageId}`);
+            onComplete?.();
+            return;
+        }
+
+        // Split text into words while preserving spaces and punctuation
+        // This approach splits on word boundaries but keeps punctuation attached to words
+        const words: string[] = [];
+        let currentWord = '';
+        
+        for (let i = 0; i < fullText.length; i++) {
+            const char = fullText[i];
+            
+            // Handle whitespace characters
+            if (char === ' ' || char === '\n' || char === '\t') {
+                if (currentWord) {
+                    words.push(currentWord);
+                    currentWord = '';
+                }
+                words.push(char); // Preserve whitespace as separate tokens
+            } else {
+                // Add character to current word (including punctuation)
+                currentWord += char;
+            }
+        }
+        
+        // Add any remaining word
+        if (currentWord) {
+            words.push(currentWord);
+        }
+
+        // Stream words one by one
+        let accumulatedText = '';
+        
+        for (let i = 0; i < words.length; i++) {
+            accumulatedText += words[i];
+            
+            // Update DOM with accumulated text
+            // Use renderChat.render for markdown + LaTeX support
+            contentEl.innerHTML = this.renderChat.render(accumulatedText, messageId);
+            renderLatexInHtmlContent(contentEl);
+            
+            // Scroll to bottom as text streams
+            this.scrollToBottom();
+            
+            // Wait before next word (except for the last word)
+            if (i < words.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, this.STREAM_DELAY_MS));
+            }
+        }
+
+        // Final render to ensure everything is properly formatted
+        contentEl.innerHTML = this.renderChat.render(fullText, messageId);
+        renderLatexInHtmlContent(contentEl);
+        renderFeatherIcons();
+        this.scrollToBottom();
+        
+        onComplete?.();
     }
 
     /**
@@ -1548,7 +1642,7 @@ export class ChatManager {
                 } catch (error) {
                     console.error('Failed to delete chat:', error);
                     // Show user-friendly error message
-                    alert('Failed to delete chat. Please try again.');
+                    await showSimpleErrorModal('Failed to delete chat. Please try again.', 'Delete Error');
                 }
             } else {
                 console.log('🗑️ Chat deletion cancelled by user');
@@ -1671,7 +1765,7 @@ export class ChatManager {
                 } catch (error) {
                     console.error('Failed to delete chat:', error);
                     // Show user-friendly error message
-                    alert('Failed to delete chat. Please try again.');
+                    await showSimpleErrorModal('Failed to delete chat. Please try again.', 'Delete Error');
                 }
             } else {
                 console.log('🗑️ Chat deletion cancelled by user');

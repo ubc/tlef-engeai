@@ -1042,16 +1042,23 @@ async function postCourseToDatabase(courseData: activeCourse): Promise<activeCou
         console.log("🎯 Posting course data to database...");
         console.log("courseData: ", courseData);
 
+        // Ensure date is a Date object (it might be a string if loaded from sessionStorage)
+        const courseDataToPost = {
+            ...courseData,
+            date: courseData.date instanceof Date ? courseData.date : new Date(courseData.date)
+        };
+
         const response = await fetch('/api/courses', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(courseData) 
+            body: JSON.stringify(courseDataToPost) 
         });
         
         if (!response.ok) {
-        throw new Error(`Failed to post course data: ${response.statusText}`);
+            const errorData = await response.json().catch(() => ({ error: response.statusText }));
+            throw new Error(`Failed to post course data: ${errorData.error || response.statusText}`);
         }
         
         const result = await response.json();

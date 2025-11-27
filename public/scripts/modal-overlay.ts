@@ -962,7 +962,7 @@ export function closeModal(action: string = 'close'): void {
 export async function openUploadModal(
     topicOrWeekId: string, 
     itemId: string, 
-    onUpload?: (material: any) => void
+    onUpload?: (material: any) => Promise<{ success: boolean; chunksGenerated?: number } | void>
 ): Promise<void> {
     console.log('🔍 OPEN UPLOAD MODAL CALLED');
     console.log('  - topicOrWeekId:', topicOrWeekId);
@@ -1352,9 +1352,18 @@ export async function openUploadModal(
                     console.log('🔍 CLOSING LOADING MODAL - SUCCESS');
                     closeModal('success');
                     
-                    // Only close upload modal after successful upload
+                    // Close upload modal before showing success modal
                     console.log('🔍 CLOSING UPLOAD MODAL');
                     close();
+                    
+                    // Show success modal with OK button after upload modal is closed
+                    if (result && (result as any).success) {
+                        const chunksGenerated = (result as any).chunksGenerated || 0;
+                        await showSuccessModal(
+                            `Document uploaded successfully! Generated ${chunksGenerated} searchable chunks.`,
+                            'Upload Success'
+                        );
+                    }
                 } catch (error) {
                     console.error('❌ UPLOAD CALLBACK FAILED:', error);
                     console.error('❌ Error details:', error);

@@ -1633,24 +1633,69 @@ export class EngEAI_MongoDB {
 
     /**
      * Get memory agent entry for a specific user
+     * Automatically creates entry if it doesn't exist (only if CourseUser exists - maintains invariant)
      * @param courseName - The name of the course
      * @param userId - The user ID
-     * @returns Memory agent entry if found, null otherwise
+     * @returns Memory agent entry if found or created, null if CourseUser doesn't exist
      */
     public getMemoryAgentEntry = async (courseName: string, userId: string): Promise<MemoryAgentEntry | null> => {
         console.log(`[MONGODB] 🔍 Getting memory agent entry for userId: ${userId} in course: ${courseName}`);
         
         try {
             const memoryAgentCollection = this.getMemoryAgentCollection(courseName);
-            const entry = await memoryAgentCollection.findOne({ userId: userId }) as MemoryAgentEntry | null;
+            let entry = await memoryAgentCollection.findOne({ userId: userId }) as MemoryAgentEntry | null;
             
             if (entry) {
                 console.log(`[MONGODB] ✅ Found memory agent entry for userId: ${userId}`);
-            } else {
-                console.log(`[MONGODB] ⚠️ Memory agent entry not found for userId: ${userId}`);
+                return entry;
             }
             
-            return entry;
+            // Entry not found - attempt to create if CourseUser exists (maintains invariant)
+            console.log(`[MONGODB] ⚠️ Memory agent entry not found for userId: ${userId}, checking if CourseUser exists...`);
+            
+            try {
+                // Check if CourseUser exists first (invariant: memory agent entry requires CourseUser)
+                const userInfo = await this.findUserByUserId(courseName, userId);
+                
+                if (!userInfo) {
+                    console.log(`[MONGODB] ⚠️ CourseUser not found for userId: ${userId}, cannot create memory agent entry (invariant maintained)`);
+                    return null;
+                }
+                
+                // CourseUser exists - create memory agent entry
+                console.log(`[MONGODB] 📝 CourseUser found, creating memory agent entry for userId: ${userId}`);
+                
+                // Map affiliation to role
+                const role = this.mapAffiliationToRole(userInfo.affiliation as 'student' | 'faculty');
+                
+                // Create new entry with empty struggle words
+                const newEntry: MemoryAgentEntry = {
+                    name: userInfo.name,
+                    userId: userId,
+                    role: role,
+                    struggleTopics: [],
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                };
+                
+                await this.createMemoryAgentEntry(courseName, newEntry);
+                console.log(`[MONGODB] ✅ Created memory agent entry for userId: ${userId} with role: ${role}`);
+                
+                // Retrieve the newly created entry
+                entry = await memoryAgentCollection.findOne({ userId: userId }) as MemoryAgentEntry | null;
+                
+                if (entry) {
+                    console.log(`[MONGODB] ✅ Retrieved newly created memory agent entry for userId: ${userId}`);
+                } else {
+                    console.log(`[MONGODB] ⚠️ Failed to retrieve newly created memory agent entry for userId: ${userId}`);
+                }
+                
+                return entry;
+            } catch (createError) {
+                // If creation fails, log but don't throw - return null instead
+                console.error(`[MONGODB] ⚠️ Error creating memory agent entry for userId: ${userId}:`, createError);
+                return null;
+            }
         } catch (error) {
             console.error(`[MONGODB] 🚨 Error getting memory agent entry:`, error);
             throw error;

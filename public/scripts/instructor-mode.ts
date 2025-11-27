@@ -197,31 +197,13 @@ document.addEventListener('DOMContentLoaded', async () => {
      * Redirect to documents page after document setup completion
      */
     function redirectToDocumentsPage(): void {
-        console.log('🔄 Document setup completed, redirecting to documents page...');
+        console.log('🔄 Document setup completed, proceeding to next onboarding step...');
         
-        // Remove onboarding-active class from body
-        document.body.classList.remove('onboarding-active');
+        // Keep onboarding-active class - sidebar should remain hidden until ALL onboarding is complete
+        // The class will be removed automatically when all setup steps (courseSetup, contentSetup, flagSetup, monitorSetup) are done
         
-        // Show the main instructor interface
-        const mainContentArea = document.getElementById('main-content-area');
-        if (mainContentArea) {
-            mainContentArea.style.display = 'block';
-        }
-        
-        // Show the sidebar
-        const sidebar = document.querySelector('.instructor-sidebar');
-        if (sidebar) {
-            (sidebar as HTMLElement).style.display = 'flex';
-        }
-        
-        // Switch to documents view
-        currentState = StateEvent.Documents;
-        
-        // Update the UI to switch to documents page
+        // Update the UI - this will check currentClass.flagSetup and proceed to flag setup if needed
         updateUI();
-        
-        // Update the UI to reflect the completed setup
-        updateUIAfterDocumentSetup();
         
         console.log('✅ Successfully redirected to documents page');
     }

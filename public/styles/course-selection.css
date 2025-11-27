@@ -86,6 +86,9 @@
     padding: 1.5rem;
     text-align: center;
     position: relative;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .header-brand {
@@ -107,6 +110,121 @@
     color: #212529;
     margin: 0 0 0 0;
     text-align:left;
+}
+
+/* Add New Course Button */
+.add-new-course-btn {
+    background: var(--color-chbe-green);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    white-space: nowrap;
+}
+
+.add-new-course-btn:hover {
+    background: #4a6b2f;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(92, 138, 58, 0.3);
+}
+
+.add-new-course-btn:active {
+    transform: translateY(0);
+}
+
+.add-new-course-btn i {
+    width: 18px;
+    height: 18px;
+    stroke: white;
+}
+
+/* Enrollment Modal Styles */
+.enrollment-modal-content {
+    padding: 0;
+}
+
+.enrollment-course-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.enrollment-course-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid #e9ecef;
+    transition: background-color 0.2s ease;
+}
+
+.enrollment-course-item:last-child {
+    border-bottom: none;
+}
+
+.enrollment-course-item:hover {
+    background-color: #f8f9fa;
+}
+
+.enrollment-course-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.enrollment-course-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #212529;
+    margin-bottom: 0.25rem;
+}
+
+.enrollment-course-instructors {
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.enrol-here-btn {
+    background: var(--color-chbe-green);
+    color: white;
+    border: none;
+    padding: 0.6rem 1.5rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    margin-left: 1rem;
+}
+
+.enrol-here-btn:hover:not(:disabled) {
+    background: #4a6b2f;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(92, 138, 58, 0.3);
+}
+
+.enrol-here-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.enrol-here-btn:disabled {
+    background: #adb5bd;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.no-courses-message {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+    font-size: 1rem;
 }
 
 .welcome-subtitle {
@@ -364,10 +482,29 @@
     
     .course-selection-header {
         padding: 2rem 1rem 1.5rem 1rem;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
     }
     
     .course-selection-title {
         font-size: 1.75rem;
+    }
+    
+    .add-new-course-btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .enrollment-course-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .enrol-here-btn {
+        width: 100%;
+        margin-left: 0;
     }
     
     .header-brand {

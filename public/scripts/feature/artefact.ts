@@ -7,6 +7,8 @@
  * @since: 2025-01-27
  */
 
+import { showSimpleErrorModal } from "../modal-overlay.js";
+
 /**
  * Artefact data structure
  */
@@ -98,7 +100,7 @@ export class ArtefactHandler {
                             await this.downloadDiagram(panel, openArtefact);
                         } catch (error) {
                             console.error('Error downloading diagram:', error);
-                            alert('Failed to download diagram. Please try again.');
+                            await showSimpleErrorModal('Failed to download diagram. Please try again.', 'Download Error');
                         }
                     }
                 }
@@ -338,6 +340,7 @@ graph TD
 
     /**
      * Open artefact panel with mermaid diagram
+     * Creates the panel dynamically if it doesn't exist
      * @param artefactId - The artefact ID to open
      */
     public async openArtefact(artefactId: string): Promise<void> {
@@ -357,22 +360,27 @@ graph TD
         // Update button appearance for this artefact
         this.updateArtefactButton(artefactId);
 
-        // Get artefact panel (now already in DOM)
-        const panel = document.getElementById('artefact-panel');
-        if (!panel) {
-            console.error('Artefact panel not found in DOM');
-            return;
-        }
-
-        // Get the appropriate container and add artefact-open class
+        // Get the appropriate container
         // Check if we're in onboarding mode
         const onboardingContainer = document.querySelector('.onboarding') as HTMLElement | null;
         const chatContainer = document.querySelector('.chat-window-container') as HTMLElement | null;
         
         const container = onboardingContainer || chatContainer;
-        if (container) {
-            container.classList.add('artefact-open');
+        if (!container) {
+            console.error('Container not found for artefact panel');
+            return;
         }
+
+        // Get or create artefact panel
+        let panel = document.getElementById('artefact-panel') as HTMLElement;
+        if (!panel) {
+            // Create panel dynamically
+            panel = this.createArtefactPanel();
+            container.appendChild(panel);
+        }
+
+        // Add artefact-open class to container
+        container.classList.add('artefact-open');
 
         // Show the panel first
         panel.classList.add('open');
@@ -390,6 +398,7 @@ graph TD
 
     /**
      * Close artefact panel
+     * Removes the panel from DOM after closing animation
      */
     public closeArtefact(): void {
         const panel = document.getElementById('artefact-panel');
@@ -420,14 +429,15 @@ graph TD
             container.classList.remove('artefact-open');
         }
 
+        // Start closing animation
         panel.classList.add('closing');
         setTimeout(() => {
-            panel.classList.remove('open', 'closing');
-            panel.setAttribute('aria-hidden', 'true');
+            // Remove panel from DOM after animation completes
+            panel.remove();
+            
+            // Remove ESC listener
+            this.removeEscListener();
         }, 180);
-
-        // Remove ESC listener
-        this.removeEscListener();
     }
 
     /**
@@ -454,30 +464,81 @@ graph TD
     }
 
     /**
-     * Create artefact panel if it doesn't exist
+     * Create artefact panel dynamically using DOM manipulation
+     * Matches the structure from chat-window.html and student-onboarding.html
+     * Detects if we're in onboarding mode to apply appropriate classes
      */
     private createArtefactPanel(): HTMLElement {
-        const panel = document.createElement('div');
+        // Check if we're in onboarding mode
+        const onboardingContainer = document.querySelector('.onboarding') as HTMLElement | null;
+        const isOnboarding = onboardingContainer !== null;
+        
+        // Create main panel element
+        const panel = document.createElement('aside');
         panel.id = 'artefact-panel';
-        panel.className = 'artefact-panel';
+        panel.className = isOnboarding ? 'artefact-panel artefact-onboarding' : 'artefact-panel';
         panel.setAttribute('aria-hidden', 'true');
-        panel.innerHTML = `
-            <div class="artefact-header">
-                <h3>Diagram</h3>
-                <button id="close-artefact-btn" class="close-artefact-btn" title="Close diagram">
-                    <i data-feather="x"></i>
-                </button>
-            </div>
-            <div class="artefact-content">
-                <div class="mermaid-diagram"></div>
-            </div>
-        `;
+        
+        // Create header
+        const header = document.createElement('div');
+        header.className = 'artefact-header';
+        
+        // Create header title
+        const title = document.createElement('h3');
+        title.textContent = isOnboarding ? 'Interactive Diagram' : 'Diagram';
+        header.appendChild(title);
+        
+        // Create header actions container
+        const headerActions = document.createElement('div');
+        headerActions.className = 'artefact-header-actions';
+        
+        // Create download button
+        const downloadBtn = document.createElement('button');
+        downloadBtn.id = 'download-artefact-btn';
+        downloadBtn.className = 'icon-btn';
+        downloadBtn.title = 'Download diagram';
+        const downloadIcon = document.createElement('i');
+        downloadIcon.setAttribute('data-feather', 'download');
+        downloadBtn.appendChild(downloadIcon);
+        headerActions.appendChild(downloadBtn);
+        
+        // Create close button
+        const closeBtn = document.createElement('button');
+        closeBtn.id = 'close-artefact-btn';
+        closeBtn.className = 'icon-btn';
+        closeBtn.title = 'Close';
+        const closeIcon = document.createElement('i');
+        closeIcon.setAttribute('data-feather', 'x');
+        closeBtn.appendChild(closeIcon);
+        headerActions.appendChild(closeBtn);
+        
+        // Append actions to header
+        header.appendChild(headerActions);
+        
+        // Create content container
+        const content = document.createElement('div');
+        content.className = 'artefact-content';
+        
+        // Create pan-zoom container
+        const panZoomContainer = document.createElement('div');
+        panZoomContainer.className = 'pan-zoom-container';
+        
+        // Create mermaid viewport
+        const mermaidViewport = document.createElement('div');
+        mermaidViewport.className = 'mermaid-viewport';
+        panZoomContainer.appendChild(mermaidViewport);
+        
+        // Append viewport to content
+        content.appendChild(panZoomContainer);
+        
+        // Assemble panel structure
+        panel.appendChild(header);
+        panel.appendChild(content);
 
-        // Bind close button
-        const closeBtn = panel.querySelector('#close-artefact-btn');
-        closeBtn?.addEventListener('click', () => {
-            this.closeArtefact();
-        });
+        // Re-render feather icons for the new panel
+        if (typeof (window as any).feather !== 'undefined') {
+            (window as any).feather.replace();
+        }
 
         return panel;
     }

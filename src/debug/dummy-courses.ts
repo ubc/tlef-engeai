@@ -636,3 +636,88 @@ export async function getDummyCourses(): Promise<{ apsc099: activeCourse | null,
         return { apsc099: null, apsc080: null };
     }
 }
+
+/**
+ * Registers the current logged-in user to CHBE 241 course
+ * This is a development-only feature for the reset dummy courses functionality
+ * @param globalUser - The GlobalUser object from session
+ * @returns Object with success status and optional message
+ */
+export async function registerCurrentUserToCHBE241(globalUser: GlobalUser): Promise<{ success: boolean; message?: string }> {
+    console.log(`[RESET-USER-REGISTRATION] 🧑 Registering user ${globalUser.userId} to CHBE 241...`);
+    
+    try {
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const courseName = 'CHBE 241: Material and Energy Balances';
+        
+        // Get CHBE 241 course details
+        const course = await mongoDB.getCourseByName(courseName) as activeCourse | null;
+        
+        if (!course) {
+            const errorMsg = `Course "${courseName}" not found after reset`;
+            console.error(`[RESET-USER-REGISTRATION] ❌ ${errorMsg}`);
+            return { 
+                success: false, 
+                message: errorMsg 
+            };
+        }
+        
+        console.log(`[RESET-USER-REGISTRATION] ✅ Found course: ${course.courseName} (ID: ${course.id})`);
+        
+        // Check if CourseUser already exists (idempotent)
+        const existingCourseUser = await mongoDB.findStudentByUserId(
+            courseName,
+            globalUser.userId
+        );
+        
+        if (existingCourseUser) {
+            console.log(`[RESET-USER-REGISTRATION] ⚠️ User ${globalUser.userId} already registered to ${courseName}, skipping registration`);
+            return { 
+                success: true, 
+                message: `User already registered to ${courseName}` 
+            };
+        }
+        
+        // Create CourseUser entry
+        console.log(`[RESET-USER-REGISTRATION] 📝 Creating CourseUser entry...`);
+        const newCourseUserData: Partial<CourseUser> = {
+            name: globalUser.name,
+            userId: globalUser.userId,
+            courseName: course.courseName,
+            courseId: course.id,
+            userOnboarding: false,
+            affiliation: globalUser.affiliation,
+            status: 'active',
+            chats: []
+        };
+        
+        const courseUser = await mongoDB.createStudent(courseName, newCourseUserData) as any;
+        console.log(`[RESET-USER-REGISTRATION] ✅ CourseUser created for userId: ${globalUser.userId}`);
+        
+        // Add course to GlobalUser's enrolled list if not already present
+        if (!globalUser.coursesEnrolled.includes(course.id)) {
+            await mongoDB.addCourseToGlobalUser(
+                globalUser.puid,
+                course.id
+            );
+            console.log(`[RESET-USER-REGISTRATION] ✅ Added course to GlobalUser's enrolled list`);
+        } else {
+            console.log(`[RESET-USER-REGISTRATION] ℹ️ Course already in GlobalUser's enrolled list`);
+        }
+        
+        const successMsg = `User ${globalUser.name} (${globalUser.userId}) successfully registered to ${courseName}`;
+        console.log(`[RESET-USER-REGISTRATION] ✅ ${successMsg}`);
+        
+        return { 
+            success: true, 
+            message: successMsg 
+        };
+    } catch (error) {
+        const errorMsg = `Failed to register user to CHBE 241: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        console.error(`[RESET-USER-REGISTRATION] ❌ ${errorMsg}`, error);
+        return { 
+            success: false, 
+            message: errorMsg 
+        };
+    }
+}
