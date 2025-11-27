@@ -344,7 +344,7 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
 router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { chatId } = req.params;
-        const { message, userId } = req.body;
+        const { message, userId: userIdFromBody } = req.body; // Rename to avoid conflict
         
         // Get user from session
         const user = (req as any).user;
@@ -355,19 +355,24 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
         // Get courseName from session (source of truth), fallback to request body if needed
         const courseName = currentCourse?.courseName || req.body.courseName;
         
-        // Get numeric userId from globalUser (more reliable than parsing request body)
-        const numericUserId = globalUser?.userId;
-        
-        if (!numericUserId || numericUserId === 0) {
-            console.warn(`[CHAT-APP] ⚠️ Invalid userId from session: ${numericUserId}, falling back to parsing request body`);
+        // Get userId from MongoDB using puid (source of truth for all operations)
+        // This ensures consistency between memory agent and MongoDB operations
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const globalUserFromDB = await mongoDB.findGlobalUserByPUID(puid);
+        if (!globalUserFromDB || !globalUserFromDB.userId) {
+            return res.status(401).json({ 
+                success: false, 
+                error: 'User not found in database' 
+            });
         }
+        const userId = globalUserFromDB.userId; // Use this consistently throughout
         
         //START DEBUG LOG : DEBUG-CODE(SEND-MSG-001)
         console.log('\n💬 SENDING MESSAGE:');
         console.log('='.repeat(50));
         console.log(`Chat ID: ${chatId}`);
-        console.log(`User ID (from body): ${userId}`);
-        console.log(`User ID (from session): ${numericUserId}`);
+        console.log(`User ID (from body): ${userIdFromBody}`);
+        console.log(`User ID (from MongoDB): ${userId}`);
         console.log(`PUID: ${puid}`);
         console.log(`Course: ${courseName}`);
         console.log(`Message: ${message.substring(0, 100)}...`);
@@ -395,15 +400,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             });
         }
         
-        if (!numericUserId || numericUserId === 0) {
-            //START DEBUG LOG : DEBUG-CODE(SEND-MSG-003B)
-            console.log('❌ VALIDATION FAILED: UserId not found in session');
-            //END DEBUG LOG : DEBUG-CODE(SEND-MSG-003B)
-            return res.status(401).json({ 
-                success: false, 
-                error: 'User ID not found in session' 
-            });
-        }
+        // userId already validated above when fetching from MongoDB
 
         // Validate chat exists
         if (!chatApp.validateChatExists(chatId)) {
@@ -423,7 +420,8 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             //END DEBUG LOG : DEBUG-CODE(SEND-MSG-005)
             
             // Send message through ChatApp and wait for complete response
-            // Use numericUserId from session (convert to string for sendUserMessage signature)
+            // Use userId from MongoDB (convert to string for sendUserMessage signature)
+            // This ensures consistency with memory agent and MongoDB operations
             if (!courseName) {
                 return res.status(400).json({
                     success: false,
@@ -434,7 +432,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             const assistantMessage = await chatApp.sendUserMessage(
                 message,
                 chatId,
-                numericUserId.toString(),
+                userId.toString(), // Use userId from MongoDB (consistent source)
                 courseName,
                 () => {} // Empty callback - not streaming to client
             );
@@ -452,22 +450,15 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             const userMessage: ChatMessage = {
                 id: userMessageId,
                 sender: 'user',
-                userId: numericUserId, // Use numeric userId from session
+                userId: userId, // Use userId from MongoDB (already fetched above)
                 courseName: courseName,
                 text: message,
                 timestamp: Date.now()
             };
 
             // Save both messages to MongoDB
-            const mongoDB = await EngEAI_MongoDB.getInstance();
-            
-            // Get userId from GlobalUser using puid (needed for MongoDB operations)
-            const globalUser = await mongoDB.findGlobalUserByPUID(puid);
-            if (!globalUser || !globalUser.userId) {
-                throw new Error(`GlobalUser not found for puid: ${puid}`);
-            }
-            const userId = globalUser.userId;
-            console.log(`[SEND-MSG] Converting puid to userId: ${puid} -> ${userId}`);
+            // userId already fetched from MongoDB above (consistent source)
+            console.log(`[SEND-MSG] Using userId from MongoDB: ${puid} -> ${userId}`);
             
             try {
                 // Save user message

@@ -70,6 +70,11 @@ export interface activeCourse {
     frameType: frameType;
     tilesNumber: number;
     topicOrWeekInstances: TopicOrWeekInstance[]; // previously content, previously divisions
+    collections?: {
+        users: string;
+        flags: string;
+        memoryAgent: string;
+    };
 }
 
 /**

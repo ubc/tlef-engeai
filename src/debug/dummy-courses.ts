@@ -27,10 +27,12 @@ async function createCHBE241(): Promise<activeCourse> {
     const courseId = idGenerator.uniqueIDGenerator('APSC099-Engineering-Kindergarten');
     const now = new Date();
     
+    const courseName = 'CHBE 241: Material and Energy Balances';
+    
     const course: activeCourse = {
         id: courseId,
         date: now,
-        courseName: 'CHBE 241: Material and Energy Balances',
+        courseName: courseName,
         courseSetup:  true,
         contentSetup: true, // Completed onboarding
         flagSetup: true, // Completed flag setup
@@ -42,7 +44,12 @@ async function createCHBE241(): Promise<activeCourse> {
         ],
         frameType: 'byTopic',
         tilesNumber: 10,
-        topicOrWeekInstances: []
+        topicOrWeekInstances: [],
+        collections: {
+            users: `${courseName}_users`,
+            flags: `${courseName}_flags`,
+            memoryAgent: `${courseName}_memory-agent`
+        }
     };
 
 

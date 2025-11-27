@@ -58,22 +58,60 @@ export class EngEAI_MongoDB {
     // Course management methods
     public postActiveCourse = async (course: activeCourse) => {
         try {
-            await this.getCourseCollection().insertOne(course as any);
+            // Check if course already exists - prevent duplicates
+            const existingCourse = await this.getActiveCourse(course.id);
+            if (existingCourse) {
+                console.log(`⚠️ Course with id ${course.id} already exists, skipping creation`);
+                return;
+            }
 
             //use singleton's DB
             const courseName = course.courseName;
 
-            //create users collection
+            //create users collection (idempotent - won't throw if exists)
             const userCollection = `${courseName}_users`;
-            await this.db.createCollection(userCollection);
+            try {
+                await this.db.createCollection(userCollection);
+            } catch (error: any) {
+                // Ignore NamespaceExists error (collection already exists)
+                if (error.codeName !== 'NamespaceExists') {
+                    throw error;
+                }
+            }
     
-            //create flags collection
+            //create flags collection (idempotent - won't throw if exists)
             const flagsCollection = `${courseName}_flags`;
-            await this.db.createCollection(flagsCollection);
+            try {
+                await this.db.createCollection(flagsCollection);
+            } catch (error: any) {
+                // Ignore NamespaceExists error (collection already exists)
+                if (error.codeName !== 'NamespaceExists') {
+                    throw error;
+                }
+            }
 
-            //create memory-agent collection
+            //create memory-agent collection (idempotent - won't throw if exists)
             const memoryAgentCollection = `${courseName}_memory-agent`;
-            await this.db.createCollection(memoryAgentCollection);
+            try {
+                await this.db.createCollection(memoryAgentCollection);
+            } catch (error: any) {
+                // Ignore NamespaceExists error (collection already exists)
+                if (error.codeName !== 'NamespaceExists') {
+                    throw error;
+                }
+            }
+
+            // Store collection names in course document
+            const courseWithCollections: activeCourse = {
+                ...course,
+                collections: {
+                    users: userCollection,
+                    flags: flagsCollection,
+                    memoryAgent: memoryAgentCollection
+                }
+            };
+
+            await this.getCourseCollection().insertOne(courseWithCollections as any);
 
             // Create indexes for optimal performance
             try {
@@ -90,6 +128,8 @@ export class EngEAI_MongoDB {
         
         } catch (error) {
             console.error('Error creating collections and schemas:', error);
+            // Re-throw the error so callers know it failed
+            throw error;
         }
     }
 
@@ -265,14 +305,64 @@ export class EngEAI_MongoDB {
     }
 
     // Flag report methods
+    
+    // Cache for collection names to avoid repeated database lookups
+    private collectionNamesCache: Map<string, {users: string, flags: string, memoryAgent: string}> = new Map();
+
+    /**
+     * Get collection names for a course, either from stored course document or computed fallback
+     * @param courseName - The name of the course
+     * @returns Object with users, flags, and memoryAgent collection names
+     */
+    public async getCollectionNames(courseName: string): Promise<{users: string, flags: string, memoryAgent: string}> {
+        // Check cache first
+        if (this.collectionNamesCache.has(courseName)) {
+            return this.collectionNamesCache.get(courseName)!;
+        }
+
+        try {
+            // Fetch course document from active-course-list
+            const course = await this.getCourseByName(courseName) as activeCourse | null;
+            
+            // If course exists and has collections field with all required keys, use stored names
+            if (course && course.collections && 
+                course.collections.users && 
+                course.collections.flags && 
+                course.collections.memoryAgent) {
+                const collectionNames = {
+                    users: course.collections.users,
+                    flags: course.collections.flags,
+                    memoryAgent: course.collections.memoryAgent
+                };
+                
+                // Cache the result
+                this.collectionNamesCache.set(courseName, collectionNames);
+                return collectionNames;
+            }
+        } catch (error) {
+            console.warn(`[MONGODB] Warning: Could not fetch course document for ${courseName}, using computed collection names:`, error);
+        }
+
+        // Fallback to computed collection names (backward compatibility)
+        const computedNames = {
+            users: `${courseName}_users`,
+            flags: `${courseName}_flags`,
+            memoryAgent: `${courseName}_memory-agent`
+        };
+
+        // Cache the computed names
+        this.collectionNamesCache.set(courseName, computedNames);
+        return computedNames;
+    }
+
     /**
      * Get the flags collection for a specific course
      * @param courseName - the name of the course
      * @returns the flags collection
      */
-    private getFlagsCollection = (courseName: string): Collection => {
-        const flagsCollectionName = `${courseName}_flags`;
-        return this.db.collection(flagsCollectionName);
+    private async getFlagsCollection(courseName: string): Promise<Collection> {
+        const collections = await this.getCollectionNames(courseName);
+        return this.db.collection(collections.flags);
     }
 
     public createFlagReport = async (flagReport: FlagReport) => {
@@ -281,7 +371,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(001)
         
         try {
-            const flagsCollection = this.getFlagsCollection(flagReport.courseName);
+            const flagsCollection = await this.getFlagsCollection(flagReport.courseName);
             
             const result = await flagsCollection.insertOne(flagReport as any);
             
@@ -304,7 +394,7 @@ export class EngEAI_MongoDB {
         console.log('🏴 Getting flag reports for course:', courseName);
         //END DEBUG LOG : DEBUG-CODE(002)
         
-        const flagsCollection = this.getFlagsCollection(courseName);
+        const flagsCollection = await this.getFlagsCollection(courseName);
         return await flagsCollection.find({}).toArray() as unknown as FlagReport[];
     }
 
@@ -313,7 +403,7 @@ export class EngEAI_MongoDB {
         console.log('🏴 Getting flag report:', flagId, 'for course:', courseName);
         //END DEBUG LOG : DEBUG-CODE(003)
         
-        const flagsCollection = this.getFlagsCollection(courseName);
+        const flagsCollection = await this.getFlagsCollection(courseName);
         return await flagsCollection.findOne({ id: flagId }) as FlagReport | null;
     }
 
@@ -323,7 +413,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(004)
         
         try {
-            const flagsCollection = this.getFlagsCollection(courseName);
+            const flagsCollection = await this.getFlagsCollection(courseName);
             
             // Add updatedAt timestamp
             const updateWithTimestamp = {
@@ -366,7 +456,7 @@ export class EngEAI_MongoDB {
         console.log('🏴 Deleting flag report:', flagId, 'for course:', courseName);
         //END DEBUG LOG : DEBUG-CODE(005)
         
-        const flagsCollection = this.getFlagsCollection(courseName);
+        const flagsCollection = await this.getFlagsCollection(courseName);
         return await flagsCollection.deleteOne({ id: flagId });
     }
 
@@ -375,7 +465,7 @@ export class EngEAI_MongoDB {
         console.log('🏴 Deleting all flag reports for course:', courseName);
         //END DEBUG LOG : DEBUG-CODE(006)
         
-        const flagsCollection = this.getFlagsCollection(courseName);
+        const flagsCollection = await this.getFlagsCollection(courseName);
         return await flagsCollection.deleteMany({});
     }
 
@@ -457,7 +547,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(UPDATE-FLAG-STATUS)
         
         try {
-            const flagsCollection = this.getFlagsCollection(courseName);
+            const flagsCollection = await this.getFlagsCollection(courseName);
             
             // Get current flag to validate transition
             const currentFlag = await flagsCollection.findOne({ id: flagId });
@@ -534,7 +624,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(GET-FLAG-STATS)
         
         try {
-            const flagsCollection = this.getFlagsCollection(courseName);
+            const flagsCollection = await this.getFlagsCollection(courseName);
             
             // Get all flags
             const allFlags = await flagsCollection.find({}).toArray();
@@ -614,7 +704,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(VALIDATE-FLAGS)
         
         try {
-            const flagsCollection = this.getFlagsCollection(courseName);
+            const flagsCollection = await this.getFlagsCollection(courseName);
             const issues: string[] = [];
             
             // Get all flags for validation
@@ -737,7 +827,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(CREATE-INDEXES)
         
         try {
-            const flagsCollection = this.getFlagsCollection(courseName);
+            const flagsCollection = await this.getFlagsCollection(courseName);
             const indexesCreated: string[] = [];
             const errors: string[] = [];
             
@@ -930,9 +1020,9 @@ export class EngEAI_MongoDB {
      * @param courseName - The name of the course (e.g., "APSC 099")
      * @returns Collection instance for the course users
      */
-    private getUserCollection(courseName: string): Collection {
-        const collectionName = `${courseName}_users`;
-        return this.db.collection(collectionName);
+    private async getUserCollection(courseName: string): Promise<Collection> {
+        const collections = await this.getCollectionNames(courseName);
+        return this.db.collection(collections.users);
     }
 
     /**
@@ -952,7 +1042,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID)
         
         try {
-            const userCollection = this.getUserCollection(courseName);
+            const userCollection = await this.getUserCollection(courseName);
             const user = await userCollection.findOne({ userId: userId });
             
             if (user) {
@@ -997,7 +1087,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(BATCH-FIND-USERS)
         
         try {
-            const userCollection = this.getUserCollection(courseName);
+            const userCollection = await this.getUserCollection(courseName);
             const users = await userCollection.find({ userId: { $in: userIds } }).toArray();
             
             const userMap = new Map<string, {
@@ -1090,7 +1180,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID)
         
         try {
-            const userCollection = this.getUserCollection(courseName);
+            const userCollection = await this.getUserCollection(courseName);
             const student = await userCollection.findOne({ userId: userId });
             
             if (student) {
@@ -1125,7 +1215,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT)
         
         try {
-            const userCollection = this.getUserCollection(courseName);
+            const userCollection = await this.getUserCollection(courseName);
             const student = await userCollection.findOne({ puid: puid });
             
             if (student) {
@@ -1159,7 +1249,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(CREATE-STUDENT)
         
         try {
-            const userCollection = this.getUserCollection(courseName);
+            const userCollection = await this.getUserCollection(courseName);
             
             // Generate unique ID for the student (using course-specific ID)
             const studentId = this.idGenerator.userID(userData as User);
@@ -1204,7 +1294,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(GET-USER-CHATS)
         
         try {
-            const userCollection = this.getUserCollection(courseName);
+            const userCollection = await this.getUserCollection(courseName);
             const user = await userCollection.findOne({ userId: userId });
             
             if (!user) {
@@ -1243,7 +1333,7 @@ export class EngEAI_MongoDB {
         console.log(`[MONGODB] 📊 Getting chat metadata for user userId: ${userId} in course: ${courseName}`);
         
         try {
-            const userCollection = this.getUserCollection(courseName);
+            const userCollection = await this.getUserCollection(courseName);
             const user = await userCollection.findOne({ userId: userId });
             
             if (!user) {
@@ -1290,7 +1380,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(ADD-CHAT-TO-USER)
         
         try {
-            const userCollection = this.getUserCollection(courseName);
+            const userCollection = await this.getUserCollection(courseName);
             
             const result = await userCollection.updateOne(
                 { userId: userId },
@@ -1328,7 +1418,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(UPDATE-USER-CHAT)
         
         try {
-            const userCollection = this.getUserCollection(courseName);
+            const userCollection = await this.getUserCollection(courseName);
             
             const result = await userCollection.updateOne(
                 { userId: userId, 'chats.id': chatId },
@@ -1368,7 +1458,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(ADD-MESSAGE-TO-CHAT)
         
         try {
-            const userCollection = this.getUserCollection(courseName);
+            const userCollection = await this.getUserCollection(courseName);
             
             const result = await userCollection.updateOne(
                 { userId: userId, 'chats.id': chatId },
@@ -1406,7 +1496,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-TITLE)
         
         try {
-            const userCollection = this.getUserCollection(courseName);
+            const userCollection = await this.getUserCollection(courseName);
             
             const result = await userCollection.updateOne(
                 { userId: userId, 'chats.id': chatId },
@@ -1446,7 +1536,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(MARK-CHAT-DELETED)
         
         try {
-            const userCollection = this.getUserCollection(courseName);
+            const userCollection = await this.getUserCollection(courseName);
             
             const result = await userCollection.updateOne(
                 { userId: userId, 'chats.id': chatId },
@@ -1486,7 +1576,7 @@ export class EngEAI_MongoDB {
         //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER)
         
         try {
-            const userCollection = this.getUserCollection(courseName);
+            const userCollection = await this.getUserCollection(courseName);
             
             const result = await userCollection.updateOne(
                 { userId: userId },
@@ -1607,9 +1697,9 @@ export class EngEAI_MongoDB {
      * @param courseName - The name of the course (e.g., "APSC 099")
      * @returns Collection instance for the course memory-agent entries
      */
-    private getMemoryAgentCollection(courseName: string): Collection {
-        const collectionName = `${courseName}_memory-agent`;
-        return this.db.collection(collectionName);
+    private async getMemoryAgentCollection(courseName: string): Promise<Collection> {
+        const collections = await this.getCollectionNames(courseName);
+        return this.db.collection(collections.memoryAgent);
     }
 
     /**
@@ -1621,81 +1711,44 @@ export class EngEAI_MongoDB {
         console.log(`[MONGODB] 🧠 Creating memory agent entry for userId: ${entry.userId} in course: ${courseName}`);
         
         try {
-            const memoryAgentCollection = this.getMemoryAgentCollection(courseName);
+            const memoryAgentCollection = await this.getMemoryAgentCollection(courseName);
             await memoryAgentCollection.insertOne(entry as any);
             
             console.log(`[MONGODB] ✅ Memory agent entry created successfully for userId: ${entry.userId}`);
-        } catch (error) {
+        } catch (error: any) {
+            // Handle duplicate key error (MongoDB error code 11000) - entry already exists
+            // This can happen in race conditions, so we treat it as idempotent success
+            if (error.code === 11000 || error.code === 11001) {
+                console.log(`[MONGODB] ℹ️ Memory agent entry already exists for userId: ${entry.userId} (duplicate key error - treating as success)`);
+                return; // Idempotent - entry exists, which is what we want
+            }
+            
             console.error(`[MONGODB] 🚨 Error creating memory agent entry:`, error);
             throw error;
         }
     }
 
     /**
-     * Get memory agent entry for a specific user
-     * Automatically creates entry if it doesn't exist (only if CourseUser exists - maintains invariant)
+     * Get memory agent entry for a specific user (READ-ONLY)
+     * Does NOT create entries - use initializeMemoryAgentForUser or ensureMemoryAgentEntryExists for creation
      * @param courseName - The name of the course
      * @param userId - The user ID
-     * @returns Memory agent entry if found or created, null if CourseUser doesn't exist
+     * @returns Memory agent entry if found, null if not found
      */
     public getMemoryAgentEntry = async (courseName: string, userId: string): Promise<MemoryAgentEntry | null> => {
         console.log(`[MONGODB] 🔍 Getting memory agent entry for userId: ${userId} in course: ${courseName}`);
         
         try {
-            const memoryAgentCollection = this.getMemoryAgentCollection(courseName);
-            let entry = await memoryAgentCollection.findOne({ userId: userId }) as MemoryAgentEntry | null;
+            const memoryAgentCollection = await this.getMemoryAgentCollection(courseName);
+            const entry = await memoryAgentCollection.findOne({ userId: userId }) as MemoryAgentEntry | null;
             
             if (entry) {
                 console.log(`[MONGODB] ✅ Found memory agent entry for userId: ${userId}`);
-                return entry;
+            } else {
+                console.log(`[MONGODB] ⚠️ Memory agent entry not found for userId: ${userId}`);
             }
             
-            // Entry not found - attempt to create if CourseUser exists (maintains invariant)
-            console.log(`[MONGODB] ⚠️ Memory agent entry not found for userId: ${userId}, checking if CourseUser exists...`);
-            
-            try {
-                // Check if CourseUser exists first (invariant: memory agent entry requires CourseUser)
-                const userInfo = await this.findUserByUserId(courseName, userId);
-                
-                if (!userInfo) {
-                    console.log(`[MONGODB] ⚠️ CourseUser not found for userId: ${userId}, cannot create memory agent entry (invariant maintained)`);
-                    return null;
-                }
-                
-                // CourseUser exists - create memory agent entry
-                console.log(`[MONGODB] 📝 CourseUser found, creating memory agent entry for userId: ${userId}`);
-                
-                // Map affiliation to role
-                const role = this.mapAffiliationToRole(userInfo.affiliation as 'student' | 'faculty');
-                
-                // Create new entry with empty struggle words
-                const newEntry: MemoryAgentEntry = {
-                    name: userInfo.name,
-                    userId: userId,
-                    role: role,
-                    struggleTopics: [],
-                    createdAt: new Date(),
-                    updatedAt: new Date()
-                };
-                
-                await this.createMemoryAgentEntry(courseName, newEntry);
-                console.log(`[MONGODB] ✅ Created memory agent entry for userId: ${userId} with role: ${role}`);
-                
-                // Retrieve the newly created entry
-                entry = await memoryAgentCollection.findOne({ userId: userId }) as MemoryAgentEntry | null;
-                
-                if (entry) {
-                    console.log(`[MONGODB] ✅ Retrieved newly created memory agent entry for userId: ${userId}`);
-                } else {
-                    console.log(`[MONGODB] ⚠️ Failed to retrieve newly created memory agent entry for userId: ${userId}`);
-                }
-                
-                return entry;
-            } catch (createError) {
-                // If creation fails, log but don't throw - return null instead
-                console.error(`[MONGODB] ⚠️ Error creating memory agent entry for userId: ${userId}:`, createError);
-                return null;
-            }
+            return entry;
         } catch (error) {
             console.error(`[MONGODB] 🚨 Error getting memory agent entry:`, error);
             throw error;
@@ -1713,7 +1766,7 @@ export class EngEAI_MongoDB {
         console.log(`[MONGODB] 📝 New struggle words:`, struggleTopics);
         
         try {
-            const memoryAgentCollection = this.getMemoryAgentCollection(courseName);
+            const memoryAgentCollection = await this.getMemoryAgentCollection(courseName);
             
             const result = await memoryAgentCollection.findOneAndUpdate(
                 { userId: userId },
@@ -1762,11 +1815,11 @@ export class EngEAI_MongoDB {
         console.log(`[MONGODB] 🧠 Initializing memory agent for userId: ${userId} in course: ${courseName}`);
         
         try {
-            // Check if entry already exists
+            // Check if entry already exists (idempotent check)
             const existingEntry = await this.getMemoryAgentEntry(courseName, userId);
             
             if (existingEntry) {
-                console.log(`[MONGODB] ⚠️ Memory agent entry already exists for userId: ${userId}, skipping initialization`);
+                console.log(`[MONGODB] ℹ️ Memory agent entry already exists for userId: ${userId}, skipping initialization (idempotent)`);
                 return;
             }
             
@@ -1783,9 +1836,12 @@ export class EngEAI_MongoDB {
                 updatedAt: new Date()
             };
             
+            // createMemoryAgentEntry handles duplicate key errors gracefully (idempotent)
             await this.createMemoryAgentEntry(courseName, newEntry);
             console.log(`[MONGODB] ✅ Memory agent initialized successfully for userId: ${userId} with role: ${role}`);
         } catch (error) {
+            // If error is not a duplicate key error, throw it
+            // Duplicate key errors are already handled in createMemoryAgentEntry
             console.error(`[MONGODB] 🚨 Error initializing memory agent:`, error);
             throw error;
         }
