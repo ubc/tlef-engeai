@@ -525,10 +525,13 @@ export function getSystemPrompt(courseName?: string, learningObjectives?: Learni
     }
     else {
         if (!struggleTopics) {
-            prompt += '\n\nNo struggle topic array is attached in the function arguments.';
+            prompt += '\n\nNo struggle topic array is attached in the function arguments (028).';
+        }
+        else if (struggleTopics.length === 0) {
+            prompt += '\n\nThe struggle topic array is empty (019).';
         }
         else {
-            prompt += '\n\nThe struggle topic array is empty.';
+            prompt += '\n\nThe struggle topic array is not an array nor an empty array (034).';
         }
     }
 
