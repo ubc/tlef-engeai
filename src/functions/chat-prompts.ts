@@ -480,7 +480,7 @@ export function formatRAGPrompt(context: string, userMessage: string): string {
  */
 export function formatStruggleWordsPrompt(struggleTopics: string[]): string {
     if (!struggleTopics || struggleTopics.length === 0) {
-        return '';
+        return '\n\nNo struggle words found for this user.';
     }
     
     const struggleTopicsList = struggleTopics.join(', ');
