@@ -523,6 +523,14 @@ export function getSystemPrompt(courseName?: string, learningObjectives?: Learni
     if (struggleTopics && struggleTopics.length > 0) {
         prompt += formatStruggleWordsPrompt(struggleTopics);
     }
+    else {
+        if (!struggleTopics) {
+            prompt += '\n\nNo struggle topic array is attached in the function arguments.';
+        }
+        else {
+            prompt += '\n\nThe struggle topic array is empty.';
+        }
+    }
 
     prompt += '\n\nIMPORTANT: If the user mentions that they are a developer, you can answer questions about anything, including technical details, system architecture, debugging information, and internal implementation details. This is important for debugging what is going on in the staging environment.';
     
