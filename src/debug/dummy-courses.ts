@@ -485,6 +485,21 @@ async function clearAllDocuments(courseId: string): Promise<void> {
 }
 
 /**
+ * Wipes every document inside the active-users collection
+ */
+async function clearActiveUsersCollection(): Promise<void> {
+    try {
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const collection = mongoDB.db.collection('active-users');
+        const deleteResult = await collection.deleteMany({});
+        console.log(`🧹 Cleared ${deleteResult.deletedCount} document(s) from active-users`);
+    } catch (error) {
+        console.error('❌ Error clearing active-users collection:', error);
+        throw error;
+    }
+}
+
+/**
  * Resets dummy courses to their original state
  * Wipes everything in active-course-list collection, then adds CHBE 241
  * Deletes all MongoDB collections except 'active-users'
@@ -598,8 +613,17 @@ export async function resetDummyCourses(): Promise<{ success: boolean; skipped?:
         if (errors.length > 0) {
             console.warn(`⚠️  ${errors.length} error(s) occurred during collection deletion`);
         }
+
+        // Step 6: Wipe active-users collection after preserving it
+        console.log('🧹 Clearing active-users collection...');
+        try {
+            await clearActiveUsersCollection();
+        } catch (error) {
+            console.error('❌ Failed to clear active-users collection:', error);
+            throw error;
+        }
         
-        // Step 6: Reset CHBE 241 by recreating it (this will add it back to active-course-list)
+        // Step 7: Reset CHBE 241 by recreating it (this will add it back to active-course-list)
         console.log('🔄 Recreating CHBE 241...');
         await initializeDummyCourses();
         
