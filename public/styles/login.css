@@ -2,7 +2,7 @@
 
 /* Red background for main login page */
 body.main-login-page {
-    background-color: var(--color-chbe-green);
+    background-color: yellow;
 }
 
 .login-container {
