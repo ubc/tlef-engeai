@@ -8,7 +8,7 @@
  */
 
 import passport from 'passport';
-import { Strategy as SamlStrategy } from 'passport-saml';
+import { Strategy as UbcShibStrategy } from 'passport-ubcshib';
 import { Strategy as LocalStrategy } from 'passport-local';
 import fs from 'fs';
 import path from 'path';
@@ -42,43 +42,96 @@ const FAKE_USERS = {
     }
 };
 
-// Variable to hold strategy (either SAML or Local)
-let samlStrategy: SamlStrategy | null = null;
+type AttributeValue = string | string[] | undefined | null;
+
+const toString = (value: AttributeValue): string | undefined => {
+    if (Array.isArray(value)) {
+        return value.find((item) => typeof item === 'string');
+    }
+    return typeof value === 'string' ? value : undefined;
+};
+
+const toArray = (value: AttributeValue): string[] => {
+    if (!value) {
+        return [];
+    }
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [value];
+};
+
+const mapAffiliation = (value: AttributeValue): string => {
+    const affiliations = toArray(value);
+    if (affiliations.length === 0) {
+        return 'student';
+    }
+    const normalized = affiliations.map((entry) => entry.toLowerCase());
+    if (normalized.includes('faculty') || normalized.includes('instructor') || normalized.includes('staff')) {
+        return 'faculty';
+    }
+    return normalized[0];
+};
+
+// Variable to hold strategy (either UBCShib or Local)
+let ubcShibStrategy: UbcShibStrategy | null = null;
 
 // Configure authentication strategy based on SAML_AVAILABLE
 if (isSamlAvailable) {
-    // Load SAML certificate (only needed when SAML is available)
+    // Load certificate (only needed when SAML is available)
     const samlCert = fs.readFileSync(
         process.env.SAML_CERT_PATH || path.join(__dirname, '../../certs/server.crt'),
         'utf-8'
     );
 
-    // Configure SAML strategy
-    samlStrategy = new SamlStrategy({
-    callbackUrl: process.env.SAML_CALLBACK_URL,
-    entryPoint: process.env.SAML_ENTRY_POINT,
-    logoutUrl: process.env.SAML_LOGOUT_URL, // SP-initiated SLO
-    logoutCallbackUrl: process.env.SAML_LOGOUT_CALLBACK_URL, // URL to receive LogoutResponse
-    issuer: process.env.SAML_ISSUER,
-    cert: samlCert,
-    identifierFormat: 'urn:oasis:names:tc:SAML:2.0:nameid-format:transient',
-    disableRequestedAuthnContext: true,
-    acceptedClockSkewMs: 5000
+    // Configure UBCShib strategy (SAML 2.0 under the hood)
+    ubcShibStrategy = new UbcShibStrategy({
+        callbackUrl: process.env.SAML_CALLBACK_URL as string,
+        entryPoint: process.env.SAML_ENTRY_POINT as string,
+        logoutUrl: process.env.SAML_LOGOUT_URL,
+        metadataUrl: process.env.SAML_METADATA_URL,
+        issuer: process.env.SAML_ISSUER as string,
+        cert: samlCert
     }, (profile: any, done: any) => {
-        // Extract user information from SAML profile
-        //START DEBUG LOG : DEBUG-CODE(SAML-PROFILE)
-        console.log('SAML Profile received:', JSON.stringify(profile, null, 2));
-        //END DEBUG LOG : DEBUG-CODE(SAML-PROFILE)
+        const attributes = (profile.attributes || {}) as Record<string, AttributeValue>;
 
-        // Map CWL attributes to our user object
+        //START DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
+        console.log('[AUTH] UBCShib profile received:', JSON.stringify(profile, null, 2));
+        //END DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
+
+        const puid =
+            toString(attributes.ubcEduCwlPuid) ||
+            toString(attributes.cwlLoginKey) ||
+            profile.nameID;
+
+        if (!puid) {
+            console.error('[AUTH] ❌ Missing PUID in UBCShib response');
+            return done(new Error('Missing required ubcEduCwlPuid attribute'));
+        }
+
+        const firstName =
+            toString(attributes.givenName) ||
+            toString(attributes.firstName) ||
+            '';
+        const lastName =
+            toString(attributes.sn) ||
+            toString(attributes.lastName) ||
+            '';
+        const email =
+            toString(attributes.email) ||
+            toString(attributes.mail) ||
+            toString(attributes.eduPersonPrincipalName) ||
+            '';
+
         const user = {
-            username: profile.cwlLoginName || profile.nameID,
-            puid: profile.cwlLoginKey,
-            firstName: profile.givenName,
-            lastName: profile.sn,
-            affiliation: profile.eduPersonAffiliation,
-            email: profile.email,
-            sessionIndex: profile.sessionIndex, // Needed for logout
+            username:
+                toString(attributes.cwlLoginName) ||
+                toString(attributes.uid) ||
+                toString(attributes.displayName) ||
+                profile.nameID,
+            puid,
+            firstName,
+            lastName,
+            affiliation: mapAffiliation(attributes.eduPersonAffiliation),
+            email,
+            sessionIndex: profile.sessionIndex,
             nameID: profile.nameID,
             nameIDFormat: profile.nameIDFormat,
             rawProfile: profile // Keep raw profile for debugging
@@ -87,8 +140,8 @@ if (isSamlAvailable) {
         return done(null, user);
     });
 
-    passport.use('saml', samlStrategy);
-    console.log('[AUTH] ✅ SAML strategy configured');
+    passport.use('ubcshib', ubcShibStrategy as any);
+    console.log('[AUTH] ✅ UBCShib strategy configured');
 } else {
     // Configure Local strategy for development
     const localStrategy = new LocalStrategy(
@@ -142,4 +195,4 @@ passport.deserializeUser((user: any, done: any) => {
     done(null, user);
 });
 
-export { passport, samlStrategy, isSamlAvailable };
+export { passport, ubcShibStrategy, isSamlAvailable };

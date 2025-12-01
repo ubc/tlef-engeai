@@ -9,7 +9,7 @@
 
 import express from 'express';
 import path from 'path';
-import { passport, samlStrategy, isSamlAvailable } from '../middleware/passport';
+import { passport, ubcShibStrategy, isSamlAvailable } from '../middleware/passport';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { GlobalUser } from '../functions/types';
 import { IDGenerator } from '../functions/unique-id-generator';
@@ -25,7 +25,7 @@ router.get('/login', (req: express.Request, res: express.Response, next: express
         console.log('[AUTH] Initiating SAML authentication...');
         //END DEBUG LOG : DEBUG-CODE(SAML-LOGIN)
 
-        passport.authenticate('saml', {
+        passport.authenticate('ubcshib', {
             failureRedirect: '/auth/login-failed',
             successRedirect: '/'
         })(req, res, next);
@@ -46,7 +46,7 @@ router.post('/saml/callback', (req: express.Request, res: express.Response, next
     console.log('SAML callback received');
     //END DEBUG LOG : DEBUG-CODE(SAML-CALLBACK)
     
-    passport.authenticate('saml', {
+    passport.authenticate('ubcshib', {
         failureRedirect: '/auth/login-failed',
         failureFlash: false
     })(req, res, next);
@@ -219,13 +219,13 @@ router.get('/logout', (req: express.Request, res: express.Response, next: expres
         return res.redirect('/');
     }
 
-    if (isSamlAvailable && samlStrategy) {
+    if (isSamlAvailable && ubcShibStrategy) {
         // SAML Single Log-Out flow
         //START DEBUG LOG : DEBUG-CODE(SAML-LOGOUT)
         console.log('[AUTH] Initiating SAML logout...');
         //END DEBUG LOG : DEBUG-CODE(SAML-LOGOUT)
 
-        samlStrategy.logout(req as any, (err: any, requestUrl?: string | null) => {
+        ubcShibStrategy.logout(req as any, (err: any, requestUrl?: string | null) => {
             if (err) {
                 //START DEBUG LOG : DEBUG-CODE(SAML-LOGOUT-ERROR)
                 console.error('[AUTH] SAML logout error:', err);
@@ -283,14 +283,17 @@ router.get('/logout', (req: express.Request, res: express.Response, next: expres
     }
 });
 
-// The SAML IdP will redirect the user back to this URL after a successful logout.
-// This endpoint can be configured in your IdP's settings and should match SAML_LOGOUT_CALLBACK_URL.
-router.get('/logout/callback', (req: express.Request, res: express.Response) => {
-    // The local session is already destroyed.
-    // We can perform any additional cleanup here if needed.
-    // For now, just redirect to the home page.
-    res.redirect('/');
-});
+// Logout callback - IdP redirects here after logout
+// This endpoint handles the SAML logout response from the IdP
+// Note: In the reference implementation, this is at /auth/logout, but since our routes
+// are mounted at /auth, we use /logout/callback to avoid conflict with the main logout route
+router.get('/logout/callback',
+    passport.authenticate('ubcshib', { failureRedirect: '/' }),
+    (req: express.Request, res: express.Response) => {
+        // Successful logout callback - redirect to home page
+        res.redirect('/');
+    }
+);
 
 // Get current user info (API endpoint)
 router.get('/current-user', async (req: express.Request, res: express.Response) => {

@@ -20,10 +20,22 @@ The EngE-AI authentication system uses a **two-tier user model**:
 - **CourseUser**: Course-specific user data stored in `{courseName}_users` collections (no PUID)
 
 The system supports two authentication methods:
-- **SAML Authentication** (Production): UBC CWL integration via SAML 2.0
+- **UBCShib (SAML 2.0) Authentication** (Production): UBC CWL integration via the `passport-ubcshib` strategy
 - **Local Authentication** (Development): Username/password with hardcoded test users
 
 **Key Principle**: PUID (Privacy-focused Unique Identifier) is **NEVER** sent to the frontend. Only `userId` is used for frontend operations.
+
+### Configuration & Environment Variables
+
+- Backend dependency: `passport-ubcshib@0.1.6` wraps UBC's SAML 2.0 endpoints and replaces the legacy `passport-saml` usage.
+- `SAML_AVAILABLE`: `true` (default) enables UBCShib; set to `false` for the local fake-user fallback.
+- `SAML_ISSUER`, `SAML_ENTRY_POINT`, `SAML_CALLBACK_URL`, `SAML_LOGOUT_URL`, `SAML_METADATA_URL`, `SAML_CERT_PATH`: reused by the `passport-ubcshib` strategy for CWL integration. These align with the docker-simple-saml setup and production CWL configuration.
+- Certificates are read from `SAML_CERT_PATH` (defaults to `certs/server.crt`), matching earlier SAML deployments.
+
+**Testing & Rollback**
+
+- Validate locally using the docker-simple-saml environment before pointing at CWL staging.
+- For immediate rollback (e.g., IdP outage), set `SAML_AVAILABLE=false` to revert to the local authentication path without redeploying code.
 
 ---
 
@@ -39,12 +51,12 @@ The system supports two authentication methods:
 
 **Backend Route:** `GET /auth/login`
 - **File**: `src/routes/auth.ts` (lines 21-41)
-- **SAML Mode**: Redirects to SAML IdP (UBC CWL)
+- **UBCShib Mode**: Redirects to the CWL IdP via `passport-ubcshib`
 - **Local Mode**: Serves login page (`local-login.html`)
 
 #### Step 2: Authentication Provider Verification
 
-**SAML Flow:**
+**UBCShib Flow:**
 1. User redirected to UBC CWL login page
 2. User enters CWL credentials
 3. UBC IdP validates credentials
@@ -56,17 +68,17 @@ The system supports two authentication methods:
 3. Passport LocalStrategy validates credentials
 
 **Code Location:**
-- **SAML Strategy**: `src/middleware/passport.ts` (lines 57-88)
-- **Local Strategy**: `src/middleware/passport.ts` (lines 94-128)
+- **UBCShib Strategy**: `src/middleware/passport.ts` (lines 49-143)
+- **Local Strategy**: `src/middleware/passport.ts` (lines 145-192)
 
 #### Step 3: Passport Authentication
 
-**SAML Callback:**
+**UBCShib Callback:**
 - **Route**: `POST /auth/saml/callback`
 - **File**: `src/routes/auth.ts` (lines 44-113)
 - **Process**:
-  1. `passport.authenticate('saml')` validates SAML assertion
-  2. SAML profile is mapped to user object (lines 67-88 in passport.ts)
+  1. `passport.authenticate('ubcshib')` validates the SAML 2.0 assertion
+  2. The UBCShib profile is normalized into the user object (lines 79-138 in passport.ts)
   3. User object created with: `username`, `puid`, `firstName`, `lastName`, `affiliation`
   4. `req.user` is populated by Passport
 
