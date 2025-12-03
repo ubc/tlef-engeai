@@ -42,6 +42,27 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
         
         console.log(`[COURSE-ENTRY] Course found: ${course.courseName}`);
         
+        // 1.5. Handle instructor joining existing course
+        if (globalUser.affiliation === 'faculty') {
+            const courseData = course as any;
+            const instructorUserId = globalUser.userId;
+            
+            // Check if instructor is already in the course's instructors array
+            if (!courseData.instructors || !courseData.instructors.includes(instructorUserId)) {
+                console.log(`[COURSE-ENTRY] Instructor ${instructorUserId} not in course instructors list, adding...`);
+                
+                // Add instructor to the course's instructors array
+                const updatedInstructors = courseData.instructors || [];
+                updatedInstructors.push(instructorUserId);
+                
+                await mongoDB.updateActiveCourse(courseId, {
+                    instructors: updatedInstructors
+                } as any);
+                
+                console.log(`[COURSE-ENTRY] Added instructor to course's instructors list`);
+            }
+        }
+        
         // 2. Check if CourseUser exists in {courseName}_users
         // Use userId instead of puid (CourseUser doesn't store puid for privacy)
         let courseUser = await mongoDB.findStudentByUserId(
@@ -92,6 +113,15 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
             }
         } else {
             console.log(`[COURSE-ENTRY] CourseUser found`);
+            
+            // Ensure course is in GlobalUser's enrolled list (fixes data inconsistency)
+            if (!globalUser.coursesEnrolled.includes(courseId)) {
+                await mongoDB.addCourseToGlobalUser(
+                    globalUser.puid, 
+                    courseId
+                );
+                console.log(`[COURSE-ENTRY] Added course to GlobalUser's enrolled list (was missing)`);
+            }
         }
         
         // 5. Store current course in session

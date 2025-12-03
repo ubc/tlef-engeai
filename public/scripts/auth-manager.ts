@@ -18,13 +18,16 @@ class AuthManager {
     private userInfo: HTMLElement | null = null;
     private authLoading: HTMLElement | null = null;
     private loginBtn: HTMLElement | null = null;
+    private loginCwlBtn: HTMLElement | null = null;
     private logoutBtn: HTMLElement | null = null;
     private userDetails: HTMLElement | null = null;
+    private samlAvailable: boolean = true; // Default to true
 
     constructor() {
         this.initializeElements();
         this.setupEventListeners();
         this.setupAuthStateListener();
+        this.fetchAuthConfig();
     }
 
     /**
@@ -35,6 +38,7 @@ class AuthManager {
         this.userInfo = document.getElementById('user-info');
         this.authLoading = document.getElementById('auth-loading');
         this.loginBtn = document.getElementById('login-btn');
+        this.loginCwlBtn = document.getElementById('login-cwl-btn');
         this.logoutBtn = document.getElementById('logout-btn');
         this.userDetails = document.getElementById('user-details');
 
@@ -44,6 +48,7 @@ class AuthManager {
         console.log('User info:', this.userInfo);
         console.log('Auth loading:', this.authLoading);
         console.log('Login btn:', this.loginBtn);
+        console.log('Login CWL btn:', this.loginCwlBtn);
         console.log('Logout btn:', this.logoutBtn);
         console.log('User details:', this.userDetails);
         //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-ELEMENTS)
@@ -74,6 +79,25 @@ class AuthManager {
     }
 
     /**
+     * Fetch authentication configuration from backend
+     */
+    private async fetchAuthConfig(): Promise<void> {
+        try {
+            const response = await fetch('/auth/config');
+            const data = await response.json();
+            this.samlAvailable = data.samlAvailable;
+            
+            //START DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-CONFIG)
+            console.log('[AUTH-MANAGER] 📋 Auth config loaded:', { samlAvailable: this.samlAvailable });
+            //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-CONFIG)
+        } catch (error) {
+            console.error('[AUTH-MANAGER] 🚨 Error fetching auth config:', error);
+            // Default to true if config fetch fails
+            this.samlAvailable = true;
+        }
+    }
+
+    /**
      * Setup click handlers for authentication buttons
      */
     private setupClickHandlers(): void {
@@ -83,6 +107,15 @@ class AuthManager {
                 console.log('[AUTH-MANAGER] 🔐 Login button clicked');
                 //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-LOGIN-CLICK)
                 authService.login();
+            });
+        }
+
+        if (this.loginCwlBtn) {
+            this.loginCwlBtn.addEventListener('click', () => {
+                //START DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-LOGIN-CWL-CLICK)
+                console.log('[AUTH-MANAGER] 🔐 Login with CWL button clicked');
+                //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-LOGIN-CWL-CLICK)
+                authService.loginCWL();
             });
         }
 

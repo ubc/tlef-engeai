@@ -33,15 +33,30 @@
                 <h1 class="course-selection-title">
                     Course selection
                 </h1>
-                <button id="add-new-course-btn" class="add-new-course-btn" title="Add New Course">
-                    <i data-feather="plus"></i>
-                    <span>Add New Course</span>
-                </button>
+                <div class="course-action-buttons">
+                    <button id="add-new-course-btn" class="add-new-course-btn" title="Add New Course">
+                        <i data-feather="plus"></i>
+                        <span>Add New Course</span>
+                    </button>
+                    <button id="create-new-course-btn" class="create-new-course-btn" title="Create New Course" style="display: none;">
+                        <i data-feather="file-plus"></i>
+                        <span>Create New Course</span>
+                    </button>
+                </div>
             </header>
 
             <!-- Workspace/Course List -->
             <div class="course-workspace-list" id="course-cards">
                 <!-- Course rows will be dynamically loaded here -->
+            </div>
+
+            <!-- Empty State -->
+            <div class="empty-state" id="empty-state" style="display: none;">
+                <div class="empty-state-content">
+                    <i data-feather="book-open"></i>
+                    <h2>No Courses Enrolled</h2>
+                    <p id="empty-state-message"></p>
+                </div>
             </div>
 
             <!-- Loading State -->

@@ -484,4 +484,42 @@ router.get('/me', async (req: express.Request, res: express.Response) => {
     }
 });
 
+// Get authentication configuration (API endpoint)
+router.get('/config', (req: express.Request, res: express.Response) => {
+    //START DEBUG LOG : DEBUG-CODE(AUTH-CONFIG)
+    console.log('[SERVER] 🔍 /auth/config endpoint called');
+    //END DEBUG LOG : DEBUG-CODE(AUTH-CONFIG)
+    
+    res.json({
+        samlAvailable: isSamlAvailable
+    });
+});
+
+// CWL login route - always attempts SAML/CWL login regardless of SAML_AVAILABLE
+router.get('/login/cwl', (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    //START DEBUG LOG : DEBUG-CODE(CWL-LOGIN)
+    console.log('[AUTH] Initiating CWL login (forced SAML)...');
+    //END DEBUG LOG : DEBUG-CODE(CWL-LOGIN)
+    
+    if (ubcShibStrategy) {
+        // SAML strategy is available - proceed with SAML authentication
+        passport.authenticate('ubcshib', {
+            failureRedirect: '/auth/login-failed',
+            successRedirect: '/'
+        })(req, res, next);
+    } else {
+        // SAML strategy not configured - return error
+        console.error('[AUTH] ❌ CWL login requested but SAML strategy is not configured');
+        res.status(503).send(`
+            <html>
+                <body>
+                    <h1>CWL Login Unavailable</h1>
+                    <p>SAML authentication is not configured. Please use the regular login button.</p>
+                    <a href="/">Return to Home</a>
+                </body>
+            </html>
+        `);
+    }
+});
+
 export default router;

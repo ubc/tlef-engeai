@@ -56,8 +56,8 @@ async function initializeCourseSelection(): Promise<void> {
         
         console.log('[COURSE-SELECTION] ✅ User data loaded:', userName, 'Affiliation:', currentUserAffiliation);
         
-        // Setup Add New Course button
-        setupAddNewCourseButton();
+        // Setup buttons based on affiliation
+        setupCourseButtons();
         
         // Fetch course data
         await loadCourses();
@@ -87,16 +87,34 @@ async function loadCourses(): Promise<void> {
         const { data: courses } = await response.json();
         console.log('[COURSE-SELECTION] 📋 Courses fetched:', courses.length);
         
-        // Display all courses from the database (no filtering)
-        if (courses.length === 0) {
-            throw new Error('No available courses found');
-        }
+        // Filter to only show enrolled courses
+        const enrolledCourseIds = currentGlobalUser?.coursesEnrolled || [];
+        const enrolledCourses = courses.filter((course: any) => {
+            const isEnrolled = enrolledCourseIds.includes(course.id);
+            // For instructors, also check if they're in the instructors array
+            if (currentUserAffiliation === 'faculty') {
+                const isInstructor = course.instructors?.includes(currentGlobalUser?.userId) || false;
+                return isEnrolled || isInstructor;
+            }
+            return isEnrolled;
+        });
+        
+        console.log('[COURSE-SELECTION] 📋 Enrolled courses:', enrolledCourses.length);
         
         // Hide loading message
         hideLoadingMessage();
         
-        // Render workspace rows for all courses
-        container.innerHTML = courses.map((course: any) => 
+        // Hide empty state initially (will show if needed)
+        hideEmptyState();
+        
+        // Handle empty enrolled courses (valid state, not an error)
+        if (enrolledCourses.length === 0) {
+            showEmptyState();
+            return; // Don't throw error, this is a valid state
+        }
+        
+        // Render workspace rows for enrolled courses only
+        container.innerHTML = enrolledCourses.map((course: any) => 
             createCourseCard(course)
         ).join('');
         
@@ -360,6 +378,9 @@ function showLoadingMessage(): void {
     
     if (loadingElement) loadingElement.style.display = 'block';
     if (errorElement) errorElement.style.display = 'none';
+    
+    // Hide empty state when loading
+    hideEmptyState();
 }
 
 /**
@@ -379,6 +400,49 @@ function showErrorMessage(): void {
     
     if (loadingElement) loadingElement.style.display = 'none';
     if (errorElement) errorElement.style.display = 'block';
+    
+    // Hide empty state when showing error
+    hideEmptyState();
+}
+
+/**
+ * Show empty state when user has no enrolled courses
+ */
+function showEmptyState(): void {
+    const emptyStateElement = document.getElementById('empty-state');
+    const emptyStateMessage = document.getElementById('empty-state-message');
+    const container = document.getElementById('course-cards');
+    
+    if (emptyStateElement && emptyStateMessage) {
+        // Set appropriate message based on user affiliation
+        if (currentUserAffiliation === 'faculty') {
+            emptyStateMessage.textContent = "You're not enrolled in any courses. Create a new course or join an existing one.";
+        } else {
+            emptyStateMessage.textContent = "You're not enrolled in any courses. Click 'Add New Course' to join a course.";
+        }
+        
+        emptyStateElement.style.display = 'block';
+        
+        // Re-initialize Feather icons for the empty state icon
+        if (typeof (window as any).feather !== 'undefined') {
+            (window as any).feather.replace();
+        }
+    }
+    
+    // Clear course cards container
+    if (container) {
+        container.innerHTML = '';
+    }
+}
+
+/**
+ * Hide empty state
+ */
+function hideEmptyState(): void {
+    const emptyStateElement = document.getElementById('empty-state');
+    if (emptyStateElement) {
+        emptyStateElement.style.display = 'none';
+    }
 }
 
 /**
@@ -394,25 +458,55 @@ function setupRetryButton(): void {
 }
 
 /**
- * Setup Add New Course button handler
+ * Setup course action buttons based on user affiliation
  */
-function setupAddNewCourseButton(): void {
+function setupCourseButtons(): void {
     const addNewCourseBtn = document.getElementById('add-new-course-btn');
-    if (addNewCourseBtn) {
-        addNewCourseBtn.addEventListener('click', async () => {
-            if (currentUserAffiliation === 'faculty') {
-                // Create a new course object with courseSetup: false to trigger onboarding
-                await createNewCourseForInstructor();
-            } else if (currentUserAffiliation === 'student') {
-                // Show enrollment modal
-                await showEnrollmentModal();
-            }
-        });
-        
-        // Re-render feather icons for the button
-        if (typeof (window as any).feather !== 'undefined') {
-            (window as any).feather.replace();
+    const createNewCourseBtn = document.getElementById('create-new-course-btn');
+    
+    // Show/hide buttons based on affiliation
+    if (currentUserAffiliation === 'faculty') {
+        // For instructors: show both buttons
+        if (addNewCourseBtn) {
+            addNewCourseBtn.style.display = 'flex';
         }
+        if (createNewCourseBtn) {
+            createNewCourseBtn.style.display = 'flex';
+        }
+        
+        // Setup "Add New Course" button - shows enrollment modal
+        if (addNewCourseBtn) {
+            addNewCourseBtn.addEventListener('click', async () => {
+                await showInstructorEnrollmentModal();
+            });
+        }
+        
+        // Setup "Create New Course" button - creates new course
+        if (createNewCourseBtn) {
+            createNewCourseBtn.addEventListener('click', async () => {
+                await createNewCourseForInstructor();
+            });
+        }
+    } else if (currentUserAffiliation === 'student') {
+        // For students: only show "Add New Course" button
+        if (addNewCourseBtn) {
+            addNewCourseBtn.style.display = 'flex';
+        }
+        if (createNewCourseBtn) {
+            createNewCourseBtn.style.display = 'none';
+        }
+        
+        // Setup "Add New Course" button - shows enrollment modal
+        if (addNewCourseBtn) {
+            addNewCourseBtn.addEventListener('click', async () => {
+                await showEnrollmentModal();
+            });
+        }
+    }
+    
+    // Re-render feather icons for the buttons
+    if (typeof (window as any).feather !== 'undefined') {
+        (window as any).feather.replace();
     }
 }
 
@@ -453,6 +547,56 @@ async function createNewCourseForInstructor(): Promise<void> {
         await showErrorModal(
             'Error',
             'Failed to create new course. Please try again.'
+        );
+    }
+}
+
+/**
+ * Show enrollment modal with courses instructor can join
+ */
+async function showInstructorEnrollmentModal(): Promise<void> {
+    if (!currentGlobalUser) {
+        await showErrorModal('Error', 'User data not available. Please refresh the page.');
+        return;
+    }
+    
+    try {
+        // Fetch all courses
+        const response = await fetch('/api/courses');
+        if (!response.ok) {
+            throw new Error('Failed to fetch courses');
+        }
+        
+        const { data: allCourses } = await response.json();
+        
+        // Filter to only show courses instructor is NOT already part of
+        const enrolledCourseIds = currentGlobalUser.coursesEnrolled || [];
+        const availableCourses = allCourses.filter((course: any) => {
+            // Show courses where instructor is not enrolled AND not already in instructors list
+            const isEnrolled = enrolledCourseIds.includes(course.id);
+            const isInstructor = course.instructors?.includes(currentGlobalUser!.userId) || false;
+            return !isEnrolled && !isInstructor;
+        });
+        
+        // Create modal content
+        const modalContent = createInstructorEnrollmentModalContent(availableCourses);
+        
+        // Show modal using ModalOverlay
+        const modal = new ModalOverlay();
+        await modal.show({
+            type: 'custom',
+            title: 'Join Course as Instructor',
+            content: modalContent,
+            showCloseButton: true,
+            closeOnOverlayClick: true,
+            maxWidth: '600px'
+        });
+        
+    } catch (error) {
+        console.error('[COURSE-SELECTION] ❌ Error showing instructor enrollment modal:', error);
+        await showErrorModal(
+            'Error',
+            'Failed to load available courses. Please try again.'
         );
     }
 }
@@ -501,6 +645,135 @@ async function showEnrollmentModal(): Promise<void> {
             'Error',
             'Failed to load available courses. Please try again.'
         );
+    }
+}
+
+/**
+ * Create instructor enrollment modal content with course list
+ */
+function createInstructorEnrollmentModalContent(courses: any[]): HTMLElement {
+    const container = document.createElement('div');
+    container.className = 'enrollment-modal-content';
+    
+    if (courses.length === 0) {
+        const noCoursesMsg = document.createElement('p');
+        noCoursesMsg.className = 'no-courses-message';
+        noCoursesMsg.textContent = 'No courses available to join as instructor.';
+        noCoursesMsg.style.textAlign = 'center';
+        noCoursesMsg.style.padding = '2rem';
+        noCoursesMsg.style.color = '#666';
+        container.appendChild(noCoursesMsg);
+        return container;
+    }
+    
+    // Create course list
+    const courseList = document.createElement('div');
+    courseList.className = 'enrollment-course-list';
+    
+    courses.forEach((course) => {
+        const courseItem = document.createElement('div');
+        courseItem.className = 'enrollment-course-item';
+        
+        // Course info
+        const courseInfo = document.createElement('div');
+        courseInfo.className = 'enrollment-course-info';
+        
+        const courseName = document.createElement('div');
+        courseName.className = 'enrollment-course-name';
+        courseName.textContent = course.courseName;
+        
+        const instructors = document.createElement('div');
+        instructors.className = 'enrollment-course-instructors';
+        instructors.textContent = course.instructors?.join(', ') || 'No instructors';
+        
+        courseInfo.appendChild(courseName);
+        courseInfo.appendChild(instructors);
+        
+        // Join button
+        const joinBtn = document.createElement('button');
+        joinBtn.className = 'enrol-here-btn';
+        joinBtn.textContent = 'Join as Instructor';
+        joinBtn.setAttribute('data-course-id', course.id);
+        joinBtn.addEventListener('click', async () => {
+            await handleInstructorJoin(course.id, joinBtn);
+        });
+        
+        courseItem.appendChild(courseInfo);
+        courseItem.appendChild(joinBtn);
+        courseList.appendChild(courseItem);
+    });
+    
+    container.appendChild(courseList);
+    return container;
+}
+
+/**
+ * Handle instructor joining a course
+ */
+async function handleInstructorJoin(courseId: string, button: HTMLButtonElement): Promise<void> {
+    try {
+        // Disable button and show loading state
+        button.disabled = true;
+        const originalText = button.textContent;
+        button.textContent = 'Joining...';
+        
+        // First, add instructor to course's instructors array
+        const addInstructorResponse = await fetch(`/api/courses/${courseId}/instructors`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const addInstructorData = await addInstructorResponse.json();
+        
+        if (!addInstructorData.success) {
+            console.error('[COURSE-SELECTION] ❌ Error adding instructor to course:', addInstructorData.error);
+            await showErrorModal(
+                'Join Error',
+                `Failed to join course: ${addInstructorData.error || 'Unknown error'}`
+            );
+            
+            // Re-enable button
+            button.disabled = false;
+            button.textContent = originalText;
+            return;
+        }
+        
+        // Then, enter the course (this will create CourseUser and add to enrolled list)
+        const enterResponse = await fetch('/api/course/enter', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ courseId })
+        });
+        
+        const enterData = await enterResponse.json();
+        
+        if (enterData.error) {
+            console.error('[COURSE-SELECTION] ❌ Error entering course:', enterData.error);
+            await showErrorModal(
+                'Join Error',
+                `Failed to enter course: ${enterData.error || 'Unknown error'}`
+            );
+            
+            // Re-enable button
+            button.disabled = false;
+            button.textContent = originalText;
+            return;
+        }
+        
+        // Success - redirect to instructor mode
+        console.log('[COURSE-SELECTION] ✅ Joined course successfully, redirecting to:', enterData.redirect);
+        window.location.href = enterData.redirect;
+        
+    } catch (error) {
+        console.error('[COURSE-SELECTION] ❌ Error joining course:', error);
+        await showErrorModal(
+            'Join Error',
+            'Failed to join course. Please try again.'
+        );
+        
+        // Re-enable button
+        button.disabled = false;
+        button.textContent = 'Join as Instructor';
     }
 }
 

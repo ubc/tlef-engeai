@@ -145,13 +145,23 @@ export class AuthService {
     }
 
     /**
-     * Initiate SAML login
+     * Initiate login (respects SAML_AVAILABLE - uses SAML if available, local otherwise)
      */
     public login(): void {
         //START DEBUG LOG : DEBUG-CODE(FRONTEND-LOGIN)
-        console.log('[FRONTEND-AUTH] 🚀 Initiating SAML login...');
+        console.log('[FRONTEND-AUTH] 🚀 Initiating login...');
         //END DEBUG LOG : DEBUG-CODE(FRONTEND-LOGIN)
         window.location.href = '/auth/login';
+    }
+
+    /**
+     * Initiate CWL login (always attempts SAML/CWL login)
+     */
+    public loginCWL(): void {
+        //START DEBUG LOG : DEBUG-CODE(FRONTEND-LOGIN-CWL)
+        console.log('[FRONTEND-AUTH] 🚀 Initiating CWL login (forced SAML)...');
+        //END DEBUG LOG : DEBUG-CODE(FRONTEND-LOGIN-CWL)
+        window.location.href = '/auth/login/cwl';
     }
 
     /**

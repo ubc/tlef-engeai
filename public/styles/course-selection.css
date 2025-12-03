@@ -112,6 +112,13 @@
     text-align:left;
 }
 
+/* Course Action Buttons Container */
+.course-action-buttons {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
 /* Add New Course Button */
 .add-new-course-btn {
     background: var(--color-chbe-green);
@@ -140,6 +147,39 @@
 }
 
 .add-new-course-btn i {
+    width: 18px;
+    height: 18px;
+    stroke: white;
+}
+
+/* Create New Course Button */
+.create-new-course-btn {
+    background: var(--color-eng-red);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    white-space: nowrap;
+}
+
+.create-new-course-btn:hover {
+    background: #6d0000;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(139, 0, 0, 0.3);
+}
+
+.create-new-course-btn:active {
+    transform: translateY(0);
+}
+
+.create-new-course-btn i {
     width: 18px;
     height: 18px;
     stroke: white;
@@ -359,6 +399,38 @@
     box-shadow: none;
 }
 
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+}
+
+.empty-state-content {
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.empty-state-content i {
+    width: 64px;
+    height: 64px;
+    stroke: #adb5bd;
+    margin-bottom: 1.5rem;
+}
+
+.empty-state-content h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #212529;
+    margin: 0 0 1rem 0;
+}
+
+.empty-state-content p {
+    font-size: 1rem;
+    color: #666;
+    margin: 0;
+    line-height: 1.6;
+}
+
 /* Loading and Error States */
 .loading-message,
 .error-message {
@@ -491,7 +563,14 @@
         font-size: 1.75rem;
     }
     
-    .add-new-course-btn {
+    .course-action-buttons {
+        width: 100%;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .add-new-course-btn,
+    .create-new-course-btn {
         width: 100%;
         justify-content: center;
     }

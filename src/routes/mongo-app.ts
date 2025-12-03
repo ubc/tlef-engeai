@@ -468,6 +468,74 @@ router.put('/:id', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     });
 }));
 
+// POST /api/courses/:courseId/instructors - Add instructor to course's instructors array
+router.post('/:courseId/instructors', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const { courseId } = req.params;
+        const globalUser = (req.session as any).globalUser;
+        
+        if (!globalUser) {
+            return res.status(401).json({ 
+                success: false,
+                error: 'User not authenticated' 
+            });
+        }
+        
+        if (globalUser.affiliation !== 'faculty') {
+            return res.status(403).json({ 
+                success: false,
+                error: 'Only faculty members can join courses as instructors' 
+            });
+        }
+        
+        const instance = await EngEAI_MongoDB.getInstance();
+        const course = await instance.getActiveCourse(courseId);
+        
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        const courseData = course as unknown as activeCourse;
+        const instructorUserId = globalUser.userId;
+        
+        // Check if instructor is already in the instructors array
+        if (courseData.instructors && courseData.instructors.includes(instructorUserId)) {
+            return res.status(200).json({
+                success: true,
+                data: courseData,
+                message: 'Instructor is already part of this course'
+            });
+        }
+        
+        // Add instructor to the instructors array
+        const updatedInstructors = courseData.instructors || [];
+        updatedInstructors.push(instructorUserId);
+        
+        const updatedCourse = await instance.updateActiveCourse(courseId, {
+            instructors: updatedInstructors
+        } as Partial<activeCourse>);
+        
+        console.log(`[ADD-INSTRUCTOR] Added instructor ${instructorUserId} to course ${courseId}`);
+        
+        res.status(200).json({
+            success: true,
+            data: updatedCourse,
+            message: 'Instructor added to course successfully'
+        });
+        
+    } catch (error) {
+        console.error('[ADD-INSTRUCTOR] Error:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Failed to add instructor to course',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
 // DELETE /api/courses/:id/restart-onboarding - Restart onboarding by deleting course and related collections, then recreating with empty defaults
 // NOTE: This route must come before the general /:id route to ensure proper matching
 router.delete('/:id/restart-onboarding', asyncHandlerWithAuth(async (req: Request, res: Response) => {
