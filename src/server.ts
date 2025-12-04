@@ -90,6 +90,6 @@ app.listen(port, async () => {
     console.log(`[ENGE-AI] SAML Authentication: ${process.env.SAML_ENTRY_POINT ? 'Configured' : 'Not configured'}`);
     console.log('--------------------------------');
     
-    // Initialize dummy courses on server startup
-    await initializeDummyCourses();
+    // // Initialize dummy courses on server startup
+    // await initializeDummyCourses();
 });

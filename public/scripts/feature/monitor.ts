@@ -37,15 +37,84 @@ class MonitorDashboard {
     private currentSort: 'tokens' | 'name' = 'tokens';
     private selectedDateRange: DateRange = { start: null, end: null };
     private isCalendarOpen: boolean = false;
+    private courseId: string | null = null;
 
     constructor() {
-        this.initializeMockData();
+        this.getCourseId();
+        this.loadChatTitles();
         this.bindEvents();
         this.render();
     }
 
     /**
+     * Get course ID from global context
+     */
+    private getCourseId(): void {
+        // Try to get from window.currentClass (set by instructor-mode.ts)
+        if (typeof window !== 'undefined' && (window as any).currentClass && (window as any).currentClass.id) {
+            this.courseId = (window as any).currentClass.id;
+            console.log('[MONITOR] Course ID:', this.courseId);
+        } else {
+            console.error('[MONITOR] ❌ No course ID found in context');
+        }
+    }
+
+    /**
+     * Load chat titles from API
+     */
+    private async loadChatTitles(): Promise<void> {
+        if (!this.courseId) {
+            console.error('[MONITOR] ❌ Cannot load chat titles: no course ID');
+            this.students = [];
+            this.render();
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/courses/monitor/${this.courseId}/chat-titles`, {
+                method: 'GET',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.success && result.data) {
+                // Transform API data to StudentData format
+                this.students = result.data.map((student: any) => ({
+                    id: student.studentId,
+                    name: student.studentName,
+                    tokens: 0, // Set tokens to 0 as requested
+                    chatHistory: student.chats.map((chat: any) => ({
+                        id: chat.id,
+                        title: chat.title,
+                        date: new Date(), // Date not provided by API, use current date
+                        tokensUsed: 0 // Set tokens to 0 as requested
+                    }))
+                }));
+                
+                console.log('[MONITOR] ✅ Loaded chat titles for', this.students.length, 'students');
+            } else {
+                console.error('[MONITOR] ❌ Failed to load chat titles:', result.error);
+                this.students = [];
+            }
+        } catch (error) {
+            console.error('[MONITOR] ❌ Error loading chat titles:', error);
+            this.students = [];
+        }
+        
+        this.render();
+    }
+
+    /**
      * Initialize mock data for students and usage statistics
+     * COMMENTED OUT: Now using real data from API
      */
     private initializeMockData(): void {
         // Mock student data with chat history - 20 students
@@ -252,17 +321,18 @@ class MonitorDashboard {
      * Bind event listeners
      */
     private bindEvents(): void {
+        // COMMENTED OUT: Calendar functionality hidden as requested
         // Choose date button
-        const chooseDateBtn = document.getElementById('choose-date-btn');
-        chooseDateBtn?.addEventListener('click', () => this.openCalendar());
+        // const chooseDateBtn = document.getElementById('choose-date-btn');
+        // chooseDateBtn?.addEventListener('click', () => this.openCalendar());
 
         // Close calendar button
-        const closeCalendarBtn = document.getElementById('close-calendar-btn');
-        closeCalendarBtn?.addEventListener('click', () => this.closeCalendar());
+        // const closeCalendarBtn = document.getElementById('close-calendar-btn');
+        // closeCalendarBtn?.addEventListener('click', () => this.closeCalendar());
 
         // Calendar OK button
-        const calendarOkBtn = document.getElementById('calendar-ok-btn');
-        calendarOkBtn?.addEventListener('click', () => this.applyDateSelection());
+        // const calendarOkBtn = document.getElementById('calendar-ok-btn');
+        // calendarOkBtn?.addEventListener('click', () => this.applyDateSelection());
 
         // Sort buttons
         const sortTokensBtn = document.getElementById('sort-tokens');
@@ -271,13 +341,14 @@ class MonitorDashboard {
         sortTokensBtn?.addEventListener('click', () => this.setSort('tokens'));
         sortNameBtn?.addEventListener('click', () => this.setSort('name'));
 
+        // COMMENTED OUT: Calendar modal click handler
         // Close calendar when clicking outside
-        const calendarModal = document.getElementById('calendar-modal');
-        calendarModal?.addEventListener('click', (e) => {
-            if (e.target === calendarModal) {
-                this.closeCalendar();
-            }
-        });
+        // const calendarModal = document.getElementById('calendar-modal');
+        // calendarModal?.addEventListener('click', (e) => {
+        //     if (e.target === calendarModal) {
+        //         this.closeCalendar();
+        //     }
+        // });
 
         // Accordion functionality will be handled by global functions
     }
@@ -313,15 +384,12 @@ class MonitorDashboard {
      * Generate mock usage statistics based on selected date range
      */
     private generateUsageStats(): UsageStats {
-        // Mock data generation based on date range
-        const isToday = this.isToday(this.selectedDateRange.start);
-        const isRange = this.selectedDateRange.end !== null;
-
+        // Set tokens to 0 for both boxes as requested
         return {
-            todayPercentage: isToday ? 6 : Math.floor(Math.random() * 20) + 1,
-            todayTrend: isToday ? '↑ 12% from yesterday' : '↑ 8% from previous day',
-            monthlyPercentage: isRange ? 73 : Math.floor(Math.random() * 30) + 50,
-            monthlyTrend: isRange ? '1 days remaining' : `${Math.floor(Math.random() * 10) + 1} days remaining`
+            todayPercentage: 0,
+            todayTrend: '0% from yesterday',
+            monthlyPercentage: 0,
+            monthlyTrend: '0 days remaining'
         };
     }
 
@@ -750,12 +818,67 @@ function toggleMonitorStudentAccordion(studentId: string): void {
 (window as any).toggleMonitorStudentAccordion = toggleMonitorStudentAccordion;
 
 /**
- * Download chat history (placeholder function)
+ * Download chat history for a specific chat
  */
-function downloadChatHistory(chatId: string): void {
-    console.log(`Downloading chat history for session: ${chatId}`);
-    // TODO: Implement actual download functionality
-    alert(`Download functionality for chat session ${chatId} will be implemented soon!`);
+async function downloadChatHistory(chatId: string): Promise<void> {
+    try {
+        // Get course ID from global context
+        let courseId: string | null = null;
+        if (typeof window !== 'undefined' && (window as any).currentClass && (window as any).currentClass.id) {
+            courseId = (window as any).currentClass.id;
+        }
+        
+        if (!courseId) {
+            alert('Error: Course ID not found. Please refresh the page.');
+            return;
+        }
+        
+        console.log(`[MONITOR] Downloading chat history for session: ${chatId}, course: ${courseId}`);
+        
+        // Call the download endpoint
+        const response = await fetch(`/api/courses/monitor/${courseId}/chat/${chatId}/download`, {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Failed to download chat' }));
+            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        }
+        
+        // Get the text content from response
+        const textContent = await response.text();
+        
+        // Get filename from Content-Disposition header or use default
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = `chat-${chatId}.txt`;
+        if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+            if (filenameMatch) {
+                filename = filenameMatch[1];
+            }
+        }
+        
+        // Create a blob and download it
+        const blob = new Blob([textContent], { type: 'text/plain' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        
+        console.log(`[MONITOR] ✅ Chat downloaded successfully: ${filename}`);
+        
+    } catch (error) {
+        console.error('[MONITOR] ❌ Error downloading chat:', error);
+        alert(`Failed to download chat: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
 }
 
 /**

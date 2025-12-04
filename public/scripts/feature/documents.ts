@@ -35,6 +35,46 @@ let courseData: TopicOrWeekInstance[] = [];
 
 // Function to initialize the documents page
 export async function initializeDocumentsPage( currentClass : activeCourse) {
+        // Validate and store courseId in closure - critical for all API calls
+        let courseId: string | null = null;
+        
+        // Try to get courseId from the passed parameter
+        if (currentClass && currentClass.id) {
+            courseId = currentClass.id;
+        }
+        // Fallback to window.currentClass if available
+        else if (typeof window !== 'undefined' && (window as any).currentClass && (window as any).currentClass.id) {
+            courseId = (window as any).currentClass.id;
+            currentClass = (window as any).currentClass; // Update currentClass reference
+        }
+        // Last resort: try to get from session
+        else {
+            try {
+                const sessionResponse = await fetch('/api/course/current');
+                if (sessionResponse.ok) {
+                    const sessionData = await sessionResponse.json();
+                    if (sessionData.success && sessionData.data && sessionData.data.courseId) {
+                        courseId = sessionData.data.courseId;
+                    }
+                }
+            } catch (e) {
+                console.warn('⚠️ Could not fetch course from session:', e);
+            }
+        }
+        
+        // Validate courseId exists before proceeding
+        if (!courseId || courseId.trim() === '') {
+            console.error('❌ [DOCUMENTS] Cannot initialize documents page: courseId is missing or empty');
+            await showSimpleErrorModal('Cannot load documents: Course ID is missing. Please refresh the page or return to course selection.', 'Initialization Error');
+            return;
+        }
+        
+        console.log(`✅ [DOCUMENTS] Initializing with courseId: ${courseId}`);
+        
+        // Update currentClass.id if it was missing
+        if (!currentClass.id) {
+            currentClass.id = courseId;
+        }
 
         // Sync from server so refresh reflects latest divisions/items
         await syncCourseFromServer();
@@ -95,8 +135,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
     async function syncCourseFromServer(): Promise<void> {
         try {
-            if (!currentClass || !currentClass.id) return;
-            const res = await fetch(`/api/courses/${currentClass.id}`);
+            if (!courseId) return;
+            const res = await fetch(`/api/courses/${courseId}`);
             if (!res.ok) {
                 console.warn('⚠️ Failed to fetch latest course from server:', res.status, res.statusText);
                 return;
@@ -256,11 +296,11 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             
             // Persist to backend
             try {
-                if (!currentClass || !currentClass.id) {
-                    throw new Error('Current class not found');
+                if (!courseId) {
+                    throw new Error('Course ID is missing');
                 }
                 
-                const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${instance_topicOrWeek.id}/published`, {
+                const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${instance_topicOrWeek.id}/published`, {
                     method: 'PATCH',
                     headers: {
                         'Content-Type': 'application/json'
@@ -704,10 +744,15 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 .filter(n => !Number.isNaN(n));
             const nextIdNum = (existingNumericIds.length ? Math.max(...existingNumericIds) : 0) + 1;
 
+            if (!courseId) {
+                console.error('❌ Cannot add division: courseId is missing');
+                await showSimpleErrorModal('Cannot add division: Course ID is missing.', 'Error');
+                return;
+            }
             console.log('📡 Making API call to add topic/week instance...');
-            console.log('🌐 API URL:', `/api/courses/${currentClass.id}/topic-or-week-instances`);
+            console.log('🌐 API URL:', `/api/courses/${courseId}/topic-or-week-instances`);
 
-            const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances`, {
+            const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -899,7 +944,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 fileName: material.fileName,
                 date: new Date(),
                 // Add these three lines:
-    courseId: currentClass.id,
+    courseId: courseId || '',
     topicOrWeekId: topicOrWeekId,
     itemId: material.itemId
             };
@@ -1022,10 +1067,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @returns Promise<void>
      */
     async function loadLearningObjectives(topicOrWeekId: string, contentId: string): Promise<void> {
-        if (!currentClass) return;
+        if (!courseId) {
+            console.error('❌ [DOCUMENTS] Cannot load learning objectives: courseId is missing');
+            return;
+        }
 
         try {
-            const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives`, {
+            const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives`, {
                 method: 'GET'
             });
             const result = await response.json();
@@ -1110,14 +1158,19 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         };
 
         try {
+            if (!courseId) {
+                console.error('❌ Cannot add learning objective: courseId is missing');
+                await showSimpleErrorModal('Cannot add learning objective: Course ID is missing.', 'Error');
+                return;
+            }
             //START DEBUG LOG : DEBUG-CODE(020)
             console.log('📡 Making API call to add learning objective...');
-            console.log('🌐 API URL:', `/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives`);
+            console.log('🌐 API URL:', `/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives`);
             console.log('📦 Request body:', { learningObjective: newObjective });
             //END DEBUG LOG : DEBUG-CODE(020)
             
             // Call backend API to add learning objective
-            const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives`, {
+            const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1296,14 +1349,19 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         };
 
         try {
+            if (!courseId) {
+                console.error('❌ Cannot update learning objective: courseId is missing');
+                await showSimpleErrorModal('Cannot update learning objective: Course ID is missing.', 'Error');
+                return;
+            }
             //START DEBUG LOG : DEBUG-CODE(030)
             console.log('📡 Making API call to update learning objective...');
-            console.log('🌐 API URL:', `/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objective.id}`);
+            console.log('🌐 API URL:', `/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objective.id}`);
             console.log('📦 Request body:', { updateData: updateData });
             //END DEBUG LOG : DEBUG-CODE(030)
             
             // Call backend API to update learning objective
-            const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objective.id}`, {
+            const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objective.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1408,13 +1466,18 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             }
 
             try {
+                if (!courseId) {
+                    console.error('❌ Cannot delete learning objective: courseId is missing');
+                    await showSimpleErrorModal('Cannot delete learning objective: Course ID is missing.', 'Error');
+                    return;
+                }
                 //START DEBUG LOG : DEBUG-CODE(048)
                 console.log('📡 Making API call to delete learning objective...');
-                console.log('🌐 API URL:', `/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objective.id}`);
+                console.log('🌐 API URL:', `/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objective.id}`);
                 //END DEBUG LOG : DEBUG-CODE(048)
                 
                 // Call backend API to delete learning objective
-                const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objective.id}`, {
+                const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objective.id}`, {
                     method: 'DELETE',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1653,14 +1716,19 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         };
 
         try {
+            if (!courseId) {
+                console.error('❌ Cannot add section: courseId is missing');
+                await showSimpleErrorModal('Cannot add section: Course ID is missing.', 'Error');
+                return;
+            }
             //START DEBUG LOG : DEBUG-CODE(056)
             console.log('📡 Making API call to add section...');
-            console.log('🌐 API URL:', `/api/courses/${currentClass.id}/topic-or-week-instances/${instance_topicOrWeek.id}/items`);
+            console.log('🌐 API URL:', `/api/courses/${courseId}/topic-or-week-instances/${instance_topicOrWeek.id}/items`);
             console.log('📦 Request body:', { contentItem: minimalContentPayload });
             //END DEBUG LOG : DEBUG-CODE(056)
             
             // Call backend API to add the section
-            const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${instance_topicOrWeek.id}/items`, {
+            const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${instance_topicOrWeek.id}/items`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1733,15 +1801,15 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             return;
         }
         
-        // Check if currentClass exists
-        if (!currentClass || !currentClass.id) {
-            await showErrorModal('Error', 'Current class not found. Cannot delete section.');
+        // Check if courseId exists
+        if (!courseId) {
+            await showErrorModal('Error', 'Course ID is missing. Cannot delete section.');
             return;
         }
         
         try {
             // Call backend API to delete the section
-            const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}`, {
+            const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}`, {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json'
@@ -2020,7 +2088,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 // Update item title
                 console.log(`📝 Saving item ${itemId} in topic/week instance ${topicOrWeekId} with new title: "${newTitle}"`);
                 
-                response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/items/${itemId}/title`, {
+                if (!courseId) {
+                    throw new Error('Course ID is missing');
+                }
+                response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${itemId}/title`, {
                     method: 'PATCH',
                     headers: {
                         'Content-Type': 'application/json'
@@ -2063,7 +2134,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 // Update topic/week instance title
                 console.log(`📝 Saving topic/week instance ${topicOrWeekId} with new title: "${newTitle}"`);
                 
-                response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${topicOrWeekId}/title`, {
+                if (!courseId) {
+                    throw new Error('Course ID is missing');
+                }
+                response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/title`, {
                     method: 'PATCH',
                     headers: {
                         'Content-Type': 'application/json'
@@ -2293,7 +2367,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         if (result.action === 'delete') {
             try {
                 // Call backend API to soft delete from MongoDB
-                const response = await fetch(`/api/courses/${currentClass.id}/topic-or-week-instances/${divisionId}/items/${contentId}/materials/${materialId}`, {
+                if (!courseId) {
+                    console.error('❌ Cannot delete material: courseId is missing');
+                    await showSimpleErrorModal('Cannot delete material: Course ID is missing.', 'Error');
+                    return;
+                }
+                const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${divisionId}/items/${contentId}/materials/${materialId}`, {
                     method: 'DELETE',
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -2527,14 +2606,19 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 return;
             }
 
-            console.log('🗑️ Starting wipe of MongoDB collections for course:', currentClass.id);
+            if (!courseId) {
+                console.error('❌ Cannot wipe MongoDB: courseId is missing');
+                await showSimpleErrorModal('Cannot wipe MongoDB: Course ID is missing.', 'Error');
+                return;
+            }
+            console.log('🗑️ Starting wipe of MongoDB collections for course:', courseId);
 
             // Call the wipe MongoDB API endpoint
             console.log('🔍 WIPE MONGODB - Request Details:');
-            console.log('  URL:', `/api/courses/${currentClass.id}/wipe-mongodb`);
+            console.log('  URL:', `/api/courses/${courseId}/wipe-mongodb`);
             console.log('  Method: DELETE');
             
-            const response = await fetch(`/api/courses/${currentClass.id}/wipe-mongodb`, {
+            const response = await fetch(`/api/courses/${courseId}/wipe-mongodb`, {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',
@@ -2613,8 +2697,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
             console.log('🗑️ Starting wipe of all RAG documents for current course...');
 
-            // Get course ID from currentClass
-            const courseId = currentClass.id;
+            // Use the stored courseId from closure
             if (!courseId) {
                 throw new Error('Course ID not found');
             }

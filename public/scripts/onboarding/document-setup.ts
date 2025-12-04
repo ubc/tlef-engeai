@@ -444,8 +444,38 @@ async function handleFinalCompletion(state: DocumentSetupState, instructorCourse
     console.log("🎯 Completing document setup...");
     
     try {
-        // Mark content setup as complete
+        // Validate courseId exists
+        if (!instructorCourse.id) {
+            throw new Error("Course ID is missing. Cannot update database.");
+        }
+        
+        // Mark content setup as complete locally
         instructorCourse.contentSetup = true;
+        
+        // Persist to database
+        console.log(`📡 Updating database: setting contentSetup=true for course ${instructorCourse.id}`);
+        const response = await fetch(`/api/courses/${instructorCourse.id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+                contentSetup: true
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Failed to update course in database' }));
+            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || 'Failed to update course in database');
+        }
+        
+        console.log("✅ Content setup status persisted to database successfully!");
         
         // Keep onboarding-active class - sidebar should remain hidden until ALL onboarding is complete
         // The class will be removed by instructor-mode.ts when all setup steps are done
@@ -457,7 +487,9 @@ async function handleFinalCompletion(state: DocumentSetupState, instructorCourse
         
     } catch (error) {
         console.error("❌ Error during final completion:", error);
-        await showErrorModal("Completion Error", "Failed to complete document setup. Please try again.");
+        // Revert local change on error
+        instructorCourse.contentSetup = false;
+        await showErrorModal("Completion Error", `Failed to complete document setup: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
     }
 }
 

@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import {asyncHandler} from '../middleware/asyncHandler';
-import { getDummyCourses, resetDummyCourses, registerCurrentUserToCHBE241 } from '../debug/dummy-courses';
+import { getDummyCourses, registerCurrentUserToCHBE241 } from '../debug/dummy-courses';
+// COMMENTED OUT: resetDummyCourses has been replaced with per-course removal
+// import { resetDummyCourses } from '../debug/dummy-courses';
 
 const router = Router();
 
@@ -28,6 +30,9 @@ router.get('/courses', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 // POST /api/debug/reset - Reset dummy courses
+// COMMENTED OUT: This route has been replaced with per-course removal functionality
+// See DELETE /api/courses/:id/remove route in mongo-app.ts instead
+/*
 router.post('/reset', asyncHandler(async (req: Request, res: Response) => {
     try {
         const result = await resetDummyCourses();
@@ -82,5 +87,6 @@ router.post('/reset', asyncHandler(async (req: Request, res: Response) => {
         });
     }
 }));
+*/
 
 export default router;

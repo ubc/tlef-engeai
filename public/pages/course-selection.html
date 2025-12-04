@@ -45,6 +45,24 @@
                 </div>
             </header>
 
+            <!-- Admin Buttons Section (Instructor Only) -->
+            <div class="admin-buttons-section" id="admin-buttons-section" style="display: none;">
+                <div class="admin-buttons-container">
+                    <button id="reset-mongodb-btn" class="admin-btn reset-db-btn" title="Reset MongoDB">
+                        <i data-feather="database"></i>
+                        <span>Reset MongoDB</span>
+                    </button>
+                    <button id="reset-vector-database-btn" class="admin-btn reset-vector-db-btn" title="Reset Vector Database">
+                        <i data-feather="layers"></i>
+                        <span>Reset Vector Database</span>
+                    </button>
+                    <button id="download-database-btn" class="admin-btn download-db-btn" title="Download Database">
+                        <i data-feather="download"></i>
+                        <span>Download Database</span>
+                    </button>
+                </div>
+            </div>
+
             <!-- Workspace/Course List -->
             <div class="course-workspace-list" id="course-cards">
                 <!-- Course rows will be dynamically loaded here -->

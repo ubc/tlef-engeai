@@ -913,88 +913,108 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log('[INSTRUCTOR-MODE] ✅ Course Information button listener attached');
         }
 
-        // Reset Dummy Courses button listener
-        const resetDummyBtn = document.getElementById('instructor-reset-dummy-btn');
-        if (resetDummyBtn) {
-            resetDummyBtn.addEventListener('click', async () => {
-                console.log('[INSTRUCTOR-MODE] 🔄 Reset Dummy Courses button clicked');
+        // Remove Course button listener (replaces Reset Dummy Courses)
+        const removeCourseBtn = document.getElementById('instructor-remove-course-btn');
+        if (removeCourseBtn) {
+            removeCourseBtn.addEventListener('click', async () => {
+                console.log('[INSTRUCTOR-MODE] 🗑️ Remove Course button clicked');
                 
-                // Show confirmation dialog
+                // Get current course ID
+                if (!currentClass || !currentClass.id) {
+                    alert('❌ Error: No course selected');
+                    return;
+                }
+                
+                const courseId = currentClass.id;
+                const courseName = currentClass.courseName;
+                
+                // Show confirmation modal
+                const confirmationMessage = `Are you sure you want to remove the course "${courseName}"?\n\n` +
+                    `This will permanently delete:\n` +
+                    `• All enrolled users from this course\n` +
+                    `• All course data (users, flags, memory-agent collections)\n` +
+                    `• All documents from the vector database for this course\n` +
+                    `• The course instance itself\n\n` +
+                    `This action cannot be undone! After deletion, you will be logged out.`;
+                
                 const result = await showConfirmModal(
-                    'Reset Dummy Courses',
-                    'Are you sure you want to reset the dummy courses? This will restore the courses to their original state based on dummy-courses.ts. This action cannot be undone.',
-                    'Reset',
+                    'Remove Course',
+                    confirmationMessage,
+                    'Remove Course',
                     'Cancel'
                 );
                 
-                // Check if user confirmed (action will be 'reset' if confirmed, 'cancel' if cancelled)
-                // Also check for other cancellation actions like 'overlay', 'escape', 'close'
-                if (result.action === 'cancel' || result.action === 'overlay' || result.action === 'escape' || result.action === 'close') {
-                    console.log('[INSTRUCTOR-MODE] ❌ Reset cancelled by user');
+                // Check if user cancelled (modal returns button text lowercased with hyphens)
+                if (result.action === 'cancel' || result.action === 'overlay' || result.action === 'escape') {
+                    console.log('[INSTRUCTOR-MODE] ❌ Course removal cancelled by user');
                     return;
                 }
                 
                 try {
                     // Disable button during request
-                    (resetDummyBtn as HTMLButtonElement).disabled = true;
-                    const originalText = resetDummyBtn.querySelector('span')?.textContent;
-                    if (resetDummyBtn.querySelector('span')) {
-                        resetDummyBtn.querySelector('span')!.textContent = 'Resetting...';
+                    (removeCourseBtn as HTMLButtonElement).disabled = true;
+                    if (removeCourseBtn.querySelector('span')) {
+                        removeCourseBtn.querySelector('span')!.textContent = 'Removing...';
                     }
                     
-                    // Call the API endpoint
-                    const response = await fetch('/api/debug/reset', {
-                        method: 'POST',
+                    // Call the delete course API endpoint
+                    const response = await fetch(`/api/courses/${courseId}/remove`, {
+                        method: 'DELETE',
                         headers: {
                             'Content-Type': 'application/json'
                         },
                         credentials: 'include'
                     });
                     
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({ error: 'Failed to remove course' }));
+                        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                    }
+                    
                     const data = await response.json();
                     
-                    if (data.success) {
-                        if (data.skipped) {
-                            alert(`⚠️ ${data.message || 'Reset skipped - collection already exists with data'}`);
-                        } else {
-                            alert(`✅ ${data.message || 'Dummy courses reset successfully'}`);
-                            // Reload the page to reflect changes
-                            window.location.reload();
-                        }
-                    } else {
-                        alert(`❌ Error: ${data.error || 'Failed to reset dummy courses'}`);
-                    }
+                    // Show success message
+                    console.log('[INSTRUCTOR-MODE] ✅ Course removed successfully:', data.message);
+                    
+                    // Show success alert briefly before logout
+                    alert(`✅ ${data.message || 'Course removed successfully. You will be logged out now.'}`);
+                    
+                    // Gracefully log out the user after a short delay
+                    setTimeout(() => {
+                        console.log('[INSTRUCTOR-MODE] 🚪 Redirecting to logout endpoint...');
+                        window.location.href = '/auth/logout';
+                    }, 1500);
+                    
                 } catch (error) {
-                    console.error('[INSTRUCTOR-MODE] 🚨 Error resetting dummy courses:', error);
-                    alert('❌ Failed to reset dummy courses. Please try again.');
+                    console.error('[INSTRUCTOR-MODE] 🚨 Error removing course:', error);
+                    alert(`❌ Failed to remove course: ${error instanceof Error ? error.message : 'Unknown error'}`);
                 } finally {
                     // Re-enable button
-                    (resetDummyBtn as HTMLButtonElement).disabled = false;
-                    if (resetDummyBtn.querySelector('span')) {
-                        const originalText = resetDummyBtn.querySelector('span')?.textContent || 'Reset Dummy Courses';
-                        resetDummyBtn.querySelector('span')!.textContent = 'Reset Dummy Courses';
+                    (removeCourseBtn as HTMLButtonElement).disabled = false;
+                    if (removeCourseBtn.querySelector('span')) {
+                        removeCourseBtn.querySelector('span')!.textContent = 'Remove Course';
                     }
                 }
             });
-            console.log('[INSTRUCTOR-MODE] ✅ Reset Dummy Courses button listener attached');
+            console.log('[INSTRUCTOR-MODE] ✅ Remove Course button listener attached');
         }
 
         // Download Database button listener
         const downloadDbBtn = document.getElementById('instructor-download-db-btn');
         if (downloadDbBtn) {
             downloadDbBtn.addEventListener('click', async () => {
-                console.log('[INSTRUCTOR-MODE] 📥 Download Database button clicked');
+                console.log('[INSTRUCTOR-MODE] 📥 Download Course Info button clicked');
                 
                 try {
                     // Disable button during request
                     (downloadDbBtn as HTMLButtonElement).disabled = true;
                     const originalText = downloadDbBtn.querySelector('span')?.textContent;
                     if (downloadDbBtn.querySelector('span')) {
-                        downloadDbBtn.querySelector('span')!.textContent = 'Downloading...';
+                        downloadDbBtn.querySelector('span')!.textContent = 'Downloading Course Info...';
                     }
                     
-                    // Call the API endpoint to download database
-                    const response = await fetch('/api/courses/export/database', {
+                    // Call the API endpoint to download course information
+                    const response = await fetch('/api/courses/export/course-info', {
                         method: 'GET',
                         credentials: 'include',
                         headers: {
@@ -1003,7 +1023,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                     
                     if (!response.ok) {
-                        const errorData = await response.json().catch(() => ({ error: 'Failed to download database' }));
+                        const errorData = await response.json().catch(() => ({ error: 'Failed to download course information' }));
                         throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
                     }
                     
@@ -1012,7 +1032,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     
                     // Get filename from Content-Disposition header or use default
                     const contentDisposition = response.headers.get('Content-Disposition');
-                    let filename = 'database-export.txt';
+                    let filename = 'course-info-export.txt';
                     if (contentDisposition) {
                         const filenameMatch = contentDisposition.match(/filename="(.+)"/);
                         if (filenameMatch) {
@@ -1031,20 +1051,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                     document.body.removeChild(a);
                     window.URL.revokeObjectURL(url);
                     
-                    console.log('[INSTRUCTOR-MODE] ✅ Database downloaded successfully');
+                    console.log('[INSTRUCTOR-MODE] ✅ Course information downloaded successfully');
                     
                 } catch (error) {
-                    console.error('[INSTRUCTOR-MODE] 🚨 Error downloading database:', error);
-                    alert(`❌ Failed to download database: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                    console.error('[INSTRUCTOR-MODE] 🚨 Error downloading course information:', error);
+                    alert(`❌ Failed to download course information: ${error instanceof Error ? error.message : 'Unknown error'}`);
                 } finally {
                     // Re-enable button
                     (downloadDbBtn as HTMLButtonElement).disabled = false;
                     if (downloadDbBtn.querySelector('span')) {
-                        downloadDbBtn.querySelector('span')!.textContent = 'Download Database';
+                        downloadDbBtn.querySelector('span')!.textContent = 'Download Course Info';
                     }
                 }
             });
-            console.log('[INSTRUCTOR-MODE] ✅ Download Database button listener attached');
+            console.log('[INSTRUCTOR-MODE] ✅ Download Course Info button listener attached');
         }
     };
 

@@ -169,6 +169,27 @@ export class EngEAI_MongoDB {
     }
 
     /**
+     * Remove a courseId from all users' coursesEnrolled array in active-users collection
+     * @param courseId - The course ID to remove from all users
+     * @returns Promise with number of users modified
+     */
+    public removeCourseFromAllUsers = async (courseId: string): Promise<number> => {
+        try {
+            const activeUsersCollection = this.db.collection('active-users');
+            const updateResult = await activeUsersCollection.updateMany(
+                { coursesEnrolled: { $in: [courseId] } },
+                { $pull: { coursesEnrolled: courseId } } as any
+            );
+            console.log(`✅ Removed course ${courseId} from ${updateResult.modifiedCount} user(s) in active-users`);
+            return updateResult.modifiedCount;
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            console.error(`❌ Error removing course from active-users:`, errorMessage);
+            throw error;
+        }
+    }
+
+    /**
      * Drop a collection from the database
      * @param collectionName - The name of the collection to drop
      * @returns Promise with success status
