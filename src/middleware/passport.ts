@@ -127,19 +127,25 @@ if (hasSamlConfig) {
             console.log('[AUTH] UBCShib profile received:', JSON.stringify(profile, null, 2));
             //END DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
 
-            // Extract PUID - passport-ubcshib automatically maps OID names to friendly names
-            const puid = toString(attributes.ubcEduCwlPuid);
+            // Extract PUID - it may be in attributes or at the profile root level
+            // The library maps most attributes but ubcEduCwlPuid might need special handling
+            const puid =
+                toString(attributes.ubcEduCwlPuid) ||
+                toString(profile.ubcEduCwlPuid) ||
+                toString(profile['urn:mace:dir:attribute-def:ubcEduCwlPuid']) ||
+                toString(profile['urn:oid:1.3.6.1.4.1.60.6.1.6']);
 
             if (!puid) {
                 console.error('[AUTH] ❌ Missing PUID in UBCShib response');
                 console.error('[AUTH] Available attributes:', Object.keys(attributes));
+                console.error('[AUTH] Profile keys:', Object.keys(profile));
                 return done(new Error('Missing required ubcEduCwlPuid attribute'));
             }
 
-            // Extract user attributes - library has already mapped OID names to friendly names
+            // Extract user attributes - library has mapped these to friendly names in profile.attributes
             const firstName = toString(attributes.givenName) || '';
             const lastName = toString(attributes.sn) || '';
-            const email = toString(attributes.mail) || '';
+            const email = toString(attributes.mail) || toString(profile.mail) || toString(profile.email) || '';
             const affiliation = mapAffiliation(attributes.eduPersonAffiliation);
 
             const user = {
