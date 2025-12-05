@@ -112,6 +112,13 @@
     text-align:left;
 }
 
+/* Course Action Buttons Container */
+.course-action-buttons {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
 /* Add New Course Button */
 .add-new-course-btn {
     background: var(--color-chbe-green);
@@ -140,6 +147,39 @@
 }
 
 .add-new-course-btn i {
+    width: 18px;
+    height: 18px;
+    stroke: white;
+}
+
+/* Create New Course Button */
+.create-new-course-btn {
+    background: var(--color-eng-red);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    white-space: nowrap;
+}
+
+.create-new-course-btn:hover {
+    background: #6d0000;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(139, 0, 0, 0.3);
+}
+
+.create-new-course-btn:active {
+    transform: translateY(0);
+}
+
+.create-new-course-btn i {
     width: 18px;
     height: 18px;
     stroke: white;
@@ -359,6 +399,81 @@
     box-shadow: none;
 }
 
+/* Remove Course Button */
+.remove-course-btn {
+    background: transparent;
+    color: var(--color-eng-red);
+    border: 1px solid var(--color-eng-red);
+    padding: 0.5rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+}
+
+.remove-course-btn:hover:not(:disabled) {
+    background: var(--color-eng-red);
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(139, 0, 0, 0.3);
+}
+
+.remove-course-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.remove-course-btn:disabled {
+    background: #adb5bd;
+    border-color: #adb5bd;
+    color: white;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.remove-course-btn i {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+}
+
+.empty-state-content {
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.empty-state-content i {
+    width: 64px;
+    height: 64px;
+    stroke: #adb5bd;
+    margin-bottom: 1.5rem;
+}
+
+.empty-state-content h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #212529;
+    margin: 0 0 1rem 0;
+}
+
+.empty-state-content p {
+    font-size: 1rem;
+    color: #666;
+    margin: 0;
+    line-height: 1.6;
+}
+
 /* Loading and Error States */
 .loading-message,
 .error-message {
@@ -403,6 +518,84 @@
 
 .retry-btn:hover {
     background: var(--color-chbe-green);
+}
+
+/* Admin Buttons Section (Instructor Only) */
+.admin-buttons-section {
+    padding: 1.5rem 2rem;
+    background: #f8f9fa;
+    border-top: 2px solid #e9ecef;
+    border-bottom: 2px solid #e9ecef;
+}
+
+.admin-buttons-container {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.admin-btn {
+    background: var(--color-eng-red);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    white-space: nowrap;
+}
+
+.admin-btn:hover:not(:disabled) {
+    background: #6d0000;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(139, 0, 0, 0.3);
+}
+
+.admin-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.admin-btn:disabled {
+    background: #adb5bd;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.admin-btn i {
+    width: 18px;
+    height: 18px;
+    stroke: white;
+}
+
+.reset-db-btn {
+    background: var(--color-eng-red);
+}
+
+.reset-db-btn:hover:not(:disabled) {
+    background: #6d0000;
+}
+
+.reset-vector-db-btn {
+    background: #8B4513;
+}
+
+.reset-vector-db-btn:hover:not(:disabled) {
+    background: #6d3410;
+}
+
+.download-db-btn {
+    background: var(--color-chbe-green);
+}
+
+.download-db-btn:hover:not(:disabled) {
+    background: #4a6b2f;
 }
 
 /* Responsive Design */
@@ -491,7 +684,14 @@
         font-size: 1.75rem;
     }
     
-    .add-new-course-btn {
+    .course-action-buttons {
+        width: 100%;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .add-new-course-btn,
+    .create-new-course-btn {
         width: 100%;
         justify-content: center;
     }

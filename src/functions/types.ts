@@ -57,6 +57,12 @@ export enum onBoardingScreen {
 // ========= INSTRUCTOR DATA TYPE ============
 // ===========================================
 
+// Instructor/TA data structure - stores both userId and name
+export interface InstructorInfo {
+    userId: string;
+    name: string;
+}
+
 export interface activeCourse {
     id : string,
     date : Date,
@@ -65,8 +71,8 @@ export interface activeCourse {
     flagSetup : boolean,
     monitorSetup : boolean,
     courseName: string,
-    instructors: string[],
-    teachingAssistants: string[],
+    instructors: InstructorInfo[] | string[]; // Support both old format (string[]) and new format (InstructorInfo[])
+    teachingAssistants: InstructorInfo[] | string[]; // Support both old format (string[]) and new format (InstructorInfo[])
     frameType: frameType;
     tilesNumber: number;
     topicOrWeekInstances: TopicOrWeekInstance[]; // previously content, previously divisions

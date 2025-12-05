@@ -42,6 +42,62 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
         
         console.log(`[COURSE-ENTRY] Course found: ${course.courseName}`);
         
+        // 1.5. Handle instructor joining existing course
+        if (globalUser.affiliation === 'faculty') {
+            const courseData = course as any;
+            const instructorUserId = globalUser.userId;
+            const instructorName = globalUser.name;
+            
+            // Helper function to check if instructor is already in the array (handles both old and new formats)
+            const isInstructorInArray = (instructors: any[]): boolean => {
+                if (!instructors || instructors.length === 0) return false;
+                return instructors.some(inst => {
+                    if (typeof inst === 'string') {
+                        return inst === instructorUserId; // Old format
+                    } else if (inst && inst.userId) {
+                        return inst.userId === instructorUserId; // New format
+                    }
+                    return false;
+                });
+            };
+            
+            // Check if instructor is already in the course's instructors array
+            if (!isInstructorInArray(courseData.instructors || [])) {
+                console.log(`[COURSE-ENTRY] Instructor ${instructorUserId} not in course instructors list, adding...`);
+                
+                // Get existing instructors and convert to new format if needed
+                const existingInstructors = courseData.instructors || [];
+                const updatedInstructors = existingInstructors.map((inst: any) => {
+                    // Convert old format to new format if needed
+                    if (typeof inst === 'string') {
+                        return { userId: inst, name: 'Unknown' }; // Will be updated later if needed
+                    }
+                    return inst; // Already in new format
+                });
+                
+                // Add new instructor with name
+                updatedInstructors.push({
+                    userId: instructorUserId,
+                    name: instructorName
+                });
+                
+                await mongoDB.updateActiveCourse(courseId, {
+                    instructors: updatedInstructors
+                } as any);
+                
+                console.log(`[COURSE-ENTRY] Added instructor ${instructorName} (${instructorUserId}) to course's instructors list`);
+            }
+            
+            // Ensure instructor is enrolled in the course (add to coursesEnrolled)
+            if (!globalUser.coursesEnrolled.includes(courseId)) {
+                await mongoDB.addCourseToGlobalUser(
+                    globalUser.puid, 
+                    courseId
+                );
+                console.log(`[COURSE-ENTRY] Added course ${courseId} to instructor's enrolled list`);
+            }
+        }
+        
         // 2. Check if CourseUser exists in {courseName}_users
         // Use userId instead of puid (CourseUser doesn't store puid for privacy)
         let courseUser = await mongoDB.findStudentByUserId(
@@ -92,6 +148,15 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
             }
         } else {
             console.log(`[COURSE-ENTRY] CourseUser found`);
+            
+            // Ensure course is in GlobalUser's enrolled list (fixes data inconsistency)
+            if (!globalUser.coursesEnrolled.includes(courseId)) {
+                await mongoDB.addCourseToGlobalUser(
+                    globalUser.puid, 
+                    courseId
+                );
+                console.log(`[COURSE-ENTRY] Added course to GlobalUser's enrolled list (was missing)`);
+            }
         }
         
         // 5. Store current course in session

@@ -504,7 +504,11 @@ async function clearActiveUsersCollection(): Promise<void> {
  * Wipes everything in active-course-list collection, then adds CHBE 241
  * Deletes all MongoDB collections except 'active-users'
  * @returns Object with success status and optional message
+ * 
+ * COMMENTED OUT: This functionality has been replaced with per-course removal
+ * See DELETE /api/courses/:id/remove route instead
  */
+/* COMMENTED OUT - REPLACED WITH PER-COURSE REMOVAL
 export async function resetDummyCourses(): Promise<{ success: boolean; skipped?: boolean; message?: string }> {
     console.log('🔄 Resetting dummy courses...');
     console.log('⚠️  This will wipe active-course-list, delete all Qdrant documents, and delete ALL collections except active-users');
@@ -647,6 +651,7 @@ export async function resetDummyCourses(): Promise<{ success: boolean; skipped?:
         };
     }
 }
+END COMMENTED OUT */
 
 /**
  * Gets all dummy courses for display

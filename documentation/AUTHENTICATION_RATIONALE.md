@@ -90,18 +90,18 @@ This document explains the rationale for maintaining both user objects and evalu
 
 ---
 
-### 3. **SAML Logout Requirements**
+### 3. **UBCShib (SAML 2.0) Logout Requirements**
 
-**Current Usage**: SAML Single Log-Out (SLO) requires `sessionIndex`
+**Current Usage**: UBCShib Single Log-Out (SLO) requires `sessionIndex`
 
 **Code Evidence**:
-- `src/routes/auth.ts` (line 228): `samlStrategy.logout(req as any, ...)`
-- `src/middleware/passport.ts` (line 81): `sessionIndex: profile.sessionIndex`
+- `src/routes/auth.ts` (line 228): `ubcShibStrategy.logout(req as any, ...)`
+- `src/middleware/passport.ts` (line 119): `sessionIndex: profile.sessionIndex`
 
 **Why Needed**:
 - SAML SLO requires `sessionIndex` to identify the session at the IdP
 - Stored in `req.user.sessionIndex` during authentication
-- Used by `samlStrategy.logout()` to terminate IdP session
+- Used by `ubcShibStrategy.logout()` to terminate IdP session
 
 **Could We Eliminate?**:
 - ⚠️ **PARTIALLY** - We could store `sessionIndex` separately in `req.session.samlSessionIndex`

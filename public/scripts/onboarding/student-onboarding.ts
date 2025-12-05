@@ -118,6 +118,8 @@ export const renderStudentOnboarding = async (user: User): Promise<void> => {
 
         // Store state globally for access by demo functions
         (window as any).studentOnboardingState = state;
+        // Store user globally for access by flag submission handler
+        (window as any).currentOnboardingUser = user;
 
         // Load the onboarding component
         const container = document.getElementById('main-content-area');
@@ -501,9 +503,15 @@ function handleFlagSubmission(): void {
             submitBtn.style.display = 'none';
         }
         
-        // Auto-close after 2 seconds
+        // Close modal and advance to next step
         setTimeout(() => {
             closeFlagModal();
+            // Advance to next onboarding step
+            const state = (window as any).studentOnboardingState;
+            const user = (window as any).currentOnboardingUser;
+            if (state && user && state.currentStep < state.totalSteps) {
+                handleNextClick(state, user);
+            }
         }, 2000);
     }, 1000);
 }

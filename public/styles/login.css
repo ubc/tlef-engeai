@@ -65,8 +65,14 @@ body.main-login-page {
     font-size: 1rem;
 }
 
+.login-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
 .login-btn {
-    background-color: var(--color-ubc-blue);
     color: white;
     border: none;
     padding: 1rem 2rem;
@@ -79,7 +85,23 @@ body.main-login-page {
     display: inline-block;
 }
 
-.login-btn:hover {
+/* Green Login button (adapts based on SAML_AVAILABLE) */
+.login-btn-green {
+    background-color: var(--color-chbe-green);
+}
+
+.login-btn-green:hover {
+    background-color: #1e7e34;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(77, 122, 47, 0.3);
+}
+
+/* Blue Login with CWL button (always uses CWL) */
+.login-btn-blue {
+    background-color: var(--color-ubc-blue);
+}
+
+.login-btn-blue:hover {
     background-color: #0056b3;
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 86, 179, 0.3);
@@ -406,6 +428,14 @@ body.main-login-page {
         max-width: 100%;
     }
     
+    .login-buttons {
+        flex-direction: column;
+    }
+    
+    .login-btn {
+        width: 100%;
+    }
+    
     .course-selection {
         flex-direction: column;
         gap: 1rem;
@@ -683,6 +713,7 @@ body.main-login-page {
 
 .local-login-form .login-btn {
     width: 100%;
+    background-color: var(--color-chbe-green);
     margin-top: 1rem;
     padding: 0.875rem 2rem;
     font-size: 1rem;

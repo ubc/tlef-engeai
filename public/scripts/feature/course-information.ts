@@ -17,9 +17,96 @@
  * @version: 2.0.0
  */
 
-import { activeCourse, TopicOrWeekInstance } from "../../../src/functions/types.js";
+import { activeCourse, TopicOrWeekInstance, InstructorInfo } from "../../../src/functions/types.js";
 import { showErrorModal, showSuccessModal, showConfirmModal } from "../modal-overlay.js";
 import { renderFeatherIcons } from "../functions/api.js";
+
+// ===========================================
+// UTILITY FUNCTIONS FOR INSTRUCTOR/TA ARRAYS
+// ===========================================
+
+/**
+ * Helper to check if an array contains a userId (handles both string[] and InstructorInfo[])
+ */
+function arrayContainsUserId(arr: string[] | InstructorInfo[], userId: string): boolean {
+    if (!arr || arr.length === 0) return false;
+    return arr.some(item => {
+        if (typeof item === 'string') {
+            return item === userId;
+        } else if (item && item.userId) {
+            return item.userId === userId;
+        }
+        return false;
+    });
+}
+
+/**
+ * Helper to get display name from an item (handles both string and InstructorInfo)
+ */
+function getDisplayName(item: string | InstructorInfo): string {
+    if (typeof item === 'string') {
+        return item;
+    } else if (item && item.name) {
+        return item.name;
+    }
+    return item?.userId || 'Unknown';
+}
+
+/**
+ * Helper to convert array to string array of display names
+ */
+function arrayToDisplayNames(arr: string[] | InstructorInfo[]): string[] {
+    if (!arr) return [];
+    return arr.map(item => getDisplayName(item));
+}
+
+/**
+ * Helper to add a userId to array (converts to InstructorInfo[] format if needed)
+ * Note: This assumes we have the name available - for now we'll use userId as name if converting
+ */
+function addUserIdToArray(arr: string[] | InstructorInfo[], userId: string, name?: string): (string | InstructorInfo)[] {
+    const result = arr.map(item => {
+        if (typeof item === 'string') {
+            return { userId: item, name: item }; // Convert old format
+        }
+        return item;
+    });
+    
+    // Check if already exists
+    if (!arrayContainsUserId(result, userId)) {
+        result.push({ userId, name: name || userId });
+    }
+    
+    return result;
+}
+
+/**
+ * Helper to remove a userId from array
+ */
+function removeUserIdFromArray(arr: string[] | InstructorInfo[], userId: string): (string | InstructorInfo)[] {
+    return arr.filter(item => {
+        if (typeof item === 'string') {
+            return item !== userId;
+        } else if (item && item.userId) {
+            return item.userId !== userId;
+        }
+        return true;
+    });
+}
+
+/**
+ * Helper to find index of userId in array
+ */
+function indexOfUserId(arr: string[] | InstructorInfo[], userId: string): number {
+    return arr.findIndex(item => {
+        if (typeof item === 'string') {
+            return item === userId;
+        } else if (item && item.userId) {
+            return item.userId === userId;
+        }
+        return false;
+    });
+}
 
 // ===========================================
 // DROPDOWN OPTIONS DATA
@@ -111,19 +198,23 @@ function ensureCourseInOptions(courseName: string): Array<{value: string, text: 
 
 /**
  * Updates the display of selected items (instructors or TAs) with confirmation on removal
+ * Handles both string[] and InstructorInfo[] formats
  */
-async function updateSelectedItemsDisplay(containerId: string, items: string[], itemType: 'instructor' | 'ta'): Promise<void> {
+async function updateSelectedItemsDisplay(containerId: string, items: string[] | InstructorInfo[], itemType: 'instructor' | 'ta'): Promise<void> {
     const container = document.getElementById(containerId);
     if (!container) return;
     
     container.innerHTML = '';
     
     for (const item of items) {
+        const displayName = getDisplayName(item);
+        const userId = typeof item === 'string' ? item : item.userId;
+        
         const itemElement = document.createElement('div');
         itemElement.className = 'selected-item';
         itemElement.innerHTML = `
-            <span>${item}</span>
-            <button class="remove-btn" data-item="${item}">×</button>
+            <span>${displayName}</span>
+            <button class="remove-btn" data-item="${userId}">×</button>
         `;
         
         // Add remove functionality with confirmation modal
@@ -133,14 +224,14 @@ async function updateSelectedItemsDisplay(containerId: string, items: string[], 
                 const typeName = itemType === 'instructor' ? 'instructor' : 'teaching assistant';
                 const result = await showConfirmModal(
                     `Remove ${typeName.charAt(0).toUpperCase() + typeName.slice(1)}`,
-                    `Are you sure you want to remove ${item}?`,
+                    `Are you sure you want to remove ${displayName}?`,
                     'Confirm',
                     'Cancel'
                 );
                 
                 // Check if user confirmed (clicked Confirm button)
                 if (result.action === 'confirm') {
-                    const index = items.indexOf(item);
+                    const index = indexOfUserId(items, userId);
                     if (index > -1) {
                         items.splice(index, 1);
                         await updateSelectedItemsDisplay(containerId, items, itemType);
@@ -316,10 +407,21 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
     
     try {
         // Create a deep copy for local modifications
+        // Convert arrays to ensure consistent format (InstructorInfo[])
         const localCourseData: activeCourse = { 
             ...currentClass,
-            instructors: [...currentClass.instructors],
-            teachingAssistants: [...currentClass.teachingAssistants],
+            instructors: currentClass.instructors.map(inst => {
+                if (typeof inst === 'string') {
+                    return { userId: inst, name: inst };
+                }
+                return inst;
+            }) as InstructorInfo[],
+            teachingAssistants: currentClass.teachingAssistants.map(ta => {
+                if (typeof ta === 'string') {
+                    return { userId: ta, name: ta };
+                }
+                return ta;
+            }) as InstructorInfo[],
             topicOrWeekInstances: [...currentClass.topicOrWeekInstances]
         };
         
@@ -367,8 +469,11 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
         if (addInstructorBtn && instructorSelect) {
             const addInstructor = async () => {
                 const selectedValue = instructorSelect.value;
-                if (selectedValue && !localCourseData.instructors.includes(selectedValue)) {
-                    localCourseData.instructors.push(selectedValue);
+                if (selectedValue && !arrayContainsUserId(localCourseData.instructors, selectedValue)) {
+                    // Find the name from options
+                    const option = INSTRUCTOR_OPTIONS.find(opt => opt.value === selectedValue);
+                    const name = option ? option.text : selectedValue;
+                    localCourseData.instructors = addUserIdToArray(localCourseData.instructors, selectedValue, name) as InstructorInfo[];
                     await updateSelectedItemsDisplay('courseInfoSelectedInstructors', localCourseData.instructors, 'instructor');
                     instructorSelect.value = '';
                 }
@@ -388,8 +493,11 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
         if (addTABtn && taSelect) {
             const addTA = async () => {
                 const selectedValue = taSelect.value;
-                if (selectedValue && !localCourseData.teachingAssistants.includes(selectedValue)) {
-                    localCourseData.teachingAssistants.push(selectedValue);
+                if (selectedValue && !arrayContainsUserId(localCourseData.teachingAssistants, selectedValue)) {
+                    // Find the name from options
+                    const option = TA_OPTIONS.find(opt => opt.value === selectedValue);
+                    const name = option ? option.text : selectedValue;
+                    localCourseData.teachingAssistants = addUserIdToArray(localCourseData.teachingAssistants, selectedValue, name) as InstructorInfo[];
                     await updateSelectedItemsDisplay('courseInfoSelectedTAs', localCourseData.teachingAssistants, 'ta');
                     taSelect.value = '';
                 }

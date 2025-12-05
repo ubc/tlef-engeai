@@ -998,12 +998,42 @@ async function completeMonitorSetup(): Promise<void> {
             throw new Error("Current course not found");
         }
         
-        // Update the course's monitorSetup status to true
+        // Validate courseId exists
+        if (!currentCourse.id) {
+            throw new Error("Course ID is missing. Cannot update database.");
+        }
+        
+        // Update the course's monitorSetup status to true locally
         currentCourse.monitorSetup = true;
         
         //START DEBUG LOG : DEBUG-CODE(011)
         console.log("✅ Monitor setup status updated to true for course:", currentCourse.courseName);
         //END DEBUG LOG : DEBUG-CODE(011)
+        
+        // Persist to database
+        console.log(`📡 Updating database: setting monitorSetup=true for course ${currentCourse.id}`);
+        const response = await fetch(`/api/courses/${currentCourse.id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+                monitorSetup: true
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Failed to update course in database' }));
+            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || 'Failed to update course in database');
+        }
+        
+        console.log("✅ Monitor setup status persisted to database successfully!");
         
         // Dispatch the completion event
         const event = new CustomEvent('monitorSetupComplete', {
@@ -1023,7 +1053,12 @@ async function completeMonitorSetup(): Promise<void> {
         console.error("❌ Error completing monitor setup:", error);
         //END DEBUG LOG : DEBUG-CODE(013)
         
-        await showErrorModal("Completion Error", "Failed to complete monitor setup. Please try again.");
+        // Revert local change on error
+        if (window.currentClass) {
+            window.currentClass.monitorSetup = false;
+        }
+        
+        await showErrorModal("Completion Error", `Failed to complete monitor setup: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
     }
 }
 

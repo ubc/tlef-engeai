@@ -9,7 +9,7 @@
 
 import express from 'express';
 import path from 'path';
-import { passport, samlStrategy, isSamlAvailable } from '../middleware/passport';
+import { passport, ubcShibStrategy, isSamlAvailable } from '../middleware/passport';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { GlobalUser } from '../functions/types';
 import { IDGenerator } from '../functions/unique-id-generator';
@@ -25,7 +25,7 @@ router.get('/login', (req: express.Request, res: express.Response, next: express
         console.log('[AUTH] Initiating SAML authentication...');
         //END DEBUG LOG : DEBUG-CODE(SAML-LOGIN)
 
-        passport.authenticate('saml', {
+        passport.authenticate('ubcshib', {
             failureRedirect: '/auth/login-failed',
             successRedirect: '/'
         })(req, res, next);
@@ -46,7 +46,7 @@ router.post('/saml/callback', (req: express.Request, res: express.Response, next
     console.log('SAML callback received');
     //END DEBUG LOG : DEBUG-CODE(SAML-CALLBACK)
     
-    passport.authenticate('saml', {
+    passport.authenticate('ubcshib', {
         failureRedirect: '/auth/login-failed',
         failureFlash: false
     })(req, res, next);
@@ -219,13 +219,13 @@ router.get('/logout', (req: express.Request, res: express.Response, next: expres
         return res.redirect('/');
     }
 
-    if (isSamlAvailable && samlStrategy) {
+    if (isSamlAvailable && ubcShibStrategy) {
         // SAML Single Log-Out flow
         //START DEBUG LOG : DEBUG-CODE(SAML-LOGOUT)
         console.log('[AUTH] Initiating SAML logout...');
         //END DEBUG LOG : DEBUG-CODE(SAML-LOGOUT)
 
-        samlStrategy.logout(req as any, (err: any, requestUrl?: string | null) => {
+        ubcShibStrategy.logout(req as any, (err: any, requestUrl?: string | null) => {
             if (err) {
                 //START DEBUG LOG : DEBUG-CODE(SAML-LOGOUT-ERROR)
                 console.error('[AUTH] SAML logout error:', err);
@@ -283,14 +283,17 @@ router.get('/logout', (req: express.Request, res: express.Response, next: expres
     }
 });
 
-// The SAML IdP will redirect the user back to this URL after a successful logout.
-// This endpoint can be configured in your IdP's settings and should match SAML_LOGOUT_CALLBACK_URL.
-router.get('/logout/callback', (req: express.Request, res: express.Response) => {
-    // The local session is already destroyed.
-    // We can perform any additional cleanup here if needed.
-    // For now, just redirect to the home page.
-    res.redirect('/');
-});
+// Logout callback - IdP redirects here after logout
+// This endpoint handles the SAML logout response from the IdP
+// Note: In the reference implementation, this is at /auth/logout, but since our routes
+// are mounted at /auth, we use /logout/callback to avoid conflict with the main logout route
+router.get('/logout/callback',
+    passport.authenticate('ubcshib', { failureRedirect: '/' }),
+    (req: express.Request, res: express.Response) => {
+        // Successful logout callback - redirect to home page
+        res.redirect('/');
+    }
+);
 
 // Get current user info (API endpoint)
 router.get('/current-user', async (req: express.Request, res: express.Response) => {
@@ -478,6 +481,45 @@ router.get('/me', async (req: express.Request, res: express.Response) => {
         console.log('[SERVER] ❌ User is not authenticated');
         //END DEBUG LOG : DEBUG-CODE(AUTH-ME-FAIL)
         res.json({ authenticated: false });
+    }
+});
+
+// Get authentication configuration (API endpoint)
+router.get('/config', (req: express.Request, res: express.Response) => {
+    //START DEBUG LOG : DEBUG-CODE(AUTH-CONFIG)
+    console.log('[SERVER] 🔍 /auth/config endpoint called');
+    //END DEBUG LOG : DEBUG-CODE(AUTH-CONFIG)
+    
+    res.json({
+        samlAvailable: isSamlAvailable
+    });
+});
+
+// CWL login route - always attempts SAML/CWL login if SAML is configured
+// Works even when SAML_AVAILABLE=false, as long as SAML environment variables are present
+router.get('/login/cwl', (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    //START DEBUG LOG : DEBUG-CODE(CWL-LOGIN)
+    console.log('[AUTH] Initiating CWL login (forced SAML)...');
+    //END DEBUG LOG : DEBUG-CODE(CWL-LOGIN)
+    
+    if (ubcShibStrategy) {
+        // SAML strategy is available - proceed with SAML authentication
+        passport.authenticate('ubcshib', {
+            failureRedirect: '/auth/login-failed',
+            successRedirect: '/'
+        })(req, res, next);
+    } else {
+        // SAML strategy not configured - return error
+        console.error('[AUTH] ❌ CWL login requested but SAML strategy is not configured');
+        res.status(503).send(`
+            <html>
+                <body>
+                    <h1>CWL Login Unavailable</h1>
+                    <p>SAML authentication is not configured. Please use the regular login button.</p>
+                    <a href="/">Return to Home</a>
+                </body>
+            </html>
+        `);
     }
 });
 

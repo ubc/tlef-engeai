@@ -26,8 +26,86 @@
  */
 
 import { loadComponentHTML } from "../functions/api.js";
-import { activeCourse, TopicOrWeekInstance, TopicOrWeekItem, onBoardingScreen } from "../../../src/functions/types.js";
+import { activeCourse, TopicOrWeekInstance, TopicOrWeekItem, onBoardingScreen, InstructorInfo } from "../../../src/functions/types.js";
 import { showErrorModal, showHelpModal } from "../modal-overlay.js";
+
+// ===========================================
+// UTILITY FUNCTIONS FOR INSTRUCTOR/TA ARRAYS
+// ===========================================
+
+/**
+ * Helper to check if an array contains a userId (handles both string[] and InstructorInfo[])
+ */
+function arrayContainsUserId(arr: string[] | InstructorInfo[], userId: string): boolean {
+    if (!arr || arr.length === 0) return false;
+    return arr.some(item => {
+        if (typeof item === 'string') {
+            return item === userId;
+        } else if (item && item.userId) {
+            return item.userId === userId;
+        }
+        return false;
+    });
+}
+
+/**
+ * Helper to get display name from an item (handles both string and InstructorInfo)
+ */
+function getDisplayName(item: string | InstructorInfo): string {
+    if (typeof item === 'string') {
+        return item;
+    } else if (item && item.name) {
+        return item.name;
+    }
+    return item?.userId || 'Unknown';
+}
+
+/**
+ * Helper to add a userId to array (converts to InstructorInfo[] format if needed)
+ */
+function addUserIdToArray(arr: string[] | InstructorInfo[], userId: string, name?: string): (string | InstructorInfo)[] {
+    const result = arr.map(item => {
+        if (typeof item === 'string') {
+            return { userId: item, name: item }; // Convert old format
+        }
+        return item;
+    });
+    
+    // Check if already exists
+    if (!arrayContainsUserId(result, userId)) {
+        result.push({ userId, name: name || userId });
+    }
+    
+    return result;
+}
+
+/**
+ * Helper to remove a userId from array
+ */
+function removeUserIdFromArray(arr: string[] | InstructorInfo[], userId: string): (string | InstructorInfo)[] {
+    return arr.filter(item => {
+        if (typeof item === 'string') {
+            return item !== userId;
+        } else if (item && item.userId) {
+            return item.userId !== userId;
+        }
+        return true;
+    });
+}
+
+/**
+ * Helper to find index of userId in array
+ */
+function indexOfUserId(arr: string[] | InstructorInfo[], userId: string): number {
+    return arr.findIndex(item => {
+        if (typeof item === 'string') {
+            return item === userId;
+        } else if (item && item.userId) {
+            return item.userId === userId;
+        }
+        return false;
+    });
+}
 
 
 
@@ -296,8 +374,11 @@ function setupFormListeners(state: OnboardingState, onBoardingCourse: activeCour
     if (instructorSelect && addInstructorBtn) {
         const addInstructor = () => {
             const selectedValue = instructorSelect.value;
-            if (selectedValue && !onBoardingCourse.instructors.includes(selectedValue)) {
-                onBoardingCourse.instructors.push(selectedValue);
+            if (selectedValue && !arrayContainsUserId(onBoardingCourse.instructors, selectedValue)) {
+                // Find the name from options
+                const option = INSTRUCTOR_OPTIONS.find(opt => opt.value === selectedValue);
+                const name = option ? option.text : selectedValue;
+                onBoardingCourse.instructors = addUserIdToArray(onBoardingCourse.instructors, selectedValue, name) as InstructorInfo[];
                 updateSelectedItemsDisplay('selectedInstructors', onBoardingCourse.instructors, state, onBoardingCourse);
                 updateStepIndicators(state, onBoardingCourse);
                 instructorSelect.value = ''; // Reset selection
@@ -322,8 +403,11 @@ function setupFormListeners(state: OnboardingState, onBoardingCourse: activeCour
     if (taSelect && addTABtn) {
         const addTA = () => {
             const selectedValue = taSelect.value;
-            if (selectedValue && !onBoardingCourse.teachingAssistants.includes(selectedValue)) {
-                onBoardingCourse.teachingAssistants.push(selectedValue);
+            if (selectedValue && !arrayContainsUserId(onBoardingCourse.teachingAssistants, selectedValue)) {
+                // Find the name from options
+                const option = TA_OPTIONS.find(opt => opt.value === selectedValue);
+                const name = option ? option.text : selectedValue;
+                onBoardingCourse.teachingAssistants = addUserIdToArray(onBoardingCourse.teachingAssistants, selectedValue, name) as InstructorInfo[];
                 updateSelectedItemsDisplay('selectedTAs', onBoardingCourse.teachingAssistants, state, onBoardingCourse);
                 updateStepIndicators(state, onBoardingCourse);
                 taSelect.value = ''; // Reset selection
@@ -386,9 +470,12 @@ function setupReviewFormListeners(state: OnboardingState, onBoardingCourse: acti
     if (reviewInstructorSelect && reviewAddInstructorBtn) {
         const addReviewInstructor = () => {
             const selectedValue = reviewInstructorSelect.value;
-            if (selectedValue && !onBoardingCourse.instructors.includes(selectedValue)) {
-                console.log('Adding instructor:', selectedValue); 
-                onBoardingCourse.instructors.push(selectedValue);
+            if (selectedValue && !arrayContainsUserId(onBoardingCourse.instructors, selectedValue)) {
+                console.log('Adding instructor:', selectedValue);
+                // Find the name from options
+                const option = INSTRUCTOR_OPTIONS.find(opt => opt.value === selectedValue);
+                const name = option ? option.text : selectedValue;
+                onBoardingCourse.instructors = addUserIdToArray(onBoardingCourse.instructors, selectedValue, name) as InstructorInfo[];
                 updateSelectedItemsDisplay('reviewSelectedInstructors', onBoardingCourse.instructors, state, onBoardingCourse);
                 updateStepIndicators(state, onBoardingCourse);
                 reviewInstructorSelect.value = ''; // Reset selection
@@ -413,8 +500,11 @@ function setupReviewFormListeners(state: OnboardingState, onBoardingCourse: acti
     if (reviewTASelect && reviewAddTABtn) {
         const addReviewTA = () => {
             const selectedValue = reviewTASelect.value;
-            if (selectedValue && !onBoardingCourse.teachingAssistants.includes(selectedValue)) {
-                onBoardingCourse.teachingAssistants.push(selectedValue);
+            if (selectedValue && !arrayContainsUserId(onBoardingCourse.teachingAssistants, selectedValue)) {
+                // Find the name from options
+                const option = TA_OPTIONS.find(opt => opt.value === selectedValue);
+                const name = option ? option.text : selectedValue;
+                onBoardingCourse.teachingAssistants = addUserIdToArray(onBoardingCourse.teachingAssistants, selectedValue, name) as InstructorInfo[];
                 updateSelectedItemsDisplay('reviewSelectedTAs', onBoardingCourse.teachingAssistants, state, onBoardingCourse);
                 updateStepIndicators(state, onBoardingCourse);
                 reviewTASelect.value = ''; // Reset selection
@@ -798,30 +888,34 @@ function updateNavigationButtons(state: OnboardingState): void {
 
 /**
  * Updates the selected items display for multi-select dropdowns
+ * Handles both string[] and InstructorInfo[] formats
  * 
  * @param containerId - The ID of the container element
- * @param items - Array of selected items
+ * @param items - Array of selected items (string[] or InstructorInfo[])
  * @param state - The onboarding state object
  */
-function updateSelectedItemsDisplay(containerId: string, items: string[], state: OnboardingState, onBoardingCourse: activeCourse): void {
+function updateSelectedItemsDisplay(containerId: string, items: string[] | InstructorInfo[], state: OnboardingState, onBoardingCourse: activeCourse): void {
     const container = document.getElementById(containerId);
     if (!container) return;
     
     container.innerHTML = '';
     
     items.forEach(item => {
+        const displayName = getDisplayName(item);
+        const userId = typeof item === 'string' ? item : item.userId;
+        
         const itemElement = document.createElement('div');
         itemElement.className = 'selected-item';
         itemElement.innerHTML = `
-            <span>${item}</span>
-            <button class="remove-btn" data-item="${item}">×</button>
+            <span>${displayName}</span>
+            <button class="remove-btn" data-item="${userId}">×</button>
         `;
         
         // Add remove functionality
         const removeBtn = itemElement.querySelector('.remove-btn');
         if (removeBtn) {
             removeBtn.addEventListener('click', () => {
-                removeSelectedItem(containerId, item, state, onBoardingCourse);
+                removeSelectedItem(containerId, userId, state, onBoardingCourse);
             });
         }
         
@@ -833,31 +927,31 @@ function updateSelectedItemsDisplay(containerId: string, items: string[], state:
  * Removes a selected item from the display and updates the state
  * 
  * @param containerId - The ID of the container element
- * @param item - The item to remove
+ * @param userId - The userId of the item to remove
  * @param state - The onboarding state object
  */
-function removeSelectedItem(containerId: string, item: string, state: OnboardingState, onBoardingCourse: activeCourse): void {
+function removeSelectedItem(containerId: string, userId: string, state: OnboardingState, onBoardingCourse: activeCourse): void {
     const container = document.getElementById(containerId);
     if (!container) return;
     
     // Remove from display
     const itemElements = container.querySelectorAll('.selected-item');
     itemElements.forEach(element => {
-        const itemSpan = element.querySelector('span');
-        if (itemSpan && itemSpan.textContent === item) {
+        const removeBtn = element.querySelector('.remove-btn');
+        if (removeBtn && removeBtn.getAttribute('data-item') === userId) {
             element.remove();
         }
     });
     
     // Update state based on container type
     if (containerId === 'selectedInstructors' || containerId === 'reviewSelectedInstructors') {
-        const index = onBoardingCourse.instructors.indexOf(item);
+        const index = indexOfUserId(onBoardingCourse.instructors, userId);
         if (index > -1) {
             onBoardingCourse.instructors.splice(index, 1);
             updateStepIndicators(state, onBoardingCourse);
         }
     } else if (containerId === 'selectedTAs' || containerId === 'reviewSelectedTAs') {
-        const index = onBoardingCourse.teachingAssistants.indexOf(item);
+        const index = indexOfUserId(onBoardingCourse.teachingAssistants, userId);
         if (index > -1) {
             onBoardingCourse.teachingAssistants.splice(index, 1);
             updateStepIndicators(state, onBoardingCourse);

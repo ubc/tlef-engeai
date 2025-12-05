@@ -642,8 +642,38 @@ async function handleFinalCompletion(state: FlagSetupState, instructorCourse: ac
     console.log("🎯 Completing flag setup...");
     
     try {
-        // Mark flag setup as complete
+        // Validate courseId exists
+        if (!instructorCourse.id) {
+            throw new Error("Course ID is missing. Cannot update database.");
+        }
+        
+        // Mark flag setup as complete locally
         instructorCourse.flagSetup = true;
+        
+        // Persist to database
+        console.log(`📡 Updating database: setting flagSetup=true for course ${instructorCourse.id}`);
+        const response = await fetch(`/api/courses/${instructorCourse.id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+                flagSetup: true
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Failed to update course in database' }));
+            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || 'Failed to update course in database');
+        }
+        
+        console.log("✅ Flag setup status persisted to database successfully!");
         
         // DO NOT remove onboarding-active class - let instructor-mode.ts handle the flow
         // DO NOT show instructor sidebar - we need to proceed to monitor setup
@@ -655,7 +685,9 @@ async function handleFinalCompletion(state: FlagSetupState, instructorCourse: ac
         
     } catch (error) {
         console.error("❌ Error during final completion:", error);
-        await showErrorModal("Completion Error", "Failed to complete flag setup. Please try again.");
+        // Revert local change on error
+        instructorCourse.flagSetup = false;
+        await showErrorModal("Completion Error", `Failed to complete flag setup: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
     }
 }
 

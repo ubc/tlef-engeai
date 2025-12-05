@@ -33,7 +33,7 @@
 import express, { Request, Response } from 'express';
 import { asyncHandler, asyncHandlerWithAuth } from '../middleware/asyncHandler';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
-import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport } from '../functions/types';
+import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User } from '../functions/types';
 import { IDGenerator } from '../functions/unique-id-generator';
 import dotenv from 'dotenv';
 
@@ -356,18 +356,105 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
         //add the coursecontent to the body
         req.body.topicOrWeekInstances = courseContent;
 
+        // Get the current user (course creator) from session
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser) {
+            return res.status(401).json({
+                success: false,
+                error: 'User not authenticated'
+            });
+        }
+
+        // Ensure the creator is in the instructors array
+        const creatorUserId = globalUser.userId;
+        const creatorName = globalUser.name;
+        
+        // Helper function to check if instructor is already in the array (handles both old and new formats)
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some(inst => {
+                if (typeof inst === 'string') {
+                    return inst === creatorUserId; // Old format
+                } else if (inst && inst.userId) {
+                    return inst.userId === creatorUserId; // New format
+                }
+                return false;
+            });
+        };
+
+        // Get existing instructors and convert to new format if needed
+        const existingInstructors = req.body.instructors || [];
+        let updatedInstructors = existingInstructors.map((inst: any) => {
+            // Convert old format to new format if needed
+            if (typeof inst === 'string') {
+                return { userId: inst, name: 'Unknown' }; // Will be updated later if needed
+            }
+            return inst; // Already in new format
+        });
+
+        // Add creator to instructors array if not already present
+        if (!isInstructorInArray(updatedInstructors)) {
+            updatedInstructors.push({
+                userId: creatorUserId,
+                name: creatorName
+            });
+            console.log(`[CREATE-COURSE] Added course creator ${creatorName} (${creatorUserId}) to instructors array`);
+        }
+
         const courseData: activeCourse = {
             ...req.body, //spread the properties of the body first
             id: id, // use the generated id
             date: new Date(),
             onBoarded: true, // default to false for new courses
-            instructors: req.body.instructors || [],
+            instructors: updatedInstructors,
             teachingAssistants: req.body.teachingAssistants || [],
             tilesNumber: req.body.tilesNumber || 0
         };
         
         
         await instance.postActiveCourse(courseData);
+
+        // Add creator to the course's users collection ({courseName}_users)
+        try {
+            const courseName = courseData.courseName;
+            const collectionNames = await instance.getCollectionNames(courseName);
+            
+            // Check if CourseUser already exists
+            let courseUser = await instance.findStudentByUserId(courseName, creatorUserId);
+            
+            if (!courseUser) {
+                // Create CourseUser entry for the creator
+                const newCourseUserData: Partial<User> = {
+                    name: creatorName,
+                    userId: creatorUserId,
+                    courseName: courseName,
+                    courseId: id,
+                    userOnboarding: false, // Creator doesn't need onboarding
+                    affiliation: 'faculty',
+                    status: 'active',
+                    chats: []
+                };
+                
+                await instance.createStudent(courseName, newCourseUserData);
+                console.log(`[CREATE-COURSE] Created CourseUser entry for creator ${creatorName} (${creatorUserId}) in ${collectionNames.users}`);
+            } else {
+                console.log(`[CREATE-COURSE] CourseUser entry already exists for creator ${creatorName} (${creatorUserId})`);
+            }
+        } catch (courseUserError) {
+            console.error(`[CREATE-COURSE] ⚠️ Error creating CourseUser for creator:`, courseUserError);
+            // Continue even if CourseUser creation fails - course is already created
+        }
+
+        // Add course to creator's coursesEnrolled array
+        try {
+            if (!globalUser.coursesEnrolled.includes(id)) {
+                await instance.addCourseToGlobalUser(globalUser.puid, id);
+                console.log(`[CREATE-COURSE] Added course ${id} to creator's enrolled list`);
+            }
+        } catch (enrollmentError) {
+            console.error(`[CREATE-COURSE] ⚠️ Error adding course to creator's enrolled list:`, enrollmentError);
+            // Continue even if enrollment fails - course is already created
+        }
 
         // Since activeCourse is the correct type, we can return it directly
         const activeClassData: activeCourse = courseData as activeCourse;
@@ -468,6 +555,100 @@ router.put('/:id', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     });
 }));
 
+// POST /api/courses/:courseId/instructors - Add instructor to course's instructors array
+router.post('/:courseId/instructors', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const { courseId } = req.params;
+        const globalUser = (req.session as any).globalUser;
+        
+        if (!globalUser) {
+            return res.status(401).json({ 
+                success: false,
+                error: 'User not authenticated' 
+            });
+        }
+        
+        if (globalUser.affiliation !== 'faculty') {
+            return res.status(403).json({ 
+                success: false,
+                error: 'Only faculty members can join courses as instructors' 
+            });
+        }
+        
+        const instance = await EngEAI_MongoDB.getInstance();
+        const course = await instance.getActiveCourse(courseId);
+        
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        const courseData = course as unknown as activeCourse;
+        const instructorUserId = globalUser.userId;
+        const instructorName = globalUser.name;
+        
+        // Helper function to check if instructor is already in the array (handles both old and new formats)
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some(inst => {
+                if (typeof inst === 'string') {
+                    return inst === instructorUserId; // Old format
+                } else if (inst && inst.userId) {
+                    return inst.userId === instructorUserId; // New format
+                }
+                return false;
+            });
+        };
+        
+        // Check if instructor is already in the instructors array
+        if (isInstructorInArray(courseData.instructors || [])) {
+            return res.status(200).json({
+                success: true,
+                data: courseData,
+                message: 'Instructor is already part of this course'
+            });
+        }
+        
+        // Get existing instructors and convert to new format if needed
+        const existingInstructors = courseData.instructors || [];
+        const updatedInstructors = existingInstructors.map((inst: any) => {
+            // Convert old format to new format if needed
+            if (typeof inst === 'string') {
+                return { userId: inst, name: 'Unknown' }; // Will be updated later if needed
+            }
+            return inst; // Already in new format
+        });
+        
+        // Add new instructor with name
+        updatedInstructors.push({
+            userId: instructorUserId,
+            name: instructorName
+        });
+        
+        const updatedCourse = await instance.updateActiveCourse(courseId, {
+            instructors: updatedInstructors
+        } as Partial<activeCourse>);
+        
+        console.log(`[ADD-INSTRUCTOR] Added instructor ${instructorName} (${instructorUserId}) to course ${courseId}`);
+        
+        res.status(200).json({
+            success: true,
+            data: updatedCourse,
+            message: 'Instructor added to course successfully'
+        });
+        
+    } catch (error) {
+        console.error('[ADD-INSTRUCTOR] Error:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Failed to add instructor to course',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
 // DELETE /api/courses/:id/restart-onboarding - Restart onboarding by deleting course and related collections, then recreating with empty defaults
 // NOTE: This route must come before the general /:id route to ensure proper matching
 router.delete('/:id/restart-onboarding', asyncHandlerWithAuth(async (req: Request, res: Response) => {
@@ -544,6 +725,123 @@ router.delete('/:id/restart-onboarding', asyncHandlerWithAuth(async (req: Reques
         return res.status(500).json({
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error occurred'
+        });
+    }
+}));
+
+// DELETE /api/courses/:id/remove - Remove course completely (REQUIRES AUTH - Instructors only)
+// This removes the course and all associated data: collections, Qdrant documents, and user enrollments
+router.delete('/:id/remove', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const courseId = req.params.id;
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        
+        // Step 1: Get course from active-course-list
+        const course = await mongoDB.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        const courseData = course as unknown as activeCourse;
+        const courseName = courseData.courseName;
+        
+        console.log(`🗑️ Removing course ${courseId} (${courseName}) and all associated data...`);
+        
+        // Step 2: Remove courseId from all users' coursesEnrolled in active-users
+        let usersModified = 0;
+        try {
+            usersModified = await mongoDB.removeCourseFromAllUsers(courseId);
+            console.log(`✅ Removed course from ${usersModified} user(s) in active-users`);
+        } catch (error) {
+            console.error(`❌ Failed to remove course from active-users:`, error);
+            // Continue with other operations even if this fails
+        }
+        
+        // Step 3: Get collection names
+        const collectionNames = await mongoDB.getCollectionNames(courseName);
+        
+        // Step 4: Drop course collections (users, flags, memory-agent)
+        const droppedCollections: string[] = [];
+        const errors: string[] = [];
+        
+        const collectionsToDrop = [
+            collectionNames.users,
+            collectionNames.flags,
+            collectionNames.memoryAgent
+        ];
+        
+        for (const collectionName of collectionsToDrop) {
+            try {
+                const dropResult = await mongoDB.dropCollection(collectionName);
+                if (dropResult.success) {
+                    droppedCollections.push(collectionName);
+                    console.log(`✅ Dropped collection: ${collectionName}`);
+                } else {
+                    errors.push(`Failed to drop ${collectionName}: ${dropResult.error}`);
+                    console.error(`❌ Failed to drop ${collectionName}:`, dropResult.error);
+                }
+            } catch (error) {
+                const errorMsg = `Error dropping ${collectionName}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+                errors.push(errorMsg);
+                console.error(`❌ ${errorMsg}`);
+            }
+        }
+        
+        // Step 5: Delete all Qdrant documents for the course
+        let qdrantDeleted = 0;
+        const qdrantErrors: string[] = [];
+        try {
+            const { RAGApp } = await import('../routes/RAG-App.js');
+            const ragApp = await RAGApp.getInstance();
+            const qdrantResult = await ragApp.deleteAllDocumentsForCourse(courseId);
+            qdrantDeleted = qdrantResult.deletedCount;
+            if (qdrantResult.errors && qdrantResult.errors.length > 0) {
+                qdrantErrors.push(...qdrantResult.errors);
+            }
+            console.log(`✅ Deleted ${qdrantDeleted} Qdrant document(s) for course`);
+        } catch (error) {
+            const errorMsg = `Failed to delete Qdrant documents: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            qdrantErrors.push(errorMsg);
+            console.error(`❌ ${errorMsg}`);
+            // Continue with course deletion even if Qdrant fails
+        }
+        
+        // Step 6: Remove course from active-course-list
+        await mongoDB.deleteActiveCourse(courseData);
+        console.log(`✅ Removed course from active-course-list`);
+        
+        // Build success message
+        let message = `Course "${courseName}" removed successfully. `;
+        message += `Removed from ${usersModified} user(s), dropped ${droppedCollections.length} collection(s), `;
+        message += `deleted ${qdrantDeleted} Qdrant document(s).`;
+        
+        if (errors.length > 0 || qdrantErrors.length > 0) {
+            const allErrors = [...errors, ...qdrantErrors];
+            message += ` (${allErrors.length} error(s) occurred)`;
+        }
+        
+        res.status(200).json({
+            success: true,
+            message: message,
+            data: {
+                courseId: courseId,
+                courseName: courseName,
+                usersModified: usersModified,
+                droppedCollections: droppedCollections,
+                qdrantDeleted: qdrantDeleted,
+                errors: [...errors, ...qdrantErrors]
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Error removing course:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to remove course',
+            details: error instanceof Error ? error.message : 'Unknown error'
         });
     }
 }));
@@ -1980,6 +2278,624 @@ router.get('/export/database', asyncHandlerWithAuth(async (req: Request, res: Re
         res.status(500).json({
             success: false,
             error: 'Failed to export database',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+/**
+ * GET /api/courses/export/course-info - Export course-specific information hierarchically
+ * Downloads course information, course users, flags, and memory-agent collections
+ */
+router.get('/export/course-info', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        
+        // Get all active courses
+        const allCourses = await mongoDB.getAllActiveCourses();
+        
+        // Build hierarchical course information export
+        let exportText = '';
+        
+        if (allCourses.length === 0) {
+            exportText = 'No courses found.\n';
+        } else {
+            // Sort courses by courseName for consistent output
+            const sortedCourses = allCourses.sort((a: any, b: any) => {
+                const nameA = a.courseName || '';
+                const nameB = b.courseName || '';
+                return nameA.localeCompare(nameB);
+            });
+            
+            for (const course of sortedCourses) {
+                const courseData = course as any;
+                const courseName = courseData.courseName || 'Unknown Course';
+                
+                // Add course header
+                exportText += `========================================\n`;
+                exportText += `COURSE: ${courseName}\n`;
+                exportText += `Course ID: ${courseData.id || 'N/A'}\n`;
+                exportText += `========================================\n\n`;
+                
+                // Export course information from active-course-list
+                exportText += `--- Course Information (active-course-list) ---\n`;
+                const courseJson = JSON.stringify(courseData, null, 2);
+                exportText += `${courseJson}\n\n`;
+                
+                // Get collection names for this course
+                try {
+                    const collectionNames = await mongoDB.getCollectionNames(courseName);
+                    
+                    // Export course users collection
+                    exportText += `--- Course Users (${collectionNames.users}) ---\n`;
+                    try {
+                        const usersCollection = mongoDB.db.collection(collectionNames.users);
+                        const users = await usersCollection.find({}).toArray();
+                        if (users.length === 0) {
+                            exportText += '[Empty collection]\n';
+                        } else {
+                            for (let i = 0; i < users.length; i++) {
+                                const userJson = JSON.stringify(users[i], null, 2);
+                                exportText += `${userJson}\n`;
+                                if (i < users.length - 1) {
+                                    exportText += '\n';
+                                }
+                            }
+                        }
+                    } catch (usersError) {
+                        exportText += `[Error reading collection: ${usersError instanceof Error ? usersError.message : 'Unknown error'}]\n`;
+                    }
+                    exportText += '\n\n';
+                    
+                    // Export course flags collection
+                    exportText += `--- Course Flags (${collectionNames.flags}) ---\n`;
+                    try {
+                        const flagsCollection = mongoDB.db.collection(collectionNames.flags);
+                        const flags = await flagsCollection.find({}).toArray();
+                        if (flags.length === 0) {
+                            exportText += '[Empty collection]\n';
+                        } else {
+                            for (let i = 0; i < flags.length; i++) {
+                                const flagJson = JSON.stringify(flags[i], null, 2);
+                                exportText += `${flagJson}\n`;
+                                if (i < flags.length - 1) {
+                                    exportText += '\n';
+                                }
+                            }
+                        }
+                    } catch (flagsError) {
+                        exportText += `[Error reading collection: ${flagsError instanceof Error ? flagsError.message : 'Unknown error'}]\n`;
+                    }
+                    exportText += '\n\n';
+                    
+                    // Export course memory-agent collection
+                    exportText += `--- Course Memory Agent (${collectionNames.memoryAgent}) ---\n`;
+                    try {
+                        const memoryAgentCollection = mongoDB.db.collection(collectionNames.memoryAgent);
+                        const memoryAgents = await memoryAgentCollection.find({}).toArray();
+                        if (memoryAgents.length === 0) {
+                            exportText += '[Empty collection]\n';
+                        } else {
+                            for (let i = 0; i < memoryAgents.length; i++) {
+                                const memoryAgentJson = JSON.stringify(memoryAgents[i], null, 2);
+                                exportText += `${memoryAgentJson}\n`;
+                                if (i < memoryAgents.length - 1) {
+                                    exportText += '\n';
+                                }
+                            }
+                        }
+                    } catch (memoryAgentError) {
+                        exportText += `[Error reading collection: ${memoryAgentError instanceof Error ? memoryAgentError.message : 'Unknown error'}]\n`;
+                    }
+                    exportText += '\n\n';
+                    
+                } catch (collectionNamesError) {
+                    exportText += `[Error getting collection names: ${collectionNamesError instanceof Error ? collectionNamesError.message : 'Unknown error'}]\n\n`;
+                }
+                
+                // Add spacing between courses
+                exportText += '\n\n';
+            }
+        }
+        
+        // Set response headers for file download
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        const filename = `course-info-export-${timestamp}.txt`;
+        
+        res.setHeader('Content-Type', 'text/plain');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(exportText);
+        
+    } catch (error) {
+        console.error('Error exporting course information:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to export course information',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+// ===========================================
+// ADMIN ROUTES (Instructor Only)
+// ===========================================
+
+/**
+ * POST /api/admin/reset-database - Reset entire database (REQUIRES AUTH - Instructors only)
+ * Wipes all collections except active-course-list and active-users, then clears those too
+ * Also wipes vector database and logs user out
+ */
+router.post('/admin/reset-database', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        console.log('🗑️ [ADMIN] Reset Database request received');
+        
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        
+        // Step 1: Get all collections
+        const allCollections = await mongoDB.db.listCollections().toArray();
+        const collectionNames = allCollections.map(col => col.name);
+        
+        console.log(`📋 Found ${collectionNames.length} collection(s) in database`);
+        
+        // Collections to preserve initially (will be cleared later)
+        const preservedCollections = ['active-course-list', 'active-users'];
+        
+        // Filter out collections to preserve
+        const collectionsToDrop = collectionNames.filter(
+            name => !preservedCollections.includes(name)
+        );
+        
+        console.log(`🗑️ Dropping ${collectionsToDrop.length} collection(s)`);
+        
+        // Step 2: Drop all collections except preserved ones
+        const droppedCollections: string[] = [];
+        const errors: string[] = [];
+        
+        for (const collectionName of collectionsToDrop) {
+            try {
+                const dropResult = await mongoDB.dropCollection(collectionName);
+                if (dropResult.success) {
+                    droppedCollections.push(collectionName);
+                    console.log(`✅ Dropped collection: ${collectionName}`);
+                } else {
+                    errors.push(`Failed to drop ${collectionName}: ${dropResult.error}`);
+                    console.error(`❌ Failed to drop ${collectionName}:`, dropResult.error);
+                }
+            } catch (error) {
+                const errorMsg = `Error dropping ${collectionName}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+                errors.push(errorMsg);
+                console.error(`❌ ${errorMsg}`);
+            }
+        }
+        
+        // Step 3: Clear active-course-list
+        console.log('🧹 Clearing active-course-list...');
+        try {
+            const activeCourseListCollection = mongoDB.db.collection('active-course-list');
+            const deleteResult = await activeCourseListCollection.deleteMany({});
+            console.log(`✅ Deleted ${deleteResult.deletedCount} course(s) from active-course-list`);
+        } catch (error) {
+            const errorMsg = `Failed to clear active-course-list: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            errors.push(errorMsg);
+            console.error(`❌ ${errorMsg}`);
+        }
+        
+        // Step 4: Clear active-users
+        console.log('🧹 Clearing active-users...');
+        try {
+            const activeUsersCollection = mongoDB.db.collection('active-users');
+            const deleteResult = await activeUsersCollection.deleteMany({});
+            console.log(`✅ Deleted ${deleteResult.deletedCount} user(s) from active-users`);
+        } catch (error) {
+            const errorMsg = `Failed to clear active-users: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            errors.push(errorMsg);
+            console.error(`❌ ${errorMsg}`);
+        }
+        
+        // Step 5: Wipe vector database using NuclearClearRAGDatabase
+        let qdrantDeleted = 0;
+        const qdrantErrors: string[] = [];
+        try {
+            const { RAGApp } = await import('../routes/RAG-App.js');
+            const ragApp = await RAGApp.getInstance();
+            const qdrantResult = await ragApp.NuclearClearRAGDatabase();
+            qdrantDeleted = qdrantResult.deletedCount;
+            if (qdrantResult.errors && qdrantResult.errors.length > 0) {
+                qdrantErrors.push(...qdrantResult.errors);
+            }
+            console.log(`✅ Deleted ${qdrantDeleted} Qdrant document(s) (nuclear clear)`);
+        } catch (error) {
+            const errorMsg = `Failed to clear vector database: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            qdrantErrors.push(errorMsg);
+            console.error(`❌ ${errorMsg}`);
+            // Continue even if Qdrant fails
+        }
+        
+        let message = `Database reset successfully. Dropped ${droppedCollections.length} collection(s), cleared active-course-list and active-users, deleted ${qdrantDeleted} Qdrant document(s).`;
+        if (errors.length > 0 || qdrantErrors.length > 0) {
+            const allErrors = [...errors, ...qdrantErrors];
+            message += ` (${allErrors.length} error(s) occurred)`;
+        }
+        
+        console.log(`✅ ${message}`);
+        
+        res.status(200).json({
+            success: true,
+            message: message,
+            data: {
+                droppedCollections: droppedCollections,
+                qdrantDeleted: qdrantDeleted,
+                errors: [...errors, ...qdrantErrors]
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Error resetting database:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to reset database',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+/**
+ * POST /api/courses/admin/reset-mongodb - Reset MongoDB only (REQUIRES AUTH - Instructors only)
+ * Wipes all MongoDB collections except active-course-list and active-users, then clears those too
+ * Does NOT affect the vector database (Qdrant)
+ * Logs user out after completion
+ */
+router.post('/admin/reset-mongodb', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        console.log('🗑️ [ADMIN] Reset MongoDB request received');
+        
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        
+        // Step 1: Get all collections
+        const allCollections = await mongoDB.db.listCollections().toArray();
+        const collectionNames = allCollections.map(col => col.name);
+        
+        console.log(`📋 Found ${collectionNames.length} collection(s) in database`);
+        
+        // Collections to preserve initially (will be cleared later)
+        const preservedCollections = ['active-course-list', 'active-users'];
+        
+        // Filter out collections to preserve
+        const collectionsToDrop = collectionNames.filter(
+            name => !preservedCollections.includes(name)
+        );
+        
+        console.log(`🗑️ Dropping ${collectionsToDrop.length} collection(s)`);
+        
+        // Step 2: Drop all collections except preserved ones
+        const droppedCollections: string[] = [];
+        const errors: string[] = [];
+        
+        for (const collectionName of collectionsToDrop) {
+            try {
+                const dropResult = await mongoDB.dropCollection(collectionName);
+                if (dropResult.success) {
+                    droppedCollections.push(collectionName);
+                    console.log(`✅ Dropped collection: ${collectionName}`);
+                } else {
+                    errors.push(`Failed to drop ${collectionName}: ${dropResult.error}`);
+                    console.error(`❌ Failed to drop ${collectionName}:`, dropResult.error);
+                }
+            } catch (error) {
+                const errorMsg = `Error dropping ${collectionName}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+                errors.push(errorMsg);
+                console.error(`❌ ${errorMsg}`);
+            }
+        }
+        
+        // Step 3: Clear active-course-list
+        console.log('🧹 Clearing active-course-list...');
+        try {
+            const activeCourseListCollection = mongoDB.db.collection('active-course-list');
+            const deleteResult = await activeCourseListCollection.deleteMany({});
+            console.log(`✅ Deleted ${deleteResult.deletedCount} course(s) from active-course-list`);
+        } catch (error) {
+            const errorMsg = `Failed to clear active-course-list: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            errors.push(errorMsg);
+            console.error(`❌ ${errorMsg}`);
+        }
+        
+        // Step 4: Clear active-users
+        console.log('🧹 Clearing active-users...');
+        try {
+            const activeUsersCollection = mongoDB.db.collection('active-users');
+            const deleteResult = await activeUsersCollection.deleteMany({});
+            console.log(`✅ Deleted ${deleteResult.deletedCount} user(s) from active-users`);
+        } catch (error) {
+            const errorMsg = `Failed to clear active-users: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            errors.push(errorMsg);
+            console.error(`❌ ${errorMsg}`);
+        }
+        
+        // Step 5: Recreate active-course-list and active-users as empty collections
+        console.log('📝 Ensuring active-course-list and active-users collections exist...');
+        try {
+            // Check if collections exist, create if they don't
+            const collections = await mongoDB.db.listCollections({ name: 'active-course-list' }).toArray();
+            if (collections.length === 0) {
+                await mongoDB.db.createCollection('active-course-list');
+                console.log('✅ Created active-course-list collection');
+            }
+            
+            const usersCollections = await mongoDB.db.listCollections({ name: 'active-users' }).toArray();
+            if (usersCollections.length === 0) {
+                await mongoDB.db.createCollection('active-users');
+                console.log('✅ Created active-users collection');
+            }
+        } catch (error) {
+            const errorMsg = `Error ensuring collections exist: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            errors.push(errorMsg);
+            console.error(`❌ ${errorMsg}`);
+        }
+        
+        let message = `MongoDB reset successfully. Dropped ${droppedCollections.length} collection(s), cleared active-course-list and active-users.`;
+        if (errors.length > 0) {
+            message += ` (${errors.length} error(s) occurred)`;
+        }
+        
+        console.log(`✅ ${message}`);
+        
+        // Log out the user gracefully (logout + destroy session)
+        req.logout((logoutErr) => {
+            if (logoutErr) {
+                console.error('❌ Error during logout after MongoDB reset:', logoutErr);
+                errors.push(`Logout failed: ${logoutErr.message}`);
+            }
+            
+            // Destroy the session after logout
+            (req.session as any).destroy((sessionErr: any) => {
+                if (sessionErr) {
+                    console.error('❌ Error destroying session after MongoDB reset:', sessionErr);
+                    errors.push(`Session destruction failed: ${sessionErr.message}`);
+                } else {
+                    console.log('✅ Session destroyed successfully after MongoDB reset');
+                }
+                
+                res.status(200).json({
+                    success: true,
+                    message: message + ' You have been logged out.',
+                    data: {
+                        droppedCollections: droppedCollections,
+                        errors: errors
+                    }
+                });
+            });
+        });
+        
+    } catch (error) {
+        console.error('❌ Error resetting MongoDB:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to reset MongoDB',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+/**
+ * POST /api/admin/reset-vector-database - Reset vector database only (REQUIRES AUTH - Instructors only)
+ * Wipes entire Qdrant collection using NuclearClearRAGDatabase
+ */
+router.post('/admin/reset-vector-database', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        console.log('🗑️ [ADMIN] Reset Vector Database request received');
+        
+        // Wipe vector database using NuclearClearRAGDatabase
+        let qdrantDeleted = 0;
+        const qdrantErrors: string[] = [];
+        try {
+            const { RAGApp } = await import('../routes/RAG-App.js');
+            const ragApp = await RAGApp.getInstance();
+            const qdrantResult = await ragApp.NuclearClearRAGDatabase();
+            qdrantDeleted = qdrantResult.deletedCount;
+            if (qdrantResult.errors && qdrantResult.errors.length > 0) {
+                qdrantErrors.push(...qdrantResult.errors);
+            }
+            console.log(`✅ Deleted ${qdrantDeleted} Qdrant document(s) (nuclear clear)`);
+        } catch (error) {
+            const errorMsg = `Failed to clear vector database: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            qdrantErrors.push(errorMsg);
+            console.error(`❌ ${errorMsg}`);
+            throw error;
+        }
+        
+        let message = `Vector database reset successfully. Deleted ${qdrantDeleted} Qdrant document(s).`;
+        if (qdrantErrors.length > 0) {
+            message += ` (${qdrantErrors.length} error(s) occurred)`;
+        }
+        
+        console.log(`✅ ${message}`);
+        
+        res.status(200).json({
+            success: true,
+            message: message,
+            data: {
+                qdrantDeleted: qdrantDeleted,
+                errors: qdrantErrors
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Error resetting vector database:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to reset vector database',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+// ===========================================
+// MONITOR ROUTES (Instructor Only)
+// ===========================================
+
+/**
+ * GET /api/courses/monitor/:courseId/chat-titles - Get chat titles for all students (REQUIRES AUTH - Instructors only)
+ * Returns lightweight list of chat titles without full message history
+ */
+router.get('/monitor/:courseId/chat-titles', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const { courseId } = req.params;
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        
+        // Get course to get courseName
+        const course = await mongoDB.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        const courseData = course as any;
+        const courseName = courseData.courseName;
+        
+        // Get collection names
+        const collectionNames = await mongoDB.getCollectionNames(courseName);
+        
+        // Get all users from the course users collection
+        const usersCollection = mongoDB.db.collection(collectionNames.users);
+        const allUsers = await usersCollection.find({}).toArray();
+        
+        // Build response with chat titles for each student
+        const studentsData: Array<{
+            studentId: string;
+            studentName: string;
+            chats: Array<{ id: string; title: string }>;
+        }> = [];
+        
+        for (const user of allUsers) {
+            const userData = user as any;
+            // Only include students (filter out faculty)
+            if (userData.affiliation === 'student') {
+                const chats = (userData.chats || []).filter((chat: any) => !chat.isDeleted);
+                const chatTitles = chats.map((chat: any) => ({
+                    id: chat.id,
+                    title: chat.itemTitle || chat.title || 'Untitled Chat'
+                }));
+                
+                studentsData.push({
+                    studentId: userData.userId,
+                    studentName: userData.name || 'Unknown Student',
+                    chats: chatTitles
+                });
+            }
+        }
+        
+        res.status(200).json({
+            success: true,
+            data: studentsData,
+            count: studentsData.length
+        });
+        
+    } catch (error) {
+        console.error('Error getting chat titles:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get chat titles',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+/**
+ * GET /api/courses/monitor/:courseId/chat/:chatId/download - Download full conversation (REQUIRES AUTH - Instructors only)
+ * Returns full chat conversation with all messages in hierarchical format
+ */
+router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const { courseId, chatId } = req.params;
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        
+        // Get course to get courseName
+        const course = await mongoDB.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+        
+        const courseData = course as any;
+        const courseName = courseData.courseName;
+        
+        // Get collection names
+        const collectionNames = await mongoDB.getCollectionNames(courseName);
+        
+        // Find the user and chat
+        const usersCollection = mongoDB.db.collection(collectionNames.users);
+        const user = await usersCollection.findOne({ 'chats.id': chatId });
+        
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                error: 'Chat not found'
+            });
+        }
+        
+        const userData = user as any;
+        const chat = (userData.chats || []).find((c: any) => c.id === chatId);
+        
+        if (!chat) {
+            return res.status(404).json({
+                success: false,
+                error: 'Chat not found'
+            });
+        }
+        
+        // Build hierarchical export text
+        let exportText = '';
+        exportText += `========================================\n`;
+        exportText += `CHAT CONVERSATION EXPORT\n`;
+        exportText += `========================================\n\n`;
+        exportText += `Student: ${userData.name || 'Unknown'}\n`;
+        exportText += `Student ID: ${userData.userId || 'N/A'}\n`;
+        exportText += `Course: ${courseName}\n`;
+        exportText += `Chat ID: ${chatId}\n`;
+        exportText += `Chat Title: ${chat.itemTitle || chat.title || 'Untitled Chat'}\n`;
+        exportText += `Topic/Week: ${chat.topicOrWeekTitle || 'N/A'}\n`;
+        exportText += `Created: ${chat.createdAt || 'N/A'}\n`;
+        exportText += `========================================\n\n`;
+        
+        // Export messages
+        exportText += `--- Messages ---\n\n`;
+        const messages = chat.messages || [];
+        if (messages.length === 0) {
+            exportText += '[No messages]\n';
+        } else {
+            for (let i = 0; i < messages.length; i++) {
+                const message = messages[i];
+                exportText += `Message ${i + 1}:\n`;
+                exportText += `  Role: ${message.role || 'unknown'}\n`;
+                exportText += `  Content: ${message.content || '[Empty]'}\n`;
+                if (message.timestamp) {
+                    exportText += `  Timestamp: ${message.timestamp}\n`;
+                }
+                if (i < messages.length - 1) {
+                    exportText += '\n';
+                }
+            }
+        }
+        
+        // Set response headers for file download
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        const chatTitle = (chat.itemTitle || chat.title || 'chat').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+        const filename = `chat-${chatTitle}-${timestamp}.txt`;
+        
+        res.setHeader('Content-Type', 'text/plain');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(exportText);
+        
+    } catch (error) {
+        console.error('Error downloading chat:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to download chat',
             details: error instanceof Error ? error.message : 'Unknown error'
         });
     }
