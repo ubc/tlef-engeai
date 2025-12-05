@@ -93,6 +93,16 @@ if (hasSamlConfig) {
         const strategyConfig: any = {
             issuer: process.env.SAML_ISSUER as string,
             callbackUrl: process.env.SAML_CALLBACK_URL as string,
+            // Request specific attributes from UBC IdP
+            // The library will automatically map OID names to friendly names
+            attributeConfig: [
+                'ubcEduCwlPuid',        // UBC Computing User ID (PUID)
+                'mail',                 // Email address
+                'eduPersonAffiliation', // Role (student, faculty, staff)
+                'givenName',           // First name
+                'sn',                  // Last name (surname)
+                'displayName'          // Display name
+            ]
         };
 
         // Optionally add privateKeyPath if provided for request signing
@@ -117,46 +127,43 @@ if (hasSamlConfig) {
             console.log('[AUTH] UBCShib profile received:', JSON.stringify(profile, null, 2));
             //END DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
 
-            const puid =
-                toString(attributes.ubcEduCwlPuid) ||
-                toString(attributes.cwlLoginKey) ||
-                profile.nameID;
+            // Extract PUID - passport-ubcshib automatically maps OID names to friendly names
+            const puid = toString(attributes.ubcEduCwlPuid);
 
             if (!puid) {
                 console.error('[AUTH] ❌ Missing PUID in UBCShib response');
+                console.error('[AUTH] Available attributes:', Object.keys(attributes));
                 return done(new Error('Missing required ubcEduCwlPuid attribute'));
             }
 
-            const firstName =
-                toString(attributes.givenName) ||
-                toString(attributes.firstName) ||
-                '';
-            const lastName =
-                toString(attributes.sn) ||
-                toString(attributes.lastName) ||
-                '';
-            const email =
-                toString(attributes.email) ||
-                toString(attributes.mail) ||
-                toString(attributes.eduPersonPrincipalName) ||
-                '';
+            // Extract user attributes - library has already mapped OID names to friendly names
+            const firstName = toString(attributes.givenName) || '';
+            const lastName = toString(attributes.sn) || '';
+            const email = toString(attributes.mail) || '';
+            const affiliation = mapAffiliation(attributes.eduPersonAffiliation);
 
             const user = {
-                username:
-                    toString(attributes.cwlLoginName) ||
-                    toString(attributes.uid) ||
-                    toString(attributes.displayName) ||
-                    profile.nameID,
+                username: toString(attributes.displayName) || puid,
                 puid,
                 firstName,
                 lastName,
-                affiliation: mapAffiliation(attributes.eduPersonAffiliation),
+                affiliation,
                 email,
                 sessionIndex: profile.sessionIndex,
                 nameID: profile.nameID,
-                nameIDFormat: profile.nameIDFormat,
-                rawProfile: profile // Keep raw profile for debugging
+                nameIDFormat: profile.nameIDFormat
             };
+
+            //START DEBUG LOG : DEBUG-CODE(UBCSHIB-USER-CREATED)
+            console.log('[AUTH] 👤 User object created from SAML:', {
+                username: user.username,
+                puid: user.puid,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                affiliation: user.affiliation,
+                email: user.email
+            });
+            //END DEBUG LOG : DEBUG-CODE(UBCSHIB-USER-CREATED)
 
             return done(null, user);
         });

@@ -11,6 +11,7 @@ import authRoutes from './routes/auth';  // Import authentication routes
 import courseEntryRoutes from './routes/course-entry';  // Import course entry routes
 import userManagementRoutes from './routes/user-management';  // Import user management routes
 import { initializeDummyCourses } from './debug/dummy-courses.js';
+import { EngEAI_MongoDB } from './functions/EngEAI_MongoDB';
 
 // Import SAML authentication middleware
 import sessionMiddleware from './middleware/session';
@@ -83,9 +84,6 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
         console.log('[AUTH] User PUID:', puid);
         console.log('[AUTH] User Name:', name);
         console.log('[AUTH] Affiliation:', affiliation);
-
-        // Import EngEAI_MongoDB dynamically to avoid circular dependencies
-        const { EngEAI_MongoDB } = await import('./functions/EngEAI_MongoDB');
 
         // Get MongoDB instance
         const mongoDB = await EngEAI_MongoDB.getInstance();
