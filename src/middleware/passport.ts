@@ -1,9 +1,11 @@
 /**
  * Passport and SAML Configuration
  *
- * Sets up Passport with SAML strategy for CWL authentication or local strategy for development
- * - When SAML_AVAILABLE=false: Uses local username/password authentication
- * - When SAML_AVAILABLE=true: Uses SAML authentication with CWL
+ * Sets up Passport with SAML strategy for CWL authentication and local strategy for development
+ * - SAML strategy is always configured if SAML environment variables are present (regardless of SAML_AVAILABLE)
+ *   This allows the CWL login button to work even when SAML_AVAILABLE=false
+ * - Local strategy is always configured for fallback/development use
+ * - SAML_AVAILABLE flag controls which strategy is used by default in /auth/login route
  * Adapted from saml-example-app for TLEF EngE-AI TypeScript project
  */
 
@@ -73,117 +75,132 @@ const mapAffiliation = (value: AttributeValue): string => {
 // Variable to hold strategy (either UBCShib or Local)
 let ubcShibStrategy: UbcShibStrategy | null = null;
 
-// Configure authentication strategy based on SAML_AVAILABLE
-if (isSamlAvailable) {
-    // Load certificate (only needed when SAML is available)
-    const samlCert = fs.readFileSync(
-        process.env.SAML_CERT_PATH || path.join(__dirname, '../../certs/server.crt'),
-        'utf-8'
-    );
+// Check if SAML environment variables are configured (required for SAML to work)
+const hasSamlConfig = !!(
+    process.env.SAML_CALLBACK_URL &&
+    process.env.SAML_ENTRY_POINT &&
+    process.env.SAML_ISSUER
+);
 
-    // Configure UBCShib strategy (SAML 2.0 under the hood)
-    ubcShibStrategy = new UbcShibStrategy({
-        callbackUrl: process.env.SAML_CALLBACK_URL as string,
-        entryPoint: process.env.SAML_ENTRY_POINT as string,
-        logoutUrl: process.env.SAML_LOGOUT_URL,
-        metadataUrl: process.env.SAML_METADATA_URL,
-        issuer: process.env.SAML_ISSUER as string,
-        cert: samlCert
-    }, (profile: any, done: any) => {
-        const attributes = (profile.attributes || {}) as Record<string, AttributeValue>;
+// Always configure SAML strategy if SAML environment variables are present
+// This allows CWL login button to work even when SAML_AVAILABLE=false
+if (hasSamlConfig) {
+    try {
+        // Load certificate (only needed when SAML is available)
+        const samlCert = fs.readFileSync(
+            process.env.SAML_CERT_PATH || path.join(__dirname, '../../certs/server.crt'),
+            'utf-8'
+        );
 
-        //START DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
-        console.log('[AUTH] UBCShib profile received:', JSON.stringify(profile, null, 2));
-        //END DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
+        // Configure UBCShib strategy (SAML 2.0 under the hood)
+        ubcShibStrategy = new UbcShibStrategy({
+            callbackUrl: process.env.SAML_CALLBACK_URL as string,
+            entryPoint: process.env.SAML_ENTRY_POINT as string,
+            logoutUrl: process.env.SAML_LOGOUT_URL,
+            metadataUrl: process.env.SAML_METADATA_URL,
+            issuer: process.env.SAML_ISSUER as string,
+            cert: samlCert
+        }, (profile: any, done: any) => {
+            const attributes = (profile.attributes || {}) as Record<string, AttributeValue>;
 
-        const puid =
-            toString(attributes.ubcEduCwlPuid) ||
-            toString(attributes.cwlLoginKey) ||
-            profile.nameID;
+            //START DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
+            console.log('[AUTH] UBCShib profile received:', JSON.stringify(profile, null, 2));
+            //END DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
 
-        if (!puid) {
-            console.error('[AUTH] ❌ Missing PUID in UBCShib response');
-            return done(new Error('Missing required ubcEduCwlPuid attribute'));
-        }
+            const puid =
+                toString(attributes.ubcEduCwlPuid) ||
+                toString(attributes.cwlLoginKey) ||
+                profile.nameID;
 
-        const firstName =
-            toString(attributes.givenName) ||
-            toString(attributes.firstName) ||
-            '';
-        const lastName =
-            toString(attributes.sn) ||
-            toString(attributes.lastName) ||
-            '';
-        const email =
-            toString(attributes.email) ||
-            toString(attributes.mail) ||
-            toString(attributes.eduPersonPrincipalName) ||
-            '';
-
-        const user = {
-            username:
-                toString(attributes.cwlLoginName) ||
-                toString(attributes.uid) ||
-                toString(attributes.displayName) ||
-                profile.nameID,
-            puid,
-            firstName,
-            lastName,
-            affiliation: mapAffiliation(attributes.eduPersonAffiliation),
-            email,
-            sessionIndex: profile.sessionIndex,
-            nameID: profile.nameID,
-            nameIDFormat: profile.nameIDFormat,
-            rawProfile: profile // Keep raw profile for debugging
-        };
-
-        return done(null, user);
-    });
-
-    passport.use('ubcshib', ubcShibStrategy as any);
-    console.log('[AUTH] ✅ UBCShib strategy configured');
-} else {
-    // Configure Local strategy for development
-    const localStrategy = new LocalStrategy(
-        (username: string, password: string, done: any) => {
-            //START DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-ATTEMPT)
-            console.log('[AUTH-LOCAL] 🔐 Login attempt for username:', username);
-            //END DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-ATTEMPT)
-
-            // Check if username is 'student' or 'instructor'
-            if (username !== 'student' && username !== 'instructor') {
-                //START DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-INVALID-USER)
-                console.log('[AUTH-LOCAL] ❌ Invalid username:', username);
-                //END DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-INVALID-USER)
-                return done(null, false, { message: 'Invalid username or password' });
+            if (!puid) {
+                console.error('[AUTH] ❌ Missing PUID in UBCShib response');
+                return done(new Error('Missing required ubcEduCwlPuid attribute'));
             }
 
-            // Verify password from environment variables
-            const expectedPassword = username === 'student'
-                ? process.env.FAKE_STUDENT_PASSWORD
-                : process.env.FAKE_INSTRUCTOR_PASSWORD;
+            const firstName =
+                toString(attributes.givenName) ||
+                toString(attributes.firstName) ||
+                '';
+            const lastName =
+                toString(attributes.sn) ||
+                toString(attributes.lastName) ||
+                '';
+            const email =
+                toString(attributes.email) ||
+                toString(attributes.mail) ||
+                toString(attributes.eduPersonPrincipalName) ||
+                '';
 
-            if (password !== expectedPassword) {
-                //START DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-INVALID-PASSWORD)
-                console.log('[AUTH-LOCAL] ❌ Invalid password for user:', username);
-                //END DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-INVALID-PASSWORD)
-                return done(null, false, { message: 'Invalid username or password' });
-            }
-
-            // Authentication successful - return fake user
-            const user = FAKE_USERS[username as 'student' | 'instructor'];
-            //START DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-SUCCESS)
-            console.log('[AUTH-LOCAL] ✅ Authentication successful for user:', username);
-            console.log('[AUTH-LOCAL] 👤 User data:', user);
-            //END DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-SUCCESS)
+            const user = {
+                username:
+                    toString(attributes.cwlLoginName) ||
+                    toString(attributes.uid) ||
+                    toString(attributes.displayName) ||
+                    profile.nameID,
+                puid,
+                firstName,
+                lastName,
+                affiliation: mapAffiliation(attributes.eduPersonAffiliation),
+                email,
+                sessionIndex: profile.sessionIndex,
+                nameID: profile.nameID,
+                nameIDFormat: profile.nameIDFormat,
+                rawProfile: profile // Keep raw profile for debugging
+            };
 
             return done(null, user);
-        }
-    );
+        });
 
-    passport.use('local', localStrategy);
-    console.log('[AUTH] ✅ Local strategy configured (Development Mode)');
+        passport.use('ubcshib', ubcShibStrategy as any);
+        console.log('[AUTH] ✅ UBCShib strategy configured (available for CWL login)');
+    } catch (error) {
+        console.error('[AUTH] ❌ Failed to configure UBCShib strategy:', error);
+        console.log('[AUTH] ⚠️  SAML configuration found but setup failed. CWL login will not be available.');
+    }
+} else {
+    console.log('[AUTH] ⚠️  SAML environment variables not configured. CWL login will not be available.');
 }
+
+// Always configure Local strategy (used when SAML_AVAILABLE=false or for fallback)
+const localStrategy = new LocalStrategy(
+    (username: string, password: string, done: any) => {
+        //START DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-ATTEMPT)
+        console.log('[AUTH-LOCAL] 🔐 Login attempt for username:', username);
+        //END DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-ATTEMPT)
+
+        // Check if username is 'student' or 'instructor'
+        if (username !== 'student' && username !== 'instructor') {
+            //START DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-INVALID-USER)
+            console.log('[AUTH-LOCAL] ❌ Invalid username:', username);
+            //END DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-INVALID-USER)
+            return done(null, false, { message: 'Invalid username or password' });
+        }
+
+        // Verify password from environment variables
+        const expectedPassword = username === 'student'
+            ? process.env.FAKE_STUDENT_PASSWORD
+            : process.env.FAKE_INSTRUCTOR_PASSWORD;
+
+        if (password !== expectedPassword) {
+            //START DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-INVALID-PASSWORD)
+            console.log('[AUTH-LOCAL] ❌ Invalid password for user:', username);
+            //END DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-INVALID-PASSWORD)
+            return done(null, false, { message: 'Invalid username or password' });
+        }
+
+        // Authentication successful - return fake user
+        const user = FAKE_USERS[username as 'student' | 'instructor'];
+        //START DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-SUCCESS)
+        console.log('[AUTH-LOCAL] ✅ Authentication successful for user:', username);
+        console.log('[AUTH-LOCAL] 👤 User data:', user);
+        //END DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-SUCCESS)
+
+        return done(null, user);
+    }
+);
+
+passport.use('local', localStrategy);
+console.log('[AUTH] ✅ Local strategy configured (available for regular login)');
 
 // Serialize user to session
 passport.serializeUser((user: any, done: any) => {

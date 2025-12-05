@@ -495,7 +495,8 @@ router.get('/config', (req: express.Request, res: express.Response) => {
     });
 });
 
-// CWL login route - always attempts SAML/CWL login regardless of SAML_AVAILABLE
+// CWL login route - always attempts SAML/CWL login if SAML is configured
+// Works even when SAML_AVAILABLE=false, as long as SAML environment variables are present
 router.get('/login/cwl', (req: express.Request, res: express.Response, next: express.NextFunction) => {
     //START DEBUG LOG : DEBUG-CODE(CWL-LOGIN)
     console.log('[AUTH] Initiating CWL login (forced SAML)...');
