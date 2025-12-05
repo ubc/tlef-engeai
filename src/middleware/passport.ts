@@ -76,9 +76,9 @@ const mapAffiliation = (value: AttributeValue): string => {
 let ubcShibStrategy: UbcShibStrategy | null = null;
 
 // Check if SAML environment variables are configured (required for SAML to work)
+// passport-ubcshib only needs issuer and callbackUrl - it handles entryPoint, logoutUrl, and metadataUrl automatically
 const hasSamlConfig = !!(
     process.env.SAML_CALLBACK_URL &&
-    process.env.SAML_ENTRY_POINT &&
     process.env.SAML_ISSUER
 );
 
@@ -86,21 +86,31 @@ const hasSamlConfig = !!(
 // This allows CWL login button to work even when SAML_AVAILABLE=false
 if (hasSamlConfig) {
     try {
-        // Load certificate (only needed when SAML is available)
-        const samlCert = fs.readFileSync(
-            process.env.SAML_CERT_PATH || path.join(__dirname, '../../certs/server.crt'),
-            'utf-8'
-        );
-
         // Configure UBCShib strategy (SAML 2.0 under the hood)
-        ubcShibStrategy = new UbcShibStrategy({
-            callbackUrl: process.env.SAML_CALLBACK_URL as string,
-            entryPoint: process.env.SAML_ENTRY_POINT as string,
-            logoutUrl: process.env.SAML_LOGOUT_URL,
-            metadataUrl: process.env.SAML_METADATA_URL,
+        // The strategy automatically configures entryPoint, logoutUrl, and metadataUrl based on SAML_ENVIRONMENT
+        // It will also fetch the IdP certificate from metadata automatically if not provided
+
+        const strategyConfig: any = {
             issuer: process.env.SAML_ISSUER as string,
-            cert: samlCert
-        }, (profile: any, done: any) => {
+            callbackUrl: process.env.SAML_CALLBACK_URL as string,
+        };
+
+        // Optionally add privateKeyPath if provided for request signing
+        if (process.env.SAML_PRIVATE_KEY_PATH) {
+            strategyConfig.privateKeyPath = process.env.SAML_PRIVATE_KEY_PATH;
+        }
+
+        // Optionally load certificate if provided (otherwise fetched from metadata)
+        if (process.env.SAML_CERT_PATH) {
+            try {
+                strategyConfig.cert = fs.readFileSync(process.env.SAML_CERT_PATH, 'utf-8');
+                console.log('[AUTH] 📜 Using custom IdP certificate from:', process.env.SAML_CERT_PATH);
+            } catch (certError) {
+                console.warn('[AUTH] ⚠️  Failed to load certificate, will fetch from metadata:', certError);
+            }
+        }
+
+        ubcShibStrategy = new UbcShibStrategy(strategyConfig, (profile: any, done: any) => {
             const attributes = (profile.attributes || {}) as Record<string, AttributeValue>;
 
             //START DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
