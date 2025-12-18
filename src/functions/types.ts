@@ -76,6 +76,7 @@ export interface activeCourse {
     frameType: frameType;
     tilesNumber: number;
     topicOrWeekInstances: TopicOrWeekInstance[]; // previously content, previously divisions
+    courseCode?: string; // 6-character uppercase alphanumeric PIN code for course entry
     collections?: {
         users: string;
         flags: string;

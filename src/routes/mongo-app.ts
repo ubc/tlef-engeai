@@ -401,7 +401,7 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
             console.log(`[CREATE-COURSE] Added course creator ${creatorName} (${creatorUserId}) to instructors array`);
         }
 
-        const courseData: activeCourse = {
+        let courseData: activeCourse = {
             ...req.body, //spread the properties of the body first
             id: id, // use the generated id
             date: new Date(),
@@ -413,6 +413,12 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
         
         
         await instance.postActiveCourse(courseData);
+        
+        // Fetch the created course to get the generated courseCode
+        const createdCourse = await instance.getActiveCourse(id);
+        if (createdCourse) {
+            courseData = createdCourse as unknown as activeCourse;
+        }
 
         // Add creator to the course's users collection ({courseName}_users)
         try {
@@ -457,6 +463,7 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
         }
 
         // Since activeCourse is the correct type, we can return it directly
+        // This now includes the generated courseCode
         const activeClassData: activeCourse = courseData as activeCourse;
 
         res.status(201).json({

@@ -68,6 +68,40 @@ export class EngEAI_MongoDB {
             //use singleton's DB
             const courseName = course.courseName;
 
+            // Generate course code if it doesn't exist
+            let courseCode: string;
+            if (course.courseCode) {
+                // Use existing courseCode if provided
+                courseCode = course.courseCode;
+            } else {
+                // Generate new course code with uniqueness check
+                let attempts = 0;
+                const maxAttempts = 10;
+                let codeDate = course.date;
+                
+                do {
+                    courseCode = this.idGenerator.courseCodeID(courseName, codeDate);
+                    const existingCourseWithCode = await this.getCourseCollection().findOne({ courseCode: courseCode });
+                    
+                    if (!existingCourseWithCode) {
+                        // Code is unique, break out of loop
+                        break;
+                    }
+                    
+                    // Code exists, try with slightly modified date (add milliseconds)
+                    attempts++;
+                    codeDate = new Date(codeDate.getTime() + attempts);
+                    console.log(`[COURSE-CODE] Duplicate code found, retrying with modified date (attempt ${attempts})`);
+                } while (attempts < maxAttempts);
+                
+                if (attempts >= maxAttempts) {
+                    console.error(`[COURSE-CODE] ⚠️ Failed to generate unique course code after ${maxAttempts} attempts`);
+                    // Still use the generated code (very low probability of collision)
+                }
+                
+                console.log(`[COURSE-CODE] Generated course code: ${courseCode} for course: ${courseName}`);
+            }
+
             //create users collection (idempotent - won't throw if exists)
             const userCollection = `${courseName}_users`;
             try {
@@ -101,9 +135,10 @@ export class EngEAI_MongoDB {
                 }
             }
 
-            // Store collection names in course document
+            // Store collection names and course code in course document
             const courseWithCollections: activeCourse = {
                 ...course,
+                courseCode: courseCode,
                 collections: {
                     users: userCollection,
                     flags: flagsCollection,
@@ -135,6 +170,10 @@ export class EngEAI_MongoDB {
 
     public getActiveCourse = async (id: string) => {
         return await this.getCourseCollection().findOne({ id: id });
+    }
+
+    public getActiveCourseByCode = async (courseCode: string) => {
+        return await this.getCourseCollection().findOne({ courseCode: courseCode });
     }
 
     public getCourseByName = async (name: string) => {

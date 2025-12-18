@@ -901,7 +901,7 @@ async function createNewCourseForInstructor(): Promise<void> {
             instructors: [],
             teachingAssistants: [],
             frameType: 'byWeek', // Default, will be changed during onboarding
-            tilesNumber: 0, // Will be set during onboarding
+            tilesNumber: 12, // Will be set during onboarding
             topicOrWeekInstances: []
         };
         
@@ -976,46 +976,227 @@ async function showInstructorEnrollmentModal(): Promise<void> {
  * Show enrollment modal with courses student is not enrolled in
  */
 async function showEnrollmentModal(): Promise<void> {
+    // For students, show PIN entry modal instead of course list
+    await showCourseCodeEntryModal();
+}
+
+/**
+ * Show course code PIN entry modal for students
+ */
+async function showCourseCodeEntryModal(): Promise<void> {
     if (!currentGlobalUser) {
         await showErrorModal('Error', 'User data not available. Please refresh the page.');
         return;
     }
     
-    try {
-        // Fetch all courses
-        const response = await fetch('/api/courses');
-        if (!response.ok) {
-            throw new Error('Failed to fetch courses');
+    // Create modal content with PIN input
+    const modalContent = document.createElement('div');
+    modalContent.className = 'course-code-entry-modal';
+    
+    // Instructions
+    const instructions = document.createElement('p');
+    instructions.className = 'course-code-instructions';
+    instructions.textContent = 'Enter the 6-character course code provided by your instructor.';
+    instructions.style.marginBottom = '1.5rem';
+    instructions.style.color = '#666';
+    instructions.style.fontSize = '0.9rem';
+    modalContent.appendChild(instructions);
+    
+    // Input container
+    const inputContainer = document.createElement('div');
+    inputContainer.className = 'course-code-input-container';
+    inputContainer.style.marginBottom = '1rem';
+    
+    // Input field
+    const codeInput = document.createElement('input');
+    codeInput.type = 'text';
+    codeInput.id = 'courseCodeInput';
+    codeInput.className = 'course-code-input';
+    codeInput.placeholder = 'XXXXXX';
+    codeInput.maxLength = 6;
+    codeInput.autocomplete = 'off';
+    codeInput.style.textTransform = 'uppercase';
+    codeInput.style.textAlign = 'center';
+    codeInput.style.fontSize = '1.5rem';
+    codeInput.style.letterSpacing = '0.5rem';
+    codeInput.style.fontFamily = 'monospace';
+    codeInput.style.fontWeight = '600';
+    
+    // Auto-uppercase and alphanumeric only
+    codeInput.addEventListener('input', (e) => {
+        const target = e.target as HTMLInputElement;
+        let value = target.value.toUpperCase();
+        // Remove any non-alphanumeric characters
+        value = value.replace(/[^A-Z0-9]/g, '');
+        target.value = value;
+    });
+    
+    // Handle Enter key
+    codeInput.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter' && codeInput.value.length === 6) {
+            e.preventDefault();
+            await handleCourseCodeSubmit(codeInput.value, codeInput);
         }
-        
-        const { data: allCourses } = await response.json();
-        
-        // Filter to only show courses student is NOT enrolled in
-        const enrolledCourseIds = currentGlobalUser.coursesEnrolled || [];
-        const unenrolledCourses = allCourses.filter((course: any) => 
-            !enrolledCourseIds.includes(course.id)
-        );
-        
-        // Create modal content
-        const modalContent = createEnrollmentModalContent(unenrolledCourses);
-        
-        // Show modal using ModalOverlay
-        const modal = new ModalOverlay();
-        await modal.show({
-            type: 'custom',
-            title: 'Enroll in New Course',
-            content: modalContent,
-            showCloseButton: true,
-            closeOnOverlayClick: true,
-            maxWidth: '600px'
+    });
+    
+    inputContainer.appendChild(codeInput);
+    modalContent.appendChild(inputContainer);
+    
+    // Error message area
+    const errorMessage = document.createElement('div');
+    errorMessage.id = 'courseCodeError';
+    errorMessage.className = 'course-code-error';
+    errorMessage.style.display = 'none';
+    errorMessage.style.color = '#dc3545';
+    errorMessage.style.fontSize = '0.875rem';
+    errorMessage.style.marginTop = '0.5rem';
+    errorMessage.style.textAlign = 'center';
+    modalContent.appendChild(errorMessage);
+    
+    // Submit button container
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'course-code-button-container';
+    buttonContainer.style.display = 'flex';
+    buttonContainer.style.justifyContent = 'center';
+    buttonContainer.style.marginTop = '1.5rem';
+    
+    const submitButton = document.createElement('button');
+    submitButton.id = 'courseCodeSubmitBtn';
+    submitButton.className = 'course-code-submit-btn';
+    submitButton.textContent = 'Enter Course';
+    submitButton.style.padding = '0.75rem 2rem';
+    submitButton.style.backgroundColor = 'var(--color-chbe-green)';
+    submitButton.style.color = 'white';
+    submitButton.style.border = 'none';
+    submitButton.style.borderRadius = '8px';
+    submitButton.style.fontSize = '1rem';
+    submitButton.style.fontWeight = '600';
+    submitButton.style.cursor = 'pointer';
+    submitButton.style.transition = 'all 0.2s ease';
+    
+    submitButton.addEventListener('click', async () => {
+        if (codeInput.value.length === 6) {
+            await handleCourseCodeSubmit(codeInput.value, codeInput);
+        } else {
+            showCodeError('Please enter a 6-character course code.');
+        }
+    });
+    
+    // Disable submit if input is not 6 characters
+    codeInput.addEventListener('input', () => {
+        submitButton.disabled = codeInput.value.length !== 6;
+        if (codeInput.value.length === 6) {
+            submitButton.style.opacity = '1';
+            submitButton.style.cursor = 'pointer';
+        } else {
+            submitButton.style.opacity = '0.6';
+            submitButton.style.cursor = 'not-allowed';
+        }
+        hideCodeError();
+    });
+    
+    // Initial state
+    submitButton.disabled = true;
+    submitButton.style.opacity = '0.6';
+    submitButton.style.cursor = 'not-allowed';
+    
+    buttonContainer.appendChild(submitButton);
+    modalContent.appendChild(buttonContainer);
+    
+    // Show modal using ModalOverlay
+    const modal = new ModalOverlay();
+    await modal.show({
+        type: 'custom',
+        title: 'Enter Course Code',
+        content: modalContent,
+        showCloseButton: true,
+        closeOnOverlayClick: true,
+        maxWidth: '500px'
+    });
+    
+    // Focus input when modal opens
+    setTimeout(() => {
+        codeInput.focus();
+    }, 100);
+}
+
+/**
+ * Handle course code submission
+ */
+async function handleCourseCodeSubmit(courseCode: string, inputElement: HTMLInputElement): Promise<void> {
+    const submitButton = document.getElementById('courseCodeSubmitBtn') as HTMLButtonElement;
+    const errorMessage = document.getElementById('courseCodeError');
+    
+    // Disable input and button during request
+    inputElement.disabled = true;
+    if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = 'Entering...';
+    }
+    hideCodeError();
+    
+    try {
+        const response = await fetch('/api/course/enter-by-code', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ courseCode })
         });
         
+        const data = await response.json();
+        
+        if (data.error) {
+            console.error('[COURSE-SELECTION] ❌ Error entering course:', data.error);
+            showCodeError(data.error || 'Failed to enter course. Please check the code and try again.');
+            
+            // Re-enable input and button
+            inputElement.disabled = false;
+            inputElement.focus();
+            inputElement.select();
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Enter Course';
+            }
+            return;
+        }
+        
+        // Success - redirect to appropriate page
+        console.log('[COURSE-SELECTION] ✅ Redirecting to:', data.redirect);
+        window.location.href = data.redirect;
+        
     } catch (error) {
-        console.error('[COURSE-SELECTION] ❌ Error showing enrollment modal:', error);
-        await showErrorModal(
-            'Error',
-            'Failed to load available courses. Please try again.'
-        );
+        console.error('[COURSE-SELECTION] ❌ Error entering course:', error);
+        showCodeError('Failed to enter course. Please try again.');
+        
+        // Re-enable input and button
+        inputElement.disabled = false;
+        inputElement.focus();
+        inputElement.select();
+        if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.textContent = 'Enter Course';
+        }
+    }
+}
+
+/**
+ * Show error message in course code modal
+ */
+function showCodeError(message: string): void {
+    const errorMessage = document.getElementById('courseCodeError');
+    if (errorMessage) {
+        errorMessage.textContent = message;
+        errorMessage.style.display = 'block';
+    }
+}
+
+/**
+ * Hide error message in course code modal
+ */
+function hideCodeError(): void {
+    const errorMessage = document.getElementById('courseCodeError');
+    if (errorMessage) {
+        errorMessage.style.display = 'none';
     }
 }
 

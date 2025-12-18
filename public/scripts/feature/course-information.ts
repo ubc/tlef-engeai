@@ -464,6 +464,56 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
         
         updateContentCountDescription(localCourseData.frameType);
         
+        // Display course code
+        const courseCodeDisplay = document.getElementById('courseCodeDisplay');
+        if (courseCodeDisplay) {
+            if (localCourseData.courseCode) {
+                courseCodeDisplay.textContent = localCourseData.courseCode;
+            } else {
+                courseCodeDisplay.textContent = 'Not Set';
+                courseCodeDisplay.style.color = '#999';
+                console.warn('[COURSE-INFO] ⚠️ Course code not found for course:', localCourseData.courseName);
+            }
+        }
+        
+        // Setup copy button functionality
+        const copyCodeBtn = document.getElementById('copyCourseCodeBtn');
+        if (copyCodeBtn && localCourseData.courseCode) {
+            copyCodeBtn.addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(localCourseData.courseCode!);
+                    console.log('[COURSE-INFO] ✅ Course code copied to clipboard');
+                    
+                    // Show visual feedback
+                    const originalHTML = copyCodeBtn.innerHTML;
+                    copyCodeBtn.innerHTML = '<i data-feather="check"></i>';
+                    copyCodeBtn.style.backgroundColor = '#28a745';
+                    
+                    // Re-render feather icon
+                    if (typeof (window as any).feather !== 'undefined') {
+                        (window as any).feather.replace();
+                    }
+                    
+                    // Reset after 2 seconds
+                    setTimeout(() => {
+                        copyCodeBtn.innerHTML = originalHTML;
+                        copyCodeBtn.style.backgroundColor = '';
+                        if (typeof (window as any).feather !== 'undefined') {
+                            (window as any).feather.replace();
+                        }
+                    }, 2000);
+                } catch (error) {
+                    console.error('[COURSE-INFO] ❌ Failed to copy course code:', error);
+                    await showErrorModal('Copy Failed', 'Failed to copy course code to clipboard. Please try again.');
+                }
+            });
+        } else if (copyCodeBtn && !localCourseData.courseCode) {
+            // Disable copy button if no course code
+            (copyCodeBtn as HTMLButtonElement).disabled = true;
+            (copyCodeBtn as HTMLButtonElement).style.opacity = '0.5';
+            (copyCodeBtn as HTMLButtonElement).style.cursor = 'not-allowed';
+        }
+        
         // Add instructors
         const addInstructorBtn = document.getElementById('courseInfoAddInstructorBtn');
         if (addInstructorBtn && instructorSelect) {
