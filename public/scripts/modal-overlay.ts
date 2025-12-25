@@ -1391,6 +1391,145 @@ export async function openUploadModal(
     });
 }
 
+/**
+ * Shows an inactivity warning modal with countdown timer
+ * 
+ * @param remainingSeconds - Remaining seconds until logout (default: 60)
+ * @param onStayActive - Callback function called when user clicks "Stay Active"
+ * @returns Promise that resolves when modal is closed
+ */
+export async function showInactivityWarningModal(
+    remainingSeconds: number = 60,
+    onStayActive?: () => void
+): Promise<ModalResult> {
+    const modal = getModal();
+    let countdown = remainingSeconds;
+    let countdownInterval: NodeJS.Timeout | null = null;
+    let logoutTimeout: NodeJS.Timeout | null = null;
+    let modalClosed = false;
+    
+    // Create countdown display element
+    const countdownContainer = document.createElement('div');
+    countdownContainer.style.textAlign = 'center';
+    countdownContainer.style.padding = '20px 0';
+    
+    const countdownDisplay = document.createElement('div');
+    countdownDisplay.id = 'inactivity-countdown';
+    countdownDisplay.style.fontSize = '48px';
+    countdownDisplay.style.fontWeight = 'bold';
+    countdownDisplay.style.color = 'var(--color-chbe-green, #4CAF50)';
+    countdownDisplay.style.marginBottom = '16px';
+    countdownDisplay.textContent = `${countdown}`;
+    
+    const message = document.createElement('p');
+    message.style.marginBottom = '8px';
+    message.style.color = 'var(--text-primary)';
+    message.style.fontSize = '16px';
+    message.textContent = 'You have been inactive for a while.';
+    
+    const subMessage = document.createElement('p');
+    subMessage.style.color = 'var(--text-secondary)';
+    subMessage.style.fontSize = '14px';
+    subMessage.textContent = 'Click "Stay Active" to continue your session, or you will be logged out automatically.';
+    
+    countdownContainer.appendChild(countdownDisplay);
+    countdownContainer.appendChild(message);
+    countdownContainer.appendChild(subMessage);
+    
+    // Cleanup function
+    const cleanup = () => {
+        if (countdownInterval) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+        }
+        if (logoutTimeout) {
+            clearTimeout(logoutTimeout);
+            logoutTimeout = null;
+        }
+    };
+    
+    // Update countdown every second
+    const updateCountdown = () => {
+        if (modalClosed) {
+            cleanup();
+            return;
+        }
+        
+        countdown--;
+        countdownDisplay.textContent = `${countdown}`;
+        
+        // Change color as time runs out
+        if (countdown <= 10) {
+            countdownDisplay.style.color = '#f44336'; // Red
+        } else if (countdown <= 30) {
+            countdownDisplay.style.color = '#ff9800'; // Orange
+        }
+        
+        if (countdown <= 0) {
+            // Time's up - close modal and trigger logout
+            cleanup();
+            modalClosed = true;
+            modal.close('timeout');
+        }
+    };
+    
+    // Start countdown interval
+    countdownInterval = setInterval(updateCountdown, 1000);
+    
+    // Set logout timeout as backup
+    logoutTimeout = setTimeout(() => {
+        if (!modalClosed) {
+            cleanup();
+            modalClosed = true;
+            modal.close('timeout');
+        }
+    }, countdown * 1000);
+    
+    // Show modal and handle result
+    try {
+        const result = await modal.show({
+            type: 'warning',
+            title: 'Session Timeout Warning',
+            content: countdownContainer,
+            buttons: [
+                {
+                    text: 'Stay Active',
+                    type: 'primary',
+                    action: async () => {
+                        // Clear timers
+                        cleanup();
+                        modalClosed = true;
+                        
+                        // Call stay active callback if provided
+                        if (onStayActive) {
+                            try {
+                                await onStayActive();
+                            } catch (error) {
+                                console.error('[INACTIVITY-MODAL] Error in onStayActive callback:', error);
+                            }
+                        }
+                    },
+                    closeOnClick: true
+                }
+            ],
+            showCloseButton: false,
+            closeOnOverlayClick: false,
+            closeOnEscape: false,
+            maxWidth: '400px'
+        });
+        
+        // Clean up timers
+        cleanup();
+        
+        // Return result
+        return result;
+    } catch (error) {
+        // Clean up timers on error
+        cleanup();
+        throw error;
+    }
+}
+
 // ===========================================
 // EXPORT DEFAULT
 // ===========================================
@@ -1410,6 +1549,7 @@ export default {
     showDeleteConfirmationModal,
     showUploadLoadingModal,
     showChatCreationErrorModal,
+    showInactivityWarningModal,
     openUploadModal,
     closeModal
 };

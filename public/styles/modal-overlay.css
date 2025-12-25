@@ -721,3 +721,99 @@ body.modal-open {
         animation: none;
     }
 }
+
+/* ===========================================
+   INACTIVITY WARNING MODAL STYLES
+   =========================================== */
+
+/* Inactivity countdown display */
+#inactivity-countdown {
+    font-size: 48px;
+    font-weight: bold;
+    color: var(--color-chbe-green, #4CAF50);
+    margin-bottom: 16px;
+    font-family: 'Courier New', monospace;
+    transition: color 0.3s ease;
+    text-align: center;
+    line-height: 1.2;
+}
+
+/* Countdown color states */
+#inactivity-countdown.warning {
+    color: #ff9800; /* Orange */
+}
+
+#inactivity-countdown.danger {
+    color: #f44336; /* Red */
+    animation: pulse 1s ease-in-out infinite;
+}
+
+/* Pulse animation for danger state */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(1.05);
+    }
+}
+
+/* Inactivity modal specific styling */
+.modal-warning .modal-container {
+    max-width: 400px;
+}
+
+.modal-warning .modal-body {
+    padding: 20px 24px;
+}
+
+/* Inactivity modal message styling */
+.modal-warning .modal-content p {
+    margin-bottom: 8px;
+    color: var(--text-primary, #333);
+    font-size: 16px;
+    line-height: 1.5;
+}
+
+.modal-warning .modal-content p:last-child {
+    margin-bottom: 0;
+    color: var(--text-secondary, #6c757d);
+    font-size: 14px;
+}
+
+/* Stay Active button emphasis */
+.modal-warning .modal-btn-primary {
+    background-color: var(--color-chbe-green, #4CAF50);
+    color: white;
+    font-weight: 600;
+    padding: 12px 24px;
+    min-width: 140px;
+}
+
+.modal-warning .modal-btn-primary:hover {
+    background-color: var(--color-chbe-green-dark, #45a049);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Responsive design for inactivity modal */
+@media (max-width: 480px) {
+    #inactivity-countdown {
+        font-size: 36px;
+    }
+    
+    .modal-warning .modal-container {
+        max-width: 90%;
+        margin: 20px;
+    }
+    
+    .modal-warning .modal-content p {
+        font-size: 14px;
+    }
+    
+    .modal-warning .modal-content p:last-child {
+        font-size: 12px;
+    }
+}

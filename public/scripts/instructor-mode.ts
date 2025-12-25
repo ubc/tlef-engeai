@@ -9,9 +9,10 @@ import { initializeFlags } from "./feature/flags.js";
 import { initializeMonitorDashboard } from "./feature/monitor.js";
 import { ChatManager } from "./feature/chat.js";
 import { authService } from './services/AuthService.js';
-import { showConfirmModal } from './modal-overlay.js';
+import { showConfirmModal, showInactivityWarningModal } from './modal-overlay.js';
 import { renderAbout } from './about/about.js';
 import { initializeCourseInformation } from './feature/course-information.js';
+import { inactivityTracker } from './services/InactivityTracker.js';
 
 // Authentication check function
 async function checkAuthentication(): Promise<boolean> {
@@ -81,6 +82,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     console.log('[INSTRUCTOR-MODE] 🚀 Loading instructor mode...');
+    
+    // Initialize inactivity tracking
+    initializeInactivityTracking();
 
     /**
      * Load the current course from session or fallback sources
@@ -1088,3 +1092,66 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateUI();
 
 });
+
+/**
+ * Initialize inactivity tracking for instructor mode
+ */
+function initializeInactivityTracking(): void {
+    console.log('[INSTRUCTOR-MODE] 🔍 Initializing inactivity tracking...');
+    
+    // Set up event listeners for inactivity tracker
+    inactivityTracker.on('warning', async (data: any) => {
+        console.log('[INSTRUCTOR-MODE] ⚠️ Inactivity warning triggered');
+        
+        // Pause tracker while modal is shown
+        inactivityTracker.pause();
+        
+        // Show warning modal with countdown
+        const remainingSeconds = Math.floor((data.remainingTimeUntilLogout || 60000) / 1000);
+        const result = await showInactivityWarningModal(remainingSeconds, () => {
+            // User clicked "Stay Active" - reset tracker
+            console.log('[INSTRUCTOR-MODE] ✅ User chose to stay active');
+            inactivityTracker.reset();
+        });
+        
+        // Resume tracker after modal closes
+        inactivityTracker.resume();
+        
+        // If timeout occurred, logout will be triggered by logout event
+        if (result.action === 'timeout') {
+            console.log('[INSTRUCTOR-MODE] ⏱️ Inactivity warning timeout - logout will be triggered');
+        }
+    });
+    
+    inactivityTracker.on('logout', async (data: any) => {
+        console.log('[INSTRUCTOR-MODE] 🚪 Inactivity logout triggered');
+        
+        // Stop tracking
+        inactivityTracker.stop();
+        
+        // Show logout message and redirect
+        try {
+            await showConfirmModal(
+                'Session Expired',
+                'You have been inactive for too long. You will be logged out now.',
+                'OK',
+                ''
+            );
+        } catch (error) {
+            // Modal might fail if already logged out, continue anyway
+            console.warn('[INSTRUCTOR-MODE] ⚠️ Could not show logout modal:', error);
+        }
+        
+        // Logout user
+        authService.logout();
+    });
+    
+    inactivityTracker.on('activity-reset', (data: any) => {
+        console.log('[INSTRUCTOR-MODE] 🔄 Activity detected - inactivity timer reset');
+    });
+    
+    // Start tracking
+    inactivityTracker.start();
+    
+    console.log('[INSTRUCTOR-MODE] ✅ Inactivity tracking initialized');
+}

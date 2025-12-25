@@ -5,8 +5,9 @@ import { ChatManager } from './feature/chat.js';
 import { authService } from './services/AuthService.js';
 import { renderStudentOnboarding } from './onboarding/student-onboarding.js';
 import { initializeStudentFlagHistory } from './feature/student-flag-history.js';
-import { showConfirmModal } from './modal-overlay.js';
+import { showConfirmModal, showInactivityWarningModal } from './modal-overlay.js';
 import { renderAbout } from './about/about.js';
+import { inactivityTracker } from './services/InactivityTracker.js';
 
 // Authentication check function
 async function checkAuthentication(): Promise<boolean> {
@@ -25,6 +26,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     console.log('[STUDENT-MODE] 🚀 Loading student mode...');
+    
+    // Initialize inactivity tracker
+    initializeInactivityTracking();
     
     try {
         // Fetch current CourseUser from session
@@ -65,6 +69,69 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.location.href = '/pages/course-selection.html';
     }
 });
+
+/**
+ * Initialize inactivity tracking for student mode
+ */
+function initializeInactivityTracking(): void {
+    console.log('[STUDENT-MODE] 🔍 Initializing inactivity tracking...');
+    
+    // Set up event listeners for inactivity tracker
+    inactivityTracker.on('warning', async (data: any) => {
+        console.log('[STUDENT-MODE] ⚠️ Inactivity warning triggered');
+        
+        // Pause tracker while modal is shown
+        inactivityTracker.pause();
+        
+        // Show warning modal with countdown
+        const remainingSeconds = Math.floor((data.remainingTimeUntilLogout || 60000) / 1000);
+        const result = await showInactivityWarningModal(remainingSeconds, () => {
+            // User clicked "Stay Active" - reset tracker
+            console.log('[STUDENT-MODE] ✅ User chose to stay active');
+            inactivityTracker.reset();
+        });
+        
+        // Resume tracker after modal closes
+        inactivityTracker.resume();
+        
+        // If timeout occurred, logout will be triggered by logout event
+        if (result.action === 'timeout') {
+            console.log('[STUDENT-MODE] ⏱️ Inactivity warning timeout - logout will be triggered');
+        }
+    });
+    
+    inactivityTracker.on('logout', async (data: any) => {
+        console.log('[STUDENT-MODE] 🚪 Inactivity logout triggered');
+        
+        // Stop tracking
+        inactivityTracker.stop();
+        
+        // Show logout message and redirect
+        try {
+            await showConfirmModal(
+                'Session Expired',
+                'You have been inactive for too long. You will be logged out now.',
+                'OK',
+                ''
+            );
+        } catch (error) {
+            // Modal might fail if already logged out, continue anyway
+            console.warn('[STUDENT-MODE] ⚠️ Could not show logout modal:', error);
+        }
+        
+        // Logout user
+        authService.logout();
+    });
+    
+    inactivityTracker.on('activity-reset', (data: any) => {
+        console.log('[STUDENT-MODE] 🔄 Activity detected - inactivity timer reset');
+    });
+    
+    // Start tracking
+    inactivityTracker.start();
+    
+    console.log('[STUDENT-MODE] ✅ Inactivity tracking initialized');
+}
 
 /**
  * Initialize the chat interface for the student

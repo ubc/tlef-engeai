@@ -104,5 +104,54 @@ router.post('/update-onboarding', asyncHandlerWithAuth(async (req: Request, res:
     }
 }));
 
+/**
+ * POST /api/user/activity
+ * 
+ * Updates server-side last activity timestamp for cross-tab synchronization
+ * Used by InactivityTracker to sync inactivity state across multiple tabs
+ */
+router.post('/activity', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const { lastActivityTime } = req.body;
+        const currentTime = Date.now();
+        
+        // Update session with last activity time
+        // Use the client's lastActivityTime if provided and recent, otherwise use current server time
+        let serverLastActivityTime: number;
+        
+        if (lastActivityTime && typeof lastActivityTime === 'number') {
+            // Use client's timestamp if it's reasonable (within last 10 minutes)
+            const timeDiff = Math.abs(currentTime - lastActivityTime);
+            if (timeDiff < 10 * 60 * 1000) {
+                serverLastActivityTime = lastActivityTime;
+            } else {
+                // Client timestamp seems off, use server time
+                serverLastActivityTime = currentTime;
+            }
+        } else {
+            // No client timestamp provided, use server time
+            serverLastActivityTime = currentTime;
+        }
+        
+        // Store in session for cross-tab synchronization
+        (req.session as any).lastActivityTime = serverLastActivityTime;
+        
+        // Return current server time and last activity time for client sync
+        return res.json({
+            success: true,
+            currentTime: currentTime,
+            serverLastActivityTime: serverLastActivityTime,
+            lastActivityTime: serverLastActivityTime // Alias for compatibility
+        });
+        
+    } catch (error) {
+        console.error('[USER-ACTIVITY] Error:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Failed to update activity timestamp'
+        });
+    }
+}));
+
 export default router;
 
