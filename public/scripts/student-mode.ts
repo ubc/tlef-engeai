@@ -97,6 +97,11 @@ function initializeInactivityTracking(): void {
         // If timeout occurred, logout will be triggered by logout event
         if (result.action === 'timeout') {
             console.log('[STUDENT-MODE] ⏱️ Inactivity warning timeout - logout will be triggered');
+
+            // MANUALLY TRIGGER LOGOUT HERE since logout timer was cleared
+            inactivityTracker.stop();
+            authService.logout();
+            return; // Stop execution here - logout will be triggered by logout event
         }
     });
     

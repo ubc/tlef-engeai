@@ -28,8 +28,8 @@ export type InactivityEvent = 'warning' | 'logout' | 'activity-reset';
 export class InactivityTracker {
     private static instance: InactivityTracker | null = null;
     
-    private warningTimeoutMs: number = 4 * 60 * 1000; // 4 minutes
-    private logoutTimeoutMs: number = 5 * 60 * 1000; // 5 minutes
+    private warningTimeoutMs: number = 1 * 60 * 1000; // 4 minutes
+    private logoutTimeoutMs: number = 2 * 60 * 1000; // 5 minutes
     private serverSyncIntervalMs: number = 30 * 1000; // 30 seconds
     private activityDebounceMs: number = 100; // 100ms
     

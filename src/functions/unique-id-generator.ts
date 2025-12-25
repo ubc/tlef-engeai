@@ -336,6 +336,21 @@ export class IDGenerator {
     }
 
     /**
+     * Generates a unique Initial Assistant Prompt ID using the formula:
+     * title + "-" + courseName + "-" + date.toISOString() -> uniqueIDGenerator
+     *
+     * @param title - The title of the initial assistant prompt
+     * @param courseName - The name of the course
+     * @param date - The date when the prompt was created
+     * @returns A 12-character hexadecimal string representing the unique prompt ID
+     */
+    initialAssistantPromptID(title: string, courseName: string, date: Date): string {
+        const dateString = date.toISOString(); // Full ISO string with milliseconds
+        const hashInput = title + "-" + courseName + "-" + dateString;
+        return this.uniqueIDGenerator(hashInput);
+    }
+
+    /**
      * @deprecated Use globalUserID instead. This method is kept for backward compatibility
      * but CourseUser no longer contains puid, so this method cannot work correctly.
      * 

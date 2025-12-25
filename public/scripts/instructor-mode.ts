@@ -13,6 +13,7 @@ import { showConfirmModal, showInactivityWarningModal } from './modal-overlay.js
 import { renderAbout } from './about/about.js';
 import { initializeCourseInformation } from './feature/course-information.js';
 import { inactivityTracker } from './services/InactivityTracker.js';
+import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from './feature/assistant-prompts.js';
 
 // Authentication check function
 async function checkAuthentication(): Promise<boolean> {
@@ -23,7 +24,8 @@ const enum StateEvent {
     Flag,
     Monitor,
     Documents,
-    Chat
+    Chat,
+    AssistantPrompts
 }
 
 let currentClass : activeCourse =
@@ -288,7 +290,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const chatListEl = document.getElementById('chat-list');
 
     // Current State
-    let currentState : StateEvent = StateEvent.Documents;
+    let currentState: StateEvent = StateEvent.Documents;
 
     // --- STATE MANAGEMENT ----
     let isSidebarCollapsed: boolean = false;
@@ -334,6 +336,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    const assistantPromptsStateEl = document.getElementById('assistant-prompts-state');
+    assistantPromptsStateEl?.addEventListener('click', () => {
+        if (currentState !== StateEvent.AssistantPrompts) {
+            currentState = StateEvent.AssistantPrompts;
+            updateUI();
+        }
+    });
+
 
 
     // Artefact functionality moved to chat.ts
@@ -373,6 +383,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         | 'course-setup'
                         | 'document-setup'
                         | 'course-information'
+                        | 'assistant-prompts-instructor'
         ) => {
         console.log(`🚀 [INSTRUCTOR-DEBUG] Loading component: ${componentName}`);
         
@@ -414,6 +425,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             else if (componentName === 'course-information') {
                 console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing course information...`);
                 await initializeCourseInformation(currentClass);
+            }
+            else if (componentName === 'assistant-prompts-instructor') {
+                console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing assistant prompts...`);
+                await initializeAssistantPrompts(currentClass);
             }
             
             console.log(`🎨 [INSTRUCTOR-DEBUG] Rendering feather icons...`);
@@ -476,6 +491,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             collapseFeatureSidebar();
             // showChatContent is now handled by the click event listener
         }
+        else if ( currentState === StateEvent.AssistantPrompts){
+            loadComponent('assistant-prompts-instructor');
+            updateSidebarState();
+            expandFeatureSidebar();
+            hideChatList(); // Ensure chat list is hidden
+        }
     }
 
     // Course is already loaded by loadCurrentCourse() at the top of DOMContentLoaded
@@ -526,6 +547,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         chatStateEl?.classList.remove('active');
         flagStateEl?.classList.remove('active');
         monitorStateEl?.classList.remove('active');
+        assistantPromptsStateEl?.classList.remove('active');
         
         // Add active class to the current state's menu item
         switch(currentState) {
@@ -540,6 +562,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 break;
             case StateEvent.Monitor:
                 monitorStateEl?.classList.add('active');
+                break;
+            case StateEvent.AssistantPrompts:
+                assistantPromptsStateEl?.classList.add('active');
                 break;
         }
     }
@@ -1120,6 +1145,11 @@ function initializeInactivityTracking(): void {
         // If timeout occurred, logout will be triggered by logout event
         if (result.action === 'timeout') {
             console.log('[INSTRUCTOR-MODE] ⏱️ Inactivity warning timeout - logout will be triggered');
+
+            // MANUALLY TRIGGER LOGOUT HERE since logout timer was cleared
+            inactivityTracker.stop();
+            authService.logout();
+            return; // Stop execution here - logout will be triggered by logout event
         }
     });
     

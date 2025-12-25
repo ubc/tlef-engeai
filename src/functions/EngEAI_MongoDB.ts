@@ -1,6 +1,6 @@
 import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 import * as dotenv from 'dotenv';
-import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, Chat, ChatMessage, GlobalUser, CourseUser, LearningObjective, MemoryAgentEntry } from './types';
+import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, Chat, ChatMessage, GlobalUser, CourseUser, LearningObjective, MemoryAgentEntry, InitialAssistantPrompt } from './types';
 import { IDGenerator } from './unique-id-generator';
 
 dotenv.config();
@@ -1905,5 +1905,128 @@ export class EngEAI_MongoDB {
             console.error(`[MONGODB] 🚨 Error initializing memory agent:`, error);
             throw error;
         }
+    }
+
+    // Initial Assistant Prompt management methods
+
+    /**
+     * Get all initial assistant prompts for a course
+     * @param courseId - The course ID
+     * @returns Array of initial assistant prompts
+     */
+    public getInitialAssistantPrompts = async (courseId: string): Promise<InitialAssistantPrompt[]> => {
+        const course = await this.getActiveCourse(courseId);
+        if (!course) {
+            throw new Error(`Course with id ${courseId} not found`);
+        }
+        return (course as unknown as activeCourse).collectionOfInitialAssistantPrompts || [];
+    }
+
+    /**
+     * Get the selected initial assistant prompt for a course
+     * @param courseId - The course ID
+     * @returns The selected prompt or null if none selected
+     */
+    public getSelectedInitialAssistantPrompt = async (courseId: string): Promise<InitialAssistantPrompt | null> => {
+        const prompts = await this.getInitialAssistantPrompts(courseId);
+        return prompts.find(p => p.isSelected) || null;
+    }
+
+    /**
+     * Create a new initial assistant prompt for a course
+     * @param courseId - The course ID
+     * @param prompt - The prompt to create
+     */
+    public createInitialAssistantPrompt = async (courseId: string, prompt: InitialAssistantPrompt): Promise<void> => {
+        const course = await this.getActiveCourse(courseId);
+        if (!course) {
+            throw new Error(`Course with id ${courseId} not found`);
+        }
+
+        const prompts = (course as unknown as activeCourse).collectionOfInitialAssistantPrompts || [];
+        prompts.push(prompt);
+
+        await this.getCourseCollection().updateOne(
+            { id: courseId },
+            { $set: { collectionOfInitialAssistantPrompts: prompts } }
+        );
+    }
+
+    /**
+     * Update an existing initial assistant prompt
+     * @param courseId - The course ID
+     * @param promptId - The prompt ID to update
+     * @param updates - Partial prompt data to update
+     */
+    public updateInitialAssistantPrompt = async (courseId: string, promptId: string, updates: Partial<InitialAssistantPrompt>): Promise<void> => {
+        const course = await this.getActiveCourse(courseId);
+        if (!course) {
+            throw new Error(`Course with id ${courseId} not found`);
+        }
+
+        const prompts = (course as unknown as activeCourse).collectionOfInitialAssistantPrompts || [];
+        const promptIndex = prompts.findIndex(p => p.id === promptId);
+        
+        if (promptIndex === -1) {
+            throw new Error(`Prompt with id ${promptId} not found`);
+        }
+
+        prompts[promptIndex] = { ...prompts[promptIndex], ...updates };
+
+        await this.getCourseCollection().updateOne(
+            { id: courseId },
+            { $set: { collectionOfInitialAssistantPrompts: prompts } }
+        );
+    }
+
+    /**
+     * Delete an initial assistant prompt
+     * @param courseId - The course ID
+     * @param promptId - The prompt ID to delete
+     */
+    public deleteInitialAssistantPrompt = async (courseId: string, promptId: string): Promise<void> => {
+        const course = await this.getActiveCourse(courseId);
+        if (!course) {
+            throw new Error(`Course with id ${courseId} not found`);
+        }
+
+        const prompts = (course as unknown as activeCourse).collectionOfInitialAssistantPrompts || [];
+        const filteredPrompts = prompts.filter(p => p.id !== promptId);
+
+        await this.getCourseCollection().updateOne(
+            { id: courseId },
+            { $set: { collectionOfInitialAssistantPrompts: filteredPrompts } }
+        );
+    }
+
+    /**
+     * Select an initial assistant prompt as active (atomic update)
+     * Sets all prompts to isSelected: false, then sets the target prompt to isSelected: true
+     * @param courseId - The course ID
+     * @param promptId - The prompt ID to select
+     */
+    public selectInitialAssistantPrompt = async (courseId: string, promptId: string): Promise<void> => {
+        const course = await this.getActiveCourse(courseId);
+        if (!course) {
+            throw new Error(`Course with id ${courseId} not found`);
+        }
+
+        const prompts = (course as unknown as activeCourse).collectionOfInitialAssistantPrompts || [];
+        const promptIndex = prompts.findIndex(p => p.id === promptId);
+        
+        if (promptIndex === -1) {
+            throw new Error(`Prompt with id ${promptId} not found`);
+        }
+
+        // Atomic update: set all to false, then target to true
+        const updatedPrompts = prompts.map((p, index) => ({
+            ...p,
+            isSelected: index === promptIndex
+        }));
+
+        await this.getCourseCollection().updateOne(
+            { id: courseId },
+            { $set: { collectionOfInitialAssistantPrompts: updatedPrompts } }
+        );
     }
 }

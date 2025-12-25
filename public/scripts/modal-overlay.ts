@@ -259,13 +259,27 @@ export class ModalOverlay {
             this.overlay.setAttribute('data-escape-handler', 'true');
         }
 
-        // Tab navigation and Enter key handling
+        // Tab navigation, Enter, and Space key handling
         this.overlay.addEventListener('keydown', (e) => {
             if (e.key === 'Tab') {
                 this.handleTabNavigation(e);
             } else if (e.key === 'Enter') {
                 e.stopPropagation(); // Prevent event from bubbling to other handlers
                 this.handleEnterKey(e);
+            } else if (e.key === ' ' || e.key === 'Spacebar') {
+                // Handle Space key for success modals
+                const modalType = this.getModalType();
+                if (modalType === 'success') {
+                    const activeElement = document.activeElement;
+                    // Don't handle Space if user is typing in an input field
+                    if (activeElement && 
+                        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+                        return;
+                    }
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.handleEnterKey(e); // Reuse Enter key logic for Space
+                }
             }
         });
     }

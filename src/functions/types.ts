@@ -82,6 +82,19 @@ export interface activeCourse {
         flags: string;
         memoryAgent: string;
     };
+    collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
+}
+
+/**
+ * Initial Assistant Prompt data structure
+ * Stores custom initial assistant prompts that instructors can create and select for their courses
+ */
+export interface InitialAssistantPrompt {
+    id: string;
+    title: string;
+    content: string;
+    dateCreated: Date;
+    isSelected: boolean;
 }
 
 /**
