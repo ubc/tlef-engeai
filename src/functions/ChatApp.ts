@@ -791,7 +791,12 @@ export class ChatApp {
                 console.log(`🔍 [CHAT-INIT] Course found:`, course ? 'Yes' : 'No');
                 //END DEBUG LOG : DEBUG-CODE(CHAT-INIT-PROMPT-001)
                 
-                if (course) {
+                if (!course) {
+                    //START DEBUG LOG : DEBUG-CODE(CHAT-INIT-PROMPT-005)
+                    console.log(`⚠️ [CHAT-INIT] Course not found for courseName: ${courseName}`);
+                    //END DEBUG LOG : DEBUG-CODE(CHAT-INIT-PROMPT-005)
+                    defaultMessageText = getInitialAssistantMessage();
+                } else {
                     const courseData = course as unknown as activeCourse;
                     const courseId = courseData.id;
                     
@@ -799,7 +804,11 @@ export class ChatApp {
                     console.log(`🔍 [CHAT-INIT] Course ID: ${courseId}`);
                     //END DEBUG LOG : DEBUG-CODE(CHAT-INIT-PROMPT-002)
                     
-                    if (courseId) {
+                    // Every course should have an ID - if missing, it's a data integrity issue
+                    if (!courseId) {
+                        console.error(`❌ [CHAT-INIT] Course found but courseId is missing for courseName: ${courseName}. This indicates a data integrity issue.`);
+                        defaultMessageText = getInitialAssistantMessage();
+                    } else {
                         const selectedPrompt = await mongoDB.getSelectedInitialAssistantPrompt(courseId);
                         
                         //START DEBUG LOG : DEBUG-CODE(CHAT-INIT-PROMPT-003)
@@ -814,17 +823,7 @@ export class ChatApp {
                             defaultMessageText = getInitialAssistantMessage();
                             console.log('ℹ️ No selected initial assistant prompt found, using default');
                         }
-                    } else {
-                        //START DEBUG LOG : DEBUG-CODE(CHAT-INIT-PROMPT-004)
-                        console.log('⚠️ [CHAT-INIT] Course found but courseId is missing');
-                        //END DEBUG LOG : DEBUG-CODE(CHAT-INIT-PROMPT-004)
-                        defaultMessageText = getInitialAssistantMessage();
                     }
-                } else {
-                    //START DEBUG LOG : DEBUG-CODE(CHAT-INIT-PROMPT-005)
-                    console.log(`⚠️ [CHAT-INIT] Course not found for courseName: ${courseName}`);
-                    //END DEBUG LOG : DEBUG-CODE(CHAT-INIT-PROMPT-005)
-                    defaultMessageText = getInitialAssistantMessage();
                 }
             } catch (error) {
                 console.error('❌ Error retrieving selected initial assistant prompt:', error);

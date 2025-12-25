@@ -1924,12 +1924,32 @@ export class EngEAI_MongoDB {
 
     /**
      * Get the selected initial assistant prompt for a course
+     * Uses MongoDB query with $elemMatch for O(1) complexity
      * @param courseId - The course ID
      * @returns The selected prompt or null if none selected
      */
     public getSelectedInitialAssistantPrompt = async (courseId: string): Promise<InitialAssistantPrompt | null> => {
-        const prompts = await this.getInitialAssistantPrompts(courseId);
-        return prompts.find(p => p.isSelected) || null;
+        const course = await this.getCourseCollection().findOne(
+            { 
+                id: courseId,
+                'collectionOfInitialAssistantPrompts.isSelected': true
+            },
+            {
+                projection: {
+                    'collectionOfInitialAssistantPrompts.$': 1
+                }
+            }
+        );
+        
+        if (!course) {
+            return null;
+        }
+        
+        const courseData = course as unknown as activeCourse;
+        const prompts = courseData.collectionOfInitialAssistantPrompts || [];
+        
+        // MongoDB $ projection returns array with matching element, so we get the first one
+        return prompts.length > 0 ? prompts[0] : null;
     }
 
     /**
