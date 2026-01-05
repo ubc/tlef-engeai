@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import path from 'path';
-import cors from 'cors';
+// import cors from 'cors';
 import chatAppRoutes from './routes/chat-app';
 import ragAppRoutes from './routes/RAG-App';
 import mongodbRoutes from './routes/mongo-app';
@@ -10,7 +10,6 @@ import debugRoutes from './routes/debug';  // Import MongoDB routes
 import authRoutes from './routes/auth';  // Import authentication routes
 import courseEntryRoutes from './routes/course-entry';  // Import course entry routes
 import userManagementRoutes from './routes/user-management';  // Import user management routes
-import { initializeDummyCourses } from './debug/dummy-courses.js';
 
 // Import SAML authentication middleware
 import sessionMiddleware from './middleware/session';
@@ -21,8 +20,8 @@ dotenv.config();
 const app = express();
 const port = process.env.TLEF_ENGE_AI_PORT || 8020;
 
-// Enable CORS for all routes
-app.use(cors());
+// // Enable CORS for all routes
+// app.use(cors());
 
 // Body parsing middleware (needed for SAML POST)
 app.use(express.urlencoded({ extended: false }));
@@ -65,7 +64,6 @@ app.get('/settings', (req: any, res: any) => {
 
 // API endpoints
 app.use('/api/chat', chatAppRoutes);
-app.use('/api/ollama', chatAppRoutes);
 app.use('/api/rag', ragAppRoutes);
 app.use('/api/courses', mongodbRoutes);  // Course management routes
 app.use('/api/course', courseEntryRoutes);  // Course entry routes

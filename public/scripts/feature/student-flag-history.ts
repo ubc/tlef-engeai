@@ -88,7 +88,7 @@ async function fetchStudentFlags(courseId: string, userId: number): Promise<Flag
             headers: {
                 'Content-Type': 'application/json',
             },
-            credentials: 'include'
+            credentials: 'same-origin'
         });
 
         if (!response.ok) {

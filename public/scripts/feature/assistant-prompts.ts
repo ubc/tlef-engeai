@@ -68,7 +68,7 @@ async function loadPrompts(): Promise<void> {
     try {
         const response = await fetch(`/api/courses/${currentCourse.id}/assistant-prompts`, {
             method: 'GET',
-            credentials: 'include',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json'
             }
@@ -308,7 +308,7 @@ async function handleAddPrompt(): Promise<void> {
     try {
         const response = await fetch(`/api/courses/${currentCourse.id}/assistant-prompts`, {
             method: 'POST',
-            credentials: 'include',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json'
             },
@@ -418,7 +418,7 @@ async function handleSavePrompt(promptId: string): Promise<void> {
     try {
         const response = await fetch(`/api/courses/${currentCourse.id}/assistant-prompts/${promptId}`, {
             method: 'PUT',
-            credentials: 'include',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json'
             },
@@ -492,7 +492,7 @@ async function handleDeletePrompt(promptId: string): Promise<void> {
     try {
         const response = await fetch(`/api/courses/${currentCourse.id}/assistant-prompts/${promptId}`, {
             method: 'DELETE',
-            credentials: 'include',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json'
             }
@@ -549,7 +549,7 @@ async function handleSelectPrompt(promptId: string): Promise<void> {
     try {
         const response = await fetch(`/api/courses/${currentCourse.id}/assistant-prompts/${promptId}/select`, {
             method: 'POST',
-            credentials: 'include',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json'
             }

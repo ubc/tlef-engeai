@@ -219,7 +219,7 @@ router.get('/logout', (req: express.Request, res: express.Response, next: expres
         return res.redirect('/');
     }
 
-    if (isSamlAvailable && ubcShibStrategy) {
+    if (ubcShibStrategy) {
         // SAML Single Log-Out flow
         //START DEBUG LOG : DEBUG-CODE(SAML-LOGOUT)
         console.log('[AUTH] Initiating SAML logout...');
@@ -262,6 +262,7 @@ router.get('/logout', (req: express.Request, res: express.Response, next: expres
         // Local authentication logout - simple session destruction
         //START DEBUG LOG : DEBUG-CODE(LOCAL-LOGOUT)
         console.log('[AUTH-LOCAL] 🚪 Logging out local user...');
+
         //END DEBUG LOG : DEBUG-CODE(LOCAL-LOGOUT)
 
         (req as any).logout((logoutErr: any) => {

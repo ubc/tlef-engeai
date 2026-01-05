@@ -397,7 +397,7 @@ async function removeCourse(courseId: string, courseName: string): Promise<void>
             headers: {
                 'Content-Type': 'application/json'
             },
-            credentials: 'include'
+            credentials: 'same-origin'
         });
         
         if (!response.ok) {
@@ -689,7 +689,7 @@ async function handleResetMongoDB(): Promise<void> {
             headers: {
                 'Content-Type': 'application/json'
             },
-            credentials: 'include'
+            credentials: 'same-origin'
         });
         
         if (!response.ok) {
@@ -768,7 +768,7 @@ async function handleResetVectorDatabase(): Promise<void> {
             headers: {
                 'Content-Type': 'application/json'
             },
-            credentials: 'include'
+            credentials: 'same-origin'
         });
         
         if (!response.ok) {
@@ -821,7 +821,7 @@ async function handleDownloadDatabase(): Promise<void> {
         // Call the API endpoint to download database
         const response = await fetch('/api/courses/export/database', {
             method: 'GET',
-            credentials: 'include',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json'
             }
@@ -1139,7 +1139,7 @@ async function handleCourseCodeSubmit(courseCode: string, inputElement: HTMLInpu
         const response = await fetch('/api/course/enter-by-code', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
+            credentials: 'same-origin',
             body: JSON.stringify({ courseCode })
         });
         

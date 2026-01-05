@@ -318,7 +318,7 @@ async function initializeChatInterface(user: any): Promise<void> {
             // Check current authentication status before logout
             const authCheck = await fetch('/auth/me', {
                 method: 'GET',
-                credentials: 'include'
+                credentials: 'same-origin'
             });
             const authData = await authCheck.json();
             console.log('[STUDENT-MODE] 📋 Current auth status before logout:', authData);

@@ -98,7 +98,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log('[INSTRUCTOR-MODE] 🔍 Checking for current course in session...');
             const sessionResponse = await fetch('/api/course/current', {
                 method: 'GET',
-                credentials: 'include',
+                credentials: 'same-origin',
                 headers: {
                     'Content-Type': 'application/json'
                 }
@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     // Fetch full course data using the course name from session
                     const courseResponse = await fetch(`/api/courses?name=${encodeURIComponent(sessionData.course.courseName)}`, {
                         method: 'GET',
-                        credentials: 'include',
+                        credentials: 'same-origin',
                         headers: {
                             'Content-Type': 'application/json'
                         }
@@ -888,7 +888,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Check current authentication status before logout
             const authCheck = await fetch('/auth/me', {
                 method: 'GET',
-                credentials: 'include'
+                credentials: 'same-origin'
             });
             const authData = await authCheck.json();
             console.log('[INSTRUCTOR-MODE] 📋 Current auth status before logout:', authData);
@@ -992,7 +992,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        credentials: 'include'
+                        credentials: 'same-origin'
                     });
                     
                     if (!response.ok) {
@@ -1045,7 +1045,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     // Call the API endpoint to download course information
                     const response = await fetch('/api/courses/export/course-info', {
                         method: 'GET',
-                        credentials: 'include',
+                        credentials: 'same-origin',
                         headers: {
                             'Content-Type': 'application/json'
                         }

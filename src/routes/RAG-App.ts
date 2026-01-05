@@ -971,46 +971,5 @@ router.delete('/wipe-all', asyncHandlerWithAuth(async (req: Request, res: Respon
     }
 }));
 
-// COMMENTED OUT: DELETE /api/rag/nuclear-clear - Nuclear clear entire RAG collection (REQUIRES AUTH)
-// Nuclear clear functionality is now included in the Reset Dummy Courses feature
-/*
-router.delete('/nuclear-clear', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        console.log('🔍 BACKEND NUCLEAR CLEAR - Request Details:');
-        console.log('  Headers:', req.headers);
-        console.log('  Body:', req.body);
-        console.log('  User:', req.user);
-        
-        const ragApp = await RAGApp.getInstance();
-        
-        // Call the NuclearClearRAGDatabase method
-        const result = await ragApp.NuclearClearRAGDatabase();
-        
-        console.log('🔍 BACKEND NUCLEAR CLEAR - Result:');
-        console.log('  Deleted Count:', result.deletedCount);
-        console.log('  Errors:', result.errors);
-        
-        res.status(200).json({
-            status: 200,
-            message: 'Nuclear clear completed - entire RAG collection deleted successfully',
-            data: {
-                deletedCount: result.deletedCount,
-                errors: result.errors
-            }
-        });
-        
-    } catch (error) {
-        console.error('❌ Failed to nuclear clear RAG database:', error);
-        res.status(500).json({
-            status: 500,
-            message: 'Failed to nuclear clear RAG database',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
-    }
-}));
-*/
-
-// Note: Setup is now handled automatically in the QdrantUpload constructor
-
 export default router;
 

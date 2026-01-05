@@ -547,7 +547,7 @@ export class ChatManager {
         try {
             const response = await fetch(`/api/chat/${this.activeChatId}`, {
                 method: 'POST',
-                credentials: 'include', // Important for session cookies
+                credentials: 'same-origin', 
                 headers: {
                     'Content-Type': 'application/json',
                 },
@@ -1016,7 +1016,7 @@ export class ChatManager {
             
             const response = await fetch('/api/chat/user/chats', {
                 method: 'GET',
-                credentials: 'include', // Important for session cookies
+                credentials: 'same-origin', 
                 headers: {
                     'Content-Type': 'application/json'
                 }
@@ -1093,7 +1093,7 @@ export class ChatManager {
             
             const response = await fetch('/api/chat/user/chats/metadata', {
                 method: 'GET',
-                credentials: 'include', // Important for session cookies
+                credentials: 'same-origin', 
                 headers: {
                     'Content-Type': 'application/json'
                 }
@@ -1170,7 +1170,7 @@ export class ChatManager {
         try {
             const response = await fetch(`/api/chat/restore/${chatId}`, {
                 method: 'POST',
-                credentials: 'include',
+                credentials: 'same-origin',
                 headers: {
                     'Content-Type': 'application/json'
                 }

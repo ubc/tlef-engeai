@@ -459,7 +459,7 @@ async function handleFinalCompletion(state: DocumentSetupState, instructorCourse
             headers: {
                 'Content-Type': 'application/json'
             },
-            credentials: 'include',
+            credentials: 'same-origin',
             body: JSON.stringify({
                 contentSetup: true
             })

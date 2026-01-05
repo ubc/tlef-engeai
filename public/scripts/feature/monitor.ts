@@ -73,7 +73,7 @@ class MonitorDashboard {
         try {
             const response = await fetch(`/api/courses/monitor/${this.courseId}/chat-titles`, {
                 method: 'GET',
-                credentials: 'include',
+                credentials: 'same-origin',
                 headers: {
                     'Content-Type': 'application/json'
                 }
@@ -838,7 +838,7 @@ async function downloadChatHistory(chatId: string): Promise<void> {
         // Call the download endpoint
         const response = await fetch(`/api/courses/monitor/${courseId}/chat/${chatId}/download`, {
             method: 'GET',
-            credentials: 'include',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json'
             }

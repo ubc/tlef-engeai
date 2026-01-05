@@ -394,7 +394,7 @@ export class InactivityTracker {
         try {
             const response = await fetch('/api/user/activity', {
                 method: 'POST',
-                credentials: 'include',
+                credentials: 'same-origin',
                 headers: {
                     'Content-Type': 'application/json'
                 },

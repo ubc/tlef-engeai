@@ -362,7 +362,7 @@ async function saveCourseInfo(courseData: activeCourse): Promise<boolean> {
             headers: {
                 'Content-Type': 'application/json'
             },
-            credentials: 'include',
+            credentials: 'same-origin',
             body: JSON.stringify({
                 instructors: courseData.instructors,
                 teachingAssistants: courseData.teachingAssistants,
