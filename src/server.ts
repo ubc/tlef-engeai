@@ -68,6 +68,16 @@ app.get('/pages/instructor-mode.html', (req: any, res: any) => {
     }
 });
 
+// Backward compatibility: Redirect old student-mode.html to new URL structure
+app.get('/pages/student-mode.html', (req: any, res: any) => {
+    const currentCourse = req.session?.currentCourse;
+    if (currentCourse?.courseId) {
+        res.redirect(`/course/${currentCourse.courseId}/student`);
+    } else {
+        res.redirect('/pages/course-selection.html');
+    }
+});
+
 // Course routes (must be before static file serving to catch course routes first)
 app.use('/', courseRoutes);
 

@@ -172,14 +172,14 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
         let requiresOnboarding = false;
         
         if (globalUser.affiliation === 'student' && !(courseUser as any).userOnboarding) {
-            redirect = '/pages/student-mode.html';
+            redirect = `/course/${courseId}/student`;
             requiresOnboarding = true;
             console.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
         } else if (globalUser.affiliation === 'faculty') {
             redirect = `/course/${courseId}/instructor/documents`;
             console.log(`[COURSE-ENTRY] Redirecting faculty to instructor documents`);
         } else {
-            redirect = '/pages/student-mode.html';
+            redirect = `/course/${courseId}/student`;
             console.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
         }
         
@@ -369,14 +369,14 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
         let requiresOnboarding = false;
         
         if (globalUser.affiliation === 'student' && !(courseUser as any).userOnboarding) {
-            redirect = '/pages/student-mode.html';
+            redirect = `/course/${courseId}/student`;
             requiresOnboarding = true;
             console.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
         } else if (globalUser.affiliation === 'faculty') {
             redirect = `/course/${courseId}/instructor/documents`;
             console.log(`[COURSE-ENTRY] Redirecting faculty to instructor documents`);
         } else {
-            redirect = '/pages/student-mode.html';
+            redirect = `/course/${courseId}/student`;
             console.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
         }
         

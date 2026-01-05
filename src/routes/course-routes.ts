@@ -95,6 +95,23 @@ function serveInstructorShell() {
     });
 }
 
+/**
+ * Serve student shell page
+ * 
+ * All student routes serve the same HTML shell (student-mode.html)
+ * Frontend JavaScript parses URL to determine which component to load
+ */
+function serveStudentShell() {
+    return asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const publicPath = path.join(__dirname, '../../public');
+        const studentPagePath = path.join(publicPath, 'pages/student-mode.html');
+        
+        // Serve the same HTML shell for all student routes
+        // Frontend will parse URL and load appropriate component
+        res.sendFile(studentPagePath);
+    });
+}
+
 // Instructor Routes - All serve the same shell, frontend handles component loading
 router.get('/course/:courseId/instructor/documents', validateCourseAccess, serveInstructorShell());
 router.get('/course/:courseId/instructor/flags', validateCourseAccess, serveInstructorShell());
@@ -103,6 +120,13 @@ router.get('/course/:courseId/instructor/chat', validateCourseAccess, serveInstr
 router.get('/course/:courseId/instructor/assistant-prompts', validateCourseAccess, serveInstructorShell());
 router.get('/course/:courseId/instructor/course-information', validateCourseAccess, serveInstructorShell());
 router.get('/course/:courseId/instructor/about', validateCourseAccess, serveInstructorShell());
+
+// Student Routes - All serve the same shell, frontend handles component loading
+router.get('/course/:courseId/student', validateCourseAccess, serveStudentShell());
+router.get('/course/:courseId/student/chat', validateCourseAccess, serveStudentShell());
+router.get('/course/:courseId/student/profile', validateCourseAccess, serveStudentShell());
+router.get('/course/:courseId/student/flag-history', validateCourseAccess, serveStudentShell());
+router.get('/course/:courseId/student/about', validateCourseAccess, serveStudentShell());
 
 // Default instructor route - redirect to documents
 router.get('/course/:courseId/instructor', validateCourseAccess, (req: Request, res: Response) => {
