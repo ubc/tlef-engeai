@@ -10,6 +10,7 @@ import debugRoutes from './routes/debug';  // Import MongoDB routes
 import authRoutes from './routes/auth';  // Import authentication routes
 import courseEntryRoutes from './routes/course-entry';  // Import course entry routes
 import userManagementRoutes from './routes/user-management';  // Import user management routes
+import courseRoutes from './routes/course-routes';  // Import course routes
 
 // Import SAML authentication middleware
 import sessionMiddleware from './middleware/session';
@@ -56,6 +57,19 @@ app.use(express.static(publicPath));
 
 // Authentication routes (no /api prefix as they serve HTML too)
 app.use('/auth', authRoutes);
+
+// Backward compatibility: Redirect old instructor-mode.html to new URL structure
+app.get('/pages/instructor-mode.html', (req: any, res: any) => {
+    const currentCourse = req.session?.currentCourse;
+    if (currentCourse?.courseId) {
+        res.redirect(`/course/${currentCourse.courseId}/instructor/documents`);
+    } else {
+        res.redirect('/pages/course-selection.html');
+    }
+});
+
+// Course routes (must be before static file serving to catch course routes first)
+app.use('/', courseRoutes);
 
 // Page routes
 app.get('/settings', (req: any, res: any) => {

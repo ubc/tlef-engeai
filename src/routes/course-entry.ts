@@ -176,8 +176,8 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
             requiresOnboarding = true;
             console.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
         } else if (globalUser.affiliation === 'faculty') {
-            redirect = '/pages/instructor-mode.html';
-            console.log(`[COURSE-ENTRY] Redirecting faculty to instructor mode`);
+            redirect = `/course/${courseId}/instructor/documents`;
+            console.log(`[COURSE-ENTRY] Redirecting faculty to instructor documents`);
         } else {
             redirect = '/pages/student-mode.html';
             console.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
@@ -373,8 +373,8 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
             requiresOnboarding = true;
             console.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
         } else if (globalUser.affiliation === 'faculty') {
-            redirect = '/pages/instructor-mode.html';
-            console.log(`[COURSE-ENTRY] Redirecting faculty to instructor mode`);
+            redirect = `/course/${courseId}/instructor/documents`;
+            console.log(`[COURSE-ENTRY] Redirecting faculty to instructor documents`);
         } else {
             redirect = '/pages/student-mode.html';
             console.log(`[COURSE-ENTRY] Redirecting student to chat interface`);

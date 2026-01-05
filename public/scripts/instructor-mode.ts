@@ -14,10 +14,34 @@ import { renderAbout } from './about/about.js';
 import { initializeCourseInformation } from './feature/course-information.js';
 import { inactivityTracker } from './services/InactivityTracker.js';
 import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from './feature/assistant-prompts.js';
+import { 
+    getCourseIdFromURL, 
+    getInstructorViewFromURL, 
+    getChatIdFromURL,
+    navigateToInstructorView,
+    navigateToChat
+} from './utils/url-parser.js';
 
 // Authentication check function
 async function checkAuthentication(): Promise<boolean> {
-    return await authService.checkAuthenticationAndRedirect('/pages/instructor-mode.html', 'INSTRUCTOR-MODE');
+    // Get courseId from URL if available, otherwise use default redirect
+    const courseId = getCourseIdFromURL();
+    const redirectPath = courseId ? `/course/${courseId}/instructor/documents` : '/pages/instructor-mode.html';
+    return await authService.checkAuthenticationAndRedirect(redirectPath, 'INSTRUCTOR-MODE');
+}
+
+/**
+ * Map URL view name to StateEvent enum
+ */
+function mapViewToStateEvent(view: string): StateEvent {
+    switch (view) {
+        case 'documents': return StateEvent.Documents;
+        case 'flags': return StateEvent.Flag;
+        case 'monitor': return StateEvent.Monitor;
+        case 'chat': return StateEvent.Chat;
+        case 'assistant-prompts': return StateEvent.AssistantPrompts;
+        default: return StateEvent.Documents;
+    }
 }
 
 const enum StateEvent {
@@ -292,6 +316,39 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Current State
     let currentState: StateEvent = StateEvent.Documents;
 
+    // Extract courseId and view from URL (after currentState is declared)
+    const courseIdFromURL = getCourseIdFromURL();
+    const viewFromURL = getInstructorViewFromURL();
+    const chatIdFromURL = getChatIdFromURL();
+    
+    // Validate courseId matches session
+    const sessionResponse = await fetch('/api/course/current');
+    const sessionData = await sessionResponse.json();
+    
+    if (courseIdFromURL && sessionData.course?.courseId !== courseIdFromURL) {
+        console.warn('[INSTRUCTOR-MODE] URL courseId does not match session, updating...');
+        // Optionally redirect to sync session - but for now, just log warning
+    }
+    
+    // Set initial state based on URL
+    if (viewFromURL) {
+        // Handle special views that aren't StateEvent enum values
+        if (viewFromURL === 'course-information' || viewFromURL === 'about') {
+            // These will be handled separately in initialization, keep current state as is
+            // Don't change currentState for these special views
+        } else {
+            currentState = mapViewToStateEvent(viewFromURL);
+        }
+    } else {
+        // Default to documents if no view specified
+        currentState = StateEvent.Documents;
+        // Redirect to documents URL if not already there
+        if (courseIdFromURL) {
+            navigateToInstructorView('documents');
+            // Note: navigateToInstructorView uses pushState, so we continue execution
+        }
+    }
+
     // --- STATE MANAGEMENT ----
     let isSidebarCollapsed: boolean = false;
     
@@ -301,46 +358,49 @@ document.addEventListener('DOMContentLoaded', async () => {
     const chatStateEl = document.getElementById('chat-state');
 
     chatStateEl?.addEventListener('click', async () => {
-        if (currentState !== StateEvent.Chat) {
-            currentState = StateEvent.Chat;
-            await showChatContent(); // Use async showChatContent instead of updateUI
-        }
+        navigateToInstructorView('chat');
     });
 
     flagStateEl?.addEventListener('click', () => {
         console.log('🖱️ [INSTRUCTOR-DEBUG] Flag state clicked');
-        console.log('🖱️ [INSTRUCTOR-DEBUG] Current state:', currentState);
-        console.log('🖱️ [INSTRUCTOR-DEBUG] Flag state enum:', StateEvent.Flag);
-        
-        if (currentState !== StateEvent.Flag) {
-            console.log('🔄 [INSTRUCTOR-DEBUG] Switching to flag state');
-            currentState = StateEvent.Flag;
-            console.log('🔄 [INSTRUCTOR-DEBUG] Calling updateUI()');
-            updateUI();
-        } else {
-            console.log('ℹ️ [INSTRUCTOR-DEBUG] Already in flag state, no action needed');
-        }
+        navigateToInstructorView('flags');
     });
 
     monitorStateEl?.addEventListener('click', () => {
-        if (currentState !== StateEvent.Monitor) {
-            currentState = StateEvent.Monitor;
-            updateUI();
-        }
+        navigateToInstructorView('monitor');
     });
 
     documentsStateEl?.addEventListener('click', () => {
-        if (currentState !== StateEvent.Documents) {
-            currentState = StateEvent.Documents;
-            updateUI();
-        }
+        navigateToInstructorView('documents');
     });
 
     const assistantPromptsStateEl = document.getElementById('assistant-prompts-state');
     assistantPromptsStateEl?.addEventListener('click', () => {
-        if (currentState !== StateEvent.AssistantPrompts) {
-            currentState = StateEvent.AssistantPrompts;
-            updateUI();
+        navigateToInstructorView('assistant-prompts');
+    });
+    
+    // Handle browser back/forward navigation
+    window.addEventListener('popstate', async () => {
+        const view = getInstructorViewFromURL();
+        const chatId = getChatIdFromURL();
+        
+        if (view) {
+            if (view === 'chat') {
+                // Load chat interface
+                await showChatContent();
+            } else if (view === 'course-information') {
+                // Load course information component
+                await loadComponent('course-information');
+                expandFeatureSidebar();
+                hideChatList();
+            } else if (view === 'about') {
+                // Load about component
+                await renderAbout({ state: currentState, mode: 'instructor' });
+            } else {
+                // Load component for current view
+                currentState = mapViewToStateEvent(view);
+                updateUI();
+            }
         }
     });
 
@@ -662,6 +722,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     // Handle instructor-specific chat callbacks
                     if (action === 'new-chat-created') {
                         // Load chat window when a new chat is created from sidebar
+                        const newChatId = data?.chatId;
+                        if (newChatId) {
+                            const courseId = getCourseIdFromURL();
+                            if (courseId) {
+                                navigateToChat(courseId, newChatId);
+                            }
+                        }
                         loadChatWindow();
                         
                         //START DEBUG LOG : DEBUG-CODE(015)
@@ -670,10 +737,25 @@ document.addEventListener('DOMContentLoaded', async () => {
                     } else if (action === 'chat-deleted') {
                         // Handle chat deletion - update main content area
                         console.log('🗑️ Chat deleted, updating main content area');
+                        // Update URL to remove chatId if we're on that chat
+                        const currentChatId = getChatIdFromURL();
+                        if (currentChatId === data?.chatId) {
+                            const courseId = getCourseIdFromURL();
+                            if (courseId) {
+                                navigateToInstructorView('chat');
+                            }
+                        }
                         loadChatWindow();
                     } else if (action === 'chat-clicked') {
                         // Chat is fully loaded from sidebar click, switch to chat window
                         console.log('[INSTRUCTOR-MODE] 💬 Chat loaded and ready, switching to chat window');
+                        const clickedChatId = data?.chatId;
+                        if (clickedChatId) {
+                            const courseId = getCourseIdFromURL();
+                            if (courseId) {
+                                navigateToChat(courseId, clickedChatId);
+                            }
+                        }
                         if (data?.loaded) {
                             loadChatWindow();
                         }
@@ -749,6 +831,73 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <p>Failed to load chat interface. Please try again.</p>
                 </div>
             `;
+        }
+    };
+
+    /**
+     * Load chat by ID and update URL
+     */
+    const loadChatById = async (chatId: string): Promise<void> => {
+        const courseId = getCourseIdFromURL();
+        if (!courseId) {
+            console.error('[INSTRUCTOR-MODE] Cannot load chat: courseId not found in URL');
+            return;
+        }
+        
+        // Update URL with chatId query parameter using navigateToChat
+        navigateToChat(courseId, chatId);
+        
+        // Ensure ChatManager is initialized
+        if (!chatManager) {
+            await initializeChatManager();
+        }
+        
+        if (!chatManager) {
+            console.error('[INSTRUCTOR-MODE] ChatManager not available');
+            return;
+        }
+        
+        // Load chat content
+        await loadChatWindow();
+        
+        // Load the specific chat
+        try {
+            // Check if chat exists in ChatManager
+            const chats = chatManager.getChats();
+            const chatExists = chats.some(chat => chat.id === chatId);
+            
+            if (chatExists) {
+                // Chat is already loaded, just switch to it
+                await chatManager.setActiveChatId(chatId);
+                chatManager.renderActiveChat();
+            } else {
+                // Chat not in memory, try to restore it
+                const restoreResponse = await fetch(`/api/chat/restore/${chatId}`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (restoreResponse.ok) {
+                    const restoreData = await restoreResponse.json();
+                    if (restoreData.success) {
+                        // Chat restored, now switch to it
+                        await chatManager.setActiveChatId(chatId);
+                        chatManager.renderActiveChat();
+                    } else {
+                        console.error('[INSTRUCTOR-MODE] Failed to restore chat:', restoreData.error);
+                        showWelcomeScreen();
+                    }
+                } else {
+                    console.error('[INSTRUCTOR-MODE] Failed to restore chat from server');
+                    showWelcomeScreen();
+                }
+            }
+        } catch (error) {
+            console.error('[INSTRUCTOR-MODE] Error loading chat by ID:', error);
+            showWelcomeScreen();
         }
     };
 
@@ -838,6 +987,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     const showChatContent = async () => {
+        // Update current state
+        currentState = StateEvent.Chat;
+        
         // Update menu active state
         updateSidebarState();
         
@@ -853,12 +1005,27 @@ document.addEventListener('DOMContentLoaded', async () => {
             chatListEl.classList.add('active');
         }
         
-        // Initialize ChatManager if not already done
-        if (!chatManager) {
-            await initializeChatManager();
+        // Check if there's a chatId in URL
+        const chatIdFromURL = getChatIdFromURL();
+        if (chatIdFromURL) {
+            // Load specific chat
+            await loadChatById(chatIdFromURL).catch(err => {
+                console.error('[INSTRUCTOR-MODE] Error loading chat from URL:', err);
+                // Fall back to normal chat UI
+                if (!chatManager) {
+                    initializeChatManager();
+                } else {
+                    updateChatUI();
+                }
+            });
         } else {
-            // Update UI if ChatManager already exists
-            updateChatUI();
+            // Initialize ChatManager if not already done
+            if (!chatManager) {
+                await initializeChatManager();
+            } else {
+                // Update UI if ChatManager already exists
+                updateChatUI();
+            }
         }
     }
 
@@ -919,7 +1086,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (aboutBtn) {
             aboutBtn.addEventListener('click', async () => {
                 console.log('[INSTRUCTOR-MODE] ℹ️ About button clicked');
-                await renderAbout({ state: currentState, mode: 'instructor' });
+                navigateToInstructorView('about');
             });
             console.log('[INSTRUCTOR-MODE] ✅ About button listener attached');
         }
@@ -929,15 +1096,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (courseInfoBtn) {
             courseInfoBtn.addEventListener('click', async () => {
                 console.log('[INSTRUCTOR-MODE] ⚙️ Course Information button clicked');
-                
-                // Load the course-information component
-                await loadComponent('course-information');
-                
-                // Ensure sidebar stays expanded
-                expandFeatureSidebar();
-                
-                // Hide chat list
-                hideChatList();
+                navigateToInstructorView('course-information');
             });
             console.log('[INSTRUCTOR-MODE] ✅ Course Information button listener attached');
         }
@@ -1100,7 +1259,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- STATE RESTORATION ---
     const restorePreviousState = () => {
         console.log('[INSTRUCTOR-MODE] 🔄 Restoring previous state:', currentState);
-        updateUI();
+        // Navigate back to documents view when closing about/course-info
+        const courseId = getCourseIdFromURL();
+        if (courseId) {
+            navigateToInstructorView('documents');
+        } else {
+            updateUI();
+        }
     };
 
     // Listen for about page close event
@@ -1114,7 +1279,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Attach logout button listener
     attachInstructorLogoutListener();
     
-    updateUI();
+    // Load appropriate component based on URL view
+    if (viewFromURL === 'chat' && chatIdFromURL) {
+        // Load specific chat
+        await loadChatById(chatIdFromURL).catch(err => {
+            console.error('[INSTRUCTOR-MODE] Error loading chat from URL:', err);
+            updateUI();
+        });
+    } else if (viewFromURL === 'course-information') {
+        // Load course information component
+        await loadComponent('course-information');
+        expandFeatureSidebar();
+        hideChatList();
+    } else if (viewFromURL === 'about') {
+        // Load about component
+        await renderAbout({ state: currentState, mode: 'instructor' });
+    } else {
+        // Load component for current view
+        updateUI();
+    }
 
 });
 
