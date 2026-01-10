@@ -103,7 +103,7 @@ router.post('/saml/callback', (req: express.Request, res: express.Response, next
             // Redirect to course selection page
             console.log('[AUTH] 🚀 Session saved, redirecting to course selection');
             console.log('[AUTH] 📋 Session ID:', (req as any).sessionID);
-            res.redirect('/pages/course-selection.html'); // we will modify this after the MVP is released
+            res.redirect('/course-selection');
         });
 
     } catch (error) {
@@ -186,7 +186,7 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                         }
 
                         console.log('[AUTH-LOCAL] 🚀 Redirecting to course selection');
-                        res.redirect('/pages/course-selection.html');
+                        res.redirect('/course-selection');
                     });
                 } catch (error) {
                     console.error('[AUTH-LOCAL] 🚨 Error in post-auth processing:', error);

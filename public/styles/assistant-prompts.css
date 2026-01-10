@@ -116,6 +116,31 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    z-index: 1;
+}
+
+.default-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #6c757d;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    z-index: 1;
+}
+
+/* When both badges exist, stack them */
+.prompt-card:has(.selected-badge):has(.default-badge) .selected-badge {
+    right: 10px;
+}
+
+.prompt-card:has(.selected-badge):has(.default-badge) .default-badge {
+    right: 120px; /* Position to the left of selected badge */
 }
 
 .prompt-header {

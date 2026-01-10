@@ -121,12 +121,21 @@ router.get('/course/:courseId/instructor/assistant-prompts', validateCourseAcces
 router.get('/course/:courseId/instructor/course-information', validateCourseAccess, serveInstructorShell());
 router.get('/course/:courseId/instructor/about', validateCourseAccess, serveInstructorShell());
 
+// Instructor Onboarding Routes
+router.get('/course/:courseId/instructor/onboarding/course-setup', validateCourseAccess, serveInstructorShell());
+router.get('/course/:courseId/instructor/onboarding/document-setup', validateCourseAccess, serveInstructorShell());
+router.get('/course/:courseId/instructor/onboarding/flag-setup', validateCourseAccess, serveInstructorShell());
+router.get('/course/:courseId/instructor/onboarding/monitor-setup', validateCourseAccess, serveInstructorShell());
+
 // Student Routes - All serve the same shell, frontend handles component loading
 router.get('/course/:courseId/student', validateCourseAccess, serveStudentShell());
 router.get('/course/:courseId/student/chat', validateCourseAccess, serveStudentShell());
 router.get('/course/:courseId/student/profile', validateCourseAccess, serveStudentShell());
 router.get('/course/:courseId/student/flag-history', validateCourseAccess, serveStudentShell());
 router.get('/course/:courseId/student/about', validateCourseAccess, serveStudentShell());
+
+// Student Onboarding Routes
+router.get('/course/:courseId/student/onboarding/student', validateCourseAccess, serveStudentShell());
 
 // Default instructor route - redirect to documents
 router.get('/course/:courseId/instructor', validateCourseAccess, (req: Request, res: Response) => {

@@ -2860,6 +2860,9 @@ router.get('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Requ
             });
         }
 
+        // Ensure default prompt exists before returning prompts
+        await instance.ensureDefaultPromptExists(courseId, courseData.courseName);
+
         const prompts = await instance.getInitialAssistantPrompts(courseId);
         
         res.json({

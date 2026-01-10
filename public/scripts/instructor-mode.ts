@@ -19,7 +19,8 @@ import {
     getInstructorViewFromURL, 
     getChatIdFromURL,
     navigateToInstructorView,
-    navigateToChat
+    navigateToChat,
+    getInstructorOnboardingStageFromURL
 } from './utils/url-parser.js';
 
 // Authentication check function
@@ -200,27 +201,52 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Listen for document setup completion event
     window.addEventListener('documentSetupComplete', () => {
-        console.log('📋 Document setup completed, redirecting to documents page...');
+        console.log('📋 Document setup completed, redirecting to next onboarding stage...');
         
-        // Redirect to documents page
-        redirectToDocumentsPage();
+        const courseId = getCourseIdFromURL();
+        if (courseId) {
+            // Check if flag setup is needed
+            if (!currentClass.flagSetup) {
+                window.location.href = `/course/${courseId}/instructor/onboarding/flag-setup`;
+            } else if (!currentClass.monitorSetup) {
+                window.location.href = `/course/${courseId}/instructor/onboarding/monitor-setup`;
+            } else {
+                window.location.href = `/course/${courseId}/instructor/documents`;
+            }
+        } else {
+            // Fallback to old behavior
+            redirectToDocumentsPage();
+        }
     });
 
     // Listen for flag setup completion event
     window.addEventListener('flagSetupComplete', () => {
-        console.log('🏁 Flag setup completed, proceeding to monitor setup...');
+        console.log('🏁 Flag setup completed, redirecting to monitor setup...');
         
-        // Proceed to monitor setup (keep onboarding-active class to hide sidebar)
-        // The updateUI() function will check currentClass.monitorSetup and show monitor setup
-        updateUI();
+        const courseId = getCourseIdFromURL();
+        if (courseId) {
+            if (!currentClass.monitorSetup) {
+                window.location.href = `/course/${courseId}/instructor/onboarding/monitor-setup`;
+            } else {
+                window.location.href = `/course/${courseId}/instructor/documents`;
+            }
+        } else {
+            // Fallback to old behavior
+            updateUI();
+        }
     });
 
     // Listen for monitor setup completion event
     window.addEventListener('monitorSetupComplete', () => {
         console.log('📊 Monitor setup completed, redirecting to main interface...');
         
-        // Redirect to main instructor interface
-        redirectToMainInterface();
+        const courseId = getCourseIdFromURL();
+        if (courseId) {
+            window.location.href = `/course/${courseId}/instructor/documents`;
+        } else {
+            // Fallback to old behavior
+            redirectToMainInterface();
+        }
     });
 
     /**
@@ -509,6 +535,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         // console.log("current state is : " + currentState.toString());
         // console.log("currentClass is : ", JSON.stringify(currentClass));
 
+        // Check if we're on an onboarding URL - prioritize URL over flags
+        const onboardingStageFromURL = getInstructorOnboardingStageFromURL();
+        if (onboardingStageFromURL) {
+            console.log(`[INSTRUCTOR-MODE] 🎓 Rendering onboarding stage from URL: ${onboardingStageFromURL}`);
+            switch (onboardingStageFromURL) {
+                case 'course-setup':
+                    renderOnCourseSetup(currentClass);
+                    return;
+                case 'document-setup':
+                    renderDocumentSetup(currentClass);
+                    return;
+                case 'flag-setup':
+                    renderFlagSetup(currentClass);
+                    return;
+                case 'monitor-setup':
+                    renderMonitorSetup(currentClass);
+                    return;
+            }
+        }
+
+        // Fallback to flag-based detection if not on onboarding URL
         if (!currentClass.courseSetup) {
             renderOnCourseSetup(currentClass);
             return;

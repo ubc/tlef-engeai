@@ -95,7 +95,14 @@ export interface InitialAssistantPrompt {
     content: string;
     dateCreated: Date;
     isSelected: boolean;
+    isDefault?: boolean; // If true, this is the system default prompt (unremovable)
 }
+
+/**
+ * Default prompt ID constant
+ * Used to identify the system default initial assistant prompt
+ */
+export const DEFAULT_PROMPT_ID = 'default-engeai-welcome';
 
 /**
  * frameTypes: Course content organization strategy. 

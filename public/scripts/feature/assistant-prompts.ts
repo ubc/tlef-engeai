@@ -9,7 +9,7 @@
  * @since: 2025-01-27
  */
 
-import { activeCourse, InitialAssistantPrompt } from '../../../src/functions/types';
+import { activeCourse, InitialAssistantPrompt, DEFAULT_PROMPT_ID } from '../../../src/functions/types';
 import { renderFeatherIcons } from '../functions/api.js';
 import { showConfirmModal, showSimpleErrorModal, showSuccessModal, showErrorModal } from '../modal-overlay.js';
 
@@ -129,8 +129,10 @@ function renderPrompts(): void {
 function renderPromptCard(prompt: InitialAssistantPrompt): string {
     const isSelected = prompt.isSelected;
     const isEditing = editingPromptId === prompt.id;
+    const isDefault = prompt.isDefault || prompt.id === DEFAULT_PROMPT_ID;
     const selectedClass = isSelected ? 'selected' : '';
     const selectedBadge = isSelected ? '<span class="selected-badge">Selected</span>' : '';
+    const defaultBadge = isDefault ? '<span class="default-badge">Default</span>' : '';
     
     // Truncate content for display (3 lines) - but only if not editing
     const truncatedContent = truncateContent(prompt.content || '', 3);
@@ -140,9 +142,10 @@ function renderPromptCard(prompt: InitialAssistantPrompt): string {
     return `
         <div class="prompt-card ${selectedClass}" data-prompt-id="${prompt.id}">
             ${selectedBadge}
+            ${defaultBadge}
             <div class="prompt-header">
                 <div class="prompt-title" 
-                     contenteditable="${isEditing ? 'true' : 'false'}" 
+                     contenteditable="${isEditing && !isDefault ? 'true' : 'false'}" 
                      data-field="title"
                      data-prompt-id="${prompt.id}"
                      ${isEditing ? 'data-editing="true"' : ''}>
@@ -151,7 +154,7 @@ function renderPromptCard(prompt: InitialAssistantPrompt): string {
             </div>
             <div class="prompt-content-wrapper">
                 <div class="prompt-content" 
-                     contenteditable="${isEditing ? 'true' : 'false'}" 
+                     contenteditable="${isEditing && !isDefault ? 'true' : 'false'}" 
                      data-field="content"
                      data-prompt-id="${prompt.id}"
                      ${isEditing ? 'data-editing="true"' : ''}>
@@ -174,14 +177,16 @@ function renderPromptCard(prompt: InitialAssistantPrompt): string {
                         <span>Cancel</span>
                     </button>
                 ` : `
-                    <button class="btn-edit" data-prompt-id="${prompt.id}">
-                        <i data-feather="edit"></i>
-                        <span>Edit</span>
-                    </button>
-                    <button class="btn-delete" data-prompt-id="${prompt.id}">
-                        <i data-feather="trash-2"></i>
-                        <span>Delete</span>
-                    </button>
+                    ${!isDefault ? `
+                        <button class="btn-edit" data-prompt-id="${prompt.id}">
+                            <i data-feather="edit"></i>
+                            <span>Edit</span>
+                        </button>
+                        <button class="btn-delete" data-prompt-id="${prompt.id}">
+                            <i data-feather="trash-2"></i>
+                            <span>Delete</span>
+                        </button>
+                    ` : ''}
                     <button class="btn-choose" data-prompt-id="${prompt.id}" ${isSelected ? 'disabled' : ''}>
                         <i data-feather="check-circle"></i>
                         <span>Choose</span>
@@ -475,6 +480,13 @@ async function handleDeletePrompt(promptId: string): Promise<void> {
 
     const prompt = prompts.find(p => p.id === promptId);
     if (!prompt) {
+        return;
+    }
+
+    // Prevent deletion of default prompt
+    const isDefault = prompt.isDefault || prompt.id === DEFAULT_PROMPT_ID;
+    if (isDefault) {
+        await showErrorModal('Cannot delete the default system prompt. This prompt is always available and cannot be removed.', 'Cannot Delete');
         return;
     }
 

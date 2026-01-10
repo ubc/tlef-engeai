@@ -1,7 +1,8 @@
 import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 import * as dotenv from 'dotenv';
-import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, Chat, ChatMessage, GlobalUser, CourseUser, LearningObjective, MemoryAgentEntry, InitialAssistantPrompt } from './types';
+import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, Chat, ChatMessage, GlobalUser, CourseUser, LearningObjective, MemoryAgentEntry, InitialAssistantPrompt, DEFAULT_PROMPT_ID } from './types';
 import { IDGenerator } from './unique-id-generator';
+import { INITIAL_ASSISTANT_MESSAGE } from './chat-prompts';
 
 dotenv.config();
 
@@ -1303,7 +1304,7 @@ export class EngEAI_MongoDB {
      * @param userData - The user data to create
      * @returns Created user object
      */
-    public createStudent = async (courseName: string, userData: Partial<User>): Promise<User> => {
+    public createStudent = async (courseName: string, userData: Partial<CourseUser>): Promise<CourseUser> => {
         //START DEBUG LOG : DEBUG-CODE(CREATE-STUDENT)
         console.log(`[MONGODB] 🚀 Creating new student in course: ${courseName}`, userData);
         //END DEBUG LOG : DEBUG-CODE(CREATE-STUDENT)
@@ -1312,16 +1313,16 @@ export class EngEAI_MongoDB {
             const userCollection = await this.getUserCollection(courseName);
             
             // Generate unique ID for the student (using course-specific ID)
-            const studentId = this.idGenerator.userID(userData as User);
+            const studentId = this.idGenerator.userID(userData as CourseUser);
             
             // Create student object WITHOUT puid (privacy - only userId is stored)
             const { puid, ...userDataWithoutPuid } = userData as any;
-            const newStudent: User = {
+            const newStudent: CourseUser = {
                 ...userDataWithoutPuid,
                 id: studentId,
                 createdAt: new Date(),
                 updatedAt: new Date()
-            } as User;
+            } as CourseUser;
             
             const result = await userCollection.insertOne(newStudent as any);
             
@@ -2001,6 +2002,7 @@ export class EngEAI_MongoDB {
 
     /**
      * Delete an initial assistant prompt
+     * Prevents deletion of the default prompt and auto-selects default if deleted prompt was selected
      * @param courseId - The course ID
      * @param promptId - The prompt ID to delete
      */
@@ -2011,12 +2013,53 @@ export class EngEAI_MongoDB {
         }
 
         const prompts = (course as unknown as activeCourse).collectionOfInitialAssistantPrompts || [];
+        
+        // Find the prompt to delete
+        const promptToDelete = prompts.find(p => p.id === promptId);
+        if (!promptToDelete) {
+            throw new Error(`Prompt with id ${promptId} not found`);
+        }
+
+        // Prevent deletion of default prompt
+        if (promptToDelete.isDefault || promptToDelete.id === DEFAULT_PROMPT_ID) {
+            throw new Error('Cannot delete the default system prompt');
+        }
+
+        // Check if the prompt being deleted was selected
+        const wasSelected = promptToDelete.isSelected;
+
+        // Filter out the deleted prompt
         const filteredPrompts = prompts.filter(p => p.id !== promptId);
 
-        await this.getCourseCollection().updateOne(
-            { id: courseId },
-            { $set: { collectionOfInitialAssistantPrompts: filteredPrompts } }
-        );
+        // If the deleted prompt was selected, select the default prompt
+        if (wasSelected) {
+            const defaultPrompt = filteredPrompts.find(p => p.isDefault || p.id === DEFAULT_PROMPT_ID);
+            if (defaultPrompt) {
+                // Ensure default exists (will create if missing)
+                await this.ensureDefaultPromptExists(courseId, course.courseName);
+                // Select the default prompt
+                const updatedPrompts = filteredPrompts.map(p => ({
+                    ...p,
+                    isSelected: (p.isDefault || p.id === DEFAULT_PROMPT_ID) ? true : false
+                }));
+                await this.getCourseCollection().updateOne(
+                    { id: courseId },
+                    { $set: { collectionOfInitialAssistantPrompts: updatedPrompts } }
+                );
+            } else {
+                // No default exists, just remove the deleted prompt
+                await this.getCourseCollection().updateOne(
+                    { id: courseId },
+                    { $set: { collectionOfInitialAssistantPrompts: filteredPrompts } }
+                );
+            }
+        } else {
+            // Just remove the deleted prompt
+            await this.getCourseCollection().updateOne(
+                { id: courseId },
+                { $set: { collectionOfInitialAssistantPrompts: filteredPrompts } }
+            );
+        }
     }
 
     /**
@@ -2048,5 +2091,62 @@ export class EngEAI_MongoDB {
             { id: courseId },
             { $set: { collectionOfInitialAssistantPrompts: updatedPrompts } }
         );
+    }
+
+    /**
+     * Ensure the default prompt exists for a course
+     * Creates it if missing, and selects it if no other prompt is selected
+     * @param courseId - The course ID
+     * @param courseName - The course name (for logging)
+     */
+    public ensureDefaultPromptExists = async (courseId: string, courseName?: string): Promise<void> => {
+        const course = await this.getActiveCourse(courseId);
+        if (!course) {
+            throw new Error(`Course with id ${courseId} not found`);
+        }
+
+        const prompts = (course as unknown as activeCourse).collectionOfInitialAssistantPrompts || [];
+        
+        // Check if default prompt already exists
+        const defaultPrompt = prompts.find(p => p.isDefault || p.id === DEFAULT_PROMPT_ID);
+        
+        if (!defaultPrompt) {
+            // Create default prompt
+            const newDefaultPrompt: InitialAssistantPrompt = {
+                id: DEFAULT_PROMPT_ID,
+                title: 'Default Welcome Message',
+                content: INITIAL_ASSISTANT_MESSAGE,
+                dateCreated: new Date(),
+                isSelected: prompts.length === 0 || !prompts.some(p => p.isSelected), // Select if no other prompt is selected
+                isDefault: true
+            };
+
+            prompts.push(newDefaultPrompt);
+
+            await this.getCourseCollection().updateOne(
+                { id: courseId },
+                { $set: { collectionOfInitialAssistantPrompts: prompts } }
+            );
+
+            console.log(`✅ Created default prompt for course: ${courseName || courseId}`);
+        } else {
+            // Default exists, but ensure it's selected if no other prompt is selected
+            const hasSelectedPrompt = prompts.some(p => p.isSelected && !p.isDefault && p.id !== DEFAULT_PROMPT_ID);
+            
+            if (!hasSelectedPrompt && !defaultPrompt.isSelected) {
+                // No other prompt is selected, select the default
+                const updatedPrompts = prompts.map(p => ({
+                    ...p,
+                    isSelected: (p.isDefault || p.id === DEFAULT_PROMPT_ID) ? true : false
+                }));
+
+                await this.getCourseCollection().updateOne(
+                    { id: courseId },
+                    { $set: { collectionOfInitialAssistantPrompts: updatedPrompts } }
+                );
+
+                console.log(`✅ Auto-selected default prompt for course: ${courseName || courseId}`);
+            }
+        }
     }
 }

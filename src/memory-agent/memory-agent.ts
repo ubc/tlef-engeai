@@ -160,6 +160,58 @@ export class MemoryAgent {
     }
 
     /**
+     * Remove a struggle word for a user
+     * Removes the specified word from the user's struggle topics list
+     * 
+     * @param userId - The user ID
+     * @param courseName - The course name
+     * @param wordToRemove - The struggle word to remove
+     */
+    public async removeStruggleWord(userId: string, courseName: string, wordToRemove: string): Promise<void> {
+        try {
+            // Validate userId
+            if (!userId || userId === '') {
+                console.warn(`[MEMORY-AGENT] ⚠️ Invalid userId: ${userId}, skipping struggle word removal`);
+                return;
+            }
+            
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            
+            // Ensure memory agent entry exists
+            await this.ensureMemoryAgentEntryExists(userId, courseName);
+            
+            // Get existing struggle words
+            const existingEntry = await mongoDB.getMemoryAgentEntry(courseName, userId);
+            const existingWords = existingEntry?.struggleTopics || [];
+            
+            // Normalize word for comparison
+            const normalizeWord = (word: string): string => {
+                return word.trim().toLowerCase();
+            };
+            
+            const normalizedWordToRemove = normalizeWord(wordToRemove);
+            const normalizedExisting = existingWords.map(normalizeWord);
+            
+            // Filter out the word to remove (case-insensitive)
+            const remainingWords = normalizedExisting.filter(word => word !== normalizedWordToRemove);
+            
+            // If word wasn't found, log and return
+            if (remainingWords.length === normalizedExisting.length) {
+                console.log(`[MEMORY-AGENT] ℹ️ Struggle word "${wordToRemove}" not found for userId: ${userId}. Nothing to remove.`);
+                return;
+            }
+            
+            // Update in database with remaining words
+            await mongoDB.updateMemoryAgentStruggleWords(courseName, userId, remainingWords);
+            
+            console.log(`[MEMORY-AGENT] ✅ Removed struggle word "${wordToRemove}" for userId: ${userId}. Remaining: ${remainingWords.length} words (was ${normalizedExisting.length})`);
+        } catch (error) {
+            console.error(`[MEMORY-AGENT] 🚨 Error removing struggle word:`, error);
+            throw error;
+        }
+    }
+
+    /**
      * Log the LLM invocation for memory agent analysis
      * Saves the system and user messages, and optionally the LLM response, to a file for debugging
      * 

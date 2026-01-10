@@ -26,12 +26,13 @@ import { AppConfig } from '../routes/config';
 import { RAGModule, RetrievedChunk } from 'ubc-genai-toolkit-rag';
 import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
 import { IDGenerator } from './unique-id-generator';
-import { ChatMessage, LearningObjective, TopicOrWeekInstance, TopicOrWeekItem, activeCourse } from './types';
+import { ChatMessage, LearningObjective, TopicOrWeekInstance, TopicOrWeekItem, activeCourse, DEFAULT_PROMPT_ID } from './types';
 import { EngEAI_MongoDB } from './EngEAI_MongoDB';
 import { 
     getSystemPrompt, 
     getInitialAssistantMessage, 
-    formatRAGPrompt
+    formatRAGPrompt,
+    INITIAL_ASSISTANT_MESSAGE
 } from './chat-prompts';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import { isDeveloperMode, generateMockStreamingResponse } from './developer-mode';
@@ -778,7 +779,7 @@ export class ChatApp {
      * @return the message object, so this message can be passed to the client when initiate a chat
      */
     private async addDefaultAssistantMessage(chatId: string, courseName?: string): Promise<ChatMessage> {
-        let defaultMessageText: string;
+        let defaultMessageText: string = INITIAL_ASSISTANT_MESSAGE; // Default fallback
         
         // Try to retrieve selected initial assistant prompt from course
         if (courseName) {
@@ -786,41 +787,26 @@ export class ChatApp {
                 const mongoDB = await EngEAI_MongoDB.getInstance();
                 const course = await mongoDB.getCourseByName(courseName);
                 
-                //START DEBUG LOG : DEBUG-CODE(CHAT-INIT-PROMPT-001)
-                console.log(`🔍 [CHAT-INIT] Looking for selected prompt for course: ${courseName}`);
-                console.log(`🔍 [CHAT-INIT] Course found:`, course ? 'Yes' : 'No');
-                //END DEBUG LOG : DEBUG-CODE(CHAT-INIT-PROMPT-001)
-                
                 if (!course) {
-                    //START DEBUG LOG : DEBUG-CODE(CHAT-INIT-PROMPT-005)
-                    console.log(`⚠️ [CHAT-INIT] Course not found for courseName: ${courseName}`);
-                    //END DEBUG LOG : DEBUG-CODE(CHAT-INIT-PROMPT-005)
-                    defaultMessageText = getInitialAssistantMessage();
+                    console.log(`⚠️ [CHAT-INIT] Course not found for courseName: ${courseName}, using default message`);
                 } else {
                     const courseData = course as unknown as activeCourse;
                     const courseId = courseData.id;
                     
-                    //START DEBUG LOG : DEBUG-CODE(CHAT-INIT-PROMPT-002)
-                    console.log(`🔍 [CHAT-INIT] Course ID: ${courseId}`);
-                    //END DEBUG LOG : DEBUG-CODE(CHAT-INIT-PROMPT-002)
-                    
-                    // Every course should have an ID - if missing, it's a data integrity issue
                     if (!courseId) {
                         console.error(`❌ [CHAT-INIT] Course found but courseId is missing for courseName: ${courseName}. This indicates a data integrity issue.`);
-                        defaultMessageText = getInitialAssistantMessage();
                     } else {
-                        const selectedPrompt = await mongoDB.getSelectedInitialAssistantPrompt(courseId);
+                        // Ensure default prompt exists
+                        await mongoDB.ensureDefaultPromptExists(courseId, courseName);
                         
-                        //START DEBUG LOG : DEBUG-CODE(CHAT-INIT-PROMPT-003)
-                        console.log(`🔍 [CHAT-INIT] Selected prompt found:`, selectedPrompt ? `"${selectedPrompt.title}"` : 'None');
-                        //END DEBUG LOG : DEBUG-CODE(CHAT-INIT-PROMPT-003)
+                        // Get selected prompt
+                        const selectedPrompt = await mongoDB.getSelectedInitialAssistantPrompt(courseId);
                         
                         if (selectedPrompt && selectedPrompt.content) {
                             defaultMessageText = selectedPrompt.content;
                             console.log(`✅ Using selected initial assistant prompt: "${selectedPrompt.title}"`);
                         } else {
                             // Fall back to default if no prompt selected
-                            defaultMessageText = getInitialAssistantMessage();
                             console.log('ℹ️ No selected initial assistant prompt found, using default');
                         }
                     }
@@ -828,10 +814,7 @@ export class ChatApp {
             } catch (error) {
                 console.error('❌ Error retrieving selected initial assistant prompt:', error);
                 // Fall back to default on error
-                defaultMessageText = getInitialAssistantMessage();
             }
-        } else {
-            defaultMessageText = getInitialAssistantMessage();
         }
         
         // Generate message ID using the first 10 words, chatID, and current date

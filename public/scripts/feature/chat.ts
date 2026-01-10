@@ -1441,6 +1441,87 @@ export class ChatManager {
                 this.openDisclaimerModal();
             }
         });
+        
+        // Use event delegation to handle questionUnstruggle button clicks
+        document.addEventListener('click', async (e) => {
+            const target = e.target as HTMLElement;
+            const unstruggleBtn = target.closest('.question-unstruggle-btn') as HTMLButtonElement | null;
+            
+            if (unstruggleBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const topic = unstruggleBtn.dataset.topic;
+                const response = unstruggleBtn.dataset.response; // "True" or "False"
+                const messageId = unstruggleBtn.dataset.messageId;
+                
+                if (!topic || !response || !messageId) {
+                    console.error('❌ Missing data attributes on unstruggle button');
+                    return;
+                }
+                
+                // Check if previous bot message has the same topic
+                const activeChat = this.chats.find(c => c.id === this.activeChatId);
+                if (!activeChat) {
+                    console.error('❌ No active chat found');
+                    return;
+                }
+                
+                // Find the last bot message
+                const lastBotMessage = [...activeChat.messages]
+                    .reverse()
+                    .find(msg => msg.sender === 'bot');
+                
+                if (!lastBotMessage || !lastBotMessage.text.includes(`<questionUnstruggle`) || !lastBotMessage.text.includes(`Topic="${topic}"`)) {
+                    // Previous message doesn't match - treat as regular message (ignore)
+                    console.log('⚠️ Unstruggle button clicked but previous message doesn\'t match. Ignoring.');
+                    return;
+                }
+                
+                // Disable buttons to prevent multiple clicks
+                const container = unstruggleBtn.closest('.question-unstruggle-container') as HTMLElement;
+                if (container) {
+                    const buttons = container.querySelectorAll('.question-unstruggle-btn');
+                    buttons.forEach(btn => {
+                        (btn as HTMLButtonElement).disabled = true;
+                        btn.classList.add('disabled');
+                    });
+                }
+                
+                // Format message to send to backend
+                const formattedMessage = `<questionUnstruggle Topic="${topic}" Response="${response}">`;
+                
+                // Send message to backend
+                try {
+                    await this.sendMessage(
+                        formattedMessage,
+                        undefined, // No streaming callback
+                        undefined, // No completion callback
+                        (error) => {
+                            console.error('❌ Error sending unstruggle response:', error);
+                            // Re-enable buttons on error
+                            if (container) {
+                                const buttons = container.querySelectorAll('.question-unstruggle-btn');
+                                buttons.forEach(btn => {
+                                    (btn as HTMLButtonElement).disabled = false;
+                                    btn.classList.remove('disabled');
+                                });
+                            }
+                        }
+                    );
+                } catch (error) {
+                    console.error('❌ Error sending unstruggle response:', error);
+                    // Re-enable buttons on error
+                    if (container) {
+                        const buttons = container.querySelectorAll('.question-unstruggle-btn');
+                        buttons.forEach(btn => {
+                            (btn as HTMLButtonElement).disabled = false;
+                            btn.classList.remove('disabled');
+                        });
+                    }
+                }
+            }
+        });
     }
 
     private handleSendMessage(): void {

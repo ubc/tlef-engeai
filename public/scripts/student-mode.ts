@@ -13,7 +13,8 @@ import {
     getStudentViewFromURL, 
     getChatIdFromURL,
     navigateToStudentView,
-    navigateToStudentChat
+    navigateToStudentChat,
+    isStudentOnboardingURL
 } from './utils/url-parser.js';
 
 // Authentication check function
@@ -55,7 +56,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         if (!courseUser) {
             console.error('[STUDENT-MODE] ❌ No course user found');
-            window.location.href = '/pages/course-selection.html';
+            window.location.href = '/course-selection';
             return;
         }
         
@@ -72,28 +73,42 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         
-        // Check onboarding status
-        if (!courseUser.userOnboarding) {
-            console.log('[STUDENT-MODE] 🎓 User needs onboarding');
+        // Check if we're on an onboarding URL
+        if (isStudentOnboardingURL()) {
+            console.log('[STUDENT-MODE] 🎓 Onboarding URL detected');
             
             // Preserve URL state for after onboarding (using closure variable)
-            const intendedView = viewFromURL || 'chat';
-            const intendedChatId = chatIdFromURL || null;
+            const intendedView = 'chat'; // Default to chat after onboarding
+            const intendedChatId = null;
             
             // Trigger onboarding
             await renderStudentOnboarding(courseUser);
             
             // Listen for onboarding completion event
             window.addEventListener('onboarding-completed', async (event: any) => {
-                console.log('[STUDENT-MODE] ✅ Onboarding completed, restoring URL state...');
+                console.log('[STUDENT-MODE] ✅ Onboarding completed, redirecting to main interface...');
                 const completedUser = event.detail.user || courseUser;
                 completedUser.userOnboarding = true;
                 
-                // Initialize chat interface with URL state
-                await initializeChatInterface(completedUser, { view: intendedView, chatId: intendedChatId });
+                // Redirect to main student interface
+                const courseId = getCourseIdFromURL();
+                if (courseId) {
+                    window.location.href = `/course/${courseId}/student`;
+                } else {
+                    // Fallback: initialize chat interface
+                    await initializeChatInterface(completedUser, { view: intendedView, chatId: intendedChatId });
+                }
             });
             
             return; // Stop execution here - onboarding will handle completion
+        } else if (!courseUser.userOnboarding) {
+            // User needs onboarding but not on onboarding URL - redirect to onboarding
+            console.log('[STUDENT-MODE] 🎓 User needs onboarding, redirecting...');
+            const courseId = getCourseIdFromURL();
+            if (courseId) {
+                window.location.href = `/course/${courseId}/student/onboarding/student`;
+            }
+            return;
         } else {
             console.log('[STUDENT-MODE] ✅ User already onboarded');
             // Pass URL state to initializeChatInterface
@@ -102,7 +117,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
     } catch (error) {
         console.error('[STUDENT-MODE] ❌ Error initializing student mode:', error);
-        window.location.href = '/pages/course-selection.html';
+        window.location.href = '/course-selection';
     }
 });
 

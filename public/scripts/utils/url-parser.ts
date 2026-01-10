@@ -152,3 +152,81 @@ export function navigateToStudentChat(courseId: string, chatId: string): void {
     window.dispatchEvent(new PopStateEvent('popstate', { state: { view: 'chat', chatId } }));
 }
 
+// ===========================================
+// ONBOARDING URL PARSER FUNCTIONS
+// ===========================================
+
+/**
+ * Extract instructor onboarding stage from current URL
+ * Example: /course/abc123/instructor/onboarding/course-setup -> 'course-setup'
+ * Returns null if not on an onboarding URL
+ */
+export function getInstructorOnboardingStageFromURL(): 'course-setup' | 'document-setup' | 'flag-setup' | 'monitor-setup' | null {
+    const pathMatch = window.location.pathname.match(/^\/course\/[a-f0-9]{12}\/instructor\/onboarding\/([^\/]+)/);
+    if (!pathMatch) return null;
+    
+    const stage = pathMatch[1];
+    const validStages: Array<'course-setup' | 'document-setup' | 'flag-setup' | 'monitor-setup'> = 
+        ['course-setup', 'document-setup', 'flag-setup', 'monitor-setup'];
+    return validStages.includes(stage as any) ? stage as any : null;
+}
+
+/**
+ * Check if current URL is a student onboarding URL
+ * Example: /course/abc123/student/onboarding/student -> true
+ */
+export function isStudentOnboardingURL(): boolean {
+    return /^\/course\/[a-f0-9]{12}\/student\/onboarding\/student$/.test(window.location.pathname);
+}
+
+/**
+ * Build instructor onboarding URL
+ */
+export function buildInstructorOnboardingURL(courseId: string, stage: 'course-setup' | 'document-setup' | 'flag-setup' | 'monitor-setup'): string {
+    return `/course/${courseId}/instructor/onboarding/${stage}`;
+}
+
+/**
+ * Build student onboarding URL
+ */
+export function buildStudentOnboardingURL(courseId: string): string {
+    return `/course/${courseId}/student/onboarding/student`;
+}
+
+/**
+ * Navigate to instructor onboarding stage using history.pushState (no page reload)
+ */
+export function navigateToInstructorOnboarding(stage: 'course-setup' | 'document-setup' | 'flag-setup' | 'monitor-setup'): void {
+    const courseId = getCourseIdFromURL();
+    if (!courseId) {
+        console.error('[URL-PARSER] Cannot navigate: courseId not found in URL');
+        return;
+    }
+    
+    const url = buildInstructorOnboardingURL(courseId, stage);
+    
+    // Use pushState for SPA navigation (no page reload)
+    window.history.pushState({ onboardingStage: stage }, '', url);
+    
+    // Trigger popstate event manually to handle navigation
+    window.dispatchEvent(new PopStateEvent('popstate', { state: { onboardingStage: stage } }));
+}
+
+/**
+ * Navigate to student onboarding using history.pushState (no page reload)
+ */
+export function navigateToStudentOnboarding(): void {
+    const courseId = getCourseIdFromURL();
+    if (!courseId) {
+        console.error('[URL-PARSER] Cannot navigate: courseId not found in URL');
+        return;
+    }
+    
+    const url = buildStudentOnboardingURL(courseId);
+    
+    // Use pushState for SPA navigation (no page reload)
+    window.history.pushState({ onboarding: 'student' }, '', url);
+    
+    // Trigger popstate event manually to handle navigation
+    window.dispatchEvent(new PopStateEvent('popstate', { state: { onboarding: 'student' } }));
+}

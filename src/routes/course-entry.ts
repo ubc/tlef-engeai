@@ -172,12 +172,32 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
         let requiresOnboarding = false;
         
         if (globalUser.affiliation === 'student' && !(courseUser as any).userOnboarding) {
-            redirect = `/course/${courseId}/student`;
+            redirect = `/course/${courseId}/student/onboarding/student`;
             requiresOnboarding = true;
             console.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
         } else if (globalUser.affiliation === 'faculty') {
-            redirect = `/course/${courseId}/instructor/documents`;
-            console.log(`[COURSE-ENTRY] Redirecting faculty to instructor documents`);
+            // Check which onboarding stage is incomplete for instructors
+            const courseData = course as any;
+            if (!courseData.courseSetup) {
+                redirect = `/course/${courseId}/instructor/onboarding/course-setup`;
+                requiresOnboarding = true;
+                console.log(`[COURSE-ENTRY] Redirecting faculty to course-setup onboarding`);
+            } else if (!courseData.contentSetup) {
+                redirect = `/course/${courseId}/instructor/onboarding/document-setup`;
+                requiresOnboarding = true;
+                console.log(`[COURSE-ENTRY] Redirecting faculty to document-setup onboarding`);
+            } else if (!courseData.flagSetup) {
+                redirect = `/course/${courseId}/instructor/onboarding/flag-setup`;
+                requiresOnboarding = true;
+                console.log(`[COURSE-ENTRY] Redirecting faculty to flag-setup onboarding`);
+            } else if (!courseData.monitorSetup) {
+                redirect = `/course/${courseId}/instructor/onboarding/monitor-setup`;
+                requiresOnboarding = true;
+                console.log(`[COURSE-ENTRY] Redirecting faculty to monitor-setup onboarding`);
+            } else {
+                redirect = `/course/${courseId}/instructor/documents`;
+                console.log(`[COURSE-ENTRY] Redirecting faculty to instructor documents`);
+            }
         } else {
             redirect = `/course/${courseId}/student`;
             console.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
@@ -369,12 +389,32 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
         let requiresOnboarding = false;
         
         if (globalUser.affiliation === 'student' && !(courseUser as any).userOnboarding) {
-            redirect = `/course/${courseId}/student`;
+            redirect = `/course/${courseId}/student/onboarding/student`;
             requiresOnboarding = true;
             console.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
         } else if (globalUser.affiliation === 'faculty') {
-            redirect = `/course/${courseId}/instructor/documents`;
-            console.log(`[COURSE-ENTRY] Redirecting faculty to instructor documents`);
+            // Check which onboarding stage is incomplete for instructors
+            const courseData = course as any;
+            if (!courseData.courseSetup) {
+                redirect = `/course/${courseId}/instructor/onboarding/course-setup`;
+                requiresOnboarding = true;
+                console.log(`[COURSE-ENTRY] Redirecting faculty to course-setup onboarding`);
+            } else if (!courseData.contentSetup) {
+                redirect = `/course/${courseId}/instructor/onboarding/document-setup`;
+                requiresOnboarding = true;
+                console.log(`[COURSE-ENTRY] Redirecting faculty to document-setup onboarding`);
+            } else if (!courseData.flagSetup) {
+                redirect = `/course/${courseId}/instructor/onboarding/flag-setup`;
+                requiresOnboarding = true;
+                console.log(`[COURSE-ENTRY] Redirecting faculty to flag-setup onboarding`);
+            } else if (!courseData.monitorSetup) {
+                redirect = `/course/${courseId}/instructor/onboarding/monitor-setup`;
+                requiresOnboarding = true;
+                console.log(`[COURSE-ENTRY] Redirecting faculty to monitor-setup onboarding`);
+            } else {
+                redirect = `/course/${courseId}/instructor/documents`;
+                console.log(`[COURSE-ENTRY] Redirecting faculty to instructor documents`);
+            }
         } else {
             redirect = `/course/${courseId}/student`;
             console.log(`[COURSE-ENTRY] Redirecting student to chat interface`);

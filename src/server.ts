@@ -64,7 +64,7 @@ app.get('/pages/instructor-mode.html', (req: any, res: any) => {
     if (currentCourse?.courseId) {
         res.redirect(`/course/${currentCourse.courseId}/instructor/documents`);
     } else {
-        res.redirect('/pages/course-selection.html');
+        res.redirect('/course-selection');
     }
 });
 
@@ -74,14 +74,23 @@ app.get('/pages/student-mode.html', (req: any, res: any) => {
     if (currentCourse?.courseId) {
         res.redirect(`/course/${currentCourse.courseId}/student`);
     } else {
-        res.redirect('/pages/course-selection.html');
+        res.redirect('/course-selection');
     }
+});
+
+// Backward compatibility: Redirect old course-selection.html to new URL structure
+app.get('/pages/course-selection.html', (req: any, res: any) => {
+    res.redirect('/course-selection');
 });
 
 // Course routes (must be before static file serving to catch course routes first)
 app.use('/', courseRoutes);
 
 // Page routes
+app.get('/course-selection', (req: any, res: any) => {
+    res.sendFile(path.join(publicPath, 'pages/course-selection.html'));
+});
+
 app.get('/settings', (req: any, res: any) => {
     res.sendFile(path.join(publicPath, 'pages/settings.html'));
 });

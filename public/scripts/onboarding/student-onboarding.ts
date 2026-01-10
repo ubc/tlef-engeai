@@ -820,6 +820,16 @@ async function handleOnboardingCompletion(user: User): Promise<void> {
  * Redirects to the main student interface
  */
 function redirectToMainInterface(): void {
+    // Get courseId from URL
+    const courseIdMatch = window.location.pathname.match(/^\/course\/([a-f0-9]{12})\//);
+    if (courseIdMatch) {
+        const courseId = courseIdMatch[1];
+        console.log(`[STUDENT-ONBOARDING] Redirecting to main interface: /course/${courseId}/student`);
+        window.location.href = `/course/${courseId}/student`;
+        return;
+    }
+    
+    // Fallback: dispatch event (old behavior)
     // Remove onboarding-active class to show sidebar
     document.body.classList.remove('onboarding-active');
 

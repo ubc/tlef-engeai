@@ -40,6 +40,9 @@ import { asyncHandlerWithAuth } from '../middleware/asyncHandler';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { ChatApp } from '../functions/ChatApp';
 
+import { getRandomYesResponse, getRandomNoResponse } from '../memory-agent/unstruggle-responses';
+import { memoryAgent } from '../memory-agent/memory-agent';
+
 // Load environment variables
 dotenv.config();
 
@@ -411,6 +414,89 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 success: false, 
                 error: 'Chat not found' 
             });
+        }
+
+        // Check if this is a questionUnstruggle response
+        // Format: <questionUnstruggle Topic="topic" Response="True/False">
+        const unstruggleMatch = message.match(/<questionUnstruggle\s+Topic=["']([^"']+)["']\s+Response=["'](True|False)["']\s*>/i);
+        
+        if (unstruggleMatch) {
+            const topic = unstruggleMatch[1];
+            const response = unstruggleMatch[2] === 'True';
+            
+            //START DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-001)
+            console.log(`\n🔄 PROCESSING UNSTRUGGLE RESPONSE:`);
+            console.log(`Topic: ${topic}`);
+            console.log(`Response: ${response ? 'Yes (confident)' : 'No (needs practice)'}`);
+            //END DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-001)
+            
+            // Get chat history to check if previous message has same topic
+            const chatHistory = chatApp.getChatHistory(chatId);
+            const lastBotMessage = chatHistory
+                .filter(msg => msg.sender === 'bot')
+                .pop();
+            
+            // Check if last bot message contains questionUnstruggle with same topic
+            if (lastBotMessage && lastBotMessage.text.includes(`<questionUnstruggle`) && lastBotMessage.text.includes(`Topic="${topic}"`)) {
+                // Import responses
+                let responseText: string;
+                
+                if (response) {
+                    // User is confident - remove struggle word and send yes response
+                    await memoryAgent.removeStruggleWord(userId.toString(), courseName, topic);
+                    responseText = getRandomYesResponse();
+                } else {
+                    // User needs more practice - send no response
+                    responseText = getRandomNoResponse();
+                }
+                
+                // Create messages
+                const currentDate = new Date();
+                const idGenerator = IDGenerator.getInstance();
+                const userMessageId = idGenerator.messageID(message, chatId, currentDate);
+                const assistantMessageId = idGenerator.messageID(responseText, chatId, currentDate);
+                
+                const userMessage: ChatMessage = {
+                    id: userMessageId,
+                    sender: 'user',
+                    userId: userId,
+                    courseName: courseName,
+                    text: message,
+                    timestamp: Date.now()
+                };
+                
+                const assistantMessage: ChatMessage = {
+                    id: assistantMessageId,
+                    sender: 'bot',
+                    userId: userId,
+                    courseName: courseName,
+                    text: responseText,
+                    timestamp: Date.now()
+                };
+                
+                // Save to MongoDB
+                try {
+                    await mongoDB.addMessageToChat(courseName, userId, chatId, userMessage);
+                    await mongoDB.addMessageToChat(courseName, userId, chatId, assistantMessage);
+                    //START DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-002)
+                    console.log('✅ Unstruggle messages saved to MongoDB');
+                    //END DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-002)
+                } catch (dbError) {
+                    console.error('⚠️ WARNING: Failed to save unstruggle messages to MongoDB:', dbError);
+                }
+                
+                // Return response without sending to LLM
+                return res.json({
+                    success: true,
+                    userMessage: userMessage,
+                    assistantMessage: assistantMessage
+                });
+            } else {
+                // Previous message doesn't match - treat as regular message
+                //START DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-003)
+                console.log('⚠️ Unstruggle format detected but previous message doesn\'t match topic. Treating as regular message.');
+                //END DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-003)
+            }
         }
 
         // REAL AI COMMUNICATION (NO STREAMING - WAIT FOR COMPLETE RESPONSE)
