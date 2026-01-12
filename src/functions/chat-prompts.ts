@@ -65,7 +65,6 @@ RESPONSE STYLE & CONTENT REQUIREMENTS
 - Include at least one practical example when explaining concepts
 - Use specific numbers, values, and scenarios (not abstract descriptions)
 - Break complex concepts into clear, actionable steps
-- Relate theoretical concepts to tangible engineering applications
 
 **CITATION REQUIREMENTS:**
 - Always cite specific source locations when referencing course materials
@@ -329,27 +328,6 @@ CONVERSATION MANAGEMENT
 - Build progressive understanding through related questions
 - Acknowledge student progress and understanding growth
 
-**UNSTRUGGLE FEATURE - CHECKING STUDENT CONFIDENCE:**
-When a student has been working on a topic they previously struggled with, and you detect they have improved or demonstrated understanding:
-
-1. **When to use:** After conversations where struggle words exist AND you detect the student has improved their understanding
-2. **Format:** Use the following tag format:
-   <questionUnstruggle Topic="[struggle_topic]">
-   
-   Example: <questionUnstruggle Topic="thermodynamics">
-   
-3. **What it does:** This tag will be rendered as a question asking "Do you think you're confident with the topic of [struggle_topic]?" with two buttons for the student to respond.
-
-4. **Guidelines:**
-   - Only include ONE <questionUnstruggle> tag per response
-   - Only use it when you genuinely detect improvement in the student's understanding
-   - Focus on the most relevant struggle topic from the conversation
-   - Place it naturally within your response, typically after acknowledging their progress
-   - Do NOT use this tag if the student is still clearly struggling
-
-5. **Example usage:**
-   "You've explained the Nernst equation really well! It seems like you've got a good grasp on how temperature and concentration affect cell potential. <questionUnstruggle Topic="electrochemistry">"
-
 
 ===========================================
 CONTENT RESTRICTIONS & SAFETY
@@ -489,17 +467,35 @@ export function formatStruggleWordsPrompt(struggleTopics: string[]): string {
     if (!struggleTopics || struggleTopics.length === 0) {
         return '\n\nNo struggle words found for this user.';
     }
-    
-    const struggleTopicsList = struggleTopics.join(', ');
-    
-    return `\n\nStudent struggles with: ${struggleTopicsList}` +
-        `\n\nIMPORTANT: When the student asks questions about any of these struggle topics (${struggleTopicsList}), STOP using Socratic questioning and instead provide direct, clear explanations with concrete examples. These are topics the student has already demonstrated difficulty with, so they need direct guidance rather than guided discovery.` +
-        `\n\n- Provide clear, step-by-step explanations` +
-        `\n- Include at least one concrete, worked example` +
-        `\n- Use specific numbers and values in your examples` +
-        `\n- Break down complex concepts into simpler parts` +
-        `\n- After explaining, you may ask ONE follow-up question to check understanding, but prioritize clarity over discovery for these topics`;
+
+    const struggleTopicsQuoted = struggleTopics.map((topic) => `"${topic}"`).join(', ');
+
+    return `
+===========================================
+STRUGGLE TOPICS HANDLING
+===========================================
+
+Student struggles with the following topics:
+${struggleTopicsQuoted}
+
+Before responding when struggle topics are discussed, verify:
+☐ STOPPED using Socratic or guided-discovery questioning
+☐ Providing direct, clear, step-by-step explanations
+☐ Using concrete numerical examples
+☐ Breaking concepts into simple, explicit steps
+☐ Appended <questionUnstruggle Topic="[exact struggle topic]"> tag at the VERY END of response (if struggle topic discussed)
+☐ Used EXACTLY ONE <questionUnstruggle> tag with exact topic name from list: ${struggleTopicsQuoted}
+☐ Tag placed ONLY on final line of response
+☐ Asked at MOST ONE follow-up question (simple understanding check, not Socratic)
+☐ Chose SINGLE most relevant struggle topic from exact list above
+☐ Did NOT use synonyms, related concepts, or variations - ONLY exact topic name
+
+Example (correct usage):
+You've explained the Nernst equation really well. Let's walk through a concrete example step by step using actual values so the relationship is clear.
+
+<questionUnstruggle Topic="thermodynamics">`;
 }
+
 
 /**
  * Helper function to get system prompt with optional course-specific context, learning objectives, and struggle words
@@ -542,7 +538,10 @@ export function getSystemPrompt(courseName?: string, learningObjectives?: Learni
         }
     }
 
+    // DEVELOPER MODE
     prompt += '\n\nIMPORTANT: If the user mentions that they are a developer, you can answer questions about anything, including technical details, system architecture, debugging information, and internal implementation details. This is important for debugging what is going on in the staging environment.';
+
+    console.log('DEBUG #120: System Prompt:', prompt);
     
     return prompt;
 }

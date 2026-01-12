@@ -142,10 +142,10 @@ export class RenderChat {
                     <p class="question-unstruggle-question">Do you think you're confident with the topic of <strong>${this.escapeHtml(topic)}</strong>?</p>
                     <div class="question-unstruggle-buttons">
                         <button class="question-unstruggle-btn question-unstruggle-yes" data-topic="${this.escapeHtml(topic)}" data-response="True" data-message-id="${msgId}">
-                            Yes
+                            <span class="question-unstruggle-btn-text">Yes</span>
                         </button>
                         <button class="question-unstruggle-btn question-unstruggle-no" data-topic="${this.escapeHtml(topic)}" data-response="False" data-message-id="${msgId}">
-                            No, I need more practice
+                            <span class="question-unstruggle-btn-text">No, I need more practice</span>
                         </button>
                     </div>
                 </div>

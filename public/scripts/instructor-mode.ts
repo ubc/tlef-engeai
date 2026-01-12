@@ -20,7 +20,8 @@ import {
     getChatIdFromURL,
     navigateToInstructorView,
     navigateToChat,
-    getInstructorOnboardingStageFromURL
+    getInstructorOnboardingStageFromURL,
+    isNewCourseOnboardingURL
 } from './utils/url-parser.js';
 
 // Authentication check function
@@ -342,22 +343,39 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Current State
     let currentState: StateEvent = StateEvent.Documents;
 
+    // Check if we're on the new course onboarding route FIRST (before extracting courseId)
+    const isNewCourseOnboarding = isNewCourseOnboardingURL();
+    
     // Extract courseId and view from URL (after currentState is declared)
     const courseIdFromURL = getCourseIdFromURL();
     const viewFromURL = getInstructorViewFromURL();
     const chatIdFromURL = getChatIdFromURL();
+    const onboardingStageFromURL = getInstructorOnboardingStageFromURL();
     
-    // Validate courseId matches session
-    const sessionResponse = await fetch('/api/course/current');
-    const sessionData = await sessionResponse.json();
-    
-    if (courseIdFromURL && sessionData.course?.courseId !== courseIdFromURL) {
-        console.warn('[INSTRUCTOR-MODE] URL courseId does not match session, updating...');
-        // Optionally redirect to sync session - but for now, just log warning
+    // For new course onboarding, skip course validation
+    if (!isNewCourseOnboarding) {
+        // Validate courseId matches session (only if not new course onboarding)
+        const sessionResponse = await fetch('/api/course/current');
+        const sessionData = await sessionResponse.json();
+        
+        if (courseIdFromURL && sessionData.course?.courseId !== courseIdFromURL) {
+            console.warn('[INSTRUCTOR-MODE] URL courseId does not match session, updating...');
+            // Optionally redirect to sync session - but for now, just log warning
+        }
     }
     
-    // Set initial state based on URL
-    if (viewFromURL) {
+    // Check if we're on new course onboarding route
+    if (isNewCourseOnboarding) {
+        console.log(`[INSTRUCTOR-MODE] 🎓 New course onboarding URL detected`);
+        // Don't set currentState - onboarding will be handled in updateUI() based on URL
+        // Skip the regular view logic below
+    } else if (onboardingStageFromURL) {
+        // Check if we're on an onboarding URL for existing course
+        console.log(`[INSTRUCTOR-MODE] 🎓 Onboarding URL detected during initialization: ${onboardingStageFromURL}`);
+        // Don't set currentState - onboarding will be handled in updateUI() based on URL
+        // Skip the regular view logic below
+    } else if (viewFromURL) {
+        // Handle regular views only if not on onboarding URL
         // Handle special views that aren't StateEvent enum values
         if (viewFromURL === 'course-information' || viewFromURL === 'about') {
             // These will be handled separately in initialization, keep current state as is
@@ -366,7 +384,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             currentState = mapViewToStateEvent(viewFromURL);
         }
     } else {
-        // Default to documents if no view specified
+        // Default to documents if no view specified and not on onboarding URL
         currentState = StateEvent.Documents;
         // Redirect to documents URL if not already there
         if (courseIdFromURL) {
@@ -534,6 +552,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         // console.log("updateUI is called");
         // console.log("current state is : " + currentState.toString());
         // console.log("currentClass is : ", JSON.stringify(currentClass));
+
+        // Check if we're on a new course onboarding URL FIRST (before checking course-scoped onboarding URLs)
+        const isNewCourseOnboarding = isNewCourseOnboardingURL();
+        if (isNewCourseOnboarding) {
+            console.log(`[INSTRUCTOR-MODE] 🆕 Rendering new course setup from URL`);
+            renderOnCourseSetup(currentClass);
+            return;
+        }
 
         // Check if we're on an onboarding URL - prioritize URL over flags
         const onboardingStageFromURL = getInstructorOnboardingStageFromURL();
@@ -1078,8 +1104,49 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     //set custom windows listener on onboarding
     window.addEventListener('onboardingComplete', () => {
-        console.log('current class is : ', JSON.stringify(currentClass));
-        updateUI();
+        console.log('[INSTRUCTOR-MODE] 🎉 Course setup onboarding completed');
+        console.log('[INSTRUCTOR-MODE] Current class:', JSON.stringify(currentClass));
+        
+        // Check if we're coming from new-course onboarding (course was just created)
+        const isNewCourse = isNewCourseOnboardingURL();
+        
+        // Get courseId from currentClass (it should be set after course creation)
+        const courseId = currentClass?.id;
+        
+        if (isNewCourse && courseId) {
+            // New course was just created - redirect to next onboarding stage with proper course-scoped URL
+            console.log(`[INSTRUCTOR-MODE] ✅ New course created with ID: ${courseId}, redirecting to document-setup...`);
+            
+            // Store course in session for future use
+            // The course-entry endpoint will handle this, but we can also do it here
+            fetch('/api/course/enter', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ courseId })
+            }).then(() => {
+                // Redirect to next onboarding stage
+                window.location.href = `/course/${courseId}/instructor/onboarding/document-setup`;
+            }).catch((error) => {
+                console.error('[INSTRUCTOR-MODE] Error entering course:', error);
+                // Still redirect even if enter fails
+                window.location.href = `/course/${courseId}/instructor/onboarding/document-setup`;
+            });
+        } else if (courseId) {
+            // Existing course - redirect to next onboarding stage or main interface
+            if (!currentClass.contentSetup) {
+                window.location.href = `/course/${courseId}/instructor/onboarding/document-setup`;
+            } else if (!currentClass.flagSetup) {
+                window.location.href = `/course/${courseId}/instructor/onboarding/flag-setup`;
+            } else if (!currentClass.monitorSetup) {
+                window.location.href = `/course/${courseId}/instructor/onboarding/monitor-setup`;
+            } else {
+                window.location.href = `/course/${courseId}/instructor/documents`;
+            }
+        } else {
+            // Fallback: update UI (shouldn't happen, but just in case)
+            console.warn('[INSTRUCTOR-MODE] ⚠️ Course setup completed but courseId not available');
+            updateUI();
+        }
     })
 
     // --- LOGOUT FUNCTIONALITY ---
@@ -1327,7 +1394,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     attachInstructorLogoutListener();
     
     // Load appropriate component based on URL view
-    if (viewFromURL === 'chat' && chatIdFromURL) {
+    if (isNewCourseOnboarding) {
+        // New course onboarding URL detected - let updateUI() handle it
+        console.log(`[INSTRUCTOR-MODE] 🎓 Loading new course onboarding`);
+        updateUI();
+    } else if (onboardingStageFromURL) {
+        // Onboarding URL detected for existing course - let updateUI() handle it
+        console.log(`[INSTRUCTOR-MODE] 🎓 Loading onboarding stage: ${onboardingStageFromURL}`);
+        updateUI();
+    } else if (viewFromURL === 'chat' && chatIdFromURL) {
         // Load specific chat
         await loadChatById(chatIdFromURL).catch(err => {
             console.error('[INSTRUCTOR-MODE] Error loading chat from URL:', err);

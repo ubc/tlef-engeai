@@ -230,3 +230,11 @@ export function navigateToStudentOnboarding(): void {
     // Trigger popstate event manually to handle navigation
     window.dispatchEvent(new PopStateEvent('popstate', { state: { onboarding: 'student' } }));
 }
+
+/**
+ * Check if current URL is the new course onboarding route
+ * Example: /instructor/onboarding/new-course -> true
+ */
+export function isNewCourseOnboardingURL(): boolean {
+    return window.location.pathname === '/instructor/onboarding/new-course';
+}

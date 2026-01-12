@@ -9,7 +9,7 @@
  * @since: 2025-01-27
  */
 
-import { activeCourse, InitialAssistantPrompt, DEFAULT_PROMPT_ID } from '../../../src/functions/types';
+import { activeCourse, InitialAssistantPrompt, DEFAULT_PROMPT_ID } from '../../../src/functions/types.js';
 import { renderFeatherIcons } from '../functions/api.js';
 import { showConfirmModal, showSimpleErrorModal, showSuccessModal, showErrorModal } from '../modal-overlay.js';
 
@@ -254,13 +254,6 @@ function setupCardEventListeners(promptId: string): void {
             titleChanged = true;
         });
 
-        titleField.addEventListener('blur', async () => {
-            if (titleChanged && editingPromptId === promptId) {
-                // Auto-save on blur if in edit mode
-                await handleSavePrompt(promptId);
-            }
-        });
-
         titleField.addEventListener('keydown', (e: KeyboardEvent) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -278,13 +271,6 @@ function setupCardEventListeners(promptId: string): void {
 
         contentField.addEventListener('input', () => {
             contentChanged = true;
-        });
-
-        contentField.addEventListener('blur', async () => {
-            if (contentChanged && editingPromptId === promptId) {
-                // Auto-save on blur if in edit mode
-                await handleSavePrompt(promptId);
-            }
         });
 
         contentField.addEventListener('keydown', (e: KeyboardEvent) => {

@@ -771,7 +771,12 @@ export class ChatManager {
         });
 
         this.lastRenderedMessageCount = activeChat.messages.length;
-        this.scrollToBottom();
+        
+        // Wait for LaTeX rendering to complete before scrolling
+        // LaTeX rendering is asynchronous and can change element heights
+        // Delay ensures layout is stable before scrolling
+        this.scrollToBottom(150);
+        
         this.renderPinnedBanner(activeChat);
         renderFeatherIcons();
     }
@@ -821,7 +826,15 @@ export class ChatManager {
         });
 
         this.lastRenderedMessageCount = activeChat.messages.length;
-        this.scrollToBottom();
+        
+        // Wait for LaTeX rendering to complete before scrolling
+        // Only delay if we added new messages (they need LaTeX rendering time)
+        if (this.domMessageIds.size > 0) {
+            this.scrollToBottom(150);
+        } else {
+            this.scrollToBottom();
+        }
+        
         this.renderPinnedBanner(activeChat);
         renderFeatherIcons();
     }
@@ -974,18 +987,29 @@ export class ChatManager {
     }
 
     /**
-     * Scroll to bottom of chat
+     * Scroll to bottom of chat instantly (no animation)
+     * Waits for LaTeX rendering to complete before scrolling to avoid layout shifts
      */
-    public scrollToBottom(): void {
+    public scrollToBottom(delay: number = 0): void {
         const scrollContainer = document.getElementById('message-area') as HTMLElement | null;
         if (!scrollContainer) return;
-        requestAnimationFrame(() => {
-            try {
-                scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
-            } catch {
-                scrollContainer.scrollTop = scrollContainer.scrollHeight;
-            }
-        });
+        
+        const performScroll = () => {
+            // Wait for layout to stabilize (LaTeX rendering, markdown processing)
+            // Then instantly jump to bottom (no smooth animation)
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    // Use instant scroll (no animation) - directly set scrollTop
+                    scrollContainer.scrollTop = scrollContainer.scrollHeight;
+                });
+            });
+        };
+        
+        if (delay > 0) {
+            setTimeout(performScroll, delay);
+        } else {
+            performScroll();
+        }
     }
 
     /**
@@ -1488,8 +1512,13 @@ export class ChatManager {
                     });
                 }
                 
-                // Format message to send to backend
-                const formattedMessage = `<questionUnstruggle Topic="${topic}" Response="${response}">`;
+                // Format natural language message to send to backend
+                // Yes: "yes, I am confident with [topic]"
+                // No: "I might need some practice with [topic]"
+                const isConfident = response === 'True';
+                const formattedMessage = isConfident 
+                    ? `yes, I am confident with "${topic}"`
+                    : `I might need some practice with "${topic}"`;
                 
                 // Send message to backend
                 try {

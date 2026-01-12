@@ -96,6 +96,41 @@ function serveInstructorShell() {
 }
 
 /**
+ * Middleware: Validate authentication only (for new course onboarding)
+ * 
+ * Ensures:
+ * - User is authenticated
+ * - User is faculty (instructor)
+ * Does NOT check course existence (course doesn't exist yet)
+ */
+async function validateInstructorAuth(req: Request, res: Response, next: express.NextFunction) {
+    try {
+        const user = (req as any).user;
+        
+        if (!user) {
+            return res.status(401).redirect('/auth/login');
+        }
+        
+        // Check if user is faculty
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const globalUser = await mongoDB.findGlobalUserByPUID(user.puid);
+        
+        if (!globalUser) {
+            return res.status(401).redirect('/auth/login');
+        }
+        
+        if (globalUser.affiliation !== 'faculty') {
+            return res.status(403).send('Access denied: Only instructors can create new courses');
+        }
+        
+        next();
+    } catch (error) {
+        console.error('[COURSE-ROUTES] Error validating instructor auth:', error);
+        res.status(500).send('Internal server error');
+    }
+}
+
+/**
  * Serve student shell page
  * 
  * All student routes serve the same HTML shell (student-mode.html)
@@ -121,11 +156,14 @@ router.get('/course/:courseId/instructor/assistant-prompts', validateCourseAcces
 router.get('/course/:courseId/instructor/course-information', validateCourseAccess, serveInstructorShell());
 router.get('/course/:courseId/instructor/about', validateCourseAccess, serveInstructorShell());
 
-// Instructor Onboarding Routes
+// Instructor Onboarding Routes (for existing courses)
 router.get('/course/:courseId/instructor/onboarding/course-setup', validateCourseAccess, serveInstructorShell());
 router.get('/course/:courseId/instructor/onboarding/document-setup', validateCourseAccess, serveInstructorShell());
 router.get('/course/:courseId/instructor/onboarding/flag-setup', validateCourseAccess, serveInstructorShell());
 router.get('/course/:courseId/instructor/onboarding/monitor-setup', validateCourseAccess, serveInstructorShell());
+
+// New Course Onboarding Route (no courseId required - course doesn't exist yet)
+router.get('/instructor/onboarding/new-course', validateInstructorAuth, serveInstructorShell());
 
 // Student Routes - All serve the same shell, frontend handles component loading
 router.get('/course/:courseId/student', validateCourseAccess, serveStudentShell());

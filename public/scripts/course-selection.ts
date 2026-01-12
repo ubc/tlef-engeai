@@ -883,41 +883,60 @@ async function handleDownloadDatabase(): Promise<void> {
 
 /**
  * Create a new course object and navigate to instructor mode for onboarding
- * The course will be stored in sessionStorage and loaded by instructor-mode.ts
- * The onboarding will then create the course in the database
+ * Stores temporary course data in sessionStorage and redirects to new-course onboarding route
+ * The course will be created during onboarding, not before
  */
 async function createNewCourseForInstructor(): Promise<void> {
     try {
-        // Create a minimal course object with all setup flags set to false
-        // This will trigger the onboarding flow in instructor-mode.ts
-        const newCourse: any = {
-            id: '', // Will be generated during onboarding
+        console.log('[COURSE-SELECTION] 🚀 Preparing new course onboarding...');
+        
+        // Get current user info to include as instructor
+        const userResponse = await fetch('/auth/current-user');
+        if (!userResponse.ok) {
+            throw new Error('Failed to fetch user data');
+        }
+        
+        const authData = await userResponse.json();
+        if (!authData.authenticated || !authData.globalUser) {
+            throw new Error('User not authenticated');
+        }
+        
+        const currentUser = authData.globalUser;
+        
+        // Create a temporary course object with all setup flags set to false
+        // This will be stored in sessionStorage and loaded by instructor-mode.ts
+        // The course will be created in the database during onboarding completion
+        const tempCourse: any = {
+            id: '', // Will be generated during onboarding when course is created
             date: new Date().toISOString(), // Convert to ISO string for JSON serialization
             courseSetup: false, // This triggers the onboarding
             contentSetup: false,
             flagSetup: false,
             monitorSetup: false,
             courseName: '', // Will be filled during onboarding
-            instructors: [],
+            instructors: [{
+                userId: currentUser.userId,
+                name: currentUser.name
+            }], // Include creator
             teachingAssistants: [],
             frameType: 'byWeek', // Default, will be changed during onboarding
-            tilesNumber: 12, // Will be set during onboarding
+            tilesNumber: 12, // Default, will be set during onboarding
             topicOrWeekInstances: []
         };
         
         // Store in sessionStorage (instructor-mode.ts checks for this)
-        sessionStorage.setItem('debugCourse', JSON.stringify(newCourse));
+        sessionStorage.setItem('debugCourse', JSON.stringify(tempCourse));
         
-        console.log('[COURSE-SELECTION] ✅ Created new course object, navigating to instructor mode...');
+        console.log('[COURSE-SELECTION] ✅ Temporary course data stored, redirecting to onboarding...');
         
-        // Navigate to instructor mode - it will load the course from sessionStorage and trigger onboarding
-        window.location.href = '/pages/instructor-mode.html';
+        // Redirect to new-course onboarding route (no courseId needed)
+        window.location.href = '/instructor/onboarding/new-course';
         
     } catch (error) {
-        console.error('[COURSE-SELECTION] ❌ Error creating new course:', error);
+        console.error('[COURSE-SELECTION] ❌ Error preparing new course:', error);
         await showErrorModal(
             'Error',
-            'Failed to create new course. Please try again.'
+            `Failed to start course creation: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`
         );
     }
 }
