@@ -76,9 +76,9 @@ const mapAffiliation = (value: AttributeValue): string => {
 let ubcShibStrategy: UbcShibStrategy | null = null;
 
 // Check if SAML environment variables are configured (required for SAML to work)
+// passport-ubcshib only needs issuer and callbackUrl - it handles entryPoint, logoutUrl, and metadataUrl automatically
 const hasSamlConfig = !!(
     process.env.SAML_CALLBACK_URL &&
-    process.env.SAML_ENTRY_POINT &&
     process.env.SAML_ISSUER
 );
 
@@ -86,67 +86,90 @@ const hasSamlConfig = !!(
 // This allows CWL login button to work even when SAML_AVAILABLE=false
 if (hasSamlConfig) {
     try {
-        // Load certificate (only needed when SAML is available)
-        const samlCert = fs.readFileSync(
-            process.env.SAML_CERT_PATH || path.join(__dirname, '../../certs/server.crt'),
-            'utf-8'
-        );
-
         // Configure UBCShib strategy (SAML 2.0 under the hood)
-        ubcShibStrategy = new UbcShibStrategy({
-            callbackUrl: process.env.SAML_CALLBACK_URL as string,
-            entryPoint: process.env.SAML_ENTRY_POINT as string,
-            logoutUrl: process.env.SAML_LOGOUT_URL,
-            metadataUrl: process.env.SAML_METADATA_URL,
+        // The strategy automatically configures entryPoint, logoutUrl, and metadataUrl based on SAML_ENVIRONMENT
+        // It will also fetch the IdP certificate from metadata automatically if not provided
+
+        const strategyConfig: any = {
             issuer: process.env.SAML_ISSUER as string,
-            cert: samlCert
-        }, (profile: any, done: any) => {
+            callbackUrl: process.env.SAML_CALLBACK_URL as string,
+            // Request specific attributes from UBC IdP
+            // The library will automatically map OID names to friendly names
+            attributeConfig: [
+                'ubcEduCwlPuid',        // UBC Computing User ID (PUID)
+                'mail',                 // Email address
+                'eduPersonAffiliation', // Role (student, faculty, staff)
+                'givenName',           // First name
+                'sn',                  // Last name (surname)
+                'displayName'          // Display name
+            ]
+        };
+
+        // Optionally add privateKeyPath if provided for request signing
+        if (process.env.SAML_PRIVATE_KEY_PATH) {
+            strategyConfig.privateKeyPath = process.env.SAML_PRIVATE_KEY_PATH;
+        }
+
+        // Optionally load certificate if provided (otherwise fetched from metadata)
+        if (process.env.SAML_CERT_PATH) {
+            try {
+                strategyConfig.cert = fs.readFileSync(process.env.SAML_CERT_PATH, 'utf-8');
+                console.log('[AUTH] 📜 Using custom IdP certificate from:', process.env.SAML_CERT_PATH);
+            } catch (certError) {
+                console.warn('[AUTH] ⚠️  Failed to load certificate, will fetch from metadata:', certError);
+            }
+        }
+
+        ubcShibStrategy = new UbcShibStrategy(strategyConfig, (profile: any, done: any) => {
             const attributes = (profile.attributes || {}) as Record<string, AttributeValue>;
 
             //START DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
             console.log('[AUTH] UBCShib profile received:', JSON.stringify(profile, null, 2));
             //END DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
 
+            // Extract PUID - it may be in attributes or at the profile root level
+            // The library maps most attributes but ubcEduCwlPuid might need special handling
             const puid =
                 toString(attributes.ubcEduCwlPuid) ||
-                toString(attributes.cwlLoginKey) ||
-                profile.nameID;
+                toString(profile.ubcEduCwlPuid) ||
+                toString(profile['urn:mace:dir:attribute-def:ubcEduCwlPuid']) ||
+                toString(profile['urn:oid:1.3.6.1.4.1.60.6.1.6']);
 
             if (!puid) {
                 console.error('[AUTH] ❌ Missing PUID in UBCShib response');
+                console.error('[AUTH] Available attributes:', Object.keys(attributes));
+                console.error('[AUTH] Profile keys:', Object.keys(profile));
                 return done(new Error('Missing required ubcEduCwlPuid attribute'));
             }
 
-            const firstName =
-                toString(attributes.givenName) ||
-                toString(attributes.firstName) ||
-                '';
-            const lastName =
-                toString(attributes.sn) ||
-                toString(attributes.lastName) ||
-                '';
-            const email =
-                toString(attributes.email) ||
-                toString(attributes.mail) ||
-                toString(attributes.eduPersonPrincipalName) ||
-                '';
+            // Extract user attributes - library has mapped these to friendly names in profile.attributes
+            const firstName = toString(attributes.givenName) || '';
+            const lastName = toString(attributes.sn) || '';
+            const email = toString(attributes.mail) || toString(profile.mail) || toString(profile.email) || '';
+            const affiliation = mapAffiliation(attributes.eduPersonAffiliation);
 
             const user = {
-                username:
-                    toString(attributes.cwlLoginName) ||
-                    toString(attributes.uid) ||
-                    toString(attributes.displayName) ||
-                    profile.nameID,
+                username: toString(attributes.displayName) || puid,
                 puid,
                 firstName,
                 lastName,
-                affiliation: mapAffiliation(attributes.eduPersonAffiliation),
+                affiliation,
                 email,
                 sessionIndex: profile.sessionIndex,
                 nameID: profile.nameID,
-                nameIDFormat: profile.nameIDFormat,
-                rawProfile: profile // Keep raw profile for debugging
+                nameIDFormat: profile.nameIDFormat
             };
+
+            //START DEBUG LOG : DEBUG-CODE(UBCSHIB-USER-CREATED)
+            console.log('[AUTH] 👤 User object created from SAML:', {
+                username: user.username,
+                puid: user.puid,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                affiliation: user.affiliation,
+                email: user.email
+            });
+            //END DEBUG LOG : DEBUG-CODE(UBCSHIB-USER-CREATED)
 
             return done(null, user);
         });

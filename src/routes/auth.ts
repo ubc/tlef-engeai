@@ -40,17 +40,19 @@ router.get('/login', (req: express.Request, res: express.Response, next: express
     }
 });
 
-// SAML callback endpoint
-router.post('/saml/callback', (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    //START DEBUG LOG : DEBUG-CODE(SAML-CALLBACK)
-    console.log('SAML callback received');
-    //END DEBUG LOG : DEBUG-CODE(SAML-CALLBACK)
-    
-    passport.authenticate('ubcshib', {
-        failureRedirect: '/auth/login-failed',
-        failureFlash: false
-    })(req, res, next);
-}, async (req: express.Request, res: express.Response) => {
+// SAML callback handler (shared between both callback routes)
+const samlCallbackHandler = [
+    (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        //START DEBUG LOG : DEBUG-CODE(SAML-CALLBACK)
+        console.log('[AUTH] SAML callback received at:', req.path);
+        //END DEBUG LOG : DEBUG-CODE(SAML-CALLBACK)
+
+        passport.authenticate('ubcshib', {
+            failureRedirect: '/auth/login-failed',
+            failureFlash: false
+        })(req, res, next);
+    },
+    async (req: express.Request, res: express.Response) => {
     try {
         // Extract user data from SAML profile
         const puid = (req.user as any).puid;
@@ -110,7 +112,10 @@ router.post('/saml/callback', (req: express.Request, res: express.Response, next
         console.error('[AUTH] 🚨 Error in authentication callback:', error);
         res.redirect('/');
     }
-});
+}];
+
+// SAML callback endpoint - legacy path for compatibility
+router.post('/saml/callback', ...samlCallbackHandler);
 
 // Local login POST endpoint (for local authentication only)
 router.post('/login', (req: express.Request, res: express.Response, next: express.NextFunction) => {

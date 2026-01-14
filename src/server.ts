@@ -15,6 +15,7 @@ import courseRoutes from './routes/course-routes';  // Import course routes
 // Import SAML authentication middleware
 import sessionMiddleware from './middleware/session';
 import { passport } from './middleware/passport';
+import { EngEAI_MongoDB } from './functions/EngEAI_MongoDB';
 
 dotenv.config();
 
@@ -85,6 +86,76 @@ app.get('/pages/course-selection.html', (req: any, res: any) => {
 
 // Course routes (must be before static file serving to catch course routes first)
 app.use('/', courseRoutes);
+
+// SAML callback route at IdP-registered path
+// This is the path registered with UBC's Identity Provider
+// It redirects to the main auth callback handler
+app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.log('[AUTH] SAML callback received at IdP-registered path: /Shibboleth.sso/SAML2/POST');
+    console.log('[AUTH] Forwarding to passport authentication handler...');
+
+    // Use passport to authenticate, then forward to the same handler as /auth/saml/callback
+    passport.authenticate('ubcshib', {
+        failureRedirect: '/auth/login-failed',
+        failureFlash: false
+    })(req, res, next);
+}, async (req: express.Request, res: express.Response) => {
+    try {
+        // Extract user data from SAML profile
+        const puid = (req.user as any).puid;
+        const firstName = (req.user as any).firstName || '';
+        const lastName = (req.user as any).lastName || '';
+        const name = `${firstName} ${lastName}`.trim();
+        const affiliation = (req.user as any).affiliation;
+
+        console.log('[AUTH] ✅ SAML authentication successful');
+        console.log('[AUTH] User PUID:', puid);
+        console.log('[AUTH] User Name:', name);
+        console.log('[AUTH] Affiliation:', affiliation);
+
+        // Get MongoDB instance
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+
+        // Check if GlobalUser exists in active-users collection
+        let globalUser = await mongoDB.findGlobalUserByPUID(puid);
+
+        if (!globalUser) {
+            console.log('[AUTH] 🆕 Creating new GlobalUser');
+
+            globalUser = await mongoDB.createGlobalUser({
+                puid,
+                name,
+                userId: mongoDB.idGenerator.globalUserID(puid, name, affiliation),
+                coursesEnrolled: [],
+                affiliation,
+                status: 'active'
+            });
+
+            console.log('[AUTH] ✅ GlobalUser created:', globalUser.userId);
+        } else {
+            console.log('[AUTH] ✅ GlobalUser found:', globalUser.userId);
+        }
+
+        // Store GlobalUser in session
+        (req.session as any).globalUser = globalUser;
+
+        // Save session before redirect
+        req.session.save((saveErr) => {
+            if (saveErr) {
+                console.error('[AUTH] ❌ Session save error:', saveErr);
+                return res.redirect('/');
+            }
+
+            console.log('[AUTH] 🚀 Session saved, redirecting to course selection');
+            console.log('[AUTH] 📋 Session ID:', (req as any).sessionID);
+            res.redirect('/pages/course-selection.html');
+        });
+
+    } catch (error) {
+        console.error('[AUTH] 🚨 Error in authentication callback:', error);
+        res.redirect('/');
+    }
+});
 
 // Page routes
 app.get('/course-selection', (req: any, res: any) => {
