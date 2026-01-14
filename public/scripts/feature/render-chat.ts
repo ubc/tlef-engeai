@@ -37,6 +37,8 @@ export class RenderChat {
         // Step 2: Process artifacts using ArtefactHandler wrapper
         html = this.processArtifactsWithWrapper(html, messageId);
         
+        // Step 2.5: Process questionUnstruggle tags
+        html = this.processQuestionUnstruggle(html, messageId);
         
         // Step 3: Process markdown formatting
         html = this.processMarkdown(html);
@@ -119,6 +121,39 @@ export class RenderChat {
         return processedText;
     }
     
+    
+    /**
+     * Process questionUnstruggle tags
+     * Converts <questionUnstruggle Topic="topic"> to HTML with question and buttons
+     */
+    private processQuestionUnstruggle(text: string, messageId?: string): string {
+        // Pattern: <questionUnstruggle Topic="topic">
+        const unstruggleRegex = /<questionUnstruggle\s+Topic=["']([^"']+)["']\s*>/gi;
+        
+        return text.replace(unstruggleRegex, (match, topic) => {
+            // Generate unique IDs for buttons
+            const msgId = messageId || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const yesButtonId = `unstruggle-yes-${msgId}-${topic.replace(/\s+/g, '-')}`;
+            const noButtonId = `unstruggle-no-${msgId}-${topic.replace(/\s+/g, '-')}`;
+            
+            // Create HTML for the question and buttons
+            const questionHtml = `
+                <div class="question-unstruggle-container" data-topic="${this.escapeHtml(topic)}" data-message-id="${msgId}">
+                    <p class="question-unstruggle-question">Do you think you're confident with the topic of <strong>${this.escapeHtml(topic)}</strong>?</p>
+                    <div class="question-unstruggle-buttons">
+                        <button class="question-unstruggle-btn question-unstruggle-yes" data-topic="${this.escapeHtml(topic)}" data-response="True" data-message-id="${msgId}">
+                            <span class="question-unstruggle-btn-text">Yes</span>
+                        </button>
+                        <button class="question-unstruggle-btn question-unstruggle-no" data-topic="${this.escapeHtml(topic)}" data-response="False" data-message-id="${msgId}">
+                            <span class="question-unstruggle-btn-text">No, I need more practice</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            return questionHtml;
+        });
+    }
     
     /**
      * Step 4: Process markdown formatting

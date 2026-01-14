@@ -1,0 +1,401 @@
+:root {
+    --color-chbe-green: #4d7a2f;
+    --background-2: #ECE5DD;
+    --border-color: #b8b8b8;
+    --hover-bg: #efefef;
+    --text-primary: #333333;
+    --text-secondary: #6c757d;
+    --chat-bg: #fcfcfc;
+}
+
+.container {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.main-content {
+    width: 100%;
+    overflow-y: auto;
+}
+
+.assistant-prompts-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 20px;
+    background: var(--color-chbe-green);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.assistant-prompts-header h1 {
+    color: white;
+    margin: 0;
+    font-size: 24px;
+}
+
+.add-prompt-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: white;
+    color: var(--color-chbe-green);
+    border: 2px solid white;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+}
+
+.add-prompt-btn i,
+.add-prompt-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.add-prompt-btn:hover {
+    background: var(--hover-bg);
+    border-color: var(--hover-bg);
+}
+
+.add-prompt-btn:active {
+    transform: scale(0.98);
+}
+
+.prompts-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-secondary);
+    font-size: 16px;
+    background: var(--chat-bg);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.prompt-card {
+    background: var(--background-2);
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease, border-width 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.prompt-card:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.prompt-card.selected {
+    border-color: var(--color-chbe-green);
+    border-width: 3px;
+    box-shadow: 0 4px 12px rgba(77, 122, 47, 0.3);
+}
+
+.selected-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: var(--color-chbe-green);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    z-index: 1;
+}
+
+.default-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #6c757d;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    z-index: 1;
+}
+
+/* When both badges exist, stack them */
+.prompt-card:has(.selected-badge):has(.default-badge) .selected-badge {
+    right: 10px;
+}
+
+.prompt-card:has(.selected-badge):has(.default-badge) .default-badge {
+    right: 120px; /* Position to the left of selected badge */
+}
+
+.prompt-header {
+    margin-bottom: 15px;
+    padding-bottom: 0px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.prompt-header::before {
+    content: "Title";
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+
+.prompt-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+    padding: 8px;
+    border-radius: 6px;
+    min-height: 24px;
+    outline: none;
+    border: 2px solid transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.prompt-title[data-editing="true"] {
+    background: white;
+    border-color: var(--color-chbe-green);
+    cursor: text;
+}
+
+.prompt-title[data-editing="true"]:focus {
+    background: white;
+    border-color: var(--color-chbe-green);
+    box-shadow: 0 0 0 3px rgba(77, 122, 47, 0.1);
+    outline: none;
+}
+
+.prompt-title:not([data-editing="true"]) {
+    cursor: default;
+    user-select: text;
+}
+
+.prompt-content-wrapper {
+    position: relative;
+    margin-bottom: 15px;
+}
+
+.prompt-content-wrapper::before {
+    content: "Prompt Content";
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+
+.prompt-content {
+    font-size: 14px;
+    color: var(--text-primary);
+    line-height: 1.6;
+    padding: 12px;
+    border-radius: 6px;
+    min-height: 60px;
+    outline: none;
+    border: 2px solid transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.prompt-content[data-editing="true"] {
+    background: white;
+    border-color: var(--color-chbe-green);
+    cursor: text;
+}
+
+.prompt-content[data-editing="true"]:focus {
+    background: white;
+    border-color: var(--color-chbe-green);
+    box-shadow: 0 0 0 3px rgba(77, 122, 47, 0.1);
+    outline: none;
+}
+
+.prompt-content:not([data-editing="true"]) {
+    cursor: default;
+    user-select: text;
+}
+
+.prompt-content:empty:before {
+    content: "Enter prompt content...";
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.expand-toggle {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+    background: var(--color-chbe-green);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.15s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.expand-toggle:hover {
+    background: #3d5a26;
+    transform: scale(1.1);
+}
+
+.expand-toggle:active {
+    transform: scale(0.95);
+}
+
+.expand-toggle i {
+    width: 16px;
+    height: 16px;
+}
+
+.prompt-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.prompt-actions button i,
+.prompt-actions button svg {
+    width: 14px;
+    height: 14px;
+}
+
+.prompt-actions button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    background: white;
+    color: var(--text-primary);
+}
+
+.prompt-actions button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.prompt-actions button:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.prompt-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-edit {
+    border-color: var(--text-secondary);
+    color: var(--text-secondary);
+}
+
+.btn-edit:hover:not(:disabled) {
+    background: var(--text-secondary);
+    color: white;
+    border-color: var(--text-secondary);
+}
+
+.btn-save {
+    border-color: var(--color-chbe-green);
+    color: var(--color-chbe-green);
+}
+
+.btn-save:hover:not(:disabled) {
+    background: var(--color-chbe-green);
+    color: white;
+    border-color: var(--color-chbe-green);
+}
+
+.btn-cancel {
+    border-color: var(--text-secondary);
+    color: var(--text-secondary);
+}
+
+.btn-cancel:hover:not(:disabled) {
+    background: var(--text-secondary);
+    color: white;
+    border-color: var(--text-secondary);
+}
+
+.btn-delete {
+    border-color: #dc3545;
+    color: #dc3545;
+}
+
+.btn-delete:hover:not(:disabled) {
+    background: #dc3545;
+    color: white;
+    border-color: #dc3545;
+}
+
+.btn-choose {
+    border-color: var(--color-chbe-green);
+    color: var(--color-chbe-green);
+}
+
+.btn-choose:hover:not(:disabled) {
+    background: var(--color-chbe-green);
+    color: white;
+    border-color: var(--color-chbe-green);
+}
+
+.prompt-actions button i {
+    width: 16px;
+    height: 16px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .assistant-prompts-header {
+        flex-direction: column;
+        gap: 15px;
+        align-items: stretch;
+    }
+
+    .add-prompt-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .prompt-actions {
+        flex-direction: column;
+    }
+
+    .prompt-actions button {
+        width: 100%;
+        justify-content: center;
+    }
+}
+

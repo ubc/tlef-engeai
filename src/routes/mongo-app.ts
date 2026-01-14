@@ -33,7 +33,7 @@
 import express, { Request, Response } from 'express';
 import { asyncHandler, asyncHandlerWithAuth } from '../middleware/asyncHandler';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
-import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User } from '../functions/types';
+import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt } from '../functions/types';
 import { IDGenerator } from '../functions/unique-id-generator';
 import dotenv from 'dotenv';
 
@@ -401,7 +401,7 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
             console.log(`[CREATE-COURSE] Added course creator ${creatorName} (${creatorUserId}) to instructors array`);
         }
 
-        const courseData: activeCourse = {
+        let courseData: activeCourse = {
             ...req.body, //spread the properties of the body first
             id: id, // use the generated id
             date: new Date(),
@@ -413,6 +413,12 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
         
         
         await instance.postActiveCourse(courseData);
+        
+        // Fetch the created course to get the generated courseCode
+        const createdCourse = await instance.getActiveCourse(id);
+        if (createdCourse) {
+            courseData = createdCourse as unknown as activeCourse;
+        }
 
         // Add creator to the course's users collection ({courseName}_users)
         try {
@@ -457,6 +463,7 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
         }
 
         // Since activeCourse is the correct type, we can return it directly
+        // This now includes the generated courseCode
         const activeClassData: activeCourse = courseData as activeCourse;
 
         res.status(201).json({
@@ -1803,105 +1810,7 @@ router.delete('/:courseId/documents/all', asyncHandlerWithAuth(async (req: Reque
     }
 }));
 
-// COMMENTED OUT: DELETE /api/courses/:courseId/wipe-mongodb - Wipe all MongoDB collections for a course (REQUIRES AUTH - Instructors only)
-/*
-router.delete('/:courseId/wipe-mongodb', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const { courseId } = req.params;
-        
-        console.log('🔍 BACKEND WIPE MONGODB - Request Details:');
-        console.log('  Headers:', req.headers);
-        console.log('  Params:', req.params);
-        console.log('  User:', req.user);
-        console.log(`🗑️ Wiping all MongoDB collections for course ${courseId}`);
-        
-        // Get MongoDB instance
-        const mongoDB = await EngEAI_MongoDB.getInstance();
-        
-        // Get the course to get the courseName
-        const course = await mongoDB.getActiveCourse(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                error: 'Course not found'
-            });
-        }
-        
-        const courseName = (course as any).courseName;
-        const droppedCollections: string[] = [];
-        const errors: string[] = [];
-        const operations: string[] = [];
-        
-        // 1. Delete course from active-course-list
-        try {
-            await mongoDB.deleteActiveCourse(course as any);
-            operations.push('Deleted course from active-course-list');
-            console.log(`✅ Deleted course ${courseId} from active-course-list`);
-        } catch (error) {
-            const errorMsg = `Failed to delete course from active-course-list: ${error instanceof Error ? error.message : 'Unknown error'}`;
-            errors.push(errorMsg);
-            console.error(`❌ ${errorMsg}`);
-        }
-        
-        // 2. Remove courseId from all users' coursesEnrolled in active-users
-        try {
-            const activeUsersCollection = mongoDB.db.collection('active-users');
-            const updateResult = await activeUsersCollection.updateMany(
-                { coursesEnrolled: { $in: [courseId] } },
-                { $pull: { coursesEnrolled: courseId } } as any
-            );
-            operations.push(`Removed course from ${updateResult.modifiedCount} user(s) in active-users`);
-            console.log(`✅ Removed course ${courseId} from ${updateResult.modifiedCount} user(s) in active-users`);
-        } catch (error) {
-            const errorMsg = `Failed to remove course from active-users: ${error instanceof Error ? error.message : 'Unknown error'}`;
-            errors.push(errorMsg);
-            console.error(`❌ ${errorMsg}`);
-        }
-        
-        // 3. Get all collections in the database
-        const allCollections = await mongoDB.db.listCollections().toArray();
-        const courseCollectionPrefix = `${courseName}_`;
-        
-        // Filter collections that belong to this course (start with courseName_)
-        const courseCollections = allCollections
-            .map(col => col.name)
-            .filter(name => name.startsWith(courseCollectionPrefix));
-        
-        console.log(`📋 Found ${courseCollections.length} collection(s) for course ${courseName}:`, courseCollections);
-        
-        // 4. Drop all collections that belong to this course
-        for (const collectionName of courseCollections) {
-            const dropResult = await mongoDB.dropCollection(collectionName);
-            if (dropResult.success) {
-                droppedCollections.push(collectionName);
-            } else {
-                errors.push(`Failed to drop ${collectionName}: ${dropResult.error}`);
-            }
-        }
-        
-        console.log(`✅ Wiped ${droppedCollections.length} MongoDB collections for course ${courseId}`);
-        
-        res.json({
-            success: true,
-            message: 'MongoDB collections wiped successfully',
-            data: {
-                courseId: courseId,
-                courseName: courseName,
-                operations: operations,
-                droppedCollections: droppedCollections,
-                errors: errors
-            }
-        });
-        
-    } catch (error) {
-        console.error('Error wiping MongoDB collections:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to wipe MongoDB collections'
-        });
-    }
-}));
-*/
+
 
 // PATCH /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/title - Update topic/week instance title (REQUIRES AUTH)
 router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
@@ -2896,6 +2805,366 @@ router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(asyn
         res.status(500).json({
             success: false,
             error: 'Failed to download chat',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+// ===========================================
+// ========= INITIAL ASSISTANT PROMPTS ======
+// ===========================================
+
+// GET /api/courses/:courseId/assistant-prompts - Get all prompts for course (REQUIRES AUTH - Instructors only)
+router.get('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser || globalUser.affiliation !== 'faculty') {
+            return res.status(403).json({
+                success: false,
+                error: 'Instructor access required'
+            });
+        }
+
+        const { courseId } = req.params;
+        const instance = await EngEAI_MongoDB.getInstance();
+        
+        // Verify instructor is in course's instructors array
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        const courseData = course as unknown as activeCourse;
+        const instructorUserId = globalUser.userId;
+        
+        // Helper function to check if instructor is in the array (handles both old and new formats)
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some(inst => {
+                if (typeof inst === 'string') {
+                    return inst === instructorUserId;
+                } else if (inst && inst.userId) {
+                    return inst.userId === instructorUserId;
+                }
+                return false;
+            });
+        };
+
+        if (!isInstructorInArray(courseData.instructors || [])) {
+            return res.status(403).json({
+                success: false,
+                error: 'You do not have permission to access this course'
+            });
+        }
+
+        // Ensure default prompt exists before returning prompts
+        await instance.ensureDefaultPromptExists(courseId, courseData.courseName);
+
+        const prompts = await instance.getInitialAssistantPrompts(courseId);
+        
+        res.json({
+            success: true,
+            data: prompts
+        });
+    } catch (error) {
+        console.error('Error getting initial assistant prompts:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get initial assistant prompts',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+// POST /api/courses/:courseId/assistant-prompts - Create new prompt (REQUIRES AUTH - Instructors only)
+router.post('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser || globalUser.affiliation !== 'faculty') {
+            return res.status(403).json({
+                success: false,
+                error: 'Instructor access required'
+            });
+        }
+
+        const { courseId } = req.params;
+        const { title, content } = req.body;
+
+        if (!title || typeof title !== 'string' || title.trim() === '') {
+            return res.status(400).json({
+                success: false,
+                error: 'Title is required'
+            });
+        }
+        
+        // Content can be empty, so we allow it
+
+        const instance = await EngEAI_MongoDB.getInstance();
+        
+        // Verify instructor is in course's instructors array
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        const courseData = course as unknown as activeCourse;
+        const instructorUserId = globalUser.userId;
+        
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some(inst => {
+                if (typeof inst === 'string') {
+                    return inst === instructorUserId;
+                } else if (inst && inst.userId) {
+                    return inst.userId === instructorUserId;
+                }
+                return false;
+            });
+        };
+
+        if (!isInstructorInArray(courseData.instructors || [])) {
+            return res.status(403).json({
+                success: false,
+                error: 'You do not have permission to access this course'
+            });
+        }
+
+        // Generate ID for the new prompt
+        const dateCreated = new Date();
+        const promptId = instance.idGenerator.initialAssistantPromptID(title, courseData.courseName, dateCreated);
+
+        const newPrompt: InitialAssistantPrompt = {
+            id: promptId,
+            title: title.trim(),
+            content: content.trim(),
+            dateCreated: dateCreated,
+            isSelected: false
+        };
+
+        await instance.createInitialAssistantPrompt(courseId, newPrompt);
+        
+        res.status(201).json({
+            success: true,
+            data: newPrompt,
+            message: 'Initial assistant prompt created successfully'
+        });
+    } catch (error) {
+        console.error('Error creating initial assistant prompt:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to create initial assistant prompt',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+// PUT /api/courses/:courseId/assistant-prompts/:promptId - Update prompt (REQUIRES AUTH - Instructors only)
+router.put('/:courseId/assistant-prompts/:promptId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser || globalUser.affiliation !== 'faculty') {
+            return res.status(403).json({
+                success: false,
+                error: 'Instructor access required'
+            });
+        }
+
+        const { courseId, promptId } = req.params;
+        const { title, content } = req.body;
+
+        if (!title && !content) {
+            return res.status(400).json({
+                success: false,
+                error: 'At least one field (title or content) is required'
+            });
+        }
+
+        const instance = await EngEAI_MongoDB.getInstance();
+        
+        // Verify instructor is in course's instructors array
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        const courseData = course as unknown as activeCourse;
+        const instructorUserId = globalUser.userId;
+        
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some(inst => {
+                if (typeof inst === 'string') {
+                    return inst === instructorUserId;
+                } else if (inst && inst.userId) {
+                    return inst.userId === instructorUserId;
+                }
+                return false;
+            });
+        };
+
+        if (!isInstructorInArray(courseData.instructors || [])) {
+            return res.status(403).json({
+                success: false,
+                error: 'You do not have permission to access this course'
+            });
+        }
+
+        const updates: Partial<InitialAssistantPrompt> = {};
+        if (title !== undefined) updates.title = title.trim();
+        if (content !== undefined) updates.content = content.trim();
+
+        await instance.updateInitialAssistantPrompt(courseId, promptId, updates);
+        
+        // Get updated prompt
+        const prompts = await instance.getInitialAssistantPrompts(courseId);
+        const updatedPrompt = prompts.find(p => p.id === promptId);
+        
+        res.json({
+            success: true,
+            data: updatedPrompt,
+            message: 'Initial assistant prompt updated successfully'
+        });
+    } catch (error) {
+        console.error('Error updating initial assistant prompt:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update initial assistant prompt',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+// DELETE /api/courses/:courseId/assistant-prompts/:promptId - Delete prompt (REQUIRES AUTH - Instructors only)
+router.delete('/:courseId/assistant-prompts/:promptId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser || globalUser.affiliation !== 'faculty') {
+            return res.status(403).json({
+                success: false,
+                error: 'Instructor access required'
+            });
+        }
+
+        const { courseId, promptId } = req.params;
+        const instance = await EngEAI_MongoDB.getInstance();
+        
+        // Verify instructor is in course's instructors array
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        const courseData = course as unknown as activeCourse;
+        const instructorUserId = globalUser.userId;
+        
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some(inst => {
+                if (typeof inst === 'string') {
+                    return inst === instructorUserId;
+                } else if (inst && inst.userId) {
+                    return inst.userId === instructorUserId;
+                }
+                return false;
+            });
+        };
+
+        if (!isInstructorInArray(courseData.instructors || [])) {
+            return res.status(403).json({
+                success: false,
+                error: 'You do not have permission to access this course'
+            });
+        }
+
+        await instance.deleteInitialAssistantPrompt(courseId, promptId);
+        
+        res.json({
+            success: true,
+            message: 'Initial assistant prompt deleted successfully'
+        });
+    } catch (error) {
+        console.error('Error deleting initial assistant prompt:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to delete initial assistant prompt',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+// POST /api/courses/:courseId/assistant-prompts/:promptId/select - Select prompt as active (REQUIRES AUTH - Instructors only)
+router.post('/:courseId/assistant-prompts/:promptId/select', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser || globalUser.affiliation !== 'faculty') {
+            return res.status(403).json({
+                success: false,
+                error: 'Instructor access required'
+            });
+        }
+
+        const { courseId, promptId } = req.params;
+        const instance = await EngEAI_MongoDB.getInstance();
+        
+        // Verify instructor is in course's instructors array
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        const courseData = course as unknown as activeCourse;
+        const instructorUserId = globalUser.userId;
+        
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some(inst => {
+                if (typeof inst === 'string') {
+                    return inst === instructorUserId;
+                } else if (inst && inst.userId) {
+                    return inst.userId === instructorUserId;
+                }
+                return false;
+            });
+        };
+
+        if (!isInstructorInArray(courseData.instructors || [])) {
+            return res.status(403).json({
+                success: false,
+                error: 'You do not have permission to access this course'
+            });
+        }
+
+        await instance.selectInitialAssistantPrompt(courseId, promptId);
+        
+        // Get updated prompts
+        const prompts = await instance.getInitialAssistantPrompts(courseId);
+        const selectedPrompt = prompts.find(p => p.id === promptId);
+        
+        res.json({
+            success: true,
+            data: selectedPrompt,
+            message: 'Initial assistant prompt selected successfully'
+        });
+    } catch (error) {
+        console.error('Error selecting initial assistant prompt:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to select initial assistant prompt',
             details: error instanceof Error ? error.message : 'Unknown error'
         });
     }

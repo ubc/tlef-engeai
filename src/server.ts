@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import path from 'path';
-import cors from 'cors';
+// import cors from 'cors';
 import chatAppRoutes from './routes/chat-app';
 import ragAppRoutes from './routes/RAG-App';
 import mongodbRoutes from './routes/mongo-app';
@@ -10,20 +10,20 @@ import debugRoutes from './routes/debug';  // Import MongoDB routes
 import authRoutes from './routes/auth';  // Import authentication routes
 import courseEntryRoutes from './routes/course-entry';  // Import course entry routes
 import userManagementRoutes from './routes/user-management';  // Import user management routes
-import { initializeDummyCourses } from './debug/dummy-courses.js';
-import { EngEAI_MongoDB } from './functions/EngEAI_MongoDB';
+import courseRoutes from './routes/course-routes';  // Import course routes
 
 // Import SAML authentication middleware
 import sessionMiddleware from './middleware/session';
 import { passport } from './middleware/passport';
+import { EngEAI_MongoDB } from './functions/EngEAI_MongoDB';
 
 dotenv.config();
 
 const app = express();
 const port = process.env.TLEF_ENGE_AI_PORT || 8020;
 
-// Enable CORS for all routes
-app.use(cors());
+// // Enable CORS for all routes
+// app.use(cors());
 
 // Body parsing middleware (needed for SAML POST)
 app.use(express.urlencoded({ extended: false }));
@@ -58,6 +58,34 @@ app.use(express.static(publicPath));
 
 // Authentication routes (no /api prefix as they serve HTML too)
 app.use('/auth', authRoutes);
+
+// Backward compatibility: Redirect old instructor-mode.html to new URL structure
+app.get('/pages/instructor-mode.html', (req: any, res: any) => {
+    const currentCourse = req.session?.currentCourse;
+    if (currentCourse?.courseId) {
+        res.redirect(`/course/${currentCourse.courseId}/instructor/documents`);
+    } else {
+        res.redirect('/course-selection');
+    }
+});
+
+// Backward compatibility: Redirect old student-mode.html to new URL structure
+app.get('/pages/student-mode.html', (req: any, res: any) => {
+    const currentCourse = req.session?.currentCourse;
+    if (currentCourse?.courseId) {
+        res.redirect(`/course/${currentCourse.courseId}/student`);
+    } else {
+        res.redirect('/course-selection');
+    }
+});
+
+// Backward compatibility: Redirect old course-selection.html to new URL structure
+app.get('/pages/course-selection.html', (req: any, res: any) => {
+    res.redirect('/course-selection');
+});
+
+// Course routes (must be before static file serving to catch course routes first)
+app.use('/', courseRoutes);
 
 // SAML callback route at IdP-registered path
 // This is the path registered with UBC's Identity Provider
@@ -130,13 +158,16 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
 });
 
 // Page routes
+app.get('/course-selection', (req: any, res: any) => {
+    res.sendFile(path.join(publicPath, 'pages/course-selection.html'));
+});
+
 app.get('/settings', (req: any, res: any) => {
     res.sendFile(path.join(publicPath, 'pages/settings.html'));
 });
 
 // API endpoints
 app.use('/api/chat', chatAppRoutes);
-app.use('/api/ollama', chatAppRoutes);
 app.use('/api/rag', ragAppRoutes);
 app.use('/api/courses', mongodbRoutes);  // Course management routes
 app.use('/api/course', courseEntryRoutes);  // Course entry routes

@@ -8,10 +8,24 @@
         <div class="course-info-content">
             <div class="course-info-content-inner">
                 <div class="course-info-main-content">
-                    <h1>Course Information</h1>
-                    <p class="course-info-description">
-                        Review and update your course setup details
-                    </p>
+                    <div class="course-info-header">
+                        <div>
+                            <h1>Course Information</h1>
+                            <p class="course-info-description">
+                                Review and update your course setup details
+                            </p>
+                        </div>
+                        <!-- Course Code Display -->
+                        <div class="course-code-display">
+                            <label>Course Code</label>
+                            <div class="course-code-container">
+                                <span class="course-code-value" id="courseCodeDisplay">XXXXXX</span>
+                                <button class="copy-code-btn" id="copyCourseCodeBtn" title="Copy course code">
+                                    <i data-feather="copy"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                     
                     <div class="form-group">
                         <label for="courseInfoCourseSelect">Course Name</label>

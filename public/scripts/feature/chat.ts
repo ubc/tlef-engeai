@@ -547,7 +547,7 @@ export class ChatManager {
         try {
             const response = await fetch(`/api/chat/${this.activeChatId}`, {
                 method: 'POST',
-                credentials: 'include', // Important for session cookies
+                credentials: 'same-origin', 
                 headers: {
                     'Content-Type': 'application/json',
                 },
@@ -771,7 +771,12 @@ export class ChatManager {
         });
 
         this.lastRenderedMessageCount = activeChat.messages.length;
-        this.scrollToBottom();
+        
+        // Wait for LaTeX rendering to complete before scrolling
+        // LaTeX rendering is asynchronous and can change element heights
+        // Delay ensures layout is stable before scrolling
+        this.scrollToBottom(150);
+        
         this.renderPinnedBanner(activeChat);
         renderFeatherIcons();
     }
@@ -821,7 +826,15 @@ export class ChatManager {
         });
 
         this.lastRenderedMessageCount = activeChat.messages.length;
-        this.scrollToBottom();
+        
+        // Wait for LaTeX rendering to complete before scrolling
+        // Only delay if we added new messages (they need LaTeX rendering time)
+        if (this.domMessageIds.size > 0) {
+            this.scrollToBottom(150);
+        } else {
+            this.scrollToBottom();
+        }
+        
         this.renderPinnedBanner(activeChat);
         renderFeatherIcons();
     }
@@ -974,18 +987,29 @@ export class ChatManager {
     }
 
     /**
-     * Scroll to bottom of chat
+     * Scroll to bottom of chat instantly (no animation)
+     * Waits for LaTeX rendering to complete before scrolling to avoid layout shifts
      */
-    public scrollToBottom(): void {
+    public scrollToBottom(delay: number = 0): void {
         const scrollContainer = document.getElementById('message-area') as HTMLElement | null;
         if (!scrollContainer) return;
-        requestAnimationFrame(() => {
-            try {
-                scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
-            } catch {
-                scrollContainer.scrollTop = scrollContainer.scrollHeight;
-            }
-        });
+        
+        const performScroll = () => {
+            // Wait for layout to stabilize (LaTeX rendering, markdown processing)
+            // Then instantly jump to bottom (no smooth animation)
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    // Use instant scroll (no animation) - directly set scrollTop
+                    scrollContainer.scrollTop = scrollContainer.scrollHeight;
+                });
+            });
+        };
+        
+        if (delay > 0) {
+            setTimeout(performScroll, delay);
+        } else {
+            performScroll();
+        }
     }
 
     /**
@@ -1016,7 +1040,7 @@ export class ChatManager {
             
             const response = await fetch('/api/chat/user/chats', {
                 method: 'GET',
-                credentials: 'include', // Important for session cookies
+                credentials: 'same-origin', 
                 headers: {
                     'Content-Type': 'application/json'
                 }
@@ -1093,7 +1117,7 @@ export class ChatManager {
             
             const response = await fetch('/api/chat/user/chats/metadata', {
                 method: 'GET',
-                credentials: 'include', // Important for session cookies
+                credentials: 'same-origin', 
                 headers: {
                     'Content-Type': 'application/json'
                 }
@@ -1170,7 +1194,7 @@ export class ChatManager {
         try {
             const response = await fetch(`/api/chat/restore/${chatId}`, {
                 method: 'POST',
-                credentials: 'include',
+                credentials: 'same-origin',
                 headers: {
                     'Content-Type': 'application/json'
                 }
@@ -1439,6 +1463,92 @@ export class ChatManager {
             if (disclaimerLink) {
                 e.preventDefault();
                 this.openDisclaimerModal();
+            }
+        });
+        
+        // Use event delegation to handle questionUnstruggle button clicks
+        document.addEventListener('click', async (e) => {
+            const target = e.target as HTMLElement;
+            const unstruggleBtn = target.closest('.question-unstruggle-btn') as HTMLButtonElement | null;
+            
+            if (unstruggleBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const topic = unstruggleBtn.dataset.topic;
+                const response = unstruggleBtn.dataset.response; // "True" or "False"
+                const messageId = unstruggleBtn.dataset.messageId;
+                
+                if (!topic || !response || !messageId) {
+                    console.error('❌ Missing data attributes on unstruggle button');
+                    return;
+                }
+                
+                // Check if previous bot message has the same topic
+                const activeChat = this.chats.find(c => c.id === this.activeChatId);
+                if (!activeChat) {
+                    console.error('❌ No active chat found');
+                    return;
+                }
+                
+                // Find the last bot message
+                const lastBotMessage = [...activeChat.messages]
+                    .reverse()
+                    .find(msg => msg.sender === 'bot');
+                
+                if (!lastBotMessage || !lastBotMessage.text.includes(`<questionUnstruggle`) || !lastBotMessage.text.includes(`Topic="${topic}"`)) {
+                    // Previous message doesn't match - treat as regular message (ignore)
+                    console.log('⚠️ Unstruggle button clicked but previous message doesn\'t match. Ignoring.');
+                    return;
+                }
+                
+                // Disable buttons to prevent multiple clicks
+                const container = unstruggleBtn.closest('.question-unstruggle-container') as HTMLElement;
+                if (container) {
+                    const buttons = container.querySelectorAll('.question-unstruggle-btn');
+                    buttons.forEach(btn => {
+                        (btn as HTMLButtonElement).disabled = true;
+                        btn.classList.add('disabled');
+                    });
+                }
+                
+                // Format natural language message to send to backend
+                // Yes: "yes, I am confident with [topic]"
+                // No: "I might need some practice with [topic]"
+                const isConfident = response === 'True';
+                const formattedMessage = isConfident 
+                    ? `yes, I am confident with "${topic}"`
+                    : `I might need some practice with "${topic}"`;
+                
+                // Send message to backend
+                try {
+                    await this.sendMessage(
+                        formattedMessage,
+                        undefined, // No streaming callback
+                        undefined, // No completion callback
+                        (error) => {
+                            console.error('❌ Error sending unstruggle response:', error);
+                            // Re-enable buttons on error
+                            if (container) {
+                                const buttons = container.querySelectorAll('.question-unstruggle-btn');
+                                buttons.forEach(btn => {
+                                    (btn as HTMLButtonElement).disabled = false;
+                                    btn.classList.remove('disabled');
+                                });
+                            }
+                        }
+                    );
+                } catch (error) {
+                    console.error('❌ Error sending unstruggle response:', error);
+                    // Re-enable buttons on error
+                    if (container) {
+                        const buttons = container.querySelectorAll('.question-unstruggle-btn');
+                        buttons.forEach(btn => {
+                            (btn as HTMLButtonElement).disabled = false;
+                            btn.classList.remove('disabled');
+                        });
+                    }
+                }
             }
         });
     }

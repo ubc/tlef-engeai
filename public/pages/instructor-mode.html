@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="/styles/instructor-mode.css">
     <link rel="stylesheet" href="/styles/chat-components/welcome-screen.css">
     <link rel="stylesheet" href="/styles/chat-components/artefact.css">
+    <link rel="stylesheet" href="/styles/chat-components/unstruggle.css">
     <link rel="stylesheet" href="/styles/modal-overlay.css">
     <link rel="stylesheet" href="/styles/instructor-components/documents.css">
     <link rel="stylesheet" href="/styles/instructor-components/monitor-instructor.css">
@@ -61,6 +62,10 @@
                                     <i data-feather="monitor"></i>
                                     <p>Monitor</p>
                                 </li>
+                                <li id="assistant-prompts-state" class="menu-list-item">
+                                    <i data-feather="message-square"></i>
+                                    <p>Initial Assistant Prompt</p>
+                                </li>
                             </ul>
                         </div>
                     </div>
@@ -72,9 +77,9 @@
                         <i data-feather="settings"></i>
                         <span>Course Information</span>
                     </button>
-                    <button class="instructor-reset-dummy-btn" id="instructor-remove-course-btn">
-                        <i data-feather="trash-2"></i>
-                        <span>Remove Course</span>
+                    <button class="instructor-reset-dummy-btn" id="instructor-reset-dummy-btn">
+                        <i data-feather="refresh-cw"></i>
+                        <span>Reset Dummy Courses</span>
                     </button>
                     <button class="instructor-download-db-btn" id="instructor-download-db-btn">
                         <i data-feather="download"></i>

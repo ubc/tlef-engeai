@@ -1,0 +1,109 @@
+/* styles/chat-components/unstruggle.css */
+
+/* Container for the unstruggle question */
+.question-unstruggle-container {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: var(--background-2, #f8f9fa);
+    border: 1px solid var(--border-color, #e0e0e0);
+    border-radius: 8px;
+    border-left: 4px solid var(--primary-color, var(--color-chbe-green));
+}
+
+/* Question text */
+.question-unstruggle-question {
+    margin: 0 0 0 0;
+    font-size: 1rem;
+    color: var(--text-color, #333);
+    line-height: 1.5;
+}
+
+.question-unstruggle-question strong {
+    color: var(--primary-color, var(--color-chbe-green));
+    font-weight: 600;
+}
+
+/* Button container */
+.question-unstruggle-buttons {
+    display: flex;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+}
+
+/* Base button styles */
+.question-unstruggle-btn {
+    padding: 0.5rem 1rem;
+    border: 2px solid var(--border-color, #e0e0e0);
+    border-radius: 6px;
+    background: var(--background, #ffffff);
+    color: var(--text-color, #333);
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    align-items: center;
+}
+
+.question-unstruggle-btn:hover:not(.disabled) {
+    background: var(--background-2, #f8f9fa);
+    border-color: var(--primary-color, var(--color-chbe-green));
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.question-unstruggle-btn:active:not(.disabled) {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Yes button specific styles */
+.question-unstruggle-yes {
+    border-color: var(--success-color, var(--color-chbe-green));
+    color: var(--success-color, var(--color-chbe-green));
+}
+
+.question-unstruggle-yes:hover:not(.disabled) {
+    background: var(--success-color, var(--color-chbe-green));
+    color: white;
+    border-color: var(--success-color, var(--color-chbe-green));
+}
+
+/* No button specific styles */
+.question-unstruggle-no {
+    border-color: var(--warning-color, #ffc107);
+    color: var(--warning-color, #ffc107);
+}
+
+.question-unstruggle-no:hover:not(.disabled) {
+    background: var(--warning-color, #ffc107);
+    color: white;
+    border-color: var(--warning-color, #ffc107);
+}
+
+/* Disabled state */
+.question-unstruggle-btn.disabled,
+.question-unstruggle-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .question-unstruggle-buttons {
+        flex-direction: column;
+    }
+    
+    .question-unstruggle-btn {
+        width: 100%;
+    }
+}
+
+.question-unstruggle-btn-text {
+    font-size: 0.8rem;
+    font-weight: 500;
+
+    color: inherit;
+}

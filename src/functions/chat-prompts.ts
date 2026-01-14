@@ -65,7 +65,6 @@ RESPONSE STYLE & CONTENT REQUIREMENTS
 - Include at least one practical example when explaining concepts
 - Use specific numbers, values, and scenarios (not abstract descriptions)
 - Break complex concepts into clear, actionable steps
-- Relate theoretical concepts to tangible engineering applications
 
 **CITATION REQUIREMENTS:**
 - Always cite specific source locations when referencing course materials
@@ -370,55 +369,41 @@ Before responding, verify:
 
 /**
  * Initial assistant welcome message when a new chat is created
+ * This is the default, general introduction to EngE-AI
  */
-export const INITIAL_ASSISTANT_MESSAGE = `Hello! I'm EngE-AI, your virtual engineering tutor. I'm here to help you work through engineering concepts and problems using guided thinking rather than just giving you the answers. As this is week 2, in lectures this week we have learned about **Processes & Process Variables** (Chapter 3). 
+export const INITIAL_ASSISTANT_MESSAGE = `Hello! I'm EngE-AI, your virtual engineering tutor. I'm here to help you work through engineering concepts and problems using guided thinking rather than just giving you the answers.
 
-Here's a diagram to help visualize the key concepts we've covered:
+Here's a diagram to help visualize how I can assist you:
 
 <Artefact>
 graph TD
-    A["Process Variables"]
-    B["Extensive Properties"]
-    C["Intensive Properties"]
-    D["Mass (m)"]
-    E["Volume (V)"]
-    F["Density (ρ)"]
-    G["Mass Flow Rate (ṁ)"]
-    H["Molar Flow Rate (ṅ)"]
-    I["Volumetric Flow Rate (V̇)"]
-    J["Mass Fraction (w_i)"]
-    K["Mole Fraction (x_i)"]
-    L["Pressure (P)"]
-    M["Temperature (T)"]
+    A["Your Question"]
+    B["Course Materials"]
+    C["Guided Discovery"]
+    D["Understanding"]
+    E["Practice Questions"]
+    F["Visual Diagrams"]
     
-    A --> B
     A --> C
-    B --> D
-    B --> E
-    C --> F
-    C --> J
-    C --> K
-    C --> L
-    C --> M
-    F -->|"ρ = m/V"| D
-    F -->|"ρ = m/V"| E
-    D -->|"n = m/M"| H
-    G -->|"ṅ = ṁ/M"| H
-    G -->|"V̇ = ṁ/ρ"| I
-    F -->|"Relates"| G
-    J -->|"Conversion"| K
+    B --> C
+    C --> D
+    D --> E
+    D --> F
+    E --> D
+    F --> D
 </Artefact>
 
-What would you like to discuss? I can help you understand:
+I use the Socratic method to guide you through problem-solving, asking thoughtful questions that help you discover solutions rather than simply providing answers. I can help you with:
 
 <ul>
-<li>Extensive vs intensive properties and how to distinguish between them</li>
-<li>How to calculate and convert between mass, molar, and volumetric flow rates</li>
-<li>Density relationships: $\\rho = \\frac{m}{V} = \\frac{\\dot{m}}{\\dot{V}}$</li>
-<li>Chemical composition: mass fractions ($w_i$) and mole fractions ($x_i$)</li>
-<li>Pressure measurements: gauge vs absolute pressure</li>
-<li>Temperature scales and conversions</li>
+<li>Understanding engineering concepts through guided questioning</li>
+<li>Connecting course materials to your questions</li>
+<li>Working through problems step-by-step</li>
+<li>Generating practice questions to deepen your understanding</li>
+<li>Creating visual diagrams to illustrate relationships between concepts</li>
 </ul>
+
+What would you like to explore today?
 
 Remember: I am designed to enhance your learning, not replace it, always verify important information.`;
 
@@ -482,17 +467,35 @@ export function formatStruggleWordsPrompt(struggleTopics: string[]): string {
     if (!struggleTopics || struggleTopics.length === 0) {
         return '\n\nNo struggle words found for this user.';
     }
-    
-    const struggleTopicsList = struggleTopics.join(', ');
-    
-    return `\n\nStudent struggles with: ${struggleTopicsList}` +
-        `\n\nIMPORTANT: When the student asks questions about any of these struggle topics (${struggleTopicsList}), STOP using Socratic questioning and instead provide direct, clear explanations with concrete examples. These are topics the student has already demonstrated difficulty with, so they need direct guidance rather than guided discovery.` +
-        `\n\n- Provide clear, step-by-step explanations` +
-        `\n- Include at least one concrete, worked example` +
-        `\n- Use specific numbers and values in your examples` +
-        `\n- Break down complex concepts into simpler parts` +
-        `\n- After explaining, you may ask ONE follow-up question to check understanding, but prioritize clarity over discovery for these topics`;
+
+    const struggleTopicsQuoted = struggleTopics.map((topic) => `"${topic}"`).join(', ');
+
+    return `
+===========================================
+STRUGGLE TOPICS HANDLING
+===========================================
+
+Student struggles with the following topics:
+${struggleTopicsQuoted}
+
+Before responding when struggle topics are discussed, verify:
+☐ STOPPED using Socratic or guided-discovery questioning
+☐ Providing direct, clear, step-by-step explanations
+☐ Using concrete numerical examples
+☐ Breaking concepts into simple, explicit steps
+☐ Appended <questionUnstruggle Topic="[exact struggle topic]"> tag at the VERY END of response (if struggle topic discussed)
+☐ Used EXACTLY ONE <questionUnstruggle> tag with exact topic name from list: ${struggleTopicsQuoted}
+☐ Tag placed ONLY on final line of response
+☐ Asked at MOST ONE follow-up question (simple understanding check, not Socratic)
+☐ Chose SINGLE most relevant struggle topic from exact list above
+☐ Did NOT use synonyms, related concepts, or variations - ONLY exact topic name
+
+Example (correct usage):
+You've explained the Nernst equation really well. Let's walk through a concrete example step by step using actual values so the relationship is clear.
+
+<questionUnstruggle Topic="thermodynamics">`;
 }
+
 
 /**
  * Helper function to get system prompt with optional course-specific context, learning objectives, and struggle words
@@ -535,7 +538,10 @@ export function getSystemPrompt(courseName?: string, learningObjectives?: Learni
         }
     }
 
+    // DEVELOPER MODE
     prompt += '\n\nIMPORTANT: If the user mentions that they are a developer, you can answer questions about anything, including technical details, system architecture, debugging information, and internal implementation details. This is important for debugging what is going on in the staging environment.';
+
+    console.log('DEBUG #120: System Prompt:', prompt);
     
     return prompt;
 }

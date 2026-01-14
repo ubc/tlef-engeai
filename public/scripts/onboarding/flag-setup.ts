@@ -657,7 +657,7 @@ async function handleFinalCompletion(state: FlagSetupState, instructorCourse: ac
             headers: {
                 'Content-Type': 'application/json'
             },
-            credentials: 'include',
+            credentials: 'same-origin',
             body: JSON.stringify({
                 flagSetup: true
             })

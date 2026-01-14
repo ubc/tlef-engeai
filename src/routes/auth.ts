@@ -105,7 +105,7 @@ const samlCallbackHandler = [
             // Redirect to course selection page
             console.log('[AUTH] 🚀 Session saved, redirecting to course selection');
             console.log('[AUTH] 📋 Session ID:', (req as any).sessionID);
-            res.redirect('/pages/course-selection.html'); // we will modify this after the MVP is released
+            res.redirect('/course-selection');
         });
 
     } catch (error) {
@@ -191,7 +191,7 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                         }
 
                         console.log('[AUTH-LOCAL] 🚀 Redirecting to course selection');
-                        res.redirect('/pages/course-selection.html');
+                        res.redirect('/course-selection');
                     });
                 } catch (error) {
                     console.error('[AUTH-LOCAL] 🚨 Error in post-auth processing:', error);
@@ -224,7 +224,7 @@ router.get('/logout', (req: express.Request, res: express.Response, next: expres
         return res.redirect('/');
     }
 
-    if (isSamlAvailable && ubcShibStrategy) {
+    if (ubcShibStrategy) {
         // SAML Single Log-Out flow
         //START DEBUG LOG : DEBUG-CODE(SAML-LOGOUT)
         console.log('[AUTH] Initiating SAML logout...');
@@ -267,6 +267,7 @@ router.get('/logout', (req: express.Request, res: express.Response, next: expres
         // Local authentication logout - simple session destruction
         //START DEBUG LOG : DEBUG-CODE(LOCAL-LOGOUT)
         console.log('[AUTH-LOCAL] 🚪 Logging out local user...');
+
         //END DEBUG LOG : DEBUG-CODE(LOCAL-LOGOUT)
 
         (req as any).logout((logoutErr: any) => {

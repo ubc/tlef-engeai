@@ -305,7 +305,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    credentials: 'include',
+                    credentials: 'same-origin',
                     body: JSON.stringify({
                         published: checked
                     })
@@ -1814,7 +1814,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                credentials: 'include'
+                credentials: 'same-origin'
             });
             
             if (!response.ok) {
@@ -2096,7 +2096,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    credentials: 'include',
+                    credentials: 'same-origin',
                     body: JSON.stringify({
                         title: newTitle
                     })
@@ -2142,7 +2142,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    credentials: 'include',
+                    credentials: 'same-origin',
                     body: JSON.stringify({
                         title: newTitle
                     })
@@ -2521,7 +2521,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                credentials: 'include'
+                credentials: 'same-origin'
             });
 
             console.log('🔍 NUCLEAR CLEAR - Response Details:');
@@ -2623,7 +2623,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                credentials: 'include'
+                credentials: 'same-origin'
             });
 
             console.log('🔍 WIPE MONGODB - Response Details:');
@@ -2713,7 +2713,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                credentials: 'include'
+                credentials: 'same-origin'
             });
 
             console.log('🔍 WIPE ALL DOCUMENTS - Response Details:');

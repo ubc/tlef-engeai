@@ -5,12 +5,24 @@ import { ChatManager } from './feature/chat.js';
 import { authService } from './services/AuthService.js';
 import { renderStudentOnboarding } from './onboarding/student-onboarding.js';
 import { initializeStudentFlagHistory } from './feature/student-flag-history.js';
-import { showConfirmModal } from './modal-overlay.js';
+import { showConfirmModal, showInactivityWarningModal } from './modal-overlay.js';
 import { renderAbout } from './about/about.js';
+import { inactivityTracker } from './services/InactivityTracker.js';
+import { 
+    getCourseIdFromURL, 
+    getStudentViewFromURL, 
+    getChatIdFromURL,
+    navigateToStudentView,
+    navigateToStudentChat,
+    isStudentOnboardingURL
+} from './utils/url-parser.js';
 
 // Authentication check function
 async function checkAuthentication(): Promise<boolean> {
-    return await authService.checkAuthenticationAndRedirect('/pages/student-mode.html', 'STUDENT-MODE');
+    // Get courseId from URL if available, otherwise use default redirect
+    const courseId = getCourseIdFromURL();
+    const redirectPath = courseId ? `/course/${courseId}/student` : '/pages/student-mode.html';
+    return await authService.checkAuthenticationAndRedirect(redirectPath, 'STUDENT-MODE');
 }
 
 // State tracking for navigation
@@ -26,6 +38,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     console.log('[STUDENT-MODE] 🚀 Loading student mode...');
     
+    // Initialize inactivity tracker
+    initializeInactivityTracking();
+    
+    // Extract courseId and view from URL
+    const courseIdFromURL = getCourseIdFromURL();
+    const viewFromURL = getStudentViewFromURL();
+    const chatIdFromURL = getChatIdFromURL();
+    
+    // Store URL state for later use (after courseUser validation)
+    // Note: We'll validate courseId matches session after courseUser is fetched
+    
     try {
         // Fetch current CourseUser from session
         const response = await fetch('/api/user/current');
@@ -33,61 +56,191 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         if (!courseUser) {
             console.error('[STUDENT-MODE] ❌ No course user found');
-            window.location.href = '/pages/course-selection.html';
+            window.location.href = '/course-selection';
             return;
         }
         
         console.log('[STUDENT-MODE] 👤 CourseUser found:', courseUser.name);
         
-        // Check onboarding status
-        if (!courseUser.userOnboarding) {
-            console.log('[STUDENT-MODE] 🎓 User needs onboarding');
+        // Validate courseId from URL matches session courseUser
+        if (courseIdFromURL && courseUser.courseId !== courseIdFromURL) {
+            console.error('[STUDENT-MODE] ❌ URL courseId mismatch:', {
+                urlCourseId: courseIdFromURL,
+                sessionCourseId: courseUser.courseId
+            });
+            // Redirect to correct course URL
+            window.location.href = `/course/${courseUser.courseId}/student`;
+            return;
+        }
+        
+        // Check if we're on an onboarding URL
+        if (isStudentOnboardingURL()) {
+            console.log('[STUDENT-MODE] 🎓 Onboarding URL detected');
+            
+            // Preserve URL state for after onboarding (using closure variable)
+            const intendedView = 'chat'; // Default to chat after onboarding
+            const intendedChatId = null;
+            
             // Trigger onboarding
             await renderStudentOnboarding(courseUser);
             
             // Listen for onboarding completion event
-            window.addEventListener('onboarding-completed', (event: any) => {
-                console.log('[STUDENT-MODE] ✅ Onboarding completed, initializing chat interface...');
+            window.addEventListener('onboarding-completed', async (event: any) => {
+                console.log('[STUDENT-MODE] ✅ Onboarding completed, redirecting to main interface...');
                 const completedUser = event.detail.user || courseUser;
                 completedUser.userOnboarding = true;
-                initializeChatInterface(completedUser);
+                
+                // Redirect to main student interface
+                const courseId = getCourseIdFromURL();
+                if (courseId) {
+                    window.location.href = `/course/${courseId}/student`;
+                } else {
+                    // Fallback: initialize chat interface
+                    await initializeChatInterface(completedUser, { view: intendedView, chatId: intendedChatId });
+                }
             });
             
             return; // Stop execution here - onboarding will handle completion
+        } else if (!courseUser.userOnboarding) {
+            // User needs onboarding but not on onboarding URL - redirect to onboarding
+            console.log('[STUDENT-MODE] 🎓 User needs onboarding, redirecting...');
+            const courseId = getCourseIdFromURL();
+            if (courseId) {
+                window.location.href = `/course/${courseId}/student/onboarding/student`;
+            }
+            return;
         } else {
             console.log('[STUDENT-MODE] ✅ User already onboarded');
-            // Load normal chat interface
-            initializeChatInterface(courseUser);
+            // Pass URL state to initializeChatInterface
+            initializeChatInterface(courseUser, { view: viewFromURL, chatId: chatIdFromURL });
         }
         
     } catch (error) {
         console.error('[STUDENT-MODE] ❌ Error initializing student mode:', error);
-        window.location.href = '/pages/course-selection.html';
+        window.location.href = '/course-selection';
     }
 });
 
 /**
+ * Initialize inactivity tracking for student mode
+ */
+function initializeInactivityTracking(): void {
+    console.log('[STUDENT-MODE] 🔍 Initializing inactivity tracking...');
+    
+    // Set up event listeners for inactivity tracker
+    inactivityTracker.on('warning', async (data: any) => {
+        console.log('[STUDENT-MODE] ⚠️ Inactivity warning triggered');
+        
+        // Pause tracker while modal is shown
+        inactivityTracker.pause();
+        
+        // Show warning modal with countdown
+        const remainingSeconds = Math.floor((data.remainingTimeUntilLogout || 60000) / 1000);
+        const result = await showInactivityWarningModal(remainingSeconds, () => {
+            // User clicked "Stay Active" - reset tracker
+            console.log('[STUDENT-MODE] ✅ User chose to stay active');
+            inactivityTracker.reset();
+        });
+        
+        // Resume tracker after modal closes
+        inactivityTracker.resume();
+        
+        // If timeout occurred, logout will be triggered by logout event
+        if (result.action === 'timeout') {
+            console.log('[STUDENT-MODE] ⏱️ Inactivity warning timeout - logout will be triggered');
+
+            // MANUALLY TRIGGER LOGOUT HERE since logout timer was cleared
+            inactivityTracker.stop();
+            authService.logout();
+            return; // Stop execution here - logout will be triggered by logout event
+        }
+    });
+    
+    inactivityTracker.on('logout', async (data: any) => {
+        console.log('[STUDENT-MODE] 🚪 Inactivity logout triggered');
+        
+        // Stop tracking
+        inactivityTracker.stop();
+        
+        // Show logout message and redirect
+        try {
+            await showConfirmModal(
+                'Session Expired',
+                'You have been inactive for too long. You will be logged out now.',
+                'OK',
+                ''
+            );
+        } catch (error) {
+            // Modal might fail if already logged out, continue anyway
+            console.warn('[STUDENT-MODE] ⚠️ Could not show logout modal:', error);
+        }
+        
+        // Logout user
+        authService.logout();
+    });
+    
+    inactivityTracker.on('activity-reset', (data: any) => {
+        console.log('[STUDENT-MODE] 🔄 Activity detected - inactivity timer reset');
+    });
+    
+    // Start tracking
+    inactivityTracker.start();
+    
+    console.log('[STUDENT-MODE] ✅ Inactivity tracking initialized');
+}
+
+/**
  * Initialize the chat interface for the student
  */
-async function initializeChatInterface(user: any): Promise<void> {
+async function initializeChatInterface(user: any, urlState?: { view: string | null, chatId: string | null }): Promise<void> {
     console.log('[STUDENT-MODE] 🚀 Initializing chat interface for user:', user.name);
     
     const chatManager = ChatManager.getInstance({
         isInstructor: false,
         userContext: user,
         onModeSpecificCallback: (action: string, data?: any) => {
-            // Handle student-specific behaviors if needed
+            // Handle student-specific behaviors
             if (action === 'ui-update-needed') {
                 updateUI();
+            } else if (action === 'new-chat-created') {
+                // New chat created from welcome screen or sidebar
+                const newChatId = data?.chatId;
+                if (newChatId) {
+                    const courseId = getCourseIdFromURL();
+                    if (courseId) {
+                        // Only navigate if not already navigating (prevent recursion)
+                        if (!isNavigating) {
+                            navigateToStudentChat(courseId, newChatId);
+                        }
+                    }
+                }
+                // Note: loadChatWindow() is called by updateUI() or ChatManager
             } else if (action === 'chat-clicked') {
-                // Chat is fully loaded, safe to switch to chat window
-                console.log('[STUDENT-MODE] 💬 Chat loaded and ready, switching to chat window');
+                // Chat clicked from sidebar
+                const clickedChatId = data?.chatId;
+                if (clickedChatId) {
+                    const courseId = getCourseIdFromURL();
+                    if (courseId) {
+                        // Only navigate if not already navigating (prevent recursion)
+                        if (!isNavigating) {
+                            navigateToStudentChat(courseId, clickedChatId);
+                        }
+                    }
+                }
                 if (data?.loaded) {
-                    loadComponent('chat-window');
+                    // Chat is fully loaded, safe to switch to chat window
+                    console.log('[STUDENT-MODE] 💬 Chat loaded and ready, switching to chat window');
+                    // Only load component if not already navigating
+                    if (!isNavigating) {
+                        loadComponent('chat-window');
+                    }
                 }
             } else if (action === 'chat-load-failed') {
                 console.error('[STUDENT-MODE] ❌ Chat loading failed:', data?.error);
                 // Stay on current view or show error message
+                if (!isNavigating) {
+                    loadComponent('welcome-screen');
+                }
             }
             console.log('Student mode callback:', action, data);
         }
@@ -183,10 +336,169 @@ async function initializeChatInterface(user: any): Promise<void> {
         affiliation: user.affiliation
     });
     
+    /**
+     * Handle URL-based component loading
+     * Called after ChatManager is initialized
+     */
+    const handleURLState = async (view: string | null, chatId: string | null): Promise<void> => {
+        if (view === 'chat' && chatId) {
+            // Load specific chat
+            await loadChatById(chatId).catch(err => {
+                console.error('[STUDENT-MODE] Error loading chat from URL:', err);
+                // Fall back to default chat interface (updateUI already handled this)
+            });
+        } else if (view === 'profile') {
+            await loadComponent('profile');
+        } else if (view === 'flag-history') {
+            await loadComponent('flag-history');
+        } else if (view === 'about') {
+            await renderAbout({ component: currentComponent, mode: 'student' });
+        }
+        // If view is null or 'chat' without chatId, updateUI() already handled default state
+    };
+
+    /**
+     * Load chat by ID and update URL
+     * Includes comprehensive error handling for invalid chatIds, network failures, etc.
+     */
+    const loadChatById = async (chatId: string): Promise<void> => {
+        // Validate chatId format (basic validation)
+        if (!chatId || typeof chatId !== 'string' || chatId.trim().length === 0) {
+            console.error('[STUDENT-MODE] ❌ Invalid chatId provided:', chatId);
+            await loadComponent('welcome-screen');
+            return;
+        }
+        
+        const courseId = getCourseIdFromURL();
+        if (!courseId) {
+            console.error('[STUDENT-MODE] ❌ Cannot load chat: courseId not found in URL');
+            await loadComponent('welcome-screen');
+            return;
+        }
+        
+        // Update URL with chatId query parameter
+        navigateToStudentChat(courseId, chatId);
+        
+        // Ensure ChatManager is initialized
+        if (!chatManager) {
+            console.warn('[STUDENT-MODE] ⚠️ ChatManager not initialized');
+            await loadComponent('welcome-screen');
+            return;
+        }
+        
+        // Load chat window component first
+        await loadComponent('chat-window');
+        
+        // Load the specific chat
+        try {
+            // Check if chat exists in ChatManager
+            const chats = chatManager.getChats();
+            const chatExists = chats.some(chat => chat.id === chatId);
+            
+            if (chatExists) {
+                // Chat is already loaded, just switch to it
+                await chatManager.setActiveChatId(chatId);
+                chatManager.renderActiveChat();
+                console.log('[STUDENT-MODE] ✅ Switched to existing chat:', chatId);
+            } else {
+                // Chat not in memory, try to restore it from server
+                console.log('[STUDENT-MODE] 🔄 Chat not in memory, restoring from server...');
+                
+                const restoreResponse = await fetch(`/api/chat/restore/${chatId}`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!restoreResponse.ok) {
+                    // Handle different error cases
+                    if (restoreResponse.status === 404) {
+                        console.error('[STUDENT-MODE] ❌ Chat not found (404):', chatId);
+                        // Show user-friendly error message
+                        const mainContentArea = document.getElementById('main-content-area');
+                        if (mainContentArea) {
+                            mainContentArea.innerHTML = `
+                                <div style="text-align: center; padding: 2rem; color: #dc3545;">
+                                    <h3>⚠️ Chat Not Found</h3>
+                                    <p>The chat you're looking for doesn't exist or you don't have access to it.</p>
+                                    <button onclick="window.location.href='/course/${courseId}/student'" style="
+                                        background: #007bff;
+                                        color: white;
+                                        border: none;
+                                        padding: 0.75rem 1.5rem;
+                                        border-radius: 0.375rem;
+                                        cursor: pointer;
+                                        margin-top: 1rem;
+                                    ">Return to Chat</button>
+                                </div>
+                            `;
+                        }
+                        return;
+                    } else if (restoreResponse.status === 403) {
+                        console.error('[STUDENT-MODE] ❌ Access denied (403):', chatId);
+                        await loadComponent('welcome-screen');
+                        return;
+                    } else {
+                        console.error('[STUDENT-MODE] ❌ Failed to restore chat:', restoreResponse.status, restoreResponse.statusText);
+                        await loadComponent('welcome-screen');
+                        return;
+                    }
+                }
+                
+                const restoreData = await restoreResponse.json();
+                if (restoreData.success) {
+                    // Chat restored, now switch to it
+                    await chatManager.setActiveChatId(chatId);
+                    chatManager.renderActiveChat();
+                    console.log('[STUDENT-MODE] ✅ Chat restored and loaded:', chatId);
+                } else {
+                    console.error('[STUDENT-MODE] ❌ Failed to restore chat:', restoreData.error);
+                    await loadComponent('welcome-screen');
+                }
+            }
+        } catch (error) {
+            // Handle network errors, timeouts, etc.
+            console.error('[STUDENT-MODE] ❌ Error loading chat by ID:', error);
+            
+            // Check if it's a network error
+            if (error instanceof TypeError && error.message.includes('fetch')) {
+                console.error('[STUDENT-MODE] ❌ Network error - check connection');
+                const mainContentArea = document.getElementById('main-content-area');
+                if (mainContentArea) {
+                    mainContentArea.innerHTML = `
+                        <div style="text-align: center; padding: 2rem; color: #dc3545;">
+                            <h3>⚠️ Connection Error</h3>
+                            <p>Unable to load chat. Please check your connection and try again.</p>
+                            <button onclick="window.location.reload()" style="
+                                background: #007bff;
+                                color: white;
+                                border: none;
+                                padding: 0.75rem 1.5rem;
+                                border-radius: 0.375rem;
+                                cursor: pointer;
+                                margin-top: 1rem;
+                            ">Retry</button>
+                        </div>
+                    `;
+                }
+            } else {
+                // Other errors - fall back to welcome screen
+                await loadComponent('welcome-screen');
+            }
+        }
+    };
+
     try {
         await chatManager.initialize();
         console.log('[STUDENT-MODE] ✅ ChatManager initialized successfully');
         await updateUI();
+        
+        // After ChatManager initialization and updateUI(), check URL state
+        if (urlState) {
+            await handleURLState(urlState.view, urlState.chatId);
+        }
     } catch (error) {
         console.error('[STUDENT-MODE] ❌ Failed to initialize ChatManager:', error);
         // Show error message to user
@@ -246,7 +558,7 @@ async function initializeChatInterface(user: any): Promise<void> {
             // Check current authentication status before logout
             const authCheck = await fetch('/auth/me', {
                 method: 'GET',
-                credentials: 'include'
+                credentials: 'same-origin'
             });
             const authData = await authCheck.json();
             console.log('[STUDENT-MODE] 📋 Current auth status before logout:', authData);
@@ -275,9 +587,9 @@ async function initializeChatInterface(user: any): Promise<void> {
         // About button listener
         const aboutBtn = document.getElementById('about-btn');
         if (aboutBtn) {
-            aboutBtn.addEventListener('click', async () => {
+            aboutBtn.addEventListener('click', () => {
                 console.log('[STUDENT-MODE] ℹ️ About button clicked');
-                await renderAbout({ component: currentComponent, mode: 'student' });
+                navigateToStudentView('about');
             });
             console.log('[STUDENT-MODE] ✅ About button listener attached');
         }
@@ -290,7 +602,93 @@ async function initializeChatInterface(user: any): Promise<void> {
     };
 
     // Listen for about page close event
-    window.addEventListener('about-page-closed', restorePreviousComponent);
+    window.addEventListener('about-page-closed', () => {
+        const courseId = getCourseIdFromURL();
+        if (courseId) {
+            navigateToStudentView('chat');
+        } else {
+            // Fallback for non-URL-based navigation
+            restorePreviousComponent();
+        }
+    });
+
+    // Update flag-history-closed handler
+    window.addEventListener('flag-history-closed', () => {
+        const courseId = getCourseIdFromURL();
+        if (courseId) {
+            navigateToStudentView('chat');
+        } else {
+            // Fallback for non-URL-based navigation
+            restorePreviousComponent();
+        }
+    });
+
+    // Guard flag to prevent recursive navigation
+    let isNavigating = false;
+
+    // Handle browser back/forward navigation
+    window.addEventListener('popstate', (event: PopStateEvent) => {
+        // Prevent recursive navigation calls
+        if (isNavigating) {
+            console.log('[STUDENT-MODE] ⚠️ Navigation already in progress, skipping...');
+            return;
+        }
+        
+        (async () => {
+        isNavigating = true;
+        try {
+        // Validate courseId matches session before navigation
+        const courseIdFromURL = getCourseIdFromURL();
+        if (!courseIdFromURL) {
+            console.error('[STUDENT-MODE] ❌ Cannot navigate: courseId not found in URL');
+            return;
+        }
+        
+        // Verify courseId matches current session
+        try {
+            const response = await fetch('/api/user/current');
+            const { courseUser } = await response.json();
+            if (courseUser && courseUser.courseId !== courseIdFromURL) {
+                console.error('[STUDENT-MODE] ❌ CourseId mismatch in popstate:', {
+                    urlCourseId: courseIdFromURL,
+                    sessionCourseId: courseUser.courseId
+                });
+                // Redirect to correct course
+                window.location.href = `/course/${courseUser.courseId}/student`;
+                return;
+            }
+        } catch (error) {
+            console.error('[STUDENT-MODE] ❌ Error validating courseId:', error);
+            return;
+        }
+        
+        const view = getStudentViewFromURL();
+        const chatId = getChatIdFromURL();
+        
+        if (view === 'chat' && chatId) {
+            // Load specific chat
+            try {
+                await loadChatById(chatId);
+            } catch (err) {
+                console.error('[STUDENT-MODE] Error loading chat from URL:', err);
+                // Fall back to default chat interface
+                await loadComponent('chat-window');
+            }
+        } else if (view === 'chat' || !view) {
+            // Default chat view
+            await loadComponent('chat-window');
+        } else if (view === 'profile') {
+            await loadComponent('profile');
+        } else if (view === 'flag-history') {
+            await loadComponent('flag-history');
+        } else if (view === 'about') {
+            await renderAbout({ component: currentComponent, mode: 'student' });
+        }
+        } finally {
+            isNavigating = false;
+        }
+        })();
+    });
 
     // --- EVENT LISTENERS ATTACHMENT ---
     const attachWelcomeScreenListeners = () => {
@@ -327,7 +725,7 @@ async function initializeChatInterface(user: any): Promise<void> {
         
         // Back to chat button
         const backBtn = document.getElementById('back-to-chat-btn');
-        backBtn?.addEventListener('click', () => loadComponent('chat-window'));
+        backBtn?.addEventListener('click', () => navigateToStudentView('chat'));
     };
 
     // Artefact functionality moved to chat.ts
@@ -408,31 +806,18 @@ async function initializeChatInterface(user: any): Promise<void> {
         // Initialize the flag history interface
         initializeStudentFlagHistory(courseId, userId);
         
-        // Back button listener - return to previous component
+        // Back button listener - return to chat view
         const backBtn = document.getElementById('flag-history-back-btn');
         backBtn?.addEventListener('click', () => {
-            console.log('[STUDENT-MODE] 🔙 Back button clicked, returning to:', previousComponent);
-            // Dispatch event to notify that we're returning to the main interface
-            const event = new CustomEvent('flag-history-closed', { 
-                detail: { timestamp: Date.now() } 
-            });
-            window.dispatchEvent(event);
-            
-            // Load the previous component
-            loadComponent(previousComponent);
+            console.log('[STUDENT-MODE] 🔙 Back button clicked, returning to chat');
+            navigateToStudentView('chat');
         });
         
         // Also support ESC key
         const escHandler = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
-                console.log('[STUDENT-MODE] 🔙 ESC key pressed in flag history, returning to:', previousComponent);
-                const event = new CustomEvent('flag-history-closed', { 
-                    detail: { timestamp: Date.now() } 
-                });
-                window.dispatchEvent(event);
-                
-                // Load the previous component
-                loadComponent(previousComponent);
+                console.log('[STUDENT-MODE] 🔙 ESC key pressed in flag history, returning to chat');
+                navigateToStudentView('chat');
                 
                 // Remove listener after handling
                 document.removeEventListener('keydown', escHandler);
@@ -450,7 +835,7 @@ async function initializeChatInterface(user: any): Promise<void> {
         
         profileBtn.addEventListener('click', () => {
             console.log('[STUDENT-MODE] 👤 Loading flag history component...');
-            loadComponent('flag-history');
+            navigateToStudentView('flag-history');
         });
         console.log('[STUDENT-MODE] ✅ Flag history button listener attached');
     };

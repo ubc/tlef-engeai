@@ -76,12 +76,33 @@ export interface activeCourse {
     frameType: frameType;
     tilesNumber: number;
     topicOrWeekInstances: TopicOrWeekInstance[]; // previously content, previously divisions
+    courseCode?: string; // 6-character uppercase alphanumeric PIN code for course entry
     collections?: {
         users: string;
         flags: string;
         memoryAgent: string;
     };
+    collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
 }
+
+/**
+ * Initial Assistant Prompt data structure
+ * Stores custom initial assistant prompts that instructors can create and select for their courses
+ */
+export interface InitialAssistantPrompt {
+    id: string;
+    title: string;
+    content: string;
+    dateCreated: Date;
+    isSelected: boolean;
+    isDefault?: boolean; // If true, this is the system default prompt (unremovable)
+}
+
+/**
+ * Default prompt ID constant
+ * Used to identify the system default initial assistant prompt
+ */
+export const DEFAULT_PROMPT_ID = 'default-engeai-welcome';
 
 /**
  * frameTypes: Course content organization strategy. 

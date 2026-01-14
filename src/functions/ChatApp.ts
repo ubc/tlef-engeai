@@ -26,12 +26,13 @@ import { AppConfig } from '../routes/config';
 import { RAGModule, RetrievedChunk } from 'ubc-genai-toolkit-rag';
 import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
 import { IDGenerator } from './unique-id-generator';
-import { ChatMessage, LearningObjective, TopicOrWeekInstance, TopicOrWeekItem } from './types';
+import { ChatMessage, LearningObjective, TopicOrWeekInstance, TopicOrWeekItem, activeCourse, DEFAULT_PROMPT_ID } from './types';
 import { EngEAI_MongoDB } from './EngEAI_MongoDB';
 import { 
     getSystemPrompt, 
     getInitialAssistantMessage, 
-    formatRAGPrompt
+    formatRAGPrompt,
+    INITIAL_ASSISTANT_MESSAGE
 } from './chat-prompts';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import { isDeveloperMode, generateMockStreamingResponse } from './developer-mode';
@@ -711,8 +712,8 @@ export class ChatApp {
         await this.addDefaultSystemMessage(chatId, courseName, struggleTopics);
         
         
-        // Add default assistant message and get it
-        const initAssistantMessage = this.addDefaultAssistantMessage(chatId);
+        // Add default assistant message and get it (now async to retrieve selected prompt)
+        const initAssistantMessage = await this.addDefaultAssistantMessage(chatId, courseName);
         
         // Set the course name on the assistant message
         initAssistantMessage.courseName = courseName;
@@ -771,11 +772,50 @@ export class ChatApp {
 
     /**
      * this method directly add the Default Assistant Message to the conversation and the message is added to the chat history
+     * Retrieves the selected initial assistant prompt from the course if available, otherwise uses default
      * 
-     * return the message object, so this message can be passed to the client when initiate a chat
+     * @param chatId - The chat ID
+     * @param courseName - The course name (used to retrieve selected prompt)
+     * @return the message object, so this message can be passed to the client when initiate a chat
      */
-    private addDefaultAssistantMessage(chatId: string): ChatMessage {
-        const defaultMessageText = getInitialAssistantMessage();
+    private async addDefaultAssistantMessage(chatId: string, courseName?: string): Promise<ChatMessage> {
+        let defaultMessageText: string = INITIAL_ASSISTANT_MESSAGE; // Default fallback
+        
+        // Try to retrieve selected initial assistant prompt from course
+        if (courseName) {
+            try {
+                const mongoDB = await EngEAI_MongoDB.getInstance();
+                const course = await mongoDB.getCourseByName(courseName);
+                
+                if (!course) {
+                    console.log(`⚠️ [CHAT-INIT] Course not found for courseName: ${courseName}, using default message`);
+                } else {
+                    const courseData = course as unknown as activeCourse;
+                    const courseId = courseData.id;
+                    
+                    if (!courseId) {
+                        console.error(`❌ [CHAT-INIT] Course found but courseId is missing for courseName: ${courseName}. This indicates a data integrity issue.`);
+                    } else {
+                        // Ensure default prompt exists
+                        await mongoDB.ensureDefaultPromptExists(courseId, courseName);
+                        
+                        // Get selected prompt
+                        const selectedPrompt = await mongoDB.getSelectedInitialAssistantPrompt(courseId);
+                        
+                        if (selectedPrompt && selectedPrompt.content) {
+                            defaultMessageText = selectedPrompt.content;
+                            console.log(`✅ Using selected initial assistant prompt: "${selectedPrompt.title}"`);
+                        } else {
+                            // Fall back to default if no prompt selected
+                            console.log('ℹ️ No selected initial assistant prompt found, using default');
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('❌ Error retrieving selected initial assistant prompt:', error);
+                // Fall back to default on error
+            }
+        }
         
         // Generate message ID using the first 10 words, chatID, and current date
         const currentDate = new Date();

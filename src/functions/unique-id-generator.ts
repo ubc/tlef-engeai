@@ -299,6 +299,58 @@ export class IDGenerator {
     }
 
     /**
+     * Generates a unique 6-character uppercase alphanumeric course code using the formula:
+     * courseName + "-" + date.toISOString() -> uniqueIDGenerator -> convert to 6-char uppercase alphanumeric
+     * 
+     * This generates a course code that can be shared with students for PIN-based course entry.
+     * The code is deterministic based on course name and creation date.
+     *
+     * @param courseName - The name of the course
+     * @param date - The date when the course was created
+     * @returns A 6-character uppercase alphanumeric string (A-Z, 0-9)
+     */
+    courseCodeID(courseName: string, date: Date): string {
+        const hashInput = courseName + "-" + date.toISOString();
+        const hexResult = this.uniqueIDGenerator(hashInput);
+        
+        // Convert 12-character hex to 6-character uppercase alphanumeric
+        // Take pairs of hex digits (0-255) and map to alphanumeric (0-9, A-Z = 36 chars)
+        let courseCode = '';
+        
+        for (let i = 0; i < 6; i++) {
+            // Take pairs of hex characters
+            const hexPair = hexResult.substring(i * 2, (i * 2) + 2);
+            const decimalValue = parseInt(hexPair, 16); // 0-255
+            const alphanumericIndex = decimalValue % 36; // 0-35
+            
+            if (alphanumericIndex < 10) {
+                // 0-9: use digits
+                courseCode += alphanumericIndex.toString();
+            } else {
+                // 10-35: use letters A-Z
+                courseCode += String.fromCharCode(65 + (alphanumericIndex - 10)); // A-Z
+            }
+        }
+        
+        return courseCode;
+    }
+
+    /**
+     * Generates a unique Initial Assistant Prompt ID using the formula:
+     * title + "-" + courseName + "-" + date.toISOString() -> uniqueIDGenerator
+     *
+     * @param title - The title of the initial assistant prompt
+     * @param courseName - The name of the course
+     * @param date - The date when the prompt was created
+     * @returns A 12-character hexadecimal string representing the unique prompt ID
+     */
+    initialAssistantPromptID(title: string, courseName: string, date: Date): string {
+        const dateString = date.toISOString(); // Full ISO string with milliseconds
+        const hashInput = title + "-" + courseName + "-" + dateString;
+        return this.uniqueIDGenerator(hashInput);
+    }
+
+    /**
      * @deprecated Use globalUserID instead. This method is kept for backward compatibility
      * but CourseUser no longer contains puid, so this method cannot work correctly.
      * 

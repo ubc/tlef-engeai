@@ -442,7 +442,7 @@ function setupFormListeners(state: OnboardingState, onBoardingCourse: activeCour
     if (contentCountInput) {
         contentCountInput.addEventListener('input', (e) => {
             const target = e.target as HTMLInputElement;
-            onBoardingCourse.tilesNumber = parseInt(target.value) || 0;
+            onBoardingCourse.tilesNumber = parseInt(target.value) || 12;
             updateStepIndicators(state, onBoardingCourse);
         });
     }
@@ -538,7 +538,7 @@ function setupReviewFormListeners(state: OnboardingState, onBoardingCourse: acti
     if (reviewContentCountInput) {
         reviewContentCountInput.addEventListener('input', (e) => {
             const target = e.target as HTMLInputElement;
-            onBoardingCourse.tilesNumber = parseInt(target.value) || 0;
+            onBoardingCourse.tilesNumber = parseInt(target.value) || 12;
             updateStepIndicators(state, onBoardingCourse);
         });
     }
