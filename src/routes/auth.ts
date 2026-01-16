@@ -11,8 +11,6 @@ import express from 'express';
 import path from 'path';
 import { passport, ubcShibStrategy, isSamlAvailable } from '../middleware/passport';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
-import { GlobalUser } from '../functions/types';
-import { IDGenerator } from '../functions/unique-id-generator';
 import { sanitizeGlobalUserForFrontend } from '../functions/user-utils';
 
 const router = express.Router();
