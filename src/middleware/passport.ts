@@ -93,6 +93,9 @@ if (hasSamlConfig) {
         const strategyConfig: any = {
             issuer: process.env.SAML_ISSUER as string,
             callbackUrl: process.env.SAML_CALLBACK_URL as string,
+            entryPoint: process.env.SAML_ENTRY_POINT as string,
+            logoutUrl: process.env.SAML_LOGOUT_URL as string,
+            metadataUrl: process.env.SAML_METADATA_URL as string,
             // Request specific attributes from UBC IdP
             // The library will automatically map OID names to friendly names
             attributeConfig: [
