@@ -10,7 +10,7 @@
  * @since: 2025-01-27
  */
 
-import { LearningObjective } from './types';
+import { LearningObjective, SystemPromptItem } from './types';
 
 /**
  * System prompt for EngE-AI - Engineering Education Assistant
@@ -498,44 +498,96 @@ You've explained the Nernst equation really well. Let's walk through a concrete 
 
 
 /**
- * Helper function to get system prompt with optional course-specific context, learning objectives, and struggle words
+ * Helper function to format learning objectives for regex replacement
+ * @param learningObjectives - Array of learning objectives
+ * @returns Formatted learning objectives string
+ */
+function formatLearningObjectivesContent(learningObjectives: LearningObjective[]): string {
+    let content = '\n\n<course_learning_objectives>\n';
+    content += 'The following are ALL learning objectives for this course, organized by week/topic and subsection:\n\n';
+    
+    learningObjectives.forEach((obj, index) => {
+        content += `${index + 1}. [${obj.topicOrWeekTitle} - ${obj.itemTitle}]: ${obj.LearningObjective}\n`;
+    });
+    
+    content += '\n</course_learning_objectives>\n';
+    content += '\nWhen helping students, reference these learning objectives to ensure alignment with course goals.';
+    
+    return content;
+}
+
+/**
+ * Helper function to get system prompt with optional course-specific context, learning objectives, struggle words, and appended custom items
+ * Uses regex replacement for learning objectives and struggle topics (more efficient)
+ * @param baseSystemPrompt - Optional base system prompt from database (if not provided, uses SYSTEM_PROMPT constant)
  * @param courseName - Optional course name for context
- * @param learningObjectives - Optional array of learning objectives to append
- * @param struggleTopics - Optional array of struggle words/topics the student has difficulty with
+ * @param learningObjectives - Optional array of learning objectives to replace via regex
+ * @param struggleTopics - Optional array of struggle words/topics to replace via regex
+ * @param appendedSystemPromptItems - Optional array of custom system prompt items to append
  * @returns System prompt string
  */
-export function getSystemPrompt(courseName?: string, learningObjectives?: LearningObjective[], struggleTopics?: string[]): string {
-    let prompt = SYSTEM_PROMPT;
+export function getSystemPrompt(
+    baseSystemPrompt?: string,
+    courseName?: string,
+    learningObjectives?: LearningObjective[],
+    struggleTopics?: string[],
+    appendedSystemPromptItems?: SystemPromptItem[]
+): string {
+    // Use base prompt from database if provided, otherwise use constant
+    let prompt = baseSystemPrompt || SYSTEM_PROMPT;
     
+    // Format learning objectives content
+    let learningObjectivesContent = '';
+    if (learningObjectives && learningObjectives.length > 0) {
+        learningObjectivesContent = formatLearningObjectivesContent(learningObjectives);
+    }
+    
+    // Format struggle topics content
+    let struggleTopicsContent = '';
+    if (struggleTopics && struggleTopics.length > 0) {
+        struggleTopicsContent = formatStruggleWordsPrompt(struggleTopics);
+    } else {
+        if (!struggleTopics) {
+            struggleTopicsContent = '\n\nNo struggle topic array is attached in the function arguments (028).';
+        } else if (struggleTopics.length === 0) {
+            struggleTopicsContent = '\n\nThe struggle topic array is empty (019).';
+        } else {
+            struggleTopicsContent = '\n\nThe struggle topic array is not an array nor an empty array (034).';
+        }
+    }
+    
+    // Use regex replacement for learning objectives (more efficient)
+    const learningObjectivesRegex = /<learningobjectives>[\s\S]*?<\/learningobjectives>/gi;
+    if (learningObjectivesContent && learningObjectivesRegex.test(prompt)) {
+        // Replace the tag with actual content
+        prompt = prompt.replace(learningObjectivesRegex, learningObjectivesContent.replace(/^[\s\n]+|[\s\n]+$/g, ''));
+    } else if (learningObjectivesContent) {
+        // Tag doesn't exist, append content (backward compatibility)
+        prompt += learningObjectivesContent;
+    }
+    
+    // Use regex replacement for struggle topics (more efficient)
+    const struggleTopicsRegex = /<strugglewords>[\s\S]*?<\/strugglewords>/gi;
+    if (struggleTopicsContent && struggleTopicsRegex.test(prompt)) {
+        // Replace the tag with actual content
+        prompt = prompt.replace(struggleTopicsRegex, struggleTopicsContent.replace(/^[\s\n]+|[\s\n]+$/g, ''));
+    } else if (struggleTopicsContent) {
+        // Tag doesn't exist, append content (backward compatibility)
+        prompt += struggleTopicsContent;
+    }
+    
+    // Append course name if provided
     if (courseName) {
         prompt += `\n\nYou are currently helping with: ${courseName}`;
     }
     
-    if (learningObjectives && learningObjectives.length > 0) {
-        prompt += '\n\n<course_learning_objectives>\n';
-        prompt += 'The following are ALL learning objectives for this course, organized by week/topic and subsection:\n\n';
-        
-        learningObjectives.forEach((obj, index) => {
-            prompt += `${index + 1}. [${obj.topicOrWeekTitle} - ${obj.itemTitle}]: ${obj.LearningObjective}\n`;
+    // Append custom system prompt items (in order)
+    if (appendedSystemPromptItems && appendedSystemPromptItems.length > 0) {
+        appendedSystemPromptItems.forEach((item, index) => {
+            if (item.content && item.content.trim()) {
+                prompt += `\n\n---\n\n${item.content.trim()}`;
+            }
         });
-        
-        prompt += '\n</course_learning_objectives>\n';
-        prompt += '\nWhen helping students, reference these learning objectives to ensure alignment with course goals.';
-    }
-    
-    if (struggleTopics && struggleTopics.length > 0) {
-        prompt += formatStruggleWordsPrompt(struggleTopics);
-    }
-    else {
-        if (!struggleTopics) {
-            prompt += '\n\nNo struggle topic array is attached in the function arguments (028).';
-        }
-        else if (struggleTopics.length === 0) {
-            prompt += '\n\nThe struggle topic array is empty (019).';
-        }
-        else {
-            prompt += '\n\nThe struggle topic array is not an array nor an empty array (034).';
-        }
     }
 
     // DEVELOPER MODE

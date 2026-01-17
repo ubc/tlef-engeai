@@ -1,8 +1,8 @@
 import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 import * as dotenv from 'dotenv';
-import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, Chat, ChatMessage, GlobalUser, CourseUser, LearningObjective, MemoryAgentEntry, InitialAssistantPrompt, DEFAULT_PROMPT_ID } from './types';
+import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, Chat, ChatMessage, GlobalUser, CourseUser, LearningObjective, MemoryAgentEntry, InitialAssistantPrompt, DEFAULT_PROMPT_ID, SystemPromptItem, DEFAULT_BASE_PROMPT_ID, DEFAULT_LEARNING_OBJECTIVES_ID, DEFAULT_STRUGGLE_TOPICS_ID } from './types';
 import { IDGenerator } from './unique-id-generator';
-import { INITIAL_ASSISTANT_MESSAGE } from './chat-prompts';
+import { INITIAL_ASSISTANT_MESSAGE, SYSTEM_PROMPT } from './chat-prompts';
 
 dotenv.config();
 
@@ -2147,6 +2147,236 @@ export class EngEAI_MongoDB {
 
                 console.log(`✅ Auto-selected default prompt for course: ${courseName || courseId}`);
             }
+        }
+    }
+
+    // ===========================================
+    // ========= SYSTEM PROMPT ITEMS ============
+    // ===========================================
+
+    /**
+     * Get all system prompt items for a course
+     * @param courseId - The course ID
+     * @returns Array of system prompt items (both appended and not appended)
+     */
+    public getSystemPromptItems = async (courseId: string): Promise<SystemPromptItem[]> => {
+        const course = await this.getActiveCourse(courseId);
+        if (!course) {
+            throw new Error(`Course with id ${courseId} not found`);
+        }
+        return (course as unknown as activeCourse).collectionOfSystemPromptItems || [];
+    }
+
+    /**
+     * Get the base system prompt item for a course
+     * @param courseId - The course ID
+     * @returns The base system prompt item or null if not found
+     */
+    public getBaseSystemPrompt = async (courseId: string): Promise<SystemPromptItem | null> => {
+        const items = await this.getSystemPromptItems(courseId);
+        return items.find(item => item.componentType === 'base' || item.id === DEFAULT_BASE_PROMPT_ID) || null;
+    }
+
+    /**
+     * Get only appended custom system prompt items (for use in getSystemPrompt)
+     * @param courseId - The course ID
+     * @returns Array of appended custom system prompt items
+     */
+    public getAppendedSystemPromptItems = async (courseId: string): Promise<SystemPromptItem[]> => {
+        const items = await this.getSystemPromptItems(courseId);
+        return items.filter(item => item.isAppended && item.componentType === 'custom');
+    }
+
+    /**
+     * Create a new system prompt item for a course
+     * @param courseId - The course ID
+     * @param item - The system prompt item to create
+     */
+    public createSystemPromptItem = async (courseId: string, item: SystemPromptItem): Promise<void> => {
+        const course = await this.getActiveCourse(courseId);
+        if (!course) {
+            throw new Error(`Course with id ${courseId} not found`);
+        }
+
+        const items = (course as unknown as activeCourse).collectionOfSystemPromptItems || [];
+        items.push(item);
+
+        await this.getCourseCollection().updateOne(
+            { id: courseId },
+            { $set: { collectionOfSystemPromptItems: items } }
+        );
+    }
+
+    /**
+     * Update an existing system prompt item
+     * @param courseId - The course ID
+     * @param itemId - The item ID to update
+     * @param updates - Partial item data to update
+     */
+    public updateSystemPromptItem = async (courseId: string, itemId: string, updates: Partial<SystemPromptItem>): Promise<void> => {
+        const course = await this.getActiveCourse(courseId);
+        if (!course) {
+            throw new Error(`Course with id ${courseId} not found`);
+        }
+
+        const items = (course as unknown as activeCourse).collectionOfSystemPromptItems || [];
+        const itemIndex = items.findIndex(item => item.id === itemId);
+        
+        if (itemIndex === -1) {
+            throw new Error(`System prompt item with id ${itemId} not found`);
+        }
+
+        items[itemIndex] = { ...items[itemIndex], ...updates };
+
+        await this.getCourseCollection().updateOne(
+            { id: courseId },
+            { $set: { collectionOfSystemPromptItems: items } }
+        );
+    }
+
+    /**
+     * Delete a system prompt item
+     * Prevents deletion of default components (base, learning objectives, struggle topics)
+     * @param courseId - The course ID
+     * @param itemId - The item ID to delete
+     */
+    public deleteSystemPromptItem = async (courseId: string, itemId: string): Promise<void> => {
+        const course = await this.getActiveCourse(courseId);
+        if (!course) {
+            throw new Error(`Course with id ${courseId} not found`);
+        }
+
+        const items = (course as unknown as activeCourse).collectionOfSystemPromptItems || [];
+        
+        // Find the item to delete
+        const itemToDelete = items.find(item => item.id === itemId);
+        if (!itemToDelete) {
+            throw new Error(`System prompt item with id ${itemId} not found`);
+        }
+
+        // Prevent deletion of default components
+        if (itemToDelete.componentType && ['base', 'learning-objectives', 'struggle-topics'].includes(itemToDelete.componentType)) {
+            throw new Error(`Cannot delete the default ${itemToDelete.componentType} component`);
+        }
+
+        // Filter out the deleted item
+        const filteredItems = items.filter(item => item.id !== itemId);
+
+        await this.getCourseCollection().updateOne(
+            { id: courseId },
+            { $set: { collectionOfSystemPromptItems: filteredItems } }
+        );
+    }
+
+    /**
+     * Toggle append status of a system prompt item
+     * @param courseId - The course ID
+     * @param itemId - The item ID to toggle
+     * @param append - Whether to append (true) or remove (false)
+     */
+    public toggleSystemPromptItemAppend = async (courseId: string, itemId: string, append: boolean): Promise<void> => {
+        await this.updateSystemPromptItem(courseId, itemId, { isAppended: append });
+    }
+
+    /**
+     * Save multiple append status changes at once
+     * @param courseId - The course ID
+     * @param changes - Array of changes with itemId and append status
+     */
+    public saveSystemPromptAppendChanges = async (courseId: string, changes: Array<{ itemId: string; append: boolean }>): Promise<void> => {
+        const course = await this.getActiveCourse(courseId);
+        if (!course) {
+            throw new Error(`Course with id ${courseId} not found`);
+        }
+
+        const items = (course as unknown as activeCourse).collectionOfSystemPromptItems || [];
+        
+        // Create a map of changes for quick lookup
+        const changesMap = new Map(changes.map(change => [change.itemId, change.append]));
+
+        // Update items with new append status
+        const updatedItems = items.map(item => {
+            if (changesMap.has(item.id)) {
+                return { ...item, isAppended: changesMap.get(item.id)! };
+            }
+            return item;
+        });
+
+        await this.getCourseCollection().updateOne(
+            { id: courseId },
+            { $set: { collectionOfSystemPromptItems: updatedItems } }
+        );
+    }
+
+    /**
+     * Ensure the three default system prompt components exist for a course
+     * Creates them if missing
+     * @param courseId - The course ID
+     * @param courseName - The course name (for logging)
+     */
+    public ensureDefaultSystemPromptComponents = async (courseId: string, courseName?: string): Promise<void> => {
+        const course = await this.getActiveCourse(courseId);
+        if (!course) {
+            throw new Error(`Course with id ${courseId} not found`);
+        }
+
+        const items = (course as unknown as activeCourse).collectionOfSystemPromptItems || [];
+        const existingIds = new Set(items.map(item => item.id));
+        const dateCreated = new Date();
+
+        // Ensure base system prompt exists
+        if (!existingIds.has(DEFAULT_BASE_PROMPT_ID)) {
+            const basePrompt: SystemPromptItem = {
+                id: DEFAULT_BASE_PROMPT_ID,
+                title: 'Base System Prompt',
+                content: SYSTEM_PROMPT,
+                dateCreated: dateCreated,
+                isAppended: true, // Always included
+                isDefault: true,
+                componentType: 'base'
+            };
+            items.push(basePrompt);
+            console.log(`✅ Created default base system prompt for course: ${courseName || courseId}`);
+        }
+
+        // Ensure learning objectives component exists
+        if (!existingIds.has(DEFAULT_LEARNING_OBJECTIVES_ID)) {
+            const learningObjectives: SystemPromptItem = {
+                id: DEFAULT_LEARNING_OBJECTIVES_ID,
+                title: 'Learning Objectives',
+                content: '<learningobjectives></learningobjectives>', // Placeholder for regex replacement
+                dateCreated: dateCreated,
+                isAppended: true, // Always included
+                isDefault: true,
+                componentType: 'learning-objectives'
+            };
+            items.push(learningObjectives);
+            console.log(`✅ Created default learning objectives component for course: ${courseName || courseId}`);
+        }
+
+        // Ensure struggle topics component exists
+        if (!existingIds.has(DEFAULT_STRUGGLE_TOPICS_ID)) {
+            const struggleTopics: SystemPromptItem = {
+                id: DEFAULT_STRUGGLE_TOPICS_ID,
+                title: 'Struggle Topics',
+                content: '<strugglewords></strugglewords>', // Placeholder for regex replacement
+                dateCreated: dateCreated,
+                isAppended: true, // Always included
+                isDefault: true,
+                componentType: 'struggle-topics'
+            };
+            items.push(struggleTopics);
+            console.log(`✅ Created default struggle topics component for course: ${courseName || courseId}`);
+        }
+
+        // Update database if any items were added
+        const courseData = course as unknown as activeCourse;
+        const existingItems = courseData.collectionOfSystemPromptItems || [];
+        if (items.length > existingItems.length) {
+            await this.getCourseCollection().updateOne(
+                { id: courseId },
+                { $set: { collectionOfSystemPromptItems: items } }
+            );
         }
     }
 }

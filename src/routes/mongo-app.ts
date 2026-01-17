@@ -33,7 +33,7 @@
 import express, { Request, Response } from 'express';
 import { asyncHandler, asyncHandlerWithAuth } from '../middleware/asyncHandler';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
-import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt } from '../functions/types';
+import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt, SystemPromptItem } from '../functions/types';
 import { IDGenerator } from '../functions/unique-id-generator';
 import dotenv from 'dotenv';
 
@@ -3165,6 +3165,470 @@ router.post('/:courseId/assistant-prompts/:promptId/select', asyncHandlerWithAut
         res.status(500).json({
             success: false,
             error: 'Failed to select initial assistant prompt',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+// ===========================================
+// ========= SYSTEM PROMPT ITEMS API ========
+// ===========================================
+
+// GET /api/courses/:courseId/system-prompts - Get all system prompt items (REQUIRES AUTH - Instructors only)
+router.get('/:courseId/system-prompts', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser || globalUser.affiliation !== 'faculty') {
+            return res.status(403).json({
+                success: false,
+                error: 'Instructor access required'
+            });
+        }
+
+        const { courseId } = req.params;
+        const instance = await EngEAI_MongoDB.getInstance();
+        
+        // Verify instructor is in course's instructors array
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        const courseData = course as unknown as activeCourse;
+        const instructorUserId = globalUser.userId;
+        
+        // Helper function to check if instructor is in the array (handles both old and new formats)
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some(inst => {
+                if (typeof inst === 'string') {
+                    return inst === instructorUserId;
+                } else if (inst && inst.userId) {
+                    return inst.userId === instructorUserId;
+                }
+                return false;
+            });
+        };
+
+        if (!isInstructorInArray(courseData.instructors || [])) {
+            return res.status(403).json({
+                success: false,
+                error: 'You do not have permission to access this course'
+            });
+        }
+
+        // Ensure default components exist before returning items
+        await instance.ensureDefaultSystemPromptComponents(courseId, courseData.courseName);
+
+        const items = await instance.getSystemPromptItems(courseId);
+        
+        res.json({
+            success: true,
+            data: items
+        });
+    } catch (error) {
+        console.error('Error getting system prompt items:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get system prompt items',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+// POST /api/courses/:courseId/system-prompts - Create new system prompt item (REQUIRES AUTH - Instructors only)
+router.post('/:courseId/system-prompts', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser || globalUser.affiliation !== 'faculty') {
+            return res.status(403).json({
+                success: false,
+                error: 'Instructor access required'
+            });
+        }
+
+        const { courseId } = req.params;
+        const { title, content } = req.body;
+
+        if (!title || typeof title !== 'string' || title.trim() === '') {
+            return res.status(400).json({
+                success: false,
+                error: 'Title is required'
+            });
+        }
+        
+        // Content can be empty, so we allow it
+
+        const instance = await EngEAI_MongoDB.getInstance();
+        
+        // Verify instructor is in course's instructors array
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        const courseData = course as unknown as activeCourse;
+        const instructorUserId = globalUser.userId;
+        
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some(inst => {
+                if (typeof inst === 'string') {
+                    return inst === instructorUserId;
+                } else if (inst && inst.userId) {
+                    return inst.userId === instructorUserId;
+                }
+                return false;
+            });
+        };
+
+        if (!isInstructorInArray(courseData.instructors || [])) {
+            return res.status(403).json({
+                success: false,
+                error: 'You do not have permission to access this course'
+            });
+        }
+
+        // Generate ID for the new item
+        const dateCreated = new Date();
+        const itemId = instance.idGenerator.initialAssistantPromptID(title, courseData.courseName, dateCreated);
+
+        const newItem: SystemPromptItem = {
+            id: itemId,
+            title: title.trim(),
+            content: content ? content.trim() : '',
+            dateCreated: dateCreated,
+            isAppended: false, // Default to not appended
+            componentType: 'custom'
+        };
+
+        await instance.createSystemPromptItem(courseId, newItem);
+        
+        res.status(201).json({
+            success: true,
+            data: newItem,
+            message: 'System prompt item created successfully'
+        });
+    } catch (error) {
+        console.error('Error creating system prompt item:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to create system prompt item',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+// PUT /api/courses/:courseId/system-prompts/:itemId - Update system prompt item (REQUIRES AUTH - Instructors only)
+router.put('/:courseId/system-prompts/:itemId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser || globalUser.affiliation !== 'faculty') {
+            return res.status(403).json({
+                success: false,
+                error: 'Instructor access required'
+            });
+        }
+
+        const { courseId, itemId } = req.params;
+        const { title, content } = req.body;
+
+        if (!title && content === undefined) {
+            return res.status(400).json({
+                success: false,
+                error: 'At least one field (title or content) is required'
+            });
+        }
+
+        const instance = await EngEAI_MongoDB.getInstance();
+        
+        // Verify instructor is in course's instructors array
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        const courseData = course as unknown as activeCourse;
+        const instructorUserId = globalUser.userId;
+        
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some(inst => {
+                if (typeof inst === 'string') {
+                    return inst === instructorUserId;
+                } else if (inst && inst.userId) {
+                    return inst.userId === instructorUserId;
+                }
+                return false;
+            });
+        };
+
+        if (!isInstructorInArray(courseData.instructors || [])) {
+            return res.status(403).json({
+                success: false,
+                error: 'You do not have permission to access this course'
+            });
+        }
+
+        const updates: Partial<SystemPromptItem> = {};
+        if (title !== undefined) updates.title = title.trim();
+        if (content !== undefined) updates.content = content.trim();
+
+        await instance.updateSystemPromptItem(courseId, itemId, updates);
+        
+        // Get updated item
+        const items = await instance.getSystemPromptItems(courseId);
+        const updatedItem = items.find(item => item.id === itemId);
+        
+        res.json({
+            success: true,
+            data: updatedItem,
+            message: 'System prompt item updated successfully'
+        });
+    } catch (error) {
+        console.error('Error updating system prompt item:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update system prompt item',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+// DELETE /api/courses/:courseId/system-prompts/:itemId - Delete system prompt item (REQUIRES AUTH - Instructors only)
+router.delete('/:courseId/system-prompts/:itemId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser || globalUser.affiliation !== 'faculty') {
+            return res.status(403).json({
+                success: false,
+                error: 'Instructor access required'
+            });
+        }
+
+        const { courseId, itemId } = req.params;
+        const instance = await EngEAI_MongoDB.getInstance();
+        
+        // Verify instructor is in course's instructors array
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        const courseData = course as unknown as activeCourse;
+        const instructorUserId = globalUser.userId;
+        
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some(inst => {
+                if (typeof inst === 'string') {
+                    return inst === instructorUserId;
+                } else if (inst && inst.userId) {
+                    return inst.userId === instructorUserId;
+                }
+                return false;
+            });
+        };
+
+        if (!isInstructorInArray(courseData.instructors || [])) {
+            return res.status(403).json({
+                success: false,
+                error: 'You do not have permission to access this course'
+            });
+        }
+
+        await instance.deleteSystemPromptItem(courseId, itemId);
+        
+        res.json({
+            success: true,
+            message: 'System prompt item deleted successfully'
+        });
+    } catch (error) {
+        console.error('Error deleting system prompt item:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        
+        // Check if error is about default components
+        if (errorMessage.includes('Cannot delete')) {
+            return res.status(400).json({
+                success: false,
+                error: errorMessage
+            });
+        }
+        
+        res.status(500).json({
+            success: false,
+            error: 'Failed to delete system prompt item',
+            details: errorMessage
+        });
+    }
+}));
+
+// POST /api/courses/:courseId/system-prompts/:itemId/append - Toggle append status (REQUIRES AUTH - Instructors only)
+router.post('/:courseId/system-prompts/:itemId/append', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser || globalUser.affiliation !== 'faculty') {
+            return res.status(403).json({
+                success: false,
+                error: 'Instructor access required'
+            });
+        }
+
+        const { courseId, itemId } = req.params;
+        const { append } = req.body;
+
+        if (typeof append !== 'boolean') {
+            return res.status(400).json({
+                success: false,
+                error: 'append field must be a boolean'
+            });
+        }
+
+        const instance = await EngEAI_MongoDB.getInstance();
+        
+        // Verify instructor is in course's instructors array
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        const courseData = course as unknown as activeCourse;
+        const instructorUserId = globalUser.userId;
+        
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some(inst => {
+                if (typeof inst === 'string') {
+                    return inst === instructorUserId;
+                } else if (inst && inst.userId) {
+                    return inst.userId === instructorUserId;
+                }
+                return false;
+            });
+        };
+
+        if (!isInstructorInArray(courseData.instructors || [])) {
+            return res.status(403).json({
+                success: false,
+                error: 'You do not have permission to access this course'
+            });
+        }
+
+        await instance.toggleSystemPromptItemAppend(courseId, itemId, append);
+        
+        // Get updated item
+        const items = await instance.getSystemPromptItems(courseId);
+        const updatedItem = items.find(item => item.id === itemId);
+        
+        res.json({
+            success: true,
+            data: updatedItem,
+            message: `System prompt item ${append ? 'appended' : 'removed'} successfully`
+        });
+    } catch (error) {
+        console.error('Error toggling system prompt item append status:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to toggle append status',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+// POST /api/courses/:courseId/system-prompts/save-changes - Save multiple append status changes (REQUIRES AUTH - Instructors only)
+router.post('/:courseId/system-prompts/save-changes', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser || globalUser.affiliation !== 'faculty') {
+            return res.status(403).json({
+                success: false,
+                error: 'Instructor access required'
+            });
+        }
+
+        const { courseId } = req.params;
+        const { changes } = req.body;
+
+        if (!Array.isArray(changes)) {
+            return res.status(400).json({
+                success: false,
+                error: 'changes must be an array'
+            });
+        }
+
+        // Validate changes array
+        for (const change of changes) {
+            if (!change.itemId || typeof change.append !== 'boolean') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Each change must have itemId (string) and append (boolean)'
+                });
+            }
+        }
+
+        const instance = await EngEAI_MongoDB.getInstance();
+        
+        // Verify instructor is in course's instructors array
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        const courseData = course as unknown as activeCourse;
+        const instructorUserId = globalUser.userId;
+        
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some(inst => {
+                if (typeof inst === 'string') {
+                    return inst === instructorUserId;
+                } else if (inst && inst.userId) {
+                    return inst.userId === instructorUserId;
+                }
+                return false;
+            });
+        };
+
+        if (!isInstructorInArray(courseData.instructors || [])) {
+            return res.status(403).json({
+                success: false,
+                error: 'You do not have permission to access this course'
+            });
+        }
+
+        await instance.saveSystemPromptAppendChanges(courseId, changes);
+        
+        // Get all updated items
+        const items = await instance.getSystemPromptItems(courseId);
+        
+        res.json({
+            success: true,
+            data: items,
+            message: 'System prompt changes saved successfully'
+        });
+    } catch (error) {
+        console.error('Error saving system prompt changes:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to save system prompt changes',
             details: error instanceof Error ? error.message : 'Unknown error'
         });
     }

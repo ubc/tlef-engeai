@@ -153,6 +153,7 @@ router.get('/course/:courseId/instructor/flags', validateCourseAccess, serveInst
 router.get('/course/:courseId/instructor/monitor', validateCourseAccess, serveInstructorShell());
 router.get('/course/:courseId/instructor/chat', validateCourseAccess, serveInstructorShell());
 router.get('/course/:courseId/instructor/assistant-prompts', validateCourseAccess, serveInstructorShell());
+router.get('/course/:courseId/instructor/system-prompts', validateCourseAccess, serveInstructorShell());
 router.get('/course/:courseId/instructor/course-information', validateCourseAccess, serveInstructorShell());
 router.get('/course/:courseId/instructor/about', validateCourseAccess, serveInstructorShell());
 
