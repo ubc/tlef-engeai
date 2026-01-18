@@ -1837,8 +1837,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 // Update completion status
                 updateDivisionCompletion(topicOrWeekId);
                 
-                // Show success message
-                await showSuccessModal('Success', 'Section deleted successfully.');
+                // Show success message (add small delay to ensure previous modal is fully closed)
+                setTimeout(async () => {
+                    await showSuccessModal('Success', 'Section deleted successfully.');
+                }, 100);
             } else {
                 throw new Error(resultData.error || 'Failed to delete section');
             }

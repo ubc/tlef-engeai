@@ -259,20 +259,17 @@ export class ModalOverlay {
             this.overlay.setAttribute('data-escape-handler', 'true');
         }
 
-        // Tab navigation, Enter, and Space key handling
+        // Tab navigation (overlay-level)
         this.overlay.addEventListener('keydown', (e) => {
             if (e.key === 'Tab') {
                 this.handleTabNavigation(e);
-            } else if (e.key === 'Enter') {
-                e.stopPropagation(); // Prevent event from bubbling to other handlers
-                this.handleEnterKey(e);
             } else if (e.key === ' ' || e.key === 'Spacebar') {
                 // Handle Space key for success modals
                 const modalType = this.getModalType();
                 if (modalType === 'success') {
                     const activeElement = document.activeElement;
                     // Don't handle Space if user is typing in an input field
-                    if (activeElement && 
+                    if (activeElement &&
                         (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
                         return;
                     }
@@ -282,6 +279,9 @@ export class ModalOverlay {
                 }
             }
         });
+
+        // Enter key handling (document-level, like Escape)
+        document.addEventListener('keydown', this.handleEnterKey);
     }
 
     /**
@@ -312,31 +312,72 @@ export class ModalOverlay {
 
     /**
      * Handles Enter key press within the modal
-     * 
+     *
      * @param e - Keyboard event
      */
-    private handleEnterKey(e: KeyboardEvent): void {
+    private handleEnterKey = (e: KeyboardEvent): void => {
+        // Only handle Enter when this modal is visible
+        if (!this.isVisible || e.key !== 'Enter') return;
+
         // Don't handle Enter if user is typing in an input field (except buttons)
         const activeElement = document.activeElement;
-        if (activeElement && 
+        if (activeElement &&
             (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') &&
             activeElement.getAttribute('type') !== 'button') {
             return; // Let the input handle its own Enter key behavior
         }
 
+        // Prevent default behavior (form submission, etc.) and stop propagation
         e.preventDefault();
-        
+        e.stopPropagation();
+
         // Modal-specific Enter key handling based on modal type
         if (!this.container) return;
-        
+
         const modalType = this.getModalType();
         const action = this.determineEnterAction(modalType);
-        
+
         if (action) {
-            // Directly close modal with the determined action
+            // For delete confirmation modals, find and click the danger button
+            if (action === 'delete') {
+                const dangerButton = this.focusableElements.find(element =>
+                    element.tagName === 'BUTTON' && element.classList.contains('modal-btn-danger')
+                );
+
+                if (dangerButton) {
+                    // Simulate a click on the danger button to execute its action
+                    (dangerButton as HTMLButtonElement).click();
+                    return;
+                }
+            }
+
+            // For other modals, find the appropriate button to click
+            // First try primary button
+            const primaryButton = this.focusableElements.find(element =>
+                element.tagName === 'BUTTON' && element.classList.contains('modal-btn-primary')
+            );
+
+            if (primaryButton) {
+                // Simulate a click on the primary button
+                (primaryButton as HTMLButtonElement).click();
+                return;
+            }
+
+            // Fallback: click the first button
+            const firstButton = this.focusableElements.find(element =>
+                element.tagName === 'BUTTON'
+            );
+
+            if (firstButton) {
+                // Simulate a click on the first button
+                (firstButton as HTMLButtonElement).click();
+                return;
+            }
+
+            // Last resort: directly close modal with the determined action
             this.close(action);
         }
-    }
+    };
 
     /**
      * Gets the modal type from the container classes
@@ -489,12 +530,22 @@ export class ModalOverlay {
      * Cleans up modal resources
      */
     private cleanup(): void {
+        // Remove document event listeners
+        document.removeEventListener('keydown', this.handleEnterKey);
+        document.removeEventListener('keydown', this.handleEscapeKey);
+
         this.overlay = null;
         this.container = null;
         this.focusableElements = [];
         this.lastFocusedElement = null;
         this.resolvePromise = null;
         this.rejectPromise = null;
+
+        // Clear the global modal reference if this was the current global modal
+        // This ensures fresh modal instances for consecutive modal calls
+        if (globalModal === this) {
+            globalModal = null;
+        }
     }
 }
 
@@ -509,19 +560,19 @@ let globalModal: ModalOverlay | null = null;
 
 /**
  * Gets or creates the global modal instance
- * 
+ *
  * @returns Modal overlay instance
  */
 function getModal(): ModalOverlay {
-    // If there's already a modal open, close it first to prevent conflicts
+    // Always create a new modal instance for each call to prevent conflicts
+    // between consecutive modals (like delete confirmation -> success modal)
     if (globalModal && globalModal.isVisible) {
         console.log('⚠️ Modal already open, closing previous modal first');
         globalModal.close('replaced');
     }
-    
-    if (!globalModal) {
-        globalModal = new ModalOverlay();
-    }
+
+    // Create a fresh modal instance
+    globalModal = new ModalOverlay();
     return globalModal;
 }
 
