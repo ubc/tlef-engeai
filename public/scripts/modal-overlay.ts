@@ -1054,8 +1054,14 @@ export async function openUploadModal(
 
     // Create the modal
     const modal = document.createElement('div');
-    modal.className = 'modal';
+    modal.className = 'modal-container';
     overlay.appendChild(modal);
+
+    // Trigger reflow to ensure initial state is rendered before showing
+    overlay.offsetHeight;
+
+    // Show the modal
+    overlay.classList.add('show');
 
     // Create the header for the modal
     const header = document.createElement('div');
