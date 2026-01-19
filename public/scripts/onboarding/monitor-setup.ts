@@ -5,7 +5,7 @@
  * It provides a step-by-step tutorial on how to use the monitor dashboard.
  * 
  * FEATURES:
- * - 6-step onboarding process with navigation
+ * - 5-step onboarding process with navigation
  * - Interactive usage statistics demonstration
  * - Working calendar modal with date selection
  * - Interactive student sorting functionality
@@ -16,10 +16,9 @@
  * ONBOARDING STEPS:
  * 1. Welcome - Introduction to monitoring capabilities
  * 2. Usage Statistics - Understanding dashboard metrics
- * 3. Date Filtering - Calendar selection and date range functionality
- * 4. Student Overview - Sorting functionality and student list navigation
- * 5. Student Details - Expandable student cards and chat history access
- * 6. Congratulations - Completion and next steps
+ * 3. Student Overview - Sorting functionality and student list navigation
+ * 4. Student Details - Expandable student cards and chat history access
+ * 5. Congratulations - Completion and next steps
  * 
  * @author: gatahcha (revised)
  * @date: 2025-01-27
@@ -102,7 +101,7 @@ export const renderMonitorSetup = async (instructorCourse: activeCourse): Promis
         // Initialize monitor setup state
         const state: MonitorSetupState = {
             currentStep: 1,
-            totalSteps: 6,
+            totalSteps: 5,
             isValid: false,
             completedSteps: new Set()
         };
@@ -385,18 +384,14 @@ async function initializeStepFunctionality(stepNumber: number): Promise<void> {
             // Usage statistics step - already has static demo
             break;
         case 3:
-            // Date filtering step - calendar functionality
-            initializeCalendarDemo();
-            break;
-        case 4:
             // Student overview step - sorting functionality
             initializeStudentListDemo();
             break;
-        case 5:
+        case 4:
             // Student details step - accordion functionality
             initializeStudentDetailsDemo();
             break;
-        case 6:
+        case 5:
             // Completion step - no special functionality needed
             break;
     }
@@ -416,15 +411,15 @@ function initializeCalendarDemo(): void {
 function initializeStudentListDemo(): void {
     // Ensure the initial sort state is set
     (window as any).demoCurrentSort = 'tokens';
-    
+
     // Set initial button state
     const sortButtons = document.querySelectorAll('.student-list-section .sort-btn');
     sortButtons.forEach(btn => btn.classList.remove('active'));
-    
+
     const tokensBtn = document.getElementById('demo-sort-tokens');
     tokensBtn?.classList.add('active');
-    
-    // Render the student list
+
+    // Render the student list (will retry if DOM not ready)
     renderDemoStudentList();
 }
 
@@ -432,6 +427,7 @@ function initializeStudentListDemo(): void {
  * Initialize student details demo
  */
 function initializeStudentDetailsDemo(): void {
+    // Render the student details (will retry if DOM not ready)
     renderDemoStudentDetails();
 }
 
@@ -440,11 +436,15 @@ function initializeStudentDetailsDemo(): void {
  */
 function renderDemoStudentDetails(): void {
     const container = document.getElementById('demo-student-details-container');
-    if (!container) return;
+    if (!container) {
+        // If container not found, retry after a short delay
+        setTimeout(() => renderDemoStudentDetails(), 50);
+        return;
+    }
 
     const students = (window as any).demoStudents as DemoStudentData[];
     const currentSort = (window as any).demoCurrentSort as string;
-    
+
     if (!students || students.length === 0) return;
 
     // Sort students the same way as in the main list
@@ -458,7 +458,7 @@ function renderDemoStudentDetails(): void {
 
     // Use the first student as the demo (highest token user or first alphabetically)
     const demoStudent = sortedStudents[0];
-    
+
     container.innerHTML = `
         <div class="student-item expanded" data-student-id="${demoStudent.id}">
             <div class="student-header" onclick="toggleDemoStudentAccordion('${demoStudent.id}')">
@@ -481,7 +481,7 @@ function renderDemoStudentDetails(): void {
             </div>
         </div>
     `;
-    
+
     // Re-initialize Feather icons
     if (typeof (window as any).feather !== 'undefined') {
         (window as any).feather.replace();
@@ -849,11 +849,17 @@ function demoSortStudents(sortType: 'tokens' | 'name'): void {
  */
 function renderDemoStudentList(): void {
     const studentList = document.getElementById('demo-student-list');
-    if (!studentList) return;
+    if (!studentList) {
+        // If container not found, retry after a short delay
+        setTimeout(() => renderDemoStudentList(), 50);
+        return;
+    }
 
     const students = (window as any).demoStudents as DemoStudentData[];
     const currentSort = (window as any).demoCurrentSort as string;
-    
+
+    if (!students || students.length === 0) return;
+
     // Sort students
     const sortedStudents = [...students].sort((a, b) => {
         if (currentSort === 'tokens') {
@@ -862,7 +868,7 @@ function renderDemoStudentList(): void {
             return a.name.localeCompare(b.name);
         }
     });
-    
+
     studentList.innerHTML = sortedStudents.map(student => `
         <div class="student-item" data-student-id="${student.id}">
             <div class="student-header" onclick="toggleDemoStudentAccordion('${student.id}')">
