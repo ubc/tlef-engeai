@@ -62,6 +62,29 @@ function setupEventListeners(): void {
 }
 
 /**
+ * Setup event listeners for default components (learning objectives and struggle topics)
+ */
+function setupDefaultComponentEventListeners(): void {
+    // Setup expand/collapse for learning objectives
+    const learningObjectivesCard = document.querySelector(`[data-prompt-id="${DEFAULT_LEARNING_OBJECTIVES_ID}"]`);
+    if (learningObjectivesCard) {
+        const expandToggle = learningObjectivesCard.querySelector('.expand-toggle') as HTMLElement;
+        if (expandToggle) {
+            expandToggle.addEventListener('click', () => handleDefaultComponentToggleExpand(DEFAULT_LEARNING_OBJECTIVES_ID));
+        }
+    }
+
+    // Setup expand/collapse for struggle topics
+    const struggleTopicsCard = document.querySelector(`[data-prompt-id="${DEFAULT_STRUGGLE_TOPICS_ID}"]`);
+    if (struggleTopicsCard) {
+        const expandToggle = struggleTopicsCard.querySelector('.expand-toggle') as HTMLElement;
+        if (expandToggle) {
+            expandToggle.addEventListener('click', () => handleDefaultComponentToggleExpand(DEFAULT_STRUGGLE_TOPICS_ID));
+        }
+    }
+}
+
+/**
  * Load learning objectives count for display
  * Gets count from course content items
  */
@@ -149,15 +172,11 @@ function renderPrompts(): void {
         html += renderPromptCard(basePrompt);
     }
 
-    // Render learning objectives component
-    if (learningObjectives) {
-        html += renderLearningObjectivesComponent();
-    }
+    // Render learning objectives component (always included default component)
+    html += renderLearningObjectivesComponent();
 
-    // Render struggle topics component
-    if (struggleTopics) {
-        html += renderStruggleTopicsComponent();
-    }
+    // Render struggle topics component (always included default component)
+    html += renderStruggleTopicsComponent([]);
 
     // Render custom items
     if (customItems.length === 0 && !basePrompt && !learningObjectives && !struggleTopics) {
@@ -166,10 +185,6 @@ function renderPrompts(): void {
                 <p>No system prompt items yet. Click "Add New System Prompt Item" to create one.</p>
             </div>
         `;
-    } else {
-        customItems.forEach(item => {
-            html += renderPromptCard(item);
-        });
     }
 
     container.innerHTML = html;
@@ -179,6 +194,9 @@ function renderPrompts(): void {
         setupCardEventListeners(item.id);
     });
 
+    // Setup event listeners for default components (learning objectives and struggle topics)
+    setupDefaultComponentEventListeners();
+
     // Render feather icons again after DOM update
     renderFeatherIcons();
 }
@@ -187,6 +205,13 @@ function renderPrompts(): void {
  * Render learning objectives component (informational display)
  */
 function renderLearningObjectivesComponent(): string {
+    // Build full content
+    const fullContent = 'The following are ALL learning objectives for this course, organized by week/topic and subsection:\n\n\nWhen helping students, reference these learning objectives to ensure alignment with course goals.';
+
+    // Truncate content for display (3 lines)
+    const truncatedContent = truncateContent(fullContent, 3);
+    const isTruncated = fullContent !== truncatedContent;
+
     return `
         <div class="prompt-card appended default-component" data-prompt-id="${DEFAULT_LEARNING_OBJECTIVES_ID}">
             <span class="appended-badge">Appended</span>
@@ -196,11 +221,13 @@ function renderLearningObjectivesComponent(): string {
             </div>
             <div class="prompt-content-wrapper">
                 <div class="prompt-content informational">
-                    <p>Learning objectives are automatically retrieved from course content items.</p>
-                    <p><strong>Current count:</strong> ${learningObjectivesCount} learning objectives across all course items</p>
-                    <p>This component is always included in the system prompt.</p>
-                    <p>Content is dynamically inserted via regex replacement.</p>
+                    ${escapeHtml(truncatedContent)}
                 </div>
+                ${isTruncated ? `
+                    <button class="expand-toggle" data-prompt-id="${DEFAULT_LEARNING_OBJECTIVES_ID}" data-expanded="false">
+                        <i data-feather="chevron-down"></i>
+                    </button>
+                ` : ''}
             </div>
         </div>
     `;
@@ -209,7 +236,48 @@ function renderLearningObjectivesComponent(): string {
 /**
  * Render struggle topics component (informational display)
  */
-function renderStruggleTopicsComponent(): string {
+function renderStruggleTopicsComponent(struggleTopics?: string[]): string {
+    // Create quoted struggle topics string
+    const struggleTopicsQuoted = struggleTopics && struggleTopics.length > 0
+        ? struggleTopics.map((topic) => `"${topic}"`).join(', ')
+        : '"thermodynamics", "kinetics", "equilibrium"'; // Default placeholder
+
+    // Build full content
+    const fullContent = `\n\n===========================================
+STRUGGLE TOPICS HANDLING
+===========================================\n\n
+Student struggles with the following topics:\n
+${struggleTopicsQuoted}\n\n
+Before responding when struggle topics are discussed, verify:\n
+☐ STOPPED using Socratic or guided-discovery questioning\n
+☐ Providing direct, clear, step-by-step explanations\n
+☐ Using concrete numerical examples\n
+☐ Breaking concepts into simple, explicit steps\n
+☐ Appended <questionUnstruggle Topic="[exact struggle topic]"> tag at the VERY END of response (if struggle topic discussed)\n
+☐ Used EXACTLY ONE <questionUnstruggle> tag with exact topic name from list: ${struggleTopicsQuoted}\n
+☐ Tag placed ONLY on final line of response\n
+☐ Asked at MOST ONE follow-up question (simple understanding check, not Socratic)\n
+☐ Chose SINGLE most relevant struggle topic from exact list above\n
+☐ Did NOT use synonyms, related concepts, or variations - ONLY exact topic name\n\n
+Example (correct usage):\n
+You've explained the Nernst equation really well. Let's walk through a concrete example step by step using actual values so the relationship is clear.\n\n
+<questionUnstruggle Topic="thermodynamics">`;
+
+    // Truncate content for display (3 lines)
+    const truncatedContent = truncateContent(fullContent, 3);
+    const isTruncated = fullContent !== truncatedContent;
+
+    // Debug logging
+    console.log('Struggle Topics Debug:', {
+        fullContentLength: fullContent.length,
+        truncatedContentLength: truncatedContent.length,
+        fullContentLines: fullContent.split('\n').length,
+        truncatedContentLines: truncatedContent.split('\n').length,
+        isTruncated,
+        fullContent: fullContent.substring(0, 100) + '...',
+        truncatedContent: truncatedContent.substring(0, 100) + '...'
+    });
+
     return `
         <div class="prompt-card appended default-component" data-prompt-id="${DEFAULT_STRUGGLE_TOPICS_ID}">
             <span class="appended-badge">Appended</span>
@@ -219,11 +287,13 @@ function renderStruggleTopicsComponent(): string {
             </div>
             <div class="prompt-content-wrapper">
                 <div class="prompt-content informational">
-                    <p>Struggle topics are user-specific and retrieved from the memory agent.</p>
-                    <p>Each student has their own struggle topics tracked during conversations.</p>
-                    <p>This component is always included in the system prompt.</p>
-                    <p>Content is dynamically inserted via regex replacement per user.</p>
+                    ${escapeHtml(truncatedContent)}
                 </div>
+                ${isTruncated ? `
+                    <button class="expand-toggle" data-prompt-id="${DEFAULT_STRUGGLE_TOPICS_ID}" data-expanded="false">
+                        <i data-feather="chevron-down"></i>
+                    </button>
+                ` : ''}
             </div>
         </div>
     `;
@@ -368,9 +438,10 @@ function setupCardEventListeners(itemId: string): void {
         }
     }
 
-    // Expand/collapse toggle
+    // Expand/collapse toggle (skip default components to avoid double binding)
     const expandToggle = card.querySelector('.expand-toggle');
-    if (expandToggle) {
+    const isDefaultComponent = item.componentType === 'learning-objectives' || item.componentType === 'struggle-topics';
+    if (expandToggle && !isDefaultComponent) {
         expandToggle.addEventListener('click', () => handleToggleExpand(itemId));
     }
 
@@ -713,12 +784,12 @@ function handleToggleExpand(itemId: string): void {
 
     const expandToggle = card.querySelector('.expand-toggle') as HTMLElement;
     const contentField = card.querySelector('.prompt-content') as HTMLElement;
-    
+
     if (!expandToggle || !contentField) return;
 
     const isExpanded = expandToggle.getAttribute('data-expanded') === 'true';
     const item = items.find(i => i.id === itemId);
-    
+
     if (!item) return;
 
     if (isExpanded) {
@@ -729,6 +800,60 @@ function handleToggleExpand(itemId: string): void {
     } else {
         // Expand
         contentField.textContent = item.content;
+        expandToggle.setAttribute('data-expanded', 'true');
+        expandToggle.innerHTML = '<i data-feather="chevron-up"></i>';
+    }
+
+    renderFeatherIcons();
+}
+
+/**
+ * Handle expand/collapse for default components (learning objectives and struggle topics)
+ */
+function handleDefaultComponentToggleExpand(componentId: string): void {
+    const card = document.querySelector(`[data-prompt-id="${componentId}"]`) as HTMLElement;
+    if (!card) return;
+
+    const expandToggle = card.querySelector('.expand-toggle') as HTMLElement;
+    const contentField = card.querySelector('.prompt-content') as HTMLElement;
+
+    if (!expandToggle || !contentField) return;
+
+    const isExpanded = expandToggle.getAttribute('data-expanded') === 'true';
+
+    // Get the full content based on component type
+    let fullContent = '';
+    if (componentId === DEFAULT_LEARNING_OBJECTIVES_ID) {
+        fullContent = 'The following are ALL learning objectives for this course, organized by week/topic and subsection:\n\n\nWhen helping students, reference these learning objectives to ensure alignment with course goals.';
+    } else if (componentId === DEFAULT_STRUGGLE_TOPICS_ID) {
+        fullContent = `\n\n===========================================
+STRUGGLE TOPICS HANDLING
+===========================================\n\n
+Student struggles with the following topics: <struggle_topics>...</struggle_topics>\n
+Before responding when struggle topics are discussed, verify:\n
+☐ STOPPED using Socratic or guided-discovery questioning\n
+☐ Providing direct, clear, step-by-step explanations\n
+☐ Using concrete numerical examples\n
+☐ Breaking concepts into simple, explicit steps\n
+☐ Appended <questionUnstruggle Topic="[exact struggle topic]"> tag at the VERY END of response (if struggle topic discussed)\n
+☐ Used EXACTLY ONE <questionUnstruggle> tag with exact topic name from list: <struggle_topics>...</struggle_topics>\n
+☐ Tag placed ONLY on final line of response\n
+☐ Asked at MOST ONE follow-up question (simple understanding check, not Socratic)\n
+☐ Chose SINGLE most relevant struggle topic from exact list above\n
+☐ Did NOT use synonyms, related concepts, or variations - ONLY exact topic name\n\n
+Example (correct usage):\n
+You've explained the Nernst equation really well. Let's walk through a concrete example step by step using actual values so the relationship is clear.\n\n
+<questionUnstruggle Topic="thermodynamics">`;
+    }
+
+    if (isExpanded) {
+        // Collapse
+        contentField.textContent = truncateContent(fullContent, 3);
+        expandToggle.setAttribute('data-expanded', 'false');
+        expandToggle.innerHTML = '<i data-feather="chevron-down"></i>';
+    } else {
+        // Expand
+        contentField.textContent = fullContent;
         expandToggle.setAttribute('data-expanded', 'true');
         expandToggle.innerHTML = '<i data-feather="chevron-up"></i>';
     }
