@@ -83,6 +83,7 @@ export interface activeCourse {
         memoryAgent: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
+    collectionOfSystemPromptItems?: SystemPromptItem[];
 }
 
 /**
@@ -103,6 +104,28 @@ export interface InitialAssistantPrompt {
  * Used to identify the system default initial assistant prompt
  */
 export const DEFAULT_PROMPT_ID = 'default-engeai-welcome';
+
+/**
+ * System Prompt Item data structure
+ * Stores custom system prompt items that instructors can create and append to the system prompt
+ */
+export interface SystemPromptItem {
+    id: string;
+    title: string;
+    content: string;
+    dateCreated: Date;
+    isAppended: boolean; // Tracks if item is chosen/unchosen - both stored in MongoDB
+    isDefault?: boolean; // Marks the three default components (base prompt, learning objectives, struggle topics)
+    componentType?: 'base' | 'learning-objectives' | 'struggle-topics' | 'custom'; // Type of component
+}
+
+/**
+ * Default system prompt component ID constants
+ * Used to identify the three default system prompt components
+ */
+export const DEFAULT_BASE_PROMPT_ID = 'default-base-system-prompt';
+export const DEFAULT_LEARNING_OBJECTIVES_ID = 'default-learning-objectives';
+export const DEFAULT_STRUGGLE_TOPICS_ID = 'default-struggle-topics';
 
 /**
  * frameTypes: Course content organization strategy. 

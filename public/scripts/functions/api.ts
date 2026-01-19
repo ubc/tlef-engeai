@@ -75,6 +75,7 @@ export async function loadComponentHTML(
                     | 'about'
                     | 'course-information'
                     | 'assistant-prompts-instructor'
+                    | 'system-prompts-instructor'
 ): Promise<string> {
 
     let response: Response;
@@ -114,6 +115,9 @@ export async function loadComponentHTML(
             break;
         case 'assistant-prompts-instructor':
             response = await fetch(`/components/assistant-prompts/${componentName}.html`);
+            break;
+        case 'system-prompts-instructor':
+            response = await fetch(`/components/system-prompts/${componentName}.html`);
             break;
         default:
             throw new Error("Invalid component name: " + componentName);

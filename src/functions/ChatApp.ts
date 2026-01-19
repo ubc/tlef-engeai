@@ -26,7 +26,7 @@ import { AppConfig } from '../routes/config';
 import { RAGModule, RetrievedChunk } from 'ubc-genai-toolkit-rag';
 import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
 import { IDGenerator } from './unique-id-generator';
-import { ChatMessage, LearningObjective, TopicOrWeekInstance, TopicOrWeekItem, activeCourse, DEFAULT_PROMPT_ID } from './types';
+import { ChatMessage, LearningObjective, TopicOrWeekInstance, TopicOrWeekItem, activeCourse, DEFAULT_PROMPT_ID, SystemPromptItem } from './types';
 import { EngEAI_MongoDB } from './EngEAI_MongoDB';
 import { 
     getSystemPrompt, 
@@ -744,24 +744,39 @@ export class ChatApp {
             throw new Error('Conversation not found');
         }
         
-        // Retrieve all learning objectives for the course
+        // Retrieve base prompt, learning objectives, and appended items for the course
+        let baseSystemPrompt: string | undefined;
         let learningObjectives: LearningObjective[] = [];
+        let appendedSystemPromptItems: SystemPromptItem[] = [];
+        
         if (courseName) {
             try {
                 const mongoDB = await EngEAI_MongoDB.getInstance();
                 // Get course by name to extract courseId
                 const course = await mongoDB.getCourseByName(courseName);
                 if (course && course.id) {
+                    // Ensure default components exist
+                    await mongoDB.ensureDefaultSystemPromptComponents(course.id, courseName);
+                    
+                    // Get base system prompt (editable version from database)
+                    const basePromptItem = await mongoDB.getBaseSystemPrompt(course.id);
+                    baseSystemPrompt = basePromptItem?.content;
+                    
+                    // Get learning objectives
                     learningObjectives = await mongoDB.getAllLearningObjectives(course.id);
                     console.log(`📚 Retrieved ${learningObjectives.length} learning objectives for system prompt`);
+                    
+                    // Get appended custom items
+                    appendedSystemPromptItems = await mongoDB.getAppendedSystemPromptItems(course.id);
+                    console.log(`📝 Retrieved ${appendedSystemPromptItems.length} appended system prompt items`);
                 }
             } catch (error) {
-                console.error('❌ Error retrieving learning objectives:', error);
-                // Continue without learning objectives if retrieval fails
+                console.error('❌ Error retrieving system prompt components:', error);
+                // Continue without components if retrieval fails (will use defaults)
             }
         }
         
-        const defaultSystemMessage = getSystemPrompt(courseName, learningObjectives, struggleTopics);
+        const defaultSystemMessage = getSystemPrompt(baseSystemPrompt, courseName, learningObjectives, struggleTopics, appendedSystemPromptItems);
 
         try {
             conversation.addMessage('system', defaultSystemMessage);
@@ -1149,7 +1164,30 @@ export class ChatApp {
                 // Continue without struggle words if retrieval fails
             }
             
-            const defaultSystemMessage = getSystemPrompt(courseName, learningObjectives, struggleTopics);
+            // Retrieve base prompt and appended items
+            let baseSystemPrompt: string | undefined;
+            let appendedSystemPromptItems: SystemPromptItem[] = [];
+            if (courseName) {
+                try {
+                    const mongoDB = await EngEAI_MongoDB.getInstance();
+                    const course = await mongoDB.getCourseByName(courseName);
+                    if (course && course.id) {
+                        // Ensure default components exist
+                        await mongoDB.ensureDefaultSystemPromptComponents(course.id, courseName);
+                        
+                        // Get base system prompt
+                        const basePromptItem = await mongoDB.getBaseSystemPrompt(course.id);
+                        baseSystemPrompt = basePromptItem?.content;
+                        
+                        // Get appended custom items
+                        appendedSystemPromptItems = await mongoDB.getAppendedSystemPromptItems(course.id);
+                    }
+                } catch (error) {
+                    console.error('❌ Error retrieving system prompt components during restore:', error);
+                }
+            }
+            
+            const defaultSystemMessage = getSystemPrompt(baseSystemPrompt, courseName, learningObjectives, struggleTopics, appendedSystemPromptItems);
             conversation.addMessage('system', defaultSystemMessage);
             
 

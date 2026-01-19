@@ -14,6 +14,7 @@ import { renderAbout } from './about/about.js';
 import { initializeCourseInformation } from './feature/course-information.js';
 import { inactivityTracker } from './services/InactivityTracker.js';
 import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from './feature/assistant-prompts.js';
+import { initializeSystemPrompts, hasUnsavedSystemPromptChanges, resetUnsavedSystemPromptChanges } from './feature/system-prompts.js';
 import { 
     getCourseIdFromURL, 
     getInstructorViewFromURL, 
@@ -42,6 +43,7 @@ function mapViewToStateEvent(view: string): StateEvent {
         case 'monitor': return StateEvent.Monitor;
         case 'chat': return StateEvent.Chat;
         case 'assistant-prompts': return StateEvent.AssistantPrompts;
+        case 'system-prompts': return StateEvent.SystemPrompts;
         default: return StateEvent.Documents;
     }
 }
@@ -51,7 +53,8 @@ const enum StateEvent {
     Monitor,
     Documents,
     Chat,
-    AssistantPrompts
+    AssistantPrompts,
+    SystemPrompts
 }
 
 let currentClass : activeCourse =
@@ -422,6 +425,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     assistantPromptsStateEl?.addEventListener('click', () => {
         navigateToInstructorView('assistant-prompts');
     });
+
+    const systemPromptsStateEl = document.getElementById('system-prompts-state');
+    systemPromptsStateEl?.addEventListener('click', () => {
+        navigateToInstructorView('system-prompts');
+    });
     
     // Handle browser back/forward navigation
     window.addEventListener('popstate', async () => {
@@ -488,6 +496,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         | 'document-setup'
                         | 'course-information'
                         | 'assistant-prompts-instructor'
+                        | 'system-prompts-instructor'
         ) => {
         console.log(`🚀 [INSTRUCTOR-DEBUG] Loading component: ${componentName}`);
         
@@ -533,6 +542,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             else if (componentName === 'assistant-prompts-instructor') {
                 console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing assistant prompts...`);
                 await initializeAssistantPrompts(currentClass);
+            }
+            else if (componentName === 'system-prompts-instructor') {
+                console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing system prompts...`);
+                await initializeSystemPrompts(currentClass);
             }
             
             console.log(`🎨 [INSTRUCTOR-DEBUG] Rendering feather icons...`);
@@ -626,6 +639,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         else if ( currentState === StateEvent.AssistantPrompts){
             loadComponent('assistant-prompts-instructor');
+            updateSidebarState();
+            expandFeatureSidebar();
+            hideChatList(); // Ensure chat list is hidden
+        }
+        else if ( currentState === StateEvent.SystemPrompts){
+            loadComponent('system-prompts-instructor');
             updateSidebarState();
             expandFeatureSidebar();
             hideChatList(); // Ensure chat list is hidden

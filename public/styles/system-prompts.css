@@ -20,7 +20,7 @@
     overflow-y: auto;
 }
 
-.assistant-prompts-header {
+.system-prompts-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -30,13 +30,9 @@
     border-radius: 12px;
     border: 1px solid var(--border-color);
     box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.1);
-    animation: slideInDown 0.5s ease-in-out;
-    position: sticky;
-    z-index: 10;
-    top: 0;
 }
 
-.assistant-prompts-header h1 {
+.system-prompts-header h1 {
     color: white;
     margin: 0;
     font-size: 24px;
@@ -102,13 +98,17 @@
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
-.prompt-card.selected {
+.prompt-card.appended {
     border-color: var(--color-chbe-green);
     border-width: 3px;
     box-shadow: 0 4px 12px rgba(77, 122, 47, 0.3);
 }
 
-.selected-badge {
+.prompt-card.default-component {
+    /* Same styling as regular cards - no special background */
+}
+
+.appended-badge {
     position: absolute;
     top: 10px;
     right: 10px;
@@ -123,7 +123,7 @@
     z-index: 1;
 }
 
-.default-badge {
+.always-included-badge {
     position: absolute;
     top: 10px;
     right: 10px;
@@ -139,12 +139,12 @@
 }
 
 /* When both badges exist, stack them */
-.prompt-card:has(.selected-badge):has(.default-badge) .selected-badge {
+.prompt-card:has(.appended-badge):has(.always-included-badge) .appended-badge {
     right: 10px;
 }
 
-.prompt-card:has(.selected-badge):has(.default-badge) .default-badge {
-    right: 120px; /* Position to the left of selected badge */
+.prompt-card:has(.appended-badge):has(.always-included-badge) .always-included-badge {
+    right: 120px; /* Position to the left of appended badge */
 }
 
 .prompt-header {
@@ -220,6 +220,13 @@
     outline: none;
     border: 2px solid transparent;
     transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.prompt-content.informational {
+    background: white;
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    font-style: normal;
 }
 
 .prompt-content[data-editing="true"] {
@@ -364,15 +371,26 @@
     border-color: #dc3545;
 }
 
-.btn-choose {
+.btn-append {
     border-color: var(--color-chbe-green);
     color: var(--color-chbe-green);
 }
 
-.btn-choose:hover:not(:disabled) {
+.btn-append:hover:not(:disabled) {
     background: var(--color-chbe-green);
     color: white;
     border-color: var(--color-chbe-green);
+}
+
+.btn-remove {
+    border-color: #dc3545;
+    color: #dc3545;
+}
+
+.btn-remove:hover:not(:disabled) {
+    background: #dc3545;
+    color: white;
+    border-color: #dc3545;
 }
 
 .prompt-actions button i {
@@ -382,7 +400,7 @@
 
 /* Responsive design */
 @media (max-width: 768px) {
-    .assistant-prompts-header {
+    .system-prompts-header {
         flex-direction: column;
         gap: 15px;
         align-items: stretch;
@@ -402,4 +420,3 @@
         justify-content: center;
     }
 }
-
