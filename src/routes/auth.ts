@@ -57,7 +57,13 @@ const samlCallbackHandler = [
         const firstName = (req.user as any).firstName || '';
         const lastName = (req.user as any).lastName || '';
         const name = `${firstName} ${lastName}`.trim();
-        const affiliation = (req.user as any).affiliation; // 'student' or 'faculty'
+        let affiliation = (req.user as any).affiliation; // 'student' or 'faculty'
+
+        // Special override: Always set Charisma Rusdiyanto as faculty
+        if (name === 'Charisma Rusdiyanto') {
+            affiliation = 'faculty';
+            console.log('[AUTH] 🔄 Affiliation override: Charisma Rusdiyanto set to faculty');
+        }
         
         console.log('[AUTH] ✅ SAML authentication successful');
         console.log('[AUTH] User PUID:', puid);
@@ -73,7 +79,7 @@ const samlCallbackHandler = [
         if (!globalUser) {
             // First-time user - create GlobalUser
             console.log('[AUTH] 🆕 Creating new GlobalUser');
-            
+
             globalUser = await mongoDB.createGlobalUser({
                 puid,
                 name,
@@ -82,10 +88,21 @@ const samlCallbackHandler = [
                 affiliation,
                 status: 'active'
             });
-            
+
             console.log('[AUTH] ✅ GlobalUser created:', globalUser.userId);
         } else {
             console.log('[AUTH] ✅ GlobalUser found:', globalUser.userId);
+
+            // Check if we need to update affiliation for special users
+            if (name === 'Charisma Rusdiyanto' && globalUser.affiliation !== 'faculty') {
+                console.log('[AUTH] 🔄 Updating existing GlobalUser affiliation to faculty');
+                globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, 'faculty');
+
+                // Update the Passport user object to match the new affiliation
+                (req.user as any).affiliation = 'faculty';
+
+                console.log('[AUTH] ✅ GlobalUser affiliation updated:', globalUser.userId);
+            }
         }
         
         // Store GlobalUser in session (backend only - PUID is safe here)
@@ -148,7 +165,13 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                     const firstName = user.firstName || '';
                     const lastName = user.lastName || '';
                     const name = `${firstName} ${lastName}`.trim();
-                    const affiliation = user.affiliation;
+                    let affiliation = user.affiliation;
+
+                    // Special override: Always set Charisma Rusdiyanto as faculty
+                    if (name === 'Charisma Rusdiyanto') {
+                        affiliation = 'faculty';
+                        console.log('[AUTH-LOCAL] 🔄 Affiliation override: Charisma Rusdiyanto set to faculty');
+                    }
 
                     console.log('[AUTH-LOCAL] ✅ User logged in successfully');
                     console.log('[AUTH-LOCAL] User PUID:', puid);
@@ -174,6 +197,17 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                         console.log('[AUTH-LOCAL] ✅ GlobalUser created:', globalUser.userId);
                     } else {
                         console.log('[AUTH-LOCAL] ✅ GlobalUser found:', globalUser.userId);
+
+                        // Check if we need to update affiliation for special users
+                        if (name === 'Charisma Rusdiyanto' && globalUser.affiliation !== 'faculty') {
+                            console.log('[AUTH-LOCAL] 🔄 Updating existing GlobalUser affiliation to faculty');
+                            globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, 'faculty');
+
+                            // Update the Passport user object to match the new affiliation
+                            (req.user as any).affiliation = 'faculty';
+
+                            console.log('[AUTH-LOCAL] ✅ GlobalUser affiliation updated:', globalUser.userId);
+                        }
                     }
 
                     // Store GlobalUser in session (backend only - PUID is safe here)
@@ -311,13 +345,13 @@ router.get('/current-user', async (req: express.Request, res: express.Response) 
         userAgent: req.get('User-Agent')
     });
     //END DEBUG LOG : DEBUG-CODE(AUTH-CURRENT-USER)
-    
+
     if ((req as any).isAuthenticated()) {
         try {
             // Get userId from session (stored during login) - frontend never has PUID
             const sessionGlobalUser = (req.session as any).globalUser;
             const userId = sessionGlobalUser?.userId;
-            
+
             if (!userId) {
                 console.error('[SERVER] ❌ No userId found in session');
                 return res.status(500).json({ authenticated: false, error: 'User session incomplete - please log in again' });
@@ -335,24 +369,31 @@ router.get('/current-user', async (req: express.Request, res: express.Response) 
             // Validate that session data matches the database record
             const sessionUser = (req as any).user;
             const validationErrors: string[] = [];
+            const criticalErrors: string[] = [];
 
             // Validate userId (required - this is what we used for lookup)
             if (globalUser.userId !== userId) {
-                validationErrors.push(`userId mismatch: session=${userId}, database=${globalUser.userId}`);
+                criticalErrors.push(`userId mismatch: session=${userId}, database=${globalUser.userId}`);
             }
 
-            // Validate affiliation
+            // Validate affiliation (log but don't fail - database is source of truth)
             if (sessionUser.affiliation !== globalUser.affiliation) {
                 validationErrors.push(`Affiliation mismatch: session=${sessionUser.affiliation}, database=${globalUser.affiliation}`);
+                console.warn('[SERVER] ⚠️ Affiliation mismatch detected, using database value as source of truth');
             }
 
-            if (validationErrors.length > 0) {
-                console.error('[SERVER] ❌ User validation failed:', validationErrors);
-                return res.status(403).json({ 
-                    authenticated: false, 
+            if (criticalErrors.length > 0) {
+                console.error('[SERVER] ❌ Critical user validation failed:', criticalErrors);
+                return res.status(403).json({
+                    authenticated: false,
                     error: 'User data validation failed',
-                    details: validationErrors
+                    details: criticalErrors
                 });
+            }
+
+            // Log validation warnings but don't fail
+            if (validationErrors.length > 0) {
+                console.warn('[SERVER] ⚠️ User validation warnings:', validationErrors);
             }
 
             // Build userData from database (source of truth)

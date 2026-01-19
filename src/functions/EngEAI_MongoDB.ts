@@ -1734,18 +1734,42 @@ export class EngEAI_MongoDB {
      */
     public updateGlobalUser = async (puid: string, updateData: Partial<GlobalUser>): Promise<GlobalUser> => {
         const collection = this.getGlobalUserCollection();
-        
+
         const result = await collection.findOneAndUpdate(
             { puid: puid },
-            { 
-                $set: { 
-                    ...updateData, 
-                    updatedAt: new Date() 
+            {
+                $set: {
+                    ...updateData,
+                    updatedAt: new Date()
                 }
             },
             { returnDocument: 'after' }
         );
-        
+
+        return result as unknown as GlobalUser;
+    }
+
+    /**
+     * Update a global user's affiliation by userId
+     */
+    public updateGlobalUserAffiliation = async (userId: string, affiliation: 'student' | 'faculty'): Promise<GlobalUser> => {
+        const collection = this.getGlobalUserCollection();
+
+        const result = await collection.findOneAndUpdate(
+            { userId: userId },
+            {
+                $set: {
+                    affiliation: affiliation,
+                    updatedAt: new Date()
+                }
+            },
+            { returnDocument: 'after' }
+        );
+
+        if (!result) {
+            throw new Error(`GlobalUser with userId ${userId} not found`);
+        }
+
         return result as unknown as GlobalUser;
     }
 
