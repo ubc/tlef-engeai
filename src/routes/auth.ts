@@ -377,7 +377,8 @@ router.get('/current-user', async (req: express.Request, res: express.Response) 
             }
 
             // Validate affiliation (log but don't fail - database is source of truth)
-            if (sessionUser.affiliation !== globalUser.affiliation) {
+            // Bypass for Charisma Rusdiyanto (developer privilege)
+            if (sessionUser.affiliation !== globalUser.affiliation && globalUser.name !== 'Charisma Rusdiyanto') {
                 validationErrors.push(`Affiliation mismatch: session=${sessionUser.affiliation}, database=${globalUser.affiliation}`);
                 console.warn('[SERVER] ⚠️ Affiliation mismatch detected, using database value as source of truth');
             }
@@ -477,7 +478,8 @@ router.get('/me', async (req: express.Request, res: express.Response) => {
             }
 
             // Validate affiliation
-            if (sessionUser.affiliation !== globalUser.affiliation) {
+            // Bypass for Charisma Rusdiyanto (developer privilege)
+            if (sessionUser.affiliation !== globalUser.affiliation && globalUser.name !== 'Charisma Rusdiyanto') {
                 validationErrors.push(`Affiliation mismatch: session=${sessionUser.affiliation}, database=${globalUser.affiliation}`);
             }
 

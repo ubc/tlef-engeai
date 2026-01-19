@@ -23,6 +23,9 @@
 .system-prompts-header {
     display: flex;
     justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 10;
     align-items: center;
     margin-bottom: 20px;
     padding: 20px;
@@ -223,8 +226,6 @@
 }
 
 .prompt-content.informational {
-    background: white;
-    border: 1px solid var(--border-color);
     color: var(--text-primary);
     font-style: normal;
 }

@@ -555,24 +555,15 @@ export function getSystemPrompt(
             struggleTopicsContent = '\n\nThe struggle topic array is not an array nor an empty array (034).';
         }
     }
-    
-    // Use regex replacement for learning objectives (more efficient)
-    const learningObjectivesRegex = /<learningobjectives>[\s\S]*?<\/learningobjectives>/gi;
-    if (learningObjectivesContent && learningObjectivesRegex.test(prompt)) {
-        // Replace the tag with actual content
-        prompt = prompt.replace(learningObjectivesRegex, learningObjectivesContent.replace(/^[\s\n]+|[\s\n]+$/g, ''));
-    } else if (learningObjectivesContent) {
-        // Tag doesn't exist, append content (backward compatibility)
+
+
+    // Append learning objectives if provided
+    if (learningObjectivesContent) {
         prompt += learningObjectivesContent;
     }
-    
-    // Use regex replacement for struggle topics (more efficient)
-    const struggleTopicsRegex = /<strugglewords>[\s\S]*?<\/strugglewords>/gi;
-    if (struggleTopicsContent && struggleTopicsRegex.test(prompt)) {
-        // Replace the tag with actual content
-        prompt = prompt.replace(struggleTopicsRegex, struggleTopicsContent.replace(/^[\s\n]+|[\s\n]+$/g, ''));
-    } else if (struggleTopicsContent) {
-        // Tag doesn't exist, append content (backward compatibility)
+
+    // Append struggle topics if provided
+    if (struggleTopicsContent) {
         prompt += struggleTopicsContent;
     }
     
