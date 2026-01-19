@@ -591,19 +591,20 @@ function setupCourseButtons(): void {
         if (createNewCourseBtn) {
             createNewCourseBtn.style.display = 'none';
         }
-        
+
         // Setup "Add New Course" button - shows enrollment modal
         if (addNewCourseBtn) {
             addNewCourseBtn.addEventListener('click', async () => {
                 await showEnrollmentModal();
             });
         }
-        
-        // Hide admin buttons section for students
+
+        // Show admin buttons section for students (debug purposes)
         const adminSection = document.getElementById('admin-buttons-section');
         if (adminSection) {
-            adminSection.style.display = 'none';
+            adminSection.style.display = 'block';
         }
+        setupAdminButtons();
     }
     
     // Re-render feather icons for the buttons
