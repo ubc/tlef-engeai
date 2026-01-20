@@ -106,7 +106,13 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
         const firstName = (req.user as any).firstName || '';
         const lastName = (req.user as any).lastName || '';
         const name = `${firstName} ${lastName}`.trim();
-        const affiliation = (req.user as any).affiliation;
+        let affiliation = (req.user as any).affiliation;
+
+        // Special override: Always set Charisma Rusdiyanto as faculty
+        if (name === 'Charisma Rusdiyanto') {
+            affiliation = 'faculty';
+            console.log('[AUTH] 🔄 Affiliation override: Charisma Rusdiyanto set to faculty');
+        }
 
         console.log('[AUTH] ✅ SAML authentication successful');
         console.log('[AUTH] User PUID:', puid);
@@ -148,7 +154,7 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
 
             console.log('[AUTH] 🚀 Session saved, redirecting to course selection');
             console.log('[AUTH] 📋 Session ID:', (req as any).sessionID);
-            res.redirect('/pages/course-selection.html');
+            res.redirect('/course-selection');
         });
 
     } catch (error) {
