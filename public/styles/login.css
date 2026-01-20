@@ -87,7 +87,7 @@ body.main-login-page {
 
 /* Green Login button (adapts based on SAML_AVAILABLE) */
 .login-btn-green {
-    background-color: var(--color-chbe-green);
+    background-color: /*var(--color-chbe-green);*/ #777711;
 }
 
 .login-btn-green:hover {
