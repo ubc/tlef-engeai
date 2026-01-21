@@ -547,11 +547,6 @@ export class RAGApp {
                 await this.rag.deleteStorage();
                 this.logger.info('✅ Collection deleted successfully');
                 
-                // Recreate the collection by reinitializing the RAG module
-                this.logger.info('🔄 Recreating collection...');
-                this.rag = await RAGModule.create(this.config.ragConfig);
-                this.logger.info('✅ Collection recreated successfully');
-
                 return { deletedCount: documentCount, errors: [] };
             } catch (error) {
                 this.logger.error('❌ Collection deletion failed:', { error: error instanceof Error ? error.message : String(error) });
