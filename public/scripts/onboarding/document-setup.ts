@@ -25,6 +25,7 @@
 import { loadComponentHTML } from "../functions/api.js";
 import { activeCourse, LearningObjective, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem } from "../../../src/functions/types.js";
 import { showErrorModal, showHelpModal, showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal } from "../modal-overlay.js";
+import { DocumentUploadModule, UploadResult } from '../services/DocumentUploadModule.js';
 
 // ===========================================
 // TYPE DEFINITIONS
@@ -53,7 +54,6 @@ interface DemoObjective {
 interface DemoFile {
     id: string;
     name: string;
-    size: number;
     type: string;
 }
 
@@ -850,30 +850,175 @@ function updateDemoObjectivesDisplay(): void {
  * Opens the demo upload modal using the openUploadModal function
  */
 async function openDemoUploadModal() {
-    // Use demo IDs for the modal
-    const divisionId = 'demo-division';
-    const contentId = 'demo-content';
-    
-    await openUploadModal(divisionId, contentId, handleDemoUpload);
+    // Use real course data for the upload
+    const course = getCurrentCourse();
+    if (!course) {
+        console.error('No current course found');
+        await showSimpleErrorModal('No course available for upload', 'Upload Error');
+        return;
+    }
+
+    // Get the first topic/week instance and first item
+    const firstInstance = course.topicOrWeekInstances?.[0];
+    const firstItem = firstInstance?.items?.[0];
+
+    if (!firstInstance || !firstItem) {
+        console.error('No first topic/week instance or first item found');
+        await showSimpleErrorModal('No content available for upload', 'Upload Error');
+        return;
+    }
+
+    await openUploadModal(firstInstance.id, firstItem.id, handleOnboardingUpload);
 }
 
 /**
- * Handles demo upload from the modal
- * 
+ * Handles actual document upload during onboarding
+ *
  * @param material - The material object from the upload modal
- * @returns Promise that resolves when the demo file is added
+ * @returns Promise that resolves when the document is uploaded
  */
-async function handleDemoUpload(material: any): Promise<void> {
-    const demoFile: DemoFile = {
-        id: `demo-file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        name: material.fileName || material.name || 'Text Content',
-        size: material.file ? material.file.size : 0,
-        type: material.sourceType === 'file' ? (material.file ? material.file.type : 'file') : 'text'
-    };
-    
-    demoFiles.push(demoFile);
+async function handleOnboardingUpload(material: any): Promise<{ success: boolean; chunksGenerated?: number } | void> {
+    console.log('🔍 HANDLE ONBOARDING UPLOAD CALLED - FUNCTION STARTED');
+    console.log('  - material:', material);
+
+    try {
+        // Get the current course
+        const course = getCurrentCourse();
+        if (!course) {
+            console.error('❌ No current course found for upload');
+            await showSimpleErrorModal('No course available for upload', 'Upload Error');
+            return;
+        }
+
+        // Get the first topic/week instance and first item
+        const firstInstance = course.topicOrWeekInstances?.[0];
+        const firstItem = firstInstance?.items?.[0];
+
+        if (!firstInstance || !firstItem) {
+            console.error('❌ No first topic/week instance or first item found');
+            await showSimpleErrorModal('No content available for upload', 'Upload Error');
+            return;
+        }
+
+        // Create the additional material object
+        const additionalMaterial: AdditionalMaterial = {
+            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            name: material.name,
+            courseName: course.courseName,
+            topicOrWeekTitle: firstInstance.title,
+            itemTitle: firstItem.title,
+            sourceType: material.sourceType,
+            file: material.file,
+            text: material.text,
+            fileName: material.fileName,
+            date: new Date(),
+            courseId: course.id || '',
+            topicOrWeekId: firstInstance.id,
+            itemId: firstItem.id
+        };
+
+        console.log('🔍 CREATING DOCUMENT UPLOAD MODULE FOR ONBOARDING');
+        console.log('  - additionalMaterial:', additionalMaterial);
+
+        // Use DocumentUploadModule for upload
+        const uploadModule = new DocumentUploadModule((progress, stage) => {
+            console.log(`Upload progress: ${progress}% - ${stage}`);
+            // You could update a progress bar here if needed
+        });
+
+        console.log('🔍 CALLING UPLOAD MODULE.uploadDocument');
+        const uploadResult: UploadResult = await uploadModule.uploadDocument(additionalMaterial);
+        console.log('🔍 UPLOAD RESULT:', uploadResult);
+
+        if (!uploadResult.success) {
+            console.error(`Upload failed: ${uploadResult.error}`);
+            await showSimpleErrorModal(`Failed to upload content: ${uploadResult.error}`, 'Upload Error');
+            return;
+        }
+
+        if (!uploadResult.document) {
+            console.error('Upload succeeded but no document returned');
+            await showSimpleErrorModal('Upload succeeded but no document was returned. Please try again.', 'Upload Error');
+            return;
+        }
+
+        // Add the uploaded document to the course data
+        if (!firstItem.additionalMaterials) {
+            firstItem.additionalMaterials = [];
+        }
+        firstItem.additionalMaterials.push(uploadResult.document);
+
+        // Create a demo file object for UI display
+        const uploadedFile: DemoFile = {
+            id: uploadResult.document.id,
+            name: uploadResult.document.name,
+            type: uploadResult.document.sourceType === 'file' ? (uploadResult.document.file ? uploadResult.document.file.type : 'file') : 'text'
+        };
+
+        demoFiles.push(uploadedFile);
+        updateDemoFilesDisplay();
+
+        console.log('Material uploaded successfully during onboarding:', uploadResult.document);
+        console.log(`Generated ${uploadResult.chunksGenerated} chunks in Qdrant`);
+
+        // Return success info for the upload modal handler to show the success modal
+        return { success: true, chunksGenerated: uploadResult.chunksGenerated };
+
+    } catch (error) {
+        console.error('Error in onboarding upload process:', error);
+        await showSimpleErrorModal('An error occurred during upload. Please try again.', 'Upload Error');
+        throw error; // Re-throw so modal handler can catch it
+    }
+}
+
+/**
+ * Removes a demo file from both the UI and actual course data
+ *
+ * @param index - The index of the file to remove
+ */
+async function removeDemoFile(index: number): Promise<void> {
+    if (index < 0 || index >= demoFiles.length) {
+        await showSimpleErrorModal('Invalid file index', 'Remove File Error');
+        return;
+    }
+
+    const fileToRemove = demoFiles[index];
+    if (!fileToRemove) {
+        await showSimpleErrorModal('File not found', 'Remove File Error');
+        return;
+    }
+
+    // Show confirmation modal
+    const result = await showDeleteConfirmationModal(
+        'Uploaded File',
+        fileToRemove.name
+    );
+
+    if (result.action !== 'delete') {
+        return; // User cancelled
+    }
+
+    // Remove from demo display
+    demoFiles.splice(index, 1);
     updateDemoFilesDisplay();
-    console.log('Added demo file:', demoFile);
+
+    // Remove from real course data (first topic/week instance, first item)
+    const course = getCurrentCourse();
+    if (course?.topicOrWeekInstances?.[0]?.items?.[0]) {
+        const firstItem = course.topicOrWeekInstances[0].items[0];
+        if (firstItem.additionalMaterials) {
+            // Find and remove the material from real data
+            const realMaterialIndex = firstItem.additionalMaterials.findIndex((material: AdditionalMaterial) => material.id === fileToRemove.id);
+            if (realMaterialIndex !== -1) {
+                // TODO: Also delete from vectorDB if needed
+                // For now, just remove from local data
+                firstItem.additionalMaterials.splice(realMaterialIndex, 1);
+                console.log('File removed from real course data:', fileToRemove.id);
+            }
+        }
+    }
+
+    console.log('Removed uploaded file:', fileToRemove);
 }
 
 /**
@@ -899,7 +1044,6 @@ function updateDemoFilesDisplay(): void {
         fileElement.innerHTML = `
             <div class="file-info">
                 <span class="file-name">${file.name}</span>
-                <span class="file-size">${formatFileSize(file.size)}</span>
             </div>
             <button class="delete-file-btn" data-index="${index}">×</button>
         `;
@@ -907,9 +1051,8 @@ function updateDemoFilesDisplay(): void {
         // Add delete functionality
         const deleteBtn = fileElement.querySelector('.delete-file-btn') as HTMLButtonElement;
         if (deleteBtn) {
-            deleteBtn.addEventListener('click', () => {
-                demoFiles.splice(index, 1);
-                updateDemoFilesDisplay();
+            deleteBtn.addEventListener('click', async () => {
+                await removeDemoFile(index);
             });
         }
         
@@ -918,26 +1061,18 @@ function updateDemoFilesDisplay(): void {
 }
 
 /**
- * Processes demo files (placeholder for backend integration)
+ * Shows information about uploaded files during onboarding
  */
 async function processDemoFiles(): Promise<void> {
     if (demoFiles.length === 0) {
-        alert('No files to process. Please upload some files first.');
+        alert('No files uploaded yet. Please upload some files first.');
         return;
     }
-    
-    console.log('Processing demo files:', demoFiles);
-    
-    // Simulate backend processing
-    try {
-        // TODO: Implement actual backend integration
-        const result = await simulateBackendProcessing(demoFiles);
-        console.log('Files processed successfully:', result);
-        alert(`Successfully processed ${demoFiles.length} files! (This is a demo)`);
-    } catch (error) {
-        console.error('Error processing files:', error);
-        alert('Error processing files. Please try again.');
-    }
+
+    console.log('Uploaded files during onboarding:', demoFiles);
+
+    // Show success message - files are already uploaded to vectorDB
+    alert(`Successfully uploaded ${demoFiles.length} files to the knowledge base! These documents are now available for the AI tutor.`);
 }
 
 /**
@@ -954,44 +1089,10 @@ function clearDemoFiles(): void {
     console.log('Cleared demo files');
 }
 
-/**
- * Formats file size for display
- * 
- * @param bytes - File size in bytes
- * @returns Formatted file size string
- */
-function formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
 
 // ===========================================
-// BACKEND INTEGRATION PLACEHOLDERS
+// BACKEND INTEGRATION
 // ===========================================
-
-/**
- * Simulates backend processing of files
- * 
- * @param files - Array of demo files to process
- * @returns Promise with processing result
- */
-async function simulateBackendProcessing(files: DemoFile[]): Promise<{ success: boolean; processed: number }> {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // TODO: Replace with actual backend API calls
-    console.log('Simulating backend processing for files:', files);
-    
-    return {
-        success: true,
-        processed: files.length
-    };
-}
 
 /**
  * Add learning objective to backend
@@ -1073,21 +1174,3 @@ async function deleteLearningObjectiveFromBackend(objectiveId: string, courseId:
     }
 }
 
-/**
- * Placeholder function for uploading file to backend
- * 
- * @param file - File to upload
- * @returns Promise with result
- */
-async function uploadFileToBackend(file: File): Promise<{ success: boolean; id?: string }> {
-    // TODO: Implement actual backend API call
-    console.log('Uploading file to backend:', file);
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    return {
-        success: true,
-        id: `backend-file-${Date.now()}`
-    };
-}
