@@ -53,6 +53,13 @@
     color: white;
     font-weight: 600;
     font-size: 1.2rem;
+    cursor: pointer; /* Make logo clickable */
+    transition: all 0.2s ease;
+}
+
+.brand-logo:hover {
+    opacity: 0.8; /* Subtle hover effect */
+    transform: translateY(-1px); /* Slight lift */
 }
 
 .brand-logo i {
