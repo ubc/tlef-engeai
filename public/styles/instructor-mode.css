@@ -287,12 +287,12 @@ body {
 /* Instructor Remove Course Button Styles */
 .instructor-remove-course-btn {
     width: 100%;
-    display: flex;
+    display: none; /* Hidden by default - shown when logo is clicked */
     align-items: center;
     justify-content: flex-start;
     gap: 0.75rem;
     padding: 0.5rem 0.75rem;
-    background-color: var(--background-2); 
+    background-color: var(--background-2);
     border: 1px solid var(--border-color);
     border-radius: 8px;
     font-weight: 600;
@@ -326,12 +326,12 @@ body {
 /* Instructor Download Database Button Styles */
 .instructor-download-db-btn {
     width: 100%;
-    display: flex;
+    display: none; /* Hidden by default - shown when logo is clicked */
     align-items: center;
     justify-content: flex-start;
     gap: 0.75rem;
     padding: 0.5rem 0.75rem;
-    background-color: var(--background-2); 
+    background-color: var(--background-2);
     border: 1px solid var(--border-color);
     border-radius: 8px;
     font-weight: 600;
@@ -467,6 +467,13 @@ body {
     align-items: center;
     justify-content: flex-start;
     overflow: hidden; /* Critical for clipping text during animation */
+    cursor: pointer; /* Make logo clickable */
+    transition: all 0.2s ease;
+}
+
+.instructor-feature-sidebar .logo-box:hover {
+    background-color: #5a8a35; /* Slightly lighter green on hover */
+    transform: translateY(-1px); /* Subtle lift effect */
 }
 
 .logo-box .logo-text {

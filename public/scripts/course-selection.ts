@@ -577,12 +577,8 @@ function setupCourseButtons(): void {
             });
         }
         
-        // Show admin buttons section for instructors
-        const adminSection = document.getElementById('admin-buttons-section');
-        if (adminSection) {
-            adminSection.style.display = 'block';
-        }
-        setupAdminButtons();
+        // Admin buttons section remains hidden by default - shown when logo is clicked
+        // setupAdminButtons(); // Commented out to keep buttons hidden by default
     } else if (currentUserAffiliation === 'student') {
         // For students: only show "Add New Course" button
         if (addNewCourseBtn) {
@@ -599,12 +595,8 @@ function setupCourseButtons(): void {
             });
         }
 
-        // Show admin buttons section for students (debug purposes)
-        const adminSection = document.getElementById('admin-buttons-section');
-        if (adminSection) {
-            adminSection.style.display = 'block';
-        }
-        setupAdminButtons();
+        // Admin buttons section remains hidden by default for all users - shown when logo is clicked
+        // setupAdminButtons(); // Commented out to keep buttons hidden by default
     }
     
     // Re-render feather icons for the buttons
@@ -1475,10 +1467,32 @@ async function handleEnrollment(courseId: string, button: HTMLButtonElement): Pr
     }
 }
 
+// Setup brand logo click handler to toggle admin buttons
+function setupBrandLogoToggle(): void {
+    const brandLogo = document.querySelector('.brand-logo');
+    const adminButtonsSection = document.getElementById('admin-buttons-section');
+
+    if (brandLogo && adminButtonsSection) {
+        brandLogo.addEventListener('click', () => {
+            console.log('[COURSE-SELECTION] 🔑 Brand logo clicked - toggling admin buttons');
+            const currentDisplay = adminButtonsSection.style.display;
+            const newDisplay = currentDisplay === 'none' ? 'block' : 'none';
+            adminButtonsSection.style.display = newDisplay;
+
+            // Setup admin button event listeners when showing the buttons
+            if (newDisplay === 'block') {
+                setupAdminButtons();
+            }
+        });
+        console.log('[COURSE-SELECTION] ✅ Brand logo click listener attached');
+    }
+}
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
     initializeCourseSelection();
     setupRetryButton();
     setupLogoutButton();
+    setupBrandLogoToggle();
 });
 

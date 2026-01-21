@@ -1234,6 +1234,26 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log('[INSTRUCTOR-MODE] ✅ Course Information button listener attached');
         }
 
+        // Logo Box - Toggle Admin Buttons
+        const logoBox = document.querySelector('.logo-box');
+        if (logoBox) {
+            logoBox.addEventListener('click', () => {
+                console.log('[INSTRUCTOR-MODE] 🔑 Logo clicked - toggling admin buttons');
+
+                const removeCourseBtn = document.getElementById('instructor-remove-course-btn');
+                const downloadDbBtn = document.getElementById('instructor-download-db-btn');
+
+                // Toggle visibility of admin buttons
+                [removeCourseBtn, downloadDbBtn].forEach(btn => {
+                    if (btn) {
+                        const currentDisplay = window.getComputedStyle(btn).display;
+                        btn.style.display = currentDisplay === 'none' ? 'flex' : 'none';
+                    }
+                });
+            });
+            console.log('[INSTRUCTOR-MODE] ✅ Logo box click listener attached');
+        }
+
         // Remove Course button listener (replaces Reset Dummy Courses)
         const removeCourseBtn = document.getElementById('instructor-remove-course-btn');
         if (removeCourseBtn) {
