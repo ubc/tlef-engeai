@@ -285,7 +285,7 @@ body {
 }
 
 /* Instructor Remove Course Button Styles */
-.instructor-reset-dummy-btn {
+.instructor-remove-course-btn {
     width: 100%;
     display: flex;
     align-items: center;
@@ -302,20 +302,20 @@ body {
     overflow: hidden;
 }
 
-.instructor-reset-dummy-btn:hover { 
+.instructor-remove-course-btn:hover { 
     background-color: #ff9800; 
     color: white; 
     border-color: #ff9800; 
 }
 
-.instructor-reset-dummy-btn i {
+.instructor-remove-course-btn i {
     width: 20px;
     height: 20px;
     flex-shrink: 0;
     transition: margin 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.instructor-reset-dummy-btn span {
+.instructor-remove-course-btn span {
     white-space: nowrap;
     opacity: 1;
     max-width: 200px;
@@ -382,7 +382,7 @@ body {
     max-width: 0;
 }
 
-.instructor-feature-sidebar.collapsed .instructor-reset-dummy-btn span {
+.instructor-feature-sidebar.collapsed .instructor-remove-course-btn span {
     opacity: 0;
     max-width: 0;
 }
@@ -413,13 +413,13 @@ body {
     margin: 0;
 }
 
-.instructor-feature-sidebar.collapsed .instructor-reset-dummy-btn {
+.instructor-feature-sidebar.collapsed .instructor-remove-course-btn {
     justify-content: center;
     padding: 0.5rem;
     gap: 0;
 }
 
-.instructor-feature-sidebar.collapsed .instructor-reset-dummy-btn i {
+.instructor-feature-sidebar.collapsed .instructor-remove-course-btn i {
     margin: 0;
 }
 
