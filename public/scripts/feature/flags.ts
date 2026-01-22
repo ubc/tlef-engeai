@@ -1,11 +1,14 @@
 /**
  * Flag Management System
- * 
+ *
  * @author: Assistant
  * @date: 2025-01-27
  * @version: 4.0.0
  * @description: Dynamic flag management interface - renders content from data using TypeScript
  */
+
+// Import modal functions
+import { showCustomModal } from '../modal-overlay.js';
 
 // Types for flags - matching backend FlagReport interface
 interface FlagReport {
@@ -28,6 +31,7 @@ interface FlagReport {
     collapsed?: boolean;
     timestamp?: string; // Formatted timestamp for display
     studentName?: string; // Computed from userName
+    editing?: boolean; // Tracks if flag is in edit mode
 }
 
 // Global variable to store flag data
@@ -331,6 +335,40 @@ function formatTimestamp(date: Date): string {
             minute: '2-digit',
             hour12: true 
         });
+    }
+}
+
+/**
+ * Update flag response via API (PATCH endpoint for resolved flags only)
+ */
+async function updateFlagResponse(courseId: string, flagId: string, response: string): Promise<FlagReport | null> {
+    try {
+        console.log('[FLAG-API] Updating flag response:', { flagId, response });
+
+        const apiResponse = await fetch(`${API_BASE_URL}/${courseId}/flags/${flagId}/response`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ response })
+        });
+
+        if (!apiResponse.ok) {
+            throw new Error(`HTTP ${apiResponse.status}: ${apiResponse.statusText}`);
+        }
+
+        const responseData = await apiResponse.json();
+
+        if (!responseData.success) {
+            throw new Error(responseData.error || 'Failed to update flag response');
+        }
+
+        console.log('[FLAG-API] Flag response updated successfully:', responseData.data);
+        return responseData.data;
+
+    } catch (error) {
+        console.error('[FLAG-API] Error updating flag response:', error);
+        throw error;
     }
 }
 
@@ -655,6 +693,13 @@ function handleFlagCardClick(event: Event): void {
         handleResolveClick(target);
         return;
     }
+
+    // Handle edit/save button clicks
+    if (target.classList.contains('edit-button')) {
+        console.log('🖱️ [FLAG-DEBUG] Edit/Save button clicked, handling toggle');
+        handleEditToggle(target);
+        return;
+    }
     
     // Don't collapse if clicking on response section elements
     if (target.closest('.response-section')) {
@@ -752,6 +797,120 @@ async function handleResolveClick(button: HTMLElement): Promise<void> {
         button.style.cursor = 'pointer';
     }
 }
+
+/**
+ * Handle edit/save button toggle clicks
+ */
+async function handleEditToggle(button: HTMLElement): Promise<void> {
+    const flagId = button.dataset.flagId;
+    if (!flagId) return;
+
+    const flag = flagData.find(f => f.id === flagId);
+    if (!flag || flag.status !== 'resolved') return;
+
+    if (flag.editing) {
+        // Currently in edit mode - save the changes
+        await handleSaveEdit(button, flagId);
+    } else {
+        // Enter edit mode
+        await handleEnterEditMode(button, flagId, flag);
+    }
+}
+
+/**
+ * Handle entering edit mode
+ */
+async function handleEnterEditMode(button: HTMLElement, flagId: string, flag: FlagReport): Promise<void> {
+    // Set flag to editing mode
+    flag.editing = true;
+
+    // Expand the card if collapsed
+    if (flag.collapsed) {
+        toggleFlagCollapse(flagId);
+    }
+
+    // Re-render to show edit mode
+    renderFlags();
+
+    // Focus on textarea when entering edit mode
+    setTimeout(() => {
+        const textarea = document.querySelector(`[data-flag-id="${flagId}"] .response-textarea`) as HTMLTextAreaElement;
+        if (textarea) {
+            textarea.focus();
+            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+        }
+    }, 100);
+}
+
+/**
+ * Handle saving edits
+ */
+async function handleSaveEdit(button: HTMLElement, flagId: string): Promise<void> {
+    const courseId = getCourseIdFromContext();
+    if (!courseId) {
+        showErrorMessage('Unable to determine course context');
+        return;
+    }
+
+    const flagCard = document.querySelector(`[data-flag-id="${flagId}"]`);
+    const responseTextarea = flagCard?.querySelector('.response-textarea') as HTMLTextAreaElement;
+    const newResponse = responseTextarea?.value?.trim();
+
+    // Show loading state
+    const originalText = button.textContent;
+    button.textContent = 'Saving...';
+    (button as HTMLButtonElement).disabled = true;
+
+    try {
+        // Call API to update response
+        const updatedFlag = await updateFlagResponse(courseId, flagId, newResponse);
+
+        if (updatedFlag) {
+            // Update local data
+            const flagIndex = flagData.findIndex(f => f.id === flagId);
+            if (flagIndex !== -1) {
+                flagData[flagIndex] = {
+                    ...flagData[flagIndex],
+                    response: newResponse,
+                    updatedAt: new Date(updatedFlag.updatedAt),
+                    editing: false // Exit edit mode
+                };
+            }
+
+            // Show success modal instead of inline message
+            await showSaveSuccessModal();
+
+            // Re-render
+            renderFlags();
+        }
+    } catch (error) {
+        console.error('Error updating response:', error);
+        showErrorMessage('Failed to update response. Please try again.');
+    } finally {
+        // Reset button state
+        button.textContent = originalText;
+        (button as HTMLButtonElement).disabled = false;
+    }
+}
+
+/**
+ * Show success modal after successful save
+ */
+async function showSaveSuccessModal(): Promise<void> {
+    await showCustomModal({
+        type: 'success',
+        title: 'Response Updated',
+        content: 'The flag response has been successfully updated.',
+        buttons: [
+            { text: 'OK', type: 'primary', closeOnClick: true }
+        ],
+        showCloseButton: true,
+        closeOnOverlayClick: true,
+        closeOnEscape: true
+    });
+}
+
+
 
 /**
  * Toggle the collapse state of a flag card
@@ -961,20 +1120,40 @@ function createFlagCard(flag: FlagReport): HTMLElement {
 
     const responseTextarea = document.createElement('textarea');
     responseTextarea.className = 'response-textarea';
-    responseTextarea.placeholder = 'Write your response to this flag...';
+    responseTextarea.placeholder = flag.status === 'unresolved' ? 'Write your response to this flag...' : 'Response from instructor...';
     responseTextarea.value = flag.response || '';
+    responseTextarea.readOnly = flag.status === 'resolved' && !flag.editing;
+
+    // Add change tracking for edit mode
+    if (flag.status === 'resolved' && flag.editing) {
+        const originalValue = flag.response || '';
+        responseTextarea.addEventListener('input', () => {
+            // Could add visual feedback here if needed
+        });
+    }
 
     const responseActions = document.createElement('div');
     responseActions.className = 'response-actions';
 
     const resolveButton = document.createElement('button');
     resolveButton.className = 'resolve-button';
-    resolveButton.textContent = flag.status === 'unresolved' ? 'Resolve' : 'Resolved';
+    resolveButton.textContent = flag.status === 'unresolved' ? 'Resolve' : 'Unresolved';
     resolveButton.dataset.flagId = flag.id;
     resolveButton.dataset.status = flag.status;
     resolveButton.disabled = false; // Ensure button is not disabled by default
 
     responseActions.appendChild(resolveButton);
+
+    // Add Edit/Save button for resolved flags
+    if (flag.status === 'resolved') {
+        const editButton = document.createElement('button');
+        editButton.className = `edit-button ${flag.editing ? 'editing' : ''}`;
+        editButton.textContent = flag.editing ? 'Save' : 'Edit';
+        editButton.dataset.flagId = flag.id;
+        editButton.style.marginLeft = '8px';
+
+        responseActions.appendChild(editButton);
+    }
 
     responseSection.appendChild(responseHeader);
     responseSection.appendChild(responseTextarea);

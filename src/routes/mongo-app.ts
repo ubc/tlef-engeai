@@ -1408,6 +1408,75 @@ router.put('/:courseId/flags/:flagId', asyncHandlerWithAuth(async (req: Request,
     }
 }));
 
+// PATCH /api/courses/:courseId/flags/:flagId/response - Update response for resolved flags only (REQUIRES AUTH - Instructors only)
+router.patch('/:courseId/flags/:flagId/response', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, flagId } = req.params;
+        const { response } = req.body;
+
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        // Validate that flag exists and is resolved
+        const flag = await instance.getFlagReport(course.courseName, flagId);
+        if (!flag) {
+            return res.status(404).json({
+                success: false,
+                error: 'Flag report not found'
+            });
+        }
+
+        if (flag.status !== 'resolved') {
+            return res.status(400).json({
+                success: false,
+                error: 'Can only update response for resolved flags'
+            });
+        }
+
+        // Prepare update data - only update response and updatedAt timestamp
+        const updateData: Partial<FlagReport> = {
+            response: response?.trim() || '',
+            updatedAt: new Date()
+        };
+
+        console.log('='.repeat(60));
+        console.log('🏴 Updating resolved flag response:', flagId, 'with data:', updateData);
+        console.log('='.repeat(60));
+
+        const result = await instance.updateFlagReport(course.courseName, flagId, updateData);
+
+        if (!result) {
+            return res.status(404).json({
+                success: false,
+                error: 'Flag report not found'
+            });
+        }
+
+        console.log('='.repeat(60));
+        console.log('🏴 Response update result:', JSON.stringify(result, null, 2));
+        console.log('='.repeat(60));
+
+        res.json({
+            success: true,
+            message: 'Flag response updated successfully',
+            data: result
+        });
+    } catch (error) {
+        console.error('Error updating flag response:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update flag response'
+        });
+    }
+}));
+
 // DELETE /api/courses/:courseId/flags/:flagId - Delete a flag report (REQUIRES AUTH - Instructors only)
 router.delete('/:courseId/flags/:flagId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
