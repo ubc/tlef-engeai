@@ -511,15 +511,18 @@ export class ChatApp {
         // STEP 1: MEMORY AGENT ANALYSIS (runs BEFORE adding current message)
         // Analyzes the PREVIOUS complete exchange from conversation history
         // ====================================================================
-        try {
-            // Read conversation history BEFORE modifying anything (no race conditions)
-            const historyBeforeAdding = conversation.getHistory();
-            
-            // Count messages excluding system message
-            const nonSystemMessagesBefore = historyBeforeAdding.filter(msg => msg.role !== 'system');
-            const messageCountBeforeAdding = nonSystemMessagesBefore.length;
 
-            const MEMORY_AGENT_MIN_MESSAGES_THRESHOLD = 6; // change this later, by retrieving the data from .env file
+        // Read conversation history BEFORE modifying anything (no race conditions)
+        const historyBeforeAdding = conversation.getHistory();
+
+        // Count messages excluding system message
+        const nonSystemMessagesBefore = historyBeforeAdding.filter(msg => msg.role !== 'system');
+        const messageCountBeforeAdding = nonSystemMessagesBefore.length;
+
+        const MEMORY_AGENT_MIN_MESSAGES_THRESHOLD = 6; // Memory agent activates after 6 messages
+        const UNSTRUGGLE_MIN_MESSAGES_THRESHOLD = 8; // Unstruggle feature activates after 8 messages
+
+        try {
             
             // Only analyze if conversation has more than threshold messages (previous exchanges)
             if (messageCountBeforeAdding > MEMORY_AGENT_MIN_MESSAGES_THRESHOLD) {
@@ -610,8 +613,8 @@ export class ChatApp {
         // STEP 3: FORMAT USER PROMPT WITH RAG CONTEXT
         // ====================================================================
         let userFullPrompt = '';
-        if (documentsLength > 0) {  
-            userFullPrompt = formatRAGPrompt(ragContext, message);
+        if (documentsLength > 0) {
+            userFullPrompt = formatRAGPrompt(ragContext, message, messageCountBeforeAdding);
         }
         else {
             userFullPrompt = message;
@@ -675,6 +678,7 @@ export class ChatApp {
         // ====================================================================
         // STEP 5: ADD ASSISTANT MESSAGE TO CONVERSATION AND HISTORY
         // ====================================================================
+
         // Note: userId parameter is string but we'll parse it - should be numeric from session
         const assistantMessage = this.addAssistantMessage(chatId, assistantResponse, userId, courseName, retrievedDocumentTexts);
         

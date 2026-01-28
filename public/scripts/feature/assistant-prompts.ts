@@ -50,7 +50,7 @@ export async function initializeAssistantPrompts(course: activeCourse): Promise<
  * Setup event listeners for the page
  */
 function setupEventListeners(): void {
-    const addPromptBtn = document.getElementById('add-prompt-btn');
+    const addPromptBtn = document.getElementById('assistant-add-prompt-btn');
     if (addPromptBtn) {
         addPromptBtn.addEventListener('click', handleAddPrompt);
     }
@@ -95,7 +95,7 @@ async function loadPrompts(): Promise<void> {
  * Render all prompts on the page
  */
 function renderPrompts(): void {
-    const container = document.getElementById('prompts-container');
+    const container = document.getElementById('assistant-prompts-container');
     if (!container) {
         console.error('❌ [ASSISTANT-PROMPTS] Prompts container not found');
         return;

@@ -451,10 +451,18 @@ export const RAG_CONTEXT_SEPARATOR = "\n\n---\n\n";
  * Helper function to format RAG prompt with context
  * @param context - The retrieved context from RAG system
  * @param userMessage - The user's original message
+ * @param messageCount - Optional: Number of messages in conversation for unstruggle reveal logic
  * @returns Formatted prompt with context and user message
  */
-export function formatRAGPrompt(context: string, userMessage: string): string {
-    return `${context}${RAG_CONTEXT_SEPARATOR}${RAG_BRIDGE_PROMPT}${userMessage}`;
+export function formatRAGPrompt(context: string, userMessage: string, messageCount?: number): string {
+    let prompt = `${context}${RAG_CONTEXT_SEPARATOR}${RAG_BRIDGE_PROMPT}${userMessage}`;
+
+    // Add unstruggle reveal tag if conversation has sufficient length
+    if (messageCount && messageCount > 3) {
+        prompt += '<questionUnstruggle reveal="true">';
+    }
+
+    return prompt;
 }
 
 /**
@@ -476,16 +484,13 @@ STRUGGLE TOPICS HANDLING
 ===========================================
 
 Student struggles with the following topics:
-${struggleTopicsQuoted}
+[struggle_topics]${struggleTopicsQuoted}[/struggle_topics]
 
 Before responding when struggle topics are discussed, verify:
 ☐ STOPPED using Socratic or guided-discovery questioning
 ☐ Providing direct, clear, step-by-step explanations
 ☐ Using concrete numerical examples
 ☐ Breaking concepts into simple, explicit steps
-☐ Appended <questionUnstruggle Topic="[exact struggle topic]"> tag at the VERY END of response (if struggle topic discussed)
-☐ Used EXACTLY ONE <questionUnstruggle> tag with exact topic name from list: ${struggleTopicsQuoted}
-☐ Tag placed ONLY on final line of response
 ☐ Asked at MOST ONE follow-up question (simple understanding check, not Socratic)
 ☐ Chose SINGLE most relevant struggle topic from exact list above
 ☐ Did NOT use synonyms, related concepts, or variations - ONLY exact topic name
@@ -493,7 +498,26 @@ Before responding when struggle topics are discussed, verify:
 Example (correct usage):
 You've explained the Nernst equation really well. Let's walk through a concrete example step by step using actual values so the relationship is clear.
 
-<questionUnstruggle Topic="thermodynamics">`;
+===========================================
+UNSTRUGGLE TOPICS HANDLING
+===========================================
+
+If you find <questionUnstruggle revealed="true">, then please add <questionUnstruggle Topic="topic"> to the end of the response, where the topic is the single most relevant struggle topic from the exact list above.
+
+Before adding the <questionUnstruggle> tag, verify:
+☐ The chosen topic is the single most relevant struggle topic from the exact list above.
+☐ The chosen topic is not a synonym, related concept, or variation of the exact topic name.
+☐ If the chat does not explicitly display <questionUnstruggle revealed="true">, then do not add the <questionUnstruggle Topic="topic"> tag.
+☐ Make sure you put the <questionUnstruggle Topic="topic"> tag at the end of the response.
+
+Example:
+User prompt: .....user prompt..... (with no struggle topic)
+Assistant response: .....assistant response..... (with no struggle topic)
+
+User prompt: .....user prompt...<questionUnstruggle revealed="true">...
+Assistant response: ...assistant response...
+<questionUnstruggle Topic="thermodynamics"> 
+`;
 }
 
 

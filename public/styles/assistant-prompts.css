@@ -42,7 +42,7 @@
     font-size: 24px;
 }
 
-.add-prompt-btn {
+.assistant-add-prompt-btn {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -57,22 +57,22 @@
     transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
 }
 
-.add-prompt-btn i,
-.add-prompt-btn svg {
+.assistant-add-prompt-btn i,
+.assistant-add-prompt-btn svg {
     width: 14px;
     height: 14px;
 }
 
-.add-prompt-btn:hover {
+.assistant-add-prompt-btn:hover {
     background: var(--hover-bg);
     border-color: var(--hover-bg);
 }
 
-.add-prompt-btn:active {
+.assistant-add-prompt-btn:active {
     transform: scale(0.98);
 }
 
-.prompts-container {
+.assistant-prompts-container {
     display: flex;
     flex-direction: column;
     gap: 20px;
@@ -388,7 +388,7 @@
         align-items: stretch;
     }
 
-    .add-prompt-btn {
+    .assistant-add-prompt-btn {
         width: 100%;
         justify-content: center;
     }
