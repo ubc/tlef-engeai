@@ -457,11 +457,6 @@ export const RAG_CONTEXT_SEPARATOR = "\n\n---\n\n";
 export function formatRAGPrompt(context: string, userMessage: string, messageCount?: number): string {
     let prompt = `${context}${RAG_CONTEXT_SEPARATOR}${RAG_BRIDGE_PROMPT}${userMessage}`;
 
-    // Add unstruggle reveal tag if conversation has sufficient length
-    if (messageCount && messageCount > 3) {
-        prompt += '<questionUnstruggle reveal="true">';
-    }
-
     return prompt;
 }
 
@@ -476,7 +471,7 @@ export function formatStruggleWordsPrompt(struggleTopics: string[]): string {
         return '\n\nNo struggle words found for this user.';
     }
 
-    const struggleTopicsQuoted = struggleTopics.map((topic) => `"${topic}"`).join(', ');
+    const struggleTopicsQuoted = struggleTopics.map((topic) => `☐ ${topic}`).join('\n');
 
     return `
 ===========================================
@@ -484,7 +479,9 @@ STRUGGLE TOPICS HANDLING
 ===========================================
 
 Student struggles with the following topics:
-[struggle_topics]${struggleTopicsQuoted}[/struggle_topics]
+[struggle_topics]
+${struggleTopicsQuoted}
+[/struggle_topics]
 
 Before responding when struggle topics are discussed, verify:
 ☐ STOPPED using Socratic or guided-discovery questioning
@@ -502,16 +499,20 @@ You've explained the Nernst equation really well. Let's walk through a concrete 
 UNSTRUGGLE TOPICS HANDLING
 ===========================================
 
-If you find <questionUnstruggle revealed="true">, then please add <questionUnstruggle Topic="topic"> to the end of the response, where the topic is the single most relevant struggle topic from the exact list above.
+If you find <questionUnstruggle revealed="true">, then please add <questionUnstruggle Topic="topic"> to the end of the response, where the topic is the single most relevant struggle topic among
+[struggle_topics]
+${struggleTopicsQuoted}
+[/struggle_topics]
 
 Before adding the <questionUnstruggle> tag, verify:
 ☐ The chosen topic is the single most relevant struggle topic from the exact list above.
 ☐ The chosen topic is not a synonym, related concept, or variation of the exact topic name.
 ☐ If the chat does not explicitly display <questionUnstruggle revealed="true">, then do not add the <questionUnstruggle Topic="topic"> tag.
 ☐ Make sure you put the <questionUnstruggle Topic="topic"> tag at the end of the response.
+☐ If the chat displays <questionUnstruggle reveal="FALSE">, then do not add the <questionUnstruggle Topic="topic"> tag.
 
 Example:
-User prompt: .....user prompt..... (with no struggle topic)
+User prompt: .....user prompt..... <questionUnstruggle reveal="FALSE">...
 Assistant response: .....assistant response..... (with no struggle topic)
 
 User prompt: .....user prompt...<questionUnstruggle revealed="true">...

@@ -841,19 +841,19 @@ You've explained the Nernst equation really well. Let's walk through a concrete 
 UNSTRUGGLE TOPICS HANDLING
 ===========================================
 
-If you find <questionUnstruggle revealed="true">, then please add <questionUnstruggle Topic="topic"> to the end of the response, where the topic is the single most relevant struggle topic from the exact list above.
+If you find <questionUnstruggle reveal="TRUE"> at the end of the response, then please add <questionUnstruggle Topic="topic"> to the end of the response, where the topic is the single most relevant struggle topic from the exact list above.
 
 Before adding the <questionUnstruggle> tag, verify:
 ☐ The chosen topic is the single most relevant struggle topic from the exact list above.
 ☐ The chosen topic is not a synonym, related concept, or variation of the exact topic name.
-☐ If the chat does not explicitly display <questionUnstruggle revealed="true">, then do not add the <questionUnstruggle Topic="topic"> tag.
+☐ If the chat does not explicitly display <questionUnstruggle reveal="TRUE">, then do not add the <questionUnstruggle Topic="topic"> tag.
 ☐ Make sure you put the <questionUnstruggle Topic="topic"> tag at the end of the response.
 
 Example:
 User prompt: .....user prompt..... (with no struggle topic)
 Assistant response: .....assistant response..... (with no struggle topic)
 
-User prompt: .....user prompt...<questionUnstruggle revealed="true">...
+User prompt: .....user prompt...<questionUnstruggle reveal="TRUE">...
 Assistant response: ...assistant response...
 <questionUnstruggle Topic="thermodynamics"> `
 ;

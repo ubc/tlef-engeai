@@ -113,7 +113,7 @@ export function loadConfig(): AppConfig {
 		debug: debug,
 		// batchSize: // Can be added from env var if needed
 	};
-	if (debug) logger.debug('RAG Embeddings Config:', embeddingsConfig);
+	// if (debug) logger.debug('RAG Embeddings Config:', embeddingsConfig);
 
 	// --- Qdrant Specific Config ---
 	const qdrantUrl = process.env.QDRANT_URL;
@@ -158,15 +158,15 @@ export function loadConfig(): AppConfig {
 	logger.info(`   📐 Min Chunk Size: ${ragMinChunkSize} characters`);
 	logger.info(`   📊 Overlap Percentage: ${((ragOverlapSize / ragChunkSize) * 100).toFixed(1)}%`);
 
-	if (debug) {
-		logger.debug('RAG Chunking Config Details:', {
-			chunkSize: ragChunkSize,
-			overlapSize: ragOverlapSize,
-			chunkingStrategy: ragChunkingStrategy,
-			minChunkSize: ragMinChunkSize,
-			overlapPercentage: ((ragOverlapSize / ragChunkSize) * 100).toFixed(1) + '%'
-		});
-	}
+	// if (debug) {
+	// 	logger.debug('RAG Chunking Config Details:', {
+	// 		chunkSize: ragChunkSize,
+	// 		overlapSize: ragOverlapSize,
+	// 		chunkingStrategy: ragChunkingStrategy,
+	// 		minChunkSize: ragMinChunkSize,
+	// 		overlapPercentage: ((ragOverlapSize / ragChunkSize) * 100).toFixed(1) + '%'
+	// 	});
+	// }
 
 	// --- Assemble Chunking Config ---
 	const chunkingConfig: ChunkingConfig = {
@@ -190,7 +190,7 @@ export function loadConfig(): AppConfig {
 		// Chunking configuration - NOW USING PROPER ChunkingConfig!
 		chunkingConfig: chunkingConfig
 	};
-	if (debug) logger.debug('Assembled RAG Config:', ragConfig);
+	// if (debug) logger.debug('Assembled RAG Config:', ragConfig);
 
 	return {
 		llmConfig,

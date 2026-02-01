@@ -520,7 +520,6 @@ export class ChatApp {
         const messageCountBeforeAdding = nonSystemMessagesBefore.length;
 
         const MEMORY_AGENT_MIN_MESSAGES_THRESHOLD = 6; // Memory agent activates after 6 messages
-        const UNSTRUGGLE_MIN_MESSAGES_THRESHOLD = 8; // Unstruggle feature activates after 8 messages
 
         try {
             
@@ -610,23 +609,61 @@ export class ChatApp {
         }
 
         // ====================================================================
-        // STEP 3: FORMAT USER PROMPT WITH RAG CONTEXT
+        // STEP 3: FORMAT USER PROMPT WITH RAG CONTEXT AND UNSTRUGGLE REVEAL TAG
         // ====================================================================
         let userFullPrompt = '';
         if (documentsLength > 0) {
-            userFullPrompt = formatRAGPrompt(ragContext, message, messageCountBeforeAdding);
+            userFullPrompt = formatRAGPrompt(ragContext, message);
         }
         else {
             userFullPrompt = message;
         }
+
+        // if the message is multiple of 3 and the numebr of struggle words is greater than 0, then add the <questionUnstruggle reveal="TRUE"> tag
+
+        let struggleTopics = await memoryAgent.getStruggleWords(userId, courseName);
+        console.log(`DEBUG #200: Struggle topics: ${struggleTopics}, length: ${struggleTopics.length}`);
+        console.log(`DEBUG #200: Message count before adding: ${messageCountBeforeAdding}`);
+        if ( (messageCountBeforeAdding % 3 === 0 ) && (struggleTopics.length > 0) ) {
+            userFullPrompt += '\n<questionUnstruggle reveal="TRUE">';
+        }
+        else {
+            userFullPrompt += '\n<questionUnstruggle reveal="FALSE">';
+        }
+        
 
         // ====================================================================
         // STEP 4: ADD USER MESSAGE TO CONVERSATION
         // ====================================================================
         conversation.addMessage('user', userFullPrompt);
 
-        // Calculate token statistics for file logging
+        // ====================================================================
+        // LOG ENTIRE CONVERSATION HISTORY (NO TRUNCATION)
+        // ====================================================================
         const history = conversation.getHistory();
+        console.log(`\n📝 FULL CONVERSATION HISTORY (Chat: ${chatId}, User: ${userId}):`);
+        console.log(`Total messages: ${history.length}`);
+        console.log('='.repeat(80));
+
+        history.forEach((msg, index) => {
+            const role = msg.role.toUpperCase();
+            const content = msg.content;
+            const charCount = content.length;
+
+            console.log(`[${index + 1}] ${role} - ${charCount} chars:`);
+            console.log(`${content}`);
+            console.log('-'.repeat(40));
+        });
+        console.log('='.repeat(80));
+
+        // printing out the full user prompt from this conversation
+        console.log(`\n\n📝 FULL USER PROMPT FROM THIS CONVERSATION:\n\n`);
+        console.log(`${userFullPrompt}`);
+        console.log('='.repeat(80));
+
+        console.log(`📝 END CONVERSATION LOG\n`);
+
+        // Calculate token statistics for file logging
         let totalCharacters = 0;
         let totalEstimatedTokens = 0;
         
@@ -1045,7 +1082,12 @@ export class ChatApp {
         // Generate message ID
         const currentDate = new Date();
         const messageId = this.chatIDGenerator.messageID(message, chatId, currentDate);
-        
+
+        // DEBUG: Add unique identifier to track message instances
+        const uniqueId = `${messageId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        console.log(`\n🆔 DEBUG: Adding assistant message with unique ID: ${uniqueId}`);
+        console.log(`Message preview: "${message.substring(0, 100)}..."`);
+
         // Create the ChatMessage object
         const chatMessage: ChatMessage = {
             id: messageId,
@@ -1054,17 +1096,11 @@ export class ChatApp {
             courseName: courseName,
             text: message,
             timestamp: Date.now(),
-            retrievedDocuments: retrievedDocuments  // NEW: Add retrieved documents
+            retrievedDocuments: retrievedDocuments,  // NEW: Add retrieved documents
         };
         
         try {
-            // Add message to conversation
-            if (this.conversations.has(chatId)) {
-                const conversation = this.conversations.get(chatId);
-                if (conversation) {
-                    conversation.addMessage('assistant', message);
-                }
-            }
+            // Add message to conversation - No need to add to conversation, it is already added in the addAssistantMessage function, this is just for the chat history
             
             // Add message to chat history
             if (this.chatHistory.has(chatId)) {
