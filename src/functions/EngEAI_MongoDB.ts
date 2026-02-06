@@ -1585,6 +1585,46 @@ export class EngEAI_MongoDB {
     }
 
     /**
+     * Update chat pin status
+     * @param courseName - The name of the course
+     * @param userId - The userId of the user (string format)
+     * @param chatId - The ID of the chat to update pin status for
+     * @param isPinned - Boolean indicating if chat should be pinned
+     */
+    public updateChatPinStatus = async (courseName: string, userId: string, chatId: string, isPinned: boolean): Promise<void> => {
+        //START DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-PIN)
+        console.log(`[MONGODB] 📌 Updating chat pin status for chat ${chatId} to ${isPinned} for user userId: ${userId} in course: ${courseName}`);
+        //END DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-PIN)
+
+        try {
+            const userCollection = await this.getUserCollection(courseName);
+
+            const result = await userCollection.updateOne(
+                { userId: userId, 'chats.id': chatId },
+                {
+                    $set: {
+                        'chats.$.isPinned': isPinned,
+                        updatedAt: new Date()
+                    }
+                }
+            );
+
+            if (result.matchedCount === 0) {
+                throw new Error(`Chat not found with ID: ${chatId} for user userId: ${userId}`);
+            }
+
+            //START DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-PIN-SUCCESS)
+            console.log(`[MONGODB] ✅ Chat pin status updated successfully to ${isPinned}`);
+            //END DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-PIN-SUCCESS)
+        } catch (error) {
+            //START DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-PIN-ERROR)
+            console.error(`[MONGODB] 🚨 Error updating chat pin status:`, error);
+            //END DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-PIN-ERROR)
+            throw error;
+        }
+    }
+
+    /**
      * Mark a chat as deleted (soft delete) instead of removing it
      * This preserves chat history for audit/analytics while hiding it from users
      * @param courseName - The name of the course

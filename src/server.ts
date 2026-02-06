@@ -53,37 +53,27 @@ app.use((req: express.Request, res: express.Response, next: express.NextFunction
     next();
 });
 
-// Serve static files from the 'public' directory
+// Root path handler: redirect authenticated users to course selection
+app.get('/', (req: any, res: any) => {
+    // Check if user is authenticated (has a valid session)
+    if (req.session?.passport?.user) {
+        // Authenticated user: redirect to course selection
+        console.log('[ROUTING] 🔄 Authenticated user accessed root, redirecting to course-selection');
+        return res.redirect('/course-selection');
+    } else {
+        // Unauthenticated user: serve index.html (login page)
+        console.log('[ROUTING] 📄 Unauthenticated user accessed root, serving index.html');
+        return res.sendFile(path.join(publicPath, 'index.html'));
+    }
+});
+
+// Serve static files from the 'public' directory (but not for root path)
 app.use(express.static(publicPath));
 
 // Authentication routes (no /api prefix as they serve HTML too)
 app.use('/auth', authRoutes);
 
-// Backward compatibility: Redirect old instructor-mode.html to new URL structure
-app.get('/pages/instructor-mode.html', (req: any, res: any) => {
-    const currentCourse = req.session?.currentCourse;
-    if (currentCourse?.courseId) {
-        res.redirect(`/course/${currentCourse.courseId}/instructor/documents`);
-    } else {
-        res.redirect('/course-selection');
-    }
-});
-
-// Backward compatibility: Redirect old student-mode.html to new URL structure
-app.get('/pages/student-mode.html', (req: any, res: any) => {
-    const currentCourse = req.session?.currentCourse;
-    if (currentCourse?.courseId) {
-        res.redirect(`/course/${currentCourse.courseId}/student`);
-    } else {
-        res.redirect('/course-selection');
-    }
-});
-
-// Backward compatibility: Redirect old course-selection.html to new URL structure
-app.get('/pages/course-selection.html', (req: any, res: any) => {
-    res.redirect('/course-selection');
-});
-
+// Invalid endpoints removed: These violated the endpoint invariant by allowing direct HTML access
 // Course routes (must be before static file serving to catch course routes first)
 app.use('/', courseRoutes);
 
