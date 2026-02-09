@@ -47,3 +47,20 @@ export function getRandomNoResponse(): string {
     const randomIndex = Math.floor(Math.random() * UNSTRUGGLE_NO_RESPONSES.length);
     return UNSTRUGGLE_NO_RESPONSES[randomIndex];
 }
+
+/**
+ * Responses when unstruggle deletion fails at database level
+ * Used when struggle topic is already removed or concurrent operations occur
+ */
+export const UNSTRUGGLE_FAILURE_RESPONSES: string[] = [
+    "We find that you are already mastered this topic. Thank you for trusting EngE AI.",
+    // Add more variations if needed
+];
+
+/**
+ * Get a random failure response
+ */
+export function getRandomFailureResponse(): string {
+    const randomIndex = Math.floor(Math.random() * UNSTRUGGLE_FAILURE_RESPONSES.length);
+    return UNSTRUGGLE_FAILURE_RESPONSES[randomIndex];
+}

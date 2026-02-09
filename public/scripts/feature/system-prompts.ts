@@ -55,7 +55,7 @@ export async function initializeSystemPrompts(course: activeCourse): Promise<voi
  * Setup event listeners for the page
  */
 function setupEventListeners(): void {
-    const addPromptBtn = document.getElementById('add-prompt-btn');
+    const addPromptBtn = document.getElementById('system-add-prompt-btn');
     if (addPromptBtn) {
         addPromptBtn.addEventListener('click', handleAddPrompt);
     }
@@ -153,7 +153,7 @@ async function loadSystemPrompts(): Promise<void> {
  * Render all prompts on the page
  */
 function renderPrompts(): void {
-    const container = document.getElementById('prompts-container');
+    const container = document.getElementById('system-prompts-container');
     if (!container) {
         console.error('❌ [SYSTEM-PROMPTS] Prompts container not found');
         return;
@@ -179,13 +179,11 @@ function renderPrompts(): void {
     html += renderStruggleTopicsComponent([]);
 
     // Render custom items
-    if (customItems.length === 0 && !basePrompt && !learningObjectives && !struggleTopics) {
-        html += `
-            <div class="empty-state">
-                <p>No system prompt items yet. Click "Add New System Prompt Item" to create one.</p>
-            </div>
-        `;
-    }
+    customItems.forEach(item => {
+        html += renderPromptCard(item);
+    });
+
+
 
     container.innerHTML = html;
     
@@ -253,15 +251,8 @@ Before responding when struggle topics are discussed, verify:\n
 ☐ Providing direct, clear, step-by-step explanations\n
 ☐ Using concrete numerical examples\n
 ☐ Breaking concepts into simple, explicit steps\n
-☐ Appended <questionUnstruggle Topic="[exact struggle topic]"> tag at the VERY END of response (if struggle topic discussed)\n
-☐ Used EXACTLY ONE <questionUnstruggle> tag with exact topic name from list: ${struggleTopicsQuoted}\n
-☐ Tag placed ONLY on final line of response\n
 ☐ Asked at MOST ONE follow-up question (simple understanding check, not Socratic)\n
-☐ Chose SINGLE most relevant struggle topic from exact list above\n
-☐ Did NOT use synonyms, related concepts, or variations - ONLY exact topic name\n\n
-Example (correct usage):\n
-You've explained the Nernst equation really well. Let's walk through a concrete example step by step using actual values so the relationship is clear.\n\n
-<questionUnstruggle Topic="thermodynamics">`;
+`;
 
     // Truncate content for display (3 lines)
     const truncatedContent = truncateContent(fullContent, 3);
@@ -826,24 +817,48 @@ function handleDefaultComponentToggleExpand(componentId: string): void {
     if (componentId === DEFAULT_LEARNING_OBJECTIVES_ID) {
         fullContent = 'The following are ALL learning objectives for this course, organized by week/topic and subsection:\n\n\nWhen helping students, reference these learning objectives to ensure alignment with course goals.';
     } else if (componentId === DEFAULT_STRUGGLE_TOPICS_ID) {
-        fullContent = `\n\n===========================================
+        fullContent = `\n\n
+===========================================
 STRUGGLE TOPICS HANDLING
-===========================================\n\n
-Student struggles with the following topics: <struggle_topics>...</struggle_topics>\n
-Before responding when struggle topics are discussed, verify:\n
-☐ STOPPED using Socratic or guided-discovery questioning\n
-☐ Providing direct, clear, step-by-step explanations\n
-☐ Using concrete numerical examples\n
-☐ Breaking concepts into simple, explicit steps\n
-☐ Appended <questionUnstruggle Topic="[exact struggle topic]"> tag at the VERY END of response (if struggle topic discussed)\n
-☐ Used EXACTLY ONE <questionUnstruggle> tag with exact topic name from list: <struggle_topics>...</struggle_topics>\n
-☐ Tag placed ONLY on final line of response\n
-☐ Asked at MOST ONE follow-up question (simple understanding check, not Socratic)\n
-☐ Chose SINGLE most relevant struggle topic from exact list above\n
-☐ Did NOT use synonyms, related concepts, or variations - ONLY exact topic name\n\n
-Example (correct usage):\n
-You've explained the Nernst equation really well. Let's walk through a concrete example step by step using actual values so the relationship is clear.\n\n
-<questionUnstruggle Topic="thermodynamics">`;
+===========================================
+
+Student struggles with the following topics:
+[struggle_topics][struggleTopicsQuoted][/struggle_topics]
+
+Before responding when struggle topics are discussed, verify:
+☐ STOPPED using Socratic or guided-discovery questioning
+☐ Providing direct, clear, step-by-step explanations
+☐ Using concrete numerical examples
+☐ Breaking concepts into simple, explicit steps
+☐ Asked at MOST ONE follow-up question (simple understanding check, not Socratic)
+☐ Chose SINGLE most relevant struggle topic from exact list above
+☐ Did NOT use synonyms, related concepts, or variations - ONLY exact topic name
+
+Example (correct usage):
+You've explained the Nernst equation really well. Let's walk through a concrete example step by step using actual values so the relationship is clear.
+
+===========================================
+UNSTRUGGLE TOPICS HANDLING
+===========================================
+
+If you find <questionUnstruggle reveal="TRUE"> at the end of the response, then please add <questionUnstruggle Topic="topic"> to the end of the response, where the topic is the single most relevant struggle topic from the exact list above.
+
+Before adding the <questionUnstruggle> tag, verify:
+☐ The chosen topic is the single most relevant struggle topic from the exact list above.
+☐ The chosen topic is not a synonym, related concept, or variation of the exact topic name.
+☐ If the chat does not explicitly display <questionUnstruggle reveal="TRUE">, then do not add the <questionUnstruggle Topic="topic"> tag.
+☐ Make sure you put the <questionUnstruggle Topic="topic"> tag at the end of the response.
+
+Example:
+User prompt: .....user prompt..... (with no struggle topic)
+Assistant response: .....assistant response..... (with no struggle topic)
+
+User prompt: .....user prompt...<questionUnstruggle reveal="TRUE">...
+Assistant response: ...assistant response...
+<questionUnstruggle Topic="thermodynamics"> `
+;
+
+
     }
 
     if (isExpanded) {

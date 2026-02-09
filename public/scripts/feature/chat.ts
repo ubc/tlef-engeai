@@ -1448,7 +1448,16 @@ export class ChatManager {
                 this.handleSendMessage();
             }
         });
-        pinBtn?.addEventListener('click', () => this.handleTogglePin());
+        //START DEBUG LOG : DEBUG-CODE(STAR-001)
+        console.log('[CHAT] 🔍 Attaching pin button event listener', { pinBtn: pinBtn?.id, exists: !!pinBtn });
+        //END DEBUG LOG : DEBUG-CODE(STAR-001)
+
+        pinBtn?.addEventListener('click', () => {
+            //START DEBUG LOG : DEBUG-CODE(STAR-001)
+            console.log('[CHAT] ⭐ Pin button clicked - calling handleTogglePin');
+            //END DEBUG LOG : DEBUG-CODE(STAR-001)
+            this.handleTogglePin();
+        });
         deleteBtn?.addEventListener('click', () => {
             console.log('🗑️ Delete button clicked in chat header');
             this.handleDeleteActiveChat();
@@ -1641,8 +1650,27 @@ export class ChatManager {
     }
 
     private handleTogglePin(): void {
+        //START DEBUG LOG : DEBUG-CODE(STAR-001)
+        console.log('[CHAT] 🎯 handleTogglePin called');
+        //END DEBUG LOG : DEBUG-CODE(STAR-001)
+
         const activeChatId = this.getActiveChatId();
-        if (!activeChatId) return;
+
+        //START DEBUG LOG : DEBUG-CODE(STAR-001)
+        console.log('[CHAT] 📋 Active chat ID:', activeChatId);
+        //END DEBUG LOG : DEBUG-CODE(STAR-001)
+
+        if (!activeChatId) {
+            //START DEBUG LOG : DEBUG-CODE(STAR-001)
+            console.log('[CHAT] ⚠️ No active chat ID, returning early');
+            //END DEBUG LOG : DEBUG-CODE(STAR-001)
+            return;
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(STAR-001)
+        console.log('[CHAT] 🔄 Calling togglePin with ID:', activeChatId);
+        //END DEBUG LOG : DEBUG-CODE(STAR-001)
+
         this.togglePin(activeChatId);
         this.renderActiveChatIncremental(); // Use incremental updates for pin toggle
         this.renderChatList();

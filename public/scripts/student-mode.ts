@@ -832,7 +832,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             console.warn('[STUDENT-MODE] ⚠️ Profile button not found');
             return;
         }
-        
+
         profileBtn.addEventListener('click', () => {
             console.log('[STUDENT-MODE] 👤 Loading flag history component...');
             navigateToStudentView('flag-history');
@@ -840,9 +840,43 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         console.log('[STUDENT-MODE] ✅ Flag history button listener attached');
     };
 
+    const attachCourseSelectionListener = () => {
+        const courseSelectionBtn = document.getElementById('course-selection-btn');
+        if (!courseSelectionBtn) {
+            console.warn('[STUDENT-MODE] ⚠️ Course Selection button not found');
+            return;
+        }
+
+        courseSelectionBtn.addEventListener('click', async () => {
+            console.log('[STUDENT-MODE] 🔄 Course Selection button clicked - clearing state and redirecting');
+
+            // Clear all frontend state
+            try {
+                // Clear local storage
+                localStorage.clear();
+
+                // Clear any global state objects (adjust based on your app's state management)
+                if ((window as any).appState) {
+                    (window as any).appState = {};
+                }
+
+                console.log('[STUDENT-MODE] 🧹 Cleared frontend state (localStorage and global state)');
+
+                // Navigate to course selection (server will handle session cleanup)
+                window.location.href = '/course-selection';
+            } catch (error) {
+                console.error('[STUDENT-MODE] 🚨 Error clearing state:', error);
+                // Still navigate even if clearing fails
+                window.location.href = '/course-selection';
+            }
+        });
+        console.log('[STUDENT-MODE] ✅ Course Selection button listener attached');
+    };
+
     // --- INITIALIZATION ---
     attachLogoutListener(); // Attach logout button listener
     attachProfileButtonListener(); // Attach profile button listener
+    attachCourseSelectionListener(); // Attach course selection button listener
     
     // Update companion text with current course
     updateCompanionText(user);

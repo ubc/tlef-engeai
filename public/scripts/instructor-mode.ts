@@ -403,6 +403,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const monitorStateEl = document.getElementById('monitor-state');
     const documentsStateEl = document.getElementById('documents-state');
     const chatStateEl = document.getElementById('chat-state');
+    const assistantPromptsStateEl = document.getElementById('assistant-prompts-state');
+    const systemPromptsStateEl = document.getElementById('system-prompts-state');
 
     chatStateEl?.addEventListener('click', async () => {
         navigateToInstructorView('chat');
@@ -421,12 +423,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         navigateToInstructorView('documents');
     });
 
-    const assistantPromptsStateEl = document.getElementById('assistant-prompts-state');
     assistantPromptsStateEl?.addEventListener('click', () => {
         navigateToInstructorView('assistant-prompts');
     });
 
-    const systemPromptsStateEl = document.getElementById('system-prompts-state');
     systemPromptsStateEl?.addEventListener('click', () => {
         navigateToInstructorView('system-prompts');
     });
@@ -700,7 +700,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         flagStateEl?.classList.remove('active');
         monitorStateEl?.classList.remove('active');
         assistantPromptsStateEl?.classList.remove('active');
-        
+        systemPromptsStateEl?.classList.remove('active');
+
         // Add active class to the current state's menu item
         switch(currentState) {
             case StateEvent.Documents:
@@ -717,6 +718,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 break;
             case StateEvent.AssistantPrompts:
                 assistantPromptsStateEl?.classList.add('active');
+                break;
+            case StateEvent.SystemPrompts:
+                systemPromptsStateEl?.classList.add('active');
                 break;
         }
     }
@@ -1232,6 +1236,35 @@ document.addEventListener('DOMContentLoaded', async () => {
                 navigateToInstructorView('course-information');
             });
             console.log('[INSTRUCTOR-MODE] ✅ Course Information button listener attached');
+        }
+
+        // Course Selection button listener
+        const courseSelectionBtn = document.getElementById('instructor-course-selection-btn');
+        if (courseSelectionBtn) {
+            courseSelectionBtn.addEventListener('click', async () => {
+                console.log('[INSTRUCTOR-MODE] 🔄 Course Selection button clicked - clearing state and redirecting');
+
+                // Clear all frontend state
+                try {
+                    // Clear local storage
+                    localStorage.clear();
+
+                    // Clear any global state objects (adjust based on your app's state management)
+                    if ((window as any).appState) {
+                        (window as any).appState = {};
+                    }
+
+                    console.log('[INSTRUCTOR-MODE] 🧹 Cleared frontend state (localStorage and global state)');
+
+                    // Navigate to course selection (server will handle session cleanup)
+                    window.location.href = '/course-selection';
+                } catch (error) {
+                    console.error('[INSTRUCTOR-MODE] 🚨 Error clearing state:', error);
+                    // Still navigate even if clearing fails
+                    window.location.href = '/course-selection';
+                }
+            });
+            console.log('[INSTRUCTOR-MODE] ✅ Course Selection button listener attached');
         }
 
         // Logo Box - Toggle Admin Buttons

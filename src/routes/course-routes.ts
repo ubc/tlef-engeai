@@ -34,8 +34,9 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
         const course = await mongoDB.getActiveCourse(courseId);
         
         if (!course) {
-            // Return 404 (not 403) to prevent courseId enumeration
-            return res.status(404).send('Course not found');
+            // Return 404 with error page (not 403) to prevent courseId enumeration
+            console.log(`[COURSE-ROUTES] Course ${courseId} not found, serving error page`);
+            return res.status(404).sendFile(path.join(__dirname, '../../public/pages/course-error.html'));
         }
         
         // Check if user has access
@@ -52,7 +53,8 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
         const isEnrolled = globalUser.coursesEnrolled.includes(courseId);
         
         if (!isInstructor && !isEnrolled) {
-            return res.status(403).send('Access denied: You are not enrolled in this course');
+            console.log(`[COURSE-ROUTES] User ${user.puid} not authorized for course ${courseId}, serving error page`);
+            return res.status(403).sendFile(path.join(__dirname, '../../public/pages/course-error.html'));
         }
         
         // Set course context in request
@@ -74,7 +76,8 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
         next();
     } catch (error) {
         console.error('[COURSE-ROUTES] Error validating course access:', error);
-        res.status(500).send('Internal server error');
+        // For server errors, still serve the error page but with 500 status
+        res.status(500).sendFile(path.join(__dirname, '../../public/pages/course-error.html'));
     }
 }
 

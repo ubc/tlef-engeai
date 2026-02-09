@@ -136,7 +136,6 @@
     z-index: 5;               
     background: var(--chat-bg); 
     animation: slideInDown 0.5s ease-in-out;
-    opacity: 0;
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
@@ -919,4 +918,38 @@
     .flagged-message-display {
         max-height: 150px;
     }
+}
+
+/* Flag Edit Mode Styles */
+.edit-button {
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.edit-button:hover {
+    background-color: #5a6268;
+}
+
+.edit-button.editing {
+    background-color: #007bff;
+}
+
+.edit-button.editing:hover {
+    background-color: #0056b3;
+}
+
+.edit-button:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+}
+
+.response-textarea[readonly] {
+    background-color: #f8f9fa;
+    cursor: not-allowed;
+    opacity: 0.8;
 }
