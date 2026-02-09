@@ -779,6 +779,12 @@ export class ChatManager {
         
         this.renderPinnedBanner(activeChat);
         renderFeatherIcons();
+        
+        // Update questionUnstruggle button states after rendering
+        // Use setTimeout to ensure DOM is fully updated
+        setTimeout(() => {
+            this.updateQuestionUnstruggleButtonStates();
+        }, 0);
     }
 
     /**
@@ -837,6 +843,12 @@ export class ChatManager {
         
         this.renderPinnedBanner(activeChat);
         renderFeatherIcons();
+        
+        // Update questionUnstruggle button states after rendering
+        // Use setTimeout to ensure DOM is fully updated
+        setTimeout(() => {
+            this.updateQuestionUnstruggleButtonStates();
+        }, 0);
     }
 
     /**
@@ -865,6 +877,51 @@ export class ChatManager {
         
         messageAreaEl.appendChild(messageEl);
         this.domMessageIds.add(msg.id);
+    }
+
+    /**
+     * Update questionUnstruggle button states based on whether they're in the most recent bot message
+     * Only buttons in the most recent bot message should be enabled
+     */
+    private updateQuestionUnstruggleButtonStates(): void {
+        const activeChat = this.getActiveChat();
+        if (!activeChat) return;
+
+        // Find the most recent bot message
+        const lastBotMessage = [...activeChat.messages]
+            .reverse()
+            .find(msg => msg.sender === 'bot');
+
+        // Get all questionUnstruggle buttons in the DOM
+        const allButtons = document.querySelectorAll('.question-unstruggle-btn') as NodeListOf<HTMLButtonElement>;
+        
+        allButtons.forEach(button => {
+            const messageId = button.dataset.messageId;
+            const topic = button.dataset.topic;
+            
+            if (!messageId || !topic) {
+                // Missing data attributes - disable for safety
+                button.disabled = true;
+                button.classList.add('disabled');
+                return;
+            }
+
+            // Check if this button belongs to the most recent bot message
+            const isInMostRecentMessage = lastBotMessage && 
+                lastBotMessage.id === messageId &&
+                lastBotMessage.text.includes(`<questionUnstruggle`) &&
+                lastBotMessage.text.includes(`Topic="${topic}"`);
+
+            if (isInMostRecentMessage) {
+                // Enable buttons in the most recent message
+                button.disabled = false;
+                button.classList.remove('disabled');
+            } else {
+                // Disable buttons not in the most recent message
+                button.disabled = true;
+                button.classList.add('disabled');
+            }
+        });
     }
 
     /**
@@ -908,6 +965,11 @@ export class ChatManager {
         
         renderFeatherIcons();
         this.scrollToBottom();
+        
+        // Update button states after message update
+        setTimeout(() => {
+            this.updateQuestionUnstruggleButtonStates();
+        }, 0);
     }
 
     /**
@@ -1481,6 +1543,12 @@ export class ChatManager {
             const unstruggleBtn = target.closest('.question-unstruggle-btn') as HTMLButtonElement | null;
             
             if (unstruggleBtn) {
+                // Check if button is disabled - if so, ignore the click
+                if (unstruggleBtn.disabled || unstruggleBtn.classList.contains('disabled')) {
+                    console.log('⚠️ Unstruggle button is disabled. Ignoring click.');
+                    return;
+                }
+                
                 e.preventDefault();
                 e.stopPropagation();
                 
@@ -1601,6 +1669,11 @@ export class ChatManager {
                         renderLatexInHtmlContent(botContentElement as HTMLElement);
                         
                         this.scrollToBottom();
+                        
+                        // Update button states after each chunk (in case buttons appear)
+                        setTimeout(() => {
+                            this.updateQuestionUnstruggleButtonStates();
+                        }, 0);
                     }
                 }
                 // Re-render icons after each chunk update
@@ -1629,6 +1702,11 @@ export class ChatManager {
                     renderLatexInHtmlContent(botContentElement as HTMLElement);
                     
                     this.scrollToBottom();
+                    
+                    // Update button states after message completion
+                    setTimeout(() => {
+                        this.updateQuestionUnstruggleButtonStates();
+                    }, 0);
                 }
                 // Re-render icons after message completion
                 renderFeatherIcons();

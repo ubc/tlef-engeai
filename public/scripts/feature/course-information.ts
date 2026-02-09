@@ -119,11 +119,7 @@ function indexOfUserId(arr: string[] | InstructorInfo[], userId: string): number
 const BASE_COURSE_OPTIONS = [
     { value: "", text: "Select a course..." },
     { value: "CHBE 241", text: "CHBE 241 - Material and Energy Balances" },
-    { value: "CHBE 251", text: "CHBE 251 - Transport Phenomena I" },
     { value: "MTRL 251", text: "MTRL 251 - Thermodynamics of Materials II" },
-    { value: "MTRL 252", text: "MTRL 252 - Materials Engineering Design" },
-    { value: "CHBE 344", text: "CHBE 344 - Introduction to Unit Operations" },
-    { value: "MTRL 361", text: "MTRL 361 - Modelling of Materials Processes" }
 ];
 
 /**
@@ -134,11 +130,6 @@ const INSTRUCTOR_OPTIONS = [
     { value: "", text: "Select an instructor..." },
     { value: "Dr. S. Alireza Bagherzadeh", text: "Dr. S. Alireza Bagherzadeh" },
     { value: "Dr. Amir M. Dehkhoda", text: "Dr. Amir M. Dehkhoda" },
-    { value: "Dr. Jonathan Verrett", text: "Dr. Jonathan Verrett" },
-    { value: "Dr. Jane Smith", text: "Dr. Jane Smith" },
-    { value: "Dr. John Doe", text: "Dr. John Doe" },
-    { value: "Dr. Sarah Johnson", text: "Dr. Sarah Johnson" },
-    { value: "Dr. Michael Brown", text: "Dr. Michael Brown" }
 ];
 
 /**

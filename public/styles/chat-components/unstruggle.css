@@ -72,14 +72,14 @@
 
 /* No button specific styles */
 .question-unstruggle-no {
-    border-color: var(--warning-color, #ffc107);
-    color: var(--warning-color, #ffc107);
+    border-color: #C73C00;
+    color: #C73C00;
 }
 
 .question-unstruggle-no:hover:not(.disabled) {
-    background: var(--warning-color, #ffc107);
+    background: #C73C00;
     color: white;
-    border-color: var(--warning-color, #ffc107);
+    border-color: #C73C00;
 }
 
 /* Disabled state */
@@ -88,6 +88,15 @@
     opacity: 0.6;
     cursor: not-allowed;
     pointer-events: none;
+}
+
+/* Ensure disabled buttons don't show hover effects */
+.question-unstruggle-btn.disabled:hover,
+.question-unstruggle-btn:disabled:hover {
+    background: var(--background, #ffffff) !important;
+    border-color: var(--border-color, #e0e0e0) !important;
+    transform: none !important;
+    box-shadow: none !important;
 }
 
 /* Responsive design */

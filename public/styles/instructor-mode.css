@@ -474,6 +474,21 @@ body {
     margin: 0;
 }
 
+.instructor-feature-sidebar.collapsed .instructor-course-selection-btn span {
+    opacity: 0;
+    max-width: 0;
+}
+
+.instructor-feature-sidebar.collapsed .instructor-course-selection-btn {
+    justify-content: center;
+    padding: 0.5rem;
+    gap: 0;
+}
+
+.instructor-feature-sidebar.collapsed .instructor-course-selection-btn i {
+    margin: 0;
+}
+
 /* Error message styling */
 .error-message {
     display: flex;
