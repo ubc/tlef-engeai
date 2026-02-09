@@ -132,11 +132,7 @@ interface OnboardingState {
 const COURSE_OPTIONS = [
     { value: "", text: "Select a course..." },
     { value: "CHBE 241", text: "CHBE 241 - Material and Energy Balances" },
-    { value: "CHBE 251", text: "CHBE 251 - Transport Phenomena I" },
     { value: "MTRL 251", text: "MTRL 251 - Thermodynamics of Materials II" },
-    { value: "MTRL 252", text: "MTRL 252 - Materials Engineering Design" },
-    { value: "CHBE 344", text: "CHBE 344 - Introduction to Unit Operations" },
-    { value: "MTRL 361", text: "MTRL 361 - Modelling of Materials Processes" }
 ];
 
 /**
@@ -145,27 +141,14 @@ const COURSE_OPTIONS = [
 const INSTRUCTOR_OPTIONS = [
     { value: "", text: "Select an instructor..." },
     { value: "Dr. S. Alireza Bagherzadeh", text: "Dr. S. Alireza Bagherzadeh" },
-    { value: "Dr. Amir M. Dehkhoda", text: "Dr. Amir M. Dehkhoda" },
-    { value: "Dr. Jonathan Verrett", text: "Dr. Jonathan Verrett" },
-    { value: "Dr. Jane Smith", text: "Dr. Jane Smith" },
-    { value: "Dr. John Doe", text: "Dr. John Doe" },
-    { value: "Dr. Sarah Johnson", text: "Dr. Sarah Johnson" },
-    { value: "Dr. Michael Brown", text: "Dr. Michael Brown" }
+    { value: "Dr. Amir M. Dehkhoda", text: "Dr. Amir M. Dehkhoda" }
 ];
 
 /**
  * Available teaching assistant options for selection
  */
 const TA_OPTIONS = [
-    { value: "", text: "Select a teaching assistant..." },
-    { value: "Alice Chen", text: "Alice Chen" },
-    { value: "Bob Wilson", text: "Bob Wilson" },
-    { value: "Carol Davis", text: "Carol Davis" },
-    { value: "David Lee", text: "David Lee" },
-    { value: "Emma Garcia", text: "Emma Garcia" },
-    { value: "Frank Miller", text: "Frank Miller" },
-    { value: "Grace Taylor", text: "Grace Taylor" },
-    { value: "Henry Anderson", text: "Henry Anderson" }
+    { value: "", text: "Select a teaching assistant..." }
 ];
 
 // ===========================================
