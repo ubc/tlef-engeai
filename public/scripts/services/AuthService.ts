@@ -151,7 +151,7 @@ export class AuthService {
         //START DEBUG LOG : DEBUG-CODE(FRONTEND-LOGIN)
         console.log('[FRONTEND-AUTH] 🚀 Initiating login...');
         //END DEBUG LOG : DEBUG-CODE(FRONTEND-LOGIN)
-        window.location.href = '/auth/login';
+        window.location.href = '/';
     }
 
     /**
@@ -231,14 +231,14 @@ export class AuthService {
                 return true;
             } else {
                 console.log(`[${pageName}] ❌ User not authenticated, redirecting to login...`);
-                window.location.href = '/auth/login';
+                window.location.href = '/';
                 return false;
             }
         } catch (error) {
             console.error(`[${pageName}] 🚨 Authentication check failed:`, error);
             // Show error and redirect to login
             alert('Authentication check failed. Redirecting to login...');
-            window.location.href = '/auth/login';
+            window.location.href = '/';
             return false;
         }
     }

@@ -570,7 +570,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         } catch (error) {
             console.error('[STUDENT-MODE] 🚨 Logout error:', error);
             // Fallback: redirect to login page
-            window.location.href = '/auth/login';
+            window.location.href = '/';
         }
     };
 

@@ -1204,7 +1204,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (error) {
             console.error('[INSTRUCTOR-MODE] 🚨 Logout error:', error);
             // Fallback: redirect to login page
-            window.location.href = '/auth/login';
+            window.location.href = '/';
         }
     };
 

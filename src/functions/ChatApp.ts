@@ -519,7 +519,7 @@ export class ChatApp {
         const nonSystemMessagesBefore = historyBeforeAdding.filter(msg => msg.role !== 'system');
         const messageCountBeforeAdding = nonSystemMessagesBefore.length;
 
-        const MEMORY_AGENT_MIN_MESSAGES_THRESHOLD = 6; // Memory agent activates after 6 messages
+        const MEMORY_AGENT_MIN_MESSAGES_THRESHOLD = 4; // Memory agent activates after 4 messages
 
         try {
             
@@ -602,6 +602,7 @@ export class ChatApp {
             });
             
             console.log(`📚 Captured ${retrievedDocumentTexts.length} documents for storage`);
+            console.log(`📚 Retrieved document texts: ${retrievedDocumentTexts.join('\n\n')}`);
         } catch (error) {
             console.log(`❌ RAG Context Error:`, error);
             this.logger.error('Error retrieving RAG documents:', error as any);
@@ -616,19 +617,26 @@ export class ChatApp {
             userFullPrompt = formatRAGPrompt(ragContext, message);
         }
         else {
-            userFullPrompt = message;
+            // DEBUG CODE: DEBUG-CODE(NO-RAG-DOCUMENTS-RETRIEVED)   
+            console.log(`DEBUG #201: No RAG documents retrieved, using user message as is`);
+            // END DEBUG CODE: DEBUG-CODE(NO-RAG-DOCUMENTS-RETRIEVED)
+            userFullPrompt = "The user's message is: " + message + "\n\n";
         }
 
-        // if the message is multiple of 3 and the numebr of struggle words is greater than 0, then add the <questionUnstruggle reveal="TRUE"> tag
-
+        // Attach struggle topics to the chat conversation for visibility
         let struggleTopics = await memoryAgent.getStruggleWords(userId, courseName);
         console.log(`DEBUG #200: Struggle topics: ${struggleTopics}, length: ${struggleTopics.length}`);
         console.log(`DEBUG #200: Message count before adding: ${messageCountBeforeAdding}`);
-        if ( (messageCountBeforeAdding % 3 === 0 ) && (struggleTopics.length > 0) ) {
-            userFullPrompt += '\n<questionUnstruggle reveal="TRUE">';
+
+        if (struggleTopics.length > 0) {
+            // Add struggle topics as a visible system message in the chat
+            userFullPrompt += `Based on our conversation, I've identified these topics you might want to focus on: <struggle_topics>${struggleTopics.join(', ')}</struggle_topics>\n\nPlease see the rules int he system prompt for how to covney information about any of these topics if the current user prompt is not asking about any of these topics`;
+
+            // Add the unstruggle instruction to the user prompt for the LLM
+            userFullPrompt += '\n<questionUnstruggle reveal="TRUE"> \n by this tag this means that you SHOULD select the most relevant struggle topic from the <struggle_topics> tags, and add the <questionUnstruggle Topic="topic"> tag to the end of the response. ';
         }
         else {
-            userFullPrompt += '\n<questionUnstruggle reveal="FALSE">';
+            userFullPrompt += '\n<questionUnstruggle reveal="FALSE"> \n by this tag this means that you should not add the <questionUnstruggle Topic="topic"> tag to the end of the response';
         }
         
 
