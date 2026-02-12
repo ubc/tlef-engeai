@@ -35,6 +35,7 @@ import { asyncHandler, asyncHandlerWithAuth } from '../middleware/asyncHandler';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt, SystemPromptItem } from '../functions/types';
 import { IDGenerator } from '../functions/unique-id-generator';
+import { memoryAgent } from '../memory-agent/memory-agent';
 import dotenv from 'dotenv';
 
 const router = express.Router();
@@ -2943,6 +2944,119 @@ router.get('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Requ
         res.status(500).json({
             success: false,
             error: 'Failed to get initial assistant prompts',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+// ===========================================
+// ========= MEMORY AGENT (STRUGGLE WORDS) ===
+// ===========================================
+
+// GET /api/courses/:courseId/memory-agent/struggle-words - Get struggle words for instructor (REQUIRES AUTH)
+router.get('/:courseId/memory-agent/struggle-words', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser || globalUser.affiliation !== 'faculty') {
+            return res.status(403).json({
+                success: false,
+                error: 'Instructor access required'
+            });
+        }
+
+        const { courseId } = req.params;
+        const instance = await EngEAI_MongoDB.getInstance();
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        const courseData = course as unknown as activeCourse;
+        const instructorUserId = globalUser.userId;
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some(inst => {
+                if (typeof inst === 'string') return inst === instructorUserId;
+                if (inst && inst.userId) return inst.userId === instructorUserId;
+                return false;
+            });
+        };
+
+        if (!isInstructorInArray(courseData.instructors || [])) {
+            return res.status(403).json({
+                success: false,
+                error: 'You do not have permission to access this course'
+            });
+        }
+
+        const struggleWords = await memoryAgent.getStruggleWords(instructorUserId, courseData.courseName);
+        const filtered = struggleWords.filter(w => !w.startsWith('---'));
+        res.json({ success: true, data: filtered });
+    } catch (error) {
+        console.error('Error getting struggle words:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get struggle words',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+// DELETE /api/courses/:courseId/memory-agent/struggle-words - Remove all struggle words for instructor (REQUIRES AUTH)
+router.delete('/:courseId/memory-agent/struggle-words', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser || globalUser.affiliation !== 'faculty') {
+            return res.status(403).json({
+                success: false,
+                error: 'Instructor access required'
+            });
+        }
+
+        const { courseId } = req.params;
+        const instance = await EngEAI_MongoDB.getInstance();
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        const courseData = course as unknown as activeCourse;
+        const instructorUserId = globalUser.userId;
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some(inst => {
+                if (typeof inst === 'string') return inst === instructorUserId;
+                if (inst && inst.userId) return inst.userId === instructorUserId;
+                return false;
+            });
+        };
+
+        if (!isInstructorInArray(courseData.instructors || [])) {
+            return res.status(403).json({
+                success: false,
+                error: 'You do not have permission to access this course'
+            });
+        }
+
+        const struggleWords = await memoryAgent.getStruggleWords(instructorUserId, courseData.courseName);
+        const filtered = struggleWords.filter(w => !w.startsWith('---'));
+        await instance.updateMemoryAgentStruggleWords(courseData.courseName, instructorUserId, []);
+        res.json({
+            success: true,
+            data: { removed: filtered, count: filtered.length },
+            message: `Removed ${filtered.length} struggle words`
+        });
+    } catch (error) {
+        console.error('Error removing struggle words:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to remove struggle words',
             details: error instanceof Error ? error.message : 'Unknown error'
         });
     }

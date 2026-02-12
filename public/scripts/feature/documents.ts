@@ -28,6 +28,7 @@ import {
 import { uploadRAGContent } from '../services/RAGService.js';
 import { DocumentUploadModule, UploadResult } from '../services/DocumentUploadModule.js';
 import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, closeModal } from '../modal-overlay.js';
+import { showToast } from '../toast-notification.js';
 import { renderFeatherIcons } from '../functions/api.js';
 
 // In-memory store for the course data
@@ -324,6 +325,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                         instance_topicOrWeek.published = result.data.published;
                     }
                     console.log(`✅ Topic/Week instance ${instance_topicOrWeek.id} published status updated to ${checked}`);
+                    if (checked) {
+                        showToast(`Congratulations! You published "${instance_topicOrWeek.title}"`, 3000, 'top-right');
+                    }
                 } else {
                     throw new Error(result.error || 'Failed to update published status');
                 }

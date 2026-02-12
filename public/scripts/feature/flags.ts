@@ -7,8 +7,9 @@
  * @description: Dynamic flag management interface - renders content from data using TypeScript
  */
 
-// Import modal functions
-import { showCustomModal } from '../modal-overlay.js';
+// Import modal and toast functions
+import { showConfirmModal } from '../modal-overlay.js';
+import { showSuccessToast, showErrorToast } from '../toast-notification.js';
 
 // Types for flags - matching backend FlagReport interface
 interface FlagReport {
@@ -104,7 +105,7 @@ async function fetchFlags(courseId: string): Promise<FlagReport[]> {
         });
         
         // Show error message to user
-        showErrorMessage('Failed to load flags. Please refresh the page and try again.');
+        showErrorToast('Failed to load flags. Please refresh the page and try again.');
         
         // Return empty array as fallback
         return [];
@@ -151,17 +152,19 @@ async function handleDeleteAllFlags(): Promise<void> {
     // Get course ID from context
     const courseId = getCourseIdFromContext();
     if (!courseId) {
-        showErrorMessage('Unable to determine course context');
+            showErrorToast('Unable to determine course context');
         return;
     }
 
-    // Confirm deletion with user
-    const confirmed = confirm(
-        'Are you sure you want to delete ALL flags for this course?\n\n' +
-        'This action cannot be undone. All flag reports will be permanently deleted.'
+    // Confirm deletion with user (modal for user input)
+    const modalResult = await showConfirmModal(
+        'Delete All Flags',
+        'Are you sure you want to delete ALL flags for this course? This action cannot be undone. All flag reports will be permanently deleted.',
+        'Delete All',
+        'Cancel'
     );
 
-    if (!confirmed) {
+    if (modalResult.action === 'cancel') {
         return;
     }
 
@@ -197,15 +200,11 @@ async function handleDeleteAllFlags(): Promise<void> {
         console.log('[FLAG-DELETE-ALL] Successfully deleted', result.deletedCount, 'flags');
         
         // Show success message
-        showSuccessMessage(`Successfully deleted ${result.deletedCount} flag(s).`);
+        showSuccessToast(`Successfully deleted ${result.deletedCount} flag(s).`);
         
     } catch (error) {
         console.error('[FLAG-DELETE-ALL] Error deleting all flags:', error);
-        
-        // Show error notification
-        showErrorMessage(
-            'Failed to delete all flags. Please try again.'
-        );
+        showErrorToast('Failed to delete all flags. Please try again.');
         
     } finally {
         // Reset button state
@@ -217,47 +216,6 @@ async function handleDeleteAllFlags(): Promise<void> {
         if (typeof (window as any).feather !== 'undefined') {
             (window as any).feather.replace();
         }
-    }
-}
-
-/**
- * Show success message to user
- * @param message - Success message to display
- */
-function showSuccessMessage(message: string): void {
-    // Create success message element
-    const successDiv = document.createElement('div');
-    successDiv.className = 'success-message';
-    successDiv.style.cssText = `
-        background-color: #efe;
-        border: 1px solid #cfc;
-        color: #3c3;
-        padding: 12px;
-        margin: 10px 0;
-        border-radius: 4px;
-        font-size: 14px;
-    `;
-    successDiv.textContent = message;
-    
-    // Insert at the top of the main content or flags list
-    const mainContent = document.querySelector('.main-content');
-    const flagsList = document.getElementById('flags-list');
-    const container = mainContent || flagsList;
-    
-    if (container) {
-        // Insert before flags-list or at the start of main-content
-        if (flagsList && flagsList.parentNode) {
-            flagsList.parentNode.insertBefore(successDiv, flagsList);
-        } else if (mainContent) {
-            mainContent.insertBefore(successDiv, mainContent.firstChild);
-        }
-        
-        // Auto-remove after 5 seconds
-        setTimeout(() => {
-            if (successDiv.parentNode) {
-                successDiv.parentNode.removeChild(successDiv);
-            }
-        }, 5000);
     }
 }
 
@@ -372,43 +330,6 @@ async function updateFlagResponse(courseId: string, flagId: string, response: st
     }
 }
 
-/**
- * Show error message to user
- * @param message - Error message to display
- */
-function showErrorMessage(message: string): void {
-    // Create error message element
-    const errorDiv = document.createElement('div');
-    errorDiv.className = 'error-message';
-    errorDiv.style.cssText = `
-        background-color: #fee;
-        border: 1px solid #fcc;
-        color: #c33;
-        padding: 12px;
-        margin: 10px 0;
-        border-radius: 4px;
-        font-size: 14px;
-    `;
-    errorDiv.textContent = message;
-    
-    // Insert at the top of the main content or flags list
-    const mainContent = document.querySelector('.main-content');
-    const flagsList = document.getElementById('flags-list');
-    
-    if (flagsList && flagsList.parentNode) {
-        flagsList.parentNode.insertBefore(errorDiv, flagsList);
-    } else if (mainContent) {
-        mainContent.insertBefore(errorDiv, mainContent.firstChild);
-    }
-    
-    // Auto-remove after 5 seconds
-    setTimeout(() => {
-        if (errorDiv.parentNode) {
-            errorDiv.parentNode.removeChild(errorDiv);
-        }
-    }, 5000);
-}
-
 // Mock data for fallback (empty array - API will provide real data)
 const mockFlagData: FlagReport[] = [];
 
@@ -436,7 +357,7 @@ export async function initializeFlags(): Promise<void> {
         
         if (!courseId) {
             console.error('❌ [FLAG-DEBUG] No course ID found in context');
-            showErrorMessage('Unable to determine course context. Please refresh the page.');
+            showErrorToast('Unable to determine course context. Please refresh the page.');
             return;
         }
 
@@ -478,7 +399,7 @@ export async function initializeFlags(): Promise<void> {
         hideLoadingState();
         
         // Show error message
-        showErrorMessage('Failed to initialize flags. Please refresh the page and try again.');
+        showErrorToast('Failed to initialize flags. Please refresh the page and try again.');
         
         // Fallback to mock data for development
         console.log('🔄 [FLAG-DEBUG] Falling back to mock data for development');
@@ -737,7 +658,7 @@ async function handleResolveClick(button: HTMLElement): Promise<void> {
     // Get course ID from context
     const courseId = getCourseIdFromContext();
     if (!courseId) {
-        showErrorMessage('Unable to determine course context');
+            showErrorToast('Unable to determine course context');
         return;
     }
 
@@ -782,12 +703,11 @@ async function handleResolveClick(button: HTMLElement): Promise<void> {
         updateNavigationCounts();
 
         console.log('[FLAG-RESOLVE] Successfully updated flag:', flagId, 'to', newStatus);
+        showSuccessToast(`Flag ${newStatus === 'resolved' ? 'resolved' : 'unresolved'} successfully.`);
         
     } catch (error) {
         console.error('[FLAG-RESOLVE] Error updating flag:', error);
-        
-        // Show error notification
-        showErrorMessage(
+        showErrorToast(
             `Failed to ${newStatus === 'resolved' ? 'resolve' : 'unresolve'} flag. Please try again.`
         );
         
@@ -848,7 +768,7 @@ async function handleEnterEditMode(button: HTMLElement, flagId: string, flag: Fl
 async function handleSaveEdit(button: HTMLElement, flagId: string): Promise<void> {
     const courseId = getCourseIdFromContext();
     if (!courseId) {
-        showErrorMessage('Unable to determine course context');
+            showErrorToast('Unable to determine course context');
         return;
     }
 
@@ -877,37 +797,19 @@ async function handleSaveEdit(button: HTMLElement, flagId: string): Promise<void
                 };
             }
 
-            // Show success modal instead of inline message
-            await showSaveSuccessModal();
+            showSuccessToast('Flag response updated successfully.');
 
             // Re-render
             renderFlags();
         }
     } catch (error) {
         console.error('Error updating response:', error);
-        showErrorMessage('Failed to update response. Please try again.');
+        showErrorToast('Failed to update response. Please try again.');
     } finally {
         // Reset button state
         button.textContent = originalText;
         (button as HTMLButtonElement).disabled = false;
     }
-}
-
-/**
- * Show success modal after successful save
- */
-async function showSaveSuccessModal(): Promise<void> {
-    await showCustomModal({
-        type: 'success',
-        title: 'Response Updated',
-        content: 'The flag response has been successfully updated.',
-        buttons: [
-            { text: 'OK', type: 'primary', closeOnClick: true }
-        ],
-        showCloseButton: true,
-        closeOnOverlayClick: true,
-        closeOnEscape: true
-    });
 }
 
 

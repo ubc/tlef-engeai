@@ -1267,24 +1267,86 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log('[INSTRUCTOR-MODE] ✅ Course Selection button listener attached');
         }
 
-        // Logo Box - Toggle Admin Buttons
+        // Logo Box - Toggle Admin Buttons (all four: Remove Course, Remove struggle words, Download DB, List struggle words)
         const logoBox = document.querySelector('.logo-box');
         if (logoBox) {
             logoBox.addEventListener('click', () => {
                 console.log('[INSTRUCTOR-MODE] 🔑 Logo clicked - toggling admin buttons');
 
                 const removeCourseBtn = document.getElementById('instructor-remove-course-btn');
+                const removeStruggleWordsBtn = document.getElementById('instructor-remove-struggle-words-btn');
                 const downloadDbBtn = document.getElementById('instructor-download-db-btn');
+                const listStruggleWordsBtn = document.getElementById('instructor-list-struggle-words-btn');
 
-                // Toggle visibility of admin buttons
-                [removeCourseBtn, downloadDbBtn].forEach(btn => {
+                [removeCourseBtn, removeStruggleWordsBtn, downloadDbBtn, listStruggleWordsBtn].forEach(btn => {
                     if (btn) {
                         const currentDisplay = window.getComputedStyle(btn).display;
-                        btn.style.display = currentDisplay === 'none' ? 'flex' : 'none';
+                        (btn as HTMLElement).style.display = currentDisplay === 'none' ? 'flex' : 'none';
                     }
                 });
             });
             console.log('[INSTRUCTOR-MODE] ✅ Logo box click listener attached');
+        }
+
+        // Remove Struggle Words button listener
+        const removeStruggleWordsBtn = document.getElementById('instructor-remove-struggle-words-btn');
+        if (removeStruggleWordsBtn) {
+            removeStruggleWordsBtn.addEventListener('click', async () => {
+                console.log('[INSTRUCTOR-MODE] 🧠 Remove struggle words button clicked');
+                if (!currentClass || !currentClass.id) {
+                    alert('❌ Error: No course selected');
+                    return;
+                }
+                const courseId = currentClass.id;
+                try {
+                    const response = await fetch(`/api/courses/${courseId}/memory-agent/struggle-words`, {
+                        method: 'DELETE',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    const result = await response.json();
+                    if (result.success && result.data) {
+                        const removed = result.data.removed || [];
+                        const count = result.data.count || 0;
+                        const formatted = removed.map((w: string) => `"${w}"`).join(', ');
+                        alert(`Removed ${count} struggle words: ${formatted || '(none)'}`);
+                    } else {
+                        alert(`❌ ${result.error || 'Failed to remove struggle words'}`);
+                    }
+                } catch (error) {
+                    alert(`❌ Failed to remove struggle words: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                }
+            });
+        }
+
+        // List Struggle Words button listener
+        const listStruggleWordsBtn = document.getElementById('instructor-list-struggle-words-btn');
+        if (listStruggleWordsBtn) {
+            listStruggleWordsBtn.addEventListener('click', async () => {
+                console.log('[INSTRUCTOR-MODE] 📋 List struggle words button clicked');
+                if (!currentClass || !currentClass.id) {
+                    alert('❌ Error: No course selected');
+                    return;
+                }
+                const courseId = currentClass.id;
+                try {
+                    const response = await fetch(`/api/courses/${courseId}/memory-agent/struggle-words`, {
+                        method: 'GET',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    const result = await response.json();
+                    if (result.success && result.data) {
+                        const words = result.data || [];
+                        const formatted = words.map((w: string) => `"${w}"`).join(', ');
+                        alert(`There are ${words.length} struggle words: ${formatted || '(none)'}`);
+                    } else {
+                        alert(`❌ ${result.error || 'Failed to get struggle words'}`);
+                    }
+                } catch (error) {
+                    alert(`❌ Failed to get struggle words: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                }
+            });
         }
 
         // Remove Course button listener (replaces Reset Dummy Courses)

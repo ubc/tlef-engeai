@@ -12,11 +12,15 @@
 
 import { activeCourse, SystemPromptItem, DEFAULT_BASE_PROMPT_ID, DEFAULT_LEARNING_OBJECTIVES_ID, DEFAULT_STRUGGLE_TOPICS_ID, LearningObjective } from '../../../src/functions/types.js';
 import { renderFeatherIcons } from '../functions/api.js';
-import { showConfirmModal, showSimpleErrorModal, showSuccessModal, showErrorModal } from '../modal-overlay.js';
+import { showConfirmModal, showSimpleErrorModal, showErrorModal } from '../modal-overlay.js';
+import { showSuccessToast, showErrorToast } from '../toast-notification.js';
+
+const DRAFT_PROMPT_ID = 'draft-new';
 
 let currentCourse: activeCourse | null = null;
 let items: SystemPromptItem[] = [];
 let editingItemId: string | null = null;
+let draftItem: SystemPromptItem | null = null;
 let learningObjectivesCount: number = 0;
 
 /**
@@ -159,11 +163,12 @@ function renderPrompts(): void {
         return;
     }
 
-    // Separate default components from custom items
+    // Separate default components from custom items (exclude draft from items)
     const basePrompt = items.find(item => item.componentType === 'base' || item.id === DEFAULT_BASE_PROMPT_ID);
     const learningObjectives = items.find(item => item.componentType === 'learning-objectives' || item.id === DEFAULT_LEARNING_OBJECTIVES_ID);
     const struggleTopics = items.find(item => item.componentType === 'struggle-topics' || item.id === DEFAULT_STRUGGLE_TOPICS_ID);
     const customItems = items.filter(item => item.componentType === 'custom');
+    const itemsToRender = customItems.concat(draftItem ? [draftItem] : []);
 
     let html = '';
 
@@ -178,17 +183,15 @@ function renderPrompts(): void {
     // Render struggle topics component (always included default component)
     html += renderStruggleTopicsComponent([]);
 
-    // Render custom items
-    customItems.forEach(item => {
+    // Render custom items (including draft if present)
+    itemsToRender.forEach(item => {
         html += renderPromptCard(item);
     });
-
-
 
     container.innerHTML = html;
     
     // Setup event listeners for each card
-    items.forEach(item => {
+    itemsToRender.forEach(item => {
         setupCardEventListeners(item.id);
     });
 
@@ -383,13 +386,13 @@ function setupCardEventListeners(itemId: string): void {
     const card = document.querySelector(`[data-prompt-id="${itemId}"]`) as HTMLElement;
     if (!card) return;
 
-    const item = items.find(i => i.id === itemId);
+    const item = itemId === DRAFT_PROMPT_ID ? draftItem : items.find(i => i.id === itemId);
     if (!item) return;
 
     const isDefault = item.isDefault || ['base', 'learning-objectives', 'struggle-topics'].includes(item.componentType || '');
 
-    // Edit button (only for base and custom items)
-    if (!isDefault || item.componentType === 'base') {
+    // Edit button (only for base and custom items; draft is always in edit mode)
+    if ((!isDefault || item.componentType === 'base') && itemId !== DRAFT_PROMPT_ID) {
         const editBtn = card.querySelector('.btn-edit');
         if (editBtn) {
             editBtn.addEventListener('click', () => handleEditPrompt(itemId));
@@ -408,16 +411,16 @@ function setupCardEventListeners(itemId: string): void {
         cancelBtn.addEventListener('click', () => handleCancelEdit(itemId));
     }
 
-    // Delete button (only for custom items)
-    if (!isDefault) {
+    // Delete button (only for custom items, not for draft)
+    if (!isDefault && itemId !== DRAFT_PROMPT_ID) {
         const deleteBtn = card.querySelector('.btn-delete');
         if (deleteBtn) {
             deleteBtn.addEventListener('click', () => handleDeletePrompt(itemId));
         }
     }
 
-    // Append button (only for custom items)
-    if (item.componentType === 'custom') {
+    // Append button (only for custom items, not for draft)
+    if (item.componentType === 'custom' && itemId !== DRAFT_PROMPT_ID) {
         const appendBtn = card.querySelector('.btn-append');
         if (appendBtn) {
             appendBtn.addEventListener('click', () => handleToggleAppend(itemId, true));
@@ -429,10 +432,10 @@ function setupCardEventListeners(itemId: string): void {
         }
     }
 
-    // Expand/collapse toggle (skip default components to avoid double binding)
+    // Expand/collapse toggle (skip default components and draft to avoid double binding)
     const expandToggle = card.querySelector('.expand-toggle');
     const isDefaultComponent = item.componentType === 'learning-objectives' || item.componentType === 'struggle-topics';
-    if (expandToggle && !isDefaultComponent) {
+    if (expandToggle && !isDefaultComponent && itemId !== DRAFT_PROMPT_ID) {
         expandToggle.addEventListener('click', () => handleToggleExpand(itemId));
     }
 
@@ -468,66 +471,49 @@ function setupCardEventListeners(itemId: string): void {
 }
 
 /**
- * Handle adding a new prompt
+ * Handle adding a new prompt.
+ * Creates a draft in the UI first; only persists to server when user saves.
+ * Cancel removes the draft without creating anything.
  */
-async function handleAddPrompt(): Promise<void> {
+function handleAddPrompt(): void {
     if (!currentCourse?.id) {
-        await showErrorModal('Course ID is missing. Please refresh the page.', 'Error');
+        showErrorToast('Course ID is missing. Please refresh the page.');
         return;
     }
 
-    try {
-        const response = await fetch(`/api/courses/${currentCourse.id}/system-prompts`, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                title: 'Untitled',
-                content: ''
-            })
-        });
-
-        if (!response.ok) {
-            const result = await response.json();
-            throw new Error(result.error || 'Failed to create prompt');
-        }
-
-        const result = await response.json();
-        if (result.success) {
-            await loadSystemPrompts();
-            // Set the newly created item to editing mode
-            editingItemId = result.data.id;
-            renderPrompts();
-            
-            // Focus on the title field after a short delay
-            setTimeout(() => {
-                const newCard = document.querySelector(`[data-prompt-id="${result.data.id}"]`) as HTMLElement;
-                if (newCard) {
-                    const titleField = newCard.querySelector('[data-field="title"]') as HTMLElement;
-                    if (titleField) {
-                        titleField.focus();
-                        const range = document.createRange();
-                        range.selectNodeContents(titleField);
-                        const selection = window.getSelection();
-                        if (selection) {
-                            selection.removeAllRanges();
-                            selection.addRange(range);
-                        }
-                    }
-                }
-            }, 100);
-        } else {
-            throw new Error(result.error || 'Failed to create prompt');
-        }
-    } catch (error) {
-        console.error('❌ [SYSTEM-PROMPTS] Error creating prompt:', error);
-        await showErrorModal(
-            error instanceof Error ? error.message : 'Failed to create prompt. Please try again.',
-            'Error'
-        );
+    if (draftItem) {
+        showErrorToast('Please save or cancel the current prompt first.');
+        return;
     }
+
+    draftItem = {
+        id: DRAFT_PROMPT_ID,
+        title: 'Untitled',
+        content: '',
+        dateCreated: new Date(),
+        componentType: 'custom',
+        isAppended: false,
+        isDefault: false
+    };
+    editingItemId = DRAFT_PROMPT_ID;
+    renderPrompts();
+
+    setTimeout(() => {
+        const newCard = document.querySelector(`[data-prompt-id="${DRAFT_PROMPT_ID}"]`) as HTMLElement;
+        if (newCard) {
+            const titleField = newCard.querySelector('[data-field="title"]') as HTMLElement;
+            if (titleField) {
+                titleField.focus();
+                const range = document.createRange();
+                range.selectNodeContents(titleField);
+                const selection = window.getSelection();
+                if (selection) {
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }
+            }
+        }
+    }, 100);
 }
 
 /**
@@ -559,7 +545,7 @@ function handleEditPrompt(itemId: string): void {
  */
 async function handleSavePrompt(itemId: string): Promise<void> {
     if (!currentCourse?.id) {
-        await showErrorModal('Course ID is missing. Please refresh the page.', 'Error');
+        showErrorToast('Course ID is missing. Please refresh the page.');
         return;
     }
 
@@ -579,43 +565,79 @@ async function handleSavePrompt(itemId: string): Promise<void> {
     const content = contentField.textContent?.trim() || '';
 
     if (!title) {
-        await showErrorModal('Title cannot be empty.', 'Error');
+        showErrorToast('Title cannot be empty.');
         titleField.focus();
         return;
     }
 
+    if (!content) {
+        showErrorToast('Content cannot be empty.');
+        contentField.focus();
+        return;
+    }
+
+    const isDraft = itemId === DRAFT_PROMPT_ID;
+
     try {
-        const response = await fetch(`/api/courses/${currentCourse.id}/system-prompts/${itemId}`, {
-            method: 'PUT',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                title: title,
-                content: content
-            })
-        });
+        if (isDraft) {
+            // Create new prompt on server
+            const response = await fetch(`/api/courses/${currentCourse.id}/system-prompts`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ title, content })
+            });
 
-        if (!response.ok) {
+            if (!response.ok) {
+                const result = await response.json();
+                throw new Error(result.error || 'Failed to create prompt');
+            }
+
             const result = await response.json();
-            throw new Error(result.error || 'Failed to update prompt');
-        }
-
-        const result = await response.json();
-        if (result.success) {
-            editingItemId = null;
-            await loadSystemPrompts();
-            renderPrompts();
-            await showSuccessModal('Prompt updated successfully!', 'Success');
+            if (result.success) {
+                draftItem = null;
+                editingItemId = null;
+                await loadSystemPrompts();
+                renderPrompts();
+                showSuccessToast('Prompt created successfully!');
+            } else {
+                throw new Error(result.error || 'Failed to create prompt');
+            }
         } else {
-            throw new Error(result.error || 'Failed to update prompt');
+            // Update existing prompt
+            const response = await fetch(`/api/courses/${currentCourse.id}/system-prompts/${itemId}`, {
+                method: 'PUT',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    title: title,
+                    content: content
+                })
+            });
+
+            if (!response.ok) {
+                const result = await response.json();
+                throw new Error(result.error || 'Failed to update prompt');
+            }
+
+            const result = await response.json();
+            if (result.success) {
+                editingItemId = null;
+                await loadSystemPrompts();
+                renderPrompts();
+                showSuccessToast('Prompt updated successfully!');
+            } else {
+                throw new Error(result.error || 'Failed to update prompt');
+            }
         }
     } catch (error) {
-        console.error('❌ [SYSTEM-PROMPTS] Error updating prompt:', error);
-        await showErrorModal(
-            error instanceof Error ? error.message : 'Failed to update prompt. Please try again.',
-            'Error'
+        console.error('❌ [SYSTEM-PROMPTS] Error saving prompt:', error);
+        showErrorToast(
+            error instanceof Error ? error.message : 'Failed to save prompt. Please try again.'
         );
     }
 }
@@ -625,11 +647,16 @@ async function handleSavePrompt(itemId: string): Promise<void> {
  * @param itemId - The item ID
  */
 function handleCancelEdit(itemId: string): void {
-    editingItemId = null;
-    // Reload items to restore original values
-    loadSystemPrompts().then(() => {
+    if (itemId === DRAFT_PROMPT_ID) {
+        draftItem = null;
+        editingItemId = null;
         renderPrompts();
-    });
+    } else {
+        editingItemId = null;
+        loadSystemPrompts().then(() => {
+            renderPrompts();
+        });
+    }
 }
 
 /**
@@ -678,20 +705,14 @@ async function handleDeletePrompt(itemId: string): Promise<void> {
         if (result.success) {
             await loadSystemPrompts();
             renderPrompts();
-            await showSuccessModal('Prompt deleted successfully!', 'Success');
+            showSuccessToast('Prompt deleted successfully!');
         } else {
             throw new Error(result.error || 'Failed to delete prompt');
         }
     } catch (error) {
         console.error('❌ [SYSTEM-PROMPTS] Error deleting prompt:', error);
         const errorMessage = error instanceof Error ? error.message : 'Failed to delete prompt. Please try again.';
-        
-        // Check if error is about default components
-        if (errorMessage.includes('Cannot delete')) {
-            await showErrorModal(errorMessage, 'Cannot Delete');
-        } else {
-            await showErrorModal(errorMessage, 'Error');
-        }
+        showErrorToast(errorMessage);
     }
 }
 
@@ -752,15 +773,14 @@ async function handleToggleAppend(itemId: string, append: boolean): Promise<void
         if (responseResult.success) {
             await loadSystemPrompts();
             renderPrompts();
-            await showSuccessModal(`System prompt item ${append ? 'appended' : 'removed'} successfully!`, 'Success');
+            showSuccessToast(`System prompt item ${append ? 'appended' : 'removed'} successfully!`);
         } else {
             throw new Error(responseResult.error || `Failed to ${actionText} prompt`);
         }
     } catch (error) {
         console.error(`❌ [SYSTEM-PROMPTS] Error ${actionText}ing prompt:`, error);
-        await showErrorModal(
-            error instanceof Error ? error.message : `Failed to ${actionText} prompt. Please try again.`,
-            'Error'
+        showErrorToast(
+            error instanceof Error ? error.message : `Failed to ${actionText} prompt. Please try again.`
         );
     }
 }
@@ -907,7 +927,7 @@ function escapeHtml(text: string): string {
  * @returns True if there are unsaved changes
  */
 export function hasUnsavedSystemPromptChanges(): boolean {
-    return editingItemId !== null;
+    return editingItemId !== null || draftItem !== null;
 }
 
 /**
@@ -915,4 +935,5 @@ export function hasUnsavedSystemPromptChanges(): boolean {
  */
 export function resetUnsavedSystemPromptChanges(): void {
     editingItemId = null;
+    draftItem = null;
 }
