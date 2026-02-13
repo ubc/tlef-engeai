@@ -427,6 +427,10 @@ async function validateCurrentStep(state: OnboardingState, onBoardingCourse: act
             const courseNameValue = onBoardingCourse.courseName?.trim() || '';
 
             if (!currentInputValue && !courseNameValue) {
+
+                console.log("DEBUG #431: currentInputValue: ", currentInputValue);
+                console.log("DEBUG #432: courseNameValue: ", courseNameValue);
+                console.log("DEBUG #433: onBoardingCourse.courseName: ", onBoardingCourse.courseName);
                 updateCourseValidationMessage("Please enter a course name.", true);
                 await showErrorModal("Validation Error", "Please enter a course name.");
                 return false;
