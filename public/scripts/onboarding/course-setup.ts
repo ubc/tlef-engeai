@@ -421,10 +421,20 @@ async function validateCurrentStep(state: OnboardingState, onBoardingCourse: act
             return true;
             
         case 2: // Course Name
-            if (!onBoardingCourse.courseName?.trim()) {
+            // Check both the course object and the current input value to handle timing issues
+            const courseInput = document.getElementById('courseInput') as HTMLInputElement;
+            const currentInputValue = courseInput?.value?.trim() || '';
+            const courseNameValue = onBoardingCourse.courseName?.trim() || '';
+
+            if (!currentInputValue && !courseNameValue) {
                 updateCourseValidationMessage("Please enter a course name.", true);
                 await showErrorModal("Validation Error", "Please enter a course name.");
                 return false;
+            }
+
+            // Ensure the course object is updated with the current input value
+            if (currentInputValue && currentInputValue !== courseNameValue) {
+                onBoardingCourse.courseName = currentInputValue;
             }
             // Check if course already exists (duplicate prevention)
             const exists = await checkCourseExists(onBoardingCourse.courseName);
