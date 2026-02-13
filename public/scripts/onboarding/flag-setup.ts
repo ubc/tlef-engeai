@@ -59,7 +59,7 @@ interface FlagSetupState {
  * @returns Promise<void>
  */
 export const renderFlagSetup = async (instructorCourse: activeCourse): Promise<void> => {
-    console.log("🚀 Starting flag setup onboarding...");
+    // console.log("🚀 Starting flag setup onboarding..."); // 🟢 MEDIUM: Process start
     
     try {
         // Initialize flag setup state
@@ -112,7 +112,7 @@ export const renderFlagSetup = async (instructorCourse: activeCourse): Promise<v
  * @param instructorCourse - The instructor course object
  */
 async function initializeFlagSetup(state: FlagSetupState, instructorCourse: activeCourse): Promise<void> {
-    console.log("🔧 Initializing flag setup interface...");
+    // console.log("🔧 Initializing flag setup interface..."); // 🟢 MEDIUM: Interface initialization
 
     // Set up navigation event listeners
     setupNavigationListeners(state, instructorCourse);
@@ -132,7 +132,7 @@ async function initializeFlagSetup(state: FlagSetupState, instructorCourse: acti
     // Set up step indicators
     updateStepIndicators(state);
     
-    console.log("✅ Flag setup interface initialized successfully");
+    // console.log("✅ Flag setup interface initialized successfully"); // 🟢 MEDIUM: Initialization success
 }
 
 /**
@@ -171,7 +171,7 @@ function setupNavigationListeners(state: FlagSetupState, instructorCourse: activ
 
     if (nextBtn) {
         nextBtn.addEventListener('click', async () => {
-            console.log('[FLAG-SETUP] Next button clicked, currentStep:', state.currentStep, 'totalSteps:', state.totalSteps);
+            // console.log('[FLAG-SETUP] Next button clicked, currentStep:', state.currentStep, 'totalSteps:', state.totalSteps); // 🟢 MEDIUM: Navigation logging
             await handleNextNavigation(state, instructorCourse);
         });
     } else {
@@ -567,7 +567,7 @@ function handleBackNavigation(state: FlagSetupState): void {
         updateStepDisplay(state);
         updateStepIndicators(state);
         updateNavigationButtons(state);
-        console.log(`⬅️ Navigated to step ${state.currentStep}`);
+        // console.log(`⬅️ Navigated to step ${state.currentStep}`); // 🟢 MEDIUM: Step navigation
     }
 }
 
@@ -578,14 +578,14 @@ function handleBackNavigation(state: FlagSetupState): void {
  * @param instructorCourse - The instructor course object
  */
 async function handleNextNavigation(state: FlagSetupState, instructorCourse: activeCourse): Promise<void> {
-    console.log('[FLAG-SETUP] handleNextNavigation called, currentStep:', state.currentStep, 'totalSteps:', state.totalSteps);
+    // console.log('[FLAG-SETUP] handleNextNavigation called, currentStep:', state.currentStep, 'totalSteps:', state.totalSteps); // 🟢 MEDIUM: Navigation handler
     
     // Validate current step before proceeding
     const isValid = await validateCurrentStep(state);
-    console.log('[FLAG-SETUP] Validation result:', isValid);
+    // console.log('[FLAG-SETUP] Validation result:', isValid); // 🟢 MEDIUM: Validation result
     
     if (!isValid) {
-        console.log('[FLAG-SETUP] Validation failed, stopping navigation');
+        // console.log('[FLAG-SETUP] Validation failed, stopping navigation'); // 🟢 MEDIUM: Validation failure
         return;
     }
 
@@ -596,10 +596,10 @@ async function handleNextNavigation(state: FlagSetupState, instructorCourse: act
         updateStepIndicators(state);
         updateNavigationButtons(state);
         
-        console.log(`➡️ Navigated to step ${state.currentStep}`);
+        // console.log(`➡️ Navigated to step ${state.currentStep}`); // 🟢 MEDIUM: Step navigation
     } else {
         // Final completion
-        console.log('[FLAG-SETUP] On final step, calling handleFinalCompletion');
+        // console.log('[FLAG-SETUP] On final step, calling handleFinalCompletion'); // 🟢 MEDIUM: Final step handler
         await handleFinalCompletion(state, instructorCourse);
     }
 }
@@ -639,7 +639,7 @@ async function validateCurrentStep(state: FlagSetupState): Promise<boolean> {
  * @param instructorCourse - The instructor course object
  */
 async function handleFinalCompletion(state: FlagSetupState, instructorCourse: activeCourse): Promise<void> {
-    console.log("🎯 Completing flag setup...");
+    // console.log("🎯 Completing flag setup..."); // 🟢 MEDIUM: Completion start
     
     try {
         // Validate courseId exists
@@ -651,7 +651,7 @@ async function handleFinalCompletion(state: FlagSetupState, instructorCourse: ac
         instructorCourse.flagSetup = true;
         
         // Persist to database
-        console.log(`📡 Updating database: setting flagSetup=true for course ${instructorCourse.id}`);
+        // console.log(`📡 Updating database: setting flagSetup=true for course ${instructorCourse.id}`); // 🟡 HIGH: Course ID exposure
         const response = await fetch(`/api/courses/${instructorCourse.id}`, {
             method: 'PUT',
             headers: {
@@ -673,7 +673,7 @@ async function handleFinalCompletion(state: FlagSetupState, instructorCourse: ac
             throw new Error(result.error || 'Failed to update course in database');
         }
         
-        console.log("✅ Flag setup status persisted to database successfully!");
+        // console.log("✅ Flag setup status persisted to database successfully!"); // 🟢 MEDIUM: Database success
         
         // DO NOT remove onboarding-active class - let instructor-mode.ts handle the flow
         // DO NOT show instructor sidebar - we need to proceed to monitor setup
@@ -681,7 +681,7 @@ async function handleFinalCompletion(state: FlagSetupState, instructorCourse: ac
         // Dispatch completion event - instructor-mode.ts will handle next steps
         window.dispatchEvent(new CustomEvent('flagSetupComplete'));
         
-        console.log("✅ Flag setup completed successfully!");
+        // console.log("✅ Flag setup completed successfully!"); // 🟢 MEDIUM: Completion success
         
     } catch (error) {
         console.error("❌ Error during final completion:", error);
@@ -860,7 +860,7 @@ function markStepCompleted(stepNumber: number): void {
         }
     }
     
-    console.log(`✅ Step ${stepNumber} marked as completed`);
+    // console.log(`✅ Step ${stepNumber} marked as completed`); // 🟢 MEDIUM: Step completion
 }
 
 /**
@@ -873,7 +873,7 @@ function updateStep4WithSubmittedResponse(): void {
     if (submittedResponse && placeholder) {
         // Replace placeholder with actual submitted response
         placeholder.textContent = submittedResponse;
-        console.log('✅ Step 4 updated with submitted response from Step 3');
+        // console.log('✅ Step 4 updated with submitted response from Step 3'); // 🟢 MEDIUM: Step update
     } else if (placeholder) {
         // Show placeholder message if no response was submitted yet
         placeholder.textContent = 'Your submitted response will appear here after completing Step 3';

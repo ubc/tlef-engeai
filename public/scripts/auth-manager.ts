@@ -11,7 +11,7 @@
 
 import { authService, AuthState, User } from './services/AuthService.js';
 
-console.log('🚀 AUTH MANAGER SCRIPT LOADING...');
+// console.log('🚀 AUTH MANAGER SCRIPT LOADING...');
 
 class AuthManager {
     private loginPrompt: HTMLElement | null = null;
@@ -43,14 +43,14 @@ class AuthManager {
         this.userDetails = document.getElementById('user-details');
 
         //START DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-ELEMENTS)
-        console.log('[AUTH-MANAGER] 🔧 Initializing DOM elements...');
-        console.log('Login prompt:', this.loginPrompt);
-        console.log('User info:', this.userInfo);
-        console.log('Auth loading:', this.authLoading);
-        console.log('Login btn:', this.loginBtn);
-        console.log('Login CWL btn:', this.loginCwlBtn);
-        console.log('Logout btn:', this.logoutBtn);
-        console.log('User details:', this.userDetails);
+        // console.log('[AUTH-MANAGER] 🔧 Initializing DOM elements...'); // 🟢 MEDIUM: DOM structure exposure
+        // console.log('Login prompt:', this.loginPrompt); // 🟢 MEDIUM: DOM element exposure
+        // console.log('User info:', this.userInfo); // 🟢 MEDIUM: DOM element exposure
+        // console.log('Auth loading:', this.authLoading); // 🟢 MEDIUM: DOM element exposure
+        // console.log('Login btn:', this.loginBtn); // 🟢 MEDIUM: DOM element exposure
+        // console.log('Login CWL btn:', this.loginCwlBtn); // 🟢 MEDIUM: DOM element exposure
+        // console.log('Logout btn:', this.logoutBtn); // 🟢 MEDIUM: DOM element exposure
+        // console.log('User details:', this.userDetails); // 🟢 MEDIUM: DOM element exposure
         //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-ELEMENTS)
     }
 
@@ -60,9 +60,9 @@ class AuthManager {
     private setupEventListeners(): void {
         document.addEventListener('DOMContentLoaded', async () => {
             //START DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-DOM-READY)
-            console.log('[AUTH-MANAGER] 📄 DOM Content Loaded');
+            // console.log('[AUTH-MANAGER] 📄 DOM Content Loaded');
             //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-DOM-READY)
-            
+
             this.setupClickHandlers();
             await this.handlePostLoginRedirect();
         });
@@ -75,7 +75,7 @@ class AuthManager {
      */
     private async handlePostLoginRedirect(): Promise<void> {
         // No longer handling redirects - following saml-example-app approach
-        console.log('[AUTH-MANAGER] 📄 Post-login redirect handling disabled - user should manually navigate to intended pages');
+        // console.log('[AUTH-MANAGER] 📄 Post-login redirect handling disabled - user should manually navigate to intended pages');
     }
 
     /**
@@ -86,12 +86,12 @@ class AuthManager {
             const response = await fetch('/auth/config');
             const data = await response.json();
             this.samlAvailable = data.samlAvailable;
-            
+
             //START DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-CONFIG)
-            console.log('[AUTH-MANAGER] 📋 Auth config loaded:', { samlAvailable: this.samlAvailable });
+            // console.log('[AUTH-MANAGER] 📋 Auth config loaded:', { samlAvailable: this.samlAvailable });
             //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-CONFIG)
         } catch (error) {
-            console.error('[AUTH-MANAGER] 🚨 Error fetching auth config:', error);
+            // console.error('[AUTH-MANAGER] 🚨 Error fetching auth config:', error);
             // Default to true if config fetch fails
             this.samlAvailable = true;
         }
@@ -104,7 +104,7 @@ class AuthManager {
         if (this.loginBtn) {
             this.loginBtn.addEventListener('click', () => {
                 //START DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-LOGIN-CLICK)
-                console.log('[AUTH-MANAGER] 🔐 Login button clicked');
+                // console.log('[AUTH-MANAGER] 🔐 Login button clicked');
                 //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-LOGIN-CLICK)
                 authService.login();
             });
@@ -113,7 +113,7 @@ class AuthManager {
         if (this.loginCwlBtn) {
             this.loginCwlBtn.addEventListener('click', () => {
                 //START DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-LOGIN-CWL-CLICK)
-                console.log('[AUTH-MANAGER] 🔐 Login with CWL button clicked');
+                // console.log('[AUTH-MANAGER] 🔐 Login with CWL button clicked');
                 //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-LOGIN-CWL-CLICK)
                 authService.loginCWL();
             });
@@ -122,7 +122,7 @@ class AuthManager {
         if (this.logoutBtn) {
             this.logoutBtn.addEventListener('click', () => {
                 //START DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-LOGOUT-CLICK)
-                console.log('[AUTH-MANAGER] 🚪 Logout button clicked');
+                // console.log('[AUTH-MANAGER] 🚪 Logout button clicked');
                 //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-LOGOUT-CLICK)
                 authService.logout();
             });
@@ -135,7 +135,7 @@ class AuthManager {
     private setupAuthStateListener(): void {
         authService.addListener((state: AuthState) => {
             //START DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-STATE-CHANGE)
-            console.log('[AUTH-MANAGER] 🔄 Authentication state changed:', state);
+            // console.log('[AUTH-MANAGER] 🔄 Authentication state changed:', state);
             //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-STATE-CHANGE)
             this.updateUI(state);
         });
@@ -146,7 +146,7 @@ class AuthManager {
      */
     private updateUI(state: AuthState): void {
         //START DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-UPDATE-UI)
-        console.log('[AUTH-MANAGER] 🎨 Updating UI with state:', state);
+        // console.log('[AUTH-MANAGER] 🎨 Updating UI with state:', state);
         //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-UPDATE-UI)
 
         if (state.isLoading) {
@@ -163,7 +163,7 @@ class AuthManager {
      */
     private showLoading(): void {
         //START DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-SHOW-LOADING)
-        console.log('[AUTH-MANAGER] ⏳ Showing loading state');
+        // console.log('[AUTH-MANAGER] ⏳ Showing loading state');
         //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-SHOW-LOADING)
 
         if (this.loginPrompt) this.loginPrompt.style.display = 'none';
@@ -176,7 +176,7 @@ class AuthManager {
      */
     private showAuthenticated(user: User): void {
         //START DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-SHOW-AUTHENTICATED)
-        console.log('[AUTH-MANAGER] ✅ Showing authenticated state for user:', user);
+        // console.log('[AUTH-MANAGER] ✅ Showing authenticated state for user:', user); // 🟡 HIGH: User object exposure
         //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-SHOW-AUTHENTICATED)
 
         if (this.loginPrompt) this.loginPrompt.style.display = 'none';
@@ -199,7 +199,7 @@ class AuthManager {
      */
     private showUnauthenticated(): void {
         //START DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-SHOW-UNAUTHENTICATED)
-        console.log('[AUTH-MANAGER] ❌ Showing unauthenticated state');
+        // console.log('[AUTH-MANAGER] ❌ Showing unauthenticated state');
         //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-SHOW-UNAUTHENTICATED)
 
         if (this.userInfo) this.userInfo.style.display = 'none';
@@ -209,7 +209,7 @@ class AuthManager {
 }
 
 // Initialize authentication manager
-console.log('Auth manager script loaded');
+// console.log('Auth manager script loaded');
 const authManager = new AuthManager();
 
 export default authManager;

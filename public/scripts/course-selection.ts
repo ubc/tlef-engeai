@@ -17,7 +17,7 @@ let currentGlobalUser: GlobalUser | null = null;
  */
 async function initializeCourseSelection(): Promise<void> {
     try {
-        console.log('[COURSE-SELECTION] 🚀 Initializing course selection page');
+        // console.log('[COURSE-SELECTION] 🚀 Initializing course selection page'); // 🟢 MEDIUM: Initialization - keep for monitoring
         
         // Show loading message
         showLoadingMessage();
@@ -31,7 +31,7 @@ async function initializeCourseSelection(): Promise<void> {
         const authData = await userResponse.json();
         
         if (!authData.authenticated) {
-            console.log('[COURSE-SELECTION] ❌ User not authenticated, redirecting to login');
+            // console.log('[COURSE-SELECTION] ❌ User not authenticated, redirecting to login');
             window.location.href = '/';
             return;
         }
@@ -53,9 +53,9 @@ async function initializeCourseSelection(): Promise<void> {
         if (userNameElement) {
             userNameElement.textContent = userName;
         }
-        
-        console.log('[COURSE-SELECTION] ✅ User data loaded:', userName, 'Affiliation:', currentUserAffiliation);
-        
+
+        // console.log('[COURSE-SELECTION] ✅ User data loaded:', userName, 'Affiliation:', currentUserAffiliation); // 🔴 CRITICAL: Exposes user identity and affiliation
+
         // Setup buttons based on affiliation
         setupCourseButtons();
         
@@ -73,8 +73,8 @@ async function initializeCourseSelection(): Promise<void> {
  */
 async function loadCourses(): Promise<void> {
     try {
-        console.log('[COURSE-SELECTION] 📚 Loading courses...');
-        
+        // console.log('[COURSE-SELECTION] 📚 Loading courses...');
+
         const container = document.getElementById('course-cards');
         if (!container) return;
         
@@ -85,16 +85,16 @@ async function loadCourses(): Promise<void> {
         }
         
         const { data: courses } = await response.json();
-        console.log('[COURSE-SELECTION] 📋 Courses fetched:', courses.length);
-        
+        // console.log('[COURSE-SELECTION] 📋 Courses fetched:', courses.length);
+
         // Filter to only show enrolled courses (fixed bug: courses should only show if enrolled)
         const enrolledCourseIds = currentGlobalUser?.coursesEnrolled || [];
         const enrolledCourses = courses.filter((course: any) => {
             return enrolledCourseIds.includes(course.id);
         });
-        
-        console.log('[COURSE-SELECTION] 📋 Enrolled courses:', enrolledCourses.length);
-        
+
+        // console.log('[COURSE-SELECTION] 📋 Enrolled courses:', enrolledCourses.length);
+
         // Hide loading message
         hideLoadingMessage();
         
@@ -119,9 +119,9 @@ async function loadCourses(): Promise<void> {
         
         // Attach event listeners
         attachCourseCardListeners();
-        
-        console.log('[COURSE-SELECTION] ✅ Course cards rendered');
-        
+
+        // console.log('[COURSE-SELECTION] ✅ Course cards rendered');
+
     } catch (error) {
         console.error('[COURSE-SELECTION] ❌ Error loading courses:', error);
         hideLoadingMessage();
@@ -217,7 +217,7 @@ function attachCourseCardListeners(): void {
  */
 async function enterCourse(courseId: string): Promise<void> {
     try {
-        console.log('[COURSE-SELECTION] 🚀 Entering course:', courseId);
+        // console.log('[COURSE-SELECTION] 🚀 Entering course:', courseId); // 🟡 HIGH: Course ID exposure
         
         // Find and disable only the clicked button
         const clickedButton = document.querySelector(`button.launch-btn[data-course-id="${courseId}"]`);
@@ -249,7 +249,7 @@ async function enterCourse(courseId: string): Promise<void> {
         }
         
         // Redirect to appropriate page
-        console.log('[COURSE-SELECTION] ✅ Redirecting to:', data.redirect);
+        // console.log('[COURSE-SELECTION] ✅ Redirecting to:', data.redirect);
         window.location.href = data.redirect;
         
     } catch (error) {
@@ -289,11 +289,11 @@ async function restartOnboarding(courseId: string, courseName: string): Promise<
         
         // Check if user confirmed (clicked "Restart Onboarding" button)
         if (result.action !== 'Restart Onboarding') {
-            console.log('[COURSE-SELECTION] 🚫 Restart onboarding cancelled by user');
+            // console.log('[COURSE-SELECTION] 🚫 Restart onboarding cancelled by user');
             return;
         }
-        
-        console.log('[COURSE-SELECTION] 🔄 Restarting onboarding for course:', courseId);
+
+        // console.log('[COURSE-SELECTION] 🔄 Restarting onboarding for course:', courseId); // 🟡 HIGH: Course ID exposure
         
         // Find and disable the clicked button
         const clickedButton = document.querySelector(`button.restart-onboarding-btn[data-course-id="${courseId}"]`);
@@ -326,7 +326,7 @@ async function restartOnboarding(courseId: string, courseName: string): Promise<
         }
         
         // Success - reload the page to refresh course list
-        console.log('[COURSE-SELECTION] ✅ Onboarding restarted successfully');
+        // console.log('[COURSE-SELECTION] ✅ Onboarding restarted successfully');
         await showSuccessModal(
             'Success',
             'Onboarding restarted successfully. The page will reload.'
@@ -374,7 +374,7 @@ async function removeCourse(courseId: string, courseName: string): Promise<void>
         
         // Check if user confirmed
         if (result.action !== 'Confirm' && result.action !== 'confirm') {
-            console.log('[COURSE-SELECTION] ❌ Course removal cancelled by user');
+            // console.log('[COURSE-SELECTION] ❌ Course removal cancelled by user');
             return;
         }
         
@@ -408,7 +408,7 @@ async function removeCourse(courseId: string, courseName: string): Promise<void>
         const data = await response.json();
         
         // Success - show message and reload page
-        console.log('[COURSE-SELECTION] ✅ Course removed successfully:', data);
+        // console.log('[COURSE-SELECTION] ✅ Course removed successfully:', data); // 🟡 HIGH: Exposes course removal data
         await showSuccessModal(
             'Success',
             data.message || 'Course removed successfully. The page will reload.'
@@ -662,7 +662,7 @@ async function handleResetMongoDB(): Promise<void> {
         
         // Check if user cancelled (modal returns button text lowercased with hyphens)
         if (result.action === 'cancel' || result.action === 'overlay' || result.action === 'escape') {
-            console.log('[COURSE-SELECTION] ❌ MongoDB reset cancelled by user');
+            // console.log('[COURSE-SELECTION] ❌ MongoDB reset cancelled by user');
             return;
         }
         
@@ -741,7 +741,7 @@ async function handleResetVectorDatabase(): Promise<void> {
         
         // Check if user cancelled (modal returns button text lowercased with hyphens)
         if (result.action === 'cancel' || result.action === 'overlay' || result.action === 'escape') {
-            console.log('[COURSE-SELECTION] ❌ Vector database reset cancelled by user');
+            // console.log('[COURSE-SELECTION] ❌ Vector database reset cancelled by user');
             return;
         }
         
@@ -881,8 +881,8 @@ async function handleDownloadDatabase(): Promise<void> {
  */
 async function createNewCourseForInstructor(): Promise<void> {
     try {
-        console.log('[COURSE-SELECTION] 🚀 Preparing new course onboarding...');
-        
+        // console.log('[COURSE-SELECTION] 🚀 Preparing new course onboarding...');
+
         // Get current user info to include as instructor
         const userResponse = await fetch('/auth/current-user');
         if (!userResponse.ok) {
@@ -919,9 +919,9 @@ async function createNewCourseForInstructor(): Promise<void> {
         
         // Store in sessionStorage (instructor-mode.ts checks for this)
         sessionStorage.setItem('debugCourse', JSON.stringify(tempCourse));
-        
-        console.log('[COURSE-SELECTION] ✅ Temporary course data stored, redirecting to onboarding...');
-        
+
+        // console.log('[COURSE-SELECTION] ✅ Temporary course data stored, redirecting to onboarding...');
+
         // Redirect to new-course onboarding route (no courseId needed)
         window.location.href = '/instructor/onboarding/new-course';
         
@@ -935,53 +935,11 @@ async function createNewCourseForInstructor(): Promise<void> {
 }
 
 /**
- * Show enrollment modal with courses instructor can join
+ * Show enrollment modal for instructors - 6-digit course code entry
+ * (Same flow as students; backend handles faculty vs student)
  */
 async function showInstructorEnrollmentModal(): Promise<void> {
-    if (!currentGlobalUser) {
-        await showErrorModal('Error', 'User data not available. Please refresh the page.');
-        return;
-    }
-    
-    try {
-        // Fetch all courses
-        const response = await fetch('/api/courses');
-        if (!response.ok) {
-            throw new Error('Failed to fetch courses');
-        }
-        
-        const { data: allCourses } = await response.json();
-        
-        // Filter to only show courses instructor is NOT already part of
-        const enrolledCourseIds = currentGlobalUser.coursesEnrolled || [];
-        const availableCourses = allCourses.filter((course: any) => {
-            // Show courses where instructor is not enrolled AND not already in instructors list
-            const isEnrolled = enrolledCourseIds.includes(course.id);
-            const isInstructor = course.instructors?.includes(currentGlobalUser!.userId) || false;
-            return !isEnrolled && !isInstructor;
-        });
-        
-        // Create modal content
-        const modalContent = createInstructorEnrollmentModalContent(availableCourses);
-        
-        // Show modal using ModalOverlay
-        const modal = new ModalOverlay();
-        await modal.show({
-            type: 'custom',
-            title: 'Join Course as Instructor',
-            content: modalContent,
-            showCloseButton: true,
-            closeOnOverlayClick: true,
-            maxWidth: '600px'
-        });
-        
-    } catch (error) {
-        console.error('[COURSE-SELECTION] ❌ Error showing instructor enrollment modal:', error);
-        await showErrorModal(
-            'Error',
-            'Failed to load available courses. Please try again.'
-        );
-    }
+    await showCourseCodeEntryModal('instructor');
 }
 
 /**
@@ -993,13 +951,16 @@ async function showEnrollmentModal(): Promise<void> {
 }
 
 /**
- * Show course code PIN entry modal for students
+ * Show course code PIN entry modal
+ * @param userType - 'student' or 'instructor' for different instructions and title
  */
-async function showCourseCodeEntryModal(): Promise<void> {
+async function showCourseCodeEntryModal(userType: 'student' | 'instructor' = 'student'): Promise<void> {
     if (!currentGlobalUser) {
         await showErrorModal('Error', 'User data not available. Please refresh the page.');
         return;
     }
+    
+    const isInstructor = userType === 'instructor';
     
     // Create modal content with PIN input
     const modalContent = document.createElement('div');
@@ -1008,7 +969,9 @@ async function showCourseCodeEntryModal(): Promise<void> {
     // Instructions
     const instructions = document.createElement('p');
     instructions.className = 'course-code-instructions';
-    instructions.textContent = 'Enter the 6-character course code provided by your instructor.';
+    instructions.textContent = isInstructor
+        ? 'Enter the 6-character course code to join as instructor.'
+        : 'Enter the 6-character course code provided by your instructor.';
     instructions.style.marginBottom = '1.5rem';
     instructions.style.color = '#666';
     instructions.style.fontSize = '0.9rem';
@@ -1119,7 +1082,7 @@ async function showCourseCodeEntryModal(): Promise<void> {
     const modal = new ModalOverlay();
     await modal.show({
         type: 'custom',
-        title: 'Enter Course Code',
+        title: isInstructor ? 'Join Course as Instructor' : 'Enter Course Code',
         content: modalContent,
         showCloseButton: true,
         closeOnOverlayClick: true,
@@ -1173,7 +1136,7 @@ async function handleCourseCodeSubmit(courseCode: string, inputElement: HTMLInpu
         }
         
         // Success - redirect to appropriate page
-        console.log('[COURSE-SELECTION] ✅ Redirecting to:', data.redirect);
+        // console.log('[COURSE-SELECTION] ✅ Redirecting to:', data.redirect);
         window.location.href = data.redirect;
         
     } catch (error) {
@@ -1212,261 +1175,6 @@ function hideCodeError(): void {
     }
 }
 
-/**
- * Create instructor enrollment modal content with course list
- */
-function createInstructorEnrollmentModalContent(courses: any[]): HTMLElement {
-    const container = document.createElement('div');
-    container.className = 'enrollment-modal-content';
-    
-    if (courses.length === 0) {
-        const noCoursesMsg = document.createElement('p');
-        noCoursesMsg.className = 'no-courses-message';
-        noCoursesMsg.textContent = 'No courses available to join as instructor.';
-        noCoursesMsg.style.textAlign = 'center';
-        noCoursesMsg.style.padding = '2rem';
-        noCoursesMsg.style.color = '#666';
-        container.appendChild(noCoursesMsg);
-        return container;
-    }
-    
-    // Create course list
-    const courseList = document.createElement('div');
-    courseList.className = 'enrollment-course-list';
-    
-    courses.forEach((course) => {
-        const courseItem = document.createElement('div');
-        courseItem.className = 'enrollment-course-item';
-        
-        // Course info
-        const courseInfo = document.createElement('div');
-        courseInfo.className = 'enrollment-course-info';
-        
-        const courseName = document.createElement('div');
-        courseName.className = 'enrollment-course-name';
-        courseName.textContent = course.courseName;
-        
-        const instructors = document.createElement('div');
-        instructors.className = 'enrollment-course-instructors';
-        // Handle both old format (string[]) and new format (InstructorInfo[])
-        const instructorNames = course.instructors?.map((inst: any) => {
-            if (typeof inst === 'string') {
-                return inst; // Old format
-            } else if (inst && inst.name) {
-                return inst.name; // New format
-            }
-            return inst.userId || 'Unknown';
-        }).join(', ') || 'No instructors';
-        instructors.textContent = instructorNames;
-        
-        courseInfo.appendChild(courseName);
-        courseInfo.appendChild(instructors);
-        
-        // Join button
-        const joinBtn = document.createElement('button');
-        joinBtn.className = 'enrol-here-btn';
-        joinBtn.textContent = 'Join as Instructor';
-        joinBtn.setAttribute('data-course-id', course.id);
-        joinBtn.addEventListener('click', async () => {
-            await handleInstructorJoin(course.id, joinBtn);
-        });
-        
-        courseItem.appendChild(courseInfo);
-        courseItem.appendChild(joinBtn);
-        courseList.appendChild(courseItem);
-    });
-    
-    container.appendChild(courseList);
-    return container;
-}
-
-/**
- * Handle instructor joining a course
- */
-async function handleInstructorJoin(courseId: string, button: HTMLButtonElement): Promise<void> {
-    try {
-        // Disable button and show loading state
-        button.disabled = true;
-        const originalText = button.textContent;
-        button.textContent = 'Joining...';
-        
-        // First, add instructor to course's instructors array
-        const addInstructorResponse = await fetch(`/api/courses/${courseId}/instructors`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        
-        const addInstructorData = await addInstructorResponse.json();
-        
-        if (!addInstructorData.success) {
-            console.error('[COURSE-SELECTION] ❌ Error adding instructor to course:', addInstructorData.error);
-            await showErrorModal(
-                'Join Error',
-                `Failed to join course: ${addInstructorData.error || 'Unknown error'}`
-            );
-            
-            // Re-enable button
-            button.disabled = false;
-            button.textContent = originalText;
-            return;
-        }
-        
-        // Then, enter the course (this will create CourseUser and add to enrolled list)
-        const enterResponse = await fetch('/api/course/enter', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ courseId })
-        });
-        
-        const enterData = await enterResponse.json();
-        
-        if (enterData.error) {
-            console.error('[COURSE-SELECTION] ❌ Error entering course:', enterData.error);
-            await showErrorModal(
-                'Join Error',
-                `Failed to enter course: ${enterData.error || 'Unknown error'}`
-            );
-            
-            // Re-enable button
-            button.disabled = false;
-            button.textContent = originalText;
-            return;
-        }
-        
-        // Success - redirect to instructor mode
-        console.log('[COURSE-SELECTION] ✅ Joined course successfully, redirecting to:', enterData.redirect);
-        window.location.href = enterData.redirect;
-        
-    } catch (error) {
-        console.error('[COURSE-SELECTION] ❌ Error joining course:', error);
-        await showErrorModal(
-            'Join Error',
-            'Failed to join course. Please try again.'
-        );
-        
-        // Re-enable button
-        button.disabled = false;
-        button.textContent = 'Join as Instructor';
-    }
-}
-
-/**
- * Create enrollment modal content with course list
- */
-function createEnrollmentModalContent(courses: any[]): HTMLElement {
-    const container = document.createElement('div');
-    container.className = 'enrollment-modal-content';
-    
-    if (courses.length === 0) {
-        const noCoursesMsg = document.createElement('p');
-        noCoursesMsg.className = 'no-courses-message';
-        noCoursesMsg.textContent = 'No new courses available to enroll.';
-        noCoursesMsg.style.textAlign = 'center';
-        noCoursesMsg.style.padding = '2rem';
-        noCoursesMsg.style.color = '#666';
-        container.appendChild(noCoursesMsg);
-        return container;
-    }
-    
-    // Create course list
-    const courseList = document.createElement('div');
-    courseList.className = 'enrollment-course-list';
-    
-    courses.forEach((course) => {
-        const courseItem = document.createElement('div');
-        courseItem.className = 'enrollment-course-item';
-        
-        // Course info
-        const courseInfo = document.createElement('div');
-        courseInfo.className = 'enrollment-course-info';
-        
-        const courseName = document.createElement('div');
-        courseName.className = 'enrollment-course-name';
-        courseName.textContent = course.courseName;
-        
-        const instructors = document.createElement('div');
-        instructors.className = 'enrollment-course-instructors';
-        // Handle both old format (string[]) and new format (InstructorInfo[])
-        const instructorNames = course.instructors?.map((inst: any) => {
-            if (typeof inst === 'string') {
-                return inst; // Old format
-            } else if (inst && inst.name) {
-                return inst.name; // New format
-            }
-            return inst.userId || 'Unknown';
-        }).join(', ') || 'No instructors';
-        instructors.textContent = instructorNames;
-        
-        courseInfo.appendChild(courseName);
-        courseInfo.appendChild(instructors);
-        
-        // Enrol button
-        const enrolBtn = document.createElement('button');
-        enrolBtn.className = 'enrol-here-btn';
-        enrolBtn.textContent = 'Enrol here';
-        enrolBtn.setAttribute('data-course-id', course.id);
-        enrolBtn.addEventListener('click', async () => {
-            await handleEnrollment(course.id, enrolBtn);
-        });
-        
-        courseItem.appendChild(courseInfo);
-        courseItem.appendChild(enrolBtn);
-        courseList.appendChild(courseItem);
-    });
-    
-    container.appendChild(courseList);
-    return container;
-}
-
-/**
- * Handle enrollment action
- */
-async function handleEnrollment(courseId: string, button: HTMLButtonElement): Promise<void> {
-    try {
-        // Disable button and show loading state
-        button.disabled = true;
-        const originalText = button.textContent;
-        button.textContent = 'Enrolling...';
-        
-        // Call API to enter course
-        const response = await fetch('/api/course/enter', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ courseId })
-        });
-        
-        const data = await response.json();
-        
-        if (data.error) {
-            console.error('[COURSE-SELECTION] ❌ Error enrolling in course:', data.error);
-            await showErrorModal(
-                'Enrollment Error',
-                `Failed to enroll in course: ${data.error || 'Unknown error'}`
-            );
-            
-            // Re-enable button
-            button.disabled = false;
-            button.textContent = originalText;
-            return;
-        }
-        
-        // Success - redirect to appropriate page
-        console.log('[COURSE-SELECTION] ✅ Enrollment successful, redirecting to:', data.redirect);
-        window.location.href = data.redirect;
-        
-    } catch (error) {
-        console.error('[COURSE-SELECTION] ❌ Error enrolling in course:', error);
-        await showErrorModal(
-            'Enrollment Error',
-            'Failed to enroll in course. Please try again.'
-        );
-        
-        // Re-enable button
-        button.disabled = false;
-        button.textContent = 'Enrol here';
-    }
-}
-
 // Setup brand logo click handler to toggle admin buttons
 function setupBrandLogoToggle(): void {
     const brandLogo = document.querySelector('.brand-logo');
@@ -1474,7 +1182,7 @@ function setupBrandLogoToggle(): void {
 
     if (brandLogo && adminButtonsSection) {
         brandLogo.addEventListener('click', () => {
-            console.log('[COURSE-SELECTION] 🔑 Brand logo clicked - toggling admin buttons');
+            // console.log('[COURSE-SELECTION] 🔑 Brand logo clicked - toggling admin buttons');
             const currentDisplay = adminButtonsSection.style.display;
             const newDisplay = currentDisplay === 'none' ? 'block' : 'none';
             adminButtonsSection.style.display = newDisplay;
@@ -1484,7 +1192,7 @@ function setupBrandLogoToggle(): void {
                 setupAdminButtons();
             }
         });
-        console.log('[COURSE-SELECTION] ✅ Brand logo click listener attached');
+        // console.log('[COURSE-SELECTION] ✅ Brand logo click listener attached');
     }
 }
 

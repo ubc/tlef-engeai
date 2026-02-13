@@ -41,31 +41,22 @@ export class ArtefactHandler {
     private setupEventDelegation(): void {
         // Prevent multiple event listeners
         if (this.eventDelegationSetup) {
-            console.log('🎨 Event delegation already set up, skipping...');
             return;
         }
         
-        console.log('🎨 Setting up event delegation for ArtefactHandler');
         this.eventDelegationSetup = true;
         
         // Use event delegation on the document to catch clicks on artefact buttons
         document.addEventListener('click', async (event) => {
             const target = event.target as HTMLElement;
             
-            // Debug: Log all clicks to see what's being clicked
-            console.log('🎯 Click detected on:', target.tagName, target.className, target.id);
-            
             // Check if the clicked element is an artefact button or inside one
             const button = target.closest('.artefact-button') as HTMLButtonElement;
             if (button) {
-                console.log('🎨 Artefact button found:', button.id, button.className);
-                
                 // Extract artefact ID from button ID
                 const buttonId = button.id;
                 if (buttonId && (buttonId.startsWith('artefact-btn-') || buttonId === 'demo-artefact-btn')) {
                     const artefactId = buttonId === 'demo-artefact-btn' ? 'demo-artefact-onboarding' : buttonId.replace('artefact-btn-', '');
-                    
-                    console.log('🎨 Artefact button clicked via delegation:', artefactId);
                     
                     // Prevent event bubbling to avoid multiple handlers
                     event.stopPropagation();
@@ -73,8 +64,6 @@ export class ArtefactHandler {
                     
                     // Toggle the artefact (open if closed, close if open)
                     await this.toggleArtefact(artefactId);
-                } else {
-                    console.log('⚠️ Button found but ID not recognized:', buttonId);
                 }
                 return;
             }
@@ -82,7 +71,6 @@ export class ArtefactHandler {
             // Check for close button clicks
             const closeBtn = target.closest('#close-artefact-btn') as HTMLButtonElement;
             if (closeBtn) {
-                console.log('❌ Close button clicked via delegation');
                 this.closeArtefact();
                 return;
             }
@@ -90,7 +78,6 @@ export class ArtefactHandler {
             // Check for download button clicks
             const downloadBtn = target.closest('#download-artefact-btn') as HTMLButtonElement;
             if (downloadBtn) {
-                console.log('📥 Download button clicked via delegation');
                 const panel = downloadBtn.closest('.artefact-panel') as HTMLElement;
                 if (panel) {
                     // Find the currently open artefact
@@ -98,8 +85,7 @@ export class ArtefactHandler {
                     if (openArtefact) {
                         try {
                             await this.downloadDiagram(panel, openArtefact);
-                        } catch (error) {
-                            console.error('Error downloading diagram:', error);
+                        } catch {
                             await showSimpleErrorModal('Failed to download diagram. Please try again.', 'Download Error');
                         }
                     }
@@ -123,18 +109,7 @@ export class ArtefactHandler {
      * Debug method to check if demo button exists and is properly set up
      */
     public debugDemoButton(): void {
-        const demoButton = document.getElementById('demo-artefact-btn');
-        if (demoButton) {
-            console.log('✅ Demo button found:', {
-                id: demoButton.id,
-                className: demoButton.className,
-                tagName: demoButton.tagName,
-                isVisible: demoButton.offsetParent !== null,
-                hasArtifactButtonClass: demoButton.classList.contains('artefact-button')
-            });
-        } else {
-            console.log('❌ Demo button not found in DOM');
-        }
+        document.getElementById('demo-artefact-btn');
     }
 
     /**
@@ -151,14 +126,6 @@ export class ArtefactHandler {
         const artefacts: ArtefactData[] = [];
         const elements: HTMLElement[] = [];
         let artefactIndex = 0;
-
-        //START DEBUG LOG : DEBUG-CODE(019)
-        console.log('🔍 Parsing artefacts for message:', messageId);
-        console.log('🔍 Original text length:', text.length);
-        console.log('🔍 Text preview:', text);
-        console.log('🔍 Contains <Artefact>:', text.includes('<Artefact>'));
-        console.log('🔍 Contains </Artefact>:', text.includes('</Artefact>'));
-        //END DEBUG LOG : DEBUG-CODE(019)
 
         let currentPos = 0;
         let textBuffer = '';
@@ -206,11 +173,6 @@ export class ArtefactHandler {
             const mermaidCode = this.formatMermaidCode(rawMermaidCode);
             const artefactId = `artefact-${messageId}-${artefactIndex}`;
             
-            //START DEBUG LOG : DEBUG-CODE(020)
-            console.log('🎨 Found artefact:', artefactId, 'with raw code:', rawMermaidCode.substring(0, 100) + '...');
-            console.log('🎨 Formatted code:', mermaidCode.substring(0, 100) + '...');
-            //END DEBUG LOG : DEBUG-CODE(020)
-            
             const artefactData: ArtefactData = {
                 id: artefactId,
                 mermaidCode: mermaidCode,
@@ -229,11 +191,6 @@ export class ArtefactHandler {
             // Create artefact button
             const artefactButton = this.createArtefactButton(artefactData);
             
-            //START DEBUG LOG : DEBUG-CODE(ARTEFACT-BUTTON-CREATED)
-            console.log('🎨 Created artefact button:', artefactButton);
-            console.log('🎨 Button HTML:', artefactButton.outerHTML);
-            //END DEBUG LOG : DEBUG-CODE(ARTEFACT-BUTTON-CREATED)
-            
             elements.push(artefactButton);
 
             // Create line break after artefact
@@ -243,14 +200,6 @@ export class ArtefactHandler {
             // Move position past the closing tag
             currentPos = artefactEnd + '</Artefact>'.length;
         }
-
-        //START DEBUG LOG : DEBUG-CODE(021)
-        console.log('🔍 Parsed result:', {
-            elements: elements.length,
-            artefacts: artefacts.length,
-            hasArtefacts: artefacts.length > 0
-        });
-        //END DEBUG LOG : DEBUG-CODE(021)
 
         return {
             elements,
@@ -290,7 +239,6 @@ export class ArtefactHandler {
         
         // Create demo artefact if it doesn't exist and this is the demo
         if (!artefactData && artefactId === 'demo-artefact-onboarding') {
-            console.log('🎨 Creating demo artefact for onboarding');
             const mermaidCode = `
 graph TD
     A[Thermodynamics in Electrochemistry] --> B[Gibbs Free Energy]
@@ -325,7 +273,6 @@ graph TD
         }
         
         if (!artefactData) {
-            console.error('Artefact not found:', artefactId);
             return;
         }
 
@@ -346,7 +293,6 @@ graph TD
     public async openArtefact(artefactId: string): Promise<void> {
         const artefactData = this.artefacts.get(artefactId);
         if (!artefactData) {
-            console.error('Artefact not found:', artefactId);
             return;
         }
 
@@ -367,7 +313,6 @@ graph TD
         
         const container = onboardingContainer || chatContainer;
         if (!container) {
-            console.error('Container not found for artefact panel');
             return;
         }
 
@@ -551,7 +496,6 @@ graph TD
     private updateArtefactPanel(panel: HTMLElement, artefactData: ArtefactData): void {
         const viewport = panel.querySelector('.mermaid-viewport');
         if (!viewport) {
-            console.error('Mermaid viewport not found');
             return;
         }
 
@@ -567,8 +511,8 @@ graph TD
         viewport.appendChild(mermaidElement);
 
         // Initialize mermaid
-        this.initializeMermaid(mermaidElement).catch(error => {
-            console.error('Failed to initialize Mermaid:', error);
+        this.initializeMermaid(mermaidElement).catch(() => {
+            // Mermaid initialization failed - diagram may not render
         });
 
         // Setup pan/zoom functionality
@@ -586,10 +530,6 @@ graph TD
      * @returns Formatted Mermaid code with proper line breaks and quoted labels
      */
     private formatMermaidCode(code: string): string {
-        console.log('🎨 Formatting Mermaid code...');
-        console.log('🎨 Original code length:', code.length);
-        console.log('🎨 Has line breaks:', code.includes('\n'));
-        
         try {
             let formattedCode = code;
             
@@ -600,7 +540,6 @@ graph TD
                 (match, nodeId, label) => {
                     // Only quote if not already quoted
                     if (!label.trim().startsWith('"') && !label.trim().startsWith("'")) {
-                        console.log(`🎨 Quoting label: ${nodeId}[${label}] -> ${nodeId}["${label}"]`);
                         return `${nodeId}["${label}"]`;
                     }
                     return match;
@@ -609,7 +548,6 @@ graph TD
             
             // Step 2: If already has line breaks, return with quoted labels
             if (code.includes('\n')) {
-                console.log('🎨 Code already has line breaks, only applied quoting');
                 return formattedCode;
             }
             
@@ -624,12 +562,8 @@ graph TD
                 // Add proper spacing in node definitions
                 .replace(/\]\s+(\w+\[)/g, ']\n    $1');
             
-            console.log('🎨 Formatted code length:', formattedCode.length);
-            console.log('🎨 Formatted code preview:', formattedCode.substring(0, 300) + '...');
-            
             return formattedCode;
-        } catch (error) {
-            console.error('Error formatting Mermaid code:', error);
+        } catch {
             // Return original code if formatting fails
             return code;
         }
@@ -644,10 +578,8 @@ graph TD
             const checkMermaid = () => {
                 const mermaid = (window as any).mermaid;
                 if (mermaid) {
-                    console.log('✅ Mermaid library found');
                     resolve(mermaid);
                 } else {
-                    console.log('⏳ Waiting for Mermaid library to load...');
                     setTimeout(checkMermaid, 100);
                 }
             };
@@ -681,21 +613,12 @@ graph TD
                 const rect = element.getBoundingClientRect();
                 const hasSize = rect.width > 0 && rect.height > 0;
                 
-                console.log('🔍 Element ready check:', {
-                    attempt: attempts,
-                    isAttached,
-                    hasSize,
-                    dimensions: `${rect.width}x${rect.height}`
-                });
-                
                 if (isAttached && hasSize) {
-                    console.log('✅ Element is ready for Mermaid rendering');
                     resolve();
                     return;
                 }
                 
                 if (attempts >= maxAttempts) {
-                    console.warn('⚠️ Element readiness timeout - proceeding anyway');
                     resolve(); // Proceed anyway to avoid blocking
                     return;
                 }
@@ -723,19 +646,7 @@ graph TD
                 const rect = panel.getBoundingClientRect();
                 const isVisible = rect.width > 0 && rect.height > 0;
                 
-                console.log('🔍 Panel visibility check:', {
-                    attempt: attempts,
-                    isVisible,
-                    dimensions: `${rect.width}x${rect.height}`,
-                    hasOpenClass: panel.classList.contains('open')
-                });
-                
                 if (isVisible || attempts >= maxAttempts) {
-                    if (isVisible) {
-                        console.log('✅ Panel is now visible');
-                    } else {
-                        console.warn('⚠️ Panel visibility timeout - proceeding anyway');
-                    }
                     resolve();
                     return;
                 }
@@ -754,9 +665,6 @@ graph TD
      */
     private async initializeMermaid(element: HTMLElement): Promise<void> {
         try {
-            console.log('🎨 Initializing Mermaid diagram...');
-            console.log('🎨 Mermaid code:', element.textContent);
-            
             // Wait for Mermaid to be available
             const mermaid = await this.waitForMermaid();
             
@@ -769,26 +677,19 @@ graph TD
                 const id = 'mermaid-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
                 const mermaidCode = element.textContent || '';
                 
-                console.log('🎨 Using Mermaid v10+ render API');
-                console.log('🎨 Element dimensions:', element.offsetWidth, 'x', element.offsetHeight);
-                
                 // Use the render method for v10+
                 const result = await mermaid.render(id, mermaidCode);
                 element.innerHTML = result.svg;
                 element.id = id; // Set ID after rendering
-                console.log('✅ Mermaid diagram rendered successfully');
             } else if (mermaid.init) {
                 // Older Mermaid API
-                console.log('🎨 Using Mermaid older init API');
                 const id = 'mermaid-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
                 element.id = id;
                 mermaid.init(undefined, [element]);
-                console.log('✅ Mermaid diagram initialized with older API');
             } else {
                 throw new Error('Mermaid API not recognized - neither render nor init available');
             }
         } catch (error) {
-            console.error('Error initializing mermaid:', error);
             this.showMermaidError(element, error instanceof Error ? error.message : 'Unknown error');
         }
     }
@@ -799,13 +700,6 @@ graph TD
      * @param message - Error message
      */
     private showMermaidError(element: HTMLElement, message: string): void {
-        console.error('Mermaid Error Details:', {
-            message: message,
-            mermaidCode: element.textContent,
-            elementId: element.id,
-            mermaidAvailable: !!(window as any).mermaid
-        });
-        
         element.innerHTML = `
             <div class="mermaid-error">
                 <p><strong>Error rendering diagram:</strong> ${message}</p>
@@ -997,8 +891,6 @@ graph TD
             }
             e.preventDefault();
         });
-
-        console.log('🎮 Pan/zoom functionality setup for artefact:', artefactData.id);
     }
 
 
@@ -1022,8 +914,7 @@ graph TD
         try {
             // First try PNG export
             await this.downloadAsPNG(svgElement, artefactData.id);
-        } catch (pngError) {
-            console.warn('PNG export failed, falling back to SVG:', pngError);
+        } catch {
             // Fallback to SVG export
             await this.downloadAsSVG(svgElement, artefactData.id);
         }
@@ -1140,8 +1031,6 @@ graph TD
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        
-        console.log('📥 Downloaded:', filename);
     }
 
     /**
@@ -1193,13 +1082,11 @@ graph TD
                     onArtefactDetected(artefactData);
                 }
                 
-                console.log('🎨 Artefact detected during streaming - button created immediately:', artefactId);
                 return { processedText, hasArtefacts: true };
             }
             
             return { processedText: text, hasArtefacts: false };
-        } catch (error) {
-            console.error('Error in processStreamingText:', error);
+        } catch {
             return { processedText: text, hasArtefacts: false }; // Return original text if processing fails
         }
     }

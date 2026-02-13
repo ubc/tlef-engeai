@@ -1,0 +1,90 @@
+/* ===========================================
+   TOAST NOTIFICATION SYSTEM
+   =========================================== */
+
+.toast-container {
+    position: fixed;
+    z-index: 1100;
+    pointer-events: none;
+}
+
+.toast-container.toast-top-right {
+    top: 1rem;
+    right: 1rem;
+}
+
+.toast-container.toast-top-left {
+    top: 1rem;
+    left: 1rem;
+}
+
+.toast-container.toast-bottom-right {
+    bottom: 1rem;
+    right: 1rem;
+}
+
+.toast-container.toast-bottom-left {
+    bottom: 1rem;
+    left: 1rem;
+}
+
+.toast-notification {
+    pointer-events: auto;
+    padding: 1rem 1.5rem;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-left: 4px solid var(--background-2, #ECE5DD);
+    font-size: 0.95rem;
+    color: var(--text-primary, #333);
+    max-width: 320px;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    cursor: pointer;
+}
+
+.toast-container.toast-top-left .toast-notification,
+.toast-container.toast-bottom-left .toast-notification {
+    transform: translateX(-100%);
+}
+
+.toast-notification.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.toast-notification.hide {
+    opacity: 0;
+    transform: translateX(100%);
+}
+
+.toast-container.toast-top-left .toast-notification.hide,
+.toast-container.toast-bottom-left .toast-notification.hide {
+    transform: translateX(-100%);
+}
+
+.toast-notification:hover {
+    background-color: #fafafa;
+}
+
+/* Success toast - green CHBE */
+.toast-notification.toast-success {
+    color: var(--color-chbe-green, #4d7a2f);
+    border-left: 4px solid var(--color-chbe-green, #4d7a2f);
+}
+
+.toast-notification.toast-success:hover {
+    background-color: #f8faf6;
+}
+
+/* Error toast - red (ubc-eng-red) for font and border-left, background-2 for border-left base */
+.toast-notification.toast-error {
+    color: var(--color-eng-red, #8B0000);
+    border-left: 4px solid var(--color-eng-red, #8B0000);
+    background-color: var(--background-2, #ECE5DD);
+}
+
+.toast-notification.toast-error:hover {
+    background-color: var(--background-2, #ECE5DD);
+}

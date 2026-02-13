@@ -104,7 +104,7 @@ graph TD
  * @returns Promise<void>
  */
 export const renderStudentOnboarding = async (user: User): Promise<void> => {
-    console.log("🚀 Starting student onboarding process...");
+    // console.log("🚀 Starting student onboarding process..."); // 🟢 MEDIUM: Process start logging
     
     try {
         // Initialize onboarding state
@@ -160,7 +160,7 @@ export const renderStudentOnboarding = async (user: User): Promise<void> => {
  * @param user - The student user object
  */
 async function initializeStudentOnboarding(state: StudentOnboardingState, user: User): Promise<void> {
-    console.log("🎯 Initializing student onboarding interface...");
+    // console.log("🎯 Initializing student onboarding interface..."); // 🟢 MEDIUM: Interface initialization
 
     // Update course name display
     updateCourseDisplay(user);
@@ -177,7 +177,7 @@ async function initializeStudentOnboarding(state: StudentOnboardingState, user: 
     // Show first step
     showStep(state.currentStep);
 
-    console.log("✅ Student onboarding interface initialized successfully");
+    // console.log("✅ Student onboarding interface initialized successfully"); // 🟢 MEDIUM: Initialization success
 }
 
 /**
@@ -232,7 +232,7 @@ async function renderDemoArtefact(): Promise<void> {
             // Initialize Mermaid if available
             if (typeof (window as any).mermaid !== 'undefined') {
                 await (window as any).mermaid.init(undefined, `#${diagramId}`);
-                console.log("✅ Demo Mermaid diagram rendered successfully");
+                // console.log("✅ Demo Mermaid diagram rendered successfully"); // 🟢 MEDIUM: Demo success
             } else {
                 // Fallback: show a text representation
                 tempContainer.innerHTML = `
@@ -594,7 +594,7 @@ function updateStepIndicators(state: StudentOnboardingState): void {
 function closeArtefactPanel(): void {
     // ArtefactHandler will handle the actual closing via its closeArtefact() method
     // This function is kept for compatibility but the heavy lifting is done by ArtefactHandler
-    console.log('🎨 Artefact panel cleanup requested - handled by ArtefactHandler');
+    // console.log('🎨 Artefact panel cleanup requested - handled by ArtefactHandler'); // 🟢 MEDIUM: Component cleanup
 }
 
 /**
@@ -689,10 +689,10 @@ function checkContentOverflow(stepElement: HTMLElement): void {
         // Check if content overflows
         if (contentHeight > stepHeight) {
             stepElement.classList.add('overflow-content');
-            console.log(`Step content overflows (${contentHeight}px > ${stepHeight}px), using flex-start`);
+            // console.log(`Step content overflows (${contentHeight}px > ${stepHeight}px), using flex-start`); // 🟢 MEDIUM: Layout calculation
         } else {
             stepElement.classList.add('center-content');
-            console.log(`Step content fits (${contentHeight}px <= ${stepHeight}px), using center`);
+            // console.log(`Step content fits (${contentHeight}px <= ${stepHeight}px), using center`); // 🟢 MEDIUM: Layout calculation
         }
     }, 100); // Small delay to ensure content is rendered
 }
@@ -744,7 +744,7 @@ function updateNavigationButtons(state: StudentOnboardingState): void {
  * @param user - The student user object
  */
 async function handleOnboardingCompletion(user: User): Promise<void> {
-    console.log("🎉 Student onboarding completed!");
+    // console.log("🎉 Student onboarding completed!"); // 🟢 MEDIUM: Completion success
 
     try {
         // Mark onboarding as complete
@@ -773,7 +773,7 @@ async function handleOnboardingCompletion(user: User): Promise<void> {
             throw new Error('Failed to update onboarding status');
         }
         
-        console.log("✅ Onboarding status updated in database");
+        // console.log("✅ Onboarding status updated in database"); // 🟢 MEDIUM: Database operation success
 
         // Immediately redirect to main interface - no delay
         redirectToMainInterface();
@@ -824,7 +824,7 @@ function redirectToMainInterface(): void {
     const courseIdMatch = window.location.pathname.match(/^\/course\/([a-f0-9]{12})\//);
     if (courseIdMatch) {
         const courseId = courseIdMatch[1];
-        console.log(`[STUDENT-ONBOARDING] Redirecting to main interface: /course/${courseId}/student`);
+        // console.log(`[STUDENT-ONBOARDING] Redirecting to main interface: /course/${courseId}/student`); // 🟡 HIGH: Course ID in redirect URL
         window.location.href = `/course/${courseId}/student`;
         return;
     }

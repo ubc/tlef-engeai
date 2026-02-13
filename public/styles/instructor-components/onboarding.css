@@ -322,6 +322,20 @@
     margin-bottom: 0;
 }
 
+.validation-message {
+    font-size: 0.875rem;
+    color: #dc3545;
+    margin-top: 0.5rem;
+    margin-bottom: 0;
+}
+
+.review-readonly {
+    font-size: 1rem;
+    color: var(--text-primary);
+    margin: 0.5rem 0 0;
+    padding: 0.5rem 0;
+}
+
 /* ===========================================
    SELECTED ITEMS DISPLAY
    =========================================== */

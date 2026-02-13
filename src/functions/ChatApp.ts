@@ -487,8 +487,6 @@ export class ChatApp {
         // Reset the inactivity timer since user is actively using this chat
         this.resetChatTimer(chatId);
         
-        // TODO: Remove after testing lazy loading functionality
-        // this.logActiveChats('MESSAGE SENT (TIMER RESET)');
 
         // Validate chat exists
         if (!this.conversations.has(chatId)) {
@@ -507,29 +505,219 @@ export class ChatApp {
             throw new Error('Conversation not found');
         }
 
+
         // ====================================================================
-        // STEP 1: MEMORY AGENT ANALYSIS (runs BEFORE adding current message)
+        // STEP 1: Add user message to conversation and history
+        // ====================================================================
+
+        // Add user message to both LLM conversation and chatHistory for frontend sync
+        const addedUserMessage = this.addUserMessage(chatId, message, userId, courseName);
+        // ====================================================================
+        // STEP 2: RAG DOCUMENT RETRIEVAL (for CURRENT user message)
+        // ====================================================================
+        
+        let additionalContext = '';
+        
+
+        let ragContext : string = '';
+        let documentsLength : number = 0;
+
+        try {
+            const documents = await this.retrieveRelevantDocuments(message, courseName, 3, 0.4); // Limit to 3 docs, threshold 0.4
+            ragContext = this.formatDocumentsForContext(documents);
+            documentsLength = documents.length;
+            
+            console.log(`📚 Captured ${documents.length} documents for storage`);
+            console.log(`📚 Retrieved document texts: ${ragContext}`);
+        } catch (error) {
+            console.log(`❌ RAG Context Error:`, error);
+            this.logger.error('Error retrieving RAG documents:', error as any);
+            // Continue without RAG context if retrieval fails
+        }
+
+        // ====================================================================
+        // STEP 3: FORMAT USER PROMPT WITH RAG CONTEXT AND UNSTRUGGLE REVEAL TAG
+        // ====================================================================
+        
+        if (documentsLength > 0) {
+            additionalContext = formatRAGPrompt(ragContext, message);
+        }
+        else {
+            additionalContext = "No relevant documents from RAG found for this user message \n";
+        }
+
+        // Attach struggle topics to the chat conversation for visibility
+        let struggleTopics = await memoryAgent.getStruggleWords(userId, courseName);
+
+
+        if (struggleTopics.length > 0) {
+            // Add struggle topics as a visible system message in the chat
+            additionalContext += `Based on our conversation, I've identified these topics you might want to focus on: <struggle_topics>${struggleTopics.join(', ')}</struggle_topics>\n\nPlease see the rules int he system prompt for how to covney information about any of these topics if the current user prompt is not asking about any of these topics`;
+
+            // Add the unstruggle instruction to the user prompt for the LLM
+            additionalContext += '\n<questionUnstruggle reveal="TRUE"> \n by this tag this means that you SHOULD select the most relevant struggle topic from the <struggle_topics> tags, and add the <questionUnstruggle Topic="topic"> tag to the end of the response. ';
+        }
+        else {
+            additionalContext += '\n<questionUnstruggle reveal="FALSE"> \n by this tag this means that you should NOT add the <questionUnstruggle Topic="topic"> tag to the end of the response';
+        }
+        
+
+        // ====================================================================
+        // STEP 4: CREATE FORKED CONVERSATION WITH ADDITIONAL CONTEXT
+        // ====================================================================
+
+        // Create a forked conversation for LLM call (additional context won't pollute original conversation)
+        const forkedConversation = this.llmModule.createConversation();
+
+        // Copy all messages from original conversation to forked conversation
+        const originalConversationHistory = conversation.getHistory();
+        (originalConversationHistory as any[]).forEach((msg: any) => {
+            forkedConversation.addMessage(msg.role, msg.content);
+        });
+
+        // Add additional context to forked conversation only
+        forkedConversation.addMessage('user', additionalContext);
+
+        // ====================================================================
+        // LOG BOTH ORIGINAL AND FORKED CONVERSATION HISTORIES
+        // ====================================================================
+
+        // Log original conversation (stored in Maps)
+        console.log(`\n📝 ORIGINAL CONVERSATION HISTORY (Chat: ${chatId}, User: ${userId}) - STORED IN MAPS:`);
+        console.log(`Total messages: ${originalConversationHistory.length}`);
+        console.log('='.repeat(80));
+
+        originalConversationHistory.forEach((msg: any, index: number) => {
+            const role = msg.role.toUpperCase();
+            const content = msg.content;
+            const charCount = content.length;
+
+            console.log(`[${index + 1}] ${role} - ${charCount} chars:`);
+            console.log(`${content}`);
+            console.log('-'.repeat(40));
+        });
+        console.log('='.repeat(80));
+
+        console.log('\n'.repeat(10));
+
+        // Log forked conversation (used for LLM call)
+        const forkedConversationHistory : Message[] = forkedConversation.getHistory();
+        console.log(`\n📝 FORKED CONVERSATION HISTORY (Chat: ${chatId}, User: ${userId}) - SENT TO LLM:`);
+        console.log(`Total messages: ${forkedConversationHistory.length}`);
+        console.log('='.repeat(80));
+
+        forkedConversationHistory.forEach((msg: Message, index: number) => {
+            const role = msg.role.toUpperCase();
+            const content = msg.content;
+            const charCount = content.length;
+
+            console.log(`[${index + 1}] ${role} - ${charCount} chars:`);
+            console.log(`${content}`);
+            console.log('-'.repeat(40));
+        });
+        console.log('='.repeat(80));
+
+        // printing out the full user prompt from this conversation
+        console.log(`\n\n📝 FULL USER PROMPT FROM THIS CONVERSATION:\n\n`);
+        console.log(`${message}`);
+        console.log('='.repeat(80));
+
+        console.log(`\n\n📝 FULL ADDITIONAL CONTEXT FROM THIS CONVERSATION:\n\n`);
+        console.log(`${additionalContext}`);
+        console.log('='.repeat(80));
+
+        console.log(`📝 END CONVERSATION LOG\n`);
+
+        // Calculate token statistics for file logging
+        let totalCharacters = 0;
+        let totalEstimatedTokens = 0;
+
+        (originalConversationHistory as any[]).forEach((msg: any) => {
+            const charCount = msg.content.length;
+            const estimatedTokens = Math.ceil(charCount / 4); // Rough estimate: ~4 chars per token
+            totalCharacters += charCount;
+            totalEstimatedTokens += estimatedTokens;
+        });
+        
+        // Write conversation history to file in prompt-test folder
+        // await this.writeConversationHistoryToFile(chatId, courseName, userId, history, totalCharacters, totalEstimatedTokens);
+        
+        // Stream the response
+        console.log(`\n🚀 Starting LLM streaming...`);
+
+        let assistantResponse = '';
+
+        // Check if developer mode is enabled - use mock response instead of real LLM
+        if (isDeveloperMode()) {
+            console.log('[DEVELOPER-MODE] 🧪 Using mock streaming response instead of LLM');
+            assistantResponse = await generateMockStreamingResponse(onChunk);
+            console.log(`\n✅ Mock streaming completed. Full response length: ${assistantResponse.length}`);
+            console.log(`Full response: "${assistantResponse}"`);
+        } else {
+            // Normal LLM streaming
+            let conversationConfig: any = {
+                temperature: 0.7,
+            }
+
+            if (this.llmProvider === 'ollama') {
+
+                conversationConfig.num_ctx = 32768;
+            }
+
+            const response = await forkedConversation.stream(
+                (chunk: string) => {
+                    // console.log(`📦 Received chunk: "${chunk}"`);
+                    assistantResponse += chunk;
+                    onChunk(chunk);
+                },
+                conversationConfig
+            );
+            
+            console.log(`\n✅ Streaming completed. Full response length: ${assistantResponse.length}`);
+            console.log(`Full response: "${assistantResponse}"`);
+        }
+
+        // ====================================================================
+        // STEP 5: ADD ASSISTANT MESSAGE TO CONVERSATION AND HISTORY
+        // ====================================================================
+
+        // Note: userId parameter is string but we'll parse it - should be numeric from session
+        const assistantMessage = this.addAssistantMessage(chatId, assistantResponse, userId, courseName);
+
+        // Add assistant message to original conversation
+        conversation.addMessage('assistant', assistantResponse);
+        
+        // Check if this is the first user-AI exchange and update title if needed
+        await this.updateChatTitleIfNeeded(chatId, assistantResponse, courseName, userId);
+
+
+        // The forked message is automatically discarded after LLM call, so no cleanup needed
+
+        // ====================================================================
+        // STEP 6: MEMORY AGENT ANALYSIS (runs BEFORE adding current message)
         // Analyzes the PREVIOUS complete exchange from conversation history
         // ====================================================================
 
         // Read conversation history BEFORE modifying anything (no race conditions)
-        const historyBeforeAdding = conversation.getHistory();
+        const conversationHistory = conversation.getHistory();
 
-        // Count messages excluding system message
-        const nonSystemMessagesBefore = historyBeforeAdding.filter(msg => msg.role !== 'system');
-        const messageCountBeforeAdding = nonSystemMessagesBefore.length;
+        const messageCount = conversationHistory.length;
 
-        const MEMORY_AGENT_MIN_MESSAGES_THRESHOLD = 4; // Memory agent activates after 4 messages
+
+        // 6 is chosen because we want to take the first 2 user conversation
+        // {System prompt, inital assistant message, user message 1, assistant message1, user message 2, and assistant message2}
+        const MEMORY_AGENT_MIN_MESSAGES_THRESHOLD = 6; 
+        
+        // Memory agent activates after 4 messages
 
         try {
-            
             // Only analyze if conversation has more than threshold messages (previous exchanges)
-            if (messageCountBeforeAdding > MEMORY_AGENT_MIN_MESSAGES_THRESHOLD) {
+            if (messageCount > MEMORY_AGENT_MIN_MESSAGES_THRESHOLD) {
                 // Extract last 3 messages from PREVIOUS complete exchange:
                 // - Previous user message
                 // - Previous LLM response  
                 // - User message before that
-                const lastMessages = nonSystemMessagesBefore.slice(-3);
+                const lastMessages = conversationHistory.slice(-3);
                 
                 // Format the last 3 messages for analysis
                 // Pattern: User prompt -> LLM response -> User prompt
@@ -569,166 +757,14 @@ export class ChatApp {
                     courseName,
                     formattedMessages.trim()
                 );
-                console.log(`🧠 Memory agent analysis completed for chat ${chatId} (analyzed last 3 of ${messageCountBeforeAdding} messages from previous exchange)`);
+                console.log(`🧠 Memory agent analysis completed for chat ${chatId} (analyzed last 3 of ${messageCount} messages from previous exchange)`);
             } else {
-                console.log(`[CHAT-APP] ℹ️ Memory agent skipped: conversation has ${messageCountBeforeAdding} messages (requires >${MEMORY_AGENT_MIN_MESSAGES_THRESHOLD})`);
+                console.log(`[CHAT-APP] ℹ️ Memory agent skipped: conversation has ${messageCount} messages (requires >${MEMORY_AGENT_MIN_MESSAGES_THRESHOLD})`);
             }
         } catch (error) {
             console.error('❌ Error in memory agent analysis:', error);
             // Don't throw - memory agent failure shouldn't break the chat flow
         }
-
-        // ====================================================================
-        // STEP 2: RAG DOCUMENT RETRIEVAL (for CURRENT user message)
-        // ====================================================================
-        let ragContext = '';
-        let documentsLength = 0;
-        let retrievedDocumentTexts: string[] = [];  // NEW: Store document texts
-
-        try {
-            const documents = await this.retrieveRelevantDocuments(message, courseName, 3, 0.4); // Limit to 3 docs, threshold 0.4
-            ragContext = this.formatDocumentsForContext(documents);
-            documentsLength = documents.length;
-            
-            // NEW: Extract full text content from each retrieved document
-            documents.forEach((doc) => {
-                const content = (doc as any).payload?.text || 
-                               (doc as any).text || 
-                               (doc as any).content || 
-                               '';
-                if (content) {
-                    retrievedDocumentTexts.push(content);
-                }
-            });
-            
-            console.log(`📚 Captured ${retrievedDocumentTexts.length} documents for storage`);
-            console.log(`📚 Retrieved document texts: ${retrievedDocumentTexts.join('\n\n')}`);
-        } catch (error) {
-            console.log(`❌ RAG Context Error:`, error);
-            this.logger.error('Error retrieving RAG documents:', error as any);
-            // Continue without RAG context if retrieval fails
-        }
-
-        // ====================================================================
-        // STEP 3: FORMAT USER PROMPT WITH RAG CONTEXT AND UNSTRUGGLE REVEAL TAG
-        // ====================================================================
-        let userFullPrompt = '';
-        if (documentsLength > 0) {
-            userFullPrompt = formatRAGPrompt(ragContext, message);
-        }
-        else {
-            // DEBUG CODE: DEBUG-CODE(NO-RAG-DOCUMENTS-RETRIEVED)   
-            console.log(`DEBUG #201: No RAG documents retrieved, using user message as is`);
-            // END DEBUG CODE: DEBUG-CODE(NO-RAG-DOCUMENTS-RETRIEVED)
-            userFullPrompt = "The user's message is: " + message + "\n\n";
-        }
-
-        // Attach struggle topics to the chat conversation for visibility
-        let struggleTopics = await memoryAgent.getStruggleWords(userId, courseName);
-        console.log(`DEBUG #200: Struggle topics: ${struggleTopics}, length: ${struggleTopics.length}`);
-        console.log(`DEBUG #200: Message count before adding: ${messageCountBeforeAdding}`);
-
-        if (struggleTopics.length > 0) {
-            // Add struggle topics as a visible system message in the chat
-            userFullPrompt += `Based on our conversation, I've identified these topics you might want to focus on: <struggle_topics>${struggleTopics.join(', ')}</struggle_topics>\n\nPlease see the rules int he system prompt for how to covney information about any of these topics if the current user prompt is not asking about any of these topics`;
-
-            // Add the unstruggle instruction to the user prompt for the LLM
-            userFullPrompt += '\n<questionUnstruggle reveal="TRUE"> \n by this tag this means that you SHOULD select the most relevant struggle topic from the <struggle_topics> tags, and add the <questionUnstruggle Topic="topic"> tag to the end of the response. ';
-        }
-        else {
-            userFullPrompt += '\n<questionUnstruggle reveal="FALSE"> \n by this tag this means that you should not add the <questionUnstruggle Topic="topic"> tag to the end of the response';
-        }
-        
-
-        // ====================================================================
-        // STEP 4: ADD USER MESSAGE TO CONVERSATION
-        // ====================================================================
-        conversation.addMessage('user', userFullPrompt);
-
-        // ====================================================================
-        // LOG ENTIRE CONVERSATION HISTORY (NO TRUNCATION)
-        // ====================================================================
-        const history = conversation.getHistory();
-        console.log(`\n📝 FULL CONVERSATION HISTORY (Chat: ${chatId}, User: ${userId}):`);
-        console.log(`Total messages: ${history.length}`);
-        console.log('='.repeat(80));
-
-        history.forEach((msg, index) => {
-            const role = msg.role.toUpperCase();
-            const content = msg.content;
-            const charCount = content.length;
-
-            console.log(`[${index + 1}] ${role} - ${charCount} chars:`);
-            console.log(`${content}`);
-            console.log('-'.repeat(40));
-        });
-        console.log('='.repeat(80));
-
-        // printing out the full user prompt from this conversation
-        console.log(`\n\n📝 FULL USER PROMPT FROM THIS CONVERSATION:\n\n`);
-        console.log(`${userFullPrompt}`);
-        console.log('='.repeat(80));
-
-        console.log(`📝 END CONVERSATION LOG\n`);
-
-        // Calculate token statistics for file logging
-        let totalCharacters = 0;
-        let totalEstimatedTokens = 0;
-        
-        history.forEach((msg) => {
-            const charCount = msg.content.length;
-            const estimatedTokens = Math.ceil(charCount / 4); // Rough estimate: ~4 chars per token
-            totalCharacters += charCount;
-            totalEstimatedTokens += estimatedTokens;
-        });
-        
-        // Write conversation history to file in prompt-test folder
-        // await this.writeConversationHistoryToFile(chatId, courseName, userId, history, totalCharacters, totalEstimatedTokens);
-        
-        // Stream the response
-        console.log(`\n🚀 Starting LLM streaming...`);
-
-        let assistantResponse = '';
-
-        // Check if developer mode is enabled - use mock response instead of real LLM
-        if (isDeveloperMode()) {
-            console.log('[DEVELOPER-MODE] 🧪 Using mock streaming response instead of LLM');
-            assistantResponse = await generateMockStreamingResponse(onChunk);
-            console.log(`\n✅ Mock streaming completed. Full response length: ${assistantResponse.length}`);
-            console.log(`Full response: "${assistantResponse}"`);
-        } else {
-            // Normal LLM streaming
-            let conversationConfig: any = {
-                temperature: 0.7,
-            }
-
-            if (this.llmProvider === 'ollama') {
-
-                conversationConfig.num_ctx = 32768;
-            }
-
-            const response = await conversation.stream(
-                (chunk: string) => {
-                    // console.log(`📦 Received chunk: "${chunk}"`);
-                    assistantResponse += chunk;
-                    onChunk(chunk);
-                }, 
-                conversationConfig
-            );
-            
-            console.log(`\n✅ Streaming completed. Full response length: ${assistantResponse.length}`);
-            console.log(`Full response: "${assistantResponse}"`);
-        }
-
-        // ====================================================================
-        // STEP 5: ADD ASSISTANT MESSAGE TO CONVERSATION AND HISTORY
-        // ====================================================================
-
-        // Note: userId parameter is string but we'll parse it - should be numeric from session
-        const assistantMessage = this.addAssistantMessage(chatId, assistantResponse, userId, courseName, retrievedDocumentTexts);
-        
-        // Check if this is the first user-AI exchange and update title if needed
-        await this.updateChatTitleIfNeeded(chatId, assistantResponse, courseName, userId);
         
         return assistantMessage;
     }
@@ -825,7 +861,7 @@ export class ChatApp {
             }
         }
         
-        const defaultSystemMessage = getSystemPrompt(baseSystemPrompt, courseName, learningObjectives, struggleTopics, appendedSystemPromptItems);
+        const defaultSystemMessage = getSystemPrompt(baseSystemPrompt, courseName, learningObjectives, appendedSystemPromptItems);
 
         try {
             conversation.addMessage('system', defaultSystemMessage);
@@ -941,7 +977,7 @@ export class ChatApp {
      * @param userId - The user ID
      * @returns ChatMessage - The created user message
      */
-    private addUserMessage(chatId: string, message: string, userId: string): ChatMessage {
+    private addUserMessage(chatId: string, message: string, userId: string, courseName: string = ''): ChatMessage {
         // Generate message ID
         const currentDate = new Date();
         const messageId = this.chatIDGenerator.messageID(message, chatId, currentDate);
@@ -951,7 +987,7 @@ export class ChatApp {
             id: messageId,
             sender: 'user',
             userId: userId,
-            courseName: '', // Will be set by the caller if needed
+            courseName: courseName,
             text: message,
             timestamp: Date.now()
         };
@@ -1086,15 +1122,10 @@ export class ChatApp {
      * @param retrievedDocuments - Optional array of retrieved document texts
      * @returns ChatMessage - The created assistant message
      */
-    private addAssistantMessage(chatId: string, message: string, userId: string, courseName: string = '', retrievedDocuments?: string[]): ChatMessage {
+    private addAssistantMessage(chatId: string, message: string, userId: string, courseName: string = ''): ChatMessage {
         // Generate message ID
         const currentDate = new Date();
         const messageId = this.chatIDGenerator.messageID(message, chatId, currentDate);
-
-        // DEBUG: Add unique identifier to track message instances
-        const uniqueId = `${messageId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        console.log(`\n🆔 DEBUG: Adding assistant message with unique ID: ${uniqueId}`);
-        console.log(`Message preview: "${message.substring(0, 100)}..."`);
 
         // Create the ChatMessage object
         const chatMessage: ChatMessage = {
@@ -1104,7 +1135,6 @@ export class ChatApp {
             courseName: courseName,
             text: message,
             timestamp: Date.now(),
-            retrievedDocuments: retrievedDocuments,  // NEW: Add retrieved documents
         };
         
         try {
@@ -1235,7 +1265,8 @@ export class ChatApp {
                 }
             }
             
-            const defaultSystemMessage = getSystemPrompt(baseSystemPrompt, courseName, learningObjectives, struggleTopics, appendedSystemPromptItems);
+            const defaultSystemMessage = getSystemPrompt(baseSystemPrompt, courseName, learningObjectives, appendedSystemPromptItems);
+
             conversation.addMessage('system', defaultSystemMessage);
             
 

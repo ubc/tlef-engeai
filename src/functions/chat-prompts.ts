@@ -555,7 +555,6 @@ export function getSystemPrompt(
     baseSystemPrompt?: string,
     courseName?: string,
     learningObjectives?: LearningObjective[],
-    struggleTopics?: string[],
     appendedSystemPromptItems?: SystemPromptItem[]
 ): string {
     // Use base prompt from database if provided, otherwise use constant
@@ -566,30 +565,10 @@ export function getSystemPrompt(
     if (learningObjectives && learningObjectives.length > 0) {
         learningObjectivesContent = formatLearningObjectivesContent(learningObjectives);
     }
-    
-    // Format struggle topics content
-    let struggleTopicsContent = '';
-    if (struggleTopics && struggleTopics.length > 0) {
-        struggleTopicsContent = formatStruggleWordsPrompt(struggleTopics);
-    } else {
-        if (!struggleTopics) {
-            struggleTopicsContent = '\n\nNo struggle topic array is attached in the function arguments (028).';
-        } else if (struggleTopics.length === 0) {
-            struggleTopicsContent = '\n\nThe struggle topic array is empty (019).';
-        } else {
-            struggleTopicsContent = '\n\nThe struggle topic array is not an array nor an empty array (034).';
-        }
-    }
-
 
     // Append learning objectives if provided
     if (learningObjectivesContent) {
         prompt += learningObjectivesContent;
-    }
-
-    // Append struggle topics if provided
-    if (struggleTopicsContent) {
-        prompt += struggleTopicsContent;
     }
     
     // Append course name if provided

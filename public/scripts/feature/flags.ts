@@ -7,8 +7,9 @@
  * @description: Dynamic flag management interface - renders content from data using TypeScript
  */
 
-// Import modal functions
-import { showCustomModal } from '../modal-overlay.js';
+// Import modal and toast functions
+import { showConfirmModal } from '../modal-overlay.js';
+import { showSuccessToast, showErrorToast } from '../toast-notification.js';
 
 // Types for flags - matching backend FlagReport interface
 interface FlagReport {
@@ -47,9 +48,9 @@ const API_BASE_URL = '/api/courses';
  */
 async function fetchFlags(courseId: string): Promise<FlagReport[]> {
     try {
-        console.log('🔍 [FLAG-DEBUG] Fetching flags for course:', courseId);
-        console.log('🔍 [FLAG-DEBUG] API URL:', `${API_BASE_URL}/${courseId}/flags/with-names`);
-        
+        // console.log('🔍 [FLAG-DEBUG] Fetching flags for course:', courseId); // 🔴 CRITICAL: Exposes course ID
+        // console.log('🔍 [FLAG-DEBUG] API URL:', `${API_BASE_URL}/${courseId}/flags/with-names`); // 🔴 CRITICAL: Exposes API endpoint with course ID
+
         const response = await fetch(`${API_BASE_URL}/${courseId}/flags/with-names`, {
             method: 'GET',
             headers: {
@@ -57,8 +58,8 @@ async function fetchFlags(courseId: string): Promise<FlagReport[]> {
             }
         });
 
-        console.log('📡 [FLAG-DEBUG] API Response status:', response.status);
-        console.log('📡 [FLAG-DEBUG] API Response ok:', response.ok);
+        // console.log('📡 [FLAG-DEBUG] API Response status:', response.status); // 🟢 MEDIUM: Debug info - keep for monitoring
+        // console.log('📡 [FLAG-DEBUG] API Response ok:', response.ok); // 🟢 MEDIUM: Debug info - keep for monitoring
 
         if (!response.ok) {
             console.error('❌ [FLAG-DEBUG] API Response not ok:', response.status, response.statusText);
@@ -66,9 +67,9 @@ async function fetchFlags(courseId: string): Promise<FlagReport[]> {
         }
 
         const apiResponse = await response.json();
-        console.log('📊 [FLAG-DEBUG] Raw API response:', apiResponse);
-        console.log('📊 [FLAG-DEBUG] API response success:', apiResponse.success);
-        console.log('📊 [FLAG-DEBUG] API response data:', apiResponse.data);
+        // console.log('📊 [FLAG-DEBUG] Raw API response:', apiResponse); // 🔴 CRITICAL: Exposes full API response data
+        // console.log('📊 [FLAG-DEBUG] API response success:', apiResponse.success); // 🟢 MEDIUM: Status info - keep for debugging
+        // console.log('📊 [FLAG-DEBUG] API response data:', apiResponse.data); // 🔴 CRITICAL: Exposes user flag data
 
         if (!apiResponse.success) {
             console.error('❌ [FLAG-DEBUG] API returned success: false');
@@ -76,7 +77,7 @@ async function fetchFlags(courseId: string): Promise<FlagReport[]> {
         }
 
         // Transform API data to frontend format
-        console.log('🔄 [FLAG-DEBUG] Transforming API data...');
+        // console.log('🔄 [FLAG-DEBUG] Transforming API data...'); // 🟢 MEDIUM: Debug info - keep for monitoring
         const transformedFlags = apiResponse.data.map((flag: any) => ({
             ...flag,
             // Convert date strings to Date objects
@@ -91,8 +92,8 @@ async function fetchFlags(courseId: string): Promise<FlagReport[]> {
         collapsed: true
         }));
 
-        console.log('✅ [FLAG-DEBUG] Successfully fetched', transformedFlags.length, 'flags');
-        console.log('📋 [FLAG-DEBUG] Transformed flags:', transformedFlags);
+        // console.log('✅ [FLAG-DEBUG] Successfully fetched', transformedFlags.length, 'flags'); // 🟢 MEDIUM: Debug info - keep for monitoring
+        // console.log('📋 [FLAG-DEBUG] Transformed flags:', transformedFlags); // 🔴 CRITICAL: Exposes all flag data with user info
         return transformedFlags;
 
     } catch (error) {
@@ -104,7 +105,7 @@ async function fetchFlags(courseId: string): Promise<FlagReport[]> {
         });
         
         // Show error message to user
-        showErrorMessage('Failed to load flags. Please refresh the page and try again.');
+        showErrorToast('Failed to load flags. Please refresh the page and try again.');
         
         // Return empty array as fallback
         return [];
@@ -116,8 +117,8 @@ async function fetchFlags(courseId: string): Promise<FlagReport[]> {
  */
 async function deleteAllFlags(courseId: string): Promise<{ deletedCount: number } | null> {
     try {
-        console.log('[FLAG-API] Deleting all flags for course:', courseId);
-        
+        // console.log('[FLAG-API] Deleting all flags for course:', courseId);
+
         const apiResponse = await fetch(`${API_BASE_URL}/${courseId}/flags`, {
             method: 'DELETE',
             headers: {
@@ -130,12 +131,12 @@ async function deleteAllFlags(courseId: string): Promise<{ deletedCount: number 
         }
 
         const responseData = await apiResponse.json();
-        
+
         if (!responseData.success) {
             throw new Error(responseData.error || 'Failed to delete all flags');
         }
 
-        console.log('[FLAG-API] All flags deleted successfully:', responseData.deletedCount);
+        // console.log('[FLAG-API] All flags deleted successfully:', responseData.deletedCount);
         return { deletedCount: responseData.deletedCount };
         
     } catch (error) {
@@ -151,17 +152,19 @@ async function handleDeleteAllFlags(): Promise<void> {
     // Get course ID from context
     const courseId = getCourseIdFromContext();
     if (!courseId) {
-        showErrorMessage('Unable to determine course context');
+            showErrorToast('Unable to determine course context');
         return;
     }
 
-    // Confirm deletion with user
-    const confirmed = confirm(
-        'Are you sure you want to delete ALL flags for this course?\n\n' +
-        'This action cannot be undone. All flag reports will be permanently deleted.'
+    // Confirm deletion with user (modal for user input)
+    const modalResult = await showConfirmModal(
+        'Delete All Flags',
+        'Are you sure you want to delete ALL flags for this course? This action cannot be undone. All flag reports will be permanently deleted.',
+        'Delete All',
+        'Cancel'
     );
 
-    if (!confirmed) {
+    if (modalResult.action === 'cancel') {
         return;
     }
 
@@ -194,18 +197,14 @@ async function handleDeleteAllFlags(): Promise<void> {
         renderFlags();
         updateNavigationCounts();
 
-        console.log('[FLAG-DELETE-ALL] Successfully deleted', result.deletedCount, 'flags');
-        
+        // console.log('[FLAG-DELETE-ALL] Successfully deleted', result.deletedCount, 'flags');
+
         // Show success message
-        showSuccessMessage(`Successfully deleted ${result.deletedCount} flag(s).`);
+        showSuccessToast(`Successfully deleted ${result.deletedCount} flag(s).`);
         
     } catch (error) {
         console.error('[FLAG-DELETE-ALL] Error deleting all flags:', error);
-        
-        // Show error notification
-        showErrorMessage(
-            'Failed to delete all flags. Please try again.'
-        );
+        showErrorToast('Failed to delete all flags. Please try again.');
         
     } finally {
         // Reset button state
@@ -221,53 +220,12 @@ async function handleDeleteAllFlags(): Promise<void> {
 }
 
 /**
- * Show success message to user
- * @param message - Success message to display
- */
-function showSuccessMessage(message: string): void {
-    // Create success message element
-    const successDiv = document.createElement('div');
-    successDiv.className = 'success-message';
-    successDiv.style.cssText = `
-        background-color: #efe;
-        border: 1px solid #cfc;
-        color: #3c3;
-        padding: 12px;
-        margin: 10px 0;
-        border-radius: 4px;
-        font-size: 14px;
-    `;
-    successDiv.textContent = message;
-    
-    // Insert at the top of the main content or flags list
-    const mainContent = document.querySelector('.main-content');
-    const flagsList = document.getElementById('flags-list');
-    const container = mainContent || flagsList;
-    
-    if (container) {
-        // Insert before flags-list or at the start of main-content
-        if (flagsList && flagsList.parentNode) {
-            flagsList.parentNode.insertBefore(successDiv, flagsList);
-        } else if (mainContent) {
-            mainContent.insertBefore(successDiv, mainContent.firstChild);
-        }
-        
-        // Auto-remove after 5 seconds
-        setTimeout(() => {
-            if (successDiv.parentNode) {
-                successDiv.parentNode.removeChild(successDiv);
-            }
-        }, 5000);
-    }
-}
-
-/**
  * Update flag status via API
  */
 async function updateFlagStatus(courseId: string, flagId: string, status: 'unresolved' | 'resolved', response?: string): Promise<FlagReport | null> {
     try {
-        console.log('[FLAG-API] Updating flag status:', { flagId, status, response });
-        
+        // console.log('[FLAG-API] Updating flag status:', { flagId, status, response });
+
         const apiResponse = await fetch(`${API_BASE_URL}/${courseId}/flags/${flagId}`, {
             method: 'PUT',
             headers: {
@@ -289,7 +247,7 @@ async function updateFlagStatus(courseId: string, flagId: string, status: 'unres
             throw new Error(responseData.error || 'Failed to update flag status');
         }
 
-        console.log('[FLAG-API] Flag updated successfully:', responseData.data);
+        // console.log('[FLAG-API] Flag updated successfully:', responseData.data);
         return responseData.data;
         
     } catch (error) {
@@ -343,7 +301,7 @@ function formatTimestamp(date: Date): string {
  */
 async function updateFlagResponse(courseId: string, flagId: string, response: string): Promise<FlagReport | null> {
     try {
-        console.log('[FLAG-API] Updating flag response:', { flagId, response });
+        // console.log('[FLAG-API] Updating flag response:', { flagId, response });
 
         const apiResponse = await fetch(`${API_BASE_URL}/${courseId}/flags/${flagId}/response`, {
             method: 'PATCH',
@@ -363,50 +321,13 @@ async function updateFlagResponse(courseId: string, flagId: string, response: st
             throw new Error(responseData.error || 'Failed to update flag response');
         }
 
-        console.log('[FLAG-API] Flag response updated successfully:', responseData.data);
+        // console.log('[FLAG-API] Flag response updated successfully:', responseData.data);
         return responseData.data;
 
     } catch (error) {
         console.error('[FLAG-API] Error updating flag response:', error);
         throw error;
     }
-}
-
-/**
- * Show error message to user
- * @param message - Error message to display
- */
-function showErrorMessage(message: string): void {
-    // Create error message element
-    const errorDiv = document.createElement('div');
-    errorDiv.className = 'error-message';
-    errorDiv.style.cssText = `
-        background-color: #fee;
-        border: 1px solid #fcc;
-        color: #c33;
-        padding: 12px;
-        margin: 10px 0;
-        border-radius: 4px;
-        font-size: 14px;
-    `;
-    errorDiv.textContent = message;
-    
-    // Insert at the top of the main content or flags list
-    const mainContent = document.querySelector('.main-content');
-    const flagsList = document.getElementById('flags-list');
-    
-    if (flagsList && flagsList.parentNode) {
-        flagsList.parentNode.insertBefore(errorDiv, flagsList);
-    } else if (mainContent) {
-        mainContent.insertBefore(errorDiv, mainContent.firstChild);
-    }
-    
-    // Auto-remove after 5 seconds
-    setTimeout(() => {
-        if (errorDiv.parentNode) {
-            errorDiv.parentNode.removeChild(errorDiv);
-        }
-    }, 5000);
 }
 
 // Mock data for fallback (empty array - API will provide real data)
@@ -424,51 +345,51 @@ let currentSection: 'unresolved-flags' | 'resolved-flags' = 'unresolved-flags';
  * Initialize the flag management interface
  */
 export async function initializeFlags(): Promise<void> {
-    console.log('🚀 [FLAG-DEBUG] Starting initializeFlags() function');
+    // console.log('🚀 [FLAG-DEBUG] Starting initializeFlags() function'); // 🟢 MEDIUM: Function start - keep for monitoring
     
     try {
         // Get course ID from URL or global context
         const courseId = getCourseIdFromContext();
-        
-        console.log('🔍 [FLAG-DEBUG] Course ID from context:', courseId);
-        console.log('🔍 [FLAG-DEBUG] Window.currentClass:', (window as any).currentClass);
-        console.log('🔍 [FLAG-DEBUG] URL params:', window.location.search);
-        
+
+        // console.log('🔍 [FLAG-DEBUG] Course ID from context:', courseId); // 🟡 HIGH: Course ID exposure
+        // console.log('🔍 [FLAG-DEBUG] Window.currentClass:', (window as any).currentClass); // 🟢 MEDIUM: Debug info - keep for monitoring
+        // console.log('🔍 [FLAG-DEBUG] URL params:', window.location.search); // 🔴 CRITICAL: Exposes URL parameters (session tokens)
+
         if (!courseId) {
-            console.error('❌ [FLAG-DEBUG] No course ID found in context');
-            showErrorMessage('Unable to determine course context. Please refresh the page.');
+            // console.error('❌ [FLAG-DEBUG] No course ID found in context'); // 🟢 MEDIUM: Error logging - keep for debugging
+            showErrorToast('Unable to determine course context. Please refresh the page.');
             return;
         }
 
-        console.log('🔍 [FLAG-DEBUG] Initializing flags for course:', courseId);
+        // console.log('🔍 [FLAG-DEBUG] Initializing flags for course:', courseId); // 🟡 HIGH: Course ID exposure
         
         // Show loading state
-        console.log('⏳ [FLAG-DEBUG] Showing loading state');
+        // console.log('⏳ [FLAG-DEBUG] Showing loading state'); // 🟢 MEDIUM: Loading state - keep for monitoring
         showLoadingState();
         
         // Fetch flags from API
-        console.log('📡 [FLAG-DEBUG] Fetching flags from API...');
+        // console.log('📡 [FLAG-DEBUG] Fetching flags from API...'); // 🟢 MEDIUM: Debug info - keep for monitoring
         flagData = await fetchFlags(courseId);
-        console.log('📊 [FLAG-DEBUG] Fetched flag data:', flagData);
-        console.log('📊 [FLAG-DEBUG] Number of flags fetched:', flagData.length);
+        // console.log('📊 [FLAG-DEBUG] Fetched flag data:', flagData); // 🔴 CRITICAL: Exposes all flag data
+        // console.log('📊 [FLAG-DEBUG] Number of flags fetched:', flagData.length); // 🟢 MEDIUM: Count info - keep for monitoring
         
         // Hide loading state
-        console.log('✅ [FLAG-DEBUG] Hiding loading state');
+        // console.log('✅ [FLAG-DEBUG] Hiding loading state'); // 🟢 MEDIUM: Debug info - keep for monitoring
         hideLoadingState();
-        
+
         // Render flags with fetched data
-        console.log('🎨 [FLAG-DEBUG] Rendering flags...');
+        // console.log('🎨 [FLAG-DEBUG] Rendering flags...'); // 🟢 MEDIUM: Debug info - keep for monitoring
         renderFlags();
         
         // Setup event listeners
-        console.log('🎧 [FLAG-DEBUG] Setting up event listeners...');
+        // console.log('🎧 [FLAG-DEBUG] Setting up event listeners...'); // 🟢 MEDIUM: Debug info - keep for monitoring
         setupEventListeners();
-        
+
         // Update navigation stats
-        console.log('📊 [FLAG-DEBUG] Updating navigation stats...');
+        // console.log('📊 [FLAG-DEBUG] Updating navigation stats...'); // 🟢 MEDIUM: Debug info - keep for monitoring
         updateActiveNavigation();
-        
-        console.log('✅ [FLAG-DEBUG] Flags initialized successfully');
+
+        // console.log('✅ [FLAG-DEBUG] Flags initialized successfully'); // 🟢 MEDIUM: Success info - keep for monitoring
         
     } catch (error) {
         console.error('❌ [FLAG-DEBUG] Error initializing flags:', error);
@@ -478,10 +399,10 @@ export async function initializeFlags(): Promise<void> {
         hideLoadingState();
         
         // Show error message
-        showErrorMessage('Failed to initialize flags. Please refresh the page and try again.');
-        
+        showErrorToast('Failed to initialize flags. Please refresh the page and try again.');
+
         // Fallback to mock data for development
-        console.log('🔄 [FLAG-DEBUG] Falling back to mock data for development');
+        // console.log('🔄 [FLAG-DEBUG] Falling back to mock data for development');
         flagData = mockFlagData;
         renderFlags();
         setupEventListeners();
@@ -494,24 +415,24 @@ export async function initializeFlags(): Promise<void> {
  * @returns Course ID string or null if not found
  */
 function getCourseIdFromContext(): string | null {
-    console.log('🔍 [FLAG-DEBUG] Getting course ID from context...');
-    
+    // console.log('🔍 [FLAG-DEBUG] Getting course ID from context...');
+
     // Try to get from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const courseIdFromUrl = urlParams.get('courseId');
-    console.log('🔍 [FLAG-DEBUG] Course ID from URL:', courseIdFromUrl);
+    // console.log('🔍 [FLAG-DEBUG] Course ID from URL:', courseIdFromUrl);
     
     if (courseIdFromUrl) {
-        console.log('✅ [FLAG-DEBUG] Found course ID in URL:', courseIdFromUrl);
+        // console.log('✅ [FLAG-DEBUG] Found course ID in URL:', courseIdFromUrl);
         return courseIdFromUrl;
     }
     
     // Try to get from global context (if available)
     if (typeof window !== 'undefined' && (window as any).courseContext) {
         const courseIdFromContext = (window as any).courseContext.activeCourseId;
-        console.log('🔍 [FLAG-DEBUG] Course ID from global context:', courseIdFromContext);
+        // console.log('🔍 [FLAG-DEBUG] Course ID from global context:', courseIdFromContext);
         if (courseIdFromContext) {
-            console.log('✅ [FLAG-DEBUG] Found course ID in global context:', courseIdFromContext);
+            // console.log('✅ [FLAG-DEBUG] Found course ID in global context:', courseIdFromContext);
             return courseIdFromContext;
         }
     }
@@ -519,9 +440,9 @@ function getCourseIdFromContext(): string | null {
     // Try to get from instructor mode's currentClass
     if (typeof window !== 'undefined' && (window as any).currentClass && (window as any).currentClass.id) {
         const courseIdFromCurrentClass = (window as any).currentClass.id;
-        console.log('🔍 [FLAG-DEBUG] Course ID from currentClass:', courseIdFromCurrentClass);
+        // console.log('🔍 [FLAG-DEBUG] Course ID from currentClass:', courseIdFromCurrentClass);
         if (courseIdFromCurrentClass) {
-            console.log('✅ [FLAG-DEBUG] Found course ID in currentClass:', courseIdFromCurrentClass);
+            // console.log('✅ [FLAG-DEBUG] Found course ID in currentClass:', courseIdFromCurrentClass);
             return courseIdFromCurrentClass;
         }
     }
@@ -529,18 +450,18 @@ function getCourseIdFromContext(): string | null {
     // Try to get from localStorage (if available)
     try {
         const storedContext = localStorage.getItem('courseContext');
-        console.log('🔍 [FLAG-DEBUG] Stored context from localStorage:', storedContext);
+        // console.log('🔍 [FLAG-DEBUG] Stored context from localStorage:', storedContext); // 🔴 CRITICAL: Exposes localStorage contents (session data)
         if (storedContext) {
             const context = JSON.parse(storedContext);
             const courseIdFromStorage = context.activeCourseId;
-            console.log('🔍 [FLAG-DEBUG] Course ID from localStorage:', courseIdFromStorage);
+            // console.log('🔍 [FLAG-DEBUG] Course ID from localStorage:', courseIdFromStorage); // 🟡 HIGH: Course ID exposure
             if (courseIdFromStorage) {
-                console.log('✅ [FLAG-DEBUG] Found course ID in localStorage:', courseIdFromStorage);
+                // console.log('✅ [FLAG-DEBUG] Found course ID in localStorage:', courseIdFromStorage); // 🟡 HIGH: Course ID exposure
                 return courseIdFromStorage;
             }
         }
     } catch (error) {
-        console.warn('⚠️ [FLAG-DEBUG] Could not parse course context from localStorage:', error);
+        // console.warn('⚠️ [FLAG-DEBUG] Could not parse course context from localStorage:', error); // 🟢 MEDIUM: Error logging - keep for debugging
     }
     
     console.error('❌ [FLAG-DEBUG] No course ID found in any context');
@@ -600,10 +521,10 @@ function setupEventListeners(): void {
 
     // Flag card collapse listeners (event delegation)
     const flagsList = document.getElementById('flags-list');
-    console.log('🎧 [FLAG-DEBUG] Setting up flag card click listeners on:', flagsList);
+    // console.log('🎧 [FLAG-DEBUG] Setting up flag card click listeners on:', flagsList);
     if (flagsList) {
         flagsList.addEventListener('click', handleFlagCardClick);
-        console.log('🎧 [FLAG-DEBUG] Event listener attached successfully');
+        // console.log('🎧 [FLAG-DEBUG] Event listener attached successfully');
     } else {
         console.error('❌ [FLAG-DEBUG] Flags list element not found for event listener');
     }
@@ -682,44 +603,44 @@ function updateActiveNavigation(): void {
  */
 function handleFlagCardClick(event: Event): void {
     const target = event.target as HTMLElement;
-    
-    console.log('🖱️ [FLAG-DEBUG] Flag card clicked, target:', target);
-    console.log('🖱️ [FLAG-DEBUG] Target classes:', target.className);
-    console.log('🖱️ [FLAG-DEBUG] Target tag:', target.tagName);
-    
+
+    // console.log('🖱️ [FLAG-DEBUG] Flag card clicked, target:', target);
+    // console.log('🖱️ [FLAG-DEBUG] Target classes:', target.className);
+    // console.log('🖱️ [FLAG-DEBUG] Target tag:', target.tagName);
+
     // Handle resolve button clicks
     if (target.classList.contains('resolve-button')) {
-        console.log('🖱️ [FLAG-DEBUG] Resolve button clicked, handling resolve');
+        // console.log('🖱️ [FLAG-DEBUG] Resolve button clicked, handling resolve');
         handleResolveClick(target);
         return;
     }
 
     // Handle edit/save button clicks
     if (target.classList.contains('edit-button')) {
-        console.log('🖱️ [FLAG-DEBUG] Edit/Save button clicked, handling toggle');
+        // console.log('🖱️ [FLAG-DEBUG] Edit/Save button clicked, handling toggle');
         handleEditToggle(target);
         return;
     }
-    
+
     // Don't collapse if clicking on response section elements
     if (target.closest('.response-section')) {
-        console.log('🖱️ [FLAG-DEBUG] Clicked on response section, ignoring');
+        // console.log('🖱️ [FLAG-DEBUG] Clicked on response section, ignoring');
         return;
     }
-    
+
     const flagCard = target.closest('.flag-card') as HTMLElement;
     if (!flagCard) {
-        console.log('🖱️ [FLAG-DEBUG] No flag card found');
+        // console.log('🖱️ [FLAG-DEBUG] No flag card found');
         return;
     }
 
     const flagId = flagCard.dataset.flagId;
     if (!flagId) {
-        console.log('🖱️ [FLAG-DEBUG] No flag ID found');
+        // console.log('🖱️ [FLAG-DEBUG] No flag ID found');
         return;
     }
 
-    console.log('🖱️ [FLAG-DEBUG] Toggling collapse for flag:', flagId);
+    // console.log('🖱️ [FLAG-DEBUG] Toggling collapse for flag:', flagId);
     // Toggle collapse state
     toggleFlagCollapse(flagId);
 }
@@ -737,7 +658,7 @@ async function handleResolveClick(button: HTMLElement): Promise<void> {
     // Get course ID from context
     const courseId = getCourseIdFromContext();
     if (!courseId) {
-        showErrorMessage('Unable to determine course context');
+            showErrorToast('Unable to determine course context');
         return;
     }
 
@@ -781,13 +702,12 @@ async function handleResolveClick(button: HTMLElement): Promise<void> {
         renderFlags();
         updateNavigationCounts();
 
-        console.log('[FLAG-RESOLVE] Successfully updated flag:', flagId, 'to', newStatus);
+        // console.log('[FLAG-RESOLVE] Successfully updated flag:', flagId, 'to', newStatus);
+        showSuccessToast(`Flag ${newStatus === 'resolved' ? 'resolved' : 'unresolved'} successfully.`);
         
     } catch (error) {
         console.error('[FLAG-RESOLVE] Error updating flag:', error);
-        
-        // Show error notification
-        showErrorMessage(
+        showErrorToast(
             `Failed to ${newStatus === 'resolved' ? 'resolve' : 'unresolve'} flag. Please try again.`
         );
         
@@ -848,7 +768,7 @@ async function handleEnterEditMode(button: HTMLElement, flagId: string, flag: Fl
 async function handleSaveEdit(button: HTMLElement, flagId: string): Promise<void> {
     const courseId = getCourseIdFromContext();
     if (!courseId) {
-        showErrorMessage('Unable to determine course context');
+            showErrorToast('Unable to determine course context');
         return;
     }
 
@@ -877,37 +797,19 @@ async function handleSaveEdit(button: HTMLElement, flagId: string): Promise<void
                 };
             }
 
-            // Show success modal instead of inline message
-            await showSaveSuccessModal();
+            showSuccessToast('Flag response updated successfully.');
 
             // Re-render
             renderFlags();
         }
     } catch (error) {
         console.error('Error updating response:', error);
-        showErrorMessage('Failed to update response. Please try again.');
+        showErrorToast('Failed to update response. Please try again.');
     } finally {
         // Reset button state
         button.textContent = originalText;
         (button as HTMLButtonElement).disabled = false;
     }
-}
-
-/**
- * Show success modal after successful save
- */
-async function showSaveSuccessModal(): Promise<void> {
-    await showCustomModal({
-        type: 'success',
-        title: 'Response Updated',
-        content: 'The flag response has been successfully updated.',
-        buttons: [
-            { text: 'OK', type: 'primary', closeOnClick: true }
-        ],
-        showCloseButton: true,
-        closeOnOverlayClick: true,
-        closeOnEscape: true
-    });
 }
 
 
@@ -948,8 +850,8 @@ function toggleFlagCollapse(flagId: string): void {
     if (expandArrow) {
         expandArrow.textContent = flag.collapsed ? '▼' : '▲';
     }
-    
-    console.log(`🔄 [FLAG-DEBUG] Toggled flag ${flagId} to ${flag.collapsed ? 'collapsed' : 'expanded'}`);
+
+    // console.log(`🔄 [FLAG-DEBUG] Toggled flag ${flagId} to ${flag.collapsed ? 'collapsed' : 'expanded'}`);
 }
 
 /**
@@ -965,14 +867,14 @@ function handleTimeFilterChange(event: Event): void {
  * Render all flags dynamically
  */
 function renderFlags(): void {
-    console.log('🎨 [FLAG-DEBUG] Starting renderFlags() function');
-    console.log('🎨 [FLAG-DEBUG] Current flag data:', flagData);
-    console.log('🎨 [FLAG-DEBUG] Number of flags in data:', flagData.length);
-    console.log('🎨 [FLAG-DEBUG] Current section:', currentSection);
-    console.log('🎨 [FLAG-DEBUG] Current filters:', currentFilters);
-    
+    // console.log('🎨 [FLAG-DEBUG] Starting renderFlags() function'); // 🟢 MEDIUM: Function start - keep for monitoring
+    // console.log('🎨 [FLAG-DEBUG] Current flag data:', flagData); // 🔴 CRITICAL: Exposes all flag data
+    // console.log('🎨 [FLAG-DEBUG] Number of flags in data:', flagData.length); // 🟢 MEDIUM: Count info - keep for monitoring
+    // console.log('🎨 [FLAG-DEBUG] Current section:', currentSection);
+    // console.log('🎨 [FLAG-DEBUG] Current filters:', currentFilters);
+
     const flagsList = document.getElementById('flags-list');
-    console.log('🎨 [FLAG-DEBUG] Flags list element:', flagsList);
+    // console.log('🎨 [FLAG-DEBUG] Flags list element:', flagsList);
     
     if (!flagsList) {
         console.error('❌ [FLAG-DEBUG] Flags list element not found!');
@@ -981,22 +883,22 @@ function renderFlags(): void {
 
     // Filter flags based on current section, flag types, and date range
     let sectionFlags: FlagReport[] = [];
-    
-    console.log('🔍 [FLAG-DEBUG] Filtering flags...');
-    
+
+    // console.log('🔍 [FLAG-DEBUG] Filtering flags...');
+
     switch (currentSection) {
         case 'unresolved-flags':
             sectionFlags = flagData.filter(flag => {
                 const statusMatch = flag.status === 'unresolved';
                 const typeMatch = currentFilters.flagTypes.has(flag.flagType);
                 const dateMatch = isDateInRange(flag);
-                
-                console.log(`🔍 [FLAG-DEBUG] Flag ${flag.id}: status=${statusMatch}, type=${typeMatch}, date=${dateMatch}`);
-                
+
+                // console.log(`🔍 [FLAG-DEBUG] Flag ${flag.id}: status=${statusMatch}, type=${typeMatch}, date=${dateMatch}`);
+
                 if (!statusMatch || !typeMatch || !dateMatch) {
                     return false;
                 }
-                
+
                 return true;
             });
             break;
@@ -1005,13 +907,13 @@ function renderFlags(): void {
                 const statusMatch = flag.status === 'resolved';
                 const typeMatch = currentFilters.flagTypes.has(flag.flagType);
                 const dateMatch = isDateInRange(flag);
-                
-                console.log(`🔍 [FLAG-DEBUG] Flag ${flag.id}: status=${statusMatch}, type=${typeMatch}, date=${dateMatch}`);
-                
+
+                // console.log(`🔍 [FLAG-DEBUG] Flag ${flag.id}: status=${statusMatch}, type=${typeMatch}, date=${dateMatch}`);
+
                 if (!statusMatch || !typeMatch || !dateMatch) {
                     return false;
                 }
-                
+
                 return true;
             });
             break;
@@ -1021,8 +923,8 @@ function renderFlags(): void {
             break;
     }
 
-    console.log('📊 [FLAG-DEBUG] Filtered section flags:', sectionFlags);
-    console.log('📊 [FLAG-DEBUG] Number of filtered flags:', sectionFlags.length);
+    // console.log('📊 [FLAG-DEBUG] Filtered section flags:', sectionFlags); // 🔴 CRITICAL: Exposes filtered flag data
+    // console.log('📊 [FLAG-DEBUG] Number of filtered flags:', sectionFlags.length); // 🟢 MEDIUM: Count info - keep for monitoring
 
     // Sort by time filter
     const sortedFlags = [...sectionFlags].sort((a, b) => {
@@ -1037,24 +939,24 @@ function renderFlags(): void {
         }
     });
 
-    console.log('📊 [FLAG-DEBUG] Sorted flags:', sortedFlags);
+    // console.log('📊 [FLAG-DEBUG] Sorted flags:', sortedFlags); // 🔴 CRITICAL: Exposes sorted flag data
 
     // Clear and render
-    console.log('🧹 [FLAG-DEBUG] Clearing flags list innerHTML');
+    // console.log('🧹 [FLAG-DEBUG] Clearing flags list innerHTML');
     flagsList.innerHTML = '';
-    
-    console.log('🎨 [FLAG-DEBUG] Creating flag cards...');
+
+    // console.log('🎨 [FLAG-DEBUG] Creating flag cards...'); // 🟢 MEDIUM: Debug info - keep for monitoring
     sortedFlags.forEach((flag, index) => {
-        console.log(`🎨 [FLAG-DEBUG] Creating card ${index + 1} for flag:`, flag);
+        // console.log(`🎨 [FLAG-DEBUG] Creating card ${index + 1} for flag:`, flag); // 🔴 CRITICAL: Exposes individual flag data
         const flagCard = createFlagCard(flag);
         flagsList.appendChild(flagCard);
-        console.log(`✅ [FLAG-DEBUG] Card ${index + 1} created and appended`);
+        // console.log(`✅ [FLAG-DEBUG] Card ${index + 1} created and appended`);
     });
 
-    console.log('📊 [FLAG-DEBUG] Updating navigation counts...');
+    // console.log('📊 [FLAG-DEBUG] Updating navigation counts...');
     updateNavigationCounts();
-    
-    console.log('✅ [FLAG-DEBUG] renderFlags() completed successfully');
+
+    // console.log('✅ [FLAG-DEBUG] renderFlags() completed successfully');
 }
 
 /**

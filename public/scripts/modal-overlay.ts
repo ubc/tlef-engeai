@@ -567,7 +567,7 @@ function getModal(): ModalOverlay {
     // Always create a new modal instance for each call to prevent conflicts
     // between consecutive modals (like delete confirmation -> success modal)
     if (globalModal && globalModal.isVisible) {
-        console.log('⚠️ Modal already open, closing previous modal first');
+        // console.log('⚠️ Modal already open, closing previous modal first'); // 🟢 MEDIUM: Modal state
         globalModal.close('replaced');
     }
 
@@ -1029,12 +1029,12 @@ export async function openUploadModal(
     itemId: string, 
     onUpload?: (material: any) => Promise<{ success: boolean; chunksGenerated?: number } | void>
 ): Promise<void> {
-    console.log('🔍 OPEN UPLOAD MODAL CALLED');
-    console.log('  - topicOrWeekId:', topicOrWeekId);
-    console.log('  - itemId:', itemId);
-    console.log('  - onUpload callback provided:', !!onUpload);
-    console.log('  - onUpload callback type:', typeof onUpload);
-    console.log('  - onUpload callback:', onUpload);
+    // console.log('🔍 OPEN UPLOAD MODAL CALLED'); // 🟢 MEDIUM: Debug info
+    // console.log('  - topicOrWeekId:', topicOrWeekId); // 🟡 HIGH: Upload parameter exposure
+    // console.log('  - itemId:', itemId); // 🟡 HIGH: Upload parameter exposure
+    // console.log('  - onUpload callback provided:', !!onUpload); // 🟢 MEDIUM: Callback presence
+    // console.log('  - onUpload callback type:', typeof onUpload); // 🟢 MEDIUM: Callback type
+    // console.log('  - onUpload callback:', onUpload); // 🔴 CRITICAL: Function implementation exposure
     
     // Get the mount point for the modal
     const mount = document.getElementById('upload-modal-mount');
@@ -1394,22 +1394,22 @@ export async function openUploadModal(
                 date: new Date(),
             };
 
-            console.log('🔍 MATERIAL OBJECT CREATED IN UPLOAD MODAL:');
-            console.log('  - material:', material);
-            console.log('  - material.topicOrWeekId:', material.topicOrWeekId);
-            console.log('  - material.itemId:', material.itemId);
+            // console.log('🔍 MATERIAL OBJECT CREATED IN UPLOAD MODAL:'); // 🔴 CRITICAL: Upload content exposure
+            // console.log('  - material:', material); // 🔴 CRITICAL: Complete material object exposure
+            // console.log('  - material.topicOrWeekId:', material.topicOrWeekId); // 🟡 HIGH: Material ID exposure
+            // console.log('  - material.itemId:', material.itemId); // 🟡 HIGH: Material ID exposure
 
             // Call the upload callback if provided and wait for completion
             if (onUpload) {
-                console.log('🔍 CALLING onUpload CALLBACK');
-                console.log('🔍 onUpload function:', onUpload);
-                console.log('🔍 onUpload function type:', typeof onUpload);
-                console.log('🔍 material being passed:', material);
+                // console.log('🔍 CALLING onUpload CALLBACK'); // 🟢 MEDIUM: Callback execution
+                // console.log('🔍 onUpload function:', onUpload); // 🔴 CRITICAL: Function implementation exposure
+                // console.log('🔍 onUpload function type:', typeof onUpload); // 🟢 MEDIUM: Function type
+                // console.log('🔍 material being passed:', material); // 🔴 CRITICAL: Material content exposure
                 
                 // Show loading modal
-                console.log('🔍 SHOWING LOADING MODAL');
+                // console.log('🔍 SHOWING LOADING MODAL'); // 🟢 MEDIUM: UI state
                 const loadingModalPromise = showUploadLoadingModal();
-                console.log('🔍 LOADING MODAL PROMISE CREATED:', loadingModalPromise);
+                // console.log('🔍 LOADING MODAL PROMISE CREATED:', loadingModalPromise); // 🟢 MEDIUM: Promise object exposure
                 
                 try {
                     console.log('🔍 ABOUT TO CALL onUpload(material)');

@@ -28,6 +28,7 @@ import {
 import { uploadRAGContent } from '../services/RAGService.js';
 import { DocumentUploadModule, UploadResult } from '../services/DocumentUploadModule.js';
 import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, closeModal } from '../modal-overlay.js';
+import { showToast } from '../toast-notification.js';
 import { renderFeatherIcons } from '../functions/api.js';
 
 // In-memory store for the course data
@@ -64,12 +65,11 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         
         // Validate courseId exists before proceeding
         if (!courseId || courseId.trim() === '') {
-            console.error('❌ [DOCUMENTS] Cannot initialize documents page: courseId is missing or empty');
             await showSimpleErrorModal('Cannot load documents: Course ID is missing. Please refresh the page or return to course selection.', 'Initialization Error');
             return;
         }
-        
-        console.log(`✅ [DOCUMENTS] Initializing with courseId: ${courseId}`);
+
+        // console.log(`✅ [DOCUMENTS] Initializing with courseId: ${courseId}`); // 🟢 MEDIUM: Course ID exposure
         
         // Update currentClass.id if it was missing
         if (!currentClass.id) {
@@ -323,7 +323,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                     if (result.data) {
                         instance_topicOrWeek.published = result.data.published;
                     }
-                    console.log(`✅ Topic/Week instance ${instance_topicOrWeek.id} published status updated to ${checked}`);
+                    // console.log(`✅ Topic/Week instance ${instance_topicOrWeek.id} published status updated to ${checked}`); // 🟡 HIGH: Instance ID exposure
+                    if (checked) {
+                        showToast(`Congratulations! You published "${instance_topicOrWeek.title}"`, 3000, 'top-right');
+                    }
                 } else {
                     throw new Error(result.error || 'Failed to update published status');
                 }
@@ -410,7 +413,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const existingHandler = (container as any)._documentsClickHandler;
         if (existingHandler) {
             container.removeEventListener('click', existingHandler);
-            console.log('🔧 Removed existing documents click handler');
+            // console.log('🔧 Removed existing documents click handler'); // 🟢 MEDIUM: Handler management
         }
 
         // Create the click handler function
@@ -464,14 +467,20 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                     if (!newTitle) { showErrorModal('Validation Error', 'Section name cannot be empty.'); return; }
                     if (newTitle.length > 100) { showErrorModal('Validation Error', 'Section name is too long (max 100 characters).'); return; }
                     saveTitleChange(topicOrWeekId, itemId, newTitle);
-                } else {
+                } 
+                
+                else {
                     const header = earlyOk.closest('.topic-or-week-header') as HTMLElement | null;
                     if (!header) return;
+
                     const topicOrWeekId = header.getAttribute('data-topic-or-week-instance') || '0';
                     const titleWrap = header.querySelector('.topic-or-week-title') as HTMLElement | null;
+
                     const input = titleWrap?.querySelector('.title-edit-input') as HTMLInputElement | null;
                     if (!input) return;
                     const newTitle = input.value.trim();
+
+
                     if (!newTitle) { showErrorModal('Validation Error', 'Division name cannot be empty.'); return; }
                     if (newTitle.length > 100) { showErrorModal('Validation Error', 'Division name is too long (max 100 characters).'); return; }
                     saveTitleChange(topicOrWeekId, null, newTitle);
@@ -506,7 +515,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             if (divisionHeader) {
                 const topicOrWeekId = divisionHeader.getAttribute('data-topic-or-week-instance') || '0';
                 if (!topicOrWeekId) return;
-                console.log('🔍 TOPIC/WEEK INSTANCE CLICKED - Topic/Week ID:', topicOrWeekId);
+                // console.log('🔍 TOPIC/WEEK INSTANCE CLICKED - Topic/Week ID:', topicOrWeekId); // 🟡 HIGH: Topic/Week ID exposure
                 toggleDivision(topicOrWeekId);
                 return;
             }
@@ -526,7 +535,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             if (deleteSectionElement && deleteSectionElement.dataset.action === 'delete-section') {
                 event.stopPropagation();
                 //START DEBUG LOG : DEBUG-CODE(014)
-                console.log('🗑️ Delete section clicked via event delegation');
+                // console.log('🗑️ Delete section clicked via event delegation'); // 🟢 MEDIUM: UI interaction
                 //END DEBUG LOG : DEBUG-CODE(014)
                 const sectionTopicOrWeekId = deleteSectionElement.dataset.topicOrWeekInstanceId || '0';
                 const sectionContentId = deleteSectionElement.dataset.contentId || '0';
@@ -680,7 +689,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                             const materialTopicOrWeekId = ids[2] || '0';
                             const materialContentId = ids[3] || '0';
                             
-                            console.log('DEBUG #13: topicOrWeekId : ', materialTopicOrWeekId, ' ; contentId : ', materialContentId, ' ; materialId : ', button.dataset.materialId);
                             deleteAdditionalMaterial(materialTopicOrWeekId, materialContentId, button.dataset.materialId || '');
                             return; // Prevent further event handling
                     }
@@ -707,7 +715,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 const topicOrWeekId = ids[2] || '0';
                 const contentId = ids[3] || '0';
                 if (!topicOrWeekId || !contentId) return;
-                console.log('🔍 UPLOAD AREA CLICKED - Topic/Week ID:', topicOrWeekId, 'Item ID:', contentId);
                 openUploadModal(topicOrWeekId, contentId, handleUploadMaterial);
                     return;
             }
@@ -719,7 +726,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 const topicOrWeekId = ids[2] || '0';
                 const contentId = ids[3] || '0';
                 if (!topicOrWeekId || !contentId) return;
-                console.log('🔍 ITEM CLICKED - Topic/Week ID:', topicOrWeekId, 'Item ID:', contentId);
                 return;
             }
         };
@@ -727,7 +733,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // Store the handler reference and add the event listener
         (container as any)._documentsClickHandler = clickHandler;
         container.addEventListener('click', clickHandler);
-        console.log('🔧 Added documents click handler');
     }
 
     // ----- Divisions (Week/Topic) management -----
@@ -749,8 +754,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 await showSimpleErrorModal('Cannot add division: Course ID is missing.', 'Error');
                 return;
             }
-            console.log('📡 Making API call to add topic/week instance...');
-            console.log('🌐 API URL:', `/api/courses/${courseId}/topic-or-week-instances`);
+            // console.log('📡 Making API call to add topic/week instance...'); // 🟢 MEDIUM: API call logging
+            // console.log('🌐 API URL:', `/api/courses/${courseId}/topic-or-week-instances`); // 🔴 CRITICAL: API URL with course ID exposure
 
             const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances`, {
                 method: 'POST',
@@ -763,7 +768,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 })
             });
 
-            console.log('📡 Add Division API Response status:', response.status, response.statusText);
+            // console.log('📡 Add Division API Response status:', response.status, response.statusText); // 🟢 MEDIUM: HTTP status logging
 
             // Handle unauthorized gracefully
             if (response.status === 401 || response.status === 403) {
@@ -772,7 +777,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             }
 
             const result = await response.json();
-            console.log('📡 Add Division API Response body:', result);
+            // console.log('📡 Add Division API Response body:', result); // 🔴 CRITICAL: API response data exposure
 
             if (!result.success) {
                 await showSimpleErrorModal('Failed to add division: ' + (result.error || 'Unknown error'), 'Add Division Error');
@@ -796,7 +801,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             // Update control panel labels (if frame type-dependent)
             updateDivisionButtonLabels(currentClass);
 
-            console.log('✅ Topic/Week instance added successfully');
+            // console.log('✅ Topic/Week instance added successfully'); // 🟢 MEDIUM: Success logging
         } catch (error) {
             console.error('❌ Exception caught while adding topic/week instance:', error);
             await showSimpleErrorModal('An error occurred while adding the topic/week instance. Please try again.', 'Add Topic/Week Instance Error');
@@ -810,7 +815,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const existingDeleteHandler = (deleteAllDocumentsBtn as any)._deleteAllHandler;
         if (existingDeleteHandler) {
             deleteAllDocumentsBtn.removeEventListener('click', existingDeleteHandler);
-            console.log('🔧 Removed existing delete all documents handler');
+            // console.log('🔧 Removed existing delete all documents handler'); // 🟢 MEDIUM: Handler management
         }
 
         // Create the delete handler function
@@ -821,7 +826,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // Store the handler reference and add the event listener
         (deleteAllDocumentsBtn as any)._deleteAllHandler = deleteHandler;
         deleteAllDocumentsBtn.addEventListener('click', deleteHandler);
-        console.log('🔧 Added delete all documents handler');
+        // console.log('🔧 Added delete all documents handler'); // 🟢 MEDIUM: Handler management
     }
 
     // COMMENTED OUT: Add event listener for nuclear clear button
@@ -832,7 +837,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const existingNuclearHandler = (nuclearClearBtn as any)._nuclearHandler;
         if (existingNuclearHandler) {
             nuclearClearBtn.removeEventListener('click', existingNuclearHandler);
-            console.log('🔧 Removed existing nuclear clear handler');
+            // console.log('🔧 Removed existing nuclear clear handler'); // 🟢 MEDIUM: Handler management
         }
 
         // Create the nuclear clear handler function
@@ -843,7 +848,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // Store the handler reference and add the event listener
         (nuclearClearBtn as any)._nuclearHandler = nuclearHandler;
         nuclearClearBtn.addEventListener('click', nuclearHandler);
-        console.log('🔧 Added nuclear clear handler');
+        // console.log('🔧 Added nuclear clear handler'); // 🟢 MEDIUM: Handler management
     }
 
     // COMMENTED OUT: Add event listener for wipe MongoDB button
@@ -853,7 +858,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const existingWipeMongoDBHandler = (wipeMongoDBBtn as any)._wipeMongoDBHandler;
         if (existingWipeMongoDBHandler) {
             wipeMongoDBBtn.removeEventListener('click', existingWipeMongoDBHandler);
-            console.log('🔧 Removed existing wipe MongoDB handler');
+            // console.log('🔧 Removed existing wipe MongoDB handler'); // 🟢 MEDIUM: Handler management
         }
 
         // Create the wipe MongoDB handler function
@@ -864,7 +869,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // Store the handler reference and add the event listener
         (wipeMongoDBBtn as any)._wipeMongoDBHandler = wipeMongoDBHandler;
         wipeMongoDBBtn.addEventListener('click', wipeMongoDBHandler);
-        console.log('🔧 Added wipe MongoDB handler');
+        // console.log('🔧 Added wipe MongoDB handler'); // 🟢 MEDIUM: Handler management
     }
     */
 
@@ -874,7 +879,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const existingAddDivisionHandler = (addDivisionBtn as any)._addDivisionHandler;
         if (existingAddDivisionHandler) {
             addDivisionBtn.removeEventListener('click', existingAddDivisionHandler);
-            console.log('🔧 Removed existing add division handler');
+            // console.log('🔧 Removed existing add division handler'); // 🟢 MEDIUM: Handler management
         }
 
         const addDivisionHandler = async () => {
@@ -883,7 +888,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
         (addDivisionBtn as any)._addDivisionHandler = addDivisionHandler;
         addDivisionBtn.addEventListener('click', addDivisionHandler);
-        console.log('🔧 Added add division handler');
+        // console.log('🔧 Added add division handler'); // 🟢 MEDIUM: Handler management
     }
 
     // --- Event Handler Functions ---
@@ -895,12 +900,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @returns Promise<void>
      */
     async function handleUploadMaterial(material: any): Promise<{ success: boolean; chunksGenerated?: number } | void> {
-        console.log('🔍 HANDLE UPLOAD MATERIAL CALLED - FUNCTION STARTED');
-        console.log('  - material:', material);
-        console.log('  - material.topicOrWeekId:', material.topicOrWeekId);
-        console.log('  - material.itemId:', material.itemId);
-        console.log('  - courseData:', courseData);
-        console.log('  - currentClass:', currentClass);
+    // console.log('🔍 HANDLE UPLOAD MATERIAL CALLED - FUNCTION STARTED'); // 🟢 MEDIUM: Function start logging
+    // console.log('  - material:', material); // 🔴 CRITICAL: Upload material data exposure
+    // console.log('  - material.topicOrWeekId:', material.topicOrWeekId); // 🟡 HIGH: Material ID exposure
+    // console.log('  - material.itemId:', material.itemId); // 🟡 HIGH: Material ID exposure
+    // console.log('  - courseData:', courseData); // 🔴 CRITICAL: Course data exposure
+    // console.log('  - currentClass:', currentClass); // 🔴 CRITICAL: Current class data exposure
         
         try {
             // Get the topic/week instance and the content item
@@ -913,7 +918,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             }
             
             const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
-            console.log('  - instance_topicOrWeek found:', !!instance_topicOrWeek);
+            // console.log('  - instance_topicOrWeek found:', !!instance_topicOrWeek); // 🟢 MEDIUM: Data validation
             
             if (!instance_topicOrWeek) {
                 console.error('❌ Topic/Week instance not found for topicOrWeekId:', topicOrWeekId);
@@ -922,7 +927,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             }
             
             const contentItem = instance_topicOrWeek.items.find(c => c.id === material.itemId);
-            console.log('  - contentItem found:', !!contentItem);
+            // console.log('  - contentItem found:', !!contentItem); // 🟢 MEDIUM: Data validation
             
             if (!contentItem) {
                 console.error('❌ Content item not found for itemId:', material.itemId, 'in topic/week:', instance_topicOrWeek.title);
@@ -1109,9 +1114,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     async function addObjective(topicOrWeekId: string, contentId: string) {
         //START DEBUG LOG : DEBUG-CODE(015)
         console.log('🎯 addObjective called with topicOrWeekId:', topicOrWeekId, 'contentId:', contentId);
-        console.log('🔍 Current class available:', !!currentClass);
-        console.log('🔍 Current class ID:', currentClass?.id);
-        console.log('🔍 Current class name:', currentClass?.courseName);
+        // console.log('🔍 Current class available:', !!currentClass); // 🟢 MEDIUM: Data availability check
+        // console.log('🔍 Current class ID:', currentClass?.id); // 🟡 HIGH: Course ID exposure
+        // console.log('🔍 Current class name:', currentClass?.courseName); // 🟡 HIGH: Course name exposure
         //END DEBUG LOG : DEBUG-CODE(015)
         
         const objectiveInput = document.getElementById(`new-title-${topicOrWeekId}-${contentId}`) as HTMLInputElement | null;
@@ -1130,7 +1135,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         }
 
         //START DEBUG LOG : DEBUG-CODE(017)
-        console.log('📝 Learning objective text:', learningObjective);
+        // console.log('📝 Learning objective text:', learningObjective); // 🟡 HIGH: Learning objective content exposure
         //END DEBUG LOG : DEBUG-CODE(017)
 
         // find the topic/week instance and the content item
@@ -1144,7 +1149,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         }
 
         //START DEBUG LOG : DEBUG-CODE(019)
-        console.log('✅ Found content item:', content.title, 'currentClass:', currentClass.courseName);
+        // console.log('✅ Found content item:', content.title, 'currentClass:', currentClass.courseName); // 🟡 HIGH: Content title and course name exposure
         //END DEBUG LOG : DEBUG-CODE(019)
 
         const newObjective = {
@@ -1165,8 +1170,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             }
             //START DEBUG LOG : DEBUG-CODE(020)
             console.log('📡 Making API call to add learning objective...');
-            console.log('🌐 API URL:', `/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives`);
-            console.log('📦 Request body:', { learningObjective: newObjective });
+            // console.log('🌐 API URL:', `/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives`); // 🔴 CRITICAL: API URL with course/content IDs exposure
+            // console.log('📦 Request body:', { learningObjective: newObjective }); // 🟡 HIGH: Learning objective content exposure
             //END DEBUG LOG : DEBUG-CODE(020)
             
             // Call backend API to add learning objective
@@ -1187,19 +1192,19 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const result = await response.json();
             
             //START DEBUG LOG : DEBUG-CODE(022)
-            console.log('📡 API Response body:', result);
+            // console.log('📡 API Response body:', result); // 🔴 CRITICAL: API response data exposure
             //END DEBUG LOG : DEBUG-CODE(022)
             
             if (result.success) {
                 //START DEBUG LOG : DEBUG-CODE(023)
-                console.log('✅ Learning objective added successfully to database');
+                // console.log('✅ Learning objective added successfully to database'); // 🟢 MEDIUM: Database operation success
                 //END DEBUG LOG : DEBUG-CODE(023)
                 
                 // Clear the input field
                 objectiveInput.value = '';
                 // Reload learning objectives from database to ensure consistency
                 await loadLearningObjectives(topicOrWeekId, contentId);
-                console.log('Learning objective added successfully');
+                // console.log('Learning objective added successfully'); // 🟢 MEDIUM: Operation success
             } else {
                 //START DEBUG LOG : DEBUG-CODE(024)
                 console.error('❌ API returned error:', result.error);
@@ -1225,7 +1230,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      */
     function editObjective(topicOrWeekId: string, contentId: string, index: number) {
         //START DEBUG LOG : DEBUG-CODE(036)
-        console.log('✏️ editObjective called with topicOrWeekId:', topicOrWeekId, 'contentId:', contentId, 'index:', index);
+        // console.log('✏️ editObjective called with topicOrWeekId:', topicOrWeekId, 'contentId:', contentId, 'index:', index); // 🟡 HIGH: Function parameters exposure
         //END DEBUG LOG : DEBUG-CODE(036)
         
         const objective = courseData.find(d => d.id === topicOrWeekId)
@@ -1696,9 +1701,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
     // ----- Sections management -----
     async function addSection(instance_topicOrWeek: TopicOrWeekInstance) {
-        //START DEBUG LOG : DEBUG-CODE(054)
-        console.log('➕ addSection called for topic/week instance:', instance_topicOrWeek.id, instance_topicOrWeek.title);
-        //END DEBUG LOG : DEBUG-CODE(054)
         
         if (!currentClass) {
             //START DEBUG LOG : DEBUG-CODE(055)
@@ -1717,7 +1719,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
         try {
             if (!courseId) {
-                console.error('❌ Cannot add section: courseId is missing');
                 await showSimpleErrorModal('Cannot add section: Course ID is missing.', 'Error');
                 return;
             }
@@ -1772,16 +1773,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 
                 console.log('Section added successfully');
             } else {
-                //START DEBUG LOG : DEBUG-CODE(060)
-                console.error('❌ API returned error:', result.error);
-                //END DEBUG LOG : DEBUG-CODE(060)
                 await showSimpleErrorModal('Failed to add section: ' + result.error, 'Add Section Error');
             }
         } catch (error) {
-            //START DEBUG LOG : DEBUG-CODE(061)
-            console.error('❌ Exception caught while adding section:', error);
-            //END DEBUG LOG : DEBUG-CODE(061)
-            console.error('Error adding section:', error);
             await showSimpleErrorModal('An error occurred while adding the section. Please try again.', 'Add Section Error');
         }
     }
@@ -2127,7 +2121,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                         // Exit edit mode with backend title
                         exitEditMode(topicOrWeekId, itemId, updatedTitle);
                         
-                        console.log('✅ Item title saved successfully');
                     }
                 } else {
                     throw new Error(responseData.error || 'Failed to rename section');
@@ -2182,7 +2175,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             // Close loading modal on error
             closeModal('error');
             
-            console.error('❌ Error saving title:', error);
             const errorMessage = error instanceof Error ? error.message : 'Failed to save title. Please try again.';
             await showErrorModal('Error', errorMessage);
             
@@ -2283,51 +2275,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
         return wrap;
     }
-
-
-    /**
-     * Delete an additional material
-     * 
-     * @param divisionId the id of the division
-     * @param contentId the id of the content item
-     * @param materialId the id of the material to delete
-     * @returns null
-     */
-    // function deleteAdditionalMaterial(
-    //     divisionId: string,
-    //     contentId: string,
-    //     materialId: string
-    // ) {
-
-    //             // Upload to Qdrant if we have content
-    //             if (contentToUpload) {
-    //                 try {
-    //                     const qdrantResult = await uploadRAGContent(contentToUpload);
-    //                     console.log('Successfully uploaded to Qdrant:', qdrantResult);
-    //                     material.uploaded = true;
-    //                     // Store the Qdrant document ID in the material
-    //                     material.qdrantId = qdrantResult.id;
-    //                 } catch (error) {
-    //                     console.error('Failed to upload to Qdrant:', error);
-    //                     alert('Failed to upload content to Qdrant. Please try again.');
-    //                     return;
-    //                 }
-    //             }
-
-    //             // add the material to the content item
-    //             contentItem.additionalMaterials.push(material);
-
-    //             // refresh the content item
-    //             refreshContentItem(divisionId, contentId);
-
-    //             // close the modal
-    //             close();
-    //         } catch (error) {
-    //             console.error('Error in upload process:', error);
-    //             alert('An error occurred during upload. Please try again.');
-    //         }
-    //     });
-    // }
 
     /**
      * Delete an additional material
@@ -2492,194 +2439,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
         return wrapper;
     }
-
-    /**
-     * COMMENTED OUT: Nuclear clear - delete entire RAG collection (nuclear option)
-     * Nuclear clear functionality is now included in the Reset Dummy Courses feature
-     */
-    /*
-    async function nuclearClearDocuments(): Promise<void> {
-        try {
-            // Show confirmation modal with stronger warning
-            const result = await showDeleteConfirmationModal(
-                '💥 Nuclear Clear',
-                'the ENTIRE RAG collection from ALL courses. This will permanently delete the entire Qdrant collection and is IRREVERSIBLE!'
-            );
-
-            if (result.action !== 'delete') {
-                console.log('Nuclear clear cancelled by user');
-                return;
-            }
-
-            console.log('💥 Starting nuclear clear of entire RAG collection...');
-
-            // Call the nuclear clear API endpoint
-            console.log('🔍 NUCLEAR CLEAR - Request Details:');
-            console.log('  URL:', `/api/rag/nuclear-clear`);
-            console.log('  Method: DELETE');
-            
-            const response = await fetch(`/api/rag/nuclear-clear`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'same-origin'
-            });
-
-            console.log('🔍 NUCLEAR CLEAR - Response Details:');
-            console.log('  Status:', response.status);
-            console.log('  Status Text:', response.statusText);
-            console.log('  Headers:', Object.fromEntries(response.headers.entries()));
-            console.log('  Content-Type:', response.headers.get('content-type'));
-
-            if (!response.ok) {
-                const responseText = await response.text();
-                console.log('🔍 NUCLEAR CLEAR - Error Response Body (raw):');
-                console.log('  Raw Response:', responseText);
-                
-                try {
-                    const errorData = JSON.parse(responseText);
-                    console.log('🔍 NUCLEAR CLEAR - Error Response Body (parsed):');
-                    console.log('  Parsed Error:', errorData);
-                    throw new Error(errorData.message || errorData.details || `HTTP ${response.status}`);
-                } catch (parseError) {
-                    console.log('🔍 NUCLEAR CLEAR - JSON Parse Error:');
-                    console.log('  Parse Error:', parseError);
-                    throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
-                }
-            }
-
-            const responseText = await response.text();
-            console.log('🔍 NUCLEAR CLEAR - Success Response Body (raw):');
-            console.log('  Raw Response:', responseText);
-            
-            let result_data;
-            try {
-                result_data = JSON.parse(responseText);
-                console.log('🔍 NUCLEAR CLEAR - Success Response Body (parsed):');
-                console.log('  Parsed Result:', result_data);
-            } catch (parseError) {
-                console.log('🔍 NUCLEAR CLEAR - JSON Parse Error:');
-                console.log('  Parse Error:', parseError);
-                throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
-            }
-            console.log('💥 Nuclear clear completed:', result_data);
-
-            // Clear all additional materials from local data
-            courseData.forEach(division => {
-                division.items.forEach(item => {
-                    item.additionalMaterials = [];
-                });
-            });
-
-            // Refresh the UI to show empty state
-            renderDocumentsPage();
-
-            // Show success message
-            await showSuccessModal(`💥 Nuclear clear completed! Entire RAG collection deleted. Removed ${result_data.data?.deletedCount || 0} documents from the entire system.`, 'Nuclear Clear Success');
-
-        } catch (error) {
-            console.error('Error nuclear clearing RAG collection:', error);
-            await showSimpleErrorModal(`Failed to nuclear clear RAG collection: ${error instanceof Error ? error.message : 'Unknown error'}`, 'Nuclear Clear Error');
-        }
-    }
-    */
-
-    /**
-     * COMMENTED OUT: Wipes all MongoDB collections for the current course
-     * This will permanently delete users, flags, and memory-agent collections
-     */
-    /*
-    async function wipeMongoDBCollections(): Promise<void> {
-        try {
-            if (!currentClass) {
-                await showSimpleErrorModal('No course selected', 'Selection Error');
-                return;
-            }
-
-            // Show confirmation modal with warning
-            const result = await showDeleteConfirmationModal(
-                '🗑️ Wipe Mongo DB',
-                `ALL MongoDB data for course "${currentClass.courseName}". This will permanently delete: the course from active-course-list, course enrollment from active-users, and ALL course-specific collections (users, flags, memory-agent, and any other collections). This is IRREVERSIBLE!`
-            );
-
-            if (result.action !== 'delete') {
-                console.log('Wipe MongoDB cancelled by user');
-                return;
-            }
-
-            if (!courseId) {
-                console.error('❌ Cannot wipe MongoDB: courseId is missing');
-                await showSimpleErrorModal('Cannot wipe MongoDB: Course ID is missing.', 'Error');
-                return;
-            }
-            console.log('🗑️ Starting wipe of MongoDB collections for course:', courseId);
-
-            // Call the wipe MongoDB API endpoint
-            console.log('🔍 WIPE MONGODB - Request Details:');
-            console.log('  URL:', `/api/courses/${courseId}/wipe-mongodb`);
-            console.log('  Method: DELETE');
-            
-            const response = await fetch(`/api/courses/${courseId}/wipe-mongodb`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'same-origin'
-            });
-
-            console.log('🔍 WIPE MONGODB - Response Details:');
-            console.log('  Status:', response.status);
-            console.log('  Status Text:', response.statusText);
-
-            if (!response.ok) {
-                const responseText = await response.text();
-                console.log('🔍 WIPE MONGODB - Error Response Body (raw):');
-                console.log('  Raw Response:', responseText);
-                
-                try {
-                    const errorData = JSON.parse(responseText);
-                    console.log('🔍 WIPE MONGODB - Error Response Body (parsed):');
-                    console.log('  Parsed Error:', errorData);
-                    throw new Error(errorData.message || errorData.error || `HTTP ${response.status}`);
-                } catch (parseError) {
-                    console.log('🔍 WIPE MONGODB - JSON Parse Error:');
-                    console.log('  Parse Error:', parseError);
-                    throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
-                }
-            }
-
-            const responseText = await response.text();
-            console.log('🔍 WIPE MONGODB - Success Response Body (raw):');
-            console.log('  Raw Response:', responseText);
-            
-            let result_data;
-            try {
-                result_data = JSON.parse(responseText);
-                console.log('🔍 WIPE MONGODB - Success Response Body (parsed):');
-                console.log('  Parsed Result:', result_data);
-            } catch (parseError) {
-                console.log('🔍 WIPE MONGODB - JSON Parse Error:');
-                console.log('  Parse Error:', parseError);
-                throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}...`);
-            }
-            console.log('🗑️ MongoDB wipe completed:', result_data);
-
-            // Show success message
-            const droppedCount = result_data.data?.droppedCollections?.length || 0;
-            const errors = result_data.data?.errors || [];
-            let message = `🗑️ MongoDB collections wiped successfully! Dropped ${droppedCount} collection(s).`;
-            if (errors.length > 0) {
-                message += `\n\nErrors: ${errors.join(', ')}`;
-            }
-            await showSuccessModal(message, 'Database Wipe Success');
-
-        } catch (error) {
-            console.error('Error wiping MongoDB collections:', error);
-            await showSimpleErrorModal(`Failed to wipe MongoDB collections: ${error instanceof Error ? error.message : 'Unknown error'}`, 'Database Error');
-        }
-    }
-    */
 
     /**
      * Delete all documents from both MongoDB and Qdrant

@@ -35,6 +35,7 @@ import { asyncHandler, asyncHandlerWithAuth } from '../middleware/asyncHandler';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt, SystemPromptItem } from '../functions/types';
 import { IDGenerator } from '../functions/unique-id-generator';
+import { memoryAgent } from '../memory-agent/memory-agent';
 import dotenv from 'dotenv';
 
 const router = express.Router();
@@ -177,19 +178,20 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
         });
     }
 
-    if (!course.instructors || !Array.isArray(course.instructors) || course.instructors.length === 0) {
-        console.log("🔴 Instructors array is required and must contain at least one instructor");
+    // Instructors can be empty - backend adds the authenticated creator as instructor
+    if (!course.instructors || !Array.isArray(course.instructors)) {
+        console.log("🔴 Instructors must be an array");
         return res.status(400).json({
             success: false,
-            error: 'Instructors array is required and must contain at least one instructor'
+            error: 'Instructors must be an array'
         });
     }
 
     if (!course.teachingAssistants || !Array.isArray(course.teachingAssistants)) {
-        console.log("🔴 Teaching assistants array is required");
+        console.log("🔴 Teaching assistants must be an array");
         return res.status(400).json({
             success: false,
-            error: 'Teaching assistants array is required'
+            error: 'Teaching assistants must be an array'
         });
     }
 
@@ -801,7 +803,7 @@ router.delete('/:id/remove', asyncHandlerWithAuth(async (req: Request, res: Resp
         let qdrantDeleted = 0;
         const qdrantErrors: string[] = [];
         try {
-            const { RAGApp } = await import('../routes/RAG-App.js');
+            const { RAGApp } = await import('./rag-app.js');
             const ragApp = await RAGApp.getInstance();
             const qdrantResult = await ragApp.deleteAllDocumentsForCourse(courseId);
             qdrantDeleted = qdrantResult.deletedCount;
@@ -1755,7 +1757,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
         // Delete from Qdrant first if material has qdrantId
         if (material.qdrantId) {
             try {
-                const { RAGApp } = await import('../routes/RAG-App.js');
+                const { RAGApp } = await import('./rag-app.js');
                 const ragApp = await RAGApp.getInstance();
                 await ragApp.deleteDocument(materialId, courseId, topicOrWeekId, itemId);
                 console.log(`✅ Material ${materialId} deleted from Qdrant`);
@@ -1826,7 +1828,7 @@ router.delete('/:courseId/documents/all', asyncHandlerWithAuth(async (req: Reque
         
         // Delete from Qdrant first
         try {
-            const { RAGApp } = await import('../routes/RAG-App.js');
+            const { RAGApp } = await import('./rag-app.js');
             const ragApp = await RAGApp.getInstance();
             const qdrantResult = await ragApp.deleteAllDocumentsForCourse(courseId);
             console.log(`✅ Deleted ${qdrantResult.deletedCount} documents from Qdrant`);
@@ -2474,7 +2476,7 @@ router.post('/admin/reset-database', asyncHandlerWithAuth(async (req: Request, r
         let qdrantDeleted = 0;
         const qdrantErrors: string[] = [];
         try {
-            const { RAGApp } = await import('../routes/RAG-App.js');
+            const { RAGApp } = await import('./rag-app.js');
             const ragApp = await RAGApp.getInstance();
             const qdrantResult = await ragApp.NuclearClearRAGDatabase();
             qdrantDeleted = qdrantResult.deletedCount;
@@ -2667,7 +2669,7 @@ router.post('/admin/reset-vector-database', asyncHandlerWithAuth(async (req: Req
         let qdrantDeleted = 0;
         const qdrantErrors: string[] = [];
         try {
-            const { RAGApp } = await import('../routes/RAG-App.js');
+            const { RAGApp } = await import('./rag-app.js');
             const ragApp = await RAGApp.getInstance();
             const qdrantResult = await ragApp.NuclearClearRAGDatabase();
             qdrantDeleted = qdrantResult.deletedCount;
@@ -2943,6 +2945,119 @@ router.get('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Requ
         res.status(500).json({
             success: false,
             error: 'Failed to get initial assistant prompts',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+// ===========================================
+// ========= MEMORY AGENT (STRUGGLE WORDS) ===
+// ===========================================
+
+// GET /api/courses/:courseId/memory-agent/struggle-words - Get struggle words for instructor (REQUIRES AUTH)
+router.get('/:courseId/memory-agent/struggle-words', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser || globalUser.affiliation !== 'faculty') {
+            return res.status(403).json({
+                success: false,
+                error: 'Instructor access required'
+            });
+        }
+
+        const { courseId } = req.params;
+        const instance = await EngEAI_MongoDB.getInstance();
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        const courseData = course as unknown as activeCourse;
+        const instructorUserId = globalUser.userId;
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some(inst => {
+                if (typeof inst === 'string') return inst === instructorUserId;
+                if (inst && inst.userId) return inst.userId === instructorUserId;
+                return false;
+            });
+        };
+
+        if (!isInstructorInArray(courseData.instructors || [])) {
+            return res.status(403).json({
+                success: false,
+                error: 'You do not have permission to access this course'
+            });
+        }
+
+        const struggleWords = await memoryAgent.getStruggleWords(instructorUserId, courseData.courseName);
+        const filtered = struggleWords.filter(w => !w.startsWith('---'));
+        res.json({ success: true, data: filtered });
+    } catch (error) {
+        console.error('Error getting struggle words:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get struggle words',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+// DELETE /api/courses/:courseId/memory-agent/struggle-words - Remove all struggle words for instructor (REQUIRES AUTH)
+router.delete('/:courseId/memory-agent/struggle-words', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser || globalUser.affiliation !== 'faculty') {
+            return res.status(403).json({
+                success: false,
+                error: 'Instructor access required'
+            });
+        }
+
+        const { courseId } = req.params;
+        const instance = await EngEAI_MongoDB.getInstance();
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        const courseData = course as unknown as activeCourse;
+        const instructorUserId = globalUser.userId;
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some(inst => {
+                if (typeof inst === 'string') return inst === instructorUserId;
+                if (inst && inst.userId) return inst.userId === instructorUserId;
+                return false;
+            });
+        };
+
+        if (!isInstructorInArray(courseData.instructors || [])) {
+            return res.status(403).json({
+                success: false,
+                error: 'You do not have permission to access this course'
+            });
+        }
+
+        const struggleWords = await memoryAgent.getStruggleWords(instructorUserId, courseData.courseName);
+        const filtered = struggleWords.filter(w => !w.startsWith('---'));
+        await instance.updateMemoryAgentStruggleWords(courseData.courseName, instructorUserId, []);
+        res.json({
+            success: true,
+            data: { removed: filtered, count: filtered.length },
+            message: `Removed ${filtered.length} struggle words`
+        });
+    } catch (error) {
+        console.error('Error removing struggle words:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to remove struggle words',
             details: error instanceof Error ? error.message : 'Unknown error'
         });
     }

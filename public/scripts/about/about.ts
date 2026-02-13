@@ -40,8 +40,6 @@ declare const feather: any;
  * @returns Promise<void>
  */
 export const renderAbout = async (context?: any): Promise<void> => {
-    console.log("ℹ️ Loading about page...", context ? `from context: ${JSON.stringify(context)}` : '');
-    
     try {
         // Load the about component
         const container = document.getElementById('main-content-area');
@@ -64,7 +62,6 @@ export const renderAbout = async (context?: any): Promise<void> => {
         await initializeAboutPage();
 
     } catch (error) {
-        console.error("❌ Error during about page initialization:", error);
         // Fallback: show simple error message
         const container = document.getElementById('main-content-area');
         if (container) {
@@ -89,12 +86,8 @@ export const renderAbout = async (context?: any): Promise<void> => {
  * Initializes the about page interface with event listeners
  */
 async function initializeAboutPage(): Promise<void> {
-    console.log("🎯 Initializing about page interface...");
-
     // Set up event listeners
     bindEventListeners();
-
-    console.log("✅ About page interface initialized successfully");
 }
 
 // ===========================================
@@ -123,8 +116,6 @@ function bindEventListeners(): void {
  * Handles back button click
  */
 function handleBackClick(): void {
-    console.log("🔙 Returning to previous view...");
-    
     // Clear the main content area
     const container = document.getElementById('main-content-area');
     if (container) {
@@ -137,7 +128,6 @@ function handleBackClick(): void {
         detail: { timestamp: Date.now() } 
     });
     window.dispatchEvent(event);
-    console.log("📡 Dispatched 'about-page-closed' event");
 }
 
 // ===========================================

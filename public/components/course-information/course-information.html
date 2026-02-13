@@ -12,7 +12,7 @@
                         <div>
                             <h1>Course Information</h1>
                             <p class="course-info-description">
-                                Review and update your course setup details
+                                Review your course setup details
                             </p>
                         </div>
                         <!-- Course Code Display -->
@@ -28,32 +28,18 @@
                     </div>
                     
                     <div class="form-group">
-                        <label for="courseInfoCourseSelect">Course Name</label>
-                        <select id="courseInfoCourseSelect" class="form-select" disabled>
-                            <!-- Options populated by TypeScript -->
-                        </select>
+                        <label for="courseInfoCourseName">Course Name</label>
+                        <p id="courseInfoCourseName" class="course-info-readonly"></p>
                     </div>
 
                     <div class="form-group">
-                        <label for="courseInfoInstructorSelect">Instructors</label>
-                        <div class="dropdown-with-add">
-                            <select id="courseInfoInstructorSelect" class="form-select">
-                                <!-- Options populated by TypeScript -->
-                            </select>
-                            <button type="button" class="add-instructor-btn" id="courseInfoAddInstructorBtn">Add</button>
-                        </div>
-                        <div class="selected-items" id="courseInfoSelectedInstructors"></div>
+                        <label for="courseInfoInstructors">Instructors</label>
+                        <p id="courseInfoInstructors" class="course-info-readonly">None</p>
                     </div>
 
                     <div class="form-group">
-                        <label for="courseInfoTASelect">Teaching Assistants</label>
-                        <div class="dropdown-with-add">
-                            <select id="courseInfoTASelect" class="form-select">
-                                <!-- Options populated by TypeScript -->
-                            </select>
-                            <button type="button" class="add-ta-btn" id="courseInfoAddTABtn">Add</button>
-                        </div>
-                        <div class="selected-items" id="courseInfoSelectedTAs"></div>
+                        <label for="courseInfoTAs">Teaching Assistants</label>
+                        <p id="courseInfoTAs" class="course-info-readonly">None</p>
                     </div>
 
                     <div class="form-group">
@@ -72,7 +58,7 @@
 
                     <div class="form-group">
                         <label for="courseInfoContentCount" id="courseInfoCountDescription">Number of Sections</label>
-                        <input type="number" id="courseInfoContentCount" class="form-input" min="1" max="52">
+                        <input type="number" id="courseInfoContentCount" class="form-input" min="1" max="52" readonly>
                     </div>
                 </div>
             </div>
@@ -83,9 +69,6 @@
             <button class="nav-btn btn-back" id="course-info-back-btn">
                 <i data-feather="chevron-left" class="feather"></i>
                 Back
-            </button>
-            <button type="button" class="btn-save-changes" id="btnSaveCourseInfo">
-                Save Changes
             </button>
         </div>
     </div>

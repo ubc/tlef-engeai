@@ -3,10 +3,9 @@ import express from 'express';
 import path from 'path';
 // import cors from 'cors';
 import chatAppRoutes from './routes/chat-app';
-import ragAppRoutes from './routes/RAG-App';
+import ragAppRoutes from './routes/rag-app';
 import mongodbRoutes from './routes/mongo-app';
 import healthRoutes from './routes/health';
-import debugRoutes from './routes/debug';  // Import MongoDB routes
 import authRoutes from './routes/auth';  // Import authentication routes
 import courseEntryRoutes from './routes/course-entry';  // Import course entry routes
 import userManagementRoutes from './routes/user-management';  // Import user management routes
@@ -169,7 +168,6 @@ app.use('/api/courses', mongodbRoutes);  // Course management routes
 app.use('/api/course', courseEntryRoutes);  // Course entry routes
 app.use('/api/user', userManagementRoutes);  // User management routes
 app.use('/api/health', healthRoutes);    // Health check routes
-app.use('/api/debug', debugRoutes);      // Debug routes
 
 // Final 404 handler for any requests that do not match a route
 app.use((req: express.Request, res: express.Response) => {

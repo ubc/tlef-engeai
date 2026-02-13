@@ -11,11 +11,15 @@
 
 import { activeCourse, InitialAssistantPrompt, DEFAULT_PROMPT_ID } from '../../../src/functions/types.js';
 import { renderFeatherIcons } from '../functions/api.js';
-import { showConfirmModal, showSimpleErrorModal, showSuccessModal, showErrorModal } from '../modal-overlay.js';
+import { showConfirmModal, showSimpleErrorModal, showErrorModal } from '../modal-overlay.js';
+import { showSuccessToast, showErrorToast } from '../toast-notification.js';
+
+const DRAFT_PROMPT_ID = 'draft-new';
 
 let currentCourse: activeCourse | null = null;
 let prompts: InitialAssistantPrompt[] = [];
 let editingPromptId: string | null = null;
+let draftPrompt: InitialAssistantPrompt | null = null;
 
 /**
  * Initialize the assistant prompts page
@@ -31,7 +35,7 @@ export async function initializeAssistantPrompts(course: activeCourse): Promise<
         return;
     }
 
-    console.log(`✅ [ASSISTANT-PROMPTS] Initializing with courseId: ${course.id}`);
+    // console.log(`✅ [ASSISTANT-PROMPTS] Initializing with courseId: ${course.id}`); // 🟢 MEDIUM: Course ID exposure
 
     // Setup event listeners
     setupEventListeners();
@@ -81,7 +85,7 @@ async function loadPrompts(): Promise<void> {
         const result = await response.json();
         if (result.success) {
             prompts = result.data || [];
-            console.log(`✅ [ASSISTANT-PROMPTS] Loaded ${prompts.length} prompts`);
+            // console.log(`✅ [ASSISTANT-PROMPTS] Loaded ${prompts.length} prompts`);
         } else {
             throw new Error(result.error || 'Failed to load prompts');
         }
@@ -101,7 +105,9 @@ function renderPrompts(): void {
         return;
     }
 
-    if (prompts.length === 0) {
+    const promptsToRender = prompts.concat(draftPrompt ? [draftPrompt] : []);
+
+    if (promptsToRender.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
                 <p>No initial assistant prompts yet. Click "Add New Initial Assistant Prompt" to create one.</p>
@@ -110,10 +116,10 @@ function renderPrompts(): void {
         return;
     }
 
-    container.innerHTML = prompts.map(prompt => renderPromptCard(prompt)).join('');
+    container.innerHTML = promptsToRender.map(prompt => renderPromptCard(prompt)).join('');
     
     // Setup event listeners for each card
-    prompts.forEach(prompt => {
+    promptsToRender.forEach(prompt => {
         setupCardEventListeners(prompt.id);
     });
 
@@ -287,68 +293,48 @@ function setupCardEventListeners(promptId: string): void {
 }
 
 /**
- * Handle adding a new prompt
- * Creates a new prompt with default "Untitled" title and empty content, then enters edit mode
+ * Handle adding a new prompt.
+ * Creates a draft in the UI first; only persists to server when user saves.
+ * Cancel removes the draft without creating anything.
  */
-async function handleAddPrompt(): Promise<void> {
+function handleAddPrompt(): void {
     if (!currentCourse?.id) {
-        await showErrorModal('Course ID is missing. Please refresh the page.', 'Error');
+        showErrorToast('Course ID is missing. Please refresh the page.');
         return;
     }
 
-    try {
-        const response = await fetch(`/api/courses/${currentCourse.id}/assistant-prompts`, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                title: 'Untitled',
-                content: ''
-            })
-        });
-
-        if (!response.ok) {
-            const result = await response.json();
-            throw new Error(result.error || 'Failed to create prompt');
-        }
-
-        const result = await response.json();
-        if (result.success) {
-            await loadPrompts();
-            // Set the newly created prompt to editing mode
-            editingPromptId = result.data.id;
-            renderPrompts();
-            
-            // Focus on the title field after a short delay to ensure DOM is ready
-            setTimeout(() => {
-                const newCard = document.querySelector(`[data-prompt-id="${result.data.id}"]`) as HTMLElement;
-                if (newCard) {
-                    const titleField = newCard.querySelector('[data-field="title"]') as HTMLElement;
-                    if (titleField) {
-                        titleField.focus();
-                        // Select all text so user can immediately start typing
-                        const range = document.createRange();
-                        range.selectNodeContents(titleField);
-                        const selection = window.getSelection();
-                        if (selection) {
-                            selection.removeAllRanges();
-                            selection.addRange(range);
-                        }
-                    }
-                }
-            }, 100);
-        } else {
-            throw new Error(result.error || 'Failed to create prompt');
-        }
-    } catch (error) {
-        console.error('❌ [ASSISTANT-PROMPTS] Error creating prompt:', error);
-        await showErrorModal(
-            error instanceof Error ? error.message : 'Failed to create prompt. Please try again.',
-            'Error'
-        );
+    if (draftPrompt) {
+        showErrorToast('Please save or cancel the current prompt first.');
+        return;
     }
+
+    draftPrompt = {
+        id: DRAFT_PROMPT_ID,
+        title: 'Untitled',
+        content: '',
+        dateCreated: new Date(),
+        isSelected: false,
+        isDefault: false
+    };
+    editingPromptId = DRAFT_PROMPT_ID;
+    renderPrompts();
+
+    setTimeout(() => {
+        const newCard = document.querySelector(`[data-prompt-id="${DRAFT_PROMPT_ID}"]`) as HTMLElement;
+        if (newCard) {
+            const titleField = newCard.querySelector('[data-field="title"]') as HTMLElement;
+            if (titleField) {
+                titleField.focus();
+                const range = document.createRange();
+                range.selectNodeContents(titleField);
+                const selection = window.getSelection();
+                if (selection) {
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }
+            }
+        }
+    }, 100);
 }
 
 /**
@@ -401,43 +387,78 @@ async function handleSavePrompt(promptId: string): Promise<void> {
     const content = contentField.textContent?.trim() || '';
 
     if (!title) {
-        await showErrorModal('Title cannot be empty.', 'Error');
+        showErrorToast('Title cannot be empty.');
         titleField.focus();
         return;
     }
 
+    if (!content) {
+        showErrorToast('Content cannot be empty.');
+        contentField.focus();
+        return;
+    }
+
+    const isDraft = promptId === DRAFT_PROMPT_ID;
+
     try {
-        const response = await fetch(`/api/courses/${currentCourse.id}/assistant-prompts/${promptId}`, {
-            method: 'PUT',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                title: title,
-                content: content
-            })
-        });
+        if (isDraft) {
+            // Create new prompt on server
+            const response = await fetch(`/api/courses/${currentCourse.id}/assistant-prompts`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ title, content })
+            });
 
-        if (!response.ok) {
+            if (!response.ok) {
+                const result = await response.json();
+                throw new Error(result.error || 'Failed to create prompt');
+            }
+
             const result = await response.json();
-            throw new Error(result.error || 'Failed to update prompt');
-        }
-
-        const result = await response.json();
-        if (result.success) {
-            editingPromptId = null;
-            await loadPrompts();
-            renderPrompts();
-            await showSuccessModal('Prompt updated successfully!', 'Success');
+            if (result.success) {
+                draftPrompt = null;
+                editingPromptId = null;
+                await loadPrompts();
+                renderPrompts();
+                showSuccessToast('Prompt created successfully!');
+            } else {
+                throw new Error(result.error || 'Failed to create prompt');
+            }
         } else {
-            throw new Error(result.error || 'Failed to update prompt');
+            const response = await fetch(`/api/courses/${currentCourse.id}/assistant-prompts/${promptId}`, {
+                method: 'PUT',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    title: title,
+                    content: content
+                })
+            });
+
+            if (!response.ok) {
+                const result = await response.json();
+                throw new Error(result.error || 'Failed to update prompt');
+            }
+
+            const result = await response.json();
+            if (result.success) {
+                editingPromptId = null;
+                await loadPrompts();
+                renderPrompts();
+                showSuccessToast('Prompt updated successfully!');
+            } else {
+                throw new Error(result.error || 'Failed to update prompt');
+            }
         }
     } catch (error) {
-        console.error('❌ [ASSISTANT-PROMPTS] Error updating prompt:', error);
-        await showErrorModal(
-            error instanceof Error ? error.message : 'Failed to update prompt. Please try again.',
-            'Error'
+        console.error('❌ [ASSISTANT-PROMPTS] Error saving prompt:', error);
+        showErrorToast(
+            error instanceof Error ? error.message : 'Failed to save prompt. Please try again.'
         );
     }
 }
@@ -447,11 +468,16 @@ async function handleSavePrompt(promptId: string): Promise<void> {
  * @param promptId - The prompt ID
  */
 function handleCancelEdit(promptId: string): void {
-    editingPromptId = null;
-    // Reload prompts to restore original values
-    loadPrompts().then(() => {
+    if (promptId === DRAFT_PROMPT_ID) {
+        draftPrompt = null;
+        editingPromptId = null;
         renderPrompts();
-    });
+    } else {
+        editingPromptId = null;
+        loadPrompts().then(() => {
+            renderPrompts();
+        });
+    }
 }
 
 /**
@@ -472,18 +498,18 @@ async function handleDeletePrompt(promptId: string): Promise<void> {
     // Prevent deletion of default prompt
     const isDefault = prompt.isDefault || prompt.id === DEFAULT_PROMPT_ID;
     if (isDefault) {
-        await showErrorModal('Cannot delete the default system prompt. This prompt is always available and cannot be removed.', 'Cannot Delete');
+        showErrorToast('Cannot delete the default prompt. This prompt is always available and cannot be removed.');
         return;
     }
 
-    const confirmed = await showConfirmModal(
-        `Are you sure you want to delete "${prompt.title}"?`,
+    const modalResult = await showConfirmModal(
         'Delete Prompt',
+        `Are you sure you want to delete "${prompt.title}"?`,
         'Delete',
         'Cancel'
     );
 
-    if (!confirmed) {
+    if (modalResult.action === 'cancel') {
         return;
     }
 
@@ -497,23 +523,22 @@ async function handleDeletePrompt(promptId: string): Promise<void> {
         });
 
         if (!response.ok) {
-            const result = await response.json();
-            throw new Error(result.error || 'Failed to delete prompt');
+            const errResult = await response.json();
+            throw new Error(errResult.error || 'Failed to delete prompt');
         }
 
         const result = await response.json();
         if (result.success) {
             await loadPrompts();
             renderPrompts();
-            await showSuccessModal('Prompt deleted successfully!', 'Success');
+            showSuccessToast('Prompt deleted successfully!');
         } else {
             throw new Error(result.error || 'Failed to delete prompt');
         }
     } catch (error) {
         console.error('❌ [ASSISTANT-PROMPTS] Error deleting prompt:', error);
-        await showErrorModal(
-            error instanceof Error ? error.message : 'Failed to delete prompt. Please try again.',
-            'Error'
+        showErrorToast(
+            error instanceof Error ? error.message : 'Failed to delete prompt. Please try again.'
         );
     }
 }
@@ -533,14 +558,14 @@ async function handleSelectPrompt(promptId: string): Promise<void> {
         return;
     }
 
-    const confirmed = await showConfirmModal(
-        `Set "${prompt.title}" as the active initial assistant prompt? This will replace any currently selected prompt.`,
+    const modalResult = await showConfirmModal(
         'Select Prompt',
+        `Set "${prompt.title}" as the active initial assistant prompt? This will replace any currently selected prompt.`,
         'Select',
         'Cancel'
     );
 
-    if (!confirmed) {
+    if (modalResult.action === 'cancel') {
         return;
     }
 
@@ -562,15 +587,14 @@ async function handleSelectPrompt(promptId: string): Promise<void> {
         if (result.success) {
             await loadPrompts();
             renderPrompts();
-            await showSuccessModal('Prompt selected successfully!', 'Success');
+            showSuccessToast('Prompt selected successfully!');
         } else {
             throw new Error(result.error || 'Failed to select prompt');
         }
     } catch (error) {
         console.error('❌ [ASSISTANT-PROMPTS] Error selecting prompt:', error);
-        await showErrorModal(
-            error instanceof Error ? error.message : 'Failed to select prompt. Please try again.',
-            'Error'
+        showErrorToast(
+            error instanceof Error ? error.message : 'Failed to select prompt. Please try again.'
         );
     }
 }
@@ -589,7 +613,7 @@ function handleToggleExpand(promptId: string): void {
     if (!expandToggle || !contentField) return;
 
     const isExpanded = expandToggle.getAttribute('data-expanded') === 'true';
-    const prompt = prompts.find(p => p.id === promptId);
+    const prompt = promptId === DRAFT_PROMPT_ID ? draftPrompt : prompts.find(p => p.id === promptId);
     
     if (!prompt) return;
 
@@ -638,7 +662,7 @@ function escapeHtml(text: string): string {
  * @returns True if there are unsaved changes
  */
 export function hasUnsavedPromptChanges(): boolean {
-    return editingPromptId !== null;
+    return editingPromptId !== null || draftPrompt !== null;
 }
 
 /**
@@ -646,5 +670,6 @@ export function hasUnsavedPromptChanges(): boolean {
  */
 export function resetUnsavedPromptChanges(): void {
     editingPromptId = null;
+    draftPrompt = null;
 }
 

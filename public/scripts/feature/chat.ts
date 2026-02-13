@@ -38,7 +38,7 @@ export function renderLatexInElement(text: string, element: HTMLElement): void {
     const renderMath = () => {
         if (typeof (window as any).renderMathInElement !== 'undefined') {
             try {
-                console.log('🧮 Rendering LaTeX in element:', element);
+                // console.log('🧮 Rendering LaTeX in element:', element); // 🟢 MEDIUM: LaTeX rendering - keep for monitoring
                 (window as any).renderMathInElement(element, {
                     delimiters: [
                         {left: '$$', right: '$$', display: true},
@@ -48,12 +48,12 @@ export function renderLatexInElement(text: string, element: HTMLElement): void {
                     errorColor: '#cc0000',
                     strict: false
                 });
-                console.log('✅ LaTeX rendering completed');
+                // console.log('✅ LaTeX rendering completed'); // 🟢 MEDIUM: LaTeX rendering - keep for monitoring
             } catch (error) {
-                console.warn('❌ LaTeX rendering error:', error);
+                // console.warn('❌ LaTeX rendering error:', error);
             }
         } else {
-            console.log('⏳ KaTeX not ready yet, retrying...');
+            // console.log('⏳ KaTeX not ready yet, retrying...'); // 🟢 MEDIUM: LaTeX rendering - keep for monitoring
             // Retry after a short delay if KaTeX isn't loaded yet
             setTimeout(renderMath, 100);
         }
@@ -80,7 +80,7 @@ export function renderLatexInMessage(messageElement: HTMLElement): void {
                     strict: false
                 });
             } catch (error) {
-                console.warn('LaTeX rendering error:', error);
+                // console.warn('LaTeX rendering error:', error);
             }
         } else {
             // Retry after a short delay if KaTeX isn't loaded yet
@@ -100,7 +100,7 @@ export function renderLatexInHtmlContent(element: HTMLElement): void {
     const renderMath = () => {
         if (typeof (window as any).renderMathInElement !== 'undefined') {
             try {
-                console.log('🧮 Rendering LaTeX in HTML content:', element);
+                // console.log('🧮 Rendering LaTeX in HTML content:', element); // 🟢 MEDIUM: LaTeX rendering - keep for monitoring
                 (window as any).renderMathInElement(element, {
                     delimiters: [
                         {left: '$$', right: '$$', display: true},
@@ -112,12 +112,12 @@ export function renderLatexInHtmlContent(element: HTMLElement): void {
                     // Skip HTML elements to avoid breaking artefact buttons
                     ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'button']
                 });
-                console.log('✅ LaTeX rendering in HTML content completed');
+                // console.log('✅ LaTeX rendering in HTML content completed'); // 🟢 MEDIUM: LaTeX rendering - keep for monitoring
             } catch (error) {
-                console.warn('❌ LaTeX rendering error in HTML content:', error);
+                // console.warn('❌ LaTeX rendering error in HTML content:', error);
             }
         } else {
-            console.log('⏳ KaTeX not ready for HTML content, retrying...');
+            // console.log('⏳ KaTeX not ready for HTML content, retrying...'); // 🟢 MEDIUM: LaTeX rendering - keep for monitoring
             // Retry after a short delay if KaTeX isn't loaded yet
             setTimeout(renderMath, 100);
         }
@@ -179,14 +179,14 @@ export class ChatManager {
         const timestamp = new Date().toISOString();
         const state = this.getActiveChatState();
         
-        console.log(`${this.LOG_PREFIX} ${this.LOG_LEVELS.INFO} [${event}] [${timestamp}]`);
-        console.log(`📊 ACTIVE CHAT STATE:`, state);
-        
-        if (details) {
-            console.log(`📋 EVENT DETAILS:`, details);
-        }
-        
-        console.log('─'.repeat(80));
+        // console.log(`${this.LOG_PREFIX} ${this.LOG_LEVELS.INFO} [${event}] [${timestamp}]`); // 🟢 MEDIUM: Debug info - keep for monitoring
+        // console.log(`📊 ACTIVE CHAT STATE:`, state); // 🔴 CRITICAL: Exposes chat state with user messages
+        //
+        // if (details) {
+        //     console.log(`📋 EVENT DETAILS:`, details); // 🔴 CRITICAL: Exposes event details with sensitive data
+        // }
+        //
+        // console.log('─'.repeat(80)); // 🟢 MEDIUM: Debug formatting - keep for monitoring
     }
     
     /**
@@ -219,11 +219,11 @@ export class ChatManager {
      */
     private log(level: keyof typeof this.LOG_LEVELS, message: string, data?: any): void {
         const timestamp = new Date().toISOString();
-        console.log(`${this.LOG_PREFIX} ${this.LOG_LEVELS[level]} [${timestamp}] ${message}`);
-        
-        if (data) {
-            console.log(`📋 Data:`, data);
-        }
+        // console.log(`${this.LOG_PREFIX} ${this.LOG_LEVELS[level]} [${timestamp}] ${message}`); // 🟢 MEDIUM: Debug info - keep for monitoring
+
+        // if (data) {
+        //     console.log(`📋 Data:`, data); // 🔴 CRITICAL: Generic data logging - could expose any sensitive data
+        // }
     }
 
     private constructor(config: ChatManagerConfig) {
@@ -512,7 +512,7 @@ export class ChatManager {
             return;
         }
 
-        console.log('[CHAT-MANAGER] 💬 Sending message...');
+        // console.log('[CHAT-MANAGER] 💬 Sending message...'); // 🟢 MEDIUM: Debug info - keep for monitoring
 
         // Add user message locally (will be replaced with server version)
         const userMessage: ChatMessage = {
@@ -568,7 +568,7 @@ export class ChatManager {
                 throw new Error(data.error || 'Failed to send message');
             }
 
-            console.log('[CHAT-MANAGER] ✅ Message sent successfully');
+            // console.log('[CHAT-MANAGER] ✅ Message sent successfully'); // 🟢 MEDIUM: Success info - keep for monitoring
 
             // Replace the placeholder messages with server response using incremental updates
             // Remove placeholder messages from DOM and data
@@ -585,10 +585,10 @@ export class ChatManager {
             
             if (data.assistantMessage) {
                 //START DEBUG LOG : DEBUG-CODE(NON-STREAMING-ARTEFACT)
-                console.log('🎨 Processing assistant message for streaming');
-                console.log('🎨 Message ID:', data.assistantMessage.id);
-                console.log('🎨 Message text length:', data.assistantMessage.text.length);
-                console.log('🎨 Contains artefact tags:', data.assistantMessage.text.includes('<Artefact>'));
+                // console.log('🎨 Processing assistant message for streaming'); // 🟢 MEDIUM: Debug info - keep for monitoring
+                // console.log('🎨 Message ID:', data.assistantMessage.id); // 🟡 HIGH: Message ID exposure
+                // console.log('🎨 Message text length:', data.assistantMessage.text.length); // 🟡 HIGH: Message content metadata
+                // console.log('🎨 Contains artefact tags:', data.assistantMessage.text.includes('<Artefact>')); // 🟡 HIGH: Message content analysis
                 //END DEBUG LOG : DEBUG-CODE(NON-STREAMING-ARTEFACT)
                 
                 // Add the assistant message to the array (with full text for data consistency)
@@ -616,7 +616,7 @@ export class ChatManager {
             await this.refreshChatDataFromServer();
 
         } catch (error) {
-            console.error('[CHAT-MANAGER] 🚨 Error sending message:', error);
+            // console.error('[CHAT-MANAGER] 🚨 Error sending message:', error);
             
             // Remove placeholder messages from DOM and data using incremental updates
             this.removeMessageFromDOM(botMessageId);
@@ -722,7 +722,7 @@ export class ChatManager {
         
         // If no chat metadata, show welcome screen
         if (this.chatMetadata.length === 0) {
-            console.log('🎯 No chats available, triggering welcome screen');
+            // console.log('🎯 No chats available, triggering welcome screen'); // 🟢 MEDIUM: Status info - keep for monitoring
             this.callModeSpecificCallback('no-chats', { showWelcome: true });
             return;
         }
@@ -797,7 +797,7 @@ export class ChatManager {
         const pinBtn = document.getElementById('pin-chat-btn');
         
         if (!activeChat || !chatTitleEl || !messageAreaEl || !pinBtn) {
-            console.log('🎯 renderActiveChatIncremental: No active chat or missing DOM elements, skipping render');
+            // console.log('🎯 renderActiveChatIncremental: No active chat or missing DOM elements, skipping render'); // 🟢 MEDIUM: Debug info - keep for monitoring
             return;
         }
 
@@ -981,14 +981,14 @@ export class ChatManager {
     private async streamTextToDOM(fullText: string, messageId: string, onComplete?: () => void): Promise<void> {
         const messageEl = document.getElementById(`msg-${messageId}`);
         if (!messageEl) {
-            console.warn(`[CHAT-MANAGER] Message element not found for ID: ${messageId}`);
+            // console.warn(`[CHAT-MANAGER] Message element not found for ID: ${messageId}`);
             onComplete?.();
             return;
         }
 
         const contentEl = messageEl.querySelector('.message-content') as HTMLElement;
         if (!contentEl) {
-            console.warn(`[CHAT-MANAGER] Message content element not found for ID: ${messageId}`);
+            // console.warn(`[CHAT-MANAGER] Message content element not found for ID: ${messageId}`);
             onComplete?.();
             return;
         }
@@ -1093,12 +1093,12 @@ export class ChatManager {
 
     private async loadChatsFromServer(userId: string, courseName: string): Promise<Chat[]> {
         try {
-            console.log('[CHAT-MANAGER] 📂 Loading chats from server...');
-            console.log('[CHAT-MANAGER] 📊 Request context:', {
-                userId,
-                courseName,
-                endpoint: '/api/chat/user/chats'
-            });
+            // console.log('[CHAT-MANAGER] 📂 Loading chats from server...'); // 🟢 MEDIUM: Debug info - keep for monitoring
+            // console.log('[CHAT-MANAGER] 📊 Request context:', { // 🔴 CRITICAL: Exposes userId and courseName
+            //     userId,
+            //     courseName,
+            //     endpoint: '/api/chat/user/chats'
+            // });
             
             const response = await fetch('/api/chat/user/chats', {
                 method: 'GET',
@@ -1107,61 +1107,61 @@ export class ChatManager {
                     'Content-Type': 'application/json'
                 }
             });
-            
-            console.log('[CHAT-MANAGER] 📡 Server response status:', response.status, response.statusText);
-            
+
+            // console.log('[CHAT-MANAGER] 📡 Server response status:', response.status, response.statusText); // 🟢 MEDIUM: HTTP status - keep for monitoring
+
             if (!response.ok) {
-                console.error('[CHAT-MANAGER] ❌ Failed to load chats:', response.statusText);
-                console.error('[CHAT-MANAGER] 🔍 Response details:', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    url: response.url
-                });
+                // console.error('[CHAT-MANAGER] ❌ Failed to load chats:', response.statusText);
+                // console.error('[CHAT-MANAGER] 🔍 Response details:', { // 🟡 HIGH: Response details with URL
+                //     status: response.status,
+                //     statusText: response.statusText,
+                //     url: response.url
+                // });
                 
                 // Handle specific error cases
                 if (response.status === 401) {
-                    console.error('[CHAT-MANAGER] 🔐 Authentication failed - user may need to re-login');
+                    // console.error('[CHAT-MANAGER] 🔐 Authentication failed - user may need to re-login');
                 } else if (response.status === 500) {
-                    console.error('[CHAT-MANAGER] 🚨 Server error - database or backend issue');
+                    // console.error('[CHAT-MANAGER] 🚨 Server error - database or backend issue');
                 }
                 
                 return [];
             }
             
             const data = await response.json();
-            console.log('[CHAT-MANAGER] 📦 Response data:', {
-                success: data.success,
-                chatCount: data.chats ? data.chats.length : 0,
-                hasError: !!data.error
-            });
+            // console.log('[CHAT-MANAGER] 📦 Response data:', {
+            //     success: data.success,
+            //     chatCount: data.chats ? data.chats.length : 0,
+            //     hasError: !!data.error
+            // });
             
             if (data.success && data.chats) {
-                console.log(`[CHAT-MANAGER] ✅ Loaded ${data.chats.length} chats from database`);
+                // console.log(`[CHAT-MANAGER] ✅ Loaded ${data.chats.length} chats from database`);
                 if (data.chats.length > 0) {
-                    console.log('[CHAT-MANAGER] 📋 Chat details:', data.chats.map((chat: any) => ({
-                        id: chat.id,
-                        title: chat.itemTitle,
-                        messageCount: chat.messages ? chat.messages.length : 0
-                    })));
+                    // console.log('[CHAT-MANAGER] 📋 Chat details:', data.chats.map((chat: any) => ({
+                    //     id: chat.id,
+                    //     title: chat.itemTitle,
+                    //     messageCount: chat.messages ? chat.messages.length : 0
+                    // })));
                 }
                 return data.chats;
             }
             
             if (data.error) {
-                console.error('[CHAT-MANAGER] ❌ Server error:', data.error);
+                // console.error('[CHAT-MANAGER] ❌ Server error:', data.error);
             }
             
-            console.log('[CHAT-MANAGER] ⚠️ No chats found or invalid response format');
+            // console.log('[CHAT-MANAGER] ⚠️ No chats found or invalid response format');
             return [];
             
         } catch (error) {
-            console.error('[CHAT-MANAGER] 🚨 Error loading chats:', error);
+            // console.error('[CHAT-MANAGER] 🚨 Error loading chats:', error);
             
             // Handle specific error types
             if (error instanceof TypeError && error.message.includes('fetch')) {
-                console.error('[CHAT-MANAGER] 🌐 Network error - check internet connection');
+                // console.error('[CHAT-MANAGER] 🌐 Network error - check internet connection');
             } else if (error instanceof SyntaxError) {
-                console.error('[CHAT-MANAGER] 📄 JSON parsing error - server response may be malformed');
+                // console.error('[CHAT-MANAGER] 📄 JSON parsing error - server response may be malformed');
             }
             
             return [];
@@ -1170,12 +1170,12 @@ export class ChatManager {
 
     private async loadChatMetadataFromServer(userId: string, courseName: string): Promise<ChatMetadata[]> {
         try {
-            console.log('[CHAT-MANAGER] 📊 Loading chat metadata from server...');
-            console.log('[CHAT-MANAGER] 📊 Request context:', {
-                userId,
-                courseName,
-                endpoint: '/api/chat/user/chats/metadata'
-            });
+            // console.log('[CHAT-MANAGER] 📊 Loading chat metadata from server...');
+            // console.log('[CHAT-MANAGER] 📊 Request context:', {
+            //     userId,
+            //     courseName,
+            //     endpoint: '/api/chat/user/chats/metadata'
+            // });
             
             const response = await fetch('/api/chat/user/chats/metadata', {
                 method: 'GET',
@@ -1185,49 +1185,49 @@ export class ChatManager {
                 }
             });
             
-            console.log('[CHAT-MANAGER] 📡 Server response status:', response.status, response.statusText);
+            // console.log('[CHAT-MANAGER] 📡 Server response status:', response.status, response.statusText);
             
             if (!response.ok) {
-                console.error('[CHAT-MANAGER] ❌ Failed to load chat metadata:', response.statusText);
-                console.error('[CHAT-MANAGER] 🔍 Response details:', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    url: response.url
-                });
+                // console.error('[CHAT-MANAGER] ❌ Failed to load chat metadata:', response.statusText);
+                // console.error('[CHAT-MANAGER] 🔍 Response details:', {
+                //     status: response.status,
+                //     statusText: response.statusText,
+                //     url: response.url
+                // });
                 return [];
             }
             
             const data = await response.json();
-            console.log('[CHAT-MANAGER] 📊 Raw response data:', data);
+            // console.log('[CHAT-MANAGER] 📊 Raw response data:', data);
             
             if (data.success && Array.isArray(data.chats)) {
-                console.log(`[CHAT-MANAGER] ✅ Loaded ${data.chats.length} chat metadata from database`);
+                // console.log(`[CHAT-MANAGER] ✅ Loaded ${data.chats.length} chat metadata from database`);
                 if (data.chats.length > 0) {
-                    console.log('[CHAT-MANAGER] 📋 Chat metadata details:', data.chats.map((metadata: any) => ({
-                        id: metadata.id,
-                        title: metadata.itemTitle,
-                        messageCount: metadata.messageCount,
-                        lastMessageTimestamp: metadata.lastMessageTimestamp
-                    })));
+                    // console.log('[CHAT-MANAGER] 📋 Chat metadata details:', data.chats.map((metadata: any) => ({
+                    //     id: metadata.id,
+                    //     title: metadata.itemTitle,
+                    //     messageCount: metadata.messageCount,
+                    //     lastMessageTimestamp: metadata.lastMessageTimestamp
+                    // })));
                 }
                 return data.chats;
             }
             
             if (data.error) {
-                console.error('[CHAT-MANAGER] ❌ Server error:', data.error);
+                // console.error('[CHAT-MANAGER] ❌ Server error:', data.error);
             }
             
-            console.log('[CHAT-MANAGER] ⚠️ No chat metadata found or invalid response format');
+            // console.log('[CHAT-MANAGER] ⚠️ No chat metadata found or invalid response format');
             return [];
             
         } catch (error) {
-            console.error('[CHAT-MANAGER] 🚨 Error loading chat metadata:', error);
+            // console.error('[CHAT-MANAGER] 🚨 Error loading chat metadata:', error);
             
             // Handle specific error types
             if (error instanceof TypeError && error.message.includes('fetch')) {
-                console.error('[CHAT-MANAGER] 🌐 Network error - check internet connection');
+                // console.error('[CHAT-MANAGER] 🌐 Network error - check internet connection');
             } else if (error instanceof SyntaxError) {
-                console.error('[CHAT-MANAGER] 📄 JSON parsing error - server response may be malformed');
+                // console.error('[CHAT-MANAGER] 📄 JSON parsing error - server response may be malformed');
             }
             
             return [];
@@ -1303,7 +1303,7 @@ export class ChatManager {
             }
             
         } catch (error) {
-            console.error(`[CHAT-MANAGER] 🚨 Error loading full chat ${chatId}:`, error);
+            // console.error(`[CHAT-MANAGER] 🚨 Error loading full chat ${chatId}:`, error);
             throw error;
         }
     }
@@ -1367,7 +1367,7 @@ export class ChatManager {
     private async refreshChatDataFromServer(): Promise<void> {
         try {
             //START DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA)
-            console.log('[CHAT-MANAGER] 🔄 Refreshing chat data from server...');
+            // console.log('[CHAT-MANAGER] 🔄 Refreshing chat data from server...');
             //END DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA)
             
             const courseName = this.config.userContext.courseName;
@@ -1403,13 +1403,13 @@ export class ChatManager {
             this.renderActiveChatIncremental();
             
             //START DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA-SUCCESS)
-            console.log('[CHAT-MANAGER] ✅ Chat data refreshed successfully');
-            console.log(`[CHAT-MANAGER] 📊 Refreshed ${freshChats.length} chats`);
+            // console.log('[CHAT-MANAGER] ✅ Chat data refreshed successfully');
+            // console.log(`[CHAT-MANAGER] 📊 Refreshed ${freshChats.length} chats`);
             //END DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA-SUCCESS)
             
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA-ERROR)
-            console.error('[CHAT-MANAGER] 🚨 Error refreshing chat data:', error);
+            // console.error('[CHAT-MANAGER] 🚨 Error refreshing chat data:', error);
             //END DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA-ERROR)
             // Don't throw error - refresh failure shouldn't break the chat flow
         }
@@ -1489,7 +1489,7 @@ export class ChatManager {
         const deleteBtn = document.getElementById('delete-chat-btn');
         
         // Debug logging for delete button binding
-        console.log('🔗 Binding message events - Delete button found:', !!deleteBtn);
+        // console.log('🔗 Binding message events - Delete button found:', !!deleteBtn);
 
         // Auto-grow textarea
         const autoGrow = () => {
@@ -1511,17 +1511,17 @@ export class ChatManager {
             }
         });
         //START DEBUG LOG : DEBUG-CODE(STAR-001)
-        console.log('[CHAT] 🔍 Attaching pin button event listener', { pinBtn: pinBtn?.id, exists: !!pinBtn });
+        // console.log('[CHAT] 🔍 Attaching pin button event listener', { pinBtn: pinBtn?.id, exists: !!pinBtn });
         //END DEBUG LOG : DEBUG-CODE(STAR-001)
 
         pinBtn?.addEventListener('click', () => {
             //START DEBUG LOG : DEBUG-CODE(STAR-001)
-            console.log('[CHAT] ⭐ Pin button clicked - calling handleTogglePin');
+            // console.log('[CHAT] ⭐ Pin button clicked - calling handleTogglePin');
             //END DEBUG LOG : DEBUG-CODE(STAR-001)
             this.handleTogglePin();
         });
         deleteBtn?.addEventListener('click', () => {
-            console.log('🗑️ Delete button clicked in chat header');
+            // console.log('🗑️ Delete button clicked in chat header');
             this.handleDeleteActiveChat();
         });
     }
@@ -1545,7 +1545,7 @@ export class ChatManager {
             if (unstruggleBtn) {
                 // Check if button is disabled - if so, ignore the click
                 if (unstruggleBtn.disabled || unstruggleBtn.classList.contains('disabled')) {
-                    console.log('⚠️ Unstruggle button is disabled. Ignoring click.');
+                    // console.log('⚠️ Unstruggle button is disabled. Ignoring click.');
                     return;
                 }
                 
@@ -1557,14 +1557,14 @@ export class ChatManager {
                 const messageId = unstruggleBtn.dataset.messageId;
                 
                 if (!topic || !response || !messageId) {
-                    console.error('❌ Missing data attributes on unstruggle button');
+                    // console.error('❌ Missing data attributes on unstruggle button');
                     return;
                 }
                 
                 // Check if previous bot message has the same topic
                 const activeChat = this.chats.find(c => c.id === this.activeChatId);
                 if (!activeChat) {
-                    console.error('❌ No active chat found');
+                    // console.error('❌ No active chat found');
                     return;
                 }
                 
@@ -1575,7 +1575,7 @@ export class ChatManager {
                 
                 if (!lastBotMessage || !lastBotMessage.text.includes(`<questionUnstruggle`) || !lastBotMessage.text.includes(`Topic="${topic}"`)) {
                     // Previous message doesn't match - treat as regular message (ignore)
-                    console.log('⚠️ Unstruggle button clicked but previous message doesn\'t match. Ignoring.');
+                    // console.log('⚠️ Unstruggle button clicked but previous message doesn\'t match. Ignoring.');
                     return;
                 }
                 
@@ -1604,7 +1604,7 @@ export class ChatManager {
                         undefined, // No streaming callback
                         undefined, // No completion callback
                         (error) => {
-                            console.error('❌ Error sending unstruggle response:', error);
+                            // console.error('❌ Error sending unstruggle response:', error);
                             // Re-enable buttons on error
                             if (container) {
                                 const buttons = container.querySelectorAll('.question-unstruggle-btn');
@@ -1616,7 +1616,7 @@ export class ChatManager {
                         }
                     );
                 } catch (error) {
-                    console.error('❌ Error sending unstruggle response:', error);
+                    // console.error('❌ Error sending unstruggle response:', error);
                     // Re-enable buttons on error
                     if (container) {
                         const buttons = container.querySelectorAll('.question-unstruggle-btn');
@@ -1729,24 +1729,24 @@ export class ChatManager {
 
     private handleTogglePin(): void {
         //START DEBUG LOG : DEBUG-CODE(STAR-001)
-        console.log('[CHAT] 🎯 handleTogglePin called');
+        // console.log('[CHAT] 🎯 handleTogglePin called');
         //END DEBUG LOG : DEBUG-CODE(STAR-001)
 
         const activeChatId = this.getActiveChatId();
 
         //START DEBUG LOG : DEBUG-CODE(STAR-001)
-        console.log('[CHAT] 📋 Active chat ID:', activeChatId);
+        // console.log('[CHAT] 📋 Active chat ID:', activeChatId);
         //END DEBUG LOG : DEBUG-CODE(STAR-001)
 
         if (!activeChatId) {
             //START DEBUG LOG : DEBUG-CODE(STAR-001)
-            console.log('[CHAT] ⚠️ No active chat ID, returning early');
+            // console.log('[CHAT] ⚠️ No active chat ID, returning early');
             //END DEBUG LOG : DEBUG-CODE(STAR-001)
             return;
         }
 
         //START DEBUG LOG : DEBUG-CODE(STAR-001)
-        console.log('[CHAT] 🔄 Calling togglePin with ID:', activeChatId);
+        // console.log('[CHAT] 🔄 Calling togglePin with ID:', activeChatId);
         //END DEBUG LOG : DEBUG-CODE(STAR-001)
 
         this.togglePin(activeChatId);
@@ -1755,12 +1755,12 @@ export class ChatManager {
     }
 
     private async handleDeleteActiveChat(): Promise<void> {
-        console.log('🗑️ handleDeleteActiveChat called');
+        // console.log('🗑️ handleDeleteActiveChat called');
         const activeChatId = this.getActiveChatId();
-        console.log('🗑️ Active chat ID:', activeChatId);
+        // console.log('🗑️ Active chat ID:', activeChatId);
         
         if (!activeChatId) {
-            console.log('🗑️ No active chat to delete');
+            // console.log('🗑️ No active chat to delete');
             return;
         }
         
@@ -1773,9 +1773,9 @@ export class ChatManager {
         
         if (result.action === 'delete') {
             try {
-                console.log('🗑️ Attempting to delete chat:', activeChatId);
+                // console.log('🗑️ Attempting to delete chat:', activeChatId);
                 await this.deleteChat(activeChatId);
-                console.log('🗑️ Chat deleted successfully');
+                // console.log('🗑️ Chat deleted successfully');
                 
                 // Check if we still have an active chat after deletion
                 const currentActiveChat = this.getActiveChat();
@@ -1784,7 +1784,7 @@ export class ChatManager {
                     this.renderActiveChatIncremental();
                 } else {
                     // No active chat, render the welcome screen or empty state
-                    console.log('🗑️ No active chat after deletion, updating UI');
+                    // console.log('🗑️ No active chat after deletion, updating UI');
                     this.renderChatList(); // This will handle showing welcome screen if no chats
                 }
                 
@@ -1792,13 +1792,13 @@ export class ChatManager {
                 this.renderChatList();
                 
             } catch (error) {
-                console.error('Failed to delete active chat:', error);
+                // console.error('Failed to delete active chat:', error);
                 // Use modal instead of alert to avoid potential conflicts
                 await showSimpleErrorModal('Failed to delete chat. Please try again.', 'Delete Error');
                 return; // Don't update UI if deletion failed
             }
         } else {
-            console.log('🗑️ Chat deletion cancelled by user');
+            // console.log('🗑️ Chat deletion cancelled by user');
         }
         
         // Notify instructor mode that a chat was deleted
@@ -1856,12 +1856,12 @@ export class ChatManager {
                         hasChats: this.chats.length > 0 
                     });
                 } catch (error) {
-                    console.error('Failed to delete chat:', error);
+                    // console.error('Failed to delete chat:', error);
                     // Show user-friendly error message
                     await showSimpleErrorModal('Failed to delete chat. Please try again.', 'Delete Error');
                 }
             } else {
-                console.log('🗑️ Chat deletion cancelled by user');
+                // console.log('🗑️ Chat deletion cancelled by user');
             }
         });
 
@@ -1979,12 +1979,12 @@ export class ChatManager {
                         hasChats: this.chatMetadata.length > 0 
                     });
                 } catch (error) {
-                    console.error('Failed to delete chat:', error);
+                    // console.error('Failed to delete chat:', error);
                     // Show user-friendly error message
                     await showSimpleErrorModal('Failed to delete chat. Please try again.', 'Delete Error');
                 }
             } else {
-                console.log('🗑️ Chat deletion cancelled by user');
+                // console.log('🗑️ Chat deletion cancelled by user');
             }
         });
 
@@ -2052,7 +2052,7 @@ export class ChatManager {
                     loaded: true 
                 });
             } catch (error) {
-                console.error('[CHAT-MANAGER] Failed to load chat:', error);
+                // console.error('[CHAT-MANAGER] Failed to load chat:', error);
                 this.callModeSpecificCallback('chat-load-failed', { 
                     chatId: metadata.id,
                     error: error 
@@ -2317,7 +2317,7 @@ export class ChatManager {
         // Find the message being flagged
         const message = activeChat.messages.find(m => m.id === messageId);
         if (!message || message.sender !== 'bot') {
-            console.error('Message not found or not a bot message');
+            // console.error('Message not found or not a bot message');
             return;
         }
 
@@ -2573,7 +2573,7 @@ export class ChatManager {
                     userId: this.config.userContext.userId
                 };
 
-                console.log('🏴 Submitting flag to API:', requestBody);
+                // console.log('🏴 Submitting flag to API:', requestBody);
 
                 const response = await fetch(`/api/courses/${this.config.userContext.courseId}/flags`, {
                     method: 'POST',
@@ -2584,7 +2584,7 @@ export class ChatManager {
                 });
 
                 const apiResponse = await response.json();
-                console.log('🏴 Flag API response:', apiResponse);
+                // console.log('🏴 Flag API response:', apiResponse);
                 
                 if (!response.ok) {
                     throw new Error(apiResponse.error || `HTTP ${response.status}: ${response.statusText}`);
@@ -2605,7 +2605,7 @@ export class ChatManager {
                 }
                 
             } catch (error) {
-                console.error('Error submitting flag:', error);
+                // console.error('Error submitting flag:', error);
                 this.showFlagStatus(
                     statusMessage, 
                     'Failed to submit flag. Please try again.', 
