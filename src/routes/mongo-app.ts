@@ -178,19 +178,20 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
         });
     }
 
-    if (!course.instructors || !Array.isArray(course.instructors) || course.instructors.length === 0) {
-        console.log("🔴 Instructors array is required and must contain at least one instructor");
+    // Instructors can be empty - backend adds the authenticated creator as instructor
+    if (!course.instructors || !Array.isArray(course.instructors)) {
+        console.log("🔴 Instructors must be an array");
         return res.status(400).json({
             success: false,
-            error: 'Instructors array is required and must contain at least one instructor'
+            error: 'Instructors must be an array'
         });
     }
 
     if (!course.teachingAssistants || !Array.isArray(course.teachingAssistants)) {
-        console.log("🔴 Teaching assistants array is required");
+        console.log("🔴 Teaching assistants must be an array");
         return res.status(400).json({
             success: false,
-            error: 'Teaching assistants array is required'
+            error: 'Teaching assistants must be an array'
         });
     }
 

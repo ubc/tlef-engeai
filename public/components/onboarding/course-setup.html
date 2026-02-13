@@ -42,43 +42,15 @@
                 </div>
                 <div class="step-content">
                     <h3>Course Name</h3>
-                    <p>Select your course</p>
+                    <p>Enter your course</p>
                 </div>
             </div>
 
-            <!-- Step 3: Instructors -->
+            <!-- Step 3: Course Division -->
             <div class="step-item" data-step="3">
                 <div class="step-indicator">
                     <div class="step-circle completed">
                         <span class="step-number">3</span>
-                    </div>
-                    <div class="step-line"></div>
-                </div>
-                <div class="step-content">
-                    <h3>Instructors</h3>
-                    <p>Add course instructors</p>
-                </div>
-            </div>
-
-            <!-- Step 4: Teaching Assistants -->
-            <div class="step-item" data-step="4">
-                <div class="step-indicator">
-                    <div class="step-circle completed">
-                        <span class="step-number">4</span>
-                    </div>
-                    <div class="step-line"></div>
-                </div>
-                <div class="step-content">
-                    <h3>Teaching Assistants</h3>
-                    <p>Add TAs (optional)</p>
-                </div>
-            </div>
-
-            <!-- Step 5: Course Division -->
-            <div class="step-item" data-step="5">
-                <div class="step-indicator">
-                    <div class="step-circle completed">
-                        <span class="step-number">5</span>
                     </div>
                     <div class="step-line"></div>
                 </div>
@@ -88,11 +60,11 @@
                 </div>
             </div>
 
-            <!-- Step 6: Content Count -->
-            <div class="step-item" data-step="6">
+            <!-- Step 4: Content Count -->
+            <div class="step-item" data-step="4">
                 <div class="step-indicator">
                     <div class="step-circle completed">
-                        <span class="step-number">6</span>
+                        <span class="step-number">4</span>
                     </div>
                     <div class="step-line"></div>
                 </div>
@@ -102,11 +74,11 @@
                 </div>
             </div>
 
-            <!-- Step 7: Finalization -->
-            <div class="step-item" data-step="7">
+            <!-- Step 5: Finalization -->
+            <div class="step-item" data-step="5">
                 <div class="step-indicator">
                     <div class="step-circle completed">
-                        <span class="step-number">7</span>
+                        <span class="step-number">5</span>
                     </div>
                     <div class="step-line"></div>
                 </div>
@@ -116,11 +88,11 @@
                 </div>
             </div>
 
-            <!-- Step 8: Congratulations -->
-            <div class="step-item" data-step="8">
+            <!-- Step 6: Congratulations -->
+            <div class="step-item" data-step="6">
                 <div class="step-indicator">
                     <div class="step-circle current">
-                        <span class="step-number">8</span>
+                        <span class="step-number">6</span>
                     </div>
                 </div>
                 <div class="step-content">
@@ -161,59 +133,20 @@
         <div class="content-step" id="content-step-2">
             <div class="content-step-inner">
                 <div class="step-header">
-                    <h1>Select Your Course</h1>
-                    <p>Choose the course you're setting up</p>
+                    <h1>Enter Your Course</h1>
+                    <p>Type the course name you're setting up</p>
                 </div>
                 
                 <div class="form-group">
-                    <label for="courseSelect">Course Name</label>
-                    <select id="courseSelect" class="form-select">
-                        <!-- Options populated by TypeScript -->
-                    </select>
+                    <label for="courseInput">Course Name</label>
+                    <input type="text" id="courseInput" class="form-input" placeholder="e.g. CHBE 241 - Material and Energy Balances">
+                    <p id="courseValidationMessage" class="validation-message" aria-live="polite"></p>
                 </div>
             </div>
         </div>
 
-        <!-- Step 3: Instructors -->
+        <!-- Step 3: Course Division -->
         <div class="content-step" id="content-step-3">
-            <div class="step-header">
-                <h1>Add Instructors</h1>
-                <p>Select all instructors for this course</p>
-            </div>
-            
-            <div class="form-group">
-                <label for="instructorSelect">Instructors</label>
-                <div class="dropdown-with-add">
-                    <select id="instructorSelect" class="form-select">
-                        <!-- Options populated by TypeScript -->
-                    </select>
-                    <button type="button" class="add-instructor-btn" id="addInstructorBtn">Add</button>
-                </div>
-                <div class="selected-items" id="selectedInstructors"></div>
-            </div>
-        </div>
-
-        <!-- Step 4: Teaching Assistants -->
-        <div class="content-step" id="content-step-4">
-            <div class="step-header">
-                <h1>Add Teaching Assistants</h1>
-                <p>Select TAs for this course (optional)</p>
-            </div>
-            
-            <div class="form-group">
-                <label for="taSelect">Teaching Assistants</label>
-                <div class="dropdown-with-add">
-                    <select id="taSelect" class="form-select">
-                        <!-- Options populated by TypeScript -->
-                    </select>
-                    <button type="button" class="add-ta-btn" id="addTABtn">Add</button>
-                </div>
-                <div class="selected-items" id="selectedTAs"></div>
-            </div>
-        </div>
-
-        <!-- Step 5: Course Division -->
-        <div class="content-step" id="content-step-5">
             <div class="step-header">
                 <h1>Course Organization</h1>
                 <p>How would you like to organize your course content?</p>
@@ -239,8 +172,8 @@
             </div>
         </div>
 
-        <!-- Step 6: Content Count -->
-        <div class="content-step" id="content-step-6">
+        <!-- Step 4: Content Count -->
+        <div class="content-step" id="content-step-4">
             <div class="step-header">
                 <h1>Number of Sections</h1>
                 <p id="countDescription">How many weeks are in your course?</p>
@@ -253,8 +186,8 @@
             </div>
         </div>
 
-        <!-- Step 7: Finalization -->
-        <div class="content-step" id="content-step-7">
+        <!-- Step 5: Finalization -->
+        <div class="content-step" id="content-step-5">
             <div class="content-step-inner">
                 <div class="step-header">
                     <h1>Review Your Setup</h1>
@@ -263,32 +196,8 @@
                 
                 <div class="review-content">
                     <div class="form-group">
-                        <label for="reviewCourseSelect">Course Name</label>
-                        <select id="reviewCourseSelect" class="form-select">
-                            <!-- Options populated by TypeScript -->
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="reviewInstructorSelect">Instructors</label>
-                        <div class="dropdown-with-add">
-                            <select id="reviewInstructorSelect" class="form-select">
-                                <!-- Options populated by TypeScript -->
-                            </select>
-                            <button type="button" class="add-instructor-btn" id="reviewAddInstructorBtn">Add</button>
-                        </div>
-                        <div class="selected-items" id="reviewSelectedInstructors"></div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="reviewTASelect">Teaching Assistants</label>
-                        <div class="dropdown-with-add">
-                            <select id="reviewTASelect" class="form-select">
-                                <!-- Options populated by TypeScript -->
-                            </select>
-                            <button type="button" class="add-ta-btn" id="reviewAddTABtn">Add</button>
-                        </div>
-                        <div class="selected-items" id="reviewSelectedTAs"></div>
+                        <label for="reviewCourseName">Course Name</label>
+                        <p id="reviewCourseName" class="review-readonly"></p>
                     </div>
 
                     <div class="form-group">
@@ -320,8 +229,8 @@
             </div>
         </div>
 
-        <!-- Step 8: Congratulations -->
-        <div class="content-step" id="content-step-8">
+        <!-- Step 6: Congratulations -->
+        <div class="content-step" id="content-step-6">
             <div class="content-step-inner">
                 <div class="step-header">
                     <h1>Course Setup Complete!</h1>
@@ -335,7 +244,6 @@
                         <p>You have successfully completed the course setup process. Your course is now ready for the next step!</p>
                         <ul class="completion-list">
                             <li>Course name and structure configured</li>
-                            <li>Instructors and teaching assistants assigned</li>
                             <li>Content organization method selected</li>
                             <li>Number of sections determined</li>
                         </ul>
@@ -346,6 +254,7 @@
                         <h4>What's Next?</h4>
                         <p>Your next steps are:</p>
                         <ul>
+                            <li>Add instructors and TAs through the course management feature</li>
                             <li>Add learning objectives for each course session</li>
                             <li>Upload course materials and documents</li>
                             <li>Customize your course content further</li>
@@ -380,7 +289,6 @@
             <p><strong>What you'll need:</strong></p>
             <ul>
                 <li>Your course information</li>
-                <li>Instructor and TA details</li>
                 <li>Course organization preferences</li>
             </ul>
             <p>Take your time with each step - you can always go back to make changes.</p>
@@ -388,80 +296,53 @@
 
         <!-- Step 2 Help -->
         <div id="help-step-2">
-            <p><strong>Select your course from the dropdown menu.</strong></p>
-            <p>Choose the course you'll be teaching from the available options. If your course isn't listed, please contact the system administrator.</p>
-            <p><strong>Available courses include:</strong></p>
+            <p><strong>Enter your course name in the text field.</strong></p>
+            <p>Type the full course name (e.g., CHBE 241 - Material and Energy Balances). The system will check if this course has already been initiated. If it has, you'll need to choose a different course name.</p>
+            <p><strong>Tips:</strong></p>
             <ul>
-                <li>CHBE 241 - Chemical and Biological Engineering Fundamentals</li>
-                <li>MTRL 251 - Materials Engineering Fundamentals</li>
+                <li>Use the exact course name as it appears in your syllabus</li>
+                <li>Each course can only be initiated once in the system</li>
             </ul>
         </div>
 
         <!-- Step 3 Help -->
         <div id="help-step-3">
-            <p><strong>Add instructors for your course.</strong></p>
-            <p>Select instructors from the dropdown and click "Add" to include them. You can add multiple instructors.</p>
-            <p><strong>Tips:</strong></p>
-            <ul>
-                <li>At least one instructor is required</li>
-                <li>You can remove instructors by clicking the × button</li>
-                <li>Instructors will have full access to course management</li>
-            </ul>
-        </div>
-
-        <!-- Step 4 Help -->
-        <div id="help-step-4">
-            <p><strong>Add teaching assistants (optional).</strong></p>
-            <p>Teaching assistants can help manage the course and interact with students. This step is optional but recommended for larger courses.</p>
-            <p><strong>TA capabilities:</strong></p>
-            <ul>
-                <li>Monitor student interactions</li>
-                <li>Access course materials</li>
-                <li>Generate reports</li>
-            </ul>
-        </div>
-
-        <!-- Step 5 Help -->
-        <div id="help-step-5">
             <p><strong>Choose how to organize your course content.</strong></p>
             <p><strong>By Week:</strong> Organize content chronologically by weeks (recommended for semester courses)</p>
             <p><strong>By Topic:</strong> Organize content by subject matter (recommended for modular courses)</p>
             <p>This choice affects how content is presented to students and how you'll manage the course structure.</p>
         </div>
 
-        <!-- Step 6 Help -->
-        <div id="help-step-6">
+        <!-- Step 4 Help -->
+        <div id="help-step-4">
             <p><strong>Specify the number of sections for your course.</strong></p>
             <p><strong>For weekly organization:</strong> Enter the number of weeks (1-14)</p>
             <p><strong>For topic organization:</strong> Enter the number of topics (1-52)</p>
             <p>This determines how many content sections you'll have to manage. You can always adjust this later.</p>
         </div>
 
-        <!-- Step 7 Help -->
-        <div id="help-step-7">
+        <!-- Step 5 Help -->
+        <div id="help-step-5">
             <p><strong>Review all your selections before completing setup.</strong></p>
             <p>This final step shows a summary of all your choices. Please verify:</p>
             <ul>
                 <li>Course name is correct</li>
-                <li>All instructors are listed</li>
-                <li>Teaching assistants (if any) are correct</li>
                 <li>Organization type and count are appropriate</li>
             </ul>
             <p>Click "Complete Setup" to finish the onboarding process.</p>
         </div>
 
-        <!-- Step 8 Help -->
-        <div id="help-step-8">
+        <!-- Step 6 Help -->
+        <div id="help-step-6">
             <p><strong>Course Setup Complete!</strong></p>
             <p>Congratulations! You have successfully completed the course setup process.</p>
             <p><strong>What you've accomplished:</strong></p>
             <ul>
                 <li>Configured your course name and structure</li>
-                <li>Assigned instructors and teaching assistants</li>
                 <li>Selected your content organization method</li>
                 <li>Determined the number of course sections</li>
             </ul>
-            <p>You're now ready to proceed to the next step: setting up your course content and learning materials.</p>
+            <p>You're now ready to proceed to the next step: adding instructors and TAs, then setting up your course content and learning materials.</p>
         </div>
     </div>
 </div>
