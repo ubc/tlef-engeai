@@ -19,16 +19,16 @@ import { DocumentUploadModule, UploadResult } from './DocumentUploadModule.js';
  * @returns Promise with the upload result
  */
 export async function uploadRAGContent(content: AdditionalMaterial): Promise<UploadResult> {
-    console.log('DEBUG #23 : Uploading content to RAG system');
-    
+    // console.log('DEBUG #23 : Uploading content to RAG system'); // 🟢 MEDIUM: Upload operation logging
+
     try {
         const uploadModule = new DocumentUploadModule((progress, stage) => {
-            console.log(`Upload progress: ${progress}% - ${stage}`);
+            // console.log(`Upload progress: ${progress}% - ${stage}`); // 🟢 MEDIUM: Progress logging
         });
-        
+
         const result = await uploadModule.uploadDocument(content);
-        
-        console.log('DEBUG #24 : RAG upload result:', result);
+
+        // console.log('DEBUG #24 : RAG upload result:', result); // 🟡 HIGH: RAG processing results exposure
         return result;
     } catch (error) {
         console.error('Error uploading to RAG system:', error);

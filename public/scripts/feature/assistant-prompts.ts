@@ -85,7 +85,7 @@ async function loadPrompts(): Promise<void> {
         const result = await response.json();
         if (result.success) {
             prompts = result.data || [];
-            console.log(`✅ [ASSISTANT-PROMPTS] Loaded ${prompts.length} prompts`);
+            // console.log(`✅ [ASSISTANT-PROMPTS] Loaded ${prompts.length} prompts`);
         } else {
             throw new Error(result.error || 'Failed to load prompts');
         }

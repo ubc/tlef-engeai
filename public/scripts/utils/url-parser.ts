@@ -120,12 +120,12 @@ export function navigateToStudentView(view?: string, chatId?: string): void {
         console.error('[URL-PARSER] Cannot navigate: courseId not found in URL');
         return;
     }
-    
+
     const url = buildStudentURL(courseId, view, chatId);
-    
+
     // Check if we're already on this URL to prevent unnecessary navigation
     if (window.location.pathname + window.location.search === url) {
-        console.log('[URL-PARSER] Already on target URL, skipping navigation:', url);
+        // console.log('[URL-PARSER] Already on target URL, skipping navigation:', url);
         return;
     }
     
@@ -141,10 +141,10 @@ export function navigateToStudentView(view?: string, chatId?: string): void {
  */
 export function navigateToStudentChat(courseId: string, chatId: string): void {
     const url = buildStudentURL(courseId, 'chat', chatId);
-    
+
     // Check if we're already on this URL to prevent unnecessary navigation
     if (window.location.pathname + window.location.search === url) {
-        console.log('[URL-PARSER] Already on target URL, skipping navigation:', url);
+        // console.log('[URL-PARSER] Already on target URL, skipping navigation:', url);
         return;
     }
     

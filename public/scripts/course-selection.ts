@@ -31,7 +31,7 @@ async function initializeCourseSelection(): Promise<void> {
         const authData = await userResponse.json();
         
         if (!authData.authenticated) {
-            console.log('[COURSE-SELECTION] ❌ User not authenticated, redirecting to login');
+            // console.log('[COURSE-SELECTION] ❌ User not authenticated, redirecting to login');
             window.location.href = '/';
             return;
         }
@@ -73,8 +73,8 @@ async function initializeCourseSelection(): Promise<void> {
  */
 async function loadCourses(): Promise<void> {
     try {
-        console.log('[COURSE-SELECTION] 📚 Loading courses...');
-        
+        // console.log('[COURSE-SELECTION] 📚 Loading courses...');
+
         const container = document.getElementById('course-cards');
         if (!container) return;
         
@@ -85,16 +85,16 @@ async function loadCourses(): Promise<void> {
         }
         
         const { data: courses } = await response.json();
-        console.log('[COURSE-SELECTION] 📋 Courses fetched:', courses.length);
-        
+        // console.log('[COURSE-SELECTION] 📋 Courses fetched:', courses.length);
+
         // Filter to only show enrolled courses (fixed bug: courses should only show if enrolled)
         const enrolledCourseIds = currentGlobalUser?.coursesEnrolled || [];
         const enrolledCourses = courses.filter((course: any) => {
             return enrolledCourseIds.includes(course.id);
         });
-        
-        console.log('[COURSE-SELECTION] 📋 Enrolled courses:', enrolledCourses.length);
-        
+
+        // console.log('[COURSE-SELECTION] 📋 Enrolled courses:', enrolledCourses.length);
+
         // Hide loading message
         hideLoadingMessage();
         
@@ -119,9 +119,9 @@ async function loadCourses(): Promise<void> {
         
         // Attach event listeners
         attachCourseCardListeners();
-        
-        console.log('[COURSE-SELECTION] ✅ Course cards rendered');
-        
+
+        // console.log('[COURSE-SELECTION] ✅ Course cards rendered');
+
     } catch (error) {
         console.error('[COURSE-SELECTION] ❌ Error loading courses:', error);
         hideLoadingMessage();
@@ -249,7 +249,7 @@ async function enterCourse(courseId: string): Promise<void> {
         }
         
         // Redirect to appropriate page
-        console.log('[COURSE-SELECTION] ✅ Redirecting to:', data.redirect);
+        // console.log('[COURSE-SELECTION] ✅ Redirecting to:', data.redirect);
         window.location.href = data.redirect;
         
     } catch (error) {
@@ -289,7 +289,7 @@ async function restartOnboarding(courseId: string, courseName: string): Promise<
         
         // Check if user confirmed (clicked "Restart Onboarding" button)
         if (result.action !== 'Restart Onboarding') {
-            console.log('[COURSE-SELECTION] 🚫 Restart onboarding cancelled by user');
+            // console.log('[COURSE-SELECTION] 🚫 Restart onboarding cancelled by user');
             return;
         }
 
@@ -326,7 +326,7 @@ async function restartOnboarding(courseId: string, courseName: string): Promise<
         }
         
         // Success - reload the page to refresh course list
-        console.log('[COURSE-SELECTION] ✅ Onboarding restarted successfully');
+        // console.log('[COURSE-SELECTION] ✅ Onboarding restarted successfully');
         await showSuccessModal(
             'Success',
             'Onboarding restarted successfully. The page will reload.'
@@ -374,7 +374,7 @@ async function removeCourse(courseId: string, courseName: string): Promise<void>
         
         // Check if user confirmed
         if (result.action !== 'Confirm' && result.action !== 'confirm') {
-            console.log('[COURSE-SELECTION] ❌ Course removal cancelled by user');
+            // console.log('[COURSE-SELECTION] ❌ Course removal cancelled by user');
             return;
         }
         
@@ -662,7 +662,7 @@ async function handleResetMongoDB(): Promise<void> {
         
         // Check if user cancelled (modal returns button text lowercased with hyphens)
         if (result.action === 'cancel' || result.action === 'overlay' || result.action === 'escape') {
-            console.log('[COURSE-SELECTION] ❌ MongoDB reset cancelled by user');
+            // console.log('[COURSE-SELECTION] ❌ MongoDB reset cancelled by user');
             return;
         }
         
@@ -741,7 +741,7 @@ async function handleResetVectorDatabase(): Promise<void> {
         
         // Check if user cancelled (modal returns button text lowercased with hyphens)
         if (result.action === 'cancel' || result.action === 'overlay' || result.action === 'escape') {
-            console.log('[COURSE-SELECTION] ❌ Vector database reset cancelled by user');
+            // console.log('[COURSE-SELECTION] ❌ Vector database reset cancelled by user');
             return;
         }
         
@@ -881,8 +881,8 @@ async function handleDownloadDatabase(): Promise<void> {
  */
 async function createNewCourseForInstructor(): Promise<void> {
     try {
-        console.log('[COURSE-SELECTION] 🚀 Preparing new course onboarding...');
-        
+        // console.log('[COURSE-SELECTION] 🚀 Preparing new course onboarding...');
+
         // Get current user info to include as instructor
         const userResponse = await fetch('/auth/current-user');
         if (!userResponse.ok) {
@@ -919,9 +919,9 @@ async function createNewCourseForInstructor(): Promise<void> {
         
         // Store in sessionStorage (instructor-mode.ts checks for this)
         sessionStorage.setItem('debugCourse', JSON.stringify(tempCourse));
-        
-        console.log('[COURSE-SELECTION] ✅ Temporary course data stored, redirecting to onboarding...');
-        
+
+        // console.log('[COURSE-SELECTION] ✅ Temporary course data stored, redirecting to onboarding...');
+
         // Redirect to new-course onboarding route (no courseId needed)
         window.location.href = '/instructor/onboarding/new-course';
         
@@ -1136,7 +1136,7 @@ async function handleCourseCodeSubmit(courseCode: string, inputElement: HTMLInpu
         }
         
         // Success - redirect to appropriate page
-        console.log('[COURSE-SELECTION] ✅ Redirecting to:', data.redirect);
+        // console.log('[COURSE-SELECTION] ✅ Redirecting to:', data.redirect);
         window.location.href = data.redirect;
         
     } catch (error) {
@@ -1182,7 +1182,7 @@ function setupBrandLogoToggle(): void {
 
     if (brandLogo && adminButtonsSection) {
         brandLogo.addEventListener('click', () => {
-            console.log('[COURSE-SELECTION] 🔑 Brand logo clicked - toggling admin buttons');
+            // console.log('[COURSE-SELECTION] 🔑 Brand logo clicked - toggling admin buttons');
             const currentDisplay = adminButtonsSection.style.display;
             const newDisplay = currentDisplay === 'none' ? 'block' : 'none';
             adminButtonsSection.style.display = newDisplay;
@@ -1192,7 +1192,7 @@ function setupBrandLogoToggle(): void {
                 setupAdminButtons();
             }
         });
-        console.log('[COURSE-SELECTION] ✅ Brand logo click listener attached');
+        // console.log('[COURSE-SELECTION] ✅ Brand logo click listener attached');
     }
 }
 

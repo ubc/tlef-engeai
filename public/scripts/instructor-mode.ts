@@ -1,5 +1,6 @@
 import { loadComponentHTML, renderFeatherIcons } from "./functions/api.js";
 import { activeCourse, User } from "../../src/functions/types.js";
+import { instructorUserFactory } from "./factories/InstructorUserFactory.js";
 import { initializeDocumentsPage } from "./feature/documents.js";
 import { renderOnCourseSetup } from "./onboarding/course-setup.js";
 import { renderDocumentSetup } from "./onboarding/document-setup.js";
@@ -96,11 +97,11 @@ declare global {
 let isInitialized = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log("DOMContentLoaded is called");
-    
+    // console.log("DOMContentLoaded is called"); // 🟢 MEDIUM: Debug info - keep for monitoring
+
     // Prevent multiple initializations
     if (isInitialized) {
-        console.log("Already initialized, skipping...");
+        // console.log("Already initialized, skipping..."); // 🟢 MEDIUM: Debug info - keep for monitoring
         return;
     }
     isInitialized = true;
@@ -108,11 +109,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Check authentication first
     const isAuthenticated = await checkAuthentication();
     if (!isAuthenticated) {
-        console.log('[INSTRUCTOR-MODE] ❌ User not authenticated, redirecting to login...');
+        // console.log('[INSTRUCTOR-MODE] ❌ User not authenticated, redirecting to login...'); // 🟢 MEDIUM: Auth status - keep for monitoring
         return; // Stop execution if not authenticated
     }
-    
-    console.log('[INSTRUCTOR-MODE] 🚀 Loading instructor mode...');
+
+    // console.log('[INSTRUCTOR-MODE] 🚀 Loading instructor mode...'); // 🟢 MEDIUM: Loading status - keep for monitoring
     
     // Initialize inactivity tracking
     initializeInactivityTracking();
@@ -124,7 +125,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function loadCurrentCourse(): Promise<void> {
         try {
             // Priority 1: Try to get current course from session (set by course selection)
-            console.log('[INSTRUCTOR-MODE] 🔍 Checking for current course in session...');
+            // console.log('[INSTRUCTOR-MODE] 🔍 Checking for current course in session...'); // 🟢 MEDIUM: Session check - keep for monitoring
             const sessionResponse = await fetch('/api/course/current', {
                 method: 'GET',
                 credentials: 'same-origin',
@@ -136,8 +137,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (sessionResponse.ok) {
                 const sessionData = await sessionResponse.json();
                 if (sessionData.course && sessionData.course.courseName) {
-                    console.log('[INSTRUCTOR-MODE] ✅ Found course in session:', sessionData.course.courseName);
-                    
+                    // console.log('[INSTRUCTOR-MODE] ✅ Found course in session:', sessionData.course.courseName); // 🟡 HIGH: Course name exposure from session
+
                     // Fetch full course data using the course name from session
                     const courseResponse = await fetch(`/api/courses?name=${encodeURIComponent(sessionData.course.courseName)}`, {
                         method: 'GET',
@@ -151,15 +152,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const courseResult = await courseResponse.json();
                         if (courseResult.success && courseResult.data) {
                             currentClass = courseResult.data;
-                            console.log('[INSTRUCTOR-MODE] ✅ Course loaded from session:', currentClass.courseName);
-                            console.log('[INSTRUCTOR-MODE] 📊 Course Data:', {
-                                id: currentClass.id,
-                                courseName: currentClass.courseName,
-                                courseSetup: currentClass.courseSetup,
-                                contentSetup: currentClass.contentSetup,
-                                flagSetup: currentClass.flagSetup,
-                                monitorSetup: currentClass.monitorSetup
-                            });
+                            // console.log('[INSTRUCTOR-MODE] ✅ Course loaded from session:', currentClass.courseName); // 🟡 HIGH: Course name exposure
+                            // console.log('[INSTRUCTOR-MODE] 📊 Course Data:', { // 🔴 CRITICAL: Full course data exposure
+                            //     id: currentClass.id,
+                            //     courseName: currentClass.courseName,
+                            //     courseSetup: currentClass.courseSetup,
+                            //     contentSetup: currentClass.contentSetup,
+                            //     flagSetup: currentClass.flagSetup,
+                            //     monitorSetup: currentClass.monitorSetup
+                            // });
                             return; // Successfully loaded, exit function
                         }
                     }
@@ -167,13 +168,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             
             // Priority 2: Check for debug course in sessionStorage
-            console.log('[INSTRUCTOR-MODE] 🔍 No session course, checking for debug course...');
+            // console.log('[INSTRUCTOR-MODE] 🔍 No session course, checking for debug course...');
             const debugCourseData = sessionStorage.getItem('debugCourse');
             if (debugCourseData) {
                 try {
                     const debugCourse = JSON.parse(debugCourseData);
                     currentClass = debugCourse;
-                    console.log('[INSTRUCTOR-MODE] ✅ Loaded debug course:', debugCourse.courseName);
+                    // console.log('[INSTRUCTOR-MODE] ✅ Loaded debug course:', debugCourse.courseName); // 🟡 HIGH: Course name exposure
                     
                     // Clear the debug course from sessionStorage after loading
                     sessionStorage.removeItem('debugCourse');
@@ -205,7 +206,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Listen for document setup completion event
     window.addEventListener('documentSetupComplete', () => {
-        console.log('📋 Document setup completed, redirecting to next onboarding stage...');
+        // console.log('📋 Document setup completed, redirecting to next onboarding stage...');
         
         const courseId = getCourseIdFromURL();
         if (courseId) {
@@ -225,7 +226,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Listen for flag setup completion event
     window.addEventListener('flagSetupComplete', () => {
-        console.log('🏁 Flag setup completed, redirecting to monitor setup...');
+        // console.log('🏁 Flag setup completed, redirecting to monitor setup...');
         
         const courseId = getCourseIdFromURL();
         if (courseId) {
@@ -242,7 +243,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Listen for monitor setup completion event
     window.addEventListener('monitorSetupComplete', () => {
-        console.log('📊 Monitor setup completed, redirecting to main interface...');
+        // console.log('📊 Monitor setup completed, redirecting to main interface...');
         
         const courseId = getCourseIdFromURL();
         if (courseId) {
@@ -257,7 +258,7 @@ document.addEventListener('DOMContentLoaded', async () => {
      * Redirect to documents page after document setup completion
      */
     function redirectToDocumentsPage(): void {
-        console.log('🔄 Document setup completed, proceeding to next onboarding step...');
+        // console.log('🔄 Document setup completed, proceeding to next onboarding step...');
         
         // Keep onboarding-active class - sidebar should remain hidden until ALL onboarding is complete
         // The class will be removed automatically when all setup steps (courseSetup, contentSetup, flagSetup, monitorSetup) are done
@@ -265,14 +266,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Update the UI - this will check currentClass.flagSetup and proceed to flag setup if needed
         updateUI();
         
-        console.log('✅ Successfully redirected to documents page');
+        // console.log('✅ Successfully redirected to documents page');
     }
 
     /**
      * Redirect to main interface after flag setup completion
      */
     function redirectToMainInterface(): void {
-        console.log('🔄 Flag setup completed, redirecting to main interface...');
+        // console.log('🔄 Flag setup completed, redirecting to main interface...');
         
         // Remove onboarding-active class from body
         document.body.classList.remove('onboarding-active');
@@ -295,7 +296,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Update the UI
         updateUI();
         
-        console.log('✅ Successfully redirected to main interface');
+        // console.log('✅ Successfully redirected to main interface');
     }
 
     /**
@@ -362,19 +363,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         const sessionData = await sessionResponse.json();
         
         if (courseIdFromURL && sessionData.course?.courseId !== courseIdFromURL) {
-            console.warn('[INSTRUCTOR-MODE] URL courseId does not match session, updating...');
+            // console.warn('[INSTRUCTOR-MODE] URL courseId does not match session, updating...'); // 🟡 HIGH: Course ID exposure from URL
             // Optionally redirect to sync session - but for now, just log warning
         }
     }
     
     // Check if we're on new course onboarding route
     if (isNewCourseOnboarding) {
-        console.log(`[INSTRUCTOR-MODE] 🎓 New course onboarding URL detected`);
+        // console.log(`[INSTRUCTOR-MODE] 🎓 New course onboarding URL detected`); // 🟢 MEDIUM: Onboarding detection - keep for monitoring
         // Don't set currentState - onboarding will be handled in updateUI() based on URL
         // Skip the regular view logic below
     } else if (onboardingStageFromURL) {
         // Check if we're on an onboarding URL for existing course
-        console.log(`[INSTRUCTOR-MODE] 🎓 Onboarding URL detected during initialization: ${onboardingStageFromURL}`);
+        // console.log(`[INSTRUCTOR-MODE] 🎓 Onboarding URL detected during initialization: ${onboardingStageFromURL}`); // 🟢 MEDIUM: Debug info - onboarding stage exposure
         // Don't set currentState - onboarding will be handled in updateUI() based on URL
         // Skip the regular view logic below
     } else if (viewFromURL) {
@@ -411,7 +412,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     flagStateEl?.addEventListener('click', () => {
-        console.log('🖱️ [INSTRUCTOR-DEBUG] Flag state clicked');
+        // console.log('🖱️ [INSTRUCTOR-DEBUG] Flag state clicked'); // 🟢 MEDIUM: UI interaction - keep for monitoring
         navigateToInstructorView('flags');
     });
 
@@ -498,64 +499,64 @@ document.addEventListener('DOMContentLoaded', async () => {
                         | 'assistant-prompts-instructor'
                         | 'system-prompts-instructor'
         ) => {
-        console.log(`🚀 [INSTRUCTOR-DEBUG] Loading component: ${componentName}`);
-        
+        // console.log(`🚀 [INSTRUCTOR-DEBUG] Loading component: ${componentName}`); // 🟢 MEDIUM: Component name debug info
+
         if (!mainContentAreaEl) {
-            console.error('❌ [INSTRUCTOR-DEBUG] Main content area element not found!');
+            console.error('❌ [INSTRUCTOR-DEBUG] Main content area element not found!'); // Keep - from try-catch context
             return;
         }
-        
+
         try {
-            console.log(`📡 [INSTRUCTOR-DEBUG] Fetching HTML for component: ${componentName}`);
+            // console.log(`📡 [INSTRUCTOR-DEBUG] Fetching HTML for component: ${componentName}`); // 🟢 MEDIUM: Component name debug info
             const html = await loadComponentHTML(componentName);
-            console.log(`✅ [INSTRUCTOR-DEBUG] HTML fetched successfully for: ${componentName}`);
-            
-            console.log(`🎨 [INSTRUCTOR-DEBUG] Setting innerHTML for component: ${componentName}`);
+            // console.log(`✅ [INSTRUCTOR-DEBUG] HTML fetched successfully for: ${componentName}`); // 🟢 MEDIUM: Component name debug info
+
+            // console.log(`🎨 [INSTRUCTOR-DEBUG] Setting innerHTML for component: ${componentName}`); // 🟢 MEDIUM: Component name debug info
             mainContentAreaEl.innerHTML = html;
             
             if (componentName === 'documents-instructor') {
-                console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing documents page...`);
+                // console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing documents page...`); // 🟢 MEDIUM: Component init - keep for monitoring
                 initializeDocumentsPage(currentClass);
             }
             else if (componentName === 'flag-instructor') {
-                console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing flags...`);
-                console.log(`🔧 [INSTRUCTOR-DEBUG] Current class data:`, currentClass);
-                console.log(`🔧 [INSTRUCTOR-DEBUG] Window.currentClass:`, (window as any).currentClass);
+                // console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing flags...`); // 🟢 MEDIUM: Debug info
+                // console.log(`🔧 [INSTRUCTOR-DEBUG] Current class data:`, currentClass); // 🟡 HIGH: Course data exposure
+                // console.log(`🔧 [INSTRUCTOR-DEBUG] Window.currentClass:`, (window as any).currentClass); // 🟡 HIGH: Course data exposure
                 await initializeFlags();
             }
             else if (componentName === 'monitor-instructor') {
-                console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing monitor dashboard...`);
+                // console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing monitor dashboard...`);
                 initializeMonitorDashboard();
             }
             else if (componentName === 'course-setup') {
-                console.log(`🔧 [INSTRUCTOR-DEBUG] Course setup component - handled by renderOnCourseSetup`);
+                // console.log(`🔧 [INSTRUCTOR-DEBUG] Course setup component - handled by renderOnCourseSetup`);
                 // Course setup component - handled by renderOnCourseSetup
             }
             else if (componentName === 'document-setup') {
-                console.log(`🔧 [INSTRUCTOR-DEBUG] Document setup component - handled by renderDocumentSetup`);
+                // console.log(`🔧 [INSTRUCTOR-DEBUG] Document setup component - handled by renderDocumentSetup`);
                 //course setup component - handled by renderDocumentSetup
             }
             else if (componentName === 'course-information') {
-                console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing course information...`);
+                // console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing course information...`);
                 await initializeCourseInformation(currentClass);
             }
             else if (componentName === 'assistant-prompts-instructor') {
-                console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing assistant prompts...`);
+                // console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing assistant prompts...`);
                 await initializeAssistantPrompts(currentClass);
             }
             else if (componentName === 'system-prompts-instructor') {
-                console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing system prompts...`);
+                // console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing system prompts...`);
                 await initializeSystemPrompts(currentClass);
             }
             
-            console.log(`🎨 [INSTRUCTOR-DEBUG] Rendering feather icons...`);
+            // console.log(`🎨 [INSTRUCTOR-DEBUG] Rendering feather icons...`);
             renderFeatherIcons();
             
-            console.log(`✅ [INSTRUCTOR-DEBUG] Component ${componentName} loaded successfully`);
+            // console.log(`✅ [INSTRUCTOR-DEBUG] Component ${componentName} loaded successfully`);
         }
         catch (error) {
             console.error(`❌ [INSTRUCTOR-DEBUG] Error loading component ${componentName}:`, error);
-            console.error(`❌ [INSTRUCTOR-DEBUG] Error stack:`, error instanceof Error ? error.stack : 'No stack trace');
+            // console.error(`❌ [INSTRUCTOR-DEBUG] Error stack:`, error instanceof Error ? error.stack : 'No stack trace');
             mainContentAreaEl.innerHTML = `<p style="color: red; text-align: center;"> Error loading content. </p>`
         }
     };
@@ -613,8 +614,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         if ( currentState === StateEvent.Flag){
-            console.log('🎯 [INSTRUCTOR-DEBUG] updateUI() handling flag state');
-            console.log('🎯 [INSTRUCTOR-DEBUG] Calling loadComponent("flag-instructor")');
+            // console.log('🎯 [INSTRUCTOR-DEBUG] updateUI() handling flag state');
+            // console.log('🎯 [INSTRUCTOR-DEBUG] Calling loadComponent("flag-instructor")');
             loadComponent('flag-instructor');
             updateSidebarState();
             expandFeatureSidebar();
@@ -650,21 +651,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             hideChatList(); // Ensure chat list is hidden
         }
     }
-
-    // Course is already loaded by loadCurrentCourse() at the top of DOMContentLoaded
-    // No need for duplicate loading here
-
-
-    // fetch('/api/courses/courses/CHBE241')
-    //     .then(r => r.json())
-    //     .then((data: activeCourse) => {
-    //         currentClass = data;
-    //         updateUI();
-    //     })
-    //     .catch(() => {
-    //         console.log("Error loading class data");
-    //         updateUI();
-    //     });
 
     // make fucntio that makes a get request given a coursename
     async function getCourse (courseName: string){
@@ -730,7 +716,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (chatListEl) {
             chatListEl.classList.remove('active');
             //START DEBUG LOG : DEBUG-CODE(013)
-            console.log('🚫 Chat list hidden (not in chat mode)');
+            // console.log('🚫 Chat list hidden (not in chat mode)');
             //END DEBUG LOG : DEBUG-CODE(013)
         }
     }
@@ -773,8 +759,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const initializeChatManager = async (): Promise<void> => {
         try {
             //START DEBUG LOG : DEBUG-CODE(001)
-            console.log('🚀 Initializing ChatManager for instructor mode...');
-            console.log('📋 Current class:', currentClass.courseName);
+            // console.log('🚀 Initializing ChatManager for instructor mode...'); // 🟢 MEDIUM: Debug info - keep for monitoring
+            // console.log('📋 Current class:', currentClass.courseName); // 🔴 CRITICAL: Course name exposure
             //END DEBUG LOG : DEBUG-CODE(001)
             
             // Get instructor's real User data from authentication
@@ -784,27 +770,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
             
-            // Create instructor User object from auth data
-            instructorUser = {
-                name: authState.user.name,
-                userId: authState.user.userId, // Will be fetched from database
-                courseId: 'apsc-099',
-                courseName: currentClass.courseName,
-                userOnboarding: false,
-                affiliation: 'faculty',
-                status: 'active',
-                chats: [],
-                createdAt: new Date(),
-                updatedAt: new Date()
-            };
-            
-            //START DEBUG LOG : DEBUG-CODE(002)
-            console.log('👤 Instructor user data loaded:', {
-                name: instructorUser!.name,
-                userId: instructorUser!.userId,
-                courseName: instructorUser!.courseName
+            // Create instructor User object via factory (handles undefined courseName safely)
+            instructorUser = instructorUserFactory.createUser({
+                authState,
+                courseContext: currentClass
             });
-            //END DEBUG LOG : DEBUG-CODE(002)
             
             // Initialize ChatManager with instructor User context
             chatManager = ChatManager.getInstance({
@@ -812,7 +782,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 userContext: instructorUser!, // Use instructor User object instead of activeCourse
                 onModeSpecificCallback: (action: string, data?: any) => {
                     //START DEBUG LOG : DEBUG-CODE(003)
-                    console.log('📞 ChatManager callback:', action, data);
+                    // console.log('📞 ChatManager callback:', action, data); // 🟡 HIGH: Chat data exposure in callbacks
                     //END DEBUG LOG : DEBUG-CODE(003)
                     
                     // Handle instructor-specific chat callbacks
@@ -872,7 +842,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.loadChatWindow = loadChatWindow;
             
             //START DEBUG LOG : DEBUG-CODE(004)
-            console.log('✅ ChatManager initialized successfully for instructor mode');
+            // console.log('✅ ChatManager initialized successfully for instructor mode');
             //END DEBUG LOG : DEBUG-CODE(004)
             
             // Update UI after initialization
@@ -891,7 +861,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Check if there are actually chats to display
         if (chatManager && chatManager.getChats().length === 0) {
-            console.log('🚫 No chats available, showing welcome screen instead of chat window');
+            // console.log('🚫 No chats available, showing welcome screen instead of chat window');
             showWelcomeScreen();
             return;
         }
@@ -909,14 +879,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 chatManager.rebindMessageEvents();
                 
                 //START DEBUG LOG : DEBUG-CODE(014)
-                console.log('🔗 Message events re-bound after chat window load');
+                // console.log('🔗 Message events re-bound after chat window load');
                 //END DEBUG LOG : DEBUG-CODE(014)
             }
             
             renderFeatherIcons();
             
             //START DEBUG LOG : DEBUG-CODE(010)
-            console.log('💬 Chat window loaded in main content area');
+            // console.log('💬 Chat window loaded in main content area');
             //END DEBUG LOG : DEBUG-CODE(010)
             
         } catch (error) {
@@ -1004,7 +974,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!chatManager) return;
         
         //START DEBUG LOG : DEBUG-CODE(005)
-        console.log('🔄 Updating chat UI for instructor mode...');
+        // console.log('🔄 Updating chat UI for instructor mode...');
         //END DEBUG LOG : DEBUG-CODE(005)
         
         // Render chat list in the instructor's chat menu
@@ -1013,19 +983,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Show welcome screen if no chats exist, otherwise load chat window
         const chats = chatManager.getChats();
         
-        //START DEBUG LOG : DEBUG-CODE(006)
-        console.log('📊 Chat count:', chats.length);
-        //END DEBUG LOG : DEBUG-CODE(006)
         
         if (chats.length === 0) {
-            //START DEBUG LOG : DEBUG-CODE(007)
-            console.log('📺 Showing welcome screen (no chats exist)');
-            //END DEBUG LOG : DEBUG-CODE(007)
             showWelcomeScreen();
         } else {
-            //START DEBUG LOG : DEBUG-CODE(008)
-            console.log('💬 Loading chat window with active chat');
-            //END DEBUG LOG : DEBUG-CODE(008)
             loadChatWindow();
         }
     };
@@ -1045,15 +1006,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const addChatBtn = mainContentAreaEl.querySelector('.welcome-add-btn');
             addChatBtn?.addEventListener('click', async () => {
                 if (chatManager) {
-                    //START DEBUG LOG : DEBUG-CODE(011)
-                    console.log('🆕 Creating new chat from welcome screen...');
-                    //END DEBUG LOG : DEBUG-CODE(011)
                     
                     const result = await chatManager.createNewChat();
                     if (result.success) {
-                        //START DEBUG LOG : DEBUG-CODE(012)
-                        console.log('✅ New chat created successfully, loading chat window');
-                        //END DEBUG LOG : DEBUG-CODE(012)
                         
                         // Load chat window in main content area after creating new chat
                         await loadChatWindow();
@@ -1092,9 +1047,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Ensure feature sidebar is collapsed when in chat mode
         collapseFeatureSidebar();
         
-        //START DEBUG LOG : DEBUG-CODE(009)
-        console.log('📱 Chat mode: Feature sidebar collapsed, chat list activated');
-        //END DEBUG LOG : DEBUG-CODE(009)
         
         // Show chat list (slides in from left to right)
         if (chatListEl) {
@@ -1127,8 +1079,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     //set custom windows listener on onboarding
     window.addEventListener('onboardingComplete', () => {
-        console.log('[INSTRUCTOR-MODE] 🎉 Course setup onboarding completed');
-        console.log('[INSTRUCTOR-MODE] Current class:', JSON.stringify(currentClass));
         
         // Check if we're coming from new-course onboarding (course was just created)
         const isNewCourse = isNewCourseOnboardingURL();
@@ -1137,8 +1087,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         const courseId = currentClass?.id;
         
         if (isNewCourse && courseId) {
-            // New course was just created - redirect to next onboarding stage with proper course-scoped URL
-            console.log(`[INSTRUCTOR-MODE] ✅ New course created with ID: ${courseId}, redirecting to document-setup...`);
             
             // Store course in session for future use
             // The course-entry endpoint will handle this, but we can also do it here
@@ -1187,7 +1135,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
             
-            console.log('[INSTRUCTOR-MODE] 🚪 Initiating logout...');
             
             // Check current authentication status before logout
             const authCheck = await fetch('/auth/me', {
@@ -1195,14 +1142,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 credentials: 'same-origin'
             });
             const authData = await authCheck.json();
-            console.log('[INSTRUCTOR-MODE] 📋 Current auth status before logout:', authData);
-            
+    
             // Call logout endpoint - let the browser follow the redirect naturally
-            console.log('[INSTRUCTOR-MODE] 🔄 Redirecting to logout endpoint...');
+           
             window.location.href = '/auth/logout';
             
         } catch (error) {
-            console.error('[INSTRUCTOR-MODE] 🚨 Logout error:', error);
             // Fallback: redirect to login page
             window.location.href = '/';
         }
@@ -1216,33 +1161,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         
         logoutBtn.addEventListener('click', handleInstructorLogout);
-        console.log('[INSTRUCTOR-MODE] ✅ Logout button listener attached');
 
         // About button listener
         const aboutBtn = document.getElementById('instructor-about-btn');
         if (aboutBtn) {
             aboutBtn.addEventListener('click', async () => {
-                console.log('[INSTRUCTOR-MODE] ℹ️ About button clicked');
                 navigateToInstructorView('about');
             });
-            console.log('[INSTRUCTOR-MODE] ✅ About button listener attached');
         }
 
         // Course Information button listener
         const courseInfoBtn = document.getElementById('instructor-course-info-btn');
         if (courseInfoBtn) {
             courseInfoBtn.addEventListener('click', async () => {
-                console.log('[INSTRUCTOR-MODE] ⚙️ Course Information button clicked');
                 navigateToInstructorView('course-information');
             });
-            console.log('[INSTRUCTOR-MODE] ✅ Course Information button listener attached');
         }
 
         // Course Selection button listener
         const courseSelectionBtn = document.getElementById('instructor-course-selection-btn');
         if (courseSelectionBtn) {
             courseSelectionBtn.addEventListener('click', async () => {
-                console.log('[INSTRUCTOR-MODE] 🔄 Course Selection button clicked - clearing state and redirecting');
 
                 // Clear all frontend state
                 try {
@@ -1254,25 +1193,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                         (window as any).appState = {};
                     }
 
-                    console.log('[INSTRUCTOR-MODE] 🧹 Cleared frontend state (localStorage and global state)');
-
                     // Navigate to course selection (server will handle session cleanup)
                     window.location.href = '/course-selection';
                 } catch (error) {
-                    console.error('[INSTRUCTOR-MODE] 🚨 Error clearing state:', error);
                     // Still navigate even if clearing fails
                     window.location.href = '/course-selection';
                 }
             });
-            console.log('[INSTRUCTOR-MODE] ✅ Course Selection button listener attached');
+            // console.log('[INSTRUCTOR-MODE] ✅ Course Selection button listener attached');
         }
 
         // Logo Box - Toggle Admin Buttons (all four: Remove Course, Remove struggle words, Download DB, List struggle words)
         const logoBox = document.querySelector('.logo-box');
         if (logoBox) {
             logoBox.addEventListener('click', () => {
-                console.log('[INSTRUCTOR-MODE] 🔑 Logo clicked - toggling admin buttons');
-
+       
                 const removeCourseBtn = document.getElementById('instructor-remove-course-btn');
                 const removeStruggleWordsBtn = document.getElementById('instructor-remove-struggle-words-btn');
                 const downloadDbBtn = document.getElementById('instructor-download-db-btn');
@@ -1285,14 +1220,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 });
             });
-            console.log('[INSTRUCTOR-MODE] ✅ Logo box click listener attached');
+            // console.log('[INSTRUCTOR-MODE] ✅ Logo box click listener attached');
         }
 
         // Remove Struggle Words button listener
         const removeStruggleWordsBtn = document.getElementById('instructor-remove-struggle-words-btn');
         if (removeStruggleWordsBtn) {
             removeStruggleWordsBtn.addEventListener('click', async () => {
-                console.log('[INSTRUCTOR-MODE] 🧠 Remove struggle words button clicked');
                 if (!currentClass || !currentClass.id) {
                     alert('❌ Error: No course selected');
                     return;
@@ -1323,7 +1257,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const listStruggleWordsBtn = document.getElementById('instructor-list-struggle-words-btn');
         if (listStruggleWordsBtn) {
             listStruggleWordsBtn.addEventListener('click', async () => {
-                console.log('[INSTRUCTOR-MODE] 📋 List struggle words button clicked');
+                // console.log('[INSTRUCTOR-MODE] 📋 List struggle words button clicked');
                 if (!currentClass || !currentClass.id) {
                     alert('❌ Error: No course selected');
                     return;
@@ -1353,7 +1287,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const removeCourseBtn = document.getElementById('instructor-remove-course-btn');
         if (removeCourseBtn) {
             removeCourseBtn.addEventListener('click', async () => {
-                console.log('[INSTRUCTOR-MODE] 🗑️ Remove Course button clicked');
+                // console.log('[INSTRUCTOR-MODE] 🗑️ Remove Course button clicked');
                 
                 // Get current course ID
                 if (!currentClass || !currentClass.id) {
@@ -1382,7 +1316,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 
                 // Check if user cancelled (modal returns button text lowercased with hyphens)
                 if (result.action === 'cancel' || result.action === 'overlay' || result.action === 'escape') {
-                    console.log('[INSTRUCTOR-MODE] ❌ Course removal cancelled by user');
+                    // console.log('[INSTRUCTOR-MODE] ❌ Course removal cancelled by user');
                     return;
                 }
                 
@@ -1409,21 +1343,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     
                     const data = await response.json();
                     
-                    // Show success message
-                    console.log('[INSTRUCTOR-MODE] ✅ Course removed successfully:', data.message);
-                    
-                    // Show success alert briefly before logout
-                    alert(`✅ ${data.message || 'Course removed successfully. You will be logged out now.'}`);
-                    
                     // Gracefully log out the user after a short delay
                     setTimeout(() => {
-                        console.log('[INSTRUCTOR-MODE] 🚪 Redirecting to logout endpoint...');
                         window.location.href = '/auth/logout';
                     }, 1500);
                     
                 } catch (error) {
                     console.error('[INSTRUCTOR-MODE] 🚨 Error removing course:', error);
-                    alert(`❌ Failed to remove course: ${error instanceof Error ? error.message : 'Unknown error'}`);
                 } finally {
                     // Re-enable button
                     (removeCourseBtn as HTMLButtonElement).disabled = false;
@@ -1432,14 +1358,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 }
             });
-            console.log('[INSTRUCTOR-MODE] ✅ Remove Course button listener attached');
         }
 
         // Download Database button listener
         const downloadDbBtn = document.getElementById('instructor-download-db-btn');
         if (downloadDbBtn) {
             downloadDbBtn.addEventListener('click', async () => {
-                console.log('[INSTRUCTOR-MODE] 📥 Download Course Info button clicked');
                 
                 try {
                     // Disable button during request
@@ -1487,10 +1411,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     document.body.removeChild(a);
                     window.URL.revokeObjectURL(url);
                     
-                    console.log('[INSTRUCTOR-MODE] ✅ Course information downloaded successfully');
                     
                 } catch (error) {
-                    console.error('[INSTRUCTOR-MODE] 🚨 Error downloading course information:', error);
+                    // console.error('[INSTRUCTOR-MODE] 🚨 Error downloading course information:', error);
                     alert(`❌ Failed to download course information: ${error instanceof Error ? error.message : 'Unknown error'}`);
                 } finally {
                     // Re-enable button
@@ -1500,13 +1423,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 }
             });
-            console.log('[INSTRUCTOR-MODE] ✅ Download Course Info button listener attached');
         }
     };
 
     // --- STATE RESTORATION ---
     const restorePreviousState = () => {
-        console.log('[INSTRUCTOR-MODE] 🔄 Restoring previous state:', currentState);
+        // console.log('[INSTRUCTOR-MODE] 🔄 Restoring previous state:', currentState);
         // Navigate back to documents view when closing about/course-info
         const courseId = getCourseIdFromURL();
         if (courseId) {
@@ -1530,16 +1452,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load appropriate component based on URL view
     if (isNewCourseOnboarding) {
         // New course onboarding URL detected - let updateUI() handle it
-        console.log(`[INSTRUCTOR-MODE] 🎓 Loading new course onboarding`);
+        // console.log(`[INSTRUCTOR-MODE] 🎓 Loading new course onboarding`);
         updateUI();
     } else if (onboardingStageFromURL) {
         // Onboarding URL detected for existing course - let updateUI() handle it
-        console.log(`[INSTRUCTOR-MODE] 🎓 Loading onboarding stage: ${onboardingStageFromURL}`);
+        // console.log(`[INSTRUCTOR-MODE] 🎓 Loading onboarding stage: ${onboardingStageFromURL}`);
         updateUI();
     } else if (viewFromURL === 'chat' && chatIdFromURL) {
         // Load specific chat
         await loadChatById(chatIdFromURL).catch(err => {
-            console.error('[INSTRUCTOR-MODE] Error loading chat from URL:', err);
+            // console.error('[INSTRUCTOR-MODE] Error loading chat from URL:', err);
             updateUI();
         });
     } else if (viewFromURL === 'course-information') {
@@ -1561,11 +1483,11 @@ document.addEventListener('DOMContentLoaded', async () => {
  * Initialize inactivity tracking for instructor mode
  */
 function initializeInactivityTracking(): void {
-    console.log('[INSTRUCTOR-MODE] 🔍 Initializing inactivity tracking...');
+    // console.log('[INSTRUCTOR-MODE] 🔍 Initializing inactivity tracking...'); // 🟢 MEDIUM: Initialization logging
     
     // Set up event listeners for inactivity tracker
     inactivityTracker.on('warning', async (data: any) => {
-        console.log('[INSTRUCTOR-MODE] ⚠️ Inactivity warning triggered');
+        // console.log('[INSTRUCTOR-MODE] ⚠️ Inactivity warning triggered'); // 🟢 MEDIUM: Warning notification
         
         // Pause tracker while modal is shown
         inactivityTracker.pause();
@@ -1574,7 +1496,7 @@ function initializeInactivityTracking(): void {
         const remainingSeconds = Math.floor((data.remainingTimeUntilLogout || 60000) / 1000);
         const result = await showInactivityWarningModal(remainingSeconds, () => {
             // User clicked "Stay Active" - reset tracker
-            console.log('[INSTRUCTOR-MODE] ✅ User chose to stay active');
+            // console.log('[INSTRUCTOR-MODE] ✅ User chose to stay active'); // 🟢 MEDIUM: User action logging
             inactivityTracker.reset();
         });
         
@@ -1583,7 +1505,7 @@ function initializeInactivityTracking(): void {
         
         // If timeout occurred, logout will be triggered by logout event
         if (result.action === 'timeout') {
-            console.log('[INSTRUCTOR-MODE] ⏱️ Inactivity warning timeout - logout will be triggered');
+            // console.log('[INSTRUCTOR-MODE] ⏱️ Inactivity warning timeout - logout will be triggered'); // 🟢 MEDIUM: Timeout logging
 
             // MANUALLY TRIGGER LOGOUT HERE since logout timer was cleared
             inactivityTracker.stop();
@@ -1593,7 +1515,7 @@ function initializeInactivityTracking(): void {
     });
     
     inactivityTracker.on('logout', async (data: any) => {
-        console.log('[INSTRUCTOR-MODE] 🚪 Inactivity logout triggered');
+        // console.log('[INSTRUCTOR-MODE] 🚪 Inactivity logout triggered'); // 🟢 MEDIUM: Logout trigger logging
         
         // Stop tracking
         inactivityTracker.stop();
@@ -1615,12 +1537,11 @@ function initializeInactivityTracking(): void {
         authService.logout();
     });
     
-    inactivityTracker.on('activity-reset', (data: any) => {
-        console.log('[INSTRUCTOR-MODE] 🔄 Activity detected - inactivity timer reset');
-    });
-    
+    // inactivityTracker.on('activity-reset', (data: any) => {
+    //     // console.log('[INSTRUCTOR-MODE] 🔄 Activity detected - inactivity timer reset'); // 🟢 MEDIUM: Activity reset logging
+    // });
+
     // Start tracking
     inactivityTracker.start();
     
-    console.log('[INSTRUCTOR-MODE] ✅ Inactivity tracking initialized');
 }

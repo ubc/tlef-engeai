@@ -67,7 +67,7 @@ function updateContentCountDescription(frameType: 'byWeek' | 'byTopic'): void {
  * @param currentClass - The current active course object
  */
 export const initializeCourseInformation = async (currentClass: activeCourse): Promise<void> => {
-    console.log("🔧 Initializing course information page...");
+    // console.log("🔧 Initializing course information page...");
 
     try {
         // Course name (read-only)
@@ -125,7 +125,7 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
             copyCodeBtn.addEventListener('click', async () => {
                 try {
                     await navigator.clipboard.writeText(currentClass.courseCode!);
-                    console.log('[COURSE-INFO] ✅ Course code copied to clipboard');
+                    // console.log('[COURSE-INFO] ✅ Course code copied to clipboard');
 
                     // Show visual feedback
                     const originalHTML = copyCodeBtn.innerHTML;
@@ -146,7 +146,7 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
                         }
                     }, 2000);
                 } catch (error) {
-                    console.error('[COURSE-INFO] ❌ Failed to copy course code:', error);
+                    // console.error('[COURSE-INFO] ❌ Failed to copy course code:', error);
                     await showErrorModal('Copy Failed', 'Failed to copy course code to clipboard. Please try again.');
                 }
             });
@@ -161,18 +161,18 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
         const backBtn = document.getElementById('course-info-back-btn');
         if (backBtn) {
             backBtn.addEventListener('click', () => {
-                console.log('[COURSE-INFO] 🔙 Back button clicked');
+                // console.log('[COURSE-INFO] 🔙 Back button clicked');
                 window.dispatchEvent(new CustomEvent('course-info-closed'));
             });
-            console.log('[COURSE-INFO] ✅ Back button listener attached');
+            // console.log('[COURSE-INFO] ✅ Back button listener attached');
         }
 
         // Render feather icons
         renderFeatherIcons();
 
-        console.log("✅ Course information page initialized successfully");
+        // console.log("✅ Course information page initialized successfully");
     } catch (error) {
-        console.error("❌ Error initializing course information:", error);
+        // console.error("❌ Error initializing course information:", error);
         await showErrorModal("Initialization Error", "Failed to initialize course information page.");
     }
 };

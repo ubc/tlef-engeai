@@ -74,11 +74,11 @@ export class InactivityTracker {
      */
     public start(): void {
         if (this.isTracking) {
-            console.log('[INACTIVITY-TRACKER] ⚠️ Already tracking, ignoring start()');
+            // console.log('[INACTIVITY-TRACKER] ⚠️ Already tracking, ignoring start()'); // 🟢 MEDIUM: State check logging
             return;
         }
         
-        console.log('[INACTIVITY-TRACKER] 🚀 Starting inactivity tracking...');
+        // console.log('[INACTIVITY-TRACKER] 🚀 Starting inactivity tracking...'); // 🟢 MEDIUM: Start operation logging
         this.isTracking = true;
         this.lastActivityTime = Date.now();
         this.warningShown = false;
@@ -101,7 +101,7 @@ export class InactivityTracker {
             return;
         }
         
-        console.log('[INACTIVITY-TRACKER] 🛑 Stopping inactivity tracking...');
+        // console.log('[INACTIVITY-TRACKER] 🛑 Stopping inactivity tracking...'); // 🟢 MEDIUM: Stop operation logging
         this.isTracking = false;
         
         // Remove event listeners
@@ -130,7 +130,7 @@ export class InactivityTracker {
             return;
         }
         
-        console.log('[INACTIVITY-TRACKER] 🔄 Resetting inactivity timers (activity detected)');
+        // console.log('[INACTIVITY-TRACKER] 🔄 Resetting inactivity timers (activity detected)'); // 🟢 MEDIUM: Reset operation logging
         this.lastActivityTime = now;
         this.warningShown = false;
         
@@ -151,7 +151,7 @@ export class InactivityTracker {
             return;
         }
         
-        console.log('[INACTIVITY-TRACKER] ⏸️ Pausing inactivity tracking...');
+        // console.log('[INACTIVITY-TRACKER] ⏸️ Pausing inactivity tracking...'); // 🟢 MEDIUM: Pause operation logging
         this.isPaused = true;
         this.clearTimers();
     }
@@ -164,7 +164,7 @@ export class InactivityTracker {
             return;
         }
         
-        console.log('[INACTIVITY-TRACKER] ▶️ Resuming inactivity tracking...');
+        // console.log('[INACTIVITY-TRACKER] ▶️ Resuming inactivity tracking...'); // 🟢 MEDIUM: Resume operation logging
         this.isPaused = false;
         
         // Reset timers based on current lastActivityTime (which may have been updated while paused)
@@ -328,7 +328,7 @@ export class InactivityTracker {
         // Set warning timer (4 minutes)
         this.warningTimer = setTimeout(() => {
             if (!this.warningShown) {
-                console.log('[INACTIVITY-TRACKER] ⚠️ Warning timeout reached (4 minutes)');
+                // console.log('[INACTIVITY-TRACKER] ⚠️ Warning timeout reached (4 minutes)'); // 🟢 MEDIUM: Timeout warning
                 this.warningShown = true;
                 this.emit('warning', {
                     timestamp: Date.now(),
@@ -339,7 +339,7 @@ export class InactivityTracker {
         
         // Set logout timer (5 minutes)
         this.logoutTimer = setTimeout(() => {
-            console.log('[INACTIVITY-TRACKER] 🚪 Logout timeout reached (5 minutes)');
+            // console.log('[INACTIVITY-TRACKER] 🚪 Logout timeout reached (5 minutes)'); // 🟢 MEDIUM: Logout timeout
             this.emit('logout', { timestamp: Date.now() });
         }, this.logoutTimeoutMs);
     }
@@ -418,7 +418,7 @@ export class InactivityTracker {
                 
                 // If server shows we've been inactive for > 4 minutes and we haven't shown warning yet
                 if (serverInactivityTime > this.warningTimeoutMs && !this.warningShown) {
-                    console.log('[INACTIVITY-TRACKER] ⚠️ Server sync detected inactivity > 4 minutes');
+                    // console.log('[INACTIVITY-TRACKER] ⚠️ Server sync detected inactivity > 4 minutes'); // 🟢 MEDIUM: Server sync warning
                     this.warningShown = true;
                     this.emit('warning', {
                         timestamp: Date.now(),
@@ -429,7 +429,7 @@ export class InactivityTracker {
                 
                 // If server shows we've been inactive for > 5 minutes
                 if (serverInactivityTime > this.logoutTimeoutMs) {
-                    console.log('[INACTIVITY-TRACKER] 🚪 Server sync detected inactivity > 5 minutes');
+                    // console.log('[INACTIVITY-TRACKER] 🚪 Server sync detected inactivity > 5 minutes'); // 🟢 MEDIUM: Server sync logout
                     this.emit('logout', {
                         timestamp: Date.now(),
                         fromServerSync: true

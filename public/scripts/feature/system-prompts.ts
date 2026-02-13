@@ -143,7 +143,7 @@ async function loadSystemPrompts(): Promise<void> {
         const result = await response.json();
         if (result.success) {
             items = result.data || [];
-            console.log(`✅ [SYSTEM-PROMPTS] Loaded ${items.length} items`);
+            // console.log(`✅ [SYSTEM-PROMPTS] Loaded ${items.length} items`);
         } else {
             throw new Error(result.error || 'Failed to load system prompts');
         }

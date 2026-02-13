@@ -94,7 +94,7 @@ interface DemoDateRange {
  */
 export const renderMonitorSetup = async (instructorCourse: activeCourse): Promise<void> => {
     //START DEBUG LOG : DEBUG-CODE(001)
-    console.log("🚀 Starting monitor setup onboarding...");
+    // console.log("🚀 Starting monitor setup onboarding..."); // 🟢 MEDIUM: Initialization logging
     //END DEBUG LOG : DEBUG-CODE(001)
     
     try {
@@ -151,7 +151,7 @@ export const renderMonitorSetup = async (instructorCourse: activeCourse): Promis
  */
 async function initializeMonitorSetup(state: MonitorSetupState, instructorCourse: activeCourse): Promise<void> {
     //START DEBUG LOG : DEBUG-CODE(003)
-    console.log("🔧 Initializing monitor setup interface...");
+    // console.log("🔧 Initializing monitor setup interface..."); // 🟢 MEDIUM: Interface initialization
     //END DEBUG LOG : DEBUG-CODE(003)
 
     try {
@@ -922,7 +922,7 @@ function toggleDemoStudentAccordion(studentId: string): void {
  */
 function demoDownloadChat(chatId: string): void {
     //START DEBUG LOG : DEBUG-CODE(007)
-    console.log(`📥 Demo download for chat session: ${chatId}`);
+    // console.log(`📥 Demo download for chat session: ${chatId}`); // 🟡 HIGH: Chat session ID exposure
     //END DEBUG LOG : DEBUG-CODE(007)
     
     alert(`Demo: Download functionality for chat session ${chatId} will be implemented in the actual monitor dashboard!`);
@@ -995,7 +995,7 @@ function isSameDay(date1: Date, date2: Date): boolean {
 async function completeMonitorSetup(): Promise<void> {
     try {
         //START DEBUG LOG : DEBUG-CODE(010)
-        console.log("🎉 Completing monitor setup onboarding...");
+        // console.log("🎉 Completing monitor setup onboarding..."); // 🟢 MEDIUM: Completion logging
         //END DEBUG LOG : DEBUG-CODE(010)
         
         // Get the current course from the global state
@@ -1013,11 +1013,11 @@ async function completeMonitorSetup(): Promise<void> {
         currentCourse.monitorSetup = true;
         
         //START DEBUG LOG : DEBUG-CODE(011)
-        console.log("✅ Monitor setup status updated to true for course:", currentCourse.courseName);
+        // console.log("✅ Monitor setup status updated to true for course:", currentCourse.courseName); // 🟡 HIGH: Course name exposure
         //END DEBUG LOG : DEBUG-CODE(011)
-        
+
         // Persist to database
-        console.log(`📡 Updating database: setting monitorSetup=true for course ${currentCourse.id}`);
+        // console.log(`📡 Updating database: setting monitorSetup=true for course ${currentCourse.id}`); // 🟡 HIGH: Course ID exposure
         const response = await fetch(`/api/courses/${currentCourse.id}`, {
             method: 'PUT',
             headers: {
@@ -1039,7 +1039,7 @@ async function completeMonitorSetup(): Promise<void> {
             throw new Error(result.error || 'Failed to update course in database');
         }
         
-        console.log("✅ Monitor setup status persisted to database successfully!");
+        // console.log("✅ Monitor setup status persisted to database successfully!"); // 🟢 MEDIUM: Database operation success
         
         // Dispatch the completion event
         const event = new CustomEvent('monitorSetupComplete', {
@@ -1051,7 +1051,7 @@ async function completeMonitorSetup(): Promise<void> {
         window.dispatchEvent(event);
         
         //START DEBUG LOG : DEBUG-CODE(012)
-        console.log("📡 Monitor setup completion event dispatched");
+        // console.log("📡 Monitor setup completion event dispatched"); // 🟢 MEDIUM: Event dispatch logging
         //END DEBUG LOG : DEBUG-CODE(012)
         
     } catch (error) {
@@ -1077,7 +1077,7 @@ async function completeMonitorSetup(): Promise<void> {
  */
 export const cleanupMonitorSetup = (): void => {
     //START DEBUG LOG : DEBUG-CODE(008)
-    console.log("🧹 Cleaning up monitor setup onboarding...");
+    // console.log("🧹 Cleaning up monitor setup onboarding..."); // 🟢 MEDIUM: Cleanup logging
     //END DEBUG LOG : DEBUG-CODE(008)
     
     // Remove onboarding-active class
@@ -1099,7 +1099,7 @@ export const cleanupMonitorSetup = (): void => {
     delete (window as any).clearDemoDateSelection;
     
     //START DEBUG LOG : DEBUG-CODE(009)
-    console.log("✅ Monitor setup cleanup completed");
+    // console.log("✅ Monitor setup cleanup completed"); // 🟢 MEDIUM: Cleanup completion
     //END DEBUG LOG : DEBUG-CODE(009)
 };
 

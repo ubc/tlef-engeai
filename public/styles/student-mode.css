@@ -118,6 +118,12 @@ body {
     max-width: 0;
 }
 
+/* Course Selection button text smooth fade + slide animation when sidebar collapses */
+.sidebar.collapsed .course-selection-btn span {
+    opacity: 0;
+    max-width: 0;
+}
+
 /* Logout button text smooth fade + slide animation when sidebar collapses */
 .sidebar.collapsed .logout-btn span {
     opacity: 0;
@@ -155,7 +161,8 @@ body {
 
 .sidebar.collapsed .flag-history-btn,
 .sidebar.collapsed .logout-btn,
-.sidebar.collapsed .about-btn {
+.sidebar.collapsed .about-btn,
+.sidebar.collapsed .course-selection-btn {
     padding: 0.5rem; /* Square padding when collapsed */
     justify-content: flex-start;
     gap: 0; /* Remove gap when collapsed */
@@ -315,6 +322,48 @@ body {
     overflow: hidden;
 }
 
+/* Course Selection Button Styles */
+.course-selection-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--background-2);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s,
+                padding 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                gap 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    color: #000000;
+    overflow: hidden; /* Critical for clipping text during animation */
+}
+
+.course-selection-btn:hover {
+    background-color: var(--color-chbe-green);
+    color: white;
+    border-color: var(--color-chbe-green);
+}
+
+.course-selection-btn .feather {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.course-selection-btn span {
+    white-space: nowrap;
+    opacity: 1;
+    max-width: 200px;
+    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                max-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+}
+
 /* Logout Button Styles */
 .logout-btn {
     width: 100%;
@@ -323,7 +372,7 @@ body {
     justify-content: flex-start;
     gap: 0.75rem;
     padding: 0.5rem 0.75rem;
-    background-color: var(--background-2); 
+    background-color: var(--background-2);
     border: 1px solid var(--border-color);
     border-radius: 8px;
     font-weight: 600;
@@ -337,14 +386,14 @@ body {
 
 
 
-.logout-btn:hover { 
-    background-color: var(--color-eng-red); 
-    color: white; 
-    border-color: var(--color-eng-red); 
+.logout-btn:hover {
+    background-color: var(--color-eng-red);
+    color: white;
+    border-color: var(--color-eng-red);
 }
 
-.logout-btn .feather { 
-    width: 16px; 
+.logout-btn .feather {
+    width: 16px;
     height: 16px;
     flex-shrink: 0;
     transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);

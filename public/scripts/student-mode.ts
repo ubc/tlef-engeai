@@ -3,6 +3,7 @@
 import { loadComponentHTML, renderFeatherIcons } from './functions/api.js';
 import { ChatManager } from './feature/chat.js';
 import { authService } from './services/AuthService.js';
+import { studentUserFactory } from './factories/StudentUserFactory.js';
 import { renderStudentOnboarding } from './onboarding/student-onboarding.js';
 import { initializeStudentFlagHistory } from './feature/student-flag-history.js';
 import { showConfirmModal, showInactivityWarningModal } from './modal-overlay.js';
@@ -35,9 +36,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!isAuthenticated) {
         return; // Stop execution if not authenticated
     }
-    
-    console.log('[STUDENT-MODE] 🚀 Loading student mode...');
-    
+
+    // console.log('[STUDENT-MODE] 🚀 Loading student mode...');
+
     // Initialize inactivity tracker
     initializeInactivityTracking();
     
@@ -59,36 +60,41 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.location.href = '/course-selection';
             return;
         }
-        
-        console.log('[STUDENT-MODE] 👤 CourseUser found:', courseUser.name);
-        
+
+        // Validate and normalize API response via factory (handles incomplete/malformed data)
+        const validatedCourseUser = studentUserFactory.createUser({
+            apiUser: courseUser
+        });
+
         // Validate courseId from URL matches session courseUser
-        if (courseIdFromURL && courseUser.courseId !== courseIdFromURL) {
-            console.error('[STUDENT-MODE] ❌ URL courseId mismatch:', {
-                urlCourseId: courseIdFromURL,
-                sessionCourseId: courseUser.courseId
-            });
+        if (courseIdFromURL && validatedCourseUser.courseId !== courseIdFromURL) {
+            // console.error('[STUDENT-MODE] ❌ URL courseId mismatch:', { // 🟡 HIGH: Course ID exposure in error
+            //     urlCourseId: courseIdFromURL,
+            //     sessionCourseId: courseUser.courseId
+            // });
             // Redirect to correct course URL
-            window.location.href = `/course/${courseUser.courseId}/student`;
+            window.location.href = `/course/${validatedCourseUser.courseId}/student`;
             return;
         }
         
         // Check if we're on an onboarding URL
         if (isStudentOnboardingURL()) {
-            console.log('[STUDENT-MODE] 🎓 Onboarding URL detected');
-            
+            // console.log('[STUDENT-MODE] 🎓 Onboarding URL detected');
+
             // Preserve URL state for after onboarding (using closure variable)
             const intendedView = 'chat'; // Default to chat after onboarding
             const intendedChatId = null;
             
-            // Trigger onboarding
-            await renderStudentOnboarding(courseUser);
+            // Trigger onboarding with validated user
+            await renderStudentOnboarding(validatedCourseUser);
             
             // Listen for onboarding completion event
             window.addEventListener('onboarding-completed', async (event: any) => {
-                console.log('[STUDENT-MODE] ✅ Onboarding completed, redirecting to main interface...');
-                const completedUser = event.detail.user || courseUser;
-                completedUser.userOnboarding = true;
+                // console.log('[STUDENT-MODE] ✅ Onboarding completed, redirecting to main interface...');
+                const rawCompletedUser = event.detail?.user || validatedCourseUser;
+                const completedUser = studentUserFactory.createUser({
+                    apiUser: { ...rawCompletedUser, userOnboarding: true }
+                });
                 
                 // Redirect to main student interface
                 const courseId = getCourseIdFromURL();
@@ -101,18 +107,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             
             return; // Stop execution here - onboarding will handle completion
-        } else if (!courseUser.userOnboarding) {
+        } else if (!validatedCourseUser.userOnboarding) {
             // User needs onboarding but not on onboarding URL - redirect to onboarding
-            console.log('[STUDENT-MODE] 🎓 User needs onboarding, redirecting...');
+            // console.log('[STUDENT-MODE] 🎓 User needs onboarding, redirecting...');
             const courseId = getCourseIdFromURL();
             if (courseId) {
                 window.location.href = `/course/${courseId}/student/onboarding/student`;
             }
             return;
         } else {
-            console.log('[STUDENT-MODE] ✅ User already onboarded');
-            // Pass URL state to initializeChatInterface
-            initializeChatInterface(courseUser, { view: viewFromURL, chatId: chatIdFromURL });
+            // console.log('[STUDENT-MODE] ✅ User already onboarded');
+            // Pass URL state to initializeChatInterface with validated user
+            initializeChatInterface(validatedCourseUser, { view: viewFromURL, chatId: chatIdFromURL });
         }
         
     } catch (error) {
@@ -125,11 +131,11 @@ document.addEventListener('DOMContentLoaded', async () => {
  * Initialize inactivity tracking for student mode
  */
 function initializeInactivityTracking(): void {
-    console.log('[STUDENT-MODE] 🔍 Initializing inactivity tracking...');
+    // console.log('[STUDENT-MODE] 🔍 Initializing inactivity tracking...'); // 🟢 MEDIUM: Initialization logging
     
     // Set up event listeners for inactivity tracker
     inactivityTracker.on('warning', async (data: any) => {
-        console.log('[STUDENT-MODE] ⚠️ Inactivity warning triggered');
+        // console.log('[STUDENT-MODE] ⚠️ Inactivity warning triggered'); // 🟢 MEDIUM: Warning notification
         
         // Pause tracker while modal is shown
         inactivityTracker.pause();
@@ -138,7 +144,7 @@ function initializeInactivityTracking(): void {
         const remainingSeconds = Math.floor((data.remainingTimeUntilLogout || 60000) / 1000);
         const result = await showInactivityWarningModal(remainingSeconds, () => {
             // User clicked "Stay Active" - reset tracker
-            console.log('[STUDENT-MODE] ✅ User chose to stay active');
+            // console.log('[STUDENT-MODE] ✅ User chose to stay active'); // 🟢 MEDIUM: User action logging
             inactivityTracker.reset();
         });
         
@@ -147,7 +153,7 @@ function initializeInactivityTracking(): void {
         
         // If timeout occurred, logout will be triggered by logout event
         if (result.action === 'timeout') {
-            console.log('[STUDENT-MODE] ⏱️ Inactivity warning timeout - logout will be triggered');
+            // console.log('[STUDENT-MODE] ⏱️ Inactivity warning timeout - logout will be triggered'); // 🟢 MEDIUM: Timeout logging
 
             // MANUALLY TRIGGER LOGOUT HERE since logout timer was cleared
             inactivityTracker.stop();
@@ -157,7 +163,7 @@ function initializeInactivityTracking(): void {
     });
     
     inactivityTracker.on('logout', async (data: any) => {
-        console.log('[STUDENT-MODE] 🚪 Inactivity logout triggered');
+        // console.log('[STUDENT-MODE] 🚪 Inactivity logout triggered'); // 🟢 MEDIUM: Logout trigger logging
         
         // Stop tracking
         inactivityTracker.stop();
@@ -180,20 +186,20 @@ function initializeInactivityTracking(): void {
     });
     
     inactivityTracker.on('activity-reset', (data: any) => {
-        console.log('[STUDENT-MODE] 🔄 Activity detected - inactivity timer reset');
+        // console.log('[STUDENT-MODE] 🔄 Activity detected - inactivity timer reset'); // 🟢 MEDIUM: Activity reset logging
     });
     
     // Start tracking
     inactivityTracker.start();
-    
-    console.log('[STUDENT-MODE] ✅ Inactivity tracking initialized');
+
+    // console.log('[STUDENT-MODE] ✅ Inactivity tracking initialized'); // 🟢 MEDIUM: Initialization success
 }
 
 /**
  * Initialize the chat interface for the student
  */
 async function initializeChatInterface(user: any, urlState?: { view: string | null, chatId: string | null }): Promise<void> {
-    console.log('[STUDENT-MODE] 🚀 Initializing chat interface for user:', user.name);
+    // console.log('[STUDENT-MODE] 🚀 Initializing chat interface for user:', user.name); // 🔴 CRITICAL: User name exposure
     
     const chatManager = ChatManager.getInstance({
         isInstructor: false,
@@ -229,7 +235,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                 }
                 if (data?.loaded) {
                     // Chat is fully loaded, safe to switch to chat window
-                    console.log('[STUDENT-MODE] 💬 Chat loaded and ready, switching to chat window');
+                    // console.log('[STUDENT-MODE] 💬 Chat loaded and ready, switching to chat window');
                     // Only load component if not already navigating
                     if (!isNavigating) {
                         loadComponent('chat-window');
@@ -242,7 +248,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                     loadComponent('welcome-screen');
                 }
             }
-            console.log('Student mode callback:', action, data);
+            // console.log('Student mode callback:', action, data); // 🟡 HIGH: Callback data exposure
         }
     });
     
@@ -280,7 +286,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             if (componentName === 'chat-window') {
                 // Defensive check: if no chats exist, show welcome screen instead
                 if (chatManager.getChats().length === 0) {
-                    console.log('[STUDENT-MODE] 🚫 No chats available, showing welcome screen instead');
+                    // console.log('[STUDENT-MODE] 🚫 No chats available, showing welcome screen instead');
                     loadComponent('welcome-screen');
                     return;
                 }
@@ -306,35 +312,35 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
     // All chat rendering functions are now handled by ChatManager
     
     const updateUI = async () => {
-        console.log('[STUDENT-MODE] 🔄 Updating UI...');
-        
+        // console.log('[STUDENT-MODE] 🔄 Updating UI...');
+
         // Wait for chat manager to be fully initialized
         if (!chatManager.getInitializationStatus()) {
-            console.log('[STUDENT-MODE] ⏳ ChatManager not yet initialized, waiting...');
+            // console.log('[STUDENT-MODE] ⏳ ChatManager not yet initialized, waiting...');
             return;
         }
-        
+
         const chats = chatManager.getChats();
-        
-        console.log(`[STUDENT-MODE] 📊 Chat count: ${chats.length}`);
-        
+
+        // console.log(`[STUDENT-MODE] 📊 Chat count: ${chats.length}`);
+
         // Show welcome screen if no chats exist (like instructor mode)
         if (chats.length === 0) {
-            console.log('[STUDENT-MODE] 📺 Showing welcome screen (no chats exist)');
+            // console.log('[STUDENT-MODE] 📺 Showing welcome screen (no chats exist)');
             loadComponent('welcome-screen');
         } else {
-            console.log('[STUDENT-MODE] 💬 Loading chat window with active chat');
+            // console.log('[STUDENT-MODE] 💬 Loading chat window with active chat');
             loadComponent('chat-window');
         }
     };
 
     // Initialize the chat manager and wait for it to complete
-    console.log('[STUDENT-MODE] 🚀 Initializing ChatManager with real user data...');
-    console.log('[STUDENT-MODE] 📊 User context:', {
-        userId: user.userId,
-        courseName: user.courseName,
-        affiliation: user.affiliation
-    });
+    // console.log('[STUDENT-MODE] 🚀 Initializing ChatManager with real user data...'); // 🟢 MEDIUM: Debug info - keep for monitoring
+    // console.log('[STUDENT-MODE] 📊 User context:', { // 🔴 CRITICAL: User context data exposure
+    //     userId: user.userId,
+    //     courseName: user.courseName,
+    //     affiliation: user.affiliation
+    // });
     
     /**
      * Handle URL-based component loading
@@ -399,10 +405,10 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                 // Chat is already loaded, just switch to it
                 await chatManager.setActiveChatId(chatId);
                 chatManager.renderActiveChat();
-                console.log('[STUDENT-MODE] ✅ Switched to existing chat:', chatId);
+                // console.log('[STUDENT-MODE] ✅ Switched to existing chat:', chatId);
             } else {
                 // Chat not in memory, try to restore it from server
-                console.log('[STUDENT-MODE] 🔄 Chat not in memory, restoring from server...');
+                // console.log('[STUDENT-MODE] 🔄 Chat not in memory, restoring from server...');
                 
                 const restoreResponse = await fetch(`/api/chat/restore/${chatId}`, {
                     method: 'POST',
@@ -452,7 +458,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                     // Chat restored, now switch to it
                     await chatManager.setActiveChatId(chatId);
                     chatManager.renderActiveChat();
-                    console.log('[STUDENT-MODE] ✅ Chat restored and loaded:', chatId);
+                    // console.log('[STUDENT-MODE] ✅ Chat restored and loaded:', chatId);
                 } else {
                     console.error('[STUDENT-MODE] ❌ Failed to restore chat:', restoreData.error);
                     await loadComponent('welcome-screen');
@@ -492,7 +498,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
 
     try {
         await chatManager.initialize();
-        console.log('[STUDENT-MODE] ✅ ChatManager initialized successfully');
+        // console.log('[STUDENT-MODE] ✅ ChatManager initialized successfully');
         await updateUI();
         
         // After ChatManager initialization and updateUI(), check URL state
@@ -549,22 +555,22 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                 'Cancel'
             );
             if (result.action !== 'log-out') {
-                console.log('[STUDENT-MODE] 🚫 Logout cancelled by user');
+                // console.log('[STUDENT-MODE] 🚫 Logout cancelled by user');
                 return;
             }
-            
-            console.log('[STUDENT-MODE] 🚪 Initiating logout...');
-            
+
+            // console.log('[STUDENT-MODE] 🚪 Initiating logout...');
+
             // Check current authentication status before logout
             const authCheck = await fetch('/auth/me', {
                 method: 'GET',
                 credentials: 'same-origin'
             });
             const authData = await authCheck.json();
-            console.log('[STUDENT-MODE] 📋 Current auth status before logout:', authData);
-            
+            // console.log('[STUDENT-MODE] 📋 Current auth status before logout:', authData);
+
             // Call logout endpoint - let the browser follow the redirect naturally
-            console.log('[STUDENT-MODE] 🔄 Redirecting to logout endpoint...');
+            // console.log('[STUDENT-MODE] 🔄 Redirecting to logout endpoint...');
             window.location.href = '/auth/logout';
             
         } catch (error) {
@@ -580,24 +586,24 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             console.warn('[STUDENT-MODE] ⚠️ Logout button not found');
             return;
         }
-        
+
         logoutBtn.addEventListener('click', handleLogout);
-        console.log('[STUDENT-MODE] ✅ Logout button listener attached');
+        // console.log('[STUDENT-MODE] ✅ Logout button listener attached');
 
         // About button listener
         const aboutBtn = document.getElementById('about-btn');
         if (aboutBtn) {
             aboutBtn.addEventListener('click', () => {
-                console.log('[STUDENT-MODE] ℹ️ About button clicked');
+                // console.log('[STUDENT-MODE] ℹ️ About button clicked');
                 navigateToStudentView('about');
             });
-            console.log('[STUDENT-MODE] ✅ About button listener attached');
+            // console.log('[STUDENT-MODE] ✅ About button listener attached');
         }
     };
 
     // --- STATE RESTORATION ---
     const restorePreviousComponent = async () => {
-        console.log('[STUDENT-MODE] 🔄 Restoring previous component:', currentComponent);
+        // console.log('[STUDENT-MODE] 🔄 Restoring previous component:', currentComponent);
         await loadComponent(currentComponent);
     };
 
@@ -630,7 +636,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
     window.addEventListener('popstate', (event: PopStateEvent) => {
         // Prevent recursive navigation calls
         if (isNavigating) {
-            console.log('[STUDENT-MODE] ⚠️ Navigation already in progress, skipping...');
+            // console.log('[STUDENT-MODE] ⚠️ Navigation already in progress, skipping...');
             return;
         }
         
@@ -695,10 +701,10 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         const welcomeBtn = document.getElementById('welcome-add-chat-btn');
         if (!welcomeBtn) return;
         welcomeBtn.addEventListener('click', async () => {
-            console.log('[STUDENT-MODE] 🆕 Creating new chat from welcome screen...');
+            // console.log('[STUDENT-MODE] 🆕 Creating new chat from welcome screen...');
             const result = await chatManager.createNewChat();
             if (result.success) {
-                console.log('[STUDENT-MODE] ✅ New chat created successfully, loading chat window');
+                // console.log('[STUDENT-MODE] ✅ New chat created successfully, loading chat window');
                 
                 // Update chat list in sidebar
                 chatManager.renderChatList();
@@ -792,8 +798,8 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
     };
 
     const attachFlagHistoryListeners = () => {
-        console.log('[STUDENT-MODE] 🏴 Initializing flag history...');
-        
+        // console.log('[STUDENT-MODE] 🏴 Initializing flag history...');
+
         // Initialize flag history with user context
         const courseId = user.courseId;
         const userId = user.userId;
@@ -809,14 +815,14 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         // Back button listener - return to chat view
         const backBtn = document.getElementById('flag-history-back-btn');
         backBtn?.addEventListener('click', () => {
-            console.log('[STUDENT-MODE] 🔙 Back button clicked, returning to chat');
+            // console.log('[STUDENT-MODE] 🔙 Back button clicked, returning to chat');
             navigateToStudentView('chat');
         });
-        
+
         // Also support ESC key
         const escHandler = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
-                console.log('[STUDENT-MODE] 🔙 ESC key pressed in flag history, returning to chat');
+                // console.log('[STUDENT-MODE] 🔙 ESC key pressed in flag history, returning to chat');
                 navigateToStudentView('chat');
                 
                 // Remove listener after handling
@@ -834,10 +840,10 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         }
 
         profileBtn.addEventListener('click', () => {
-            console.log('[STUDENT-MODE] 👤 Loading flag history component...');
+            // console.log('[STUDENT-MODE] 👤 Loading flag history component...');
             navigateToStudentView('flag-history');
         });
-        console.log('[STUDENT-MODE] ✅ Flag history button listener attached');
+        // console.log('[STUDENT-MODE] ✅ Flag history button listener attached');
     };
 
     const attachCourseSelectionListener = () => {
@@ -848,7 +854,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         }
 
         courseSelectionBtn.addEventListener('click', async () => {
-            console.log('[STUDENT-MODE] 🔄 Course Selection button clicked - clearing state and redirecting');
+            // console.log('[STUDENT-MODE] 🔄 Course Selection button clicked - clearing state and redirecting');
 
             // Clear all frontend state
             try {
@@ -860,7 +866,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                     (window as any).appState = {};
                 }
 
-                console.log('[STUDENT-MODE] 🧹 Cleared frontend state (localStorage and global state)');
+                // console.log('[STUDENT-MODE] 🧹 Cleared frontend state (localStorage and global state)');
 
                 // Navigate to course selection (server will handle session cleanup)
                 window.location.href = '/course-selection';
@@ -870,7 +876,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                 window.location.href = '/course-selection';
             }
         });
-        console.log('[STUDENT-MODE] ✅ Course Selection button listener attached');
+        // console.log('[STUDENT-MODE] ✅ Course Selection button listener attached');
     };
 
     // --- INITIALIZATION ---
@@ -888,14 +894,14 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
  * Update companion text with current course name
  */
 function updateCompanionText(user: any): void {
-    console.log('[STUDENT-MODE] 🔍 Updating companion text with user:', user);
+    // console.log('[STUDENT-MODE] 🔍 Updating companion text with user:', user);
     const companionText = document.getElementById('companion-text');
-    console.log('[STUDENT-MODE] 🔍 Companion text element found:', !!companionText);
-    console.log('[STUDENT-MODE] 🔍 User courseName:', user?.courseName);
-    
+    // console.log('[STUDENT-MODE] 🔍 Companion text element found:', !!companionText);
+    // console.log('[STUDENT-MODE] 🔍 User courseName:', user?.courseName);
+
     if (companionText && user.courseName) {
         companionText.textContent = `${user.courseName} companion`;
-        console.log('[STUDENT-MODE] ✅ Companion text updated to:', companionText.textContent);
+        // console.log('[STUDENT-MODE] ✅ Companion text updated to:', companionText.textContent);
     } else {
         console.warn('[STUDENT-MODE] ⚠️ Could not update companion text:', {
             elementExists: !!companionText,

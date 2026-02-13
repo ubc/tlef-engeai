@@ -53,9 +53,9 @@ class MonitorDashboard {
         // Try to get from window.currentClass (set by instructor-mode.ts)
         if (typeof window !== 'undefined' && (window as any).currentClass && (window as any).currentClass.id) {
             this.courseId = (window as any).currentClass.id;
-            console.log('[MONITOR] Course ID:', this.courseId);
+            // console.log('[MONITOR] Course ID:', this.courseId); // 🟡 HIGH: Course ID exposure
         } else {
-            console.error('[MONITOR] ❌ No course ID found in context');
+            console.error('[MONITOR] ❌ No course ID found in context'); // Keep - from error condition
         }
     }
 
@@ -98,8 +98,8 @@ class MonitorDashboard {
                         tokensUsed: 0 // Set tokens to 0 as requested
                     }))
                 }));
-                
-                console.log('[MONITOR] ✅ Loaded chat titles for', this.students.length, 'students');
+
+                // console.log('[MONITOR] ✅ Loaded chat titles for', this.students.length, 'students');
             } else {
                 console.error('[MONITOR] ❌ Failed to load chat titles:', result.error);
                 this.students = [];
@@ -832,9 +832,9 @@ async function downloadChatHistory(chatId: string): Promise<void> {
             alert('Error: Course ID not found. Please refresh the page.');
             return;
         }
-        
-        console.log(`[MONITOR] Downloading chat history for session: ${chatId}, course: ${courseId}`);
-        
+
+        // console.log(`[MONITOR] Downloading chat history for session: ${chatId}, course: ${courseId}`); // 🟡 HIGH: Session and course ID exposure
+
         // Call the download endpoint
         const response = await fetch(`/api/courses/monitor/${courseId}/chat/${chatId}/download`, {
             method: 'GET',
@@ -872,9 +872,9 @@ async function downloadChatHistory(chatId: string): Promise<void> {
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
-        
-        console.log(`[MONITOR] ✅ Chat downloaded successfully: ${filename}`);
-        
+
+        // console.log(`[MONITOR] ✅ Chat downloaded successfully: ${filename}`); // 🟢 MEDIUM: Filename exposure
+
     } catch (error) {
         console.error('[MONITOR] ❌ Error downloading chat:', error);
         alert(`Failed to download chat: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -886,13 +886,13 @@ async function downloadChatHistory(chatId: string): Promise<void> {
  */
 export function initializeMonitorDashboard(): void {
     //START DEBUG LOG : DEBUG-CODE(001)
-    console.log('🚀 Initializing Monitor Dashboard...');
+    // console.log('🚀 Initializing Monitor Dashboard...'); // 🟢 MEDIUM: Initialization logging
     //END DEBUG LOG : DEBUG-CODE(001)
     
     new MonitorDashboard();
     
     //START DEBUG LOG : DEBUG-CODE(002)
-    console.log('✅ Monitor Dashboard initialized successfully');
+    // console.log('✅ Monitor Dashboard initialized successfully'); // 🟢 MEDIUM: Success logging
     //END DEBUG LOG : DEBUG-CODE(002)
 }
 

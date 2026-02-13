@@ -117,8 +117,8 @@ async function fetchFlags(courseId: string): Promise<FlagReport[]> {
  */
 async function deleteAllFlags(courseId: string): Promise<{ deletedCount: number } | null> {
     try {
-        console.log('[FLAG-API] Deleting all flags for course:', courseId);
-        
+        // console.log('[FLAG-API] Deleting all flags for course:', courseId);
+
         const apiResponse = await fetch(`${API_BASE_URL}/${courseId}/flags`, {
             method: 'DELETE',
             headers: {
@@ -131,12 +131,12 @@ async function deleteAllFlags(courseId: string): Promise<{ deletedCount: number 
         }
 
         const responseData = await apiResponse.json();
-        
+
         if (!responseData.success) {
             throw new Error(responseData.error || 'Failed to delete all flags');
         }
 
-        console.log('[FLAG-API] All flags deleted successfully:', responseData.deletedCount);
+        // console.log('[FLAG-API] All flags deleted successfully:', responseData.deletedCount);
         return { deletedCount: responseData.deletedCount };
         
     } catch (error) {
@@ -197,8 +197,8 @@ async function handleDeleteAllFlags(): Promise<void> {
         renderFlags();
         updateNavigationCounts();
 
-        console.log('[FLAG-DELETE-ALL] Successfully deleted', result.deletedCount, 'flags');
-        
+        // console.log('[FLAG-DELETE-ALL] Successfully deleted', result.deletedCount, 'flags');
+
         // Show success message
         showSuccessToast(`Successfully deleted ${result.deletedCount} flag(s).`);
         
@@ -224,8 +224,8 @@ async function handleDeleteAllFlags(): Promise<void> {
  */
 async function updateFlagStatus(courseId: string, flagId: string, status: 'unresolved' | 'resolved', response?: string): Promise<FlagReport | null> {
     try {
-        console.log('[FLAG-API] Updating flag status:', { flagId, status, response });
-        
+        // console.log('[FLAG-API] Updating flag status:', { flagId, status, response });
+
         const apiResponse = await fetch(`${API_BASE_URL}/${courseId}/flags/${flagId}`, {
             method: 'PUT',
             headers: {
@@ -247,7 +247,7 @@ async function updateFlagStatus(courseId: string, flagId: string, status: 'unres
             throw new Error(responseData.error || 'Failed to update flag status');
         }
 
-        console.log('[FLAG-API] Flag updated successfully:', responseData.data);
+        // console.log('[FLAG-API] Flag updated successfully:', responseData.data);
         return responseData.data;
         
     } catch (error) {
@@ -301,7 +301,7 @@ function formatTimestamp(date: Date): string {
  */
 async function updateFlagResponse(courseId: string, flagId: string, response: string): Promise<FlagReport | null> {
     try {
-        console.log('[FLAG-API] Updating flag response:', { flagId, response });
+        // console.log('[FLAG-API] Updating flag response:', { flagId, response });
 
         const apiResponse = await fetch(`${API_BASE_URL}/${courseId}/flags/${flagId}/response`, {
             method: 'PATCH',
@@ -321,7 +321,7 @@ async function updateFlagResponse(courseId: string, flagId: string, response: st
             throw new Error(responseData.error || 'Failed to update flag response');
         }
 
-        console.log('[FLAG-API] Flag response updated successfully:', responseData.data);
+        // console.log('[FLAG-API] Flag response updated successfully:', responseData.data);
         return responseData.data;
 
     } catch (error) {
@@ -400,9 +400,9 @@ export async function initializeFlags(): Promise<void> {
         
         // Show error message
         showErrorToast('Failed to initialize flags. Please refresh the page and try again.');
-        
+
         // Fallback to mock data for development
-        console.log('🔄 [FLAG-DEBUG] Falling back to mock data for development');
+        // console.log('🔄 [FLAG-DEBUG] Falling back to mock data for development');
         flagData = mockFlagData;
         renderFlags();
         setupEventListeners();
@@ -415,24 +415,24 @@ export async function initializeFlags(): Promise<void> {
  * @returns Course ID string or null if not found
  */
 function getCourseIdFromContext(): string | null {
-    console.log('🔍 [FLAG-DEBUG] Getting course ID from context...');
-    
+    // console.log('🔍 [FLAG-DEBUG] Getting course ID from context...');
+
     // Try to get from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const courseIdFromUrl = urlParams.get('courseId');
-    console.log('🔍 [FLAG-DEBUG] Course ID from URL:', courseIdFromUrl);
+    // console.log('🔍 [FLAG-DEBUG] Course ID from URL:', courseIdFromUrl);
     
     if (courseIdFromUrl) {
-        console.log('✅ [FLAG-DEBUG] Found course ID in URL:', courseIdFromUrl);
+        // console.log('✅ [FLAG-DEBUG] Found course ID in URL:', courseIdFromUrl);
         return courseIdFromUrl;
     }
     
     // Try to get from global context (if available)
     if (typeof window !== 'undefined' && (window as any).courseContext) {
         const courseIdFromContext = (window as any).courseContext.activeCourseId;
-        console.log('🔍 [FLAG-DEBUG] Course ID from global context:', courseIdFromContext);
+        // console.log('🔍 [FLAG-DEBUG] Course ID from global context:', courseIdFromContext);
         if (courseIdFromContext) {
-            console.log('✅ [FLAG-DEBUG] Found course ID in global context:', courseIdFromContext);
+            // console.log('✅ [FLAG-DEBUG] Found course ID in global context:', courseIdFromContext);
             return courseIdFromContext;
         }
     }
@@ -440,9 +440,9 @@ function getCourseIdFromContext(): string | null {
     // Try to get from instructor mode's currentClass
     if (typeof window !== 'undefined' && (window as any).currentClass && (window as any).currentClass.id) {
         const courseIdFromCurrentClass = (window as any).currentClass.id;
-        console.log('🔍 [FLAG-DEBUG] Course ID from currentClass:', courseIdFromCurrentClass);
+        // console.log('🔍 [FLAG-DEBUG] Course ID from currentClass:', courseIdFromCurrentClass);
         if (courseIdFromCurrentClass) {
-            console.log('✅ [FLAG-DEBUG] Found course ID in currentClass:', courseIdFromCurrentClass);
+            // console.log('✅ [FLAG-DEBUG] Found course ID in currentClass:', courseIdFromCurrentClass);
             return courseIdFromCurrentClass;
         }
     }
@@ -521,10 +521,10 @@ function setupEventListeners(): void {
 
     // Flag card collapse listeners (event delegation)
     const flagsList = document.getElementById('flags-list');
-    console.log('🎧 [FLAG-DEBUG] Setting up flag card click listeners on:', flagsList);
+    // console.log('🎧 [FLAG-DEBUG] Setting up flag card click listeners on:', flagsList);
     if (flagsList) {
         flagsList.addEventListener('click', handleFlagCardClick);
-        console.log('🎧 [FLAG-DEBUG] Event listener attached successfully');
+        // console.log('🎧 [FLAG-DEBUG] Event listener attached successfully');
     } else {
         console.error('❌ [FLAG-DEBUG] Flags list element not found for event listener');
     }
@@ -603,44 +603,44 @@ function updateActiveNavigation(): void {
  */
 function handleFlagCardClick(event: Event): void {
     const target = event.target as HTMLElement;
-    
-    console.log('🖱️ [FLAG-DEBUG] Flag card clicked, target:', target);
-    console.log('🖱️ [FLAG-DEBUG] Target classes:', target.className);
-    console.log('🖱️ [FLAG-DEBUG] Target tag:', target.tagName);
-    
+
+    // console.log('🖱️ [FLAG-DEBUG] Flag card clicked, target:', target);
+    // console.log('🖱️ [FLAG-DEBUG] Target classes:', target.className);
+    // console.log('🖱️ [FLAG-DEBUG] Target tag:', target.tagName);
+
     // Handle resolve button clicks
     if (target.classList.contains('resolve-button')) {
-        console.log('🖱️ [FLAG-DEBUG] Resolve button clicked, handling resolve');
+        // console.log('🖱️ [FLAG-DEBUG] Resolve button clicked, handling resolve');
         handleResolveClick(target);
         return;
     }
 
     // Handle edit/save button clicks
     if (target.classList.contains('edit-button')) {
-        console.log('🖱️ [FLAG-DEBUG] Edit/Save button clicked, handling toggle');
+        // console.log('🖱️ [FLAG-DEBUG] Edit/Save button clicked, handling toggle');
         handleEditToggle(target);
         return;
     }
-    
+
     // Don't collapse if clicking on response section elements
     if (target.closest('.response-section')) {
-        console.log('🖱️ [FLAG-DEBUG] Clicked on response section, ignoring');
+        // console.log('🖱️ [FLAG-DEBUG] Clicked on response section, ignoring');
         return;
     }
-    
+
     const flagCard = target.closest('.flag-card') as HTMLElement;
     if (!flagCard) {
-        console.log('🖱️ [FLAG-DEBUG] No flag card found');
+        // console.log('🖱️ [FLAG-DEBUG] No flag card found');
         return;
     }
 
     const flagId = flagCard.dataset.flagId;
     if (!flagId) {
-        console.log('🖱️ [FLAG-DEBUG] No flag ID found');
+        // console.log('🖱️ [FLAG-DEBUG] No flag ID found');
         return;
     }
 
-    console.log('🖱️ [FLAG-DEBUG] Toggling collapse for flag:', flagId);
+    // console.log('🖱️ [FLAG-DEBUG] Toggling collapse for flag:', flagId);
     // Toggle collapse state
     toggleFlagCollapse(flagId);
 }
@@ -702,7 +702,7 @@ async function handleResolveClick(button: HTMLElement): Promise<void> {
         renderFlags();
         updateNavigationCounts();
 
-        console.log('[FLAG-RESOLVE] Successfully updated flag:', flagId, 'to', newStatus);
+        // console.log('[FLAG-RESOLVE] Successfully updated flag:', flagId, 'to', newStatus);
         showSuccessToast(`Flag ${newStatus === 'resolved' ? 'resolved' : 'unresolved'} successfully.`);
         
     } catch (error) {
@@ -850,8 +850,8 @@ function toggleFlagCollapse(flagId: string): void {
     if (expandArrow) {
         expandArrow.textContent = flag.collapsed ? '▼' : '▲';
     }
-    
-    console.log(`🔄 [FLAG-DEBUG] Toggled flag ${flagId} to ${flag.collapsed ? 'collapsed' : 'expanded'}`);
+
+    // console.log(`🔄 [FLAG-DEBUG] Toggled flag ${flagId} to ${flag.collapsed ? 'collapsed' : 'expanded'}`);
 }
 
 /**
@@ -870,11 +870,11 @@ function renderFlags(): void {
     // console.log('🎨 [FLAG-DEBUG] Starting renderFlags() function'); // 🟢 MEDIUM: Function start - keep for monitoring
     // console.log('🎨 [FLAG-DEBUG] Current flag data:', flagData); // 🔴 CRITICAL: Exposes all flag data
     // console.log('🎨 [FLAG-DEBUG] Number of flags in data:', flagData.length); // 🟢 MEDIUM: Count info - keep for monitoring
-    console.log('🎨 [FLAG-DEBUG] Current section:', currentSection);
-    console.log('🎨 [FLAG-DEBUG] Current filters:', currentFilters);
-    
+    // console.log('🎨 [FLAG-DEBUG] Current section:', currentSection);
+    // console.log('🎨 [FLAG-DEBUG] Current filters:', currentFilters);
+
     const flagsList = document.getElementById('flags-list');
-    console.log('🎨 [FLAG-DEBUG] Flags list element:', flagsList);
+    // console.log('🎨 [FLAG-DEBUG] Flags list element:', flagsList);
     
     if (!flagsList) {
         console.error('❌ [FLAG-DEBUG] Flags list element not found!');
@@ -883,22 +883,22 @@ function renderFlags(): void {
 
     // Filter flags based on current section, flag types, and date range
     let sectionFlags: FlagReport[] = [];
-    
-    console.log('🔍 [FLAG-DEBUG] Filtering flags...');
-    
+
+    // console.log('🔍 [FLAG-DEBUG] Filtering flags...');
+
     switch (currentSection) {
         case 'unresolved-flags':
             sectionFlags = flagData.filter(flag => {
                 const statusMatch = flag.status === 'unresolved';
                 const typeMatch = currentFilters.flagTypes.has(flag.flagType);
                 const dateMatch = isDateInRange(flag);
-                
-                console.log(`🔍 [FLAG-DEBUG] Flag ${flag.id}: status=${statusMatch}, type=${typeMatch}, date=${dateMatch}`);
-                
+
+                // console.log(`🔍 [FLAG-DEBUG] Flag ${flag.id}: status=${statusMatch}, type=${typeMatch}, date=${dateMatch}`);
+
                 if (!statusMatch || !typeMatch || !dateMatch) {
                     return false;
                 }
-                
+
                 return true;
             });
             break;
@@ -907,13 +907,13 @@ function renderFlags(): void {
                 const statusMatch = flag.status === 'resolved';
                 const typeMatch = currentFilters.flagTypes.has(flag.flagType);
                 const dateMatch = isDateInRange(flag);
-                
-                console.log(`🔍 [FLAG-DEBUG] Flag ${flag.id}: status=${statusMatch}, type=${typeMatch}, date=${dateMatch}`);
-                
+
+                // console.log(`🔍 [FLAG-DEBUG] Flag ${flag.id}: status=${statusMatch}, type=${typeMatch}, date=${dateMatch}`);
+
                 if (!statusMatch || !typeMatch || !dateMatch) {
                     return false;
                 }
-                
+
                 return true;
             });
             break;
@@ -942,21 +942,21 @@ function renderFlags(): void {
     // console.log('📊 [FLAG-DEBUG] Sorted flags:', sortedFlags); // 🔴 CRITICAL: Exposes sorted flag data
 
     // Clear and render
-    console.log('🧹 [FLAG-DEBUG] Clearing flags list innerHTML');
+    // console.log('🧹 [FLAG-DEBUG] Clearing flags list innerHTML');
     flagsList.innerHTML = '';
-    
+
     // console.log('🎨 [FLAG-DEBUG] Creating flag cards...'); // 🟢 MEDIUM: Debug info - keep for monitoring
     sortedFlags.forEach((flag, index) => {
         // console.log(`🎨 [FLAG-DEBUG] Creating card ${index + 1} for flag:`, flag); // 🔴 CRITICAL: Exposes individual flag data
         const flagCard = createFlagCard(flag);
         flagsList.appendChild(flagCard);
-        console.log(`✅ [FLAG-DEBUG] Card ${index + 1} created and appended`);
+        // console.log(`✅ [FLAG-DEBUG] Card ${index + 1} created and appended`);
     });
 
-    console.log('📊 [FLAG-DEBUG] Updating navigation counts...');
+    // console.log('📊 [FLAG-DEBUG] Updating navigation counts...');
     updateNavigationCounts();
-    
-    console.log('✅ [FLAG-DEBUG] renderFlags() completed successfully');
+
+    // console.log('✅ [FLAG-DEBUG] renderFlags() completed successfully');
 }
 
 /**
