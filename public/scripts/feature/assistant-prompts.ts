@@ -35,7 +35,7 @@ export async function initializeAssistantPrompts(course: activeCourse): Promise<
         return;
     }
 
-    console.log(`✅ [ASSISTANT-PROMPTS] Initializing with courseId: ${course.id}`);
+    // console.log(`✅ [ASSISTANT-PROMPTS] Initializing with courseId: ${course.id}`); // 🟢 MEDIUM: Course ID exposure
 
     // Setup event listeners
     setupEventListeners();

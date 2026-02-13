@@ -115,7 +115,7 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
             } else {
                 courseCodeDisplay.textContent = 'Not Set';
                 courseCodeDisplay.style.color = '#999';
-                console.warn('[COURSE-INFO] ⚠️ Course code not found for course:', currentClass.courseName);
+                // console.warn('[COURSE-INFO] ⚠️ Course code not found for course:', currentClass.courseName); // 🟡 HIGH: Course name exposure
             }
         }
 

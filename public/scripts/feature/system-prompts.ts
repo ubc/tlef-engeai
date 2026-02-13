@@ -37,7 +37,7 @@ export async function initializeSystemPrompts(course: activeCourse): Promise<voi
         return;
     }
 
-    console.log(`✅ [SYSTEM-PROMPTS] Initializing with courseId: ${course.id}`);
+    // console.log(`✅ [SYSTEM-PROMPTS] Initializing with courseId: ${course.id}`); // 🟢 MEDIUM: Course ID exposure
 
     // Setup event listeners
     setupEventListeners();
@@ -261,16 +261,16 @@ Before responding when struggle topics are discussed, verify:\n
     const truncatedContent = truncateContent(fullContent, 3);
     const isTruncated = fullContent !== truncatedContent;
 
-    // Debug logging
-    console.log('Struggle Topics Debug:', {
-        fullContentLength: fullContent.length,
-        truncatedContentLength: truncatedContent.length,
-        fullContentLines: fullContent.split('\n').length,
-        truncatedContentLines: truncatedContent.split('\n').length,
-        isTruncated,
-        fullContent: fullContent.substring(0, 100) + '...',
-        truncatedContent: truncatedContent.substring(0, 100) + '...'
-    });
+    // Debug logging - commented out for production security
+    // console.log('Struggle Topics Debug:', {
+    //     fullContentLength: fullContent.length,
+    //     truncatedContentLength: truncatedContent.length,
+    //     fullContentLines: fullContent.split('\n').length,
+    //     truncatedContentLines: truncatedContent.split('\n').length,
+    //     isTruncated,
+    //     fullContent: fullContent.substring(0, 100) + '...',
+    //     truncatedContent: truncatedContent.substring(0, 100) + '...'
+    // }); // 🟢 MEDIUM: Debug data exposure
 
     return `
         <div class="prompt-card appended default-component" data-prompt-id="${DEFAULT_STRUGGLE_TOPICS_ID}">

@@ -17,7 +17,7 @@ let currentGlobalUser: GlobalUser | null = null;
  */
 async function initializeCourseSelection(): Promise<void> {
     try {
-        console.log('[COURSE-SELECTION] 🚀 Initializing course selection page');
+        // console.log('[COURSE-SELECTION] 🚀 Initializing course selection page'); // 🟢 MEDIUM: Initialization - keep for monitoring
         
         // Show loading message
         showLoadingMessage();
@@ -53,9 +53,9 @@ async function initializeCourseSelection(): Promise<void> {
         if (userNameElement) {
             userNameElement.textContent = userName;
         }
-        
-        console.log('[COURSE-SELECTION] ✅ User data loaded:', userName, 'Affiliation:', currentUserAffiliation);
-        
+
+        // console.log('[COURSE-SELECTION] ✅ User data loaded:', userName, 'Affiliation:', currentUserAffiliation); // 🔴 CRITICAL: Exposes user identity and affiliation
+
         // Setup buttons based on affiliation
         setupCourseButtons();
         
@@ -217,7 +217,7 @@ function attachCourseCardListeners(): void {
  */
 async function enterCourse(courseId: string): Promise<void> {
     try {
-        console.log('[COURSE-SELECTION] 🚀 Entering course:', courseId);
+        // console.log('[COURSE-SELECTION] 🚀 Entering course:', courseId); // 🟡 HIGH: Course ID exposure
         
         // Find and disable only the clicked button
         const clickedButton = document.querySelector(`button.launch-btn[data-course-id="${courseId}"]`);
@@ -292,8 +292,8 @@ async function restartOnboarding(courseId: string, courseName: string): Promise<
             console.log('[COURSE-SELECTION] 🚫 Restart onboarding cancelled by user');
             return;
         }
-        
-        console.log('[COURSE-SELECTION] 🔄 Restarting onboarding for course:', courseId);
+
+        // console.log('[COURSE-SELECTION] 🔄 Restarting onboarding for course:', courseId); // 🟡 HIGH: Course ID exposure
         
         // Find and disable the clicked button
         const clickedButton = document.querySelector(`button.restart-onboarding-btn[data-course-id="${courseId}"]`);
@@ -408,7 +408,7 @@ async function removeCourse(courseId: string, courseName: string): Promise<void>
         const data = await response.json();
         
         // Success - show message and reload page
-        console.log('[COURSE-SELECTION] ✅ Course removed successfully:', data);
+        // console.log('[COURSE-SELECTION] ✅ Course removed successfully:', data); // 🟡 HIGH: Exposes course removal data
         await showSuccessModal(
             'Success',
             data.message || 'Course removed successfully. The page will reload.'

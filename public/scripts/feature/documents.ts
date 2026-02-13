@@ -69,8 +69,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             await showSimpleErrorModal('Cannot load documents: Course ID is missing. Please refresh the page or return to course selection.', 'Initialization Error');
             return;
         }
-        
-        console.log(`✅ [DOCUMENTS] Initializing with courseId: ${courseId}`);
+
+        // console.log(`✅ [DOCUMENTS] Initializing with courseId: ${courseId}`); // 🟢 MEDIUM: Course ID exposure
         
         // Update currentClass.id if it was missing
         if (!currentClass.id) {

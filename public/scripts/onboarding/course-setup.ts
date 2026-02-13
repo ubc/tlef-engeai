@@ -731,7 +731,7 @@ async function handleDatabaseSubmission(state: OnboardingState, onBoardingCourse
         // Submit to database
         const submittedCourse = await postCourseToDatabase(courseData);
 
-        console.log("DEBUG #76submittedCourse: ", submittedCourse);
+        // console.log("DEBUG #76submittedCourse: ", submittedCourse); // 🟡 HIGH: Exposes submitted course data
         
         // Update the instructor course global variable (only modified when database is set)
         Object.assign(instructorCourse, submittedCourse);
@@ -798,8 +798,8 @@ async function handleFinalSubmission(state: OnboardingState, onBoardingCourse: a
  */
 async function postCourseToDatabase(courseData: activeCourse): Promise<activeCourse> {
 
-        console.log("🎯 Posting course data to database...");
-        console.log("courseData: ", courseData);
+        // console.log("🎯 Posting course data to database..."); // 🟢 MEDIUM: Debug info - keep for monitoring
+        // console.log("courseData: ", courseData); // 🟡 HIGH: Exposes complete course configuration data
 
         // Ensure date is a Date object (it might be a string if loaded from sessionStorage)
         const courseDataToPost = {
