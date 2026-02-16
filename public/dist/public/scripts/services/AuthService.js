@@ -1,0 +1,254 @@
+/**
+ * Authentication Service
+ *
+ * Handles frontend authentication state management and SAML integration
+ * Adapted from saml-example-app for TLEF EngE-AI TypeScript project
+ *
+ * @author: EngE-AI Team
+ * @version: 1.0.0
+ * @since: 2025-01-27
+ */
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+export class AuthService {
+    constructor() {
+        this.authState = {
+            isAuthenticated: false,
+            user: null,
+            isLoading: false
+        };
+        this.listeners = [];
+        this.checkAuthStatus();
+    }
+    /**
+     * Check authentication status from server with improved session handling
+     */
+    checkAuthStatus() {
+        return __awaiter(this, void 0, void 0, function* () {
+            this.setLoading(true);
+            try {
+                //START DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-CHECK)
+                // console.log('[FRONTEND-AUTH] 🔍 Checking authentication status...');
+                //END DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-CHECK)
+                // Wait for session to be established (especially after SAML callback)
+                yield this.waitForSessionEstablishment();
+                const response = yield fetch('/auth/me');
+                //START DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-RESPONSE)
+                // console.log('[FRONTEND-AUTH] 📡 Server response status:', response.status, response.statusText);
+                //END DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-RESPONSE)
+                const data = yield response.json();
+                //START DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-DATA)
+                // console.log('[FRONTEND-AUTH] 📦 Complete server response data:', data); // 🔴 CRITICAL: Complete auth response data exposure
+                // console.log('[FRONTEND-AUTH] 📋 Response structure:', { // 🔴 CRITICAL: Auth response structure exposure
+                //     authenticated: data.authenticated,
+                //     hasUser: !!data.user,
+                //     userKeys: data.user ? Object.keys(data.user) : 'No user data'
+                // });
+                //END DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-DATA)
+                if (data.authenticated) {
+                    this.authState.isAuthenticated = true;
+                    this.authState.user = data.user;
+                    //START DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-SUCCESS)
+                    // console.log('[FRONTEND-AUTH] ✅ LOGIN SUCCESSFUL!'); // 🟢 MEDIUM: Login success - keep for monitoring
+                    // console.log('[FRONTEND-AUTH] 👤 User information received from server:'); // 🔴 CRITICAL: User info logging
+                    // console.log('  📝 Name:', data.user.name); // 🔴 CRITICAL: User name exposure
+                    // console.log('  🏫 Affiliation:', data.user.affiliation); // 🔴 CRITICAL: User affiliation exposure
+                    // console.log('  🆔 User ID:', data.user.userId); // 🔴 CRITICAL: User ID exposure
+                    // console.log('[FRONTEND-AUTH] 💾 Stored in frontend state:', this.authState.user); // 🔴 CRITICAL: Stored user state exposure
+                    //END DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-SUCCESS)
+                }
+                else {
+                    this.authState.isAuthenticated = false;
+                    this.authState.user = null;
+                    //START DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-FAIL)
+                    // console.log('[FRONTEND-AUTH] ❌ User not authenticated');
+                    //END DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-FAIL)
+                }
+            }
+            catch (error) {
+                //START DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-ERROR)
+                // console.error('[FRONTEND-AUTH] 🚨 Error checking auth status:', error);
+                //END DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-ERROR)
+                this.authState.isAuthenticated = false;
+                this.authState.user = null;
+            }
+            finally {
+                this.setLoading(false);
+                this.notifyListeners();
+            }
+        });
+    }
+    /**
+     * Wait for session to be properly established
+     * This is especially important after SAML callback redirects
+     */
+    waitForSessionEstablishment() {
+        return __awaiter(this, void 0, void 0, function* () {
+            // Check if we just came from a SAML callback by looking at the URL or referrer
+            const isPostLogin = window.location.search.includes('saml') ||
+                document.referrer.includes('/auth/') ||
+                window.location.pathname === '/';
+            if (isPostLogin) {
+                // console.log('[FRONTEND-AUTH] ⏳ Post-login detected, waiting for session establishment...');
+                // Wait for session to be established with retry logic
+                const maxAttempts = 5;
+                let attempt = 0;
+                while (attempt < maxAttempts) {
+                    try {
+                        // Try a quick auth check to see if session is ready
+                        const testResponse = yield fetch('/auth/me', {
+                            method: 'HEAD', // Use HEAD to avoid parsing JSON
+                            cache: 'no-cache'
+                        });
+                        if (testResponse.ok) {
+                            // console.log('[FRONTEND-AUTH] ✅ Session appears to be established');
+                            return;
+                        }
+                    }
+                    catch (error) {
+                        // console.log(`[FRONTEND-AUTH] ⏳ Session not ready yet (attempt ${attempt + 1}/${maxAttempts})`);
+                    }
+                    attempt++;
+                    if (attempt < maxAttempts) {
+                        yield this.delay(200); // Wait 200ms between attempts
+                    }
+                }
+                // console.log('[FRONTEND-AUTH] ⚠️ Session establishment timeout, proceeding anyway...');
+            }
+        });
+    }
+    /**
+     * Utility function to add delay
+     */
+    delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+    /**
+     * Initiate login (respects SAML_AVAILABLE - uses SAML if available, local otherwise)
+     */
+    login() {
+        //START DEBUG LOG : DEBUG-CODE(FRONTEND-LOGIN)
+        // console.log('[FRONTEND-AUTH] 🚀 Initiating login...');
+        //END DEBUG LOG : DEBUG-CODE(FRONTEND-LOGIN)
+        window.location.href = '/';
+    }
+    /**
+     * Initiate CWL login (always attempts SAML/CWL login)
+     */
+    loginCWL() {
+        //START DEBUG LOG : DEBUG-CODE(FRONTEND-LOGIN-CWL)
+        // console.log('[FRONTEND-AUTH] 🚀 Initiating CWL login (forced SAML)...');
+        //END DEBUG LOG : DEBUG-CODE(FRONTEND-LOGIN-CWL)
+        window.location.href = '/auth/login/cwl';
+    }
+    /**
+     * Logout user
+     */
+    logout() {
+        //START DEBUG LOG : DEBUG-CODE(FRONTEND-LOGOUT)
+        // console.log('[FRONTEND-AUTH] 🚪 Logging out user...');
+        //END DEBUG LOG : DEBUG-CODE(FRONTEND-LOGOUT)
+        window.location.href = '/auth/logout';
+    }
+    /**
+     * Get current authentication state
+     */
+    getAuthState() {
+        return Object.assign({}, this.authState);
+    }
+    /**
+     * Check if user is authenticated
+     */
+    isAuthenticated() {
+        return this.authState.isAuthenticated;
+    }
+    /**
+     * Get current user
+     */
+    getUser() {
+        return this.authState.user;
+    }
+    /**
+     * Check if authentication is loading
+     */
+    isLoading() {
+        return this.authState.isLoading;
+    }
+    /**
+     * Check authentication and handle redirect if not authenticated
+     * @param intendedPage - The page the user intended to visit
+     * @param pageName - Name of the page for logging purposes (e.g., 'STUDENT-MODE', 'INSTRUCTOR-MODE')
+     * @returns Promise<boolean> - true if authenticated, false if redirected to login
+     */
+    checkAuthenticationAndRedirect(intendedPage, pageName) {
+        return __awaiter(this, void 0, void 0, function* () {
+            // console.log(`[${pageName}] 🔍 Checking authentication...`);
+            try {
+                yield this.checkAuthStatus();
+                const authState = this.getAuthState();
+                if (authState.isAuthenticated && authState.user) {
+                    // console.log(`[${pageName}] ✅ User authenticated, logging SAML data:`); // 🔴 CRITICAL: SAML data logging
+                    // console.log('====================================='); // 🔴 CRITICAL: SAML data logging
+                    // console.log('🔐 Authentication Source: SAML/CWL'); // 🔴 CRITICAL: SAML data logging
+                    // console.log('📝 Name:', authState.user.name); // 🔴 CRITICAL: User name in SAML logs
+                    // console.log('🏫 Affiliation:', authState.user.affiliation); // 🔴 CRITICAL: User affiliation in SAML logs
+                    // console.log('🆔 User ID:', authState.user.userId); // 🔴 CRITICAL: User ID in SAML logs
+                    // console.log('⏰ Authentication Time:', new Date().toISOString()); // 🔴 CRITICAL: Auth timing in SAML logs
+                    // console.log('🌐 Current Page:', window.location.pathname); // 🔴 CRITICAL: Current page in SAML logs
+                    // console.log('🔗 User Agent:', navigator.userAgent); // 🔴 CRITICAL: User agent fingerprinting
+                    // console.log('====================================='); // 🔴 CRITICAL: SAML data logging
+                    // console.log(`[${pageName}] 📋 Complete User Object:`, authState.user); // 🔴 CRITICAL: Complete user object exposure
+                    return true;
+                }
+                else {
+                    // console.log(`[${pageName}] ❌ User not authenticated, redirecting to login...`);
+                    window.location.href = '/';
+                    return false;
+                }
+            }
+            catch (error) {
+                // console.error(`[${pageName}] 🚨 Authentication check failed:`, error);
+                // Show error and redirect to login
+                alert('Authentication check failed. Redirecting to login...');
+                window.location.href = '/';
+                return false;
+            }
+        });
+    }
+    /**
+     * Add state change listener
+     */
+    addListener(listener) {
+        this.listeners.push(listener);
+    }
+    /**
+     * Remove state change listener
+     */
+    removeListener(listener) {
+        const index = this.listeners.indexOf(listener);
+        if (index > -1) {
+            this.listeners.splice(index, 1);
+        }
+    }
+    /**
+     * Set loading state
+     */
+    setLoading(loading) {
+        this.authState.isLoading = loading;
+    }
+    /**
+     * Notify all listeners of state change
+     */
+    notifyListeners() {
+        this.listeners.forEach(listener => listener(this.getAuthState()));
+    }
+}
+// Create singleton instance
+export const authService = new AuthService();

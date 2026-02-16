@@ -1,0 +1,807 @@
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+import { renderFeatherIcons } from "../functions/api.js";
+/**
+ * Monitor Dashboard Class
+ */
+class MonitorDashboard {
+    constructor() {
+        this.students = [];
+        this.currentSort = 'tokens';
+        this.selectedDateRange = { start: null, end: null };
+        this.isCalendarOpen = false;
+        this.courseId = null;
+        this.getCourseId();
+        this.loadChatTitles();
+        this.bindEvents();
+        this.render();
+    }
+    /**
+     * Get course ID from global context
+     */
+    getCourseId() {
+        // Try to get from window.currentClass (set by instructor-mode.ts)
+        if (typeof window !== 'undefined' && window.currentClass && window.currentClass.id) {
+            this.courseId = window.currentClass.id;
+            // console.log('[MONITOR] Course ID:', this.courseId); // 🟡 HIGH: Course ID exposure
+        }
+        else {
+            console.error('[MONITOR] ❌ No course ID found in context'); // Keep - from error condition
+        }
+    }
+    /**
+     * Load chat titles from API
+     */
+    loadChatTitles() {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!this.courseId) {
+                console.error('[MONITOR] ❌ Cannot load chat titles: no course ID');
+                this.students = [];
+                this.render();
+                return;
+            }
+            try {
+                const response = yield fetch(`/api/courses/monitor/${this.courseId}/chat-titles`, {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const result = yield response.json();
+                if (result.success && result.data) {
+                    // Transform API data to StudentData format
+                    this.students = result.data.map((student) => ({
+                        id: student.studentId,
+                        name: student.studentName,
+                        tokens: 0, // Set tokens to 0 as requested
+                        chatHistory: student.chats.map((chat) => ({
+                            id: chat.id,
+                            title: chat.title,
+                            date: new Date(), // Date not provided by API, use current date
+                            tokensUsed: 0 // Set tokens to 0 as requested
+                        }))
+                    }));
+                    // console.log('[MONITOR] ✅ Loaded chat titles for', this.students.length, 'students');
+                }
+                else {
+                    console.error('[MONITOR] ❌ Failed to load chat titles:', result.error);
+                    this.students = [];
+                }
+            }
+            catch (error) {
+                console.error('[MONITOR] ❌ Error loading chat titles:', error);
+                this.students = [];
+            }
+            this.render();
+        });
+    }
+    /**
+     * Initialize mock data for students and usage statistics
+     * COMMENTED OUT: Now using real data from API
+     */
+    initializeMockData() {
+        // Mock student data with chat history - 20 students
+        this.students = [
+            {
+                id: '1',
+                name: 'Rusdiyanto, Charisma',
+                tokens: 1351,
+                chatHistory: [
+                    { id: '1-1', title: 'Thermodynamics Problem Set 3', date: new Date('2024-01-15'), tokensUsed: 450 },
+                    { id: '1-2', title: 'Heat Transfer Calculations', date: new Date('2024-01-14'), tokensUsed: 320 },
+                    { id: '1-3', title: 'Mass Balance Equations', date: new Date('2024-01-13'), tokensUsed: 280 }
+                ]
+            },
+            {
+                id: '2',
+                name: 'Megury, Christian',
+                tokens: 2500,
+                chatHistory: [
+                    { id: '2-1', title: 'Fluid Mechanics Lab Report', date: new Date('2024-01-15'), tokensUsed: 680 },
+                    { id: '2-2', title: 'Bernoulli Equation Applications', date: new Date('2024-01-14'), tokensUsed: 520 },
+                    { id: '2-3', title: 'Reynolds Number Calculations', date: new Date('2024-01-13'), tokensUsed: 410 }
+                ]
+            },
+            {
+                id: '3',
+                name: 'Maximoff, Wanda',
+                tokens: 5700,
+                chatHistory: [
+                    { id: '3-1', title: 'Process Control Systems Design', date: new Date('2024-01-15'), tokensUsed: 1200 },
+                    { id: '3-2', title: 'PID Controller Tuning', date: new Date('2024-01-14'), tokensUsed: 980 },
+                    { id: '3-3', title: 'Feedback Control Theory', date: new Date('2024-01-13'), tokensUsed: 750 },
+                    { id: '3-4', title: 'Laplace Transform Applications', date: new Date('2024-01-12'), tokensUsed: 650 }
+                ]
+            },
+            {
+                id: '4',
+                name: 'Smith, John',
+                tokens: 1200,
+                chatHistory: [
+                    { id: '4-1', title: 'Material Properties Analysis', date: new Date('2024-01-15'), tokensUsed: 380 },
+                    { id: '4-2', title: 'Stress-Strain Relationships', date: new Date('2024-01-14'), tokensUsed: 290 }
+                ]
+            },
+            {
+                id: '5',
+                name: 'Johnson, Sarah',
+                tokens: 3200,
+                chatHistory: [
+                    { id: '5-1', title: 'Chemical Reaction Kinetics', date: new Date('2024-01-15'), tokensUsed: 850 },
+                    { id: '5-2', title: 'Catalyst Design Principles', date: new Date('2024-01-14'), tokensUsed: 720 },
+                    { id: '5-3', title: 'Reaction Rate Constants', date: new Date('2024-01-13'), tokensUsed: 580 }
+                ]
+            },
+            {
+                id: '6',
+                name: 'Williams, Michael',
+                tokens: 1800,
+                chatHistory: [
+                    { id: '6-1', title: 'Heat Exchanger Design', date: new Date('2024-01-15'), tokensUsed: 520 },
+                    { id: '6-2', title: 'Energy Balance Problems', date: new Date('2024-01-14'), tokensUsed: 380 }
+                ]
+            },
+            {
+                id: '7',
+                name: 'Brown, Emily',
+                tokens: 4100,
+                chatHistory: [
+                    { id: '7-1', title: 'Distillation Column Design', date: new Date('2024-01-15'), tokensUsed: 980 },
+                    { id: '7-2', title: 'Vapor-Liquid Equilibrium', date: new Date('2024-01-14'), tokensUsed: 750 },
+                    { id: '7-3', title: 'McCabe-Thiele Method', date: new Date('2024-01-13'), tokensUsed: 650 }
+                ]
+            },
+            {
+                id: '8',
+                name: 'Jones, David',
+                tokens: 2900,
+                chatHistory: [
+                    { id: '8-1', title: 'Pump Selection and Sizing', date: new Date('2024-01-15'), tokensUsed: 680 },
+                    { id: '8-2', title: 'Pipe Flow Calculations', date: new Date('2024-01-14'), tokensUsed: 520 }
+                ]
+            },
+            {
+                id: '9',
+                name: 'Garcia, Maria',
+                tokens: 1500,
+                chatHistory: [
+                    { id: '9-1', title: 'Chemical Safety Protocols', date: new Date('2024-01-15'), tokensUsed: 420 },
+                    { id: '9-2', title: 'Hazard Identification', date: new Date('2024-01-14'), tokensUsed: 320 }
+                ]
+            },
+            {
+                id: '10',
+                name: 'Miller, James',
+                tokens: 3800,
+                chatHistory: [
+                    { id: '10-1', title: 'Reactor Design Principles', date: new Date('2024-01-15'), tokensUsed: 850 },
+                    { id: '10-2', title: 'Kinetic Rate Expressions', date: new Date('2024-01-14'), tokensUsed: 720 },
+                    { id: '10-3', title: 'Batch vs Continuous Reactors', date: new Date('2024-01-13'), tokensUsed: 580 }
+                ]
+            },
+            {
+                id: '11',
+                name: 'Davis, Jennifer',
+                tokens: 2200,
+                chatHistory: [
+                    { id: '11-1', title: 'Process Optimization', date: new Date('2024-01-15'), tokensUsed: 620 },
+                    { id: '11-2', title: 'Cost-Benefit Analysis', date: new Date('2024-01-14'), tokensUsed: 480 }
+                ]
+            },
+            {
+                id: '12',
+                name: 'Rodriguez, Carlos',
+                tokens: 3400,
+                chatHistory: [
+                    { id: '12-1', title: 'Environmental Impact Assessment', date: new Date('2024-01-15'), tokensUsed: 780 },
+                    { id: '12-2', title: 'Sustainability Metrics', date: new Date('2024-01-14'), tokensUsed: 650 },
+                    { id: '12-3', title: 'Green Engineering Principles', date: new Date('2024-01-13'), tokensUsed: 520 }
+                ]
+            },
+            {
+                id: '13',
+                name: 'Martinez, Ana',
+                tokens: 1900,
+                chatHistory: [
+                    { id: '13-1', title: 'Quality Control Systems', date: new Date('2024-01-15'), tokensUsed: 520 },
+                    { id: '13-2', title: 'Statistical Process Control', date: new Date('2024-01-14'), tokensUsed: 380 }
+                ]
+            },
+            {
+                id: '14',
+                name: 'Hernandez, Luis',
+                tokens: 2600,
+                chatHistory: [
+                    { id: '14-1', title: 'Instrumentation and Control', date: new Date('2024-01-15'), tokensUsed: 680 },
+                    { id: '14-2', title: 'Sensor Selection Criteria', date: new Date('2024-01-14'), tokensUsed: 520 }
+                ]
+            },
+            {
+                id: '15',
+                name: 'Lopez, Carmen',
+                tokens: 3100,
+                chatHistory: [
+                    { id: '15-1', title: 'Plant Layout Design', date: new Date('2024-01-15'), tokensUsed: 750 },
+                    { id: '15-2', title: 'Equipment Placement Optimization', date: new Date('2024-01-14'), tokensUsed: 620 },
+                    { id: '15-3', title: 'Safety Distance Calculations', date: new Date('2024-01-13'), tokensUsed: 480 }
+                ]
+            },
+            {
+                id: '16',
+                name: 'Gonzalez, Pedro',
+                tokens: 1700,
+                chatHistory: [
+                    { id: '16-1', title: 'Material Selection Criteria', date: new Date('2024-01-15'), tokensUsed: 480 },
+                    { id: '16-2', title: 'Corrosion Resistance Analysis', date: new Date('2024-01-14'), tokensUsed: 360 }
+                ]
+            },
+            {
+                id: '17',
+                name: 'Wilson, Lisa',
+                tokens: 4200,
+                chatHistory: [
+                    { id: '17-1', title: 'Process Simulation Software', date: new Date('2024-01-15'), tokensUsed: 950 },
+                    { id: '17-2', title: 'Aspen Plus Modeling', date: new Date('2024-01-14'), tokensUsed: 780 },
+                    { id: '17-3', title: 'Steady State Analysis', date: new Date('2024-01-13'), tokensUsed: 650 }
+                ]
+            },
+            {
+                id: '18',
+                name: 'Anderson, Robert',
+                tokens: 2800,
+                chatHistory: [
+                    { id: '18-1', title: 'Economic Analysis Methods', date: new Date('2024-01-15'), tokensUsed: 680 },
+                    { id: '18-2', title: 'Capital Cost Estimation', date: new Date('2024-01-14'), tokensUsed: 520 }
+                ]
+            },
+            {
+                id: '19',
+                name: 'Taylor, Jessica',
+                tokens: 3600,
+                chatHistory: [
+                    { id: '19-1', title: 'Process Integration Techniques', date: new Date('2024-01-15'), tokensUsed: 820 },
+                    { id: '19-2', title: 'Heat Integration Networks', date: new Date('2024-01-14'), tokensUsed: 680 },
+                    { id: '19-3', title: 'Pinch Analysis Methods', date: new Date('2024-01-13'), tokensUsed: 550 }
+                ]
+            },
+            {
+                id: '20',
+                name: 'Thomas, Christopher',
+                tokens: 2400,
+                chatHistory: [
+                    { id: '20-1', title: 'Risk Assessment Procedures', date: new Date('2024-01-15'), tokensUsed: 620 },
+                    { id: '20-2', title: 'Failure Mode Analysis', date: new Date('2024-01-14'), tokensUsed: 480 }
+                ]
+            }
+        ];
+        // Initialize with no dates selected
+        this.selectedDateRange.start = null;
+        this.selectedDateRange.end = null;
+    }
+    /**
+     * Bind event listeners
+     */
+    bindEvents() {
+        // COMMENTED OUT: Calendar functionality hidden as requested
+        // Choose date button
+        // const chooseDateBtn = document.getElementById('choose-date-btn');
+        // chooseDateBtn?.addEventListener('click', () => this.openCalendar());
+        // Close calendar button
+        // const closeCalendarBtn = document.getElementById('close-calendar-btn');
+        // closeCalendarBtn?.addEventListener('click', () => this.closeCalendar());
+        // Calendar OK button
+        // const calendarOkBtn = document.getElementById('calendar-ok-btn');
+        // calendarOkBtn?.addEventListener('click', () => this.applyDateSelection());
+        // Sort buttons
+        const sortTokensBtn = document.getElementById('sort-tokens');
+        const sortNameBtn = document.getElementById('sort-name');
+        sortTokensBtn === null || sortTokensBtn === void 0 ? void 0 : sortTokensBtn.addEventListener('click', () => this.setSort('tokens'));
+        sortNameBtn === null || sortNameBtn === void 0 ? void 0 : sortNameBtn.addEventListener('click', () => this.setSort('name'));
+        // COMMENTED OUT: Calendar modal click handler
+        // Close calendar when clicking outside
+        // const calendarModal = document.getElementById('calendar-modal');
+        // calendarModal?.addEventListener('click', (e) => {
+        //     if (e.target === calendarModal) {
+        //         this.closeCalendar();
+        //     }
+        // });
+        // Accordion functionality will be handled by global functions
+    }
+    /**
+     * Render the monitor dashboard
+     */
+    render() {
+        this.renderUsageStats();
+        this.renderStudentList();
+        this.updateDateDisplay();
+        renderFeatherIcons();
+    }
+    /**
+     * Render usage statistics
+     */
+    renderUsageStats() {
+        const stats = this.generateUsageStats();
+        const todayPercentage = document.getElementById('today-percentage');
+        const todayTrend = document.getElementById('today-trend');
+        const monthlyPercentage = document.getElementById('monthly-percentage');
+        const monthlyTrend = document.getElementById('monthly-trend');
+        if (todayPercentage)
+            todayPercentage.textContent = `${stats.todayPercentage}%`;
+        if (todayTrend)
+            todayTrend.textContent = stats.todayTrend;
+        if (monthlyPercentage)
+            monthlyPercentage.textContent = `${stats.monthlyPercentage}%`;
+        if (monthlyTrend)
+            monthlyTrend.textContent = stats.monthlyTrend;
+    }
+    /**
+     * Generate mock usage statistics based on selected date range
+     */
+    generateUsageStats() {
+        // Set tokens to 0 for both boxes as requested
+        return {
+            todayPercentage: 0,
+            todayTrend: '0% from yesterday',
+            monthlyPercentage: 0,
+            monthlyTrend: '0 days remaining'
+        };
+    }
+    /**
+     * Render student list with accordion functionality
+     */
+    renderStudentList() {
+        const studentList = document.getElementById('student-list');
+        if (!studentList)
+            return;
+        const sortedStudents = this.getSortedStudents();
+        studentList.innerHTML = sortedStudents.map(student => `
+            <div class="student-item" data-student-id="${student.id}">
+                <div class="student-header" onclick="toggleMonitorStudentAccordion('${student.id}')">
+                <div class="student-name">${student.name}</div>
+                <div class="student-tokens">${student.tokens.toLocaleString()} tokens</div>
+                    <i data-feather="chevron-down" class="expand-arrow"></i>
+                </div>
+                <div class="monitor-student-content">
+                    <div class="chat-history-list">
+                        ${student.chatHistory.map(chat => `
+                            <div class="chat-history-item">
+                                <div class="chat-title">${chat.title}</div>
+                                <button class="download-button" onclick="downloadChatHistory('${chat.id}')">
+                                    <i data-feather="download"></i>
+                                    Download
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `).join('');
+        // Re-render feather icons for the new content
+        renderFeatherIcons();
+    }
+    /**
+     * Get sorted students based on current sort option
+     */
+    getSortedStudents() {
+        const students = [...this.students];
+        if (this.currentSort === 'tokens') {
+            return students.sort((a, b) => b.tokens - a.tokens);
+        }
+        else {
+            return students.sort((a, b) => a.name.localeCompare(b.name));
+        }
+    }
+    /**
+     * Set sort option and update UI
+     */
+    setSort(sort) {
+        this.currentSort = sort;
+        // Update button states
+        const sortButtons = document.querySelectorAll('.sort-btn');
+        sortButtons.forEach(btn => btn.classList.remove('active'));
+        const activeBtn = document.getElementById(`sort-${sort}`);
+        activeBtn === null || activeBtn === void 0 ? void 0 : activeBtn.classList.add('active');
+        // Re-render student list
+        this.renderStudentList();
+    }
+    /**
+     * Open calendar modal
+     */
+    openCalendar() {
+        const calendarModal = document.getElementById('calendar-modal');
+        if (calendarModal) {
+            calendarModal.style.display = 'flex';
+            this.isCalendarOpen = true;
+            this.renderCalendar();
+        }
+    }
+    /**
+     * Close calendar modal
+     */
+    closeCalendar() {
+        const calendarModal = document.getElementById('calendar-modal');
+        if (calendarModal) {
+            calendarModal.style.display = 'none';
+            this.isCalendarOpen = false;
+        }
+    }
+    /**
+     * Render calendar
+     */
+    renderCalendar() {
+        const calendar = document.getElementById('calendar');
+        if (!calendar)
+            return;
+        const today = new Date();
+        const currentMonth = today.getMonth();
+        const currentYear = today.getFullYear();
+        // Generate calendar HTML
+        const calendarHTML = this.generateCalendarHTML(currentYear, currentMonth);
+        calendar.innerHTML = calendarHTML;
+        // Bind calendar date selection events
+        this.bindCalendarEvents();
+    }
+    /**
+     * Generate calendar HTML for a given month/year
+     */
+    generateCalendarHTML(year, month) {
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const startDate = new Date(firstDay);
+        startDate.setDate(startDate.getDate() - firstDay.getDay());
+        const days = [];
+        const today = new Date();
+        // Generate 42 days (6 weeks)
+        for (let i = 0; i < 42; i++) {
+            const date = new Date(startDate);
+            date.setDate(startDate.getDate() + i);
+            const isCurrentMonth = date.getMonth() === month;
+            const isToday = this.isSameDay(date, today);
+            const selectionType = this.getDateSelectionType(date);
+            const isSelected = selectionType !== 'none';
+            // Build CSS classes for different selection states
+            const selectionClass = isSelected ? `selected ${selectionType}` : '';
+            days.push(`
+                <div class="calendar-day ${isCurrentMonth ? 'current-month' : 'other-month'} 
+                           ${isToday ? 'today' : ''} ${selectionClass}" 
+                     data-date="${date.toISOString().split('T')[0]}"
+                     data-selection-type="${selectionType}">
+                    ${date.getDate()}
+                </div>
+            `);
+        }
+        const monthNames = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+        return `
+            <div class="calendar-header">
+                <button class="calendar-nav-btn" id="prev-month">
+                    <i data-feather="chevron-left"></i>
+                </button>
+                <h3>${monthNames[month]} ${year}</h3>
+                <button class="calendar-nav-btn" id="next-month">
+                    <i data-feather="chevron-right"></i>
+                </button>
+            </div>
+            <div class="calendar-selection-info">
+                <div id="selection-status">No dates selected</div>
+                <button class="clear-selection-btn" id="clear-selection" style="display: none;">
+                    <i data-feather="x"></i> Clear
+                </button>
+            </div>
+            <div class="calendar-weekdays">
+                <div class="weekday">Mo</div>
+                <div class="weekday">Tu</div>
+                <div class="weekday">We</div>
+                <div class="weekday">Th</div>
+                <div class="weekday">Fr</div>
+                <div class="weekday">Sa</div>
+                <div class="weekday">Su</div>
+            </div>
+            <div class="calendar-days">
+                ${days.join('')}
+            </div>
+        `;
+    }
+    /**
+     * Bind calendar event listeners
+     */
+    bindCalendarEvents() {
+        // Date selection
+        const calendarDays = document.querySelectorAll('.calendar-day');
+        calendarDays.forEach(day => {
+            day.addEventListener('click', (e) => {
+                const target = e.target;
+                const dateStr = target.getAttribute('data-date');
+                if (dateStr) {
+                    // Fix timezone issue by ensuring local timezone interpretation
+                    this.selectDate(new Date(dateStr + 'T00:00:00'));
+                }
+            });
+        });
+        // Month navigation
+        const prevMonthBtn = document.getElementById('prev-month');
+        const nextMonthBtn = document.getElementById('next-month');
+        prevMonthBtn === null || prevMonthBtn === void 0 ? void 0 : prevMonthBtn.addEventListener('click', () => this.navigateMonth(-1));
+        nextMonthBtn === null || nextMonthBtn === void 0 ? void 0 : nextMonthBtn.addEventListener('click', () => this.navigateMonth(1));
+        // Clear selection button
+        const clearBtn = document.getElementById('clear-selection');
+        clearBtn === null || clearBtn === void 0 ? void 0 : clearBtn.addEventListener('click', () => this.clearDateSelection());
+        renderFeatherIcons();
+    }
+    /**
+     * Navigate to previous/next month
+     */
+    navigateMonth(direction) {
+        // This would update the calendar view
+        // For now, we'll just re-render with current month
+        this.renderCalendar();
+    }
+    /**
+     * Select a date in the calendar with enhanced range handling
+     */
+    selectDate(date) {
+        if (!this.selectedDateRange.start) {
+            // First selection
+            this.selectedDateRange.start = date;
+            this.selectedDateRange.end = null;
+        }
+        else if (!this.selectedDateRange.end) {
+            // Second selection - create range
+            if (date < this.selectedDateRange.start) {
+                this.selectedDateRange.end = this.selectedDateRange.start;
+                this.selectedDateRange.start = date;
+            }
+            else {
+                this.selectedDateRange.end = date;
+            }
+        }
+        else {
+            // Range exists - show confirmation dialog for clearing
+            this.showRangeClearConfirmation(date);
+            return;
+        }
+        this.updateSelectedDatesDisplay();
+        this.updateSelectionStatus();
+        this.renderCalendar();
+    }
+    /**
+     * Shows confirmation dialog when trying to clear an existing range
+     */
+    showRangeClearConfirmation(newDate) {
+        const startDate = this.formatDate(this.selectedDateRange.start);
+        const endDate = this.formatDate(this.selectedDateRange.end);
+        const newDateStr = this.formatDate(newDate);
+        const confirmed = confirm(`You have selected a date range from ${startDate} to ${endDate}.\n\n` +
+            `Clicking ${newDateStr} will clear this range and start a new selection.\n\n` +
+            `Do you want to continue?`);
+        if (confirmed) {
+            this.selectedDateRange.start = newDate;
+            this.selectedDateRange.end = null;
+            this.updateSelectedDatesDisplay();
+            this.updateSelectionStatus();
+            this.renderCalendar();
+        }
+    }
+    /**
+     * Checks if a date is selected and returns selection type
+     */
+    getDateSelectionType(date) {
+        if (!this.selectedDateRange.start)
+            return 'none';
+        if (!this.selectedDateRange.end) {
+            return this.isSameDay(date, this.selectedDateRange.start) ? 'single' : 'none';
+        }
+        if (this.isSameDay(date, this.selectedDateRange.start))
+            return 'start';
+        if (this.isSameDay(date, this.selectedDateRange.end))
+            return 'end';
+        if (date > this.selectedDateRange.start && date < this.selectedDateRange.end)
+            return 'between';
+        return 'none';
+    }
+    /**
+     * Check if a date is selected (legacy function for compatibility)
+     */
+    isDateSelected(date) {
+        const selectionType = this.getDateSelectionType(date);
+        return selectionType !== 'none';
+    }
+    /**
+     * Clears the date selection
+     */
+    clearDateSelection() {
+        this.selectedDateRange.start = null;
+        this.selectedDateRange.end = null;
+        this.updateSelectedDatesDisplay();
+        this.updateSelectionStatus();
+        this.renderCalendar();
+    }
+    /**
+     * Update selected dates display
+     */
+    updateSelectedDatesDisplay() {
+        const selectedDatesEl = document.getElementById('selected-dates');
+        if (!selectedDatesEl)
+            return;
+        if (this.selectedDateRange.start && !this.selectedDateRange.end) {
+            selectedDatesEl.textContent = `Selected: ${this.formatDate(this.selectedDateRange.start)}`;
+        }
+        else if (this.selectedDateRange.start && this.selectedDateRange.end) {
+            selectedDatesEl.textContent = `Selected: ${this.formatDate(this.selectedDateRange.start)} - ${this.formatDate(this.selectedDateRange.end)}`;
+        }
+        else {
+            selectedDatesEl.textContent = '';
+        }
+    }
+    /**
+     * Updates the selection status display in the calendar header
+     */
+    updateSelectionStatus() {
+        const statusEl = document.getElementById('selection-status');
+        const clearBtn = document.getElementById('clear-selection');
+        if (!statusEl || !clearBtn)
+            return;
+        if (!this.selectedDateRange.start) {
+            statusEl.textContent = 'No dates selected';
+            clearBtn.style.display = 'none';
+        }
+        else if (!this.selectedDateRange.end) {
+            statusEl.textContent = `Single date: ${this.formatDate(this.selectedDateRange.start)}`;
+            clearBtn.style.display = 'inline-flex';
+        }
+        else {
+            statusEl.textContent = `Range: ${this.formatDate(this.selectedDateRange.start)} - ${this.formatDate(this.selectedDateRange.end)}`;
+            clearBtn.style.display = 'inline-flex';
+        }
+    }
+    /**
+     * Apply date selection and close calendar
+     */
+    applyDateSelection() {
+        this.updateDateDisplay();
+        this.updateSelectionStatus();
+        this.renderUsageStats();
+        this.closeCalendar();
+    }
+    /**
+     * Update date display in header
+     */
+    updateDateDisplay() {
+        const currentDateDisplay = document.getElementById('current-date-display');
+        if (!currentDateDisplay)
+            return;
+        if (this.selectedDateRange.start && !this.selectedDateRange.end) {
+            if (this.isToday(this.selectedDateRange.start)) {
+                currentDateDisplay.textContent = 'Today';
+            }
+            else {
+                currentDateDisplay.textContent = this.formatDate(this.selectedDateRange.start);
+            }
+        }
+        else if (this.selectedDateRange.start && this.selectedDateRange.end) {
+            currentDateDisplay.textContent = `${this.formatDate(this.selectedDateRange.start)} - ${this.formatDate(this.selectedDateRange.end)}`;
+        }
+        else {
+            currentDateDisplay.textContent = 'Today';
+        }
+    }
+    /**
+     * Format date for display
+     */
+    formatDate(date) {
+        return date.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
+    }
+    /**
+     * Check if date is today
+     */
+    isToday(date) {
+        if (!date)
+            return false;
+        return this.isSameDay(date, new Date());
+    }
+    /**
+     * Check if two dates are the same day
+     */
+    isSameDay(date1, date2) {
+        return date1.getFullYear() === date2.getFullYear() &&
+            date1.getMonth() === date2.getMonth() &&
+            date1.getDate() === date2.getDate();
+    }
+}
+/**
+ * Toggle student accordion expand/collapse
+ */
+function toggleMonitorStudentAccordion(studentId) {
+    const studentItem = document.querySelector(`[data-student-id="${studentId}"]`);
+    if (studentItem) {
+        studentItem.classList.toggle('expanded');
+    }
+}
+// Make function globally available
+window.toggleMonitorStudentAccordion = toggleMonitorStudentAccordion;
+/**
+ * Download chat history for a specific chat
+ */
+function downloadChatHistory(chatId) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            // Get course ID from global context
+            let courseId = null;
+            if (typeof window !== 'undefined' && window.currentClass && window.currentClass.id) {
+                courseId = window.currentClass.id;
+            }
+            if (!courseId) {
+                alert('Error: Course ID not found. Please refresh the page.');
+                return;
+            }
+            // console.log(`[MONITOR] Downloading chat history for session: ${chatId}, course: ${courseId}`); // 🟡 HIGH: Session and course ID exposure
+            // Call the download endpoint
+            const response = yield fetch(`/api/courses/monitor/${courseId}/chat/${chatId}/download`, {
+                method: 'GET',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            if (!response.ok) {
+                const errorData = yield response.json().catch(() => ({ error: 'Failed to download chat' }));
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+            // Get the text content from response
+            const textContent = yield response.text();
+            // Get filename from Content-Disposition header or use default
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let filename = `chat-${chatId}.txt`;
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+                if (filenameMatch) {
+                    filename = filenameMatch[1];
+                }
+            }
+            // Create a blob and download it
+            const blob = new Blob([textContent], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            // console.log(`[MONITOR] ✅ Chat downloaded successfully: ${filename}`); // 🟢 MEDIUM: Filename exposure
+        }
+        catch (error) {
+            console.error('[MONITOR] ❌ Error downloading chat:', error);
+            alert(`Failed to download chat: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    });
+}
+/**
+ * Initialize Monitor Dashboard
+ */
+export function initializeMonitorDashboard() {
+    //START DEBUG LOG : DEBUG-CODE(001)
+    // console.log('🚀 Initializing Monitor Dashboard...'); // 🟢 MEDIUM: Initialization logging
+    //END DEBUG LOG : DEBUG-CODE(001)
+    new MonitorDashboard();
+    //START DEBUG LOG : DEBUG-CODE(002)
+    // console.log('✅ Monitor Dashboard initialized successfully'); // 🟢 MEDIUM: Success logging
+    //END DEBUG LOG : DEBUG-CODE(002)
+}
