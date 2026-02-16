@@ -56,16 +56,20 @@ class AuthManager {
 
     /**
      * Setup event listeners
+     * Note: Modules run deferred, so DOMContentLoaded may have already fired.
+     * We run setup immediately if DOM is ready, otherwise wait for DOMContentLoaded.
      */
     private setupEventListeners(): void {
-        document.addEventListener('DOMContentLoaded', async () => {
-            //START DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-DOM-READY)
-            // console.log('[AUTH-MANAGER] 📄 DOM Content Loaded');
-            //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-DOM-READY)
-
+        const runSetup = async () => {
             this.setupClickHandlers();
             await this.handlePostLoginRedirect();
-        });
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', runSetup);
+        } else {
+            runSetup();
+        }
     }
 
     /**
