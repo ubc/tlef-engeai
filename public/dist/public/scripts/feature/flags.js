@@ -1,0 +1,931 @@
+/**
+ * Flag Management System
+ *
+ * @author: Assistant
+ * @date: 2025-01-27
+ * @version: 4.0.0
+ * @description: Dynamic flag management interface - renders content from data using TypeScript
+ */
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+// Import modal and toast functions
+import { showConfirmModal } from '../modal-overlay.js';
+import { showSuccessToast, showErrorToast } from '../toast-notification.js';
+// Global variable to store flag data
+let flagData = [];
+// API configuration
+const API_BASE_URL = '/api/courses';
+/**
+ * Fetch flags from the backend API
+ * @param courseId - The course ID to fetch flags for
+ * @returns Promise<FlagReport[]> - Array of flags with user names resolved
+ */
+function fetchFlags(courseId) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            // console.log('🔍 [FLAG-DEBUG] Fetching flags for course:', courseId); // 🔴 CRITICAL: Exposes course ID
+            // console.log('🔍 [FLAG-DEBUG] API URL:', `${API_BASE_URL}/${courseId}/flags/with-names`); // 🔴 CRITICAL: Exposes API endpoint with course ID
+            const response = yield fetch(`${API_BASE_URL}/${courseId}/flags/with-names`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+            // console.log('📡 [FLAG-DEBUG] API Response status:', response.status); // 🟢 MEDIUM: Debug info - keep for monitoring
+            // console.log('📡 [FLAG-DEBUG] API Response ok:', response.ok); // 🟢 MEDIUM: Debug info - keep for monitoring
+            if (!response.ok) {
+                console.error('❌ [FLAG-DEBUG] API Response not ok:', response.status, response.statusText);
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            const apiResponse = yield response.json();
+            // console.log('📊 [FLAG-DEBUG] Raw API response:', apiResponse); // 🔴 CRITICAL: Exposes full API response data
+            // console.log('📊 [FLAG-DEBUG] API response success:', apiResponse.success); // 🟢 MEDIUM: Status info - keep for debugging
+            // console.log('📊 [FLAG-DEBUG] API response data:', apiResponse.data); // 🔴 CRITICAL: Exposes user flag data
+            if (!apiResponse.success) {
+                console.error('❌ [FLAG-DEBUG] API returned success: false');
+                throw new Error(apiResponse.error || 'Failed to fetch flags');
+            }
+            // Transform API data to frontend format
+            // console.log('🔄 [FLAG-DEBUG] Transforming API data...'); // 🟢 MEDIUM: Debug info - keep for monitoring
+            const transformedFlags = apiResponse.data.map((flag) => (Object.assign(Object.assign({}, flag), { 
+                // Convert date strings to Date objects
+                date: new Date(flag.date || flag.createdAt), createdAt: new Date(flag.createdAt || new Date()), updatedAt: new Date(flag.updatedAt || flag.createdAt || new Date()), 
+                // Format timestamp for display
+                timestamp: formatTimestamp(new Date(flag.createdAt || new Date())), 
+                // Use userName as studentName for display
+                studentName: flag.userName || 'Unknown Student', 
+                // Set default collapsed state
+                collapsed: true })));
+            // console.log('✅ [FLAG-DEBUG] Successfully fetched', transformedFlags.length, 'flags'); // 🟢 MEDIUM: Debug info - keep for monitoring
+            // console.log('📋 [FLAG-DEBUG] Transformed flags:', transformedFlags); // 🔴 CRITICAL: Exposes all flag data with user info
+            return transformedFlags;
+        }
+        catch (error) {
+            console.error('❌ [FLAG-DEBUG] Error fetching flags:', error);
+            console.error('❌ [FLAG-DEBUG] Error details:', {
+                name: error instanceof Error ? error.name : 'Unknown',
+                message: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : 'No stack trace'
+            });
+            // Show error message to user
+            showErrorToast('Failed to load flags. Please refresh the page and try again.');
+            // Return empty array as fallback
+            return [];
+        }
+    });
+}
+/**
+ * Delete all flags for a course via API
+ */
+function deleteAllFlags(courseId) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            // console.log('[FLAG-API] Deleting all flags for course:', courseId);
+            const apiResponse = yield fetch(`${API_BASE_URL}/${courseId}/flags`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+            if (!apiResponse.ok) {
+                throw new Error(`HTTP ${apiResponse.status}: ${apiResponse.statusText}`);
+            }
+            const responseData = yield apiResponse.json();
+            if (!responseData.success) {
+                throw new Error(responseData.error || 'Failed to delete all flags');
+            }
+            // console.log('[FLAG-API] All flags deleted successfully:', responseData.deletedCount);
+            return { deletedCount: responseData.deletedCount };
+        }
+        catch (error) {
+            console.error('[FLAG-API] Error deleting all flags:', error);
+            throw error;
+        }
+    });
+}
+/**
+ * Handle delete all flags button click
+ */
+function handleDeleteAllFlags() {
+    return __awaiter(this, void 0, void 0, function* () {
+        // Get course ID from context
+        const courseId = getCourseIdFromContext();
+        if (!courseId) {
+            showErrorToast('Unable to determine course context');
+            return;
+        }
+        // Confirm deletion with user (modal for user input)
+        const modalResult = yield showConfirmModal('Delete All Flags', 'Are you sure you want to delete ALL flags for this course? This action cannot be undone. All flag reports will be permanently deleted.', 'Delete All', 'Cancel');
+        if (modalResult.action === 'cancel') {
+            return;
+        }
+        const deleteButton = document.getElementById('delete-all-flags-button');
+        if (!deleteButton)
+            return;
+        // Show loading state on button
+        const originalText = deleteButton.innerHTML;
+        deleteButton.disabled = true;
+        deleteButton.style.cursor = 'wait';
+        deleteButton.innerHTML = '<i data-feather="loader"></i><span>Deleting...</span>';
+        // Re-initialize feather icons for the loading spinner
+        if (typeof window.feather !== 'undefined') {
+            window.feather.replace();
+        }
+        try {
+            // Call API to delete all flags
+            const result = yield deleteAllFlags(courseId);
+            if (!result) {
+                throw new Error('Failed to delete flags - no data returned');
+            }
+            // Clear local data
+            flagData = [];
+            // Re-render to show empty state and update navigation counts
+            renderFlags();
+            updateNavigationCounts();
+            // console.log('[FLAG-DELETE-ALL] Successfully deleted', result.deletedCount, 'flags');
+            // Show success message
+            showSuccessToast(`Successfully deleted ${result.deletedCount} flag(s).`);
+        }
+        catch (error) {
+            console.error('[FLAG-DELETE-ALL] Error deleting all flags:', error);
+            showErrorToast('Failed to delete all flags. Please try again.');
+        }
+        finally {
+            // Reset button state
+            deleteButton.innerHTML = originalText;
+            deleteButton.disabled = false;
+            deleteButton.style.cursor = 'pointer';
+            // Re-initialize feather icons
+            if (typeof window.feather !== 'undefined') {
+                window.feather.replace();
+            }
+        }
+    });
+}
+/**
+ * Update flag status via API
+ */
+function updateFlagStatus(courseId, flagId, status, response) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            // console.log('[FLAG-API] Updating flag status:', { flagId, status, response });
+            const apiResponse = yield fetch(`${API_BASE_URL}/${courseId}/flags/${flagId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    status,
+                    response: response || undefined
+                })
+            });
+            if (!apiResponse.ok) {
+                throw new Error(`HTTP ${apiResponse.status}: ${apiResponse.statusText}`);
+            }
+            const responseData = yield apiResponse.json();
+            if (!responseData.success) {
+                throw new Error(responseData.error || 'Failed to update flag status');
+            }
+            // console.log('[FLAG-API] Flag updated successfully:', responseData.data);
+            return responseData.data;
+        }
+        catch (error) {
+            console.error('[FLAG-API] Error updating flag status:', error);
+            throw error;
+        }
+    });
+}
+/**
+ * Format timestamp for display
+ * @param date - Date object to format
+ * @returns Formatted timestamp string
+ */
+function formatTimestamp(date) {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) {
+        return date.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
+    }
+    else if (diffDays === 1) {
+        return 'Yesterday, ' + date.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
+    }
+    else if (diffDays < 7) {
+        return date.toLocaleDateString('en-US', {
+            weekday: 'long',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
+    }
+    else {
+        return date.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
+    }
+}
+/**
+ * Update flag response via API (PATCH endpoint for resolved flags only)
+ */
+function updateFlagResponse(courseId, flagId, response) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            // console.log('[FLAG-API] Updating flag response:', { flagId, response });
+            const apiResponse = yield fetch(`${API_BASE_URL}/${courseId}/flags/${flagId}/response`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ response })
+            });
+            if (!apiResponse.ok) {
+                throw new Error(`HTTP ${apiResponse.status}: ${apiResponse.statusText}`);
+            }
+            const responseData = yield apiResponse.json();
+            if (!responseData.success) {
+                throw new Error(responseData.error || 'Failed to update flag response');
+            }
+            // console.log('[FLAG-API] Flag response updated successfully:', responseData.data);
+            return responseData.data;
+        }
+        catch (error) {
+            console.error('[FLAG-API] Error updating flag response:', error);
+            throw error;
+        }
+    });
+}
+// Mock data for fallback (empty array - API will provide real data)
+const mockFlagData = [];
+// Current filter state
+let currentFilters = {
+    flagTypes: new Set(['innacurate_response', 'harassment', 'inappropriate', 'dishonesty', 'interface bug', 'other']),
+    timeFilter: 'recent'
+};
+let currentSection = 'unresolved-flags';
+/**
+ * Initialize the flag management interface
+ */
+export function initializeFlags() {
+    return __awaiter(this, void 0, void 0, function* () {
+        // console.log('🚀 [FLAG-DEBUG] Starting initializeFlags() function'); // 🟢 MEDIUM: Function start - keep for monitoring
+        try {
+            // Get course ID from URL or global context
+            const courseId = getCourseIdFromContext();
+            // console.log('🔍 [FLAG-DEBUG] Course ID from context:', courseId); // 🟡 HIGH: Course ID exposure
+            // console.log('🔍 [FLAG-DEBUG] Window.currentClass:', (window as any).currentClass); // 🟢 MEDIUM: Debug info - keep for monitoring
+            // console.log('🔍 [FLAG-DEBUG] URL params:', window.location.search); // 🔴 CRITICAL: Exposes URL parameters (session tokens)
+            if (!courseId) {
+                // console.error('❌ [FLAG-DEBUG] No course ID found in context'); // 🟢 MEDIUM: Error logging - keep for debugging
+                showErrorToast('Unable to determine course context. Please refresh the page.');
+                return;
+            }
+            // console.log('🔍 [FLAG-DEBUG] Initializing flags for course:', courseId); // 🟡 HIGH: Course ID exposure
+            // Show loading state
+            // console.log('⏳ [FLAG-DEBUG] Showing loading state'); // 🟢 MEDIUM: Loading state - keep for monitoring
+            showLoadingState();
+            // Fetch flags from API
+            // console.log('📡 [FLAG-DEBUG] Fetching flags from API...'); // 🟢 MEDIUM: Debug info - keep for monitoring
+            flagData = yield fetchFlags(courseId);
+            // console.log('📊 [FLAG-DEBUG] Fetched flag data:', flagData); // 🔴 CRITICAL: Exposes all flag data
+            // console.log('📊 [FLAG-DEBUG] Number of flags fetched:', flagData.length); // 🟢 MEDIUM: Count info - keep for monitoring
+            // Hide loading state
+            // console.log('✅ [FLAG-DEBUG] Hiding loading state'); // 🟢 MEDIUM: Debug info - keep for monitoring
+            hideLoadingState();
+            // Render flags with fetched data
+            // console.log('🎨 [FLAG-DEBUG] Rendering flags...'); // 🟢 MEDIUM: Debug info - keep for monitoring
+            renderFlags();
+            // Setup event listeners
+            // console.log('🎧 [FLAG-DEBUG] Setting up event listeners...'); // 🟢 MEDIUM: Debug info - keep for monitoring
+            setupEventListeners();
+            // Update navigation stats
+            // console.log('📊 [FLAG-DEBUG] Updating navigation stats...'); // 🟢 MEDIUM: Debug info - keep for monitoring
+            updateActiveNavigation();
+            // console.log('✅ [FLAG-DEBUG] Flags initialized successfully'); // 🟢 MEDIUM: Success info - keep for monitoring
+        }
+        catch (error) {
+            console.error('❌ [FLAG-DEBUG] Error initializing flags:', error);
+            console.error('❌ [FLAG-DEBUG] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+            // Hide loading state
+            hideLoadingState();
+            // Show error message
+            showErrorToast('Failed to initialize flags. Please refresh the page and try again.');
+            // Fallback to mock data for development
+            // console.log('🔄 [FLAG-DEBUG] Falling back to mock data for development');
+            flagData = mockFlagData;
+            renderFlags();
+            setupEventListeners();
+            updateActiveNavigation();
+        }
+    });
+}
+/**
+ * Get course ID from URL or global context
+ * @returns Course ID string or null if not found
+ */
+function getCourseIdFromContext() {
+    // console.log('🔍 [FLAG-DEBUG] Getting course ID from context...');
+    // Try to get from URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const courseIdFromUrl = urlParams.get('courseId');
+    // console.log('🔍 [FLAG-DEBUG] Course ID from URL:', courseIdFromUrl);
+    if (courseIdFromUrl) {
+        // console.log('✅ [FLAG-DEBUG] Found course ID in URL:', courseIdFromUrl);
+        return courseIdFromUrl;
+    }
+    // Try to get from global context (if available)
+    if (typeof window !== 'undefined' && window.courseContext) {
+        const courseIdFromContext = window.courseContext.activeCourseId;
+        // console.log('🔍 [FLAG-DEBUG] Course ID from global context:', courseIdFromContext);
+        if (courseIdFromContext) {
+            // console.log('✅ [FLAG-DEBUG] Found course ID in global context:', courseIdFromContext);
+            return courseIdFromContext;
+        }
+    }
+    // Try to get from instructor mode's currentClass
+    if (typeof window !== 'undefined' && window.currentClass && window.currentClass.id) {
+        const courseIdFromCurrentClass = window.currentClass.id;
+        // console.log('🔍 [FLAG-DEBUG] Course ID from currentClass:', courseIdFromCurrentClass);
+        if (courseIdFromCurrentClass) {
+            // console.log('✅ [FLAG-DEBUG] Found course ID in currentClass:', courseIdFromCurrentClass);
+            return courseIdFromCurrentClass;
+        }
+    }
+    // Try to get from localStorage (if available)
+    try {
+        const storedContext = localStorage.getItem('courseContext');
+        // console.log('🔍 [FLAG-DEBUG] Stored context from localStorage:', storedContext); // 🔴 CRITICAL: Exposes localStorage contents (session data)
+        if (storedContext) {
+            const context = JSON.parse(storedContext);
+            const courseIdFromStorage = context.activeCourseId;
+            // console.log('🔍 [FLAG-DEBUG] Course ID from localStorage:', courseIdFromStorage); // 🟡 HIGH: Course ID exposure
+            if (courseIdFromStorage) {
+                // console.log('✅ [FLAG-DEBUG] Found course ID in localStorage:', courseIdFromStorage); // 🟡 HIGH: Course ID exposure
+                return courseIdFromStorage;
+            }
+        }
+    }
+    catch (error) {
+        // console.warn('⚠️ [FLAG-DEBUG] Could not parse course context from localStorage:', error); // 🟢 MEDIUM: Error logging - keep for debugging
+    }
+    console.error('❌ [FLAG-DEBUG] No course ID found in any context');
+    return null;
+}
+/**
+ * Show loading state
+ */
+function showLoadingState() {
+    const flagsList = document.getElementById('flags-list');
+    if (flagsList) {
+        const loadingDiv = document.createElement('div');
+        loadingDiv.id = 'loading-indicator';
+        loadingDiv.style.cssText = `
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-size: 16px;
+        `;
+        loadingDiv.innerHTML = `
+            <div style="margin-bottom: 10px;">⏳</div>
+            <div>Loading flags...</div>
+        `;
+        // Clear existing content and show loading
+        flagsList.innerHTML = '';
+        flagsList.appendChild(loadingDiv);
+    }
+}
+/**
+ * Hide loading state
+ */
+function hideLoadingState() {
+    const loadingIndicator = document.getElementById('loading-indicator');
+    if (loadingIndicator) {
+        loadingIndicator.remove();
+    }
+}
+/**
+ * Setup event listeners for filtering and collapse functionality
+ */
+function setupEventListeners() {
+    // Filter checkbox listeners
+    const filterCheckboxes = document.querySelectorAll('.filter-checkbox input[type="checkbox"]');
+    filterCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', handleFilterChange);
+    });
+    // Time filter dropdown listener
+    const timeFilter = document.getElementById('time-filter');
+    if (timeFilter) {
+        timeFilter.addEventListener('change', handleTimeFilterChange);
+    }
+    // Flag card collapse listeners (event delegation)
+    const flagsList = document.getElementById('flags-list');
+    // console.log('🎧 [FLAG-DEBUG] Setting up flag card click listeners on:', flagsList);
+    if (flagsList) {
+        flagsList.addEventListener('click', handleFlagCardClick);
+        // console.log('🎧 [FLAG-DEBUG] Event listener attached successfully');
+    }
+    else {
+        console.error('❌ [FLAG-DEBUG] Flags list element not found for event listener');
+    }
+    // Navigation tile listeners
+    const navTiles = document.querySelectorAll('.nav-tile');
+    navTiles.forEach(tile => {
+        tile.addEventListener('click', handleNavigationClick);
+    });
+    // Delete all flags button listener
+    const deleteAllButton = document.getElementById('delete-all-flags-button');
+    if (deleteAllButton) {
+        deleteAllButton.addEventListener('click', handleDeleteAllFlags);
+    }
+}
+/**
+ * Handle filter checkbox changes
+ */
+function handleFilterChange(event) {
+    const checkbox = event.target;
+    const flagType = checkbox.dataset.filter; // Use data-filter attribute
+    if (!flagType)
+        return;
+    if (checkbox.checked) {
+        currentFilters.flagTypes.add(flagType);
+    }
+    else {
+        currentFilters.flagTypes.delete(flagType);
+    }
+    renderFlags(); // Re-render with new filters
+}
+/**
+ * Handle navigation tile clicks
+ */
+function handleNavigationClick(event) {
+    const target = event.target;
+    const navTile = target.closest('.nav-tile');
+    if (!navTile)
+        return;
+    const section = navTile.dataset.section;
+    if (!section)
+        return;
+    // Update active section
+    currentSection = section;
+    // Update active state in UI
+    updateActiveNavigation();
+    // Re-render flags for new section
+    renderFlags();
+}
+/**
+ * Update active navigation state
+ */
+function updateActiveNavigation() {
+    const navTiles = document.querySelectorAll('.nav-tile');
+    navTiles.forEach(tile => {
+        const tileElement = tile;
+        const section = tileElement.dataset.section;
+        if (section === currentSection) {
+            tileElement.classList.add('active');
+        }
+        else {
+            tileElement.classList.remove('active');
+        }
+    });
+}
+/**
+ * Handle flag card clicks for collapse/expand
+ */
+function handleFlagCardClick(event) {
+    const target = event.target;
+    // console.log('🖱️ [FLAG-DEBUG] Flag card clicked, target:', target);
+    // console.log('🖱️ [FLAG-DEBUG] Target classes:', target.className);
+    // console.log('🖱️ [FLAG-DEBUG] Target tag:', target.tagName);
+    // Handle resolve button clicks
+    if (target.classList.contains('resolve-button')) {
+        // console.log('🖱️ [FLAG-DEBUG] Resolve button clicked, handling resolve');
+        handleResolveClick(target);
+        return;
+    }
+    // Handle edit/save button clicks
+    if (target.classList.contains('edit-button')) {
+        // console.log('🖱️ [FLAG-DEBUG] Edit/Save button clicked, handling toggle');
+        handleEditToggle(target);
+        return;
+    }
+    // Don't collapse if clicking on response section elements
+    if (target.closest('.response-section')) {
+        // console.log('🖱️ [FLAG-DEBUG] Clicked on response section, ignoring');
+        return;
+    }
+    const flagCard = target.closest('.flag-card');
+    if (!flagCard) {
+        // console.log('🖱️ [FLAG-DEBUG] No flag card found');
+        return;
+    }
+    const flagId = flagCard.dataset.flagId;
+    if (!flagId) {
+        // console.log('🖱️ [FLAG-DEBUG] No flag ID found');
+        return;
+    }
+    // console.log('🖱️ [FLAG-DEBUG] Toggling collapse for flag:', flagId);
+    // Toggle collapse state
+    toggleFlagCollapse(flagId);
+}
+/**
+ * Handle resolve button clicks
+ */
+function handleResolveClick(button) {
+    return __awaiter(this, void 0, void 0, function* () {
+        var _a;
+        const flagId = button.dataset.flagId;
+        if (!flagId)
+            return;
+        const flag = flagData.find(f => f.id === flagId);
+        if (!flag)
+            return;
+        // Get course ID from context
+        const courseId = getCourseIdFromContext();
+        if (!courseId) {
+            showErrorToast('Unable to determine course context');
+            return;
+        }
+        // Determine new status
+        const newStatus = flag.status === 'unresolved' ? 'resolved' : 'unresolved';
+        // Get response from textarea if resolving
+        let response;
+        if (newStatus === 'resolved') {
+            const flagCard = document.querySelector(`[data-flag-id="${flagId}"]`);
+            const responseTextarea = flagCard === null || flagCard === void 0 ? void 0 : flagCard.querySelector('.response-textarea');
+            response = ((_a = responseTextarea === null || responseTextarea === void 0 ? void 0 : responseTextarea.value) === null || _a === void 0 ? void 0 : _a.trim()) || undefined;
+        }
+        // Show loading state on button
+        const originalText = button.textContent;
+        button.textContent = 'Loading...';
+        button.disabled = true;
+        button.style.cursor = 'wait';
+        try {
+            // Call API to update flag status
+            const updatedFlag = yield updateFlagStatus(courseId, flagId, newStatus, response);
+            if (!updatedFlag) {
+                throw new Error('Failed to update flag - no data returned');
+            }
+            // Update local data with response from API
+            const flagIndex = flagData.findIndex(f => f.id === flagId);
+            if (flagIndex !== -1) {
+                flagData[flagIndex] = Object.assign(Object.assign({}, flagData[flagIndex]), { status: updatedFlag.status, response: updatedFlag.response, updatedAt: new Date(updatedFlag.updatedAt) });
+            }
+            // Re-render to update UI and navigation counts
+            renderFlags();
+            updateNavigationCounts();
+            // console.log('[FLAG-RESOLVE] Successfully updated flag:', flagId, 'to', newStatus);
+            showSuccessToast(`Flag ${newStatus === 'resolved' ? 'resolved' : 'unresolved'} successfully.`);
+        }
+        catch (error) {
+            console.error('[FLAG-RESOLVE] Error updating flag:', error);
+            showErrorToast(`Failed to ${newStatus === 'resolved' ? 'resolve' : 'unresolve'} flag. Please try again.`);
+            // Reset button state
+            button.textContent = originalText;
+            button.disabled = false;
+            button.style.cursor = 'pointer';
+        }
+    });
+}
+/**
+ * Handle edit/save button toggle clicks
+ */
+function handleEditToggle(button) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const flagId = button.dataset.flagId;
+        if (!flagId)
+            return;
+        const flag = flagData.find(f => f.id === flagId);
+        if (!flag || flag.status !== 'resolved')
+            return;
+        if (flag.editing) {
+            // Currently in edit mode - save the changes
+            yield handleSaveEdit(button, flagId);
+        }
+        else {
+            // Enter edit mode
+            yield handleEnterEditMode(button, flagId, flag);
+        }
+    });
+}
+/**
+ * Handle entering edit mode
+ */
+function handleEnterEditMode(button, flagId, flag) {
+    return __awaiter(this, void 0, void 0, function* () {
+        // Set flag to editing mode
+        flag.editing = true;
+        // Expand the card if collapsed
+        if (flag.collapsed) {
+            toggleFlagCollapse(flagId);
+        }
+        // Re-render to show edit mode
+        renderFlags();
+        // Focus on textarea when entering edit mode
+        setTimeout(() => {
+            const textarea = document.querySelector(`[data-flag-id="${flagId}"] .response-textarea`);
+            if (textarea) {
+                textarea.focus();
+                textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            }
+        }, 100);
+    });
+}
+/**
+ * Handle saving edits
+ */
+function handleSaveEdit(button, flagId) {
+    return __awaiter(this, void 0, void 0, function* () {
+        var _a;
+        const courseId = getCourseIdFromContext();
+        if (!courseId) {
+            showErrorToast('Unable to determine course context');
+            return;
+        }
+        const flagCard = document.querySelector(`[data-flag-id="${flagId}"]`);
+        const responseTextarea = flagCard === null || flagCard === void 0 ? void 0 : flagCard.querySelector('.response-textarea');
+        const newResponse = (_a = responseTextarea === null || responseTextarea === void 0 ? void 0 : responseTextarea.value) === null || _a === void 0 ? void 0 : _a.trim();
+        // Show loading state
+        const originalText = button.textContent;
+        button.textContent = 'Saving...';
+        button.disabled = true;
+        try {
+            // Call API to update response
+            const updatedFlag = yield updateFlagResponse(courseId, flagId, newResponse);
+            if (updatedFlag) {
+                // Update local data
+                const flagIndex = flagData.findIndex(f => f.id === flagId);
+                if (flagIndex !== -1) {
+                    flagData[flagIndex] = Object.assign(Object.assign({}, flagData[flagIndex]), { response: newResponse, updatedAt: new Date(updatedFlag.updatedAt), editing: false // Exit edit mode
+                     });
+                }
+                showSuccessToast('Flag response updated successfully.');
+                // Re-render
+                renderFlags();
+            }
+        }
+        catch (error) {
+            console.error('Error updating response:', error);
+            showErrorToast('Failed to update response. Please try again.');
+        }
+        finally {
+            // Reset button state
+            button.textContent = originalText;
+            button.disabled = false;
+        }
+    });
+}
+/**
+ * Toggle the collapse state of a flag card
+ */
+function toggleFlagCollapse(flagId) {
+    const flag = flagData.find(f => f.id === flagId);
+    if (!flag)
+        return;
+    // Toggle collapse state
+    flag.collapsed = !flag.collapsed;
+    // Find the flag card element and update it directly instead of re-rendering
+    const flagCard = document.querySelector(`[data-flag-id="${flagId}"]`);
+    if (!flagCard)
+        return;
+    // Update the card classes
+    if (flag.collapsed) {
+        flagCard.classList.remove('expanded');
+    }
+    else {
+        flagCard.classList.add('expanded');
+    }
+    // Update the chat content
+    const chatContent = flagCard.querySelector('.chat-content');
+    if (chatContent) {
+        if (flag.collapsed) {
+            chatContent.classList.add('collapsed');
+        }
+        else {
+            chatContent.classList.remove('collapsed');
+        }
+    }
+    // Update the expand arrow
+    const expandArrow = flagCard.querySelector('.expand-arrow');
+    if (expandArrow) {
+        expandArrow.textContent = flag.collapsed ? '▼' : '▲';
+    }
+    // console.log(`🔄 [FLAG-DEBUG] Toggled flag ${flagId} to ${flag.collapsed ? 'collapsed' : 'expanded'}`);
+}
+/**
+ * Handle time filter dropdown changes
+ */
+function handleTimeFilterChange(event) {
+    const select = event.target;
+    currentFilters.timeFilter = select.value;
+    renderFlags();
+}
+/**
+ * Render all flags dynamically
+ */
+function renderFlags() {
+    // console.log('🎨 [FLAG-DEBUG] Starting renderFlags() function'); // 🟢 MEDIUM: Function start - keep for monitoring
+    // console.log('🎨 [FLAG-DEBUG] Current flag data:', flagData); // 🔴 CRITICAL: Exposes all flag data
+    // console.log('🎨 [FLAG-DEBUG] Number of flags in data:', flagData.length); // 🟢 MEDIUM: Count info - keep for monitoring
+    // console.log('🎨 [FLAG-DEBUG] Current section:', currentSection);
+    // console.log('🎨 [FLAG-DEBUG] Current filters:', currentFilters);
+    const flagsList = document.getElementById('flags-list');
+    // console.log('🎨 [FLAG-DEBUG] Flags list element:', flagsList);
+    if (!flagsList) {
+        console.error('❌ [FLAG-DEBUG] Flags list element not found!');
+        return;
+    }
+    // Filter flags based on current section, flag types, and date range
+    let sectionFlags = [];
+    // console.log('🔍 [FLAG-DEBUG] Filtering flags...');
+    switch (currentSection) {
+        case 'unresolved-flags':
+            sectionFlags = flagData.filter(flag => {
+                const statusMatch = flag.status === 'unresolved';
+                const typeMatch = currentFilters.flagTypes.has(flag.flagType);
+                const dateMatch = isDateInRange(flag);
+                // console.log(`🔍 [FLAG-DEBUG] Flag ${flag.id}: status=${statusMatch}, type=${typeMatch}, date=${dateMatch}`);
+                if (!statusMatch || !typeMatch || !dateMatch) {
+                    return false;
+                }
+                return true;
+            });
+            break;
+        case 'resolved-flags':
+            sectionFlags = flagData.filter(flag => {
+                const statusMatch = flag.status === 'resolved';
+                const typeMatch = currentFilters.flagTypes.has(flag.flagType);
+                const dateMatch = isDateInRange(flag);
+                // console.log(`🔍 [FLAG-DEBUG] Flag ${flag.id}: status=${statusMatch}, type=${typeMatch}, date=${dateMatch}`);
+                if (!statusMatch || !typeMatch || !dateMatch) {
+                    return false;
+                }
+                return true;
+            });
+            break;
+        default:
+            console.error('❌ [FLAG-DEBUG] Invalid section:', currentSection);
+            sectionFlags = [];
+            break;
+    }
+    // console.log('📊 [FLAG-DEBUG] Filtered section flags:', sectionFlags); // 🔴 CRITICAL: Exposes filtered flag data
+    // console.log('📊 [FLAG-DEBUG] Number of filtered flags:', sectionFlags.length); // 🟢 MEDIUM: Count info - keep for monitoring
+    // Sort by time filter
+    const sortedFlags = [...sectionFlags].sort((a, b) => {
+        // Convert timestamp strings to dates for sorting
+        const dateA = new Date(a.timestamp || a.createdAt);
+        const dateB = new Date(b.timestamp || b.createdAt);
+        if (currentFilters.timeFilter === 'recent') {
+            return dateB.getTime() - dateA.getTime(); // new -> old
+        }
+        else {
+            return dateA.getTime() - dateB.getTime(); // old -> new
+        }
+    });
+    // console.log('📊 [FLAG-DEBUG] Sorted flags:', sortedFlags); // 🔴 CRITICAL: Exposes sorted flag data
+    // Clear and render
+    // console.log('🧹 [FLAG-DEBUG] Clearing flags list innerHTML');
+    flagsList.innerHTML = '';
+    // console.log('🎨 [FLAG-DEBUG] Creating flag cards...'); // 🟢 MEDIUM: Debug info - keep for monitoring
+    sortedFlags.forEach((flag, index) => {
+        // console.log(`🎨 [FLAG-DEBUG] Creating card ${index + 1} for flag:`, flag); // 🔴 CRITICAL: Exposes individual flag data
+        const flagCard = createFlagCard(flag);
+        flagsList.appendChild(flagCard);
+        // console.log(`✅ [FLAG-DEBUG] Card ${index + 1} created and appended`);
+    });
+    // console.log('📊 [FLAG-DEBUG] Updating navigation counts...');
+    updateNavigationCounts();
+    // console.log('✅ [FLAG-DEBUG] renderFlags() completed successfully');
+}
+/**
+ * Create a flag card element dynamically
+ */
+function createFlagCard(flag) {
+    const card = document.createElement('div');
+    card.className = flag.collapsed ? 'flag-card' : 'flag-card expanded';
+    card.dataset.flagType = flag.flagType;
+    card.dataset.flagId = flag.id;
+    // Create flag header
+    const headerRow = document.createElement('div');
+    headerRow.className = 'flag-header-row';
+    const timeDiv = document.createElement('div');
+    timeDiv.className = 'flag-time';
+    timeDiv.textContent = flag.timestamp || 'Unknown time';
+    const typeDiv = document.createElement('div');
+    typeDiv.className = 'flag-type';
+    typeDiv.textContent = flag.reportType;
+    headerRow.appendChild(timeDiv);
+    headerRow.appendChild(typeDiv);
+    // Create chat content with collapse support
+    // Add "Chat:" prefix to align with student view format
+    const chatDiv = document.createElement('div');
+    chatDiv.className = flag.collapsed ? 'chat-content collapsed' : 'chat-content';
+    chatDiv.textContent = `Chat: ${flag.chatContent}`;
+    // Create flag footer
+    const footer = document.createElement('div');
+    footer.className = 'flag-footer';
+    const studentName = document.createElement('div');
+    studentName.className = 'student-name';
+    studentName.textContent = flag.studentName || 'Unknown Student';
+    const statusBadge = document.createElement('div');
+    statusBadge.className = 'status-badge';
+    statusBadge.textContent = ` ${flag.status === 'unresolved' ? 'Unresolved' : 'Resolved'}`;
+    const expandArrow = document.createElement('div');
+    expandArrow.className = 'expand-arrow';
+    expandArrow.textContent = flag.collapsed ? '▼' : '▲';
+    footer.appendChild(studentName);
+    footer.appendChild(statusBadge);
+    footer.appendChild(expandArrow);
+    // Create expanded content (response section)
+    const expandedContent = document.createElement('div');
+    expandedContent.className = 'expanded-content';
+    const responseSection = document.createElement('div');
+    responseSection.className = 'response-section';
+    const responseHeader = document.createElement('div');
+    responseHeader.className = 'response-header';
+    responseHeader.textContent = 'Response:';
+    const responseTextarea = document.createElement('textarea');
+    responseTextarea.className = 'response-textarea';
+    responseTextarea.placeholder = flag.status === 'unresolved' ? 'Write your response to this flag...' : 'Response from instructor...';
+    responseTextarea.value = flag.response || '';
+    responseTextarea.readOnly = flag.status === 'resolved' && !flag.editing;
+    // Add change tracking for edit mode
+    if (flag.status === 'resolved' && flag.editing) {
+        const originalValue = flag.response || '';
+        responseTextarea.addEventListener('input', () => {
+            // Could add visual feedback here if needed
+        });
+    }
+    const responseActions = document.createElement('div');
+    responseActions.className = 'response-actions';
+    const resolveButton = document.createElement('button');
+    resolveButton.className = 'resolve-button';
+    resolveButton.textContent = flag.status === 'unresolved' ? 'Resolve' : 'Unresolved';
+    resolveButton.dataset.flagId = flag.id;
+    resolveButton.dataset.status = flag.status;
+    resolveButton.disabled = false; // Ensure button is not disabled by default
+    responseActions.appendChild(resolveButton);
+    // Add Edit/Save button for resolved flags
+    if (flag.status === 'resolved') {
+        const editButton = document.createElement('button');
+        editButton.className = `edit-button ${flag.editing ? 'editing' : ''}`;
+        editButton.textContent = flag.editing ? 'Save' : 'Edit';
+        editButton.dataset.flagId = flag.id;
+        editButton.style.marginLeft = '8px';
+        responseActions.appendChild(editButton);
+    }
+    responseSection.appendChild(responseHeader);
+    responseSection.appendChild(responseTextarea);
+    responseSection.appendChild(responseActions);
+    expandedContent.appendChild(responseSection);
+    // Assemble the complete card
+    card.appendChild(headerRow);
+    card.appendChild(chatDiv);
+    card.appendChild(footer);
+    card.appendChild(expandedContent);
+    return card;
+}
+/**
+ * Update navigation tile counts for all sections
+ */
+function updateNavigationCounts() {
+    const navTiles = document.querySelectorAll('.nav-tile');
+    if (navTiles) {
+        // Count unresolved flags
+        const unresolvedFlags = flagData.filter(flag => flag.status === 'unresolved').length;
+        const unresolvedFlagsCount = document.getElementById('unresolved-flags-count');
+        if (unresolvedFlagsCount) {
+            unresolvedFlagsCount.textContent = String(unresolvedFlags);
+        }
+        // Count resolved flags  
+        const resolvedFlags = flagData.filter(flag => flag.status === 'resolved').length;
+        const resolvedFlagsCount = document.getElementById('resolved-flags-count');
+        if (resolvedFlagsCount) {
+            resolvedFlagsCount.textContent = String(resolvedFlags);
+        }
+    }
+}
+/**
+ * Check if a flag's date is within the selected date range
+ */
+function isDateInRange(flag) {
+    // No date filtering - show all flags
+    return true;
+}
