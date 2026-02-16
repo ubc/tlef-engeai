@@ -13,7 +13,6 @@ yarn-error.log*
 dev-debug.log
 
 # Compiled TypeScript
-/dist/
 deployments/
 
 # Dependency directories
