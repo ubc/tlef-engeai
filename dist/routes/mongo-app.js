@@ -48,6 +48,7 @@ const EngEAI_MongoDB_1 = require("../functions/EngEAI_MongoDB");
 const unique_id_generator_1 = require("../functions/unique-id-generator");
 const memory_agent_1 = require("../memory-agent/memory-agent");
 const dotenv_1 = __importDefault(require("dotenv"));
+const rag_app_1 = require("../routes/rag-app");
 const router = express_1.default.Router();
 exports.default = router;
 dotenv_1.default.config();
@@ -711,8 +712,7 @@ router.delete('/:id/remove', (0, asyncHandler_1.asyncHandlerWithAuth)((req, res)
         let qdrantDeleted = 0;
         const qdrantErrors = [];
         try {
-            const { RAGApp } = yield import('./rag-app.js');
-            const ragApp = yield RAGApp.getInstance();
+            const ragApp = yield rag_app_1.RAGApp.getInstance();
             const qdrantResult = yield ragApp.deleteAllDocumentsForCourse(courseId);
             qdrantDeleted = qdrantResult.deletedCount;
             if (qdrantResult.errors && qdrantResult.errors.length > 0) {
@@ -1554,8 +1554,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
         // Delete from Qdrant first if material has qdrantId
         if (material.qdrantId) {
             try {
-                const { RAGApp } = yield import('./rag-app.js');
-                const ragApp = yield RAGApp.getInstance();
+                const ragApp = yield rag_app_1.RAGApp.getInstance();
                 yield ragApp.deleteDocument(materialId, courseId, topicOrWeekId, itemId);
                 console.log(`✅ Material ${materialId} deleted from Qdrant`);
             }
@@ -1617,8 +1616,7 @@ router.delete('/:courseId/documents/all', (0, asyncHandler_1.asyncHandlerWithAut
         }
         // Delete from Qdrant first
         try {
-            const { RAGApp } = yield import('./rag-app.js');
-            const ragApp = yield RAGApp.getInstance();
+            const ragApp = yield rag_app_1.RAGApp.getInstance();
             const qdrantResult = yield ragApp.deleteAllDocumentsForCourse(courseId);
             console.log(`✅ Deleted ${qdrantResult.deletedCount} documents from Qdrant`);
         }
@@ -2183,8 +2181,7 @@ router.post('/admin/reset-database', (0, asyncHandler_1.asyncHandlerWithAuth)((r
         let qdrantDeleted = 0;
         const qdrantErrors = [];
         try {
-            const { RAGApp } = yield import('./rag-app.js');
-            const ragApp = yield RAGApp.getInstance();
+            const ragApp = yield rag_app_1.RAGApp.getInstance();
             const qdrantResult = yield ragApp.NuclearClearRAGDatabase();
             qdrantDeleted = qdrantResult.deletedCount;
             if (qdrantResult.errors && qdrantResult.errors.length > 0) {
@@ -2358,8 +2355,7 @@ router.post('/admin/reset-vector-database', (0, asyncHandler_1.asyncHandlerWithA
         let qdrantDeleted = 0;
         const qdrantErrors = [];
         try {
-            const { RAGApp } = yield import('./rag-app.js');
-            const ragApp = yield RAGApp.getInstance();
+            const ragApp = yield rag_app_1.RAGApp.getInstance();
             const qdrantResult = yield ragApp.NuclearClearRAGDatabase();
             qdrantDeleted = qdrantResult.deletedCount;
             if (qdrantResult.errors && qdrantResult.errors.length > 0) {
