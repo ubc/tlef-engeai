@@ -37,6 +37,7 @@ import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem,
 import { IDGenerator } from '../functions/unique-id-generator';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import dotenv from 'dotenv';
+import { RAGApp } from '../routes/rag-app';
 
 const router = express.Router();
 export default router;
@@ -803,7 +804,6 @@ router.delete('/:id/remove', asyncHandlerWithAuth(async (req: Request, res: Resp
         let qdrantDeleted = 0;
         const qdrantErrors: string[] = [];
         try {
-            const { RAGApp } = await import('./rag-app.js');
             const ragApp = await RAGApp.getInstance();
             const qdrantResult = await ragApp.deleteAllDocumentsForCourse(courseId);
             qdrantDeleted = qdrantResult.deletedCount;
@@ -1757,7 +1757,6 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
         // Delete from Qdrant first if material has qdrantId
         if (material.qdrantId) {
             try {
-                const { RAGApp } = await import('./rag-app.js');
                 const ragApp = await RAGApp.getInstance();
                 await ragApp.deleteDocument(materialId, courseId, topicOrWeekId, itemId);
                 console.log(`✅ Material ${materialId} deleted from Qdrant`);
@@ -1828,7 +1827,6 @@ router.delete('/:courseId/documents/all', asyncHandlerWithAuth(async (req: Reque
         
         // Delete from Qdrant first
         try {
-            const { RAGApp } = await import('./rag-app.js');
             const ragApp = await RAGApp.getInstance();
             const qdrantResult = await ragApp.deleteAllDocumentsForCourse(courseId);
             console.log(`✅ Deleted ${qdrantResult.deletedCount} documents from Qdrant`);
@@ -2476,7 +2474,6 @@ router.post('/admin/reset-database', asyncHandlerWithAuth(async (req: Request, r
         let qdrantDeleted = 0;
         const qdrantErrors: string[] = [];
         try {
-            const { RAGApp } = await import('./rag-app.js');
             const ragApp = await RAGApp.getInstance();
             const qdrantResult = await ragApp.NuclearClearRAGDatabase();
             qdrantDeleted = qdrantResult.deletedCount;
@@ -2669,7 +2666,6 @@ router.post('/admin/reset-vector-database', asyncHandlerWithAuth(async (req: Req
         let qdrantDeleted = 0;
         const qdrantErrors: string[] = [];
         try {
-            const { RAGApp } = await import('./rag-app.js');
             const ragApp = await RAGApp.getInstance();
             const qdrantResult = await ragApp.NuclearClearRAGDatabase();
             qdrantDeleted = qdrantResult.deletedCount;
