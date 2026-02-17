@@ -14,6 +14,8 @@ dev-debug.log
 
 # Compiled TypeScript
 deployments/
+dist/
+public/dist/
 
 # Dependency directories
 node_modules/
