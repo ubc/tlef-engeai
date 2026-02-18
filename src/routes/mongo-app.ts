@@ -38,6 +38,7 @@ import { IDGenerator } from '../functions/unique-id-generator';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import dotenv from 'dotenv';
 import { RAGApp } from '../routes/rag-app';
+import { namesMatch } from '../utils/nameMatching';
 
 const router = express.Router();
 export default router;
@@ -487,23 +488,32 @@ router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, re
     }
 }));
 
-
-// GET /api/courses/:id - Get course by ID
-router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
-    const instance = await EngEAI_MongoDB.getInstance();
-    const course = await instance.getActiveCourse(req.params.id);
-    
-    if (!course) {
-        return res.status(404).json({
-            success: false,
-            error: 'Course not found'
-        });
+// GET /api/courses/check-exists?name=X - Check if course exists (always 200, no 404)
+router.get('/check-exists', asyncHandler(async (req: Request, res: Response) => {
+    const courseName = req.query.name as string;
+    if (!courseName || typeof courseName !== 'string') {
+        return res.status(200).json({ success: true, exists: false });
     }
-    
-    res.status(200).json({
-        success: true,
-        data: course
-    });
+    const instance = await EngEAI_MongoDB.getInstance();
+    const course = await instance.getCourseByName(courseName.trim());
+    return res.status(200).json({ success: true, exists: !!course });
+}));
+
+// GET /api/courses/allowed-for-instructor - Get allowed courses for current instructor (REQUIRES AUTH)
+router.get('/allowed-for-instructor', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    const globalUser = (req.session as any).globalUser;
+    if (!globalUser) {
+        return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+    if (globalUser.affiliation !== 'faculty') {
+        return res.status(403).json({ success: false, error: 'Instructors only' });
+    }
+    const instance = await EngEAI_MongoDB.getInstance();
+    const coll = instance.db.collection<{ instructor: string; allowed_courses: string[] }>('instructor-allowed-courses');
+    const docs = await coll.find({}).toArray();
+    const match = docs.find((d) => namesMatch(d.instructor, globalUser.name));
+    const allowedCourses = match ? (match.allowed_courses || []) : [];
+    return res.status(200).json({ success: true, allowedCourses });
 }));
 
 // GET /api/courses - Get all courses or course by name (query param)
@@ -539,6 +549,24 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
             count: courses.length
         });
     }
+}));
+
+// GET /api/courses/:id - Get course by ID (must be after /check-exists and /allowed-for-instructor)
+router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
+    const instance = await EngEAI_MongoDB.getInstance();
+    const course = await instance.getActiveCourse(req.params.id);
+
+    if (!course) {
+        return res.status(404).json({
+            success: false,
+            error: 'Course not found'
+        });
+    }
+
+    res.status(200).json({
+        success: true,
+        data: course
+    });
 }));
 
 // PUT /api/courses/:id - Update course (REQUIRES AUTH - Instructors only)

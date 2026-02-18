@@ -15,6 +15,7 @@ import courseRoutes from './routes/course-routes';  // Import course routes
 import sessionMiddleware from './middleware/session';
 import { passport } from './middleware/passport';
 import { EngEAI_MongoDB } from './functions/EngEAI_MongoDB';
+import { initInstructorAllowedCourses } from './functions/initInstructorAllowedCourses';
 
 dotenv.config();
 
@@ -185,7 +186,10 @@ app.listen(port, async () => {
     console.log(`[ENGE-AI] Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`[ENGE-AI] SAML Authentication: ${process.env.SAML_ENTRY_POINT ? 'Configured' : 'Not configured'}`);
     console.log('--------------------------------');
-    
-    // // Initialize dummy courses on server startup
-    // await initializeDummyCourses();
+
+    try {
+        await initInstructorAllowedCourses();
+    } catch (err) {
+        console.error('[ENGE-AI] Failed to initialize instructor-allowed-courses:', err);
+    }
 });
