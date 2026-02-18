@@ -30,7 +30,7 @@ const SEED_DATA = [
             'Test MTRL Course 1'
         ]
     },
-    { instructor: 'Richard tape', allowed_courses: ['Test_1', 'Test_2', 'Test_3'] }
+    { instructor: 'Richard Tape', allowed_courses: ['Test_1', 'Test_2', 'Test_3'] }
 ];
 
 /**
