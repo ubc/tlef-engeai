@@ -755,7 +755,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 return;
             }
             // console.log('📡 Making API call to add topic/week instance...'); // 🟢 MEDIUM: API call logging
-            // console.log('🌐 API URL:', `/api/courses/${courseId}/topic-or-week-instances`); // 🔴 CRITICAL: API URL with course ID exposure
 
             const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances`, {
                 method: 'POST',
@@ -777,7 +776,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             }
 
             const result = await response.json();
-            // console.log('📡 Add Division API Response body:', result); // 🔴 CRITICAL: API response data exposure
 
             if (!result.success) {
                 await showSimpleErrorModal('Failed to add division: ' + (result.error || 'Unknown error'), 'Add Division Error');
@@ -901,11 +899,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      */
     async function handleUploadMaterial(material: any): Promise<{ success: boolean; chunksGenerated?: number } | void> {
     // console.log('🔍 HANDLE UPLOAD MATERIAL CALLED - FUNCTION STARTED'); // 🟢 MEDIUM: Function start logging
-    // console.log('  - material:', material); // 🔴 CRITICAL: Upload material data exposure
-    // console.log('  - material.topicOrWeekId:', material.topicOrWeekId); // 🟡 HIGH: Material ID exposure
-    // console.log('  - material.itemId:', material.itemId); // 🟡 HIGH: Material ID exposure
-    // console.log('  - courseData:', courseData); // 🔴 CRITICAL: Course data exposure
-    // console.log('  - currentClass:', currentClass); // 🔴 CRITICAL: Current class data exposure
         
         try {
             // Get the topic/week instance and the content item
@@ -1170,7 +1163,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             }
             //START DEBUG LOG : DEBUG-CODE(020)
             console.log('📡 Making API call to add learning objective...');
-            // console.log('🌐 API URL:', `/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives`); // 🔴 CRITICAL: API URL with course/content IDs exposure
             // console.log('📦 Request body:', { learningObjective: newObjective }); // 🟡 HIGH: Learning objective content exposure
             //END DEBUG LOG : DEBUG-CODE(020)
             
@@ -1192,7 +1184,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const result = await response.json();
             
             //START DEBUG LOG : DEBUG-CODE(022)
-            // console.log('📡 API Response body:', result); // 🔴 CRITICAL: API response data exposure
             //END DEBUG LOG : DEBUG-CODE(022)
             
             if (result.success) {

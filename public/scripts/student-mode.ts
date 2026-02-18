@@ -199,7 +199,7 @@ function initializeInactivityTracking(): void {
  * Initialize the chat interface for the student
  */
 async function initializeChatInterface(user: any, urlState?: { view: string | null, chatId: string | null }): Promise<void> {
-    // console.log('[STUDENT-MODE] 🚀 Initializing chat interface for user:', user.name); // 🔴 CRITICAL: User name exposure
+
     
     const chatManager = ChatManager.getInstance({
         isInstructor: false,
@@ -336,11 +336,6 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
 
     // Initialize the chat manager and wait for it to complete
     // console.log('[STUDENT-MODE] 🚀 Initializing ChatManager with real user data...'); // 🟢 MEDIUM: Debug info - keep for monitoring
-    // console.log('[STUDENT-MODE] 📊 User context:', { // 🔴 CRITICAL: User context data exposure
-    //     userId: user.userId,
-    //     courseName: user.courseName,
-    //     affiliation: user.affiliation
-    // });
     
     /**
      * Handle URL-based component loading

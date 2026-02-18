@@ -54,7 +54,6 @@ async function initializeCourseSelection(): Promise<void> {
             userNameElement.textContent = userName;
         }
 
-        // console.log('[COURSE-SELECTION] ✅ User data loaded:', userName, 'Affiliation:', currentUserAffiliation); // 🔴 CRITICAL: Exposes user identity and affiliation
 
         // Setup buttons based on affiliation
         setupCourseButtons();
@@ -217,7 +216,6 @@ function attachCourseCardListeners(): void {
  */
 async function enterCourse(courseId: string): Promise<void> {
     try {
-        // console.log('[COURSE-SELECTION] 🚀 Entering course:', courseId); // 🟡 HIGH: Course ID exposure
         
         // Find and disable only the clicked button
         const clickedButton = document.querySelector(`button.launch-btn[data-course-id="${courseId}"]`);
@@ -408,7 +406,6 @@ async function removeCourse(courseId: string, courseName: string): Promise<void>
         const data = await response.json();
         
         // Success - show message and reload page
-        // console.log('[COURSE-SELECTION] ✅ Course removed successfully:', data); // 🟡 HIGH: Exposes course removal data
         await showSuccessModal(
             'Success',
             data.message || 'Course removed successfully. The page will reload.'
@@ -576,9 +573,6 @@ function setupCourseButtons(): void {
                 await createNewCourseForInstructor();
             });
         }
-        
-        // Admin buttons section remains hidden by default - shown when logo is clicked
-        // setupAdminButtons(); // Commented out to keep buttons hidden by default
     } else if (currentUserAffiliation === 'student') {
         // For students: only show "Add New Course" button
         if (addNewCourseBtn) {
@@ -594,283 +588,11 @@ function setupCourseButtons(): void {
                 await showEnrollmentModal();
             });
         }
-
-        // Admin buttons section remains hidden by default for all users - shown when logo is clicked
-        // setupAdminButtons(); // Commented out to keep buttons hidden by default
     }
     
     // Re-render feather icons for the buttons
     if (typeof (window as any).feather !== 'undefined') {
         (window as any).feather.replace();
-    }
-}
-
-/**
- * Setup admin buttons (instructor only)
- */
-function setupAdminButtons(): void {
-    // Reset MongoDB button
-    const resetMongoBtn = document.getElementById('reset-mongodb-btn');
-    if (resetMongoBtn) {
-        resetMongoBtn.addEventListener('click', async () => {
-            await handleResetMongoDB();
-        });
-    }
-    
-    // Reset Vector Database button
-    const resetVectorDbBtn = document.getElementById('reset-vector-database-btn');
-    if (resetVectorDbBtn) {
-        resetVectorDbBtn.addEventListener('click', async () => {
-            await handleResetVectorDatabase();
-        });
-    }
-    
-    // Download Database button
-    const downloadDbBtn = document.getElementById('download-database-btn');
-    if (downloadDbBtn) {
-        downloadDbBtn.addEventListener('click', async () => {
-            await handleDownloadDatabase();
-        });
-    }
-    
-    // Re-render feather icons
-    if (typeof (window as any).feather !== 'undefined') {
-        (window as any).feather.replace();
-    }
-}
-
-/**
- * Handle reset MongoDB button click
- */
-async function handleResetMongoDB(): Promise<void> {
-    try {
-        // Show confirmation modal
-        const confirmationMessage = `Are you sure you want to reset MongoDB?\n\n` +
-            `This will permanently delete:\n` +
-            `• All courses from active-course-list\n` +
-            `• All users from active-users\n` +
-            `• All course-specific collections (users, flags, memory-agent)\n\n` +
-            `Note: This will NOT affect the vector database (Qdrant).\n\n` +
-            `This action cannot be undone! After completion, you will be logged out.`;
-        
-        const result = await showConfirmModal(
-            'Reset MongoDB',
-            confirmationMessage,
-            'Reset MongoDB',
-            'Cancel'
-        );
-        
-        // Check if user cancelled (modal returns button text lowercased with hyphens)
-        if (result.action === 'cancel' || result.action === 'overlay' || result.action === 'escape') {
-            // console.log('[COURSE-SELECTION] ❌ MongoDB reset cancelled by user');
-            return;
-        }
-        
-        // Disable button during request
-        const resetMongoBtn = document.getElementById('reset-mongodb-btn') as HTMLButtonElement;
-        if (resetMongoBtn) {
-            resetMongoBtn.disabled = true;
-            const span = resetMongoBtn.querySelector('span');
-            if (span) {
-                span.textContent = 'Resetting...';
-            }
-        }
-        
-        // Call the API endpoint
-        const response = await fetch('/api/courses/admin/reset-mongodb', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            credentials: 'same-origin'
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Failed to reset MongoDB' }));
-            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        // Show success message
-        await showSuccessModal(
-            'Success',
-            data.message || 'MongoDB reset successfully. You will be logged out now.'
-        );
-        
-        // Logout after a short delay
-        setTimeout(() => {
-            window.location.href = '/auth/logout';
-        }, 2000);
-        
-    } catch (error) {
-        console.error('[COURSE-SELECTION] ❌ Error resetting MongoDB:', error);
-        await showErrorModal(
-            'Error',
-            `Failed to reset MongoDB: ${error instanceof Error ? error.message : 'Unknown error'}`
-        );
-        
-        // Re-enable button
-        const resetMongoBtn = document.getElementById('reset-mongodb-btn') as HTMLButtonElement;
-        if (resetMongoBtn) {
-            resetMongoBtn.disabled = false;
-            const span = resetMongoBtn.querySelector('span');
-            if (span) {
-                span.textContent = 'Reset MongoDB';
-            }
-        }
-    }
-}
-
-/**
- * Handle reset vector database button click
- */
-async function handleResetVectorDatabase(): Promise<void> {
-    try {
-        // Show confirmation modal
-        const confirmationMessage = `Are you sure you want to reset the vector database?\n\n` +
-            `This will permanently delete ALL documents from the Qdrant vector database.\n\n` +
-            `This action cannot be undone!`;
-        
-        const result = await showConfirmModal(
-            'Reset Vector Database',
-            confirmationMessage,
-            'Reset Vector Database',
-            'Cancel'
-        );
-        
-        // Check if user cancelled (modal returns button text lowercased with hyphens)
-        if (result.action === 'cancel' || result.action === 'overlay' || result.action === 'escape') {
-            // console.log('[COURSE-SELECTION] ❌ Vector database reset cancelled by user');
-            return;
-        }
-        
-        // Disable button during request
-        const resetVectorDbBtn = document.getElementById('reset-vector-database-btn') as HTMLButtonElement;
-        if (resetVectorDbBtn) {
-            resetVectorDbBtn.disabled = true;
-            const span = resetVectorDbBtn.querySelector('span');
-            if (span) {
-                span.textContent = 'Resetting...';
-            }
-        }
-        
-        // Call the API endpoint
-        const response = await fetch('/api/courses/admin/reset-vector-database', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            credentials: 'same-origin'
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Failed to reset vector database' }));
-            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        // Show success message
-        await showSuccessModal(
-            'Success',
-            data.message || 'Vector database reset successfully.'
-        );
-        
-    } catch (error) {
-        console.error('[COURSE-SELECTION] ❌ Error resetting vector database:', error);
-        await showErrorModal(
-            'Error',
-            `Failed to reset vector database: ${error instanceof Error ? error.message : 'Unknown error'}`
-        );
-        
-        // Re-enable button
-        const resetVectorDbBtn = document.getElementById('reset-vector-database-btn') as HTMLButtonElement;
-        if (resetVectorDbBtn) {
-            resetVectorDbBtn.disabled = false;
-            const span = resetVectorDbBtn.querySelector('span');
-            if (span) {
-                span.textContent = 'Reset Vector Database';
-            }
-        }
-    }
-}
-
-/**
- * Handle download database button click
- */
-async function handleDownloadDatabase(): Promise<void> {
-    try {
-        // Disable button during request
-        const downloadDbBtn = document.getElementById('download-database-btn') as HTMLButtonElement;
-        if (downloadDbBtn) {
-            downloadDbBtn.disabled = true;
-            const span = downloadDbBtn.querySelector('span');
-            if (span) {
-                span.textContent = 'Downloading...';
-            }
-        }
-        
-        // Call the API endpoint to download database
-        const response = await fetch('/api/courses/export/database', {
-            method: 'GET',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Failed to download database' }));
-            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-        }
-        
-        // Get the text content from response
-        const textContent = await response.text();
-        
-        // Get filename from Content-Disposition header or use default
-        const contentDisposition = response.headers.get('Content-Disposition');
-        let filename = 'database-export.txt';
-        if (contentDisposition) {
-            const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-            if (filenameMatch) {
-                filename = filenameMatch[1];
-            }
-        }
-        
-        // Create a blob and download it
-        const blob = new Blob([textContent], { type: 'text/plain' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-        
-        // Show success message
-        await showSuccessModal(
-            'Success',
-            'Database downloaded successfully.'
-        );
-        
-    } catch (error) {
-        console.error('[COURSE-SELECTION] ❌ Error downloading database:', error);
-        await showErrorModal(
-            'Error',
-            `Failed to download database: ${error instanceof Error ? error.message : 'Unknown error'}`
-        );
-    } finally {
-        // Re-enable button
-        const downloadDbBtn = document.getElementById('download-database-btn') as HTMLButtonElement;
-        if (downloadDbBtn) {
-            downloadDbBtn.disabled = false;
-            const span = downloadDbBtn.querySelector('span');
-            if (span) {
-                span.textContent = 'Download Database';
-            }
-        }
     }
 }
 
@@ -1175,32 +897,10 @@ function hideCodeError(): void {
     }
 }
 
-// Setup brand logo click handler to toggle admin buttons
-function setupBrandLogoToggle(): void {
-    const brandLogo = document.querySelector('.brand-logo');
-    const adminButtonsSection = document.getElementById('admin-buttons-section');
-
-    if (brandLogo && adminButtonsSection) {
-        brandLogo.addEventListener('click', () => {
-            // console.log('[COURSE-SELECTION] 🔑 Brand logo clicked - toggling admin buttons');
-            const currentDisplay = adminButtonsSection.style.display;
-            const newDisplay = currentDisplay === 'none' ? 'block' : 'none';
-            adminButtonsSection.style.display = newDisplay;
-
-            // Setup admin button event listeners when showing the buttons
-            if (newDisplay === 'block') {
-                setupAdminButtons();
-            }
-        });
-        // console.log('[COURSE-SELECTION] ✅ Brand logo click listener attached');
-    }
-}
-
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
     initializeCourseSelection();
     setupRetryButton();
     setupLogoutButton();
-    setupBrandLogoToggle();
 });
 

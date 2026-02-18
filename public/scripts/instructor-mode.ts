@@ -137,7 +137,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (sessionResponse.ok) {
                 const sessionData = await sessionResponse.json();
                 if (sessionData.course && sessionData.course.courseName) {
-                    // console.log('[INSTRUCTOR-MODE] ✅ Found course in session:', sessionData.course.courseName); // 🟡 HIGH: Course name exposure from session
 
                     // Fetch full course data using the course name from session
                     const courseResponse = await fetch(`/api/courses?name=${encodeURIComponent(sessionData.course.courseName)}`, {
@@ -153,14 +152,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (courseResult.success && courseResult.data) {
                             currentClass = courseResult.data;
                             // console.log('[INSTRUCTOR-MODE] ✅ Course loaded from session:', currentClass.courseName); // 🟡 HIGH: Course name exposure
-                            // console.log('[INSTRUCTOR-MODE] 📊 Course Data:', { // 🔴 CRITICAL: Full course data exposure
-                            //     id: currentClass.id,
-                            //     courseName: currentClass.courseName,
-                            //     courseSetup: currentClass.courseSetup,
-                            //     contentSetup: currentClass.contentSetup,
-                            //     flagSetup: currentClass.flagSetup,
-                            //     monitorSetup: currentClass.monitorSetup
-                            // });
                             return; // Successfully loaded, exit function
                         }
                     }
@@ -363,7 +354,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         const sessionData = await sessionResponse.json();
         
         if (courseIdFromURL && sessionData.course?.courseId !== courseIdFromURL) {
-            // console.warn('[INSTRUCTOR-MODE] URL courseId does not match session, updating...'); // 🟡 HIGH: Course ID exposure from URL
             // Optionally redirect to sync session - but for now, just log warning
         }
     }
@@ -520,8 +510,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             else if (componentName === 'flag-instructor') {
                 // console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing flags...`); // 🟢 MEDIUM: Debug info
-                // console.log(`🔧 [INSTRUCTOR-DEBUG] Current class data:`, currentClass); // 🟡 HIGH: Course data exposure
-                // console.log(`🔧 [INSTRUCTOR-DEBUG] Window.currentClass:`, (window as any).currentClass); // 🟡 HIGH: Course data exposure
                 await initializeFlags();
             }
             else if (componentName === 'monitor-instructor') {
@@ -760,7 +748,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             //START DEBUG LOG : DEBUG-CODE(001)
             // console.log('🚀 Initializing ChatManager for instructor mode...'); // 🟢 MEDIUM: Debug info - keep for monitoring
-            // console.log('📋 Current class:', currentClass.courseName); // 🔴 CRITICAL: Course name exposure
             //END DEBUG LOG : DEBUG-CODE(001)
             
             // Get instructor's real User data from authentication
@@ -781,9 +768,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 isInstructor: true,
                 userContext: instructorUser!, // Use instructor User object instead of activeCourse
                 onModeSpecificCallback: (action: string, data?: any) => {
-                    //START DEBUG LOG : DEBUG-CODE(003)
-                    // console.log('📞 ChatManager callback:', action, data); // 🟡 HIGH: Chat data exposure in callbacks
-                    //END DEBUG LOG : DEBUG-CODE(003)
                     
                     // Handle instructor-specific chat callbacks
                     if (action === 'new-chat-created') {
@@ -1201,228 +1185,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
             // console.log('[INSTRUCTOR-MODE] ✅ Course Selection button listener attached');
-        }
-
-        // Logo Box - Toggle Admin Buttons (all four: Remove Course, Remove struggle words, Download DB, List struggle words)
-        const logoBox = document.querySelector('.logo-box');
-        if (logoBox) {
-            logoBox.addEventListener('click', () => {
-       
-                const removeCourseBtn = document.getElementById('instructor-remove-course-btn');
-                const removeStruggleWordsBtn = document.getElementById('instructor-remove-struggle-words-btn');
-                const downloadDbBtn = document.getElementById('instructor-download-db-btn');
-                const listStruggleWordsBtn = document.getElementById('instructor-list-struggle-words-btn');
-
-                [removeCourseBtn, removeStruggleWordsBtn, downloadDbBtn, listStruggleWordsBtn].forEach(btn => {
-                    if (btn) {
-                        const currentDisplay = window.getComputedStyle(btn).display;
-                        (btn as HTMLElement).style.display = currentDisplay === 'none' ? 'flex' : 'none';
-                    }
-                });
-            });
-            // console.log('[INSTRUCTOR-MODE] ✅ Logo box click listener attached');
-        }
-
-        // Remove Struggle Words button listener
-        const removeStruggleWordsBtn = document.getElementById('instructor-remove-struggle-words-btn');
-        if (removeStruggleWordsBtn) {
-            removeStruggleWordsBtn.addEventListener('click', async () => {
-                if (!currentClass || !currentClass.id) {
-                    alert('❌ Error: No course selected');
-                    return;
-                }
-                const courseId = currentClass.id;
-                try {
-                    const response = await fetch(`/api/courses/${courseId}/memory-agent/struggle-words`, {
-                        method: 'DELETE',
-                        credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/json' }
-                    });
-                    const result = await response.json();
-                    if (result.success && result.data) {
-                        const removed = result.data.removed || [];
-                        const count = result.data.count || 0;
-                        const formatted = removed.map((w: string) => `"${w}"`).join(', ');
-                        alert(`Removed ${count} struggle words: ${formatted || '(none)'}`);
-                    } else {
-                        alert(`❌ ${result.error || 'Failed to remove struggle words'}`);
-                    }
-                } catch (error) {
-                    alert(`❌ Failed to remove struggle words: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                }
-            });
-        }
-
-        // List Struggle Words button listener
-        const listStruggleWordsBtn = document.getElementById('instructor-list-struggle-words-btn');
-        if (listStruggleWordsBtn) {
-            listStruggleWordsBtn.addEventListener('click', async () => {
-                // console.log('[INSTRUCTOR-MODE] 📋 List struggle words button clicked');
-                if (!currentClass || !currentClass.id) {
-                    alert('❌ Error: No course selected');
-                    return;
-                }
-                const courseId = currentClass.id;
-                try {
-                    const response = await fetch(`/api/courses/${courseId}/memory-agent/struggle-words`, {
-                        method: 'GET',
-                        credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/json' }
-                    });
-                    const result = await response.json();
-                    if (result.success && result.data) {
-                        const words = result.data || [];
-                        const formatted = words.map((w: string) => `"${w}"`).join(', ');
-                        alert(`There are ${words.length} struggle words: ${formatted || '(none)'}`);
-                    } else {
-                        alert(`❌ ${result.error || 'Failed to get struggle words'}`);
-                    }
-                } catch (error) {
-                    alert(`❌ Failed to get struggle words: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                }
-            });
-        }
-
-        // Remove Course button listener (replaces Reset Dummy Courses)
-        const removeCourseBtn = document.getElementById('instructor-remove-course-btn');
-        if (removeCourseBtn) {
-            removeCourseBtn.addEventListener('click', async () => {
-                // console.log('[INSTRUCTOR-MODE] 🗑️ Remove Course button clicked');
-                
-                // Get current course ID
-                if (!currentClass || !currentClass.id) {
-                    alert('❌ Error: No course selected');
-                    return;
-                }
-                
-                const courseId = currentClass.id;
-                const courseName = currentClass.courseName;
-                
-                // Show confirmation modal
-                const confirmationMessage = `Are you sure you want to remove the course "${courseName}"?\n\n` +
-                    `This will permanently delete:\n` +
-                    `• All enrolled users from this course\n` +
-                    `• All course data (users, flags, memory-agent collections)\n` +
-                    `• All documents from the vector database for this course\n` +
-                    `• The course instance itself\n\n` +
-                    `This action cannot be undone! After deletion, you will be logged out.`;
-                
-                const result = await showConfirmModal(
-                    'Remove Course',
-                    confirmationMessage,
-                    'Remove Course',
-                    'Cancel'
-                );
-                
-                // Check if user cancelled (modal returns button text lowercased with hyphens)
-                if (result.action === 'cancel' || result.action === 'overlay' || result.action === 'escape') {
-                    // console.log('[INSTRUCTOR-MODE] ❌ Course removal cancelled by user');
-                    return;
-                }
-                
-                try {
-                    // Disable button during request
-                    (removeCourseBtn as HTMLButtonElement).disabled = true;
-                    if (removeCourseBtn.querySelector('span')) {
-                        removeCourseBtn.querySelector('span')!.textContent = 'Removing...';
-                    }
-                    
-                    // Call the delete course API endpoint
-                    const response = await fetch(`/api/courses/${courseId}/remove`, {
-                        method: 'DELETE',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        credentials: 'same-origin'
-                    });
-                    
-                    if (!response.ok) {
-                        const errorData = await response.json().catch(() => ({ error: 'Failed to remove course' }));
-                        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    
-                    // Gracefully log out the user after a short delay
-                    setTimeout(() => {
-                        window.location.href = '/auth/logout';
-                    }, 1500);
-                    
-                } catch (error) {
-                    console.error('[INSTRUCTOR-MODE] 🚨 Error removing course:', error);
-                } finally {
-                    // Re-enable button
-                    (removeCourseBtn as HTMLButtonElement).disabled = false;
-                    if (removeCourseBtn.querySelector('span')) {
-                        removeCourseBtn.querySelector('span')!.textContent = 'Remove Course';
-                    }
-                }
-            });
-        }
-
-        // Download Database button listener
-        const downloadDbBtn = document.getElementById('instructor-download-db-btn');
-        if (downloadDbBtn) {
-            downloadDbBtn.addEventListener('click', async () => {
-                
-                try {
-                    // Disable button during request
-                    (downloadDbBtn as HTMLButtonElement).disabled = true;
-                    const originalText = downloadDbBtn.querySelector('span')?.textContent;
-                    if (downloadDbBtn.querySelector('span')) {
-                        downloadDbBtn.querySelector('span')!.textContent = 'Downloading Course Info...';
-                    }
-                    
-                    // Call the API endpoint to download course information
-                    const response = await fetch('/api/courses/export/course-info', {
-                        method: 'GET',
-                        credentials: 'same-origin',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    });
-                    
-                    if (!response.ok) {
-                        const errorData = await response.json().catch(() => ({ error: 'Failed to download course information' }));
-                        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-                    }
-                    
-                    // Get the text content from response
-                    const textContent = await response.text();
-                    
-                    // Get filename from Content-Disposition header or use default
-                    const contentDisposition = response.headers.get('Content-Disposition');
-                    let filename = 'course-info-export.txt';
-                    if (contentDisposition) {
-                        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-                        if (filenameMatch) {
-                            filename = filenameMatch[1];
-                        }
-                    }
-                    
-                    // Create a blob and download it
-                    const blob = new Blob([textContent], { type: 'text/plain' });
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
-                    
-                    
-                } catch (error) {
-                    // console.error('[INSTRUCTOR-MODE] 🚨 Error downloading course information:', error);
-                    alert(`❌ Failed to download course information: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                } finally {
-                    // Re-enable button
-                    (downloadDbBtn as HTMLButtonElement).disabled = false;
-                    if (downloadDbBtn.querySelector('span')) {
-                        downloadDbBtn.querySelector('span')!.textContent = 'Download Course Info';
-                    }
-                }
-            });
         }
     };
 

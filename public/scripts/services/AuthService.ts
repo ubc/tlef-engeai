@@ -54,14 +54,6 @@ export class AuthService {
             //END DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-RESPONSE)
             
             const data = await response.json();
-            //START DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-DATA)
-            // console.log('[FRONTEND-AUTH] 📦 Complete server response data:', data); // 🔴 CRITICAL: Complete auth response data exposure
-            // console.log('[FRONTEND-AUTH] 📋 Response structure:', { // 🔴 CRITICAL: Auth response structure exposure
-            //     authenticated: data.authenticated,
-            //     hasUser: !!data.user,
-            //     userKeys: data.user ? Object.keys(data.user) : 'No user data'
-            // });
-            //END DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-DATA)
 
             if (data.authenticated) {
                 this.authState.isAuthenticated = true;
@@ -69,11 +61,6 @@ export class AuthService {
                 
                 //START DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-SUCCESS)
                 // console.log('[FRONTEND-AUTH] ✅ LOGIN SUCCESSFUL!'); // 🟢 MEDIUM: Login success - keep for monitoring
-                // console.log('[FRONTEND-AUTH] 👤 User information received from server:'); // 🔴 CRITICAL: User info logging
-                // console.log('  📝 Name:', data.user.name); // 🔴 CRITICAL: User name exposure
-                // console.log('  🏫 Affiliation:', data.user.affiliation); // 🔴 CRITICAL: User affiliation exposure
-                // console.log('  🆔 User ID:', data.user.userId); // 🔴 CRITICAL: User ID exposure
-                // console.log('[FRONTEND-AUTH] 💾 Stored in frontend state:', this.authState.user); // 🔴 CRITICAL: Stored user state exposure
                 //END DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-SUCCESS)
             } else {
                 this.authState.isAuthenticated = false;
@@ -216,17 +203,6 @@ export class AuthService {
             const authState = this.getAuthState();
             
             if (authState.isAuthenticated && authState.user) {
-                // console.log(`[${pageName}] ✅ User authenticated, logging SAML data:`); // 🔴 CRITICAL: SAML data logging
-                // console.log('====================================='); // 🔴 CRITICAL: SAML data logging
-                // console.log('🔐 Authentication Source: SAML/CWL'); // 🔴 CRITICAL: SAML data logging
-                // console.log('📝 Name:', authState.user.name); // 🔴 CRITICAL: User name in SAML logs
-                // console.log('🏫 Affiliation:', authState.user.affiliation); // 🔴 CRITICAL: User affiliation in SAML logs
-                // console.log('🆔 User ID:', authState.user.userId); // 🔴 CRITICAL: User ID in SAML logs
-                // console.log('⏰ Authentication Time:', new Date().toISOString()); // 🔴 CRITICAL: Auth timing in SAML logs
-                // console.log('🌐 Current Page:', window.location.pathname); // 🔴 CRITICAL: Current page in SAML logs
-                // console.log('🔗 User Agent:', navigator.userAgent); // 🔴 CRITICAL: User agent fingerprinting
-                // console.log('====================================='); // 🔴 CRITICAL: SAML data logging
-                // console.log(`[${pageName}] 📋 Complete User Object:`, authState.user); // 🔴 CRITICAL: Complete user object exposure
                 
                 return true;
             } else {

@@ -238,21 +238,6 @@ export class DocumentUploadModule {
 
             this.progressCallback(30, 'Uploading file...');
 
-            // console.log('🔍 UPLOAD FILE - Request Details:'); // 🔴 CRITICAL: Upload request details
-            // console.log('  URL:', '/api/rag/documents/file'); // 🔴 CRITICAL: API endpoint exposure
-            // console.log('  Method: POST'); // 🟢 MEDIUM: HTTP method
-            // console.log('  File Name:', fileToUpload.name); // 🔴 CRITICAL: Uploaded file name exposure
-            // console.log('  File Size:', fileToUpload.size); // 🟡 HIGH: File size metadata
-            // console.log('  File Type:', fileToUpload.type); // 🟡 HIGH: File type metadata
-            // console.log('  FormData Contents:'); // 🔴 CRITICAL: Form data contents
-            // for (const [key, value] of formData.entries()) {
-            //     if (value instanceof File) {
-            //         console.log(`    ${key}: File(${value.name}, ${value.size} bytes, ${value.type})`);
-            //     } else {
-            //         console.log(`    ${key}: ${value}`);
-            //     }
-            // }
-
             // Upload to the correct RAG endpoint
             const response = await fetch('/api/rag/documents/file', {
                 method: 'POST',
@@ -261,21 +246,14 @@ export class DocumentUploadModule {
 
             this.progressCallback(70, 'Processing file...');
 
-            // console.log('🔍 UPLOAD FILE - Response Details:'); // 🔴 CRITICAL: Response details logging
             // console.log('  Status:', response.status); // 🟢 MEDIUM: HTTP status
             // console.log('  Status Text:', response.statusText); // 🟢 MEDIUM: HTTP status text
-            // console.log('  Headers:', Object.fromEntries(response.headers.entries())); // 🔴 CRITICAL: Response headers exposure
-            // console.log('  Content-Type:', response.headers.get('content-type')); // 🟡 HIGH: Content type header
 
             if (!response.ok) {
                 const errorText = await response.text();
-                // console.log('🔍 UPLOAD FILE - Error Response Body (raw):'); // 🔴 CRITICAL: Raw error response exposure
-                // console.log('  Raw Response:', errorText); // 🔴 CRITICAL: Error response content
 
                 try {
                     const errorData = JSON.parse(errorText);
-                    // console.log('🔍 UPLOAD FILE - Error Response Body (parsed):'); // 🔴 CRITICAL: Parsed error response
-                    // console.log('  Parsed Error:', errorData); // 🔴 CRITICAL: Error data content
                 } catch (parseError) {
                     // console.log('🔍 UPLOAD FILE - JSON Parse Error:'); // 🟢 MEDIUM: Parse error logging
                     // console.log('  Parse Error:', parseError); // 🟢 MEDIUM: Parse error details
@@ -285,14 +263,10 @@ export class DocumentUploadModule {
             }
 
             const responseText = await response.text();
-            // console.log('🔍 UPLOAD FILE - Success Response Body (raw):'); // 🔴 CRITICAL: Raw success response exposure
-            // console.log('  Raw Response:', responseText); // 🔴 CRITICAL: Success response content
 
             let result;
             try {
                 result = JSON.parse(responseText);
-                // console.log('🔍 UPLOAD FILE - Success Response Body (parsed):'); // 🔴 CRITICAL: Parsed success response
-                // console.log('  Parsed Result:', result); // 🔴 CRITICAL: Upload result data
             } catch (parseError) {
                 // console.log('🔍 UPLOAD FILE - JSON Parse Error:'); // 🟢 MEDIUM: Parse error logging
                 // console.log('  Parse Error:', parseError); // 🟢 MEDIUM: Parse error details
@@ -353,13 +327,6 @@ export class DocumentUploadModule {
                 topicOrWeekId: (metadata as any).topicOrWeekId || '',
                 itemId: (metadata as any).itemId || ''
             };
-
-            // console.log('🔍 UPLOAD TEXT - Request Details:'); // 🔴 CRITICAL: Text upload request details
-            // console.log('  URL:', '/api/rag/documents/text'); // 🔴 CRITICAL: API endpoint exposure
-            // console.log('  Method: POST'); // 🟢 MEDIUM: HTTP method
-            // console.log('  Headers:', { 'Content-Type': 'application/json' }); // 🟢 MEDIUM: Standard headers
-            // console.log('  Request Body:', requestBody); // 🔴 CRITICAL: Text content exposure
-            // console.log('  Text Length:', text.length); // 🟡 HIGH: Text content metadata
 
             // Upload to the correct RAG endpoint
             const response = await fetch('/api/rag/documents/text', {
