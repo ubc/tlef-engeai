@@ -28,8 +28,6 @@ export class RenderChat {
     public render(text: string, messageId?: string): string {
         let html = text;
 
-        // console.log('🔍 RenderChat.render() - ORIGINAL INPUT:', text); // 🔴 CRITICAL: User message content exposure
-        
         //Step 1: Extract and preserve code blocks
         const codeResult = this.processCodeBlocks(html);
         html = codeResult.html;

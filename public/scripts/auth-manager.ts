@@ -179,9 +179,6 @@ class AuthManager {
      * Show authenticated state
      */
     private showAuthenticated(user: User): void {
-        //START DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-SHOW-AUTHENTICATED)
-        // console.log('[AUTH-MANAGER] ✅ Showing authenticated state for user:', user); // 🟡 HIGH: User object exposure
-        //END DEBUG LOG : DEBUG-CODE(AUTH-MANAGER-SHOW-AUTHENTICATED)
 
         if (this.loginPrompt) this.loginPrompt.style.display = 'none';
         if (this.authLoading) this.authLoading.style.display = 'none';

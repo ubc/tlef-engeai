@@ -767,8 +767,10 @@ router.delete('/:id/restart-onboarding', asyncHandlerWithAuth(async (req: Reques
     }
 }));
 
+// COMMENTED OUT: Privilege action - Remove course (frontend removed)
 // DELETE /api/courses/:id/remove - Remove course completely (REQUIRES AUTH - Instructors only)
 // This removes the course and all associated data: collections, Qdrant documents, and user enrollments
+/*
 router.delete('/:id/remove', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const courseId = req.params.id;
@@ -882,6 +884,7 @@ router.delete('/:id/remove', asyncHandlerWithAuth(async (req: Request, res: Resp
         });
     }
 }));
+*/
 
 // DELETE /api/courses/:id - Delete course (REQUIRES AUTH - Instructors only)
 router.delete('/:id', asyncHandlerWithAuth(async (req: Request, res: Response) => {
@@ -2213,10 +2216,12 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
     }
 }));
 
+// COMMENTED OUT: Privilege action - Download database (frontend removed)
 /**
  * GET /api/courses/export/database - Export entire database hierarchically
  * Downloads all collections and their documents in a hierarchical text format
  */
+/*
 router.get('/export/database', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const mongoDB = await EngEAI_MongoDB.getInstance();
@@ -2288,11 +2293,10 @@ router.get('/export/database', asyncHandlerWithAuth(async (req: Request, res: Re
         });
     }
 }));
+*/
 
-/**
- * GET /api/courses/export/course-info - Export course-specific information hierarchically
- * Downloads course information, course users, flags, and memory-agent collections
- */
+// COMMENTED OUT: Privilege action - Download course info (frontend removed)
+/*
 router.get('/export/course-info', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const mongoDB = await EngEAI_MongoDB.getInstance();
@@ -2421,16 +2425,13 @@ router.get('/export/course-info', asyncHandlerWithAuth(async (req: Request, res:
         });
     }
 }));
+*/
+// END COMMENTED OUT: export/course-info
 
 // ===========================================
-// ADMIN ROUTES (Instructor Only)
+// ADMIN ROUTES (Instructor Only) - COMMENTED OUT: Privilege action (frontend removed)
 // ===========================================
-
-/**
- * POST /api/admin/reset-database - Reset entire database (REQUIRES AUTH - Instructors only)
- * Wipes all collections except active-course-list and active-users, then clears those too
- * Also wipes vector database and logs user out
- */
+/*
 router.post('/admin/reset-database', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         console.log('🗑️ [ADMIN] Reset Database request received');
@@ -2544,12 +2545,7 @@ router.post('/admin/reset-database', asyncHandlerWithAuth(async (req: Request, r
     }
 }));
 
-/**
- * POST /api/courses/admin/reset-mongodb - Reset MongoDB only (REQUIRES AUTH - Instructors only)
- * Wipes all MongoDB collections except active-course-list and active-users, then clears those too
- * Does NOT affect the vector database (Qdrant)
- * Logs user out after completion
- */
+// POST /api/courses/admin/reset-mongodb - Reset MongoDB only (commented out)
 router.post('/admin/reset-mongodb', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         console.log('🗑️ [ADMIN] Reset MongoDB request received');
@@ -2682,10 +2678,7 @@ router.post('/admin/reset-mongodb', asyncHandlerWithAuth(async (req: Request, re
     }
 }));
 
-/**
- * POST /api/admin/reset-vector-database - Reset vector database only (REQUIRES AUTH - Instructors only)
- * Wipes entire Qdrant collection using NuclearClearRAGDatabase
- */
+// POST /api/admin/reset-vector-database - Reset vector database only (commented out)
 router.post('/admin/reset-vector-database', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         console.log('🗑️ [ADMIN] Reset Vector Database request received');
@@ -2733,6 +2726,8 @@ router.post('/admin/reset-vector-database', asyncHandlerWithAuth(async (req: Req
         });
     }
 }));
+*/
+// END COMMENTED OUT: Admin routes
 
 // ===========================================
 // MONITOR ROUTES (Instructor Only)
@@ -2977,7 +2972,8 @@ router.get('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Requ
 // ===========================================
 // ========= MEMORY AGENT (STRUGGLE WORDS) ===
 // ===========================================
-
+// COMMENTED OUT: Privilege action - List/Remove struggle words (frontend removed)
+/*
 // GET /api/courses/:courseId/memory-agent/struggle-words - Get struggle words for instructor (REQUIRES AUTH)
 router.get('/:courseId/memory-agent/struggle-words', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -3086,6 +3082,8 @@ router.delete('/:courseId/memory-agent/struggle-words', asyncHandlerWithAuth(asy
         });
     }
 }));
+*/
+// END COMMENTED OUT: Struggle words endpoints
 
 // POST /api/courses/:courseId/assistant-prompts - Create new prompt (REQUIRES AUTH - Instructors only)
 router.post('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Request, res: Response) => {

@@ -1034,7 +1034,6 @@ export async function openUploadModal(
     // console.log('  - itemId:', itemId); // 🟡 HIGH: Upload parameter exposure
     // console.log('  - onUpload callback provided:', !!onUpload); // 🟢 MEDIUM: Callback presence
     // console.log('  - onUpload callback type:', typeof onUpload); // 🟢 MEDIUM: Callback type
-    // console.log('  - onUpload callback:', onUpload); // 🔴 CRITICAL: Function implementation exposure
     
     // Get the mount point for the modal
     const mount = document.getElementById('upload-modal-mount');
@@ -1394,17 +1393,11 @@ export async function openUploadModal(
                 date: new Date(),
             };
 
-            // console.log('🔍 MATERIAL OBJECT CREATED IN UPLOAD MODAL:'); // 🔴 CRITICAL: Upload content exposure
-            // console.log('  - material:', material); // 🔴 CRITICAL: Complete material object exposure
-            // console.log('  - material.topicOrWeekId:', material.topicOrWeekId); // 🟡 HIGH: Material ID exposure
-            // console.log('  - material.itemId:', material.itemId); // 🟡 HIGH: Material ID exposure
 
             // Call the upload callback if provided and wait for completion
             if (onUpload) {
                 // console.log('🔍 CALLING onUpload CALLBACK'); // 🟢 MEDIUM: Callback execution
-                // console.log('🔍 onUpload function:', onUpload); // 🔴 CRITICAL: Function implementation exposure
                 // console.log('🔍 onUpload function type:', typeof onUpload); // 🟢 MEDIUM: Function type
-                // console.log('🔍 material being passed:', material); // 🔴 CRITICAL: Material content exposure
                 
                 // Show loading modal
                 // console.log('🔍 SHOWING LOADING MODAL'); // 🟢 MEDIUM: UI state

@@ -1012,12 +1012,6 @@ async function completeMonitorSetup(): Promise<void> {
         // Update the course's monitorSetup status to true locally
         currentCourse.monitorSetup = true;
         
-        //START DEBUG LOG : DEBUG-CODE(011)
-        // console.log("✅ Monitor setup status updated to true for course:", currentCourse.courseName); // 🟡 HIGH: Course name exposure
-        //END DEBUG LOG : DEBUG-CODE(011)
-
-        // Persist to database
-        // console.log(`📡 Updating database: setting monitorSetup=true for course ${currentCourse.id}`); // 🟡 HIGH: Course ID exposure
         const response = await fetch(`/api/courses/${currentCourse.id}`, {
             method: 'PUT',
             headers: {

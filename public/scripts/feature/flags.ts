@@ -48,9 +48,6 @@ const API_BASE_URL = '/api/courses';
  */
 async function fetchFlags(courseId: string): Promise<FlagReport[]> {
     try {
-        // console.log('🔍 [FLAG-DEBUG] Fetching flags for course:', courseId); // 🔴 CRITICAL: Exposes course ID
-        // console.log('🔍 [FLAG-DEBUG] API URL:', `${API_BASE_URL}/${courseId}/flags/with-names`); // 🔴 CRITICAL: Exposes API endpoint with course ID
-
         const response = await fetch(`${API_BASE_URL}/${courseId}/flags/with-names`, {
             method: 'GET',
             headers: {
@@ -67,9 +64,7 @@ async function fetchFlags(courseId: string): Promise<FlagReport[]> {
         }
 
         const apiResponse = await response.json();
-        // console.log('📊 [FLAG-DEBUG] Raw API response:', apiResponse); // 🔴 CRITICAL: Exposes full API response data
         // console.log('📊 [FLAG-DEBUG] API response success:', apiResponse.success); // 🟢 MEDIUM: Status info - keep for debugging
-        // console.log('📊 [FLAG-DEBUG] API response data:', apiResponse.data); // 🔴 CRITICAL: Exposes user flag data
 
         if (!apiResponse.success) {
             console.error('❌ [FLAG-DEBUG] API returned success: false');
@@ -93,7 +88,6 @@ async function fetchFlags(courseId: string): Promise<FlagReport[]> {
         }));
 
         // console.log('✅ [FLAG-DEBUG] Successfully fetched', transformedFlags.length, 'flags'); // 🟢 MEDIUM: Debug info - keep for monitoring
-        // console.log('📋 [FLAG-DEBUG] Transformed flags:', transformedFlags); // 🔴 CRITICAL: Exposes all flag data with user info
         return transformedFlags;
 
     } catch (error) {
@@ -353,7 +347,6 @@ export async function initializeFlags(): Promise<void> {
 
         // console.log('🔍 [FLAG-DEBUG] Course ID from context:', courseId); // 🟡 HIGH: Course ID exposure
         // console.log('🔍 [FLAG-DEBUG] Window.currentClass:', (window as any).currentClass); // 🟢 MEDIUM: Debug info - keep for monitoring
-        // console.log('🔍 [FLAG-DEBUG] URL params:', window.location.search); // 🔴 CRITICAL: Exposes URL parameters (session tokens)
 
         if (!courseId) {
             // console.error('❌ [FLAG-DEBUG] No course ID found in context'); // 🟢 MEDIUM: Error logging - keep for debugging
@@ -370,7 +363,6 @@ export async function initializeFlags(): Promise<void> {
         // Fetch flags from API
         // console.log('📡 [FLAG-DEBUG] Fetching flags from API...'); // 🟢 MEDIUM: Debug info - keep for monitoring
         flagData = await fetchFlags(courseId);
-        // console.log('📊 [FLAG-DEBUG] Fetched flag data:', flagData); // 🔴 CRITICAL: Exposes all flag data
         // console.log('📊 [FLAG-DEBUG] Number of flags fetched:', flagData.length); // 🟢 MEDIUM: Count info - keep for monitoring
         
         // Hide loading state
@@ -450,7 +442,6 @@ function getCourseIdFromContext(): string | null {
     // Try to get from localStorage (if available)
     try {
         const storedContext = localStorage.getItem('courseContext');
-        // console.log('🔍 [FLAG-DEBUG] Stored context from localStorage:', storedContext); // 🔴 CRITICAL: Exposes localStorage contents (session data)
         if (storedContext) {
             const context = JSON.parse(storedContext);
             const courseIdFromStorage = context.activeCourseId;
@@ -868,7 +859,6 @@ function handleTimeFilterChange(event: Event): void {
  */
 function renderFlags(): void {
     // console.log('🎨 [FLAG-DEBUG] Starting renderFlags() function'); // 🟢 MEDIUM: Function start - keep for monitoring
-    // console.log('🎨 [FLAG-DEBUG] Current flag data:', flagData); // 🔴 CRITICAL: Exposes all flag data
     // console.log('🎨 [FLAG-DEBUG] Number of flags in data:', flagData.length); // 🟢 MEDIUM: Count info - keep for monitoring
     // console.log('🎨 [FLAG-DEBUG] Current section:', currentSection);
     // console.log('🎨 [FLAG-DEBUG] Current filters:', currentFilters);
@@ -923,7 +913,6 @@ function renderFlags(): void {
             break;
     }
 
-    // console.log('📊 [FLAG-DEBUG] Filtered section flags:', sectionFlags); // 🔴 CRITICAL: Exposes filtered flag data
     // console.log('📊 [FLAG-DEBUG] Number of filtered flags:', sectionFlags.length); // 🟢 MEDIUM: Count info - keep for monitoring
 
     // Sort by time filter
@@ -939,7 +928,6 @@ function renderFlags(): void {
         }
     });
 
-    // console.log('📊 [FLAG-DEBUG] Sorted flags:', sortedFlags); // 🔴 CRITICAL: Exposes sorted flag data
 
     // Clear and render
     // console.log('🧹 [FLAG-DEBUG] Clearing flags list innerHTML');
@@ -947,7 +935,6 @@ function renderFlags(): void {
 
     // console.log('🎨 [FLAG-DEBUG] Creating flag cards...'); // 🟢 MEDIUM: Debug info - keep for monitoring
     sortedFlags.forEach((flag, index) => {
-        // console.log(`🎨 [FLAG-DEBUG] Creating card ${index + 1} for flag:`, flag); // 🔴 CRITICAL: Exposes individual flag data
         const flagCard = createFlagCard(flag);
         flagsList.appendChild(flagCard);
         // console.log(`✅ [FLAG-DEBUG] Card ${index + 1} created and appended`);

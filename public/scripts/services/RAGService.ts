@@ -28,7 +28,6 @@ export async function uploadRAGContent(content: AdditionalMaterial): Promise<Upl
 
         const result = await uploadModule.uploadDocument(content);
 
-        // console.log('DEBUG #24 : RAG upload result:', result); // 🟡 HIGH: RAG processing results exposure
         return result;
     } catch (error) {
         console.error('Error uploading to RAG system:', error);

@@ -179,14 +179,7 @@ export class ChatManager {
         const timestamp = new Date().toISOString();
         const state = this.getActiveChatState();
         
-        // console.log(`${this.LOG_PREFIX} ${this.LOG_LEVELS.INFO} [${event}] [${timestamp}]`); // 🟢 MEDIUM: Debug info - keep for monitoring
-        // console.log(`📊 ACTIVE CHAT STATE:`, state); // 🔴 CRITICAL: Exposes chat state with user messages
-        //
-        // if (details) {
-        //     console.log(`📋 EVENT DETAILS:`, details); // 🔴 CRITICAL: Exposes event details with sensitive data
-        // }
-        //
-        // console.log('─'.repeat(80)); // 🟢 MEDIUM: Debug formatting - keep for monitoring
+
     }
     
     /**
@@ -221,9 +214,6 @@ export class ChatManager {
         const timestamp = new Date().toISOString();
         // console.log(`${this.LOG_PREFIX} ${this.LOG_LEVELS[level]} [${timestamp}] ${message}`); // 🟢 MEDIUM: Debug info - keep for monitoring
 
-        // if (data) {
-        //     console.log(`📋 Data:`, data); // 🔴 CRITICAL: Generic data logging - could expose any sensitive data
-        // }
     }
 
     private constructor(config: ChatManagerConfig) {
@@ -1094,11 +1084,6 @@ export class ChatManager {
     private async loadChatsFromServer(userId: string, courseName: string): Promise<Chat[]> {
         try {
             // console.log('[CHAT-MANAGER] 📂 Loading chats from server...'); // 🟢 MEDIUM: Debug info - keep for monitoring
-            // console.log('[CHAT-MANAGER] 📊 Request context:', { // 🔴 CRITICAL: Exposes userId and courseName
-            //     userId,
-            //     courseName,
-            //     endpoint: '/api/chat/user/chats'
-            // });
             
             const response = await fetch('/api/chat/user/chats', {
                 method: 'GET',

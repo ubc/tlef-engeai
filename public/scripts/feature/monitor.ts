@@ -833,8 +833,6 @@ async function downloadChatHistory(chatId: string): Promise<void> {
             return;
         }
 
-        // console.log(`[MONITOR] Downloading chat history for session: ${chatId}, course: ${courseId}`); // 🟡 HIGH: Session and course ID exposure
-
         // Call the download endpoint
         const response = await fetch(`/api/courses/monitor/${courseId}/chat/${chatId}/download`, {
             method: 'GET',
