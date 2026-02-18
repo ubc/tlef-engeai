@@ -37,7 +37,7 @@ const courseExistsCache = new Map<string, { exists: boolean; timestamp: number }
 
 /**
  * Checks if a course with the given name already exists in the database.
- * Uses in-memory cache to avoid excessive API requests.
+ * Uses /api/courses/check-exists to avoid 404 exposure; always returns JSON.
  *
  * @param courseName - The course name to check
  * @returns Promise<boolean> - true if course exists, false otherwise
@@ -53,16 +53,15 @@ async function checkCourseExists(courseName: string): Promise<boolean> {
     }
 
     try {
-        const response = await fetch(`/api/courses?name=${encodeURIComponent(trimmed)}`, {
+        const response = await fetch(`/api/courses/check-exists?name=${encodeURIComponent(trimmed)}`, {
             method: 'GET',
             credentials: 'same-origin'
         });
-
-        const exists = response.ok;
+        const json = await response.json();
+        const exists = !!json?.exists;
         courseExistsCache.set(key, { exists, timestamp: Date.now() });
         return exists;
     } catch {
-        // Network error - fail closed (treat as exists to prevent duplicate creation)
         courseExistsCache.set(key, { exists: true, timestamp: Date.now() });
         return true;
     }
@@ -155,6 +154,46 @@ export const renderOnCourseSetup = async (instructorCourse: activeCourse): Promi
 // ===========================================
 
 /**
+ * Fetches allowed courses for the current instructor and populates the course dropdown.
+ * Shows error and blocks if no courses are assigned.
+ */
+async function populateCourseDropdown(): Promise<void> {
+    const select = document.getElementById('courseInput') as HTMLSelectElement;
+    if (!select) return;
+
+    try {
+        const response = await fetch('/api/courses/allowed-for-instructor', {
+            method: 'GET',
+            credentials: 'same-origin'
+        });
+        const json = await response.json();
+        const allowedCourses: string[] = json?.allowedCourses ?? [];
+
+        select.innerHTML = '';
+        const placeholderOpt = document.createElement('option');
+        placeholderOpt.value = '';
+        placeholderOpt.textContent = 'Select your course...';
+        placeholderOpt.disabled = true;
+        placeholderOpt.selected = true;
+        select.appendChild(placeholderOpt);
+
+        for (const course of allowedCourses) {
+            const opt = document.createElement('option');
+            opt.value = course;
+            opt.textContent = course;
+            select.appendChild(opt);
+        }
+
+        if (allowedCourses.length === 0) {
+            updateCourseValidationMessage('No courses assigned. Please contact an administrator.', true);
+        }
+    } catch (err) {
+        console.error('[COURSE-SETUP] Failed to fetch allowed courses:', err);
+        updateCourseValidationMessage('Failed to load courses. Please refresh and try again.', true);
+    }
+}
+
+/**
  * Initializes the onboarding interface with event listeners and initial state
  * 
  * @param state - The onboarding state object
@@ -163,6 +202,8 @@ export const renderOnCourseSetup = async (instructorCourse: activeCourse): Promi
  */
 async function initializeOnboarding(state: OnboardingState, onBoardingCourse: activeCourse, instructorCourse: activeCourse): Promise<void> {
     console.log("🔧 Initializing onboarding interface...");
+
+    await populateCourseDropdown();
 
     // Set up navigation event listeners
     setupNavigationListeners(state, onBoardingCourse, instructorCourse);
@@ -235,18 +276,12 @@ function setupNavigationListeners(state: OnboardingState, onBoardingCourse: acti
  * @param state - The onboarding state object
  */
 function setupFormListeners(state: OnboardingState, onBoardingCourse: activeCourse): void {
-    // Course name input (fill-in-the-blank)
-    const courseInput = document.getElementById('courseInput') as HTMLInputElement;
+    const courseInput = document.getElementById('courseInput') as HTMLSelectElement;
     if (courseInput) {
-        courseInput.addEventListener('input', (e) => {
-            const target = e.target as HTMLInputElement;
+        courseInput.addEventListener('change', (e) => {
+            const target = e.target as HTMLSelectElement;
             onBoardingCourse.courseName = target.value.trim();
             updateCourseValidationMessage('', false);
-            updateStepIndicators(state, onBoardingCourse);
-        });
-        courseInput.addEventListener('change', (e) => {
-            const target = e.target as HTMLInputElement;
-            onBoardingCourse.courseName = target.value.trim();
             updateStepIndicators(state, onBoardingCourse);
         });
     }
@@ -422,7 +457,7 @@ async function validateCurrentStep(state: OnboardingState, onBoardingCourse: act
             
         case 2: // Course Name
             // Check both the course object and the current input value to handle timing issues
-            const courseInput = document.getElementById('courseInput') as HTMLInputElement;
+            const courseInput = document.getElementById('courseInput') as HTMLSelectElement;
             const currentInputValue = courseInput?.value?.trim() || '';
             const courseNameValue = onBoardingCourse.courseName?.trim() || '';
 
@@ -564,7 +599,7 @@ function adjustContentJustification(contentStepElement: HTMLElement): void {
  */
 function synchronizeFormValues(state: OnboardingState, onBoardingCourse: activeCourse): void {
     // Step 2: Course Name
-    const courseInput = document.getElementById('courseInput') as HTMLInputElement;
+    const courseInput = document.getElementById('courseInput') as HTMLSelectElement;
     if (courseInput) {
         courseInput.value = onBoardingCourse.courseName || '';
     }

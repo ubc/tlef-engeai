@@ -899,14 +899,8 @@ function updateCompanionText(user: any): void {
     // console.log('[STUDENT-MODE] 🔍 Companion text element found:', !!companionText);
     // console.log('[STUDENT-MODE] 🔍 User courseName:', user?.courseName);
 
-    if (companionText && user.courseName) {
-        companionText.textContent = `${user.courseName} companion`;
-        // console.log('[STUDENT-MODE] ✅ Companion text updated to:', companionText.textContent);
-    } else {
-        console.warn('[STUDENT-MODE] ⚠️ Could not update companion text:', {
-            elementExists: !!companionText,
-            hasCourseName: !!user.courseName
-        });
+    if (companionText) {
+        companionText.textContent = user?.courseName || 'Engineering';
     }
 }
 

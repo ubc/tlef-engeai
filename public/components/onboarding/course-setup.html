@@ -133,13 +133,16 @@
         <div class="content-step" id="content-step-2">
             <div class="content-step-inner">
                 <div class="step-header">
-                    <h1>Enter Your Course</h1>
-                    <p>Type the course name you're setting up</p>
+                    <h1>Select Your Course</h1>
+                    <p>Choose the course you're setting up from your allowed courses</p>
                 </div>
                 
                 <div class="form-group">
                     <label for="courseInput">Course Name</label>
-                    <input type="text" id="courseInput" class="form-input" placeholder="e.g. CHBE 241 - Material and Energy Balances">
+                    <select id="courseInput" class="form-input" aria-describedby="courseValidationMessage">
+                        <option value="" disabled selected>Select your course...</option>
+                        <!-- Options populated dynamically from allowed-for-instructor API -->
+                    </select>
                     <p id="courseValidationMessage" class="validation-message" aria-live="polite"></p>
                 </div>
             </div>
@@ -296,8 +299,8 @@
 
         <!-- Step 2 Help -->
         <div id="help-step-2">
-            <p><strong>Enter your course name in the text field.</strong></p>
-            <p>Type the full course name (e.g., CHBE 241 - Material and Energy Balances). The system will check if this course has already been initiated. If it has, you'll need to choose a different course name.</p>
+            <p><strong>Select your course from the dropdown.</strong></p>
+            <p>Choose from the list of courses you are allowed to set up. The system will check if the selected course has already been initiated. If it has, you'll need to choose a different course.</p>
             <p><strong>Tips:</strong></p>
             <ul>
                 <li>Use the exact course name as it appears in your syllabus</li>
