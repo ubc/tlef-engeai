@@ -18,6 +18,9 @@ import path from 'path';
 // Check if SAML is available from environment
 const isSamlAvailable = process.env.SAML_AVAILABLE !== 'false';
 
+// DEBUG_SHB_PROFILE: Default false. Set to 'true' to expose raw Shib profile to frontend console (development only)
+const isDebugShibProfile = (process.env.DEBUG_SHB_PROFILE ?? 'false') === 'true';
+
 // Hardcoded fake users for local development authentication
 const FAKE_USERS = {
     student: {
@@ -151,7 +154,7 @@ if (hasSamlConfig) {
             const email = toString(attributes.mail) || toString(profile.mail) || toString(profile.email) || '';
             const affiliation = mapAffiliation(attributes.eduPersonAffiliation);
 
-            const user = {
+            const user: Record<string, unknown> = {
                 username: toString(attributes.displayName) || puid,
                 puid,
                 firstName,
@@ -162,6 +165,11 @@ if (hasSamlConfig) {
                 nameID: profile.nameID,
                 nameIDFormat: profile.nameIDFormat
             };
+
+            // DEBUG_SHB_PROFILE: Expose raw Shib profile for frontend console debugging (development only)
+            if (isDebugShibProfile) {
+                user._rawShibProfile = profile;
+            }
 
             //START DEBUG LOG : DEBUG-CODE(UBCSHIB-USER-CREATED)
             console.log('[AUTH] 👤 User object created from SAML:', {
@@ -228,9 +236,10 @@ const localStrategy = new LocalStrategy(
 passport.use('local', localStrategy);
 console.log('[AUTH] ✅ Local strategy configured (available for regular login)');
 
-// Serialize user to session
+// Serialize user to session (strip _rawShibProfile - stored separately in session for debug)
 passport.serializeUser((user: any, done: any) => {
-    done(null, user);
+    const { _rawShibProfile, ...userToStore } = user;
+    done(null, userToStore);
 });
 
 // Deserialize user from session
