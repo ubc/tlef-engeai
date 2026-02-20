@@ -92,6 +92,12 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
     })(req, res, next);
 }, async (req: express.Request, res: express.Response) => {
     try {
+        // Store raw Shib profile in session for frontend shibDebug (must match auth.ts samlCallbackHandler)
+        if ((req.user as any)?._rawShibProfile) {
+            (req.session as any).rawShibProfile = (req.user as any)._rawShibProfile;
+            delete (req.user as any)._rawShibProfile;
+        }
+
         // Extract user data from SAML profile
         const puid = (req.user as any).puid;
         const firstName = (req.user as any).firstName || '';
