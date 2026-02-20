@@ -15,8 +15,8 @@ import { sanitizeGlobalUserForFrontend } from '../functions/user-utils';
 
 const router = express.Router();
 
-// DEBUG_SHB_PROFILE: Default false. Set to 'true' to expose raw Shib profile to frontend console (development only)
-const isDebugShibProfile = (process.env.DEBUG_SHB_PROFILE ?? 'false') === 'true';
+// Always expose raw Shib profile to frontend console for debugging
+const isDebugShibProfile = true;
 
 // Login route - conditional based on SAML availability
 router.get('/login', (req: express.Request, res: express.Response, next: express.NextFunction) => {

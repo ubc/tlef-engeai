@@ -18,8 +18,8 @@ import path from 'path';
 // Check if SAML is available from environment
 const isSamlAvailable = process.env.SAML_AVAILABLE !== 'false';
 
-// DEBUG_SHB_PROFILE: Default false. Set to 'true' to expose raw Shib profile to frontend console (development only)
-const isDebugShibProfile = (process.env.DEBUG_SHB_PROFILE ?? 'false') === 'true';
+// Always expose raw Shib profile to frontend console for debugging
+const isDebugShibProfile = true;
 
 // Hardcoded fake users for local development authentication
 const FAKE_USERS = {
