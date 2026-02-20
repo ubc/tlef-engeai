@@ -254,6 +254,22 @@ body.main-login-page {
     color: #6c757d; /* Darker gray for better contrast on white background (was #adb5bd) */
 }
 
+/* Version display - bottom left of viewport */
+.version-display {
+    position: fixed;
+    bottom: 0.75rem;
+    left: 0.75rem;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.85);
+    font-family: monospace;
+    line-height: 1.4;
+    z-index: 100;
+}
+
+.version-line {
+    display: block;
+}
+
 /* ===========================================
    APSC COURSES SECTION STYLES
    =========================================== */
