@@ -29,7 +29,12 @@ async function initializeCourseSelection(): Promise<void> {
         }
         
         const authData = await userResponse.json();
-        
+
+        if (authData.shibDebug) {
+            console.log('[Shib Debug] Raw UBC Shib profile:', authData.shibDebug);
+            (window as unknown as { __SHIB_DEBUG__?: object }).__SHIB_DEBUG__ = authData.shibDebug;
+        }
+
         if (!authData.authenticated) {
             // console.log('[COURSE-SELECTION] ❌ User not authenticated, redirecting to login');
             window.location.href = '/';
