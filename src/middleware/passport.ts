@@ -18,9 +18,6 @@ import path from 'path';
 // Check if SAML is available from environment
 const isSamlAvailable = process.env.SAML_AVAILABLE !== 'false';
 
-// Always expose raw Shib profile to frontend console for debugging
-const isDebugShibProfile = true;
-
 // Hardcoded fake users for local development authentication
 const FAKE_USERS = {
     student: {
@@ -63,16 +60,21 @@ const toArray = (value: AttributeValue): string[] => {
     return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [value];
 };
 
-const mapAffiliation = (value: AttributeValue): string => {
+const mapAffiliation = (value: AttributeValue): string | null => {
     const affiliations = toArray(value);
-    if (affiliations.length === 0) {
-        return 'student';
+    if (affiliations.length === 0) return null;
+    const normalized = affiliations.map((e) => e.toLowerCase());
+
+    // Staff-only: reject
+    const hasStudent = normalized.includes('student');
+    const hasFaculty = normalized.includes('faculty') || normalized.includes('instructor');
+    if (!hasStudent && !hasFaculty && normalized.includes('staff')) {
+        return null;
     }
-    const normalized = affiliations.map((entry) => entry.toLowerCase());
-    if (normalized.includes('faculty') || normalized.includes('instructor') || normalized.includes('staff')) {
-        return 'faculty';
-    }
-    return normalized[0];
+
+    if (hasStudent) return 'student';
+    if (hasFaculty) return 'faculty';
+    return 'student';
 };
 
 // Variable to hold strategy (either UBCShib or Local)
@@ -154,6 +156,11 @@ if (hasSamlConfig) {
             const email = toString(attributes.mail) || toString(profile.mail) || toString(profile.email) || '';
             const affiliation = mapAffiliation(attributes.eduPersonAffiliation);
 
+            if (affiliation === null) {
+                console.error('[AUTH] ❌ Staff-only access is not permitted');
+                return done(new Error('Staff-only access is not permitted'), false);
+            }
+
             const user: Record<string, unknown> = {
                 username: toString(attributes.displayName) || puid,
                 puid,
@@ -165,11 +172,6 @@ if (hasSamlConfig) {
                 nameID: profile.nameID,
                 nameIDFormat: profile.nameIDFormat
             };
-
-            // DEBUG_SHB_PROFILE: Expose raw Shib profile for frontend console debugging (development only)
-            if (isDebugShibProfile) {
-                user._rawShibProfile = profile;
-            }
 
             //START DEBUG LOG : DEBUG-CODE(UBCSHIB-USER-CREATED)
             console.log('[AUTH] 👤 User object created from SAML:', {
@@ -236,10 +238,9 @@ const localStrategy = new LocalStrategy(
 passport.use('local', localStrategy);
 console.log('[AUTH] ✅ Local strategy configured (available for regular login)');
 
-// Serialize user to session (strip _rawShibProfile - stored separately in session for debug)
+// Serialize user to session
 passport.serializeUser((user: any, done: any) => {
-    const { _rawShibProfile, ...userToStore } = user;
-    done(null, userToStore);
+    done(null, user);
 });
 
 // Deserialize user from session

@@ -19,16 +19,13 @@ export interface AuthState {
     isAuthenticated: boolean;
     user: User | null;
     isLoading: boolean;
-    /** Raw UBC Shib profile for debugging (only when DEBUG_SHB_PROFILE=true on server) */
-    shibDebug: object | null;
 }
 
 export class AuthService {
     private authState: AuthState = {
         isAuthenticated: false,
         user: null,
-        isLoading: false,
-        shibDebug: null
+        isLoading: false
     };
 
     private listeners: ((state: AuthState) => void)[] = [];
@@ -61,12 +58,6 @@ export class AuthService {
             if (data.authenticated) {
                 this.authState.isAuthenticated = true;
                 this.authState.user = data.user;
-                this.authState.shibDebug = data.shibDebug ?? null;
-
-                if (data.shibDebug) {
-                    console.log('[Shib Debug] Raw UBC Shib profile:', data.shibDebug);
-                    (window as unknown as { __SHIB_DEBUG__?: object }).__SHIB_DEBUG__ = data.shibDebug;
-                }
 
                 //START DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-SUCCESS)
                 // console.log('[FRONTEND-AUTH] ✅ LOGIN SUCCESSFUL!'); // 🟢 MEDIUM: Login success - keep for monitoring
@@ -74,8 +65,6 @@ export class AuthService {
             } else {
                 this.authState.isAuthenticated = false;
                 this.authState.user = null;
-                this.authState.shibDebug = null;
-                (window as unknown as { __SHIB_DEBUG__?: object }).__SHIB_DEBUG__ = undefined;
                 //START DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-FAIL)
                 // console.log('[FRONTEND-AUTH] ❌ User not authenticated');
                 //END DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-FAIL)
@@ -86,7 +75,6 @@ export class AuthService {
             //END DEBUG LOG : DEBUG-CODE(FRONTEND-AUTH-ERROR)
             this.authState.isAuthenticated = false;
             this.authState.user = null;
-            this.authState.shibDebug = null;
         } finally {
             this.setLoading(false);
             this.notifyListeners();
@@ -199,14 +187,6 @@ export class AuthService {
      */
     public isLoading(): boolean {
         return this.authState.isLoading;
-    }
-
-    /**
-     * Get raw UBC Shib profile for debugging (only when DEBUG_SHB_PROFILE=true on server).
-     * Use in browser console: authService.getShibDebugInfo()
-     */
-    public getShibDebugInfo(): object | null {
-        return this.authState.shibDebug;
     }
 
     /**

@@ -15,9 +15,6 @@ import { sanitizeGlobalUserForFrontend } from '../functions/user-utils';
 
 const router = express.Router();
 
-// Always expose raw Shib profile to frontend console for debugging
-const isDebugShibProfile = true;
-
 // Login route - conditional based on SAML availability
 router.get('/login', (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (isSamlAvailable) {
@@ -55,12 +52,6 @@ const samlCallbackHandler = [
     },
     async (req: express.Request, res: express.Response) => {
     try {
-        // DEBUG_SHB_PROFILE: Store raw Shib profile in session for frontend debug (development only)
-        if (isDebugShibProfile && (req.user as any)?._rawShibProfile) {
-            (req.session as any).rawShibProfile = (req.user as any)._rawShibProfile;
-            delete (req.user as any)._rawShibProfile;
-        }
-
         // Extract user data from SAML profile
         const puid = (req.user as any).puid;
         const firstName = (req.user as any).firstName || '';
@@ -425,15 +416,11 @@ router.get('/current-user', async (req: express.Request, res: express.Response) 
             });
             //END DEBUG LOG : DEBUG-CODE(AUTH-CURRENT-USER-SUCCESS)
 
-            const responsePayload: Record<string, unknown> = {
+            res.json({
                 authenticated: true,
                 user: userData,
                 globalUser: sanitizeGlobalUserForFrontend(globalUser)
-            };
-            if (isDebugShibProfile && (req.session as any).rawShibProfile) {
-                responsePayload.shibDebug = (req.session as any).rawShibProfile;
-            }
-            res.json(responsePayload);
+            });
         } catch (error) {
             console.error('[SERVER] 🚨 Error fetching user from database:', error);
             res.status(500).json({ 
@@ -524,15 +511,11 @@ router.get('/me', async (req: express.Request, res: express.Response) => {
             });
             //END DEBUG LOG : DEBUG-CODE(AUTH-ME-SUCCESS)
 
-            const responsePayload: Record<string, unknown> = {
+            res.json({
                 authenticated: true,
                 user: userData,
                 globalUser: sanitizeGlobalUserForFrontend(globalUser)
-            };
-            if (isDebugShibProfile && (req.session as any).rawShibProfile) {
-                responsePayload.shibDebug = (req.session as any).rawShibProfile;
-            }
-            res.json(responsePayload);
+            });
         } catch (error) {
             console.error('[SERVER] 🚨 Error fetching user from database:', error);
             res.status(500).json({ 
