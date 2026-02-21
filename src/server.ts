@@ -17,6 +17,7 @@ import sessionMiddleware from './middleware/session';
 import { passport } from './middleware/passport';
 import { EngEAI_MongoDB } from './functions/EngEAI_MongoDB';
 import { initInstructorAllowedCourses } from './functions/initInstructorAllowedCourses';
+import { resolveAffiliation, FACULTY_OVERRIDE_NAMES } from './utils/affiliation';
 
 dotenv.config();
 
@@ -54,18 +55,18 @@ app.use((req: express.Request, res: express.Response, next: express.NextFunction
     next();
 });
 
-// Root path handler: redirect authenticated users to course selection
+// Root path handler: redirect authenticated users based on affiliation
 app.get('/', (req: any, res: any) => {
-    // Check if user is authenticated (has a valid session)
     if (req.session?.passport?.user) {
-        // Authenticated user: redirect to course selection
-        console.log('[ROUTING] 🔄 Authenticated user accessed root, redirecting to course-selection');
-        return res.redirect('/course-selection');
-    } else {
-        // Unauthenticated user: serve index.html (login page)
-        console.log('[ROUTING] 📄 Unauthenticated user accessed root, serving index.html');
-        return res.sendFile(path.join(publicPath, 'index.html'));
+        const affiliation = (req.session as any)?.globalUser?.affiliation;
+        const redirectPath = (affiliation === 'staff' || affiliation === 'empty')
+            ? '/role-restricted'
+            : '/course-selection';
+        console.log('[ROUTING] Authenticated user accessed root, redirecting to', redirectPath);
+        return res.redirect(redirectPath);
     }
+    console.log('[ROUTING] Unauthenticated user accessed root, serving index.html');
+    return res.sendFile(path.join(publicPath, 'index.html'));
 });
 
 // Serve static files from the 'public' directory (but not for root path)
@@ -85,42 +86,37 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
     console.log('[AUTH] SAML callback received at IdP-registered path: /Shibboleth.sso/SAML2/POST');
     console.log('[AUTH] Forwarding to passport authentication handler...');
 
-    // Use passport to authenticate, then forward to the same handler as /auth/saml/callback
     passport.authenticate('ubcshib', {
         failureRedirect: '/auth/login-failed',
         failureFlash: false
     })(req, res, next);
 }, async (req: express.Request, res: express.Response) => {
     try {
-        // Store raw Shib profile in session for frontend shibDebug (must match auth.ts samlCallbackHandler)
-        if ((req.user as any)?._rawShibProfile) {
-            (req.session as any).rawShibProfile = (req.user as any)._rawShibProfile;
-            delete (req.user as any)._rawShibProfile;
-        }
-
         // Extract user data from SAML profile
         const puid = (req.user as any).puid;
         const firstName = (req.user as any).firstName || '';
         const lastName = (req.user as any).lastName || '';
         const name = `${firstName} ${lastName}`.trim();
-        let affiliation = (req.user as any).affiliation;
-
-        // Special override: Always set Charisma Rusdiyanto as faculty
-        if (name === 'Charisma Rusdiyanto') {
-            affiliation = 'faculty';
-            console.log('[AUTH] 🔄 Affiliation override: Charisma Rusdiyanto set to faculty');
-        }
-
-        console.log('[AUTH] ✅ SAML authentication successful');
-        console.log('[AUTH] User PUID:', puid);
-        console.log('[AUTH] User Name:', name);
-        console.log('[AUTH] Affiliation:', affiliation);
+        const cwlAffiliation = (req.user as any).affiliation; // From Passport (mapAffiliation)
 
         // Get MongoDB instance
         const mongoDB = await EngEAI_MongoDB.getInstance();
 
         // Check if GlobalUser exists in active-users collection
         let globalUser = await mongoDB.findGlobalUserByPUID(puid);
+
+        // Resolve affiliation: CWL takes precedence over DB when they differ (except Charisma)
+        const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, name);
+        const affiliation = resolution.affiliation;
+
+        if (FACULTY_OVERRIDE_NAMES.includes(name) && cwlAffiliation !== affiliation) {
+            console.log('[AUTH] 🔄 Affiliation override:', name, 'set to faculty');
+        }
+
+        console.log('[AUTH] ✅ SAML authentication successful');
+        console.log('[AUTH] User PUID:', puid);
+        console.log('[AUTH] User Name:', name);
+        console.log('[AUTH] Affiliation:', affiliation, '(CWL:', cwlAffiliation, ', DB:', globalUser?.affiliation ?? 'N/A', ')');
 
         if (!globalUser) {
             console.log('[AUTH] 🆕 Creating new GlobalUser');
@@ -130,13 +126,21 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
                 name,
                 userId: mongoDB.idGenerator.globalUserID(puid, name, affiliation),
                 coursesEnrolled: [],
-                affiliation,
+                affiliation: affiliation as 'student' | 'faculty' | 'staff' | 'empty',
                 status: 'active'
             });
 
             console.log('[AUTH] ✅ GlobalUser created:', globalUser.userId);
         } else {
             console.log('[AUTH] ✅ GlobalUser found:', globalUser.userId);
+
+            // Reconcile DB with CWL when DB has inconsistent data (e.g. dual student+instructor stored as faculty)
+            if (resolution.needsDbUpdate && (affiliation === 'student' || affiliation === 'faculty')) {
+                console.log('[AUTH] 🔄 Updating GlobalUser affiliation: DB had', globalUser.affiliation, ', CWL says', affiliation);
+                globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty');
+                (req.user as any).affiliation = affiliation;
+                console.log('[AUTH] ✅ GlobalUser affiliation updated:', globalUser.userId);
+            }
         }
 
         // Store GlobalUser in session
@@ -149,9 +153,12 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
                 return res.redirect('/');
             }
 
-            console.log('[AUTH] 🚀 Session saved, redirecting to course selection');
+            const redirectPath = (affiliation === 'staff' || affiliation === 'empty')
+                ? '/role-restricted'
+                : '/course-selection';
+            console.log('[AUTH] 🚀 Session saved, redirecting to', redirectPath);
             console.log('[AUTH] 📋 Session ID:', (req as any).sessionID);
-            res.redirect('/course-selection');
+            res.redirect(redirectPath);
         });
 
     } catch (error) {
@@ -161,11 +168,30 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
 });
 
 // Page routes
+app.get('/role-restricted', (req: any, res: any) => {
+    if (!req.session?.passport?.user) {
+        return res.redirect('/');
+    }
+    const affiliation = (req.session as any)?.globalUser?.affiliation;
+    if (affiliation !== 'staff' && affiliation !== 'empty') {
+        return res.redirect('/course-selection');
+    }
+    res.sendFile(path.join(publicPath, 'pages/role-restricted.html'));
+});
+
 app.get('/course-selection', (req: any, res: any) => {
+    const affiliation = (req.session as any)?.globalUser?.affiliation;
+    if (affiliation === 'staff' || affiliation === 'empty') {
+        return res.redirect('/role-restricted');
+    }
     res.sendFile(path.join(publicPath, 'pages/course-selection.html'));
 });
 
 app.get('/settings', (req: any, res: any) => {
+    const affiliation = (req.session as any)?.globalUser?.affiliation;
+    if (affiliation === 'staff' || affiliation === 'empty') {
+        return res.redirect('/role-restricted');
+    }
     res.sendFile(path.join(publicPath, 'pages/settings.html'));
 });
 

@@ -18,9 +18,6 @@ import path from 'path';
 // Check if SAML is available from environment
 const isSamlAvailable = process.env.SAML_AVAILABLE !== 'false';
 
-// Always expose raw Shib profile to frontend console for debugging
-const isDebugShibProfile = true;
-
 // Hardcoded fake users for local development authentication
 const FAKE_USERS = {
     student: {
@@ -65,14 +62,18 @@ const toArray = (value: AttributeValue): string[] => {
 
 const mapAffiliation = (value: AttributeValue): string => {
     const affiliations = toArray(value);
-    if (affiliations.length === 0) {
-        return 'student';
+    if (affiliations.length === 0) return 'empty';
+    const normalized = affiliations.map((e) => e.toLowerCase());
+
+    const hasStudent = normalized.includes('student');
+    const hasFaculty = normalized.includes('faculty') || normalized.includes('instructor');
+    if (!hasStudent && !hasFaculty && normalized.includes('staff')) {
+        return 'staff';
     }
-    const normalized = affiliations.map((entry) => entry.toLowerCase());
-    if (normalized.includes('faculty') || normalized.includes('instructor') || normalized.includes('staff')) {
-        return 'faculty';
-    }
-    return normalized[0];
+
+    if (hasStudent) return 'student';
+    if (hasFaculty) return 'faculty';
+    return 'student';
 };
 
 // Variable to hold strategy (either UBCShib or Local)
@@ -129,9 +130,9 @@ if (hasSamlConfig) {
         ubcShibStrategy = new UbcShibStrategy(strategyConfig, (profile: any, done: any) => {
             const attributes = (profile.attributes || {}) as Record<string, AttributeValue>;
 
-            //START DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
-            console.log('[AUTH] UBCShib profile received:', JSON.stringify(profile, null, 2));
-            //END DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
+            // //START DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
+            // console.log('[AUTH] UBCShib profile received:', JSON.stringify(profile, null, 2));
+            // //END DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
 
             // Extract PUID - it may be in attributes or at the profile root level
             // The library maps most attributes but ubcEduCwlPuid might need special handling
@@ -165,11 +166,6 @@ if (hasSamlConfig) {
                 nameID: profile.nameID,
                 nameIDFormat: profile.nameIDFormat
             };
-
-            // DEBUG_SHB_PROFILE: Expose raw Shib profile for frontend console debugging (development only)
-            if (isDebugShibProfile) {
-                user._rawShibProfile = profile;
-            }
 
             //START DEBUG LOG : DEBUG-CODE(UBCSHIB-USER-CREATED)
             console.log('[AUTH] 👤 User object created from SAML:', {
@@ -236,10 +232,9 @@ const localStrategy = new LocalStrategy(
 passport.use('local', localStrategy);
 console.log('[AUTH] ✅ Local strategy configured (available for regular login)');
 
-// Serialize user to session (strip _rawShibProfile - stored separately in session for debug)
+// Serialize user to session
 passport.serializeUser((user: any, done: any) => {
-    const { _rawShibProfile, ...userToStore } = user;
-    done(null, userToStore);
+    done(null, user);
 });
 
 // Deserialize user from session

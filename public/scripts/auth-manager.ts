@@ -179,7 +179,6 @@ class AuthManager {
      * Show authenticated state
      */
     private showAuthenticated(user: User): void {
-
         if (this.loginPrompt) this.loginPrompt.style.display = 'none';
         if (this.authLoading) this.authLoading.style.display = 'none';
         if (this.userInfo) this.userInfo.style.display = 'block';

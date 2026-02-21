@@ -1,3 +1,3 @@
 
 
-export const backendVersion = "1.0.3";
+export const backendVersion = "1.0.4";
