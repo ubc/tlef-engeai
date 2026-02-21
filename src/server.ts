@@ -17,7 +17,7 @@ import sessionMiddleware from './middleware/session';
 import { passport } from './middleware/passport';
 import { EngEAI_MongoDB } from './functions/EngEAI_MongoDB';
 import { initInstructorAllowedCourses } from './functions/initInstructorAllowedCourses';
-import { resolveAffiliation } from './utils/affiliation';
+import { resolveAffiliation, FACULTY_OVERRIDE_NAMES } from './utils/affiliation';
 
 dotenv.config();
 
@@ -109,8 +109,8 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
         const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, name);
         const affiliation = resolution.affiliation;
 
-        if (name === 'Charisma Rusdiyanto' && cwlAffiliation !== affiliation) {
-            console.log('[AUTH] 🔄 Affiliation override: Charisma Rusdiyanto set to faculty');
+        if (FACULTY_OVERRIDE_NAMES.includes(name) && cwlAffiliation !== affiliation) {
+            console.log('[AUTH] 🔄 Affiliation override:', name, 'set to faculty');
         }
 
         console.log('[AUTH] ✅ SAML authentication successful');

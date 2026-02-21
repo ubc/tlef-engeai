@@ -12,7 +12,7 @@ import path from 'path';
 import { passport, ubcShibStrategy, isSamlAvailable } from '../middleware/passport';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { sanitizeGlobalUserForFrontend } from '../functions/user-utils';
-import { resolveAffiliation } from '../utils/affiliation';
+import { resolveAffiliation, FACULTY_OVERRIDE_NAMES } from '../utils/affiliation';
 
 const router = express.Router();
 
@@ -70,8 +70,8 @@ const samlCallbackHandler = [
         const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, name);
         const affiliation = resolution.affiliation;
 
-        if (name === 'Charisma Rusdiyanto' && cwlAffiliation !== affiliation) {
-            console.log('[AUTH] 🔄 Affiliation override: Charisma Rusdiyanto set to faculty');
+        if (FACULTY_OVERRIDE_NAMES.includes(name) && cwlAffiliation !== affiliation) {
+            console.log('[AUTH] 🔄 Affiliation override:', name, 'set to faculty');
         }
 
         console.log('[AUTH] ✅ SAML authentication successful');
@@ -179,8 +179,8 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                     const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, name);
                     const affiliation = resolution.affiliation;
 
-                    if (name === 'Charisma Rusdiyanto' && cwlAffiliation !== affiliation) {
-                        console.log('[AUTH-LOCAL] 🔄 Affiliation override: Charisma Rusdiyanto set to faculty');
+                    if (FACULTY_OVERRIDE_NAMES.includes(name) && cwlAffiliation !== affiliation) {
+                        console.log('[AUTH-LOCAL] 🔄 Affiliation override:', name, 'set to faculty');
                     }
 
                     console.log('[AUTH-LOCAL] ✅ User logged in successfully');
@@ -381,8 +381,8 @@ router.get('/current-user', async (req: express.Request, res: express.Response) 
             }
 
             // Validate affiliation (log but don't fail - database is source of truth)
-            // Bypass for Charisma Rusdiyanto (developer privilege)
-            if (sessionUser.affiliation !== globalUser.affiliation && globalUser.name !== 'Charisma Rusdiyanto') {
+            // Bypass for faculty override names (Charisma, Richard Tape)
+            if (sessionUser.affiliation !== globalUser.affiliation && !FACULTY_OVERRIDE_NAMES.includes(globalUser.name)) {
                 validationErrors.push(`Affiliation mismatch: session=${sessionUser.affiliation}, database=${globalUser.affiliation}`);
                 console.warn('[SERVER] ⚠️ Affiliation mismatch detected, using database value as source of truth');
             }
@@ -482,8 +482,8 @@ router.get('/me', async (req: express.Request, res: express.Response) => {
             }
 
             // Validate affiliation
-            // Bypass for Charisma Rusdiyanto (developer privilege)
-            if (sessionUser.affiliation !== globalUser.affiliation && globalUser.name !== 'Charisma Rusdiyanto') {
+            // Bypass for faculty override names (Charisma, Richard Tape)
+            if (sessionUser.affiliation !== globalUser.affiliation && !FACULTY_OVERRIDE_NAMES.includes(globalUser.name)) {
                 validationErrors.push(`Affiliation mismatch: session=${sessionUser.affiliation}, database=${globalUser.affiliation}`);
             }
 
