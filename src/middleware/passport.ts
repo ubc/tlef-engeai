@@ -60,16 +60,15 @@ const toArray = (value: AttributeValue): string[] => {
     return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [value];
 };
 
-const mapAffiliation = (value: AttributeValue): string | null => {
+const mapAffiliation = (value: AttributeValue): string => {
     const affiliations = toArray(value);
-    if (affiliations.length === 0) return null;
+    if (affiliations.length === 0) return 'empty';
     const normalized = affiliations.map((e) => e.toLowerCase());
 
-    // Staff-only: reject
     const hasStudent = normalized.includes('student');
     const hasFaculty = normalized.includes('faculty') || normalized.includes('instructor');
     if (!hasStudent && !hasFaculty && normalized.includes('staff')) {
-        return null;
+        return 'staff';
     }
 
     if (hasStudent) return 'student';
@@ -155,11 +154,6 @@ if (hasSamlConfig) {
             const lastName = toString(attributes.sn) || '';
             const email = toString(attributes.mail) || toString(profile.mail) || toString(profile.email) || '';
             const affiliation = mapAffiliation(attributes.eduPersonAffiliation);
-
-            if (affiliation === null) {
-                console.error('[AUTH] ❌ Staff-only access is not permitted');
-                return done(new Error('Staff-only access is not permitted'), false);
-            }
 
             const user: Record<string, unknown> = {
                 username: toString(attributes.displayName) || puid,

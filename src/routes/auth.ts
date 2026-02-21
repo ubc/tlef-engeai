@@ -117,10 +117,12 @@ const samlCallbackHandler = [
                 return res.redirect('/');
             }
 
-            // Redirect to course selection page
-            console.log('[AUTH] 🚀 Session saved, redirecting to course selection');
+            const redirectPath = (affiliation === 'staff' || affiliation === 'empty')
+                ? '/role-restricted'
+                : '/course-selection';
+            console.log('[AUTH] 🚀 Session saved, redirecting to', redirectPath);
             console.log('[AUTH] 📋 Session ID:', (req as any).sessionID);
-            res.redirect('/course-selection');
+            res.redirect(redirectPath);
         });
 
     } catch (error) {
@@ -222,8 +224,11 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                             return next(saveErr);
                         }
 
-                        console.log('[AUTH-LOCAL] 🚀 Redirecting to course selection');
-                        res.redirect('/course-selection');
+                        const redirectPath = (affiliation === 'staff' || affiliation === 'empty')
+                            ? '/role-restricted'
+                            : '/course-selection';
+                        console.log('[AUTH-LOCAL] 🚀 Redirecting to', redirectPath);
+                        res.redirect(redirectPath);
                     });
                 } catch (error) {
                     console.error('[AUTH-LOCAL] 🚨 Error in post-auth processing:', error);

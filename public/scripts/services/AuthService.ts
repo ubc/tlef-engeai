@@ -87,10 +87,10 @@ export class AuthService {
      */
     private async waitForSessionEstablishment(): Promise<void> {
         // Check if we just came from a SAML callback by looking at the URL or referrer
-        const isPostLogin = window.location.search.includes('saml') || 
-                           document.referrer.includes('/auth/') || 
+        const isPostLogin = window.location.search.includes('saml') ||
+                           document.referrer.includes('/auth/') ||
                            window.location.pathname === '/';
-        
+
         if (isPostLogin) {
             // console.log('[FRONTEND-AUTH] ⏳ Post-login detected, waiting for session establishment...');
 

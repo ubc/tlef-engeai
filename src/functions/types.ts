@@ -259,7 +259,7 @@ export interface GlobalUser {
     puid: string;                   // Privacy-focused Unique Identifier - ONLY stored here
     userId: string;                 // Generated using IDGenerator (string format)
     coursesEnrolled: string[];     // Array of course IDs
-    affiliation: 'student' | 'faculty';
+    affiliation: 'student' | 'faculty' | 'staff' | 'empty';
     status: 'active' | 'inactive';
     createdAt: Date;
     updatedAt: Date;
