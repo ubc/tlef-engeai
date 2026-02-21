@@ -130,9 +130,9 @@ if (hasSamlConfig) {
         ubcShibStrategy = new UbcShibStrategy(strategyConfig, (profile: any, done: any) => {
             const attributes = (profile.attributes || {}) as Record<string, AttributeValue>;
 
-            //START DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
-            console.log('[AUTH] UBCShib profile received:', JSON.stringify(profile, null, 2));
-            //END DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
+            // //START DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
+            // console.log('[AUTH] UBCShib profile received:', JSON.stringify(profile, null, 2));
+            // //END DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
 
             // Extract PUID - it may be in attributes or at the profile root level
             // The library maps most attributes but ubcEduCwlPuid might need special handling

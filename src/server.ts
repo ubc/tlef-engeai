@@ -17,6 +17,7 @@ import sessionMiddleware from './middleware/session';
 import { passport } from './middleware/passport';
 import { EngEAI_MongoDB } from './functions/EngEAI_MongoDB';
 import { initInstructorAllowedCourses } from './functions/initInstructorAllowedCourses';
+import { resolveAffiliation } from './utils/affiliation';
 
 dotenv.config();
 
@@ -96,24 +97,26 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
         const firstName = (req.user as any).firstName || '';
         const lastName = (req.user as any).lastName || '';
         const name = `${firstName} ${lastName}`.trim();
-        let affiliation = (req.user as any).affiliation;
-
-        // Special override: Always set Charisma Rusdiyanto as faculty
-        if (name === 'Charisma Rusdiyanto') {
-            affiliation = 'faculty';
-            console.log('[AUTH] 🔄 Affiliation override: Charisma Rusdiyanto set to faculty');
-        }
-
-        console.log('[AUTH] ✅ SAML authentication successful');
-        console.log('[AUTH] User PUID:', puid);
-        console.log('[AUTH] User Name:', name);
-        console.log('[AUTH] Affiliation:', affiliation);
+        const cwlAffiliation = (req.user as any).affiliation; // From Passport (mapAffiliation)
 
         // Get MongoDB instance
         const mongoDB = await EngEAI_MongoDB.getInstance();
 
         // Check if GlobalUser exists in active-users collection
         let globalUser = await mongoDB.findGlobalUserByPUID(puid);
+
+        // Resolve affiliation: CWL takes precedence over DB when they differ (except Charisma)
+        const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, name);
+        const affiliation = resolution.affiliation;
+
+        if (name === 'Charisma Rusdiyanto' && cwlAffiliation !== affiliation) {
+            console.log('[AUTH] 🔄 Affiliation override: Charisma Rusdiyanto set to faculty');
+        }
+
+        console.log('[AUTH] ✅ SAML authentication successful');
+        console.log('[AUTH] User PUID:', puid);
+        console.log('[AUTH] User Name:', name);
+        console.log('[AUTH] Affiliation:', affiliation, '(CWL:', cwlAffiliation, ', DB:', globalUser?.affiliation ?? 'N/A', ')');
 
         if (!globalUser) {
             console.log('[AUTH] 🆕 Creating new GlobalUser');
@@ -123,13 +126,21 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
                 name,
                 userId: mongoDB.idGenerator.globalUserID(puid, name, affiliation),
                 coursesEnrolled: [],
-                affiliation,
+                affiliation: affiliation as 'student' | 'faculty' | 'staff' | 'empty',
                 status: 'active'
             });
 
             console.log('[AUTH] ✅ GlobalUser created:', globalUser.userId);
         } else {
             console.log('[AUTH] ✅ GlobalUser found:', globalUser.userId);
+
+            // Reconcile DB with CWL when DB has inconsistent data (e.g. dual student+instructor stored as faculty)
+            if (resolution.needsDbUpdate && (affiliation === 'student' || affiliation === 'faculty')) {
+                console.log('[AUTH] 🔄 Updating GlobalUser affiliation: DB had', globalUser.affiliation, ', CWL says', affiliation);
+                globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty');
+                (req.user as any).affiliation = affiliation;
+                console.log('[AUTH] ✅ GlobalUser affiliation updated:', globalUser.userId);
+            }
         }
 
         // Store GlobalUser in session

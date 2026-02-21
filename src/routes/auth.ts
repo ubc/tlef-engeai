@@ -12,6 +12,7 @@ import path from 'path';
 import { passport, ubcShibStrategy, isSamlAvailable } from '../middleware/passport';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { sanitizeGlobalUserForFrontend } from '../functions/user-utils';
+import { resolveAffiliation } from '../utils/affiliation';
 
 const router = express.Router();
 
@@ -57,25 +58,27 @@ const samlCallbackHandler = [
         const firstName = (req.user as any).firstName || '';
         const lastName = (req.user as any).lastName || '';
         const name = `${firstName} ${lastName}`.trim();
-        let affiliation = (req.user as any).affiliation; // 'student' or 'faculty'
+        const cwlAffiliation = (req.user as any).affiliation; // From Passport (mapAffiliation)
 
-        // Special override: Always set Charisma Rusdiyanto as faculty
-        if (name === 'Charisma Rusdiyanto') {
-            affiliation = 'faculty';
+        // Get MongoDB instance
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+
+        // Check if GlobalUser exists in active-users collection
+        let globalUser = await mongoDB.findGlobalUserByPUID(puid);
+
+        // Resolve affiliation: CWL takes precedence over DB when they differ (except Charisma)
+        const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, name);
+        const affiliation = resolution.affiliation;
+
+        if (name === 'Charisma Rusdiyanto' && cwlAffiliation !== affiliation) {
             console.log('[AUTH] 🔄 Affiliation override: Charisma Rusdiyanto set to faculty');
         }
-        
+
         console.log('[AUTH] ✅ SAML authentication successful');
         console.log('[AUTH] User PUID:', puid);
         console.log('[AUTH] User Name:', name);
-        console.log('[AUTH] Affiliation:', affiliation);
-        
-        // Get MongoDB instance
-                const mongoDB = await EngEAI_MongoDB.getInstance();
-                
-        // Check if GlobalUser exists in active-users collection
-        let globalUser = await mongoDB.findGlobalUserByPUID(puid);
-        
+        console.log('[AUTH] Affiliation:', affiliation, '(CWL:', cwlAffiliation, ', DB:', globalUser?.affiliation ?? 'N/A', ')');
+
         if (!globalUser) {
             // First-time user - create GlobalUser
             console.log('[AUTH] 🆕 Creating new GlobalUser');
@@ -85,7 +88,7 @@ const samlCallbackHandler = [
                 name,
                 userId: mongoDB.idGenerator.globalUserID(puid, name, affiliation),
                 coursesEnrolled: [],
-                affiliation,
+                affiliation: affiliation as 'student' | 'faculty' | 'staff' | 'empty',
                 status: 'active'
             });
 
@@ -93,14 +96,11 @@ const samlCallbackHandler = [
         } else {
             console.log('[AUTH] ✅ GlobalUser found:', globalUser.userId);
 
-            // Check if we need to update affiliation for special users
-            if (name === 'Charisma Rusdiyanto' && globalUser.affiliation !== 'faculty') {
-                console.log('[AUTH] 🔄 Updating existing GlobalUser affiliation to faculty');
-                globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, 'faculty');
-
-                // Update the Passport user object to match the new affiliation
-                (req.user as any).affiliation = 'faculty';
-
+            // Reconcile DB with CWL when DB has inconsistent data (e.g. dual student+instructor stored as faculty)
+            if (resolution.needsDbUpdate && (affiliation === 'student' || affiliation === 'faculty')) {
+                console.log('[AUTH] 🔄 Updating GlobalUser affiliation: DB had', globalUser.affiliation, ', CWL says', affiliation);
+                globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty');
+                (req.user as any).affiliation = affiliation;
                 console.log('[AUTH] ✅ GlobalUser affiliation updated:', globalUser.userId);
             }
         }
@@ -167,24 +167,26 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                     const firstName = user.firstName || '';
                     const lastName = user.lastName || '';
                     const name = `${firstName} ${lastName}`.trim();
-                    let affiliation = user.affiliation;
-
-                    // Special override: Always set Charisma Rusdiyanto as faculty
-                    if (name === 'Charisma Rusdiyanto') {
-                        affiliation = 'faculty';
-                        console.log('[AUTH-LOCAL] 🔄 Affiliation override: Charisma Rusdiyanto set to faculty');
-                    }
-
-                    console.log('[AUTH-LOCAL] ✅ User logged in successfully');
-                    console.log('[AUTH-LOCAL] User PUID:', puid);
-                    console.log('[AUTH-LOCAL] User Name:', name);
-                    console.log('[AUTH-LOCAL] Affiliation:', affiliation);
+                    const cwlAffiliation = user.affiliation; // From Passport (local: FAKE_USERS)
 
                     // Get MongoDB instance
                     const mongoDB = await EngEAI_MongoDB.getInstance();
 
                     // Check if GlobalUser exists
                     let globalUser = await mongoDB.findGlobalUserByPUID(puid);
+
+                    // Resolve affiliation: CWL/local takes precedence over DB when they differ (except Charisma)
+                    const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, name);
+                    const affiliation = resolution.affiliation;
+
+                    if (name === 'Charisma Rusdiyanto' && cwlAffiliation !== affiliation) {
+                        console.log('[AUTH-LOCAL] 🔄 Affiliation override: Charisma Rusdiyanto set to faculty');
+                    }
+
+                    console.log('[AUTH-LOCAL] ✅ User logged in successfully');
+                    console.log('[AUTH-LOCAL] User PUID:', puid);
+                    console.log('[AUTH-LOCAL] User Name:', name);
+                    console.log('[AUTH-LOCAL] Affiliation:', affiliation, '(local:', cwlAffiliation, ', DB:', globalUser?.affiliation ?? 'N/A', ')');
 
                     if (!globalUser) {
                         console.log('[AUTH-LOCAL] 🆕 Creating new GlobalUser');
@@ -193,21 +195,18 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                             name,
                             userId: mongoDB.idGenerator.globalUserID(puid, name, affiliation),
                             coursesEnrolled: [],
-                            affiliation,
+                            affiliation: affiliation as 'student' | 'faculty' | 'staff' | 'empty',
                             status: 'active'
                         });
                         console.log('[AUTH-LOCAL] ✅ GlobalUser created:', globalUser.userId);
                     } else {
                         console.log('[AUTH-LOCAL] ✅ GlobalUser found:', globalUser.userId);
 
-                        // Check if we need to update affiliation for special users
-                        if (name === 'Charisma Rusdiyanto' && globalUser.affiliation !== 'faculty') {
-                            console.log('[AUTH-LOCAL] 🔄 Updating existing GlobalUser affiliation to faculty');
-                            globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, 'faculty');
-
-                            // Update the Passport user object to match the new affiliation
-                            (req.user as any).affiliation = 'faculty';
-
+                        // Reconcile DB with local/CWL when DB has inconsistent data
+                        if (resolution.needsDbUpdate && (affiliation === 'student' || affiliation === 'faculty')) {
+                            console.log('[AUTH-LOCAL] 🔄 Updating GlobalUser affiliation: DB had', globalUser.affiliation, ', local says', affiliation);
+                            globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty');
+                            (req.user as any).affiliation = affiliation;
                             console.log('[AUTH-LOCAL] ✅ GlobalUser affiliation updated:', globalUser.userId);
                         }
                     }
