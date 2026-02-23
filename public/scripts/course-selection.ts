@@ -573,6 +573,15 @@ function setupCourseButtons(): void {
                 await createNewCourseForInstructor();
             });
         }
+
+        // Show and setup "Download Database" button - instructors only
+        const downloadDatabaseBtn = document.getElementById('download-database-btn');
+        if (downloadDatabaseBtn) {
+            downloadDatabaseBtn.style.display = 'flex';
+            downloadDatabaseBtn.addEventListener('click', async () => {
+                await downloadDatabase();
+            });
+        }
     } else if (currentUserAffiliation === 'student') {
         // For students: only show "Add New Course" button
         if (addNewCourseBtn) {
@@ -593,6 +602,60 @@ function setupCourseButtons(): void {
     // Re-render feather icons for the buttons
     if (typeof (window as any).feather !== 'undefined') {
         (window as any).feather.replace();
+    }
+}
+
+/**
+ * Download database export (instructors only)
+ * Fetches the full database export from the API and triggers a file download
+ */
+async function downloadDatabase(): Promise<void> {
+    const downloadBtn = document.getElementById('download-database-btn') as HTMLButtonElement;
+    try {
+        if (downloadBtn) {
+            downloadBtn.disabled = true;
+            const span = downloadBtn.querySelector('span');
+            if (span) span.textContent = 'Downloading...';
+        }
+
+        const response = await fetch('/api/courses/export/database', {
+            method: 'GET',
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `Download failed (${response.status})`);
+        }
+
+        const blob = await response.blob();
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = `database-export-${new Date().toISOString().slice(0, 10)}.txt`;
+        if (contentDisposition) {
+            const match = contentDisposition.match(/filename="([^"]+)"/);
+            if (match) filename = match[1];
+        }
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('[COURSE-SELECTION] ❌ Error downloading database:', error);
+        await showErrorModal(
+            'Download Error',
+            error instanceof Error ? error.message : 'Failed to download database. Please try again.'
+        );
+    } finally {
+        if (downloadBtn) {
+            downloadBtn.disabled = false;
+            const span = downloadBtn.querySelector('span');
+            if (span) span.textContent = 'Download Database';
+        }
     }
 }
 
