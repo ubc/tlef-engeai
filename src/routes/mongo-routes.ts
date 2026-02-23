@@ -590,6 +590,50 @@ router.get('/export/database', requireInstructorGlobal, asyncHandlerWithAuth(asy
     }
 }));
 
+// DELETE /api/courses/clear-active-users - Remove all users from active-users AND from every course's users collection (REQUIRES AUTH - Instructors only)
+router.delete('/clear-active-users', requireInstructorGlobal, asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+
+        // Step 1: Clear users from every course's users collection ({courseName}_users)
+        const courses = await mongoDB.getAllActiveCourses();
+        let totalCourseUsersDeleted = 0;
+        for (const course of courses) {
+            const courseName = course.courseName;
+            const usersCollectionName = course.collections?.users ?? `${courseName}_users`;
+            try {
+                const courseUsersColl = mongoDB.db.collection(usersCollectionName);
+                const courseDeleteResult = await courseUsersColl.deleteMany({});
+                totalCourseUsersDeleted += courseDeleteResult.deletedCount;
+                if (courseDeleteResult.deletedCount > 0) {
+                    console.log(`[CLEAR-ACTIVE-USERS] Cleared ${courseDeleteResult.deletedCount} user(s) from course ${courseName}`);
+                }
+            } catch (courseErr) {
+                console.warn(`[CLEAR-ACTIVE-USERS] Could not clear users for course ${courseName}:`, courseErr);
+                // Continue with other courses - don't fail if one course collection is missing
+            }
+        }
+
+        // Step 2: Clear active-users (global user records)
+        const activeUsersCollection = mongoDB.db.collection('active-users');
+        const deleteResult = await activeUsersCollection.deleteMany({});
+
+        res.status(200).json({
+            success: true,
+            message: `All users removed successfully. ${deleteResult.deletedCount} global user(s) and ${totalCourseUsersDeleted} course-specific user(s) deleted.`,
+            deletedCount: deleteResult.deletedCount,
+            courseUsersDeletedCount: totalCourseUsersDeleted
+        });
+    } catch (error) {
+        console.error('Error clearing active users:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to clear active users',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
 // GET /api/courses - Get all courses or course by name (query param)
 // GET /api/courses?name=CHBE241 - Get course by name
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
