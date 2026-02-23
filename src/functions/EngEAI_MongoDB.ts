@@ -1625,6 +1625,50 @@ export class EngEAI_MongoDB {
     }
 
     /**
+     * Update a specific message's text in a chat
+     * Used when dismissing the questionUnstruggle block ("No, maybe later")
+     * @param courseName - The name of the course
+     * @param userId - The userId of the user (string format)
+     * @param chatId - The ID of the chat
+     * @param messageId - The ID of the message to update
+     * @param newText - The new text content for the message
+     */
+    public updateMessageInChat = async (
+        courseName: string,
+        userId: string,
+        chatId: string,
+        messageId: string,
+        newText: string
+    ): Promise<void> => {
+        try {
+            const userCollection = await this.getUserCollection(courseName);
+
+            const result = await userCollection.updateOne(
+                { userId: userId, 'chats.id': chatId },
+                {
+                    $set: {
+                        'chats.$[chat].messages.$[msg].text': newText,
+                        updatedAt: new Date()
+                    }
+                },
+                {
+                    arrayFilters: [
+                        { 'chat.id': chatId },
+                        { 'msg.id': messageId }
+                    ]
+                }
+            );
+
+            if (result.matchedCount === 0) {
+                throw new Error(`Chat or message not found: chatId=${chatId}, messageId=${messageId}`);
+            }
+        } catch (error) {
+            console.error(`[MONGODB] 🚨 Error updating message in chat:`, error);
+            throw error;
+        }
+    };
+
+    /**
      * Mark a chat as deleted (soft delete) instead of removing it
      * This preserves chat history for audit/analytics while hiding it from users
      * @param courseName - The name of the course

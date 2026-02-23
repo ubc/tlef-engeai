@@ -39,6 +39,7 @@ import { ChatApp } from '../functions/ChatApp';
 
 import { getRandomYesResponse, getRandomNoResponse } from '../memory-agent/unstruggle-responses';
 import { memoryAgent } from '../memory-agent/memory-agent';
+import { stripQuestionUnstruggleTag } from '../utils/message-utils';
 
 // Load environment variables
 dotenv.config();
@@ -335,6 +336,59 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
             success: false, 
             error: 'Failed to create new chat' 
         });
+    }
+}));
+
+/**
+ * Dismiss unstruggle block endpoint (REQUIRES AUTH)
+ * Hides the "Do you think you're confident with the topic of X?" block when user clicks "No, maybe later"
+ * Updates the bot message in MongoDB by removing the <questionUnstruggle> tag
+ */
+router.post('/:chatId/dismiss-unstruggle', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const { chatId } = req.params;
+        const { messageId, topic } = req.body;
+
+        const user = (req as any).user;
+        const puid = user?.puid;
+        const currentCourse = (req.session as any).currentCourse;
+        const courseName = currentCourse?.courseName;
+
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const globalUserFromDB = await mongoDB.findGlobalUserByPUID(puid);
+        if (!globalUserFromDB?.userId) {
+            return res.status(401).json({ success: false, error: 'User not found in database' });
+        }
+        const userId = globalUserFromDB.userId;
+
+        if (!messageId || !topic) {
+            return res.status(400).json({ success: false, error: 'messageId and topic are required' });
+        }
+
+        if (!chatApp.validateChatExists(chatId)) {
+            return res.status(404).json({ success: false, error: 'Chat not found' });
+        }
+
+        const chatHistory = chatApp.getChatHistory(chatId);
+        const lastBotMessage = chatHistory.filter(m => m.sender === 'bot').pop();
+
+        const hasTag = lastBotMessage?.text.includes('<questionUnstruggle');
+        const topicMatch = lastBotMessage?.text.match(/Topic=["']([^"']+)["']/);
+        const prevTopic = topicMatch?.[1];
+
+        if (!lastBotMessage || !hasTag || prevTopic !== topic || lastBotMessage.id !== messageId) {
+            return res.status(400).json({ success: false, error: 'Invalid dismiss request' });
+        }
+
+        const newText = stripQuestionUnstruggleTag(lastBotMessage.text, topic);
+
+        await mongoDB.updateMessageInChat(courseName, userId, chatId, messageId, newText);
+        chatApp.updateMessageInChat(chatId, messageId, newText);
+
+        return res.json({ success: true, updatedText: newText });
+    } catch (error) {
+        console.error('❌ Error dismissing unstruggle block:', error);
+        res.status(500).json({ success: false, error: 'Failed to dismiss unstruggle block' });
     }
 }));
 
