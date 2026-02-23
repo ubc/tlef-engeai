@@ -8,7 +8,7 @@
  */
 
 import { loadComponentHTML, renderFeatherIcons } from "../functions/api.js";
-import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, CreateChatRequest } from "../functions/chat-api.js";
+import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, dismissUnstruggleBlock, CreateChatRequest } from "../functions/chat-api.js";
 import { Chat, ChatMessage, CourseUser, activeCourse } from "../../../src/functions/types.js";
 import { RenderChat } from "./render-chat.js";
 import { showDisclaimerModal, showDeleteConfirmationModal, showSimpleErrorModal } from "../modal-overlay.js";
@@ -1573,24 +1573,47 @@ export class ChatManager {
                         btn.classList.add('disabled');
                     });
                 }
-                
-                // Format natural language message to send to backend
-                // Yes: "yes, I am confident with [topic]"
-                // No: "I might need some practice with [topic]"
+
+                // "No, maybe later" (dismiss): hide block, no AI response
+                if (unstruggleBtn.dataset.action === 'dismiss') {
+                    try {
+                        const result = await dismissUnstruggleBlock(this.activeChatId!, messageId, topic);
+                        if (result.success && result.updatedText !== undefined) {
+                            lastBotMessage.text = result.updatedText;
+                            this.updateMessageInDOM(messageId, result.updatedText);
+                        } else {
+                            if (container) {
+                                const buttons = container.querySelectorAll('.question-unstruggle-btn');
+                                buttons.forEach(btn => {
+                                    (btn as HTMLButtonElement).disabled = false;
+                                    btn.classList.remove('disabled');
+                                });
+                            }
+                        }
+                    } catch (error) {
+                        if (container) {
+                            const buttons = container.querySelectorAll('.question-unstruggle-btn');
+                            buttons.forEach(btn => {
+                                (btn as HTMLButtonElement).disabled = false;
+                                btn.classList.remove('disabled');
+                            });
+                        }
+                    }
+                    return;
+                }
+
+                // "Yes" (confident): send message and get AI response
                 const isConfident = response === 'True';
                 const formattedMessage = isConfident 
                     ? `yes, I am confident with "${topic}"`
                     : `I might need some practice with "${topic}"`;
                 
-                // Send message to backend
                 try {
                     await this.sendMessage(
                         formattedMessage,
                         undefined, // No streaming callback
                         undefined, // No completion callback
                         (error) => {
-                            // console.error('❌ Error sending unstruggle response:', error);
-                            // Re-enable buttons on error
                             if (container) {
                                 const buttons = container.querySelectorAll('.question-unstruggle-btn');
                                 buttons.forEach(btn => {
@@ -1601,8 +1624,6 @@ export class ChatManager {
                         }
                     );
                 } catch (error) {
-                    // console.error('❌ Error sending unstruggle response:', error);
-                    // Re-enable buttons on error
                     if (container) {
                         const buttons = container.querySelectorAll('.question-unstruggle-btn');
                         buttons.forEach(btn => {

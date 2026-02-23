@@ -1170,6 +1170,20 @@ export class ChatApp {
     }
 
     /**
+     * Update a message's text in the in-memory chat history
+     * Keeps ChatApp state in sync after MongoDB updates (e.g. dismiss unstruggle block)
+     * @param chatId - The chat ID
+     * @param messageId - The message ID to update
+     * @param newText - The new text content
+     */
+    public updateMessageInChat(chatId: string, messageId: string, newText: string): void {
+        const messages = this.chatHistory.get(chatId);
+        if (!messages) return;
+        const msg = messages.find(m => m.id === messageId);
+        if (msg) msg.text = newText;
+    }
+
+    /**
      * Validate if a chat exists
      * 
      * @param chatId - The chat ID to validate

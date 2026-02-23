@@ -3,8 +3,8 @@ import express from 'express';
 import path from 'path';
 // import cors from 'cors';
 import chatAppRoutes from './routes/chat-app';
-import ragAppRoutes from './routes/rag-app';
-import mongodbRoutes from './routes/mongo-app';
+import ragAppRoutes from './routes/rag-routes';
+import mongodbRoutes from './routes/mongo-routes';
 import healthRoutes from './routes/health';
 import versionRoutes from './routes/version';
 import authRoutes from './routes/auth';  // Import authentication routes

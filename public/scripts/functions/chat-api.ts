@@ -172,6 +172,50 @@ export async function getChats(userId: string, courseName: string): Promise<Chat
 }
 
 /**
+ * Dismiss the unstruggle confidence question block ("No, maybe later")
+ * Removes the block from the message in MongoDB so it stays hidden on reload
+ * @param chatId - ID of the chat
+ * @param messageId - ID of the bot message containing the block
+ * @param topic - The topic from the questionUnstruggle tag
+ * @returns Promise with success and updatedText
+ */
+export async function dismissUnstruggleBlock(
+    chatId: string,
+    messageId: string,
+    topic: string
+): Promise<{ success: boolean; updatedText?: string; error?: string }> {
+    try {
+        const response = await fetch(`/api/chat/${chatId}/dismiss-unstruggle`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ messageId, topic }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            return {
+                success: false,
+                error: result.error || `HTTP error! status: ${response.status}`,
+            };
+        }
+
+        return {
+            success: true,
+            updatedText: result.updatedText,
+        };
+    } catch (error) {
+        console.error('Error dismissing unstruggle block:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred',
+        };
+    }
+}
+
+/**
  * Update chat pin status on the server
  * @param chatId - ID of the chat
  * @param isPinned - Pin status

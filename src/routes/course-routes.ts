@@ -57,11 +57,13 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
             return res.status(403).sendFile(path.join(__dirname, '../../public/pages/course-error.html'));
         }
         
-        // Set course context in request
+        // Set course context in request (including role flags for downstream middleware)
         (req as any).courseContext = {
             courseId: course.id,
             courseName: course.courseName,
-            course: course
+            course: course,
+            isInstructor,
+            isEnrolled
         };
         
         // Update session if needed
@@ -79,6 +81,32 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
         // For server errors, still serve the error page but with 500 status
         res.status(500).sendFile(path.join(__dirname, '../../public/pages/course-error.html'));
     }
+}
+
+/**
+ * Middleware: Require instructor role for course (page routes)
+ * Must run after validateCourseAccess. Redirects non-instructors to course-selection.
+ */
+function requireInstructorForCourse(req: Request, res: Response, next: express.NextFunction) {
+    const ctx = (req as any).courseContext;
+    if (!ctx?.isInstructor) {
+        console.log(`[COURSE-ROUTES] User attempted instructor route without instructor role, redirecting to course-selection`);
+        return res.redirect('/course-selection');
+    }
+    next();
+}
+
+/**
+ * Middleware: Require student role for course (page routes)
+ * Must run after validateCourseAccess. Redirects instructors and non-enrolled users to course-selection.
+ */
+function requireStudentForCourse(req: Request, res: Response, next: express.NextFunction) {
+    const ctx = (req as any).courseContext;
+    if (!ctx?.isEnrolled || ctx?.isInstructor) {
+        console.log(`[COURSE-ROUTES] User attempted student route without student role, redirecting to course-selection`);
+        return res.redirect('/course-selection');
+    }
+    next();
 }
 
 /**
@@ -151,36 +179,36 @@ function serveStudentShell() {
 }
 
 // Instructor Routes - All serve the same shell, frontend handles component loading
-router.get('/course/:courseId/instructor/documents', validateCourseAccess, serveInstructorShell());
-router.get('/course/:courseId/instructor/flags', validateCourseAccess, serveInstructorShell());
-router.get('/course/:courseId/instructor/monitor', validateCourseAccess, serveInstructorShell());
-router.get('/course/:courseId/instructor/chat', validateCourseAccess, serveInstructorShell());
-router.get('/course/:courseId/instructor/assistant-prompts', validateCourseAccess, serveInstructorShell());
-router.get('/course/:courseId/instructor/system-prompts', validateCourseAccess, serveInstructorShell());
-router.get('/course/:courseId/instructor/course-information', validateCourseAccess, serveInstructorShell());
-router.get('/course/:courseId/instructor/about', validateCourseAccess, serveInstructorShell());
+router.get('/course/:courseId/instructor/documents', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+router.get('/course/:courseId/instructor/flags', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+router.get('/course/:courseId/instructor/monitor', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+router.get('/course/:courseId/instructor/chat', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+router.get('/course/:courseId/instructor/assistant-prompts', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+router.get('/course/:courseId/instructor/system-prompts', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+router.get('/course/:courseId/instructor/course-information', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+router.get('/course/:courseId/instructor/about', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
 
 // Instructor Onboarding Routes (for existing courses)
-router.get('/course/:courseId/instructor/onboarding/course-setup', validateCourseAccess, serveInstructorShell());
-router.get('/course/:courseId/instructor/onboarding/document-setup', validateCourseAccess, serveInstructorShell());
-router.get('/course/:courseId/instructor/onboarding/flag-setup', validateCourseAccess, serveInstructorShell());
-router.get('/course/:courseId/instructor/onboarding/monitor-setup', validateCourseAccess, serveInstructorShell());
+router.get('/course/:courseId/instructor/onboarding/course-setup', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+router.get('/course/:courseId/instructor/onboarding/document-setup', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+router.get('/course/:courseId/instructor/onboarding/flag-setup', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+router.get('/course/:courseId/instructor/onboarding/monitor-setup', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
 
 // New Course Onboarding Route (no courseId required - course doesn't exist yet)
 router.get('/instructor/onboarding/new-course', validateInstructorAuth, serveInstructorShell());
 
 // Student Routes - All serve the same shell, frontend handles component loading
-router.get('/course/:courseId/student', validateCourseAccess, serveStudentShell());
-router.get('/course/:courseId/student/chat', validateCourseAccess, serveStudentShell());
-router.get('/course/:courseId/student/profile', validateCourseAccess, serveStudentShell());
-router.get('/course/:courseId/student/flag-history', validateCourseAccess, serveStudentShell());
-router.get('/course/:courseId/student/about', validateCourseAccess, serveStudentShell());
+router.get('/course/:courseId/student', validateCourseAccess, requireStudentForCourse, serveStudentShell());
+router.get('/course/:courseId/student/chat', validateCourseAccess, requireStudentForCourse, serveStudentShell());
+router.get('/course/:courseId/student/profile', validateCourseAccess, requireStudentForCourse, serveStudentShell());
+router.get('/course/:courseId/student/flag-history', validateCourseAccess, requireStudentForCourse, serveStudentShell());
+router.get('/course/:courseId/student/about', validateCourseAccess, requireStudentForCourse, serveStudentShell());
 
 // Student Onboarding Routes
-router.get('/course/:courseId/student/onboarding/student', validateCourseAccess, serveStudentShell());
+router.get('/course/:courseId/student/onboarding/student', validateCourseAccess, requireStudentForCourse, serveStudentShell());
 
 // Default instructor route - redirect to documents
-router.get('/course/:courseId/instructor', validateCourseAccess, (req: Request, res: Response) => {
+router.get('/course/:courseId/instructor', validateCourseAccess, requireInstructorForCourse, (req: Request, res: Response) => {
     const { courseId } = req.params;
     res.redirect(`/course/${courseId}/instructor/documents`);
 });

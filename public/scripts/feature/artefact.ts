@@ -322,6 +322,10 @@ graph TD
             // Create panel dynamically
             panel = this.createArtefactPanel();
             container.appendChild(panel);
+            // Feather icons must be replaced after panel is in DOM
+            if (typeof (window as any).feather !== 'undefined') {
+                (window as any).feather.replace();
+            }
         }
 
         // Add artefact-open class to container
@@ -480,10 +484,8 @@ graph TD
         panel.appendChild(header);
         panel.appendChild(content);
 
-        // Re-render feather icons for the new panel
-        if (typeof (window as any).feather !== 'undefined') {
-            (window as any).feather.replace();
-        }
+        // Note: feather.replace() is called in openArtefact() after panel is appended to DOM,
+        // since Feather only processes elements that exist in the document
 
         return panel;
     }

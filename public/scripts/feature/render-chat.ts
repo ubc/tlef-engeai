@@ -142,8 +142,8 @@ export class RenderChat {
                         <button class="question-unstruggle-btn question-unstruggle-yes" data-topic="${this.escapeHtml(topic)}" data-response="True" data-message-id="${msgId}">
                             <span class="question-unstruggle-btn-text">Yes</span>
                         </button>
-                        <button class="question-unstruggle-btn question-unstruggle-no" data-topic="${this.escapeHtml(topic)}" data-response="False" data-message-id="${msgId}">
-                            <span class="question-unstruggle-btn-text">No, I need more practice</span>
+                        <button class="question-unstruggle-btn question-unstruggle-no" data-topic="${this.escapeHtml(topic)}" data-response="False" data-action="dismiss" data-message-id="${msgId}">
+                            <span class="question-unstruggle-btn-text">No, maybe later</span>
                         </button>
                     </div>
                 </div>
