@@ -32,12 +32,13 @@
 
 import express, { Request, Response } from 'express';
 import { asyncHandler, asyncHandlerWithAuth } from '../middleware/asyncHandler';
+import { requireInstructorForCourseAPI, requireInstructorGlobal } from '../middleware/requireCourseRole';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt, SystemPromptItem } from '../functions/types';
 import { IDGenerator } from '../functions/unique-id-generator';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import dotenv from 'dotenv';
-import { RAGApp } from '../routes/rag-app';
+import { RAGApp } from '../functions/rag-app';
 import { namesMatch } from '../utils/nameMatching';
 
 const router = express.Router();
@@ -225,7 +226,7 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
 // Routes
 
 // POST /api/courses - Create a new course (REQUIRES AUTH - Instructors only)
-router.post('/', validateNewCourse, asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
 
@@ -500,7 +501,7 @@ router.get('/check-exists', asyncHandler(async (req: Request, res: Response) => 
 }));
 
 // GET /api/courses/allowed-for-instructor - Get allowed courses for current instructor (REQUIRES AUTH)
-router.get('/allowed-for-instructor', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.get('/allowed-for-instructor', requireInstructorGlobal, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const globalUser = (req.session as any).globalUser;
     if (!globalUser) {
         return res.status(401).json({ success: false, error: 'Not authenticated' });
@@ -570,7 +571,7 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 // PUT /api/courses/:id - Update course (REQUIRES AUTH - Instructors only)
-router.put('/:id', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.put('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
     
     // First check if course exists
@@ -594,7 +595,7 @@ router.put('/:id', asyncHandlerWithAuth(async (req: Request, res: Response) => {
 }));
 
 // POST /api/courses/:courseId/instructors - Add instructor to course's instructors array
-router.post('/:courseId/instructors', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.post('/:courseId/instructors', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { courseId } = req.params;
         const globalUser = (req.session as any).globalUser;
@@ -689,7 +690,7 @@ router.post('/:courseId/instructors', asyncHandlerWithAuth(async (req: Request, 
 
 // DELETE /api/courses/:id/restart-onboarding - Restart onboarding by deleting course and related collections, then recreating with empty defaults
 // NOTE: This route must come before the general /:id route to ensure proper matching
-router.delete('/:id/restart-onboarding', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.delete('/:id/restart-onboarding', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
     
     try {
@@ -771,7 +772,7 @@ router.delete('/:id/restart-onboarding', asyncHandlerWithAuth(async (req: Reques
 // DELETE /api/courses/:id/remove - Remove course completely (REQUIRES AUTH - Instructors only)
 // This removes the course and all associated data: collections, Qdrant documents, and user enrollments
 /*
-router.delete('/:id/remove', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.delete('/:id/remove', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const courseId = req.params.id;
         const mongoDB = await EngEAI_MongoDB.getInstance();
@@ -887,7 +888,7 @@ router.delete('/:id/remove', asyncHandlerWithAuth(async (req: Request, res: Resp
 */
 
 // DELETE /api/courses/:id - Delete course (REQUIRES AUTH - Instructors only)
-router.delete('/:id', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.delete('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
     
     // First check if course exists
@@ -909,7 +910,7 @@ router.delete('/:id', asyncHandlerWithAuth(async (req: Request, res: Response) =
 }));
 
 // POST /api/courses/:courseId/topic-or-week-instances - Add a new topic/week instance (REQUIRES AUTH)
-router.post('/:courseId/topic-or-week-instances', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.post('/:courseId/topic-or-week-instances', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId } = req.params;
@@ -970,7 +971,7 @@ router.post('/:courseId/topic-or-week-instances', asyncHandlerWithAuth(async (re
 }));
 
 // POST /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items - Add a new content item (section) to a topic/week instance (REQUIRES AUTH)
-router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, topicOrWeekId } = req.params;
@@ -1070,7 +1071,7 @@ router.get('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/obje
 }));
 
 // POST /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives - Add a learning objective (REQUIRES AUTH)
-router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         console.log('🎯 [BACKEND] Add learning objective request received');
         console.log('🔍 [BACKEND] Request params:', req.params);
@@ -1121,7 +1122,7 @@ router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/obj
 }));
 
 // PUT /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId - Update a learning objective (REQUIRES AUTH)
-router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, topicOrWeekId, itemId, objectiveId } = req.params;
@@ -1161,7 +1162,7 @@ router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/obje
 }));
 
 // DELETE /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId - Delete a learning objective (REQUIRES AUTH)
-router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         console.log('🗑️ [BACKEND] Delete learning objective request received');
         console.log('🔍 [BACKEND] Request params:', req.params);
@@ -1272,7 +1273,7 @@ router.post('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: R
 }));
 
 // GET /api/courses/:courseId/flags - Get all flag reports for a course (REQUIRES AUTH - Instructors only)
-router.get('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.get('/:courseId/flags', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId } = req.params;
@@ -1303,7 +1304,7 @@ router.get('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: Re
 }));
 
 // GET /api/courses/:courseId/flags/with-names - Get flag reports with resolved user names (REQUIRES AUTH - Instructors only)
-router.get('/:courseId/flags/with-names', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.get('/:courseId/flags/with-names', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId } = req.params;
@@ -1338,7 +1339,7 @@ router.get('/:courseId/flags/with-names', asyncHandlerWithAuth(async (req: Reque
 }));
 
 // GET /api/courses/:courseId/flags/:flagId - Get a specific flag report (REQUIRES AUTH - Instructors only)
-router.get('/:courseId/flags/:flagId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.get('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, flagId } = req.params;
@@ -1375,7 +1376,7 @@ router.get('/:courseId/flags/:flagId', asyncHandlerWithAuth(async (req: Request,
 }));
 
 // PUT /api/courses/:courseId/flags/:flagId - Update a flag report (REQUIRES AUTH - Instructors only)
-router.put('/:courseId/flags/:flagId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.put('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, flagId } = req.params;
@@ -1442,7 +1443,7 @@ router.put('/:courseId/flags/:flagId', asyncHandlerWithAuth(async (req: Request,
 }));
 
 // PATCH /api/courses/:courseId/flags/:flagId/response - Update response for resolved flags only (REQUIRES AUTH - Instructors only)
-router.patch('/:courseId/flags/:flagId/response', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.patch('/:courseId/flags/:flagId/response', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, flagId } = req.params;
@@ -1511,7 +1512,7 @@ router.patch('/:courseId/flags/:flagId/response', asyncHandlerWithAuth(async (re
 }));
 
 // DELETE /api/courses/:courseId/flags/:flagId - Delete a flag report (REQUIRES AUTH - Instructors only)
-router.delete('/:courseId/flags/:flagId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.delete('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, flagId } = req.params;
@@ -1553,7 +1554,7 @@ router.delete('/:courseId/flags/:flagId', asyncHandlerWithAuth(async (req: Reque
 }));
 
 // DELETE /api/courses/:courseId/flags - Delete all flag reports for a course (REQUIRES AUTH - Instructors only)
-router.delete('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.delete('/:courseId/flags', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId } = req.params;
@@ -1592,7 +1593,7 @@ router.delete('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res:
 // ===========================================
 
 // POST /api/courses/:courseId/flags/create-indexes - Create database indexes for flag collection (REQUIRES AUTH - Instructors only)
-router.post('/:courseId/flags/create-indexes', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.post('/:courseId/flags/create-indexes', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId } = req.params;
@@ -1630,7 +1631,7 @@ router.post('/:courseId/flags/create-indexes', asyncHandlerWithAuth(async (req: 
 }));
 
 // GET /api/courses/:courseId/flags/validate - Validate flag collection integrity (REQUIRES AUTH - Instructors only)
-router.get('/:courseId/flags/validate', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.get('/:courseId/flags/validate', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId } = req.params;
@@ -1739,8 +1740,8 @@ router.get('/:courseId/flags/student/:userId', asyncHandlerWithAuth(async (req: 
     }
 }));
 
-// DELETE /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/materials/:materialId - Delete a material (REQUIRES AUTH)
-router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/materials/:materialId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+// DELETE /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/materials/:materialId - Delete a material (REQUIRES AUTH - Instructors only)
+router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/materials/:materialId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { courseId, topicOrWeekId, itemId, materialId } = req.params;
         
@@ -1834,7 +1835,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
 }));
 
 // DELETE /api/courses/:courseId/documents/all - Delete all RAG documents (REQUIRES AUTH - Instructors only)
-router.delete('/:courseId/documents/all', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.delete('/:courseId/documents/all', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { courseId } = req.params;
         

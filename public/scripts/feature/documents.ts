@@ -1546,6 +1546,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 newIcon.style.transform = 'rotate(180deg)';
             }
         }
+
+        // Render Feather icons for the newly replaced content (including rename icon)
+        renderFeatherIcons();
     }
 
     /**

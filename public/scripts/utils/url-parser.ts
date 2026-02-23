@@ -73,6 +73,12 @@ export function navigateToInstructorView(view: string, chatId?: string): void {
  */
 export function navigateToChat(courseId: string, chatId: string): void {
     const url = buildInstructorURL(courseId, 'chat', chatId);
+
+    // Check if we're already on this URL to prevent unnecessary navigation and infinite recursion
+    if (window.location.pathname + window.location.search === url) {
+        return;
+    }
+
     window.history.pushState({ view: 'chat', chatId }, '', url);
     window.dispatchEvent(new PopStateEvent('popstate', { state: { view: 'chat', chatId } }));
 }
