@@ -230,6 +230,44 @@
     stroke: white;
 }
 
+/* Remove All Active Users Button */
+.remove-all-users-btn {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    white-space: nowrap;
+}
+
+.remove-all-users-btn:hover:not(:disabled) {
+    background: #5a6268;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
+}
+
+.remove-all-users-btn:active {
+    transform: translateY(0);
+}
+
+.remove-all-users-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.remove-all-users-btn i {
+    width: 18px;
+    height: 18px;
+    stroke: white;
+}
+
 /* Enrollment Modal Styles */
 .enrollment-modal-content {
     padding: 0;
@@ -704,7 +742,8 @@
     
     .add-new-course-btn,
     .create-new-course-btn,
-    .download-database-btn {
+    .download-database-btn,
+    .remove-all-users-btn {
         flex: 1;
         min-width: 140px;
         justify-content: center;
@@ -770,7 +809,8 @@
     
     .add-new-course-btn,
     .create-new-course-btn,
-    .download-database-btn {
+    .download-database-btn,
+    .remove-all-users-btn {
         width: 100%;
     }
     

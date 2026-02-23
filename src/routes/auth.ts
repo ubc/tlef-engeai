@@ -12,7 +12,7 @@ import path from 'path';
 import { passport, ubcShibStrategy, isSamlAvailable } from '../middleware/passport';
 import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
 import { sanitizeGlobalUserForFrontend } from '../functions/user-utils';
-import { resolveAffiliation, FACULTY_OVERRIDE_NAMES } from '../utils/affiliation';
+import { resolveAffiliation, isFacultyOverridePuid } from '../utils/affiliation';
 
 const router = express.Router();
 
@@ -66,12 +66,12 @@ const samlCallbackHandler = [
         // Check if GlobalUser exists in active-users collection
         let globalUser = await mongoDB.findGlobalUserByPUID(puid);
 
-        // Resolve affiliation: CWL takes precedence over DB when they differ (except Charisma)
-        const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, name);
+        // Resolve affiliation: CWL takes precedence over DB when they differ (except PUID overrides)
+        const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, puid);
         const affiliation = resolution.affiliation;
 
-        if (FACULTY_OVERRIDE_NAMES.includes(name) && cwlAffiliation !== affiliation) {
-            console.log('[AUTH] 🔄 Affiliation override:', name, 'set to faculty');
+        if (isFacultyOverridePuid(puid) && cwlAffiliation !== affiliation) {
+            console.log('[AUTH] 🔄 Affiliation override: PUID', puid, 'set to faculty');
         }
 
         console.log('[AUTH] ✅ SAML authentication successful');
@@ -175,12 +175,12 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                     // Check if GlobalUser exists
                     let globalUser = await mongoDB.findGlobalUserByPUID(puid);
 
-                    // Resolve affiliation: CWL/local takes precedence over DB when they differ (except Charisma)
-                    const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, name);
+                    // Resolve affiliation: CWL/local takes precedence over DB when they differ (except PUID overrides)
+                    const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, puid);
                     const affiliation = resolution.affiliation;
 
-                    if (FACULTY_OVERRIDE_NAMES.includes(name) && cwlAffiliation !== affiliation) {
-                        console.log('[AUTH-LOCAL] 🔄 Affiliation override:', name, 'set to faculty');
+                    if (isFacultyOverridePuid(puid) && cwlAffiliation !== affiliation) {
+                        console.log('[AUTH-LOCAL] 🔄 Affiliation override: PUID', puid, 'set to faculty');
                     }
 
                     console.log('[AUTH-LOCAL] ✅ User logged in successfully');
@@ -381,8 +381,8 @@ router.get('/current-user', async (req: express.Request, res: express.Response) 
             }
 
             // Validate affiliation (log but don't fail - database is source of truth)
-            // Bypass for faculty override names (Charisma, Richard Tape)
-            if (sessionUser.affiliation !== globalUser.affiliation && !FACULTY_OVERRIDE_NAMES.includes(globalUser.name)) {
+            // Bypass for faculty override PUIDs (from env: RICHARD_TAPE_PUID, CHARISMA_RUSDIYANTO_PUID)
+            if (sessionUser.affiliation !== globalUser.affiliation && !isFacultyOverridePuid(globalUser.puid)) {
                 validationErrors.push(`Affiliation mismatch: session=${sessionUser.affiliation}, database=${globalUser.affiliation}`);
                 console.warn('[SERVER] ⚠️ Affiliation mismatch detected, using database value as source of truth');
             }
@@ -482,8 +482,8 @@ router.get('/me', async (req: express.Request, res: express.Response) => {
             }
 
             // Validate affiliation
-            // Bypass for faculty override names (Charisma, Richard Tape)
-            if (sessionUser.affiliation !== globalUser.affiliation && !FACULTY_OVERRIDE_NAMES.includes(globalUser.name)) {
+            // Bypass for faculty override PUIDs (from env: RICHARD_TAPE_PUID, CHARISMA_RUSDIYANTO_PUID)
+            if (sessionUser.affiliation !== globalUser.affiliation && !isFacultyOverridePuid(globalUser.puid)) {
                 validationErrors.push(`Affiliation mismatch: session=${sessionUser.affiliation}, database=${globalUser.affiliation}`);
             }
 

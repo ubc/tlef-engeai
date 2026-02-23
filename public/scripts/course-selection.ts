@@ -582,6 +582,15 @@ function setupCourseButtons(): void {
                 await downloadDatabase();
             });
         }
+
+        // Show and setup "Remove All Active Users" button - instructors only
+        const removeAllUsersBtn = document.getElementById('remove-all-users-btn');
+        if (removeAllUsersBtn) {
+            removeAllUsersBtn.style.display = 'flex';
+            removeAllUsersBtn.addEventListener('click', async () => {
+                await removeAllActiveUsers();
+            });
+        }
     } else if (currentUserAffiliation === 'student') {
         // For students: only show "Add New Course" button
         if (addNewCourseBtn) {
@@ -602,6 +611,65 @@ function setupCourseButtons(): void {
     // Re-render feather icons for the buttons
     if (typeof (window as any).feather !== 'undefined') {
         (window as any).feather.replace();
+    }
+}
+
+/**
+ * Remove all active users (instructors only)
+ * Clears the active-users collection and all users from every course's users collection, then redirects to logout
+ */
+async function removeAllActiveUsers(): Promise<void> {
+    const removeBtn = document.getElementById('remove-all-users-btn') as HTMLButtonElement;
+    try {
+        const confirmationMessage =
+            'Are you sure you want to remove all active users?\n\n' +
+            'This will permanently delete all user records from the platform and from every course.\n' +
+            'All users (including you) will need to log in again to recreate their records.\n\n' +
+            'This action cannot be undone.';
+
+        const result = await showConfirmModal(
+            'Remove All Active Users',
+            confirmationMessage,
+            'Remove All Users',
+            'Cancel'
+        );
+
+        // Modal returns normalized action (lowercase, spaces→hyphens), e.g. 'remove-all-users'
+        const confirmed = result.action === 'Remove All Users' || result.action === 'remove-all-users';
+        if (!confirmed) {
+            return;
+        }
+
+        if (removeBtn) {
+            removeBtn.disabled = true;
+            const span = removeBtn.querySelector('span');
+            if (span) span.textContent = 'Processing...';
+        }
+
+        const response = await fetch('/api/courses/clear-active-users', {
+            method: 'DELETE',
+            credentials: 'same-origin'
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || `Request failed (${response.status})`);
+        }
+
+        // Redirect to logout immediately (no success modal - user expects to be logged out)
+        window.location.href = '/auth/logout';
+    } catch (error) {
+        console.error('[COURSE-SELECTION] ❌ Error removing active users:', error);
+        await showErrorModal(
+            'Error',
+            error instanceof Error ? error.message : 'Failed to remove active users. Please try again.'
+        );
+        if (removeBtn) {
+            removeBtn.disabled = false;
+            const span = removeBtn.querySelector('span');
+            if (span) span.textContent = 'Remove All Active Users';
+        }
     }
 }
 

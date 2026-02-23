@@ -3,12 +3,27 @@
  *
  * Handles reconciliation between CWL-derived affiliation and database-stored affiliation.
  * When a user has dual roles (e.g. student + instructor), CWL takes precedence and
- * the database is updated to match. Charisma Rusdiyanto and Richard Tape are always
+ * the database is updated to match. Users with PUIDs listed in env vars are always
  * treated as faculty (bypass CWL affiliation).
  */
 
-/** Names that always receive faculty affiliation regardless of CWL */
-export const FACULTY_OVERRIDE_NAMES = ['Charisma Rusdiyanto', 'Richard Tape'];
+/** PUIDs that always receive faculty affiliation regardless of CWL (from env: RICHARD_TAPE_PUID, CHARISMA_RUSDIYANTO_PUID) */
+function getFacultyOverridePuids(): string[] {
+    const puids: string[] = [];
+    const richard = process.env.RICHARD_TAPE_PUID?.trim();
+    const charisma = process.env.CHARISMA_RUSDIYANTO_PUID?.trim();
+    if (richard) puids.push(richard);
+    if (charisma) puids.push(charisma);
+    return puids;
+}
+
+/**
+ * Checks if the given PUID is in the faculty override list (always treated as faculty).
+ */
+export function isFacultyOverridePuid(puid: string): boolean {
+    if (!puid || typeof puid !== 'string') return false;
+    return getFacultyOverridePuids().includes(puid.trim());
+}
 
 /** Affiliation values used in the system */
 export type AffiliationValue = 'student' | 'faculty' | 'staff' | 'empty';
@@ -24,22 +39,22 @@ export interface AffiliationResolution {
 /**
  * Resolves the effective affiliation by comparing CWL-derived affiliation with the database.
  *
- * - Charisma Rusdiyanto, Richard Tape: Always faculty (bypass CWL)
+ * - PUIDs in RICHARD_TAPE_PUID, CHARISMA_RUSDIYANTO_PUID: Always faculty (bypass CWL)
  * - Others: When DB affiliation differs from CWL, use CWL and flag for DB update.
  *   This corrects inconsistent DB data (e.g. user with student+instructor roles stored as faculty).
  *
  * @param cwlAffiliation - Affiliation from Passport (mapAffiliation of eduPersonAffiliation)
  * @param dbAffiliation - Affiliation from GlobalUser in database (undefined if new user)
- * @param name - User's full name for faculty override check
+ * @param puid - User's PUID for faculty override check (from SAML or local auth)
  * @returns Resolution with effective affiliation and whether DB needs update
  */
 export function resolveAffiliation(
     cwlAffiliation: string,
     dbAffiliation: string | undefined,
-    name: string
+    puid: string
 ): AffiliationResolution {
-    // Special overrides: these users are always faculty (bypass CWL affiliation)
-    if (FACULTY_OVERRIDE_NAMES.includes(name)) {
+    // Special overrides: these PUIDs are always faculty (bypass CWL affiliation)
+    if (isFacultyOverridePuid(puid)) {
         return {
             affiliation: 'faculty',
             needsDbUpdate: dbAffiliation !== 'faculty'

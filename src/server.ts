@@ -17,7 +17,7 @@ import sessionMiddleware from './middleware/session';
 import { passport } from './middleware/passport';
 import { EngEAI_MongoDB } from './functions/EngEAI_MongoDB';
 import { initInstructorAllowedCourses } from './functions/initInstructorAllowedCourses';
-import { resolveAffiliation, FACULTY_OVERRIDE_NAMES } from './utils/affiliation';
+import { resolveAffiliation, isFacultyOverridePuid } from './utils/affiliation';
 
 dotenv.config();
 
@@ -105,12 +105,12 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
         // Check if GlobalUser exists in active-users collection
         let globalUser = await mongoDB.findGlobalUserByPUID(puid);
 
-        // Resolve affiliation: CWL takes precedence over DB when they differ (except Charisma)
-        const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, name);
+        // Resolve affiliation: CWL takes precedence over DB when they differ (except PUID overrides)
+        const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, puid);
         const affiliation = resolution.affiliation;
 
-        if (FACULTY_OVERRIDE_NAMES.includes(name) && cwlAffiliation !== affiliation) {
-            console.log('[AUTH] 🔄 Affiliation override:', name, 'set to faculty');
+        if (isFacultyOverridePuid(puid) && cwlAffiliation !== affiliation) {
+            console.log('[AUTH] 🔄 Affiliation override: PUID', puid, 'set to faculty');
         }
 
         console.log('[AUTH] ✅ SAML authentication successful');
