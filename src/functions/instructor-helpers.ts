@@ -105,41 +105,41 @@ export async function addCharismaAndRichToCourse(
     });
 
     for (const user of charismaAndRich) {
+        // 1. Add to instructors if not present
         if (!isInstructorInArray(instructors, user.userId)) {
             instructors.push({ userId: user.userId, name: user.name });
             console.log(`[INSTRUCTOR-HELPERS] Added ${user.name} (${user.userId}) to course ${courseId}`);
+        }
 
-            // Create CourseUser in {courseName}_users
-            try {
-                const collectionNames = await mongoDB.getCollectionNames(courseName);
-                const courseUser = await mongoDB.findStudentByUserId(courseName, user.userId);
-                if (!courseUser) {
-                    const newCourseUserData: Partial<User> = {
-                        name: user.name,
-                        userId: user.userId,
-                        courseName,
-                        courseId,
-                        userOnboarding: false,
-                        affiliation: 'faculty',
-                        status: 'active',
-                        chats: []
-                    };
-                    await mongoDB.createStudent(courseName, newCourseUserData);
-                    console.log(`[INSTRUCTOR-HELPERS] Created CourseUser for ${user.name} in ${collectionNames.users}`);
-                }
-            } catch (err) {
-                console.error(`[INSTRUCTOR-HELPERS] Error creating CourseUser for ${user.name}:`, err);
+        // 2. Always ensure CourseUser exists in {courseName}_users
+        try {
+            const courseUser = await mongoDB.findStudentByUserId(courseName, user.userId);
+            if (!courseUser) {
+                const newCourseUserData: Partial<User> = {
+                    name: user.name,
+                    userId: user.userId,
+                    courseName,
+                    courseId,
+                    userOnboarding: false,
+                    affiliation: 'faculty',
+                    status: 'active',
+                    chats: []
+                };
+                await mongoDB.createStudent(courseName, newCourseUserData);
+                console.log(`[INSTRUCTOR-HELPERS] Created CourseUser for ${user.name} in course ${courseName}`);
             }
+        } catch (err) {
+            console.error(`[INSTRUCTOR-HELPERS] Error creating CourseUser for ${user.name}:`, err);
+        }
 
-            // Add course to their coursesEnrolled
-            try {
-                if (!user.coursesEnrolled.includes(courseId)) {
-                    await mongoDB.addCourseToGlobalUser(user.puid, courseId);
-                    console.log(`[INSTRUCTOR-HELPERS] Added course ${courseId} to ${user.name}'s enrolled list`);
-                }
-            } catch (err) {
-                console.error(`[INSTRUCTOR-HELPERS] Error adding course to ${user.name}'s enrolled list:`, err);
+        // 3. Always ensure course is in user's coursesEnrolled
+        try {
+            if (!user.coursesEnrolled.includes(courseId)) {
+                await mongoDB.addCourseToGlobalUser(user.puid, courseId);
+                console.log(`[INSTRUCTOR-HELPERS] Added course ${courseId} to ${user.name}'s enrolled list`);
             }
+        } catch (err) {
+            console.error(`[INSTRUCTOR-HELPERS] Error adding course to ${user.name}'s enrolled list:`, err);
         }
     }
 

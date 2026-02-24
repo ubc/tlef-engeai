@@ -34,12 +34,26 @@ function getDisplayName(item: string | InstructorInfo): string {
     return item?.userId || 'Unknown';
 }
 
+/** Instructor names to exclude from display (e.g. dev team members) */
+const EXCLUDED_INSTRUCTOR_NAMES = ['Charisma Rusdiyanto', 'Richard Tape'];
+
 /**
  * Formats an array of instructors/TAs as a comma-separated string for display
  */
 function formatNamesForDisplay(arr: string[] | InstructorInfo[]): string {
     if (!arr || arr.length === 0) return 'None';
     return arr.map(item => getDisplayName(item)).join(', ');
+}
+
+/**
+ * Formats instructors for display, excluding dev team members
+ */
+function formatInstructorsForDisplay(arr: string[] | InstructorInfo[]): string {
+    if (!arr || arr.length === 0) return 'None';
+    const names = arr
+        .map(item => getDisplayName(item))
+        .filter(name => !EXCLUDED_INSTRUCTOR_NAMES.includes(name));
+    return names.length > 0 ? names.join(', ') : 'None';
 }
 
 /**
@@ -79,7 +93,7 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
         // Instructors (read-only, empty if none)
         const instructorsEl = document.getElementById('courseInfoInstructors');
         if (instructorsEl) {
-            instructorsEl.textContent = formatNamesForDisplay(currentClass.instructors || []);
+            instructorsEl.textContent = formatInstructorsForDisplay(currentClass.instructors || []);
         }
 
         // Teaching Assistants (read-only, empty if none)

@@ -5,7 +5,9 @@
  */
 
 import { GlobalUser } from '../../src/functions/types.js';
-import { showConfirmModal, showErrorModal, showSuccessModal, ModalOverlay } from './modal-overlay.js';
+import { showConfirmModal, showErrorModal, showSuccessModal, showInactivityWarningModal, ModalOverlay } from './modal-overlay.js';
+import { inactivityTracker } from './services/InactivityTracker.js';
+import { authService } from './services/AuthService.js';
 
 // Store current user's affiliation to check if they're an instructor
 let currentUserAffiliation: 'student' | 'faculty' | null = null;
@@ -128,6 +130,9 @@ async function loadCourses(): Promise<void> {
     }
 }
 
+/** Instructor names to exclude from display (e.g. dev team members) */
+const EXCLUDED_INSTRUCTOR_NAMES = ['Charisma Rusdiyanto', 'Richard Tape'];
+
 /**
  * Create HTML for a Slack-style workspace row
  */
@@ -141,7 +146,7 @@ function createCourseCard(course: any): string {
             return inst.name; // New format - show name
         }
         return inst.userId || 'Unknown';
-    }).join(', ') || 'No instructors';
+    }).filter((name: string) => !EXCLUDED_INSTRUCTOR_NAMES.includes(name)).join(', ') || 'No instructors';
     
     return `
         <div class="workspace-row" data-course-id="${course.id}">
@@ -438,6 +443,48 @@ async function removeCourse(courseId: string, courseName: string): Promise<void>
 */
 
 /**
+ * Initialize inactivity tracking for course selection page
+ * Shows countdown warning modal at 4 min idle, logs out at 5 min
+ */
+function initializeInactivityTracking(): void {
+    inactivityTracker.on('warning', async (data: any) => {
+        inactivityTracker.pause();
+
+        const remainingSeconds = Math.floor((data.remainingTimeUntilLogout || 60000) / 1000);
+        const result = await showInactivityWarningModal(remainingSeconds, () => {
+            inactivityTracker.reset();
+        });
+
+        inactivityTracker.resume();
+
+        if (result.action === 'timeout') {
+            inactivityTracker.stop();
+            authService.logout();
+            return;
+        }
+    });
+
+    inactivityTracker.on('logout', async () => {
+        inactivityTracker.stop();
+
+        try {
+            await showConfirmModal(
+                'Session Expired',
+                'You have been inactive for too long. You will be logged out now.',
+                'OK',
+                ''
+            );
+        } catch (error) {
+            console.warn('[COURSE-SELECTION] ⚠️ Could not show logout modal:', error);
+        }
+
+        authService.logout();
+    });
+
+    inactivityTracker.start();
+}
+
+/**
  * Handle logout button click
  */
 function setupLogoutButton(): void {
@@ -573,24 +620,6 @@ function setupCourseButtons(): void {
                 await createNewCourseForInstructor();
             });
         }
-
-        // Show and setup "Download Database" button - instructors only
-        const downloadDatabaseBtn = document.getElementById('download-database-btn');
-        if (downloadDatabaseBtn) {
-            downloadDatabaseBtn.style.display = 'flex';
-            downloadDatabaseBtn.addEventListener('click', async () => {
-                await downloadDatabase();
-            });
-        }
-
-        // Show and setup "Remove All Active Users" button - instructors only
-        const removeAllUsersBtn = document.getElementById('remove-all-users-btn');
-        if (removeAllUsersBtn) {
-            removeAllUsersBtn.style.display = 'flex';
-            removeAllUsersBtn.addEventListener('click', async () => {
-                await removeAllActiveUsers();
-            });
-        }
     } else if (currentUserAffiliation === 'student') {
         // For students: only show "Add New Course" button
         if (addNewCourseBtn) {
@@ -611,119 +640,6 @@ function setupCourseButtons(): void {
     // Re-render feather icons for the buttons
     if (typeof (window as any).feather !== 'undefined') {
         (window as any).feather.replace();
-    }
-}
-
-/**
- * Remove all active users (instructors only)
- * Clears the active-users collection and all users from every course's users collection, then redirects to logout
- */
-async function removeAllActiveUsers(): Promise<void> {
-    const removeBtn = document.getElementById('remove-all-users-btn') as HTMLButtonElement;
-    try {
-        const confirmationMessage =
-            'Are you sure you want to remove all active users?\n\n' +
-            'This will permanently delete all user records from the platform and from every course.\n' +
-            'All users (including you) will need to log in again to recreate their records.\n\n' +
-            'This action cannot be undone.';
-
-        const result = await showConfirmModal(
-            'Remove All Active Users',
-            confirmationMessage,
-            'Remove All Users',
-            'Cancel'
-        );
-
-        // Modal returns normalized action (lowercase, spaces→hyphens), e.g. 'remove-all-users'
-        const confirmed = result.action === 'Remove All Users' || result.action === 'remove-all-users';
-        if (!confirmed) {
-            return;
-        }
-
-        if (removeBtn) {
-            removeBtn.disabled = true;
-            const span = removeBtn.querySelector('span');
-            if (span) span.textContent = 'Processing...';
-        }
-
-        const response = await fetch('/api/courses/clear-active-users', {
-            method: 'DELETE',
-            credentials: 'same-origin'
-        });
-
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-            throw new Error(data.error || `Request failed (${response.status})`);
-        }
-
-        // Redirect to logout immediately (no success modal - user expects to be logged out)
-        window.location.href = '/auth/logout';
-    } catch (error) {
-        console.error('[COURSE-SELECTION] ❌ Error removing active users:', error);
-        await showErrorModal(
-            'Error',
-            error instanceof Error ? error.message : 'Failed to remove active users. Please try again.'
-        );
-        if (removeBtn) {
-            removeBtn.disabled = false;
-            const span = removeBtn.querySelector('span');
-            if (span) span.textContent = 'Remove All Active Users';
-        }
-    }
-}
-
-/**
- * Download database export (instructors only)
- * Fetches the full database export from the API and triggers a file download
- */
-async function downloadDatabase(): Promise<void> {
-    const downloadBtn = document.getElementById('download-database-btn') as HTMLButtonElement;
-    try {
-        if (downloadBtn) {
-            downloadBtn.disabled = true;
-            const span = downloadBtn.querySelector('span');
-            if (span) span.textContent = 'Downloading...';
-        }
-
-        const response = await fetch('/api/courses/export/database', {
-            method: 'GET',
-            credentials: 'same-origin'
-        });
-
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error || `Download failed (${response.status})`);
-        }
-
-        const blob = await response.blob();
-        const contentDisposition = response.headers.get('Content-Disposition');
-        let filename = `database-export-${new Date().toISOString().slice(0, 10)}.txt`;
-        if (contentDisposition) {
-            const match = contentDisposition.match(/filename="([^"]+)"/);
-            if (match) filename = match[1];
-        }
-
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    } catch (error) {
-        console.error('[COURSE-SELECTION] ❌ Error downloading database:', error);
-        await showErrorModal(
-            'Download Error',
-            error instanceof Error ? error.message : 'Failed to download database. Please try again.'
-        );
-    } finally {
-        if (downloadBtn) {
-            downloadBtn.disabled = false;
-            const span = downloadBtn.querySelector('span');
-            if (span) span.textContent = 'Download Database';
-        }
     }
 }
 
@@ -1031,6 +947,7 @@ function hideCodeError(): void {
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
     initializeCourseSelection();
+    initializeInactivityTracking();
     setupRetryButton();
     setupLogoutButton();
 });
