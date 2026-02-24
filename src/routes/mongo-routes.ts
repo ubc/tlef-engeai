@@ -39,7 +39,7 @@ import { IDGenerator } from '../functions/unique-id-generator';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import dotenv from 'dotenv';
 import { RAGApp } from '../functions/rag-app';
-import { namesMatch } from '../utils/nameMatching';
+import { addCharismaAndRichToCourse } from '../functions/instructor-helpers';
 
 const router = express.Router();
 export default router;
@@ -467,6 +467,22 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
             // Continue even if enrollment fails - course is already created
         }
 
+        // Always add Charisma and Rich when a course is initiated (any creator)
+        try {
+            const courseName = courseData.courseName;
+            const instructorsWithCR = await addCharismaAndRichToCourse(
+                instance,
+                id,
+                courseName,
+                courseData.instructors
+            );
+            await instance.updateActiveCourse(id, { instructors: instructorsWithCR });
+            courseData = { ...courseData, instructors: instructorsWithCR };
+            console.log(`[CREATE-COURSE] Added Charisma and Rich to course ${id} (creator: ${creatorName})`);
+        } catch (crError) {
+            console.error(`[CREATE-COURSE] Error adding Charisma and Rich to course:`, crError);
+        }
+
         // Since activeCourse is the correct type, we can return it directly
         // This now includes the generated courseCode
         const activeClassData: activeCourse = courseData as activeCourse;
@@ -510,14 +526,16 @@ router.get('/allowed-for-instructor', requireInstructorGlobal, asyncHandlerWithA
         return res.status(403).json({ success: false, error: 'Instructors only' });
     }
     const instance = await EngEAI_MongoDB.getInstance();
-    const coll = instance.db.collection<{ instructor: string; allowed_courses: string[] }>('instructor-allowed-courses');
+    const coll = instance.db.collection<{ puid: string; allowed_courses: string[] }>('instructor-allowed-courses');
     const docs = await coll.find({}).toArray();
-    const match = docs.find((d) => namesMatch(d.instructor, globalUser.name));
+    const match = docs.find((d) => d.puid === globalUser.puid);
     const allowedCourses = match ? (match.allowed_courses || []) : [];
     return res.status(200).json({ success: true, allowedCourses });
 }));
 
 // GET /api/courses/export/database - Export entire database hierarchically (REQUIRES AUTH - Instructors only)
+// COMMENTED OUT - feature removed
+/*
 router.get('/export/database', requireInstructorGlobal, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const mongoDB = await EngEAI_MongoDB.getInstance();
@@ -589,8 +607,11 @@ router.get('/export/database', requireInstructorGlobal, asyncHandlerWithAuth(asy
         });
     }
 }));
+*/
 
 // DELETE /api/courses/clear-active-users - Remove all users from active-users AND from every course's users collection (REQUIRES AUTH - Instructors only)
+// COMMENTED OUT - feature removed
+/*
 router.delete('/clear-active-users', requireInstructorGlobal, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const mongoDB = await EngEAI_MongoDB.getInstance();
@@ -633,6 +654,7 @@ router.delete('/clear-active-users', requireInstructorGlobal, asyncHandlerWithAu
         });
     }
 }));
+*/
 
 // GET /api/courses - Get all courses or course by name (query param)
 // GET /api/courses?name=CHBE241 - Get course by name
