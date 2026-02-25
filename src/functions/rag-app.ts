@@ -353,10 +353,23 @@ export class RAGApp {
                 throw new Error('Material or qdrantId not found');
             }
 
-            // Delete from Qdrant using the qdrantId
-            await this.rag.deleteDocumentsByIds([material.qdrantId]);
+            // Build list of chunk IDs to delete (material may have multiple chunks in Qdrant)
+            let chunkIdsToDelete: string[] = [];
+            try {
+                const chunksByMetadata = await this.rag.getDocumentsByMetadata({ id: materialId });
+                if (chunksByMetadata && chunksByMetadata.length > 0) {
+                    chunkIdsToDelete = chunksByMetadata.map((doc: any) => doc.id);
+                }
+            } catch (metadataError) {
+                this.logger.warn('Metadata lookup failed, falling back to qdrantId:', { error: metadataError });
+            }
+            if (chunkIdsToDelete.length === 0) {
+                chunkIdsToDelete = [material.qdrantId];
+            }
 
-            this.logger.info(`Deleted document from Qdrant: ${material.qdrantId}`);
+            await this.rag.deleteDocumentsByIds(chunkIdsToDelete);
+
+            this.logger.info(`Deleted ${chunkIdsToDelete.length} chunk(s) from Qdrant for material ${materialId}`);
             return true;
         } catch (error) {
             this.logger.error('Failed to delete document from Qdrant:', error as any);

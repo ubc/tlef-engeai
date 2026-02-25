@@ -2190,6 +2190,83 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/published', asyn
     }
 }));
 
+// DELETE /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId - Delete a topic/week instance (REQUIRES AUTH - Instructors only)
+router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, topicOrWeekId } = req.params;
+
+        if (!courseId || !topicOrWeekId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Course ID and Topic/Week Instance ID are required'
+            });
+        }
+
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        const instances: TopicOrWeekInstance[] = (course.topicOrWeekInstances as unknown as TopicOrWeekInstance[]) || [];
+        if (instances.length <= 1) {
+            return res.status(400).json({
+                success: false,
+                error: 'Cannot delete the last topic/week instance. At least one must remain.'
+            });
+        }
+
+        const topicOrWeekInstance = instances.find((d: TopicOrWeekInstance) => d.id === topicOrWeekId);
+        if (!topicOrWeekInstance) {
+            return res.status(404).json({
+                success: false,
+                error: 'Topic/Week instance not found'
+            });
+        }
+
+        // RAG cleanup: delete documents for all materials in this instance
+        const ragPromises: Promise<unknown>[] = [];
+        try {
+            const ragApp = await RAGApp.getInstance();
+            topicOrWeekInstance.items?.forEach((item: TopicOrWeekItem) => {
+                (item.additionalMaterials || []).forEach((material: any) => {
+                    if (material.id && material.qdrantId) {
+                        ragPromises.push(ragApp.deleteDocument(material.id, courseId, topicOrWeekId, item.id));
+                    }
+                });
+            });
+            const results = await Promise.allSettled(ragPromises);
+            results.forEach((r, i) => {
+                if (r.status === 'rejected') {
+                    console.warn(`RAG cleanup failed for material ${i}:`, r.reason);
+                }
+            });
+        } catch (ragError) {
+            console.warn('RAG cleanup failed (continuing with deletion):', ragError);
+        }
+
+        const filteredInstances = instances.filter((i: TopicOrWeekInstance) => i.id !== topicOrWeekId);
+        await instance.updateActiveCourse(courseId, { topicOrWeekInstances: filteredInstances } as any);
+
+        console.log(`✅ Topic/Week instance ${topicOrWeekId} deleted successfully`);
+
+        res.status(200).json({
+            success: true,
+            data: { deletedTopicOrWeekId: topicOrWeekId },
+            message: 'Topic/Week instance deleted successfully'
+        });
+    } catch (error) {
+        console.error('Error deleting topic/week instance:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to delete topic/week instance'
+        });
+    }
+}));
+
 // PATCH /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/title - Update item title (REQUIRES AUTH)
 router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -2324,6 +2401,25 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
                 success: false,
                 error: 'Content item not found'
             });
+        }
+        
+        // RAG cleanup: delete documents for all materials in this item
+        const ragPromises: Promise<unknown>[] = [];
+        try {
+            const ragApp = await RAGApp.getInstance();
+            (item.additionalMaterials || []).forEach((material: any) => {
+                if (material.id && material.qdrantId) {
+                    ragPromises.push(ragApp.deleteDocument(material.id, courseId, topicOrWeekId, itemId));
+                }
+            });
+            const results = await Promise.allSettled(ragPromises);
+            results.forEach((r, i) => {
+                if (r.status === 'rejected') {
+                    console.warn(`RAG cleanup failed for material ${i}:`, r.reason);
+                }
+            });
+        } catch (ragError) {
+            console.warn('RAG cleanup failed (continuing with deletion):', ragError);
         }
         
         // Remove the item from the topic/week instance
