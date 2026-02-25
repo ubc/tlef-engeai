@@ -40,7 +40,7 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction): vo
         }
         
         // For page routes, redirect to login
-        res.redirect('/auth/login');
+        res.redirect('/');
         return;
     }
 };
