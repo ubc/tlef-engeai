@@ -26,7 +26,7 @@ export const asyncHandlerWithAuth = (fn: Function) => {
             }
             
             // For page routes, redirect to login
-            res.redirect('/auth/login');
+            res.redirect('/');
             return;
         }
         

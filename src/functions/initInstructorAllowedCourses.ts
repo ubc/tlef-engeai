@@ -6,7 +6,7 @@
  * Also ensures Charisma and Rich are in all initiated courses.
  *
  * @author: EngE-AI Team
- * @since: 2025-02-18
+ * @since: 2026-02-18
  */
 
 import { EngEAI_MongoDB } from './EngEAI_MongoDB';

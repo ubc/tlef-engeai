@@ -344,9 +344,21 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             }
         });
 
+        // Delete instance badge (beside toggle switch)
+        const deleteInstanceBadge = document.createElement('div');
+        deleteInstanceBadge.className = 'content-status status-delete-instance';
+        deleteInstanceBadge.setAttribute('data-action', 'delete-instance');
+        deleteInstanceBadge.setAttribute('data-topic-or-week-instance-id', instance_topicOrWeek.id);
+        deleteInstanceBadge.textContent = 'Delete';
+        deleteInstanceBadge.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteTopicOrWeekInstance(instance_topicOrWeek);
+        });
+
         right.appendChild(addSessionBadge);
         right.appendChild(statusBadge);
         right.appendChild(toggleWrap);
+        right.appendChild(deleteInstanceBadge);
         right.appendChild(expandIcon);
 
         // append the left and right sides to the header
@@ -1836,6 +1848,65 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             console.error('Error deleting section:', error);
             const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
             await showErrorModal('Error', `Failed to delete section: ${errorMessage}`);
+        }
+    }
+
+    /**
+     * Delete a topic/week instance (week or topic) after confirmation
+     * @param instance_topicOrWeek the topic/week instance to delete
+     */
+    async function deleteTopicOrWeekInstance(instance_topicOrWeek: TopicOrWeekInstance) {
+        const divisionLabel = currentClass.frameType === 'byWeek' ? 'Week' : 'Topic';
+        const result = await showDeleteConfirmationModal(divisionLabel, instance_topicOrWeek.title);
+
+        if (result.action !== 'delete') {
+            return;
+        }
+
+        if (!courseId) {
+            await showErrorModal('Error', 'Course ID is missing. Cannot delete topic/week instance.');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${instance_topicOrWeek.id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'same-origin'
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `Failed to delete ${divisionLabel.toLowerCase()}: ${response.statusText}`);
+            }
+
+            const resultData = await response.json();
+
+            if (resultData.success) {
+                // Remove from local state
+                courseData = courseData.filter(d => d.id !== instance_topicOrWeek.id);
+                currentClass.topicOrWeekInstances = courseData;
+                currentClass.tilesNumber = courseData.length;
+
+                // Remove from DOM
+                const header = document.querySelector(`.topic-or-week-header[data-topic-or-week-instance="${instance_topicOrWeek.id}"]`);
+                const wrapper = header?.closest('.topic-or-week-instance');
+                if (wrapper?.parentElement) {
+                    wrapper.parentElement.removeChild(wrapper);
+                }
+
+                setTimeout(async () => {
+                    await showSuccessModal('Success', `${divisionLabel} deleted successfully.`);
+                }, 100);
+            } else {
+                throw new Error(resultData.error || `Failed to delete ${divisionLabel.toLowerCase()}`);
+            }
+        } catch (error) {
+            console.error('Error deleting topic/week instance:', error);
+            const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+            await showErrorModal('Error', `Failed to delete ${divisionLabel.toLowerCase()}: ${errorMessage}`);
         }
     }
 

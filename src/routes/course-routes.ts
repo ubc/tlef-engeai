@@ -26,7 +26,7 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
         const user = (req as any).user;
         
         if (!user) {
-            return res.status(401).redirect('/auth/login');
+            return res.status(401).redirect('/');
         }
         
         // Get course from database
@@ -42,7 +42,7 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
         // Check if user has access
         const globalUser = await mongoDB.findGlobalUserByPUID(user.puid);
         if (!globalUser) {
-            return res.status(401).redirect('/auth/login');
+            return res.status(401).redirect('/');
         }
         
         // Verify user is enrolled or is instructor
@@ -139,7 +139,7 @@ async function validateInstructorAuth(req: Request, res: Response, next: express
         const user = (req as any).user;
         
         if (!user) {
-            return res.status(401).redirect('/auth/login');
+            return res.status(401).redirect('/');
         }
         
         // Check if user is faculty
@@ -147,7 +147,7 @@ async function validateInstructorAuth(req: Request, res: Response, next: express
         const globalUser = await mongoDB.findGlobalUserByPUID(user.puid);
         
         if (!globalUser) {
-            return res.status(401).redirect('/auth/login');
+            return res.status(401).redirect('/');
         }
         
         if (globalUser.affiliation !== 'faculty') {
