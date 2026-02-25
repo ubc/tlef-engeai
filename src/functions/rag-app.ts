@@ -336,9 +336,9 @@ export class RAGApp {
      * @param courseId - The course ID
      * @param topicOrWeekId - The topic/week instance ID
      * @param itemId - The item ID
-     * @returns The result of the delete
+     * @returns The result of the delete with materialName and chunksDeleted
      */
-    async deleteDocument(materialId: string, courseId: string, topicOrWeekId: string, itemId: string): Promise<boolean> {
+    async deleteDocument(materialId: string, courseId: string, topicOrWeekId: string, itemId: string): Promise<{ deleted: boolean; materialName: string; chunksDeleted: number }> {
         try {
             // Get course to find the material and its qdrantId
             const course = await this.mongoDB.getActiveCourse(courseId);
@@ -385,7 +385,11 @@ export class RAGApp {
                 materialName: material.name,
                 chunksDeleted: chunkIdsToDelete.length,
             });
-            return true;
+            return {
+                deleted: true,
+                materialName: material.name || 'Unknown',
+                chunksDeleted: chunkIdsToDelete.length
+            };
         } catch (error) {
             this.logger.error('[RAG DELETE] AFTER: Failed to delete document from Qdrant', {
                 materialId,
@@ -447,6 +451,61 @@ export class RAGApp {
                 deletedCount: qdrantIds.length,
             });
             return { deletedCount: qdrantIds.length, errors };
+        } catch (error) {
+            this.logger.error('Failed to delete all documents from Qdrant:', error as any);
+            throw error;
+        }
+    }
+
+    /**
+     * Delete all documents for a course from Qdrant with per-document breakdown
+     * Iterates over each material and calls deleteDocument to get accurate chunk counts
+     *
+     * @param courseId - The course ID
+     * @returns Per-document breakdown and total chunks deleted
+     */
+    async deleteAllDocumentsForCourseWithBreakdown(courseId: string): Promise<{
+        deletedDocuments: { name: string; chunksDeleted: number }[];
+        totalChunksDeleted: number;
+        errors: string[];
+    }> {
+        const deletedDocuments: { name: string; chunksDeleted: number }[] = [];
+        const errors: string[] = [];
+        let totalChunksDeleted = 0;
+
+        try {
+            const course = await this.mongoDB.getActiveCourse(courseId);
+            if (!course) {
+                throw new Error('Course not found');
+            }
+
+            for (const instance_topicOrWeek of course.topicOrWeekInstances || []) {
+                for (const item of instance_topicOrWeek.items || []) {
+                    for (const material of item.additionalMaterials || []) {
+                        if (!material.qdrantId) continue;
+
+                        try {
+                            const result = await this.deleteDocument(
+                                material.id,
+                                courseId,
+                                instance_topicOrWeek.id,
+                                item.id
+                            );
+                            deletedDocuments.push({
+                                name: result.materialName,
+                                chunksDeleted: result.chunksDeleted
+                            });
+                            totalChunksDeleted += result.chunksDeleted;
+                        } catch (docError) {
+                            const errMsg = `Failed to delete material ${material.name || material.id}: ${docError instanceof Error ? docError.message : String(docError)}`;
+                            errors.push(errMsg);
+                            this.logger.warn(errMsg);
+                        }
+                    }
+                }
+            }
+
+            return { deletedDocuments, totalChunksDeleted, errors };
         } catch (error) {
             this.logger.error('Failed to delete all documents from Qdrant:', error as any);
             throw error;

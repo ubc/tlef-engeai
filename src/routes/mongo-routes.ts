@@ -1925,11 +1925,12 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
             });
         }
         
-        // Delete from Qdrant first if material has qdrantId
+        let qdrantResult: { materialName: string; chunksDeleted: number } | null = null;
         if (material.qdrantId) {
             try {
                 const ragApp = await RAGApp.getInstance();
-                await ragApp.deleteDocument(materialId, courseId, topicOrWeekId, itemId);
+                const deleteResult = await ragApp.deleteDocument(materialId, courseId, topicOrWeekId, itemId);
+                qdrantResult = { materialName: deleteResult.materialName, chunksDeleted: deleteResult.chunksDeleted };
                 console.log(`✅ Material ${materialId} deleted from Qdrant`);
             } catch (qdrantError) {
                 console.error('Failed to delete from Qdrant:', qdrantError);
@@ -1960,7 +1961,9 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
             message: 'Material deleted successfully',
             data: {
                 materialId: materialId,
-                deleted: true
+                deleted: true,
+                materialName: qdrantResult?.materialName ?? material.name,
+                chunksDeleted: qdrantResult?.chunksDeleted ?? 0
             }
         });
         
@@ -2228,9 +2231,11 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId', requireInstru
         }
 
         // RAG cleanup: delete documents for all materials in this instance
-        const ragPromises: Promise<unknown>[] = [];
+        const deletedDocuments: { name: string; chunksDeleted: number }[] = [];
+        let totalChunksDeleted = 0;
         try {
             const ragApp = await RAGApp.getInstance();
+            const ragPromises: Promise<{ deleted: boolean; materialName: string; chunksDeleted: number }>[] = [];
             topicOrWeekInstance.items?.forEach((item: TopicOrWeekItem) => {
                 (item.additionalMaterials || []).forEach((material: any) => {
                     if (material.id && material.qdrantId) {
@@ -2240,7 +2245,10 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId', requireInstru
             });
             const results = await Promise.allSettled(ragPromises);
             results.forEach((r, i) => {
-                if (r.status === 'rejected') {
+                if (r.status === 'fulfilled') {
+                    deletedDocuments.push({ name: r.value.materialName, chunksDeleted: r.value.chunksDeleted });
+                    totalChunksDeleted += r.value.chunksDeleted;
+                } else {
                     console.warn(`RAG cleanup failed for material ${i}:`, r.reason);
                 }
             });
@@ -2255,7 +2263,11 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId', requireInstru
 
         res.status(200).json({
             success: true,
-            data: { deletedTopicOrWeekId: topicOrWeekId },
+            data: {
+                deletedTopicOrWeekId: topicOrWeekId,
+                deletedDocuments,
+                totalChunksDeleted
+            },
             message: 'Topic/Week instance deleted successfully'
         });
     } catch (error) {
@@ -2404,17 +2416,19 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
         }
         
         // RAG cleanup: delete documents for all materials in this item
-        const ragPromises: Promise<unknown>[] = [];
+        const deletedDocuments: { name: string; chunksDeleted: number }[] = [];
+        let totalChunksDeleted = 0;
         try {
             const ragApp = await RAGApp.getInstance();
-            (item.additionalMaterials || []).forEach((material: any) => {
-                if (material.id && material.qdrantId) {
-                    ragPromises.push(ragApp.deleteDocument(material.id, courseId, topicOrWeekId, itemId));
-                }
-            });
+            const ragPromises = (item.additionalMaterials || [])
+                .filter((material: any) => material.id && material.qdrantId)
+                .map((material: any) => ragApp.deleteDocument(material.id, courseId, topicOrWeekId, itemId));
             const results = await Promise.allSettled(ragPromises);
             results.forEach((r, i) => {
-                if (r.status === 'rejected') {
+                if (r.status === 'fulfilled') {
+                    deletedDocuments.push({ name: r.value.materialName, chunksDeleted: r.value.chunksDeleted });
+                    totalChunksDeleted += r.value.chunksDeleted;
+                } else {
                     console.warn(`RAG cleanup failed for material ${i}:`, r.reason);
                 }
             });
@@ -2438,7 +2452,9 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
             data: {
                 deletedItemId: itemId,
                 topicOrWeekId: topicOrWeekId,
-                remainingItems: topicOrWeekInstance.items.length
+                remainingItems: topicOrWeekInstance.items.length,
+                deletedDocuments,
+                totalChunksDeleted
             },
             message: 'Content item deleted successfully'
         });
