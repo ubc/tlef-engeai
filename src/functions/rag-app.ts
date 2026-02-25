@@ -367,12 +367,33 @@ export class RAGApp {
                 chunkIdsToDelete = [material.qdrantId];
             }
 
+            // BEFORE: Log deletion intent
+            this.logger.info('[RAG DELETE] BEFORE: About to delete document from Qdrant', {
+                materialId,
+                materialName: material.name,
+                courseId,
+                topicOrWeekId,
+                itemId,
+                chunkCount: chunkIdsToDelete.length,
+            });
+
             await this.rag.deleteDocumentsByIds(chunkIdsToDelete);
 
-            this.logger.info(`Deleted ${chunkIdsToDelete.length} chunk(s) from Qdrant for material ${materialId}`);
+            // AFTER: Log successful deletion
+            this.logger.info('[RAG DELETE] AFTER: Successfully deleted document from Qdrant', {
+                materialId,
+                materialName: material.name,
+                chunksDeleted: chunkIdsToDelete.length,
+            });
             return true;
         } catch (error) {
-            this.logger.error('Failed to delete document from Qdrant:', error as any);
+            this.logger.error('[RAG DELETE] AFTER: Failed to delete document from Qdrant', {
+                materialId,
+                courseId,
+                topicOrWeekId,
+                itemId,
+                error: error as any,
+            });
             throw error;
         }
     }
@@ -409,10 +430,22 @@ export class RAGApp {
                 return { deletedCount: 0, errors: [] };
             }
 
+            // BEFORE: Log bulk deletion intent
+            this.logger.info('[RAG DELETE] BEFORE: About to delete all documents for course from Qdrant', {
+                courseId,
+                courseName: course.courseName,
+                documentCount: qdrantIds.length,
+            });
+
             // Use bulk delete for efficiency
             await this.rag.deleteDocumentsByIds(qdrantIds);
 
-            this.logger.info(`Deleted ${qdrantIds.length} documents from Qdrant`);
+            // AFTER: Log successful bulk deletion
+            this.logger.info('[RAG DELETE] AFTER: Successfully deleted all documents for course from Qdrant', {
+                courseId,
+                courseName: course.courseName,
+                deletedCount: qdrantIds.length,
+            });
             return { deletedCount: qdrantIds.length, errors };
         } catch (error) {
             this.logger.error('Failed to delete all documents from Qdrant:', error as any);
@@ -466,8 +499,22 @@ export class RAGApp {
             // Method 1: Delete documents by IDs from Qdrant
             this.logger.info('🗑️  Attempting to delete documents by IDs from Qdrant...');
             try {
+                // BEFORE: Log wipe intent
+                this.logger.info('[RAG DELETE] BEFORE: About to wipe RAG database for course', {
+                    courseId,
+                    courseName: course.courseName,
+                    documentCount: qdrantIds.length,
+                });
+
                 this.logger.info(`📋 Deleting ${qdrantIds.length} document IDs from Qdrant`);
                 await this.rag.deleteDocumentsByIds(qdrantIds);
+
+                // AFTER: Log successful wipe
+                this.logger.info('[RAG DELETE] AFTER: Successfully wiped RAG database for course', {
+                    courseId,
+                    courseName: course.courseName,
+                    deletedCount: qdrantIds.length,
+                });
                 this.logger.info('✅ Documents deleted from Qdrant successfully');
 
                 // Clear all AdditionalMaterial from MongoDB for this course
@@ -489,8 +536,18 @@ export class RAGApp {
                     const courseDocumentIds = courseDocuments.map(doc => doc.id);
 
                     if (courseDocumentIds.length > 0) {
+                        this.logger.info('[RAG DELETE] BEFORE: About to wipe RAG database (metadata fallback)', {
+                            courseId,
+                            courseName: course.courseName,
+                            documentCount: courseDocumentIds.length,
+                        });
                         this.logger.info(`📋 Found ${courseDocumentIds.length} documents by course metadata`);
                         await this.rag.deleteDocumentsByIds(courseDocumentIds);
+                        this.logger.info('[RAG DELETE] AFTER: Successfully wiped RAG database (metadata fallback)', {
+                            courseId,
+                            courseName: course.courseName,
+                            deletedCount: courseDocumentIds.length,
+                        });
                         this.logger.info('✅ Documents deleted by course metadata successfully');
 
                         // Clear MongoDB materials
