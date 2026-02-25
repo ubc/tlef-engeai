@@ -320,16 +320,20 @@ router.delete('/wipe-all', requireInstructorForCourseAPI(['query', 'body', 'sess
         }
 
         const ragApp = await RAGApp.getInstance();
-        const result = await ragApp.WipeRAGDatabase(courseId);
+        const result = await ragApp.deleteAllDocumentsForCourseWithBreakdown(courseId);
 
-        console.log('🔍 BACKEND WIPE ALL DOCUMENTS - Result:', { courseId, deletedCount: result.deletedCount, errors: result.errors });
+        // Clear MongoDB additional materials
+        await ragApp.mongoDBInstance.clearAllAdditionalMaterials(courseId);
+
+        console.log('🔍 BACKEND WIPE ALL DOCUMENTS - Result:', { courseId, totalChunksDeleted: result.totalChunksDeleted, deletedDocuments: result.deletedDocuments.length, errors: result.errors });
 
         res.status(200).json({
             status: 200,
             message: `All documents wiped from RAG database for course ${courseId} successfully`,
             data: {
                 courseId: courseId,
-                deletedCount: result.deletedCount,
+                deletedDocuments: result.deletedDocuments,
+                totalChunksDeleted: result.totalChunksDeleted,
                 errors: result.errors
             }
         });

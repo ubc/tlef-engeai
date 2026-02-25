@@ -27,7 +27,7 @@ import {
 } from '../../../src/functions/types';
 import { uploadRAGContent } from '../services/RAGService.js';
 import { DocumentUploadModule, UploadResult } from '../services/DocumentUploadModule.js';
-import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, closeModal } from '../modal-overlay.js';
+import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal } from '../modal-overlay.js';
 import { showToast } from '../toast-notification.js';
 import { renderFeatherIcons } from '../functions/api.js';
 
@@ -1839,7 +1839,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 
                 // Show success message (add small delay to ensure previous modal is fully closed)
                 setTimeout(async () => {
-                    await showSuccessModal('Success', 'Section deleted successfully.');
+                    const deletedDocuments = resultData.data?.deletedDocuments;
+                    const totalChunksDeleted = resultData.data?.totalChunksDeleted;
+                    if (Array.isArray(deletedDocuments) && typeof totalChunksDeleted === 'number') {
+                        await showDeletionSuccessModal(deletedDocuments, totalChunksDeleted);
+                    } else {
+                        await showSuccessModal('Success', 'Section deleted successfully.');
+                    }
                 }, 100);
             } else {
                 throw new Error(resultData.error || 'Failed to delete section');
@@ -1898,7 +1904,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 }
 
                 setTimeout(async () => {
-                    await showSuccessModal('Success', `${divisionLabel} deleted successfully.`);
+                    const deletedDocuments = resultData.data?.deletedDocuments;
+                    const totalChunksDeleted = resultData.data?.totalChunksDeleted;
+                    if (Array.isArray(deletedDocuments) && typeof totalChunksDeleted === 'number') {
+                        await showDeletionSuccessModal(deletedDocuments, totalChunksDeleted);
+                    } else {
+                        await showSuccessModal('Success', `${divisionLabel} deleted successfully.`);
+                    }
                 }, 100);
             } else {
                 throw new Error(resultData.error || `Failed to delete ${divisionLabel.toLowerCase()}`);
@@ -2400,6 +2412,11 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 content.additionalMaterials = content.additionalMaterials.filter(m => m.id !== materialId);
                 refreshContentItem(divisionId, contentId);
                 console.log('DEBUG #12 - Document deleted successfully');
+
+                // Show deletion success modal with chunk count
+                const materialName = result.data?.materialName ?? material?.name ?? 'Document';
+                const chunksDeleted = result.data?.chunksDeleted ?? 0;
+                await showDeletionSuccessModal([{ name: materialName, chunksDeleted }], chunksDeleted);
             } catch (error) {
                 console.error('Error deleting document:', error);
                 await showSimpleErrorModal('An error occurred while deleting the document. Please try again.', 'Delete Document Error');
@@ -2591,8 +2608,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             // Refresh the UI to show empty state
             renderDocumentsPage();
 
-            // Show success message
-            await showSuccessModal(`Successfully wiped all documents from RAG database for course "${currentClass.courseName}"! Deleted ${result_data.data?.deletedCount || 0} documents.`, 'Database Wipe Success');
+            // Show deletion success modal with document and chunk breakdown
+            const deletedDocuments = result_data.data?.deletedDocuments ?? [];
+            const totalChunksDeleted = result_data.data?.totalChunksDeleted ?? 0;
+            await showDeletionSuccessModal(deletedDocuments, totalChunksDeleted);
 
         } catch (error) {
             console.error('Error deleting all documents:', error);

@@ -867,6 +867,53 @@ export async function showSimpleErrorModal(message: string, title: string = "Err
 }
 
 /**
+ * Shows a success modal after document deletion with chunk breakdown
+ *
+ * @param deletedDocuments - Array of deleted documents with name and chunksDeleted
+ * @param totalChunksDeleted - Total number of chunks deleted
+ * @returns Promise that resolves when modal is closed
+ */
+export async function showDeletionSuccessModal(
+    deletedDocuments: { name: string; chunksDeleted: number }[],
+    totalChunksDeleted: number
+): Promise<ModalResult> {
+    const title = totalChunksDeleted === 0
+        ? 'No chunks were deleted'
+        : `${totalChunksDeleted} chunk(s) deleted successfully`;
+
+    const contentEl = document.createElement('div');
+    contentEl.className = 'deletion-success-content';
+
+    if (deletedDocuments.length === 0 && totalChunksDeleted === 0) {
+        contentEl.textContent = 'No documents with chunks were found to delete.';
+    } else if (deletedDocuments.length > 0) {
+        const list = document.createElement('ul');
+        list.style.margin = '0';
+        list.style.paddingLeft = '1.5em';
+        list.style.listStyle = 'disc';
+        deletedDocuments.forEach((doc) => {
+            const li = document.createElement('li');
+            const chunkLabel = doc.chunksDeleted === 1 ? 'chunk' : 'chunks';
+            li.textContent = `${doc.name}: ${doc.chunksDeleted} ${chunkLabel}`;
+            list.appendChild(li);
+        });
+        contentEl.appendChild(list);
+    } else {
+        contentEl.textContent = `${totalChunksDeleted} chunk(s) were removed from the vector database.`;
+    }
+
+    const modal = getModal();
+    return modal.show({
+        type: 'success',
+        title,
+        content: contentEl,
+        buttons: [
+            { text: 'OK', type: 'primary', closeOnClick: true }
+        ]
+    });
+}
+
+/**
  * Shows a confirmation modal for deletion operations
  * 
  * @param itemType - Type of item being deleted (e.g., "Learning Objective", "Instructor", "TA", "Additional Material")
@@ -1610,6 +1657,7 @@ export default {
     showHelpModal,
     showCustomModal,
     showSimpleErrorModal,
+    showDeletionSuccessModal,
     showDeleteConfirmationModal,
     showUploadLoadingModal,
     showChatCreationErrorModal,
