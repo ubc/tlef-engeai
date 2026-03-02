@@ -728,7 +728,7 @@
 
 @media (max-width: 768px) {
     .top-branding {
-        padding: 1rem 5%;
+        padding: 1rem 1.25rem;
     }
     
     /* Logout at top-right on mobile, icon only */
@@ -737,8 +737,8 @@
         top: 1rem;
         right: 5%;
         padding: 0.5rem;
-        min-width: 40px;
-        min-height: 40px;
+        min-width: 36px;
+        min-height: 36px;
     }
     
     .logout-btn .btn-text {
@@ -752,6 +752,7 @@
     
     .welcome-text {
         font-size: 0.9rem;
+        margin:0 2rem;
     }
     
     .course-selection-wrapper {
@@ -759,7 +760,7 @@
     }
     
     .course-selection-title {
-        font-size: 2rem;
+        font-size: 1.25rem;
     }
     
     /* Header: keep title and add button on same row, spread flex */
@@ -784,8 +785,8 @@
     .add-new-course-btn,
     .create-new-course-btn {
         padding: 0.6rem;
-        min-width: 40px;
-        min-height: 40px;
+        min-width: 36px;
+        min-height: 36px;
     }
     
     /* Mobile: icon-only for enter button */
@@ -795,8 +796,8 @@
     
     .launch-btn {
         padding: 0.6rem;
-        min-width: 40px;
-        min-height: 40px;
+        min-width: 36px;
+        min-height: 36px;
     }
     
     .workspace-row {
@@ -820,6 +821,8 @@
     
     .logout-btn {
         right: 3%;
+        min-width: 28px;
+        min-height: 28px;
     }
     
     .branding-content {
@@ -842,23 +845,27 @@
     }
     
     .course-selection-header {
-        padding: 2rem 1rem 1.5rem 1rem;
+        padding: 1.5rem 1rem 1rem 1rem;
         flex-direction: row;
         justify-content: space-between;
     }
     
     .course-selection-title {
-        font-size: 1.5rem;
+        font-size: 1.25rem;
     }
     
     .course-action-buttons {
         flex-direction: row;
         flex-shrink: 0;
+        min-width: 24px;
+        min-height: 24px;
     }
     
     .download-database-btn,
     .remove-all-users-btn {
         width: 100%;
+        min-width: 24px;
+        min-height: 24px;
     }
     
     .enrollment-course-item {
@@ -870,6 +877,8 @@
     .enrol-here-btn {
         width: 100%;
         margin-left: 0;
+        min-width: 28px;
+        min-height: 28px;
     }
     
     .header-brand {
@@ -888,6 +897,20 @@
     
     .workspace-name {
         font-size: 1rem;
+    }
+
+
+    .add-new-course-btn,
+    .create-new-course-btn {
+        padding: 0.4rem;
+        min-width: 24px;
+        min-height: 24px;
+    }
+    
+    .launch-btn {
+        padding: 0.4rem;
+        min-width: 24px;
+        min-height: 24px;
     }
 }
 

@@ -362,7 +362,8 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                 // Defensive check: if no chats exist, show welcome screen instead
                 if (chatManager.getChats().length === 0) {
                     // console.log('[STUDENT-MODE] 🚫 No chats available, showing welcome screen instead');
-                    loadComponent('welcome-screen');
+                    navigateToStudentView('welcoming-message');
+                    await loadComponent('welcome-screen');
                     return;
                 }
                 
@@ -395,6 +396,12 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             return;
         }
 
+        // Respect URL state: do not overwrite about/flag-history when triggered by ui-update-needed
+        const viewFromURL = getStudentViewFromURL();
+        if (viewFromURL === 'about' || viewFromURL === 'flag-history') {
+            return;
+        }
+
         const chats = chatManager.getChats();
 
         // console.log(`[STUDENT-MODE] 📊 Chat count: ${chats.length}`);
@@ -402,10 +409,11 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         // Show welcome screen if no chats exist (like instructor mode)
         if (chats.length === 0) {
             // console.log('[STUDENT-MODE] 📺 Showing welcome screen (no chats exist)');
-            loadComponent('welcome-screen');
+            navigateToStudentView('welcoming-message');
+            await loadComponent('welcome-screen');
         } else {
             // console.log('[STUDENT-MODE] 💬 Loading chat window with active chat');
-            loadComponent('chat-window');
+            await loadComponent('chat-window');
         }
     };
 
@@ -429,6 +437,8 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             await loadComponent('flag-history');
         } else if (view === 'about') {
             await renderAbout({ component: currentComponent, mode: 'student' });
+        } else if (view === 'welcoming-message') {
+            await loadComponent('welcome-screen');
         }
         // If view is null or 'chat' without chatId, updateUI() already handled default state
     };
@@ -569,11 +579,19 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
     try {
         await chatManager.initialize();
         // console.log('[STUDENT-MODE] ✅ ChatManager initialized successfully');
-        await updateUI();
         
-        // After ChatManager initialization and updateUI(), check URL state
-        if (urlState) {
-            await handleURLState(urlState.view, urlState.chatId);
+        // URL state takes priority for about, flag-history, welcoming-message, profile
+        // Prevents refresh bug where updateUI's async loadComponent overwrites handleURLState
+        const urlStateViews = ['about', 'flag-history', 'welcoming-message', 'profile'];
+        const hasUrlStateView = urlState?.view && urlStateViews.includes(urlState.view);
+        
+        if (hasUrlStateView) {
+            await handleURLState(urlState!.view, urlState!.chatId);
+        } else {
+            await updateUI();
+            if (urlState?.view === 'chat' && urlState?.chatId) {
+                await handleURLState(urlState.view, urlState.chatId);
+            }
         }
     } catch (error) {
         console.error('[STUDENT-MODE] ❌ Failed to initialize ChatManager:', error);
@@ -750,6 +768,8 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                 // Fall back to default chat interface
                 await loadComponent('chat-window');
             }
+        } else if (view === 'welcoming-message') {
+            await loadComponent('welcome-screen');
         } else if (view === 'chat' || !view) {
             // Default chat view
             await loadComponent('chat-window');

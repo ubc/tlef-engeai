@@ -657,10 +657,3 @@ body.modal-open {
         padding: 0.5rem 0.5rem;
     }
 }
-
-/* Desktop: hide mobile header bar (components add it only for mobile) */
-@media (min-width: 769px) {
-    .mobile-header-bar {
-        display: none !important;
-    }
-}

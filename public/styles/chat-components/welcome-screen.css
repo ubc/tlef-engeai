@@ -95,11 +95,12 @@
     box-shadow: 0 4px 15px rgba(92, 138, 58, 0.2); 
 }
 
-/* Mobile: prevent text truncation, adjust layout */
+/* Mobile: header at top, welcome box centered in remaining space */
 @media (max-width: 768px) {
     .welcome-screen {
         flex-direction: column;
         align-items: stretch;
+        justify-content: flex-start;
         padding: 0.75rem;
     }
 
@@ -107,11 +108,19 @@
         display: none !important;
     }
 
+    /* Header at top: flex-shrink keeps it from being pushed down */
     .welcome-screen .mobile-header-bar {
-        display: none !important;
+        display: flex !important;
+        flex-shrink: 0;
     }
 
-    .welcome-box {
+    /* Welcome box fills remaining space and centers its content */
+    .welcome-screen .welcome-box {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
         padding: 1.5rem 1.25rem;
         max-width: 100%;
     }

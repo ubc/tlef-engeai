@@ -554,10 +554,14 @@
 @media (max-width: 768px) {
     .flag-header {
         padding: 12px 16px;
+        background: var(--chat-bg);
+        border: none !important;
+        animation: slideInDown 0.5s ease-in-out;
     }
 
     .flag-header h1 {
         font-size: 1.25rem;
+        color: var(--color-chbe-green);
     }
 
     .flags-list {
@@ -578,6 +582,11 @@
         padding: 0.75rem 1.25rem;
         min-width: 100px;
         font-size: 0.9rem;
+    }
+
+    .flag-header .mobile-hamburger-btn {
+        color: var(--color-chbe-green);
+        padding: 0 !important;
     }
 }
 
