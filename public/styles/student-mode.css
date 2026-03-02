@@ -526,7 +526,7 @@ body.modal-open {
 /* duplicate remove-pin-btn cleaned; single definition kept above */
 
 
-Collapse button styling
+/* Collapse button styling */
 .collapse-sidebar-btn {
     position: absolute;
     top: 10px;
@@ -545,4 +545,124 @@ Collapse button styling
 .collapse-sidebar-btn .feather {
     width: 16px;
     height: 16px;
+}
+
+/* ===========================================
+   MOBILE VIEW (max-width: 768px)
+   =========================================== */
+
+/* Mobile hamburger button - shown only on mobile */
+.mobile-hamburger-btn {
+    display: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.5rem;
+    color: var(--text-primary);
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+
+.mobile-hamburger-btn:hover {
+    background-color: var(--hover-bg);
+    color: var(--color-chbe-green);
+}
+
+.mobile-hamburger-btn .feather {
+    width: 24px;
+    height: 24px;
+}
+
+/* Sidebar overlay when open on mobile */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 99;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.sidebar-overlay.show {
+    display: block;
+    opacity: 1;
+}
+
+@media (max-width: 768px) {
+    /* Show hamburger on mobile */
+    .mobile-hamburger-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Sidebar: hidden off-screen by default, slides in when .mobile-open */
+    .sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 280px;
+        margin: 0;
+        border-radius: 0 0px 0px 0;
+        z-index: 100;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease-out;
+        box-shadow: none;
+    }
+
+    .sidebar.mobile-open {
+        transform: translateX(0);
+        box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
+    }
+
+    /* Hide collapse button on mobile (we use hamburger instead) */
+    .sidebar .collapse-sidebar-btn {
+        display: none !important;
+    }
+
+    /* Main content full width on mobile */
+    #main-content-area {
+        width: 100%;
+        padding: 8px;
+    }
+
+    /* Mobile header bar for welcome/flag-history - inside components */
+    .mobile-header-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        margin-bottom: 1rem;
+        border-radius: 10px;
+        border: 1px solid var(--border-color);
+        background: var(--chat-bg);
+        flex-shrink: 0;
+    }
+
+    .mobile-header-bar .mobile-header-title {
+        font-weight: 600;
+        font-size: 1rem;
+        color: var(--text-primary);
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .chat-header {
+        margin: 0;
+        padding: 0.5rem 0.5rem;
+    }
+
+    /* When sidebar is visible on mobile, show all chat list icons (trash, star) - no hover on touch */
+    .sidebar.mobile-open .chat-list .icon-btn {
+        display: inline-flex !important;
+    }
+    .sidebar.mobile-open .chat-list .chat-item > div:last-child > div:first-child {
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
 }

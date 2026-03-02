@@ -7,8 +7,9 @@
 /* Top Branding Bar */
 .top-branding {
     background-color: var(--color-chbe-green);
-    padding: 1.5rem 10% 0 10% ;
+    padding: 1.5rem 10% 0 10%;
     width: 100%;
+    position: relative;
 }
 
 .branding-content {
@@ -44,6 +45,19 @@
 .logout-btn:hover {
     background-color: #7a0000;
     transform: translateY(-1px);
+}
+
+.logout-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.logout-btn i,
+.logout-btn .feather {
+    width: 18px;
+    height: 18px;
+    stroke: white;
 }
 
 .brand-logo {
@@ -153,7 +167,8 @@
     transform: translateY(0);
 }
 
-.add-new-course-btn i {
+.add-new-course-btn i,
+.add-new-course-btn .feather {
     width: 18px;
     height: 18px;
     stroke: white;
@@ -186,7 +201,8 @@
     transform: translateY(0);
 }
 
-.create-new-course-btn i {
+.create-new-course-btn i,
+.create-new-course-btn .feather {
     width: 18px;
     height: 18px;
     stroke: white;
@@ -431,6 +447,16 @@
     cursor: pointer;
     transition: all 0.2s ease;
     white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.launch-btn i,
+.launch-btn .feather {
+    width: 18px;
+    height: 18px;
+    stroke: white;
 }
 
 .launch-btn:hover:not(:disabled) {
@@ -448,6 +474,10 @@
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
+}
+
+.launch-btn:disabled .feather {
+    animation: spin 1s linear infinite;
 }
 
 .restart-onboarding-btn {
@@ -683,70 +713,91 @@
 
 /* Responsive Design */
 
-/* Workspace row: wrap button below content earlier to prevent overlap */
+/* Workspace row: keep enter button on right side (no wrap) */
 @media (max-width: 900px) {
     .workspace-row {
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         gap: 0.5rem;
     }
     
     .workspace-action {
-        width: 100%;
-        margin: 0.75rem 0 0 0;
-        justify-content: flex-end;
-    }
-    
-    .launch-btn {
-        min-width: 140px;
+        flex-shrink: 0;
+        margin-left: 0.5rem;
     }
 }
 
 @media (max-width: 768px) {
     .top-branding {
-        padding: 1rem 5%;
+        padding: 1rem 1.25rem;
+    }
+    
+    /* Logout at top-right on mobile, icon only */
+    .logout-btn {
+        position: absolute;
+        top: 1rem;
+        right: 5%;
+        padding: 0.5rem;
+        min-width: 36px;
+        min-height: 36px;
+    }
+    
+    .logout-btn .btn-text {
+        display: none;
     }
     
     .top-branding-right {
         gap: 0.5rem;
+        margin-right: 2.5rem; /* Space for absolutely positioned logout */
     }
     
     .welcome-text {
         font-size: 0.9rem;
-    }
-    
-    .logout-btn {
-        padding: 0.4rem 0.8rem;
-        font-size: 0.85rem;
+        margin:0 2rem;
     }
     
     .course-selection-wrapper {
-        padding: 1rem;
+        padding: 0rem;
     }
     
     .course-selection-title {
-        font-size: 2rem;
+        font-size: 1.25rem;
     }
     
-    /* Header: stack title and buttons earlier to prevent Create New Course truncation */
+    /* Header: keep title and add button on same row, spread flex */
     .course-selection-header {
-        flex-direction: column;
-        align-items: flex-start;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
         gap: 1rem;
     }
     
     .course-action-buttons {
-        width: 100%;
-        flex-wrap: wrap;
+        flex-shrink: 0;
         gap: 0.5rem;
     }
     
+    /* Mobile: icon-only for add/create course buttons */
+    .add-new-course-btn .btn-text,
+    .create-new-course-btn .btn-text {
+        display: none;
+    }
+    
     .add-new-course-btn,
-    .create-new-course-btn,
-    .download-database-btn,
-    .remove-all-users-btn {
-        flex: 1;
-        min-width: 140px;
-        justify-content: center;
+    .create-new-course-btn {
+        padding: 0.6rem;
+        min-width: 36px;
+        min-height: 36px;
+    }
+    
+    /* Mobile: icon-only for enter button */
+    .launch-btn .btn-text {
+        display: none;
+    }
+    
+    .launch-btn {
+        padding: 0.6rem;
+        min-width: 36px;
+        min-height: 36px;
     }
     
     .workspace-row {
@@ -754,11 +805,8 @@
     }
     
     .workspace-action {
-        margin: 1rem 0 0 0;
-    }
-    
-    .launch-btn {
-        width: 100%;
+        flex-shrink: 0;
+        margin-left: 0.5rem;
     }
     
     .workspace-name {
@@ -769,6 +817,12 @@
 @media (max-width: 480px) {
     .top-branding {
         padding: 0.75rem 3%;
+    }
+    
+    .logout-btn {
+        right: 3%;
+        min-width: 28px;
+        min-height: 28px;
     }
     
     .branding-content {
@@ -790,28 +844,28 @@
         font-size: 0.85rem;
     }
     
-    .logout-btn {
-        padding: 0.4rem 0.7rem;
-        font-size: 0.8rem;
-    }
-    
     .course-selection-header {
-        padding: 2rem 1rem 1.5rem 1rem;
+        padding: 1.5rem 1rem 1rem 1rem;
+        flex-direction: row;
+        justify-content: space-between;
     }
     
     .course-selection-title {
-        font-size: 1.75rem;
+        font-size: 1.25rem;
     }
     
     .course-action-buttons {
-        flex-direction: column;
+        flex-direction: row;
+        flex-shrink: 0;
+        min-width: 24px;
+        min-height: 24px;
     }
     
-    .add-new-course-btn,
-    .create-new-course-btn,
     .download-database-btn,
     .remove-all-users-btn {
         width: 100%;
+        min-width: 24px;
+        min-height: 24px;
     }
     
     .enrollment-course-item {
@@ -823,6 +877,8 @@
     .enrol-here-btn {
         width: 100%;
         margin-left: 0;
+        min-width: 28px;
+        min-height: 28px;
     }
     
     .header-brand {
@@ -841,6 +897,20 @@
     
     .workspace-name {
         font-size: 1rem;
+    }
+
+
+    .add-new-course-btn,
+    .create-new-course-btn {
+        padding: 0.4rem;
+        min-width: 24px;
+        min-height: 24px;
+    }
+    
+    .launch-btn {
+        padding: 0.4rem;
+        min-width: 24px;
+        min-height: 24px;
     }
 }
 

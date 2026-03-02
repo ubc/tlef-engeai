@@ -1,14 +1,19 @@
 <!-- public/components/welcome-screen.html -->
 <div class="welcome-screen">
     <link rel="stylesheet" href="/styles/chat-components/welcome-screen.css">
+    <div class="mobile-header-bar">
+        <button id="hamburger-btn" class="mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
+            <i data-feather="menu"></i>
+        </button>
+    </div>
         <link rel="stylesheet" href="/styles/chat-components/artefact.css" />
     <div class="welcome-box">
-        <i data-feather="award" class="welcome-icon"></i>
+        <i data-feather="award" class="welcome-icon desktop-only"></i>
         <h2>Welcome to EngE-AI!</h2>
-        <p>I am Your AI companion for engineering studies.</p>
-        <p>I'm here to help you solve complex problems, understand difficult concepts, and explore innovative solutions. I can guide you through calculations, explain theories, and suggest methodologies across various engineering disciplines.</p>
-        <p><strong>Remember:</strong> I'm designed to enhance your learning, not replace it. Always verify critical calculations and use proper citations.</p>
-        <p>Ready to tackle your engineering challenges? Let's get started!</p>
+        <p class="welcome-box-p">I am Your AI companion for engineering studies.</p>
+        <p class="welcome-box-p desktop-only">I'm here to help you solve complex problems, understand difficult concepts, and explore innovative solutions. I can guide you through calculations, explain theories, and suggest methodologies across various engineering disciplines.</p>
+        <p class="welcome-box-p desktop-only"><strong>Remember:</strong> I'm designed to enhance your learning, not replace it. Always verify critical calculations and use proper citations.</p>
+        <p class="welcome-box-p">Ready to tackle your engineering challenges? Let's get started!</p>
         
         <button id="welcome-add-chat-btn" class="welcome-add-btn">
             <i data-feather="plus"></i>

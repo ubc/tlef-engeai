@@ -19,12 +19,12 @@ export function getCourseIdFromURL(): string | null {
  * Extract instructor view from current URL
  * Example: /course/abc123/instructor/documents -> 'documents'
  */
-export function getInstructorViewFromURL(): 'documents' | 'flags' | 'monitor' | 'chat' | 'assistant-prompts' | 'system-prompts' | 'course-information' | 'about' | null {
+export function getInstructorViewFromURL(): 'documents' | 'flags' | 'monitor' | 'chat' | 'assistant-prompts' | 'system-prompts' | 'course-information' | 'about' | 'welcoming-message' | null {
     const pathMatch = window.location.pathname.match(/^\/course\/[a-f0-9]{12}\/instructor\/([^\/]+)/);
     if (!pathMatch) return null;
     
     const view = pathMatch[1];
-    const validViews = ['documents', 'flags', 'monitor', 'chat', 'assistant-prompts', 'system-prompts', 'course-information', 'about'];
+    const validViews = ['documents', 'flags', 'monitor', 'chat', 'assistant-prompts', 'system-prompts', 'course-information', 'about', 'welcoming-message'];
     return validViews.includes(view) ? view as any : null;
 }
 
@@ -87,7 +87,7 @@ export function navigateToChat(courseId: string, chatId: string): void {
  * Extract student view from current URL
  * Example: /course/abc123/student/chat -> 'chat'
  */
-export function getStudentViewFromURL(): 'chat' | 'profile' | 'flag-history' | 'about' | null {
+export function getStudentViewFromURL(): 'chat' | 'profile' | 'flag-history' | 'about' | 'welcoming-message' | null {
     const pathMatch = window.location.pathname.match(/^\/course\/[a-f0-9]{12}\/student\/([^\/]+)/);
     if (!pathMatch) {
         // Check if it's just /course/:courseId/student (default view)
@@ -97,8 +97,8 @@ export function getStudentViewFromURL(): 'chat' | 'profile' | 'flag-history' | '
     }
     
     const view = pathMatch[1]; 
-    const validViews: Array<'chat' | 'profile' | 'flag-history' | 'about'> = ['chat', 'profile', 'flag-history', 'about'];
-    return validViews.includes(view as any) ? (view as 'chat' | 'profile' | 'flag-history' | 'about') : null;
+    const validViews: Array<'chat' | 'profile' | 'flag-history' | 'about' | 'welcoming-message'> = ['chat', 'profile', 'flag-history', 'about', 'welcoming-message'];
+    return validViews.includes(view as any) ? (view as 'chat' | 'profile' | 'flag-history' | 'about' | 'welcoming-message') : null;
 }
 
 /**

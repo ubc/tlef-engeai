@@ -219,5 +219,68 @@
   margin-top: 0.5rem;
 }
 
+/* ===========================================
+   MODAL OVERLAY FOR MOBILE/TABLET (max-width: 768px)
+   =========================================== */
 
+@media (max-width: 768px) {
+  .artefact-modal-wrapper {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    box-sizing: border-box;
+  }
+
+  .artefact-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+  }
+
+  .artefact-modal-wrapper .artefact-panel {
+    position: relative;
+    z-index: 1;
+    width: 95%;
+    max-width: 100%;
+    height: 90%;
+    max-height: 90vh;
+    flex: none;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    transform: none;
+    animation: artefactModalIn 0.3s ease forwards;
+  }
+
+  .artefact-modal-wrapper .artefact-panel.closing {
+    animation: artefactModalOut 0.25s ease forwards;
+  }
+
+  @keyframes artefactModalIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes artefactModalOut {
+    from {
+      opacity: 1;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+  }
+}
 

@@ -16,9 +16,7 @@
 
 .about-content-area {
     flex: 1;
-    background-color: white;
-    border-radius: 10px;
-    border: 1px solid var(--border-color);
+    background-color: var(--chat-bg);
     display: flex;
     flex-direction: column;
     height: calc(100%);
@@ -38,15 +36,19 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .about-main-content {
     max-width: 800px;
     margin: 0 auto;
     width: 100%;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
-.about-main-content h1 {
+.about-main-content-title {
     font-size: 2.5rem;
     font-weight: 900;
     color: var(--color-chbe-green);
@@ -65,6 +67,10 @@
 
 .about-section {
     margin-bottom: 2.5rem;
+}
+
+.about-content-area .mobile-header-bar {
+    display: none;
 }
 
 .about-section h3 {
@@ -95,6 +101,8 @@
     font-size: 1rem;
     line-height: 1.5;
     color: var(--text-primary);
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .feature-list li:last-child {
@@ -301,6 +309,40 @@
         flex: 1;
     }
     
+    /* About header - match flag-history header on mobile */
+    .about-content-area .mobile-header-bar {
+        padding: 12px 16px;
+        background: var(--chat-bg);
+        border: none !important;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        animation: slideInDown 0.5s ease-in-out;
+    }
+    
+    .about-content-area .mobile-header-title {
+        font-size: 1.25rem;
+        color: var(--color-chbe-green);
+        flex: 1;
+        min-width: 0;
+        font-weight: 600;
+    }
+    
+    .about-content-area .mobile-hamburger-btn {
+        color: var(--color-chbe-green);
+        padding: 0 !important;
+    }
+    
+    .about-content-area .mobile-hamburger-btn:hover {
+        background-color: rgba(92, 138, 58, 0.1);
+        color: var(--color-chbe-green);
+    }
+    
     .about-main-content h1 {
         font-size: 2rem;
     }
@@ -323,6 +365,10 @@
         min-width: 100px;
         font-size: 0.9rem;
     }
+
+    .desktop-only {
+        display: none !important;
+    }
 }
 
 @media (max-width: 480px) {
@@ -336,9 +382,12 @@
     
     .about-main-content h1 {
         font-size: 1.75rem;
+        color: var(--color-chbe-green);
     }
     
     .about-section h3 {
         font-size: 1.25rem;
     }
+
+    
 }

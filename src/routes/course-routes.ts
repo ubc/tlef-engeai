@@ -187,6 +187,7 @@ router.get('/course/:courseId/instructor/assistant-prompts', validateCourseAcces
 router.get('/course/:courseId/instructor/system-prompts', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
 router.get('/course/:courseId/instructor/course-information', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
 router.get('/course/:courseId/instructor/about', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+router.get('/course/:courseId/instructor/welcoming-message', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
 
 // Instructor Onboarding Routes (for existing courses)
 router.get('/course/:courseId/instructor/onboarding/course-setup', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
@@ -203,6 +204,7 @@ router.get('/course/:courseId/student/chat', validateCourseAccess, requireStuden
 router.get('/course/:courseId/student/profile', validateCourseAccess, requireStudentForCourse, serveStudentShell());
 router.get('/course/:courseId/student/flag-history', validateCourseAccess, requireStudentForCourse, serveStudentShell());
 router.get('/course/:courseId/student/about', validateCourseAccess, requireStudentForCourse, serveStudentShell());
+router.get('/course/:courseId/student/welcoming-message', validateCourseAccess, requireStudentForCourse, serveStudentShell());
 
 // Student Onboarding Routes
 router.get('/course/:courseId/student/onboarding/student', validateCourseAccess, requireStudentForCourse, serveStudentShell());

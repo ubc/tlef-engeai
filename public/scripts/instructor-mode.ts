@@ -439,6 +439,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else if (view === 'about') {
                 // Load about component
                 await renderAbout({ state: currentState, mode: 'instructor' });
+            } else if (view === 'welcoming-message') {
+                // Show welcome screen (chat view with no chats)
+                currentState = StateEvent.Chat;
+                await showChatContent();
             } else {
                 // Load component for current view
                 currentState = mapViewToStateEvent(view);
@@ -981,6 +985,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const showWelcomeScreen = async (): Promise<void> => {
         if (!mainContentAreaEl) return;
         
+        const courseId = getCourseIdFromURL();
+        if (courseId) {
+            navigateToInstructorView('welcoming-message');
+        }
+        
         try {
             // Load welcome screen component
             const welcomeHTML = await loadComponentHTML('welcome-screen');
@@ -1234,6 +1243,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else if (viewFromURL === 'about') {
         // Load about component
         await renderAbout({ state: currentState, mode: 'instructor' });
+    } else if (viewFromURL === 'welcoming-message') {
+        // Show welcome screen (chat view with no chats)
+        currentState = StateEvent.Chat;
+        await showChatContent();
     } else {
         // Load component for current view
         updateUI();

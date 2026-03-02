@@ -23,10 +23,13 @@
     box-shadow: 0 10px 30px rgba(0,0,0,0.07); 
     animation: slideInUp 0.5s 0.1s forwards; 
     opacity: 0; 
-    max-width: 850px; 
+    max-width: min(850px, calc(100% - 2rem)); 
     align-items: center; 
     position: relative;
     z-index: 11;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    overflow-x: hidden;
 }
 
 .welcome-icon { 
@@ -48,7 +51,9 @@
     line-height: 1.7; 
     margin-bottom: 1.25rem; 
     color: #525252; /* Darker gray for better contrast on #ECE5DD background (was var(--text-secondary) #6c757d) */
-    font-size: 0.94rem; 
+    font-size: 0.94rem;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .welcome-box p.intro { 
@@ -90,4 +95,43 @@
     box-shadow: 0 4px 15px rgba(92, 138, 58, 0.2); 
 }
 
+/* Mobile: header at top, welcome box centered in remaining space */
+@media (max-width: 768px) {
+    .welcome-screen {
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        padding: 0.75rem;
+    }
 
+    .welcome-screen .desktop-only {
+        display: none !important;
+    }
+
+    /* Header at top: flex-shrink keeps it from being pushed down */
+    .welcome-screen .mobile-header-bar {
+        display: flex !important;
+        flex-shrink: 0;
+        border: none;
+        padding: 0;
+    }
+
+    /* Welcome box centered vertically in remaining space (margin: auto, no flex on box) */
+    .welcome-screen .welcome-box {
+        margin-block: auto;
+        padding: 1.5rem 1.25rem;
+        max-width: 100%;
+    }
+
+    .welcome-box h2 {
+        font-size: 1.5rem;
+    }
+
+    .welcome-box p {
+        font-size: 0.9rem;
+    }
+
+    .mobile-hamburger-btn {
+        padding: 0;
+    }
+}

@@ -370,21 +370,16 @@ export class MemoryAgent {
                     parseSuccess = true;
                 } else if (parsed && parsed.StruggleTopics === undefined) {
                     console.warn(`[MEMORY-AGENT] ⚠️ Response missing 'StruggleTopics' field`);
-                    struggleTopics = [`[MEMORY-AGENT] ⚠️ Response missing 'StruggleTopics' field`];
+                    struggleTopics = [];
                 } else {
                     console.warn(`[MEMORY-AGENT] ⚠️ 'StruggleTopics' is not an array in response`);
-                    struggleTopics = [`[MEMORY-AGENT] ⚠️ 'StruggleTopics' is not an array in response`];
+                    struggleTopics = [];
                 }
             } catch (jsonError) {
                 console.error(`[MEMORY-AGENT] 🚨 Error parsing JSON response:`, jsonError);
                 console.error(`[MEMORY-AGENT] Response content:`, response.content);
-                struggleTopics = [`[MEMORY-AGENT] 🚨 Error parsing JSON response: ${jsonError}`];
+                struggleTopics = [];
             }
-
-            // // Log the complete LLM invocation (request + response) to file when response succeeds
-            // if (parseSuccess) {
-            //     await this.logLLMInvocation(userId, courseName, systemPrompt, userMessages, response.content);
-            // }
 
             // Normalize and filter struggle words
             const normalizedStruggleWords = struggleTopics
