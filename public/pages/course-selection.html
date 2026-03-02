@@ -19,7 +19,10 @@
             </div>
             <div class="top-branding-right">
                 <span class="welcome-text">Welcome, <span id="user-name"></span></span>
-                <button class="logout-btn" id="logout-btn">Logout</button>
+                <button class="logout-btn" id="logout-btn" aria-label="Logout" title="Logout">
+                    <i data-feather="log-out"></i>
+                    <span class="btn-text">Logout</span>
+                </button>
             </div>
         </div>
     </div>
@@ -34,13 +37,13 @@
                     Course selection
                 </h1>
                 <div class="course-action-buttons">
-                    <button id="add-new-course-btn" class="add-new-course-btn" title="Add New Course">
+                    <button id="add-new-course-btn" class="add-new-course-btn" aria-label="Add New Course" title="Add New Course">
                         <i data-feather="plus"></i>
-                        <span>Add New Course</span>
+                        <span class="btn-text">Add New Course</span>
                     </button>
-                    <button id="create-new-course-btn" class="create-new-course-btn" title="Create New Course" style="display: none;">
+                    <button id="create-new-course-btn" class="create-new-course-btn" aria-label="Create New Course" title="Create New Course" style="display: none;">
                         <i data-feather="file-plus"></i>
-                        <span>Create New Course</span>
+                        <span class="btn-text">Create New Course</span>
                     </button>
                 </div>
             </header>

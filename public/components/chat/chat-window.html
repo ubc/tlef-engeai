@@ -4,11 +4,16 @@
         <link rel="stylesheet" href="/styles/chat-components/artefact.css" />
         <link rel="stylesheet" href="/styles/chat-components/response-render.css" />
         <header id="chat-header" class="chat-header">
-            <div id="chat-title" class="chat-title"></div>
-            <div class="chat-actions">
+            <div class="chat-header-main">
+                <button id="hamburger-btn" class="mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
+                    <i data-feather="menu"></i>
+                </button>
+                <div id="chat-title" class="chat-title"></div>
+                <div class="chat-actions">
                 <button id="toggle-artefact-btn" class="icon-btn" title="Toggle Artefact (Whiteboard)" style="display:none"><i data-feather="monitor"></i></button>
                 <button id="pin-chat-btn" class="icon-btn" title="Star this chat"><i data-feather="star"></i></button>
                 <button id="delete-chat-btn" class="icon-btn" title="Delete this chat"><i data-feather="trash-2"></i></button>
+                </div>
             </div>
         </header>
         <div id="message-area" class="message-area">

@@ -157,8 +157,9 @@ function createCourseCard(course: any): string {
                 </div>
             </div>
             <div class="workspace-action">
-                <button class="launch-btn" data-course-id="${course.id}">
-                    ENTER CLASS
+                <button class="launch-btn" data-course-id="${course.id}" aria-label="Enter course" title="Enter course">
+                    <i data-feather="log-in"></i>
+                    <span class="btn-text">ENTER CLASS</span>
                 </button>
             </div>
         </div>
@@ -174,7 +175,7 @@ function attachCourseCardListeners(): void {
     buttons.forEach(button => {
         button.addEventListener('click', async (event) => {
             event.stopPropagation(); // Prevent row click
-            const courseId = (event.target as HTMLElement).getAttribute('data-course-id');
+            const courseId = (event.currentTarget as HTMLElement).getAttribute('data-course-id');
             if (courseId) {
                 await enterCourse(courseId);
             }
@@ -198,13 +199,13 @@ function attachCourseCardListeners(): void {
     // Attach click listener to entire row for better UX
     const rows = document.querySelectorAll('.workspace-row');
     rows.forEach(row => {
-        row.addEventListener('click', (event) => {
+        row.addEventListener('click', async (event) => {
             // Don't trigger if clicking any button (avoid double trigger)
             if (!(event.target as HTMLElement).closest('.launch-btn') &&
                 !(event.target as HTMLElement).closest('.restart-onboarding-btn')) {
-                const courseId = row.getAttribute('data-course-id');
+                const courseId = (event.currentTarget as HTMLElement).getAttribute('data-course-id');
                 if (courseId) {
-                    enterCourse(courseId);
+                    await enterCourse(courseId);
                 }
             }
         });
@@ -226,7 +227,10 @@ async function enterCourse(courseId: string): Promise<void> {
         const clickedButton = document.querySelector(`button.launch-btn[data-course-id="${courseId}"]`);
         if (clickedButton) {
             (clickedButton as HTMLButtonElement).disabled = true;
-            clickedButton.textContent = 'ENTERING...';
+            clickedButton.innerHTML = '<i data-feather="loader"></i><span class="btn-text">ENTERING...</span>';
+            if (typeof (window as any).feather !== 'undefined') {
+                (window as any).feather.replace();
+            }
         }
         
         // Call API to enter course
@@ -246,7 +250,10 @@ async function enterCourse(courseId: string): Promise<void> {
             const clickedButton = document.querySelector(`button.launch-btn[data-course-id="${courseId}"]`);
             if (clickedButton) {
                 (clickedButton as HTMLButtonElement).disabled = false;
-                clickedButton.textContent = 'ENTER CLASS';
+                clickedButton.innerHTML = '<i data-feather="log-in"></i><span class="btn-text">ENTER CLASS</span>';
+                if (typeof (window as any).feather !== 'undefined') {
+                    (window as any).feather.replace();
+                }
             }
             return;
         }
@@ -263,7 +270,10 @@ async function enterCourse(courseId: string): Promise<void> {
         const clickedButton = document.querySelector(`button.launch-btn[data-course-id="${courseId}"]`);
         if (clickedButton) {
             (clickedButton as HTMLButtonElement).disabled = false;
-            clickedButton.textContent = 'ENTER CLASS';
+            clickedButton.innerHTML = '<i data-feather="log-in"></i><span class="btn-text">ENTER CLASS</span>';
+            if (typeof (window as any).feather !== 'undefined') {
+                (window as any).feather.replace();
+            }
         }
     }
 }

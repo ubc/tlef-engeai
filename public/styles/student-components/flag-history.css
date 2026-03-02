@@ -49,12 +49,27 @@
     position: sticky;
     z-index: 10;
     top: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
 }
 
 .flag-header h1 {
     color: white;
     margin: 0;
     font-size: 1.5rem;
+    flex: 1;
+    min-width: 0;
+}
+
+/* Hamburger on green header - white color */
+.flag-header .mobile-hamburger-btn {
+    color: white;
+}
+
+.flag-header .mobile-hamburger-btn:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+    color: white;
 }
 
 /* Animation for header */
@@ -516,6 +531,7 @@
 }
 
 /* Responsive Design - Matching instructor pattern */
+/* Note: Flag history uses scrollable list - no pagination indicators */
 @media (max-width: 960px) {
     .flag-header {
         padding: 15px;
@@ -531,6 +547,37 @@
     
     .flag-card {
         padding: 12px 16px;
+    }
+}
+
+/* Mobile: full-width cards, compact layout, no pagination */
+@media (max-width: 768px) {
+    .flag-header {
+        padding: 12px 16px;
+    }
+
+    .flag-header h1 {
+        font-size: 1.25rem;
+    }
+
+    .flags-list {
+        padding-bottom: 5rem; /* Space for Back button */
+    }
+
+    .flag-card {
+        padding: 12px;
+        width: 100%;
+    }
+
+    .flag-navigation {
+        bottom: 1rem;
+        right: 1rem;
+    }
+
+    .nav-btn {
+        padding: 0.75rem 1.25rem;
+        min-width: 100px;
+        font-size: 0.9rem;
     }
 }
 

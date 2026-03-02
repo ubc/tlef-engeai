@@ -256,13 +256,88 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
     const mainContentArea = document.getElementById('main-content-area');
     const sidebarEl = document.querySelector('.sidebar') as HTMLElement | null;
     const sidebarHeaderEl = document.querySelector('.sidebar-header') as HTMLElement | null;
+    const sidebarOverlayEl = document.getElementById('sidebar-overlay');
     const artefactCloseBtn = document.getElementById('close-artefact-btn');
+
+    // --- MOBILE SIDEBAR ---
+    const MOBILE_BREAKPOINT = 768;
+
+    const isMobileView = (): boolean => window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches;
+
+    const openMobileSidebar = (): void => {
+        if (!sidebarEl || !sidebarOverlayEl) return;
+        sidebarEl.classList.add('mobile-open');
+        sidebarOverlayEl.classList.add('show');
+        sidebarOverlayEl.setAttribute('aria-hidden', 'false');
+    };
+
+    const closeMobileSidebar = (): void => {
+        if (!sidebarEl || !sidebarOverlayEl) return;
+        sidebarEl.classList.remove('mobile-open');
+        sidebarOverlayEl.classList.remove('show');
+        sidebarOverlayEl.setAttribute('aria-hidden', 'true');
+    };
+
+    const toggleMobileSidebar = (): void => {
+        if (!sidebarEl) return;
+        if (sidebarEl.classList.contains('mobile-open')) {
+            closeMobileSidebar();
+        } else {
+            openMobileSidebar();
+        }
+    };
+
+    // Event delegation for hamburger (works across all loaded components)
+    document.addEventListener('click', (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('#hamburger-btn') || target.closest('.mobile-hamburger-btn')) {
+            if (isMobileView()) {
+                toggleMobileSidebar();
+            }
+        }
+    });
+
+    // Overlay click closes sidebar
+    sidebarOverlayEl?.addEventListener('click', () => {
+        if (isMobileView()) closeMobileSidebar();
+    });
+
+    // Close sidebar when clicking any sidebar nav link (for immediate feedback)
+    sidebarEl?.addEventListener('click', (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('button') || target.closest('a') || target.closest('.chat-item')) {
+            if (isMobileView()) closeMobileSidebar();
+        }
+    });
+
+    // Swipe-to-right gesture on left edge of main content
+    let touchStartX = 0;
+    const SWIPE_THRESHOLD = 50;
+    const EDGE_ZONE = 30;
+
+    mainContentArea?.addEventListener('touchstart', (e: TouchEvent) => {
+        if (!isMobileView()) return;
+        touchStartX = e.touches[0].clientX;
+    }, { passive: true });
+
+    mainContentArea?.addEventListener('touchend', (e: TouchEvent) => {
+        if (!isMobileView()) return;
+        const touchEndX = e.changedTouches[0].clientX;
+        const deltaX = touchEndX - touchStartX;
+        // Swipe right: started near left edge and moved right
+        if (touchStartX <= EDGE_ZONE && deltaX > SWIPE_THRESHOLD) {
+            openMobileSidebar();
+        }
+    }, { passive: true });
 
     // Artefact functionality moved to chat.ts
 
     // --- COMPONENT LOADING ---
     const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history') => {
         if (!mainContentArea) return;
+
+        // Close mobile sidebar when navigating to new view
+        if (isMobileView()) closeMobileSidebar();
         
         // Track previous and current component for navigation
         previousComponent = currentComponent;

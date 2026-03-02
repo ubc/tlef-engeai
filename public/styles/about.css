@@ -17,8 +17,6 @@
 .about-content-area {
     flex: 1;
     background-color: white;
-    border-radius: 10px;
-    border: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
     height: calc(100%);
@@ -38,12 +36,16 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .about-main-content {
     max-width: 800px;
     margin: 0 auto;
     width: 100%;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .about-main-content h1 {
@@ -95,6 +97,8 @@
     font-size: 1rem;
     line-height: 1.5;
     color: var(--text-primary);
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .feature-list li:last-child {
