@@ -112,15 +112,13 @@
     .welcome-screen .mobile-header-bar {
         display: flex !important;
         flex-shrink: 0;
+        border: none;
+        padding: 0;
     }
 
-    /* Welcome box fills remaining space and centers its content */
+    /* Welcome box centered vertically in remaining space (margin: auto, no flex on box) */
     .welcome-screen .welcome-box {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
+        margin-block: auto;
         padding: 1.5rem 1.25rem;
         max-width: 100%;
     }
@@ -131,5 +129,9 @@
 
     .welcome-box p {
         font-size: 0.9rem;
+    }
+
+    .mobile-hamburger-btn {
+        padding: 0;
     }
 }
