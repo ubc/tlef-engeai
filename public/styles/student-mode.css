@@ -656,4 +656,13 @@ body.modal-open {
         margin: 0;
         padding: 0.5rem 0.5rem;
     }
+
+    /* When sidebar is visible on mobile, show all chat list icons (trash, star) - no hover on touch */
+    .sidebar.mobile-open .chat-list .icon-btn {
+        display: inline-flex !important;
+    }
+    .sidebar.mobile-open .chat-list .chat-item > div:last-child > div:first-child {
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
 }

@@ -75,6 +75,13 @@ export class ArtefactHandler {
                 return;
             }
 
+            // Check for backdrop clicks (modal mode - close when clicking outside panel)
+            const backdrop = target.closest('.artefact-modal-backdrop') as HTMLElement;
+            if (backdrop) {
+                this.closeArtefact();
+                return;
+            }
+
             // Check for download button clicks
             const downloadBtn = target.closest('#download-artefact-btn') as HTMLButtonElement;
             if (downloadBtn) {
@@ -93,6 +100,13 @@ export class ArtefactHandler {
                 return;
             }
         });
+    }
+
+    /**
+     * Check if viewport is mobile/tablet (max-width: 768px) - use modal overlay instead of split screen
+     */
+    private isModalMode(): boolean {
+        return window.matchMedia('(max-width: 768px)').matches;
     }
 
     /**
@@ -306,30 +320,41 @@ graph TD
         // Update button appearance for this artefact
         this.updateArtefactButton(artefactId);
 
-        // Get the appropriate container
-        // Check if we're in onboarding mode
+        // Get the appropriate container (for desktop split-screen mode)
         const onboardingContainer = document.querySelector('.onboarding') as HTMLElement | null;
         const chatContainer = document.querySelector('.chat-window-container') as HTMLElement | null;
-        
         const container = onboardingContainer || chatContainer;
         if (!container) {
             return;
         }
 
-        // Get or create artefact panel
+        const useModalMode = this.isModalMode();
+
+        // Get or create artefact panel (panel is removed on close, so always create fresh)
         let panel = document.getElementById('artefact-panel') as HTMLElement;
         if (!panel) {
-            // Create panel dynamically
             panel = this.createArtefactPanel();
-            container.appendChild(panel);
-            // Feather icons must be replaced after panel is in DOM
+
+            if (useModalMode) {
+                // Modal mode: create wrapper with backdrop, append to body
+                const wrapper = document.createElement('div');
+                wrapper.className = 'artefact-modal-wrapper';
+                const backdrop = document.createElement('div');
+                backdrop.className = 'artefact-modal-backdrop';
+                backdrop.setAttribute('aria-hidden', 'true');
+                wrapper.appendChild(backdrop);
+                wrapper.appendChild(panel);
+                document.body.appendChild(wrapper);
+            } else {
+                // Desktop: append panel to container
+                container.appendChild(panel);
+                container.classList.add('artefact-open');
+            }
+
             if (typeof (window as any).feather !== 'undefined') {
                 (window as any).feather.replace();
             }
         }
-
-        // Add artefact-open class to container
-        container.classList.add('artefact-open');
 
         // Show the panel first
         panel.classList.add('open');
@@ -348,6 +373,7 @@ graph TD
     /**
      * Close artefact panel
      * Removes the panel from DOM after closing animation
+     * Handles both modal mode (wrapper in body) and desktop split-screen mode
      */
     public closeArtefact(): void {
         const panel = document.getElementById('artefact-panel');
@@ -368,21 +394,26 @@ graph TD
             this.currentlyOpenArtefactId = null;
         }
 
-        // Get the appropriate container and remove artefact-open class
-        // Check if we're in onboarding mode
-        const onboardingContainer = document.querySelector('.onboarding') as HTMLElement | null;
-        const chatContainer = document.querySelector('.chat-window-container') as HTMLElement | null;
-        
-        const container = onboardingContainer || chatContainer;
-        if (container) {
-            container.classList.remove('artefact-open');
+        const isInModalWrapper = panel.closest('.artefact-modal-wrapper');
+        if (!isInModalWrapper) {
+            // Desktop mode: remove artefact-open from container
+            const onboardingContainer = document.querySelector('.onboarding') as HTMLElement | null;
+            const chatContainer = document.querySelector('.chat-window-container') as HTMLElement | null;
+            const container = onboardingContainer || chatContainer;
+            if (container) {
+                container.classList.remove('artefact-open');
+            }
         }
 
         // Start closing animation
         panel.classList.add('closing');
         setTimeout(() => {
-            // Remove panel from DOM after animation completes
-            panel.remove();
+            if (isInModalWrapper) {
+                // Modal mode: remove entire wrapper (backdrop + panel)
+                isInModalWrapper.remove();
+            } else {
+                panel.remove();
+            }
             
             // Remove ESC listener
             this.removeEscListener();

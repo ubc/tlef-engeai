@@ -456,6 +456,11 @@
     height: 100vh !important;
 }
 
+/* Ensure artefact modal is above onboarding content when opened during onboarding */
+.onboarding-active .artefact-modal-wrapper {
+    z-index: 10001;
+}
+
 /* ===========================================
    STUDENT-SPECIFIC LOGO AND BRANDING
    =========================================== */
