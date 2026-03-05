@@ -105,3 +105,13 @@ a:hover {
         opacity: 0;
     }
 }
+
+/* Mobile header bar: hidden on large screens, shown only in mobile media queries */
+.mobile-header-bar {
+    display: none;
+}
+
+/* Mobile hamburger button: hidden on large screens, shown only in mobile media queries */
+.mobile-hamburger-btn {
+    display: none;
+}

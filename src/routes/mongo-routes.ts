@@ -2907,7 +2907,7 @@ router.post('/admin/reset-vector-database', asyncHandlerWithAuth(async (req: Req
 // ===========================================
 
 /**
- * GET /api/courses/monitor/:courseId/chat-titles - Get chat titles for all students (REQUIRES AUTH - Instructors only)
+ * GET /api/courses/monitor/:courseId/chat-titles - Get chat titles for all users (students and instructors) (REQUIRES AUTH - Instructors only)
  * Returns lightweight list of chat titles without full message history
  */
 router.get('/monitor/:courseId/chat-titles', asyncHandlerWithAuth(async (req: Request, res: Response) => {
@@ -2930,39 +2930,41 @@ router.get('/monitor/:courseId/chat-titles', asyncHandlerWithAuth(async (req: Re
         // Get collection names
         const collectionNames = await mongoDB.getCollectionNames(courseName);
         
-        // Get all users from the course users collection
+        // Get all users (students and faculty) from the course users collection (projection for efficiency)
         const usersCollection = mongoDB.db.collection(collectionNames.users);
-        const allUsers = await usersCollection.find({}).toArray();
+        const allUsers = await usersCollection.find(
+            { affiliation: { $in: ['student', 'faculty'] } },
+            { projection: { userId: 1, name: 1, affiliation: 1, chats: 1 } }
+        ).toArray();
         
-        // Build response with chat titles for each student
-        const studentsData: Array<{
-            studentId: string;
-            studentName: string;
+        // Build response with chat titles for each user (students and instructors)
+        const usersData: Array<{
+            userId: string;
+            userName: string;
+            role: 'student' | 'instructor';
             chats: Array<{ id: string; title: string }>;
         }> = [];
         
         for (const user of allUsers) {
             const userData = user as any;
-            // Only include students (filter out faculty)
-            if (userData.affiliation === 'student') {
-                const chats = (userData.chats || []).filter((chat: any) => !chat.isDeleted);
-                const chatTitles = chats.map((chat: any) => ({
-                    id: chat.id,
-                    title: chat.itemTitle || chat.title || 'Untitled Chat'
-                }));
-                
-                studentsData.push({
-                    studentId: userData.userId,
-                    studentName: userData.name || 'Unknown Student',
-                    chats: chatTitles
-                });
-            }
+            const chats = (userData.chats || []).filter((chat: any) => !chat.isDeleted);
+            const chatTitles = chats.map((chat: any) => ({
+                id: chat.id,
+                title: chat.itemTitle || chat.title || 'Untitled Chat'
+            }));
+            
+            usersData.push({
+                userId: userData.userId,
+                userName: userData.name || 'Unknown User',
+                role: userData.affiliation === 'faculty' ? 'instructor' : 'student',
+                chats: chatTitles
+            });
         }
         
         res.status(200).json({
             success: true,
-            data: studentsData,
-            count: studentsData.length
+            data: usersData,
+            count: usersData.length
         });
         
     } catch (error) {

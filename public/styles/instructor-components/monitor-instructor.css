@@ -204,7 +204,8 @@
     margin: 0;
 }
 
-.student-count {
+.student-count,
+.user-count {
     font-size: 14px;
     font-weight: 500;
     color: var(--text-secondary);
@@ -269,9 +270,31 @@
     font-weight: 600;
     color: var(--text-primary);
     flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
-.student-tokens {
+.role-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.role-badge.role-student {
+    background: rgba(92, 138, 58, 0.2);
+    color: var(--color-chbe-green);
+}
+
+.role-badge.role-instructor {
+    background: rgba(33, 150, 243, 0.2);
+    color: #1976d2;
+}
+
+.student-conversation-count {
     font-size: 13px;
     color: var(--text-secondary);
     font-weight: 500;
