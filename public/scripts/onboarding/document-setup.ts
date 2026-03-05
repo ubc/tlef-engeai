@@ -23,9 +23,10 @@
  */
 
 import { loadComponentHTML } from "../api/api.js";
-import { activeCourse, LearningObjective, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem } from "../../../src/functions/types.js";
+import { activeCourse, LearningObjective, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem } from "../types.js";
 import { showErrorModal, showHelpModal, showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal } from "../ui/modal-overlay.js";
-import { DocumentUploadModule, UploadResult } from '../services/document-upload-module.js';
+import { DocumentUploadModule } from '../services/document-upload-module.js';
+import type { UploadResult } from '../types.js';
 
 // ===========================================
 // TYPE DEFINITIONS

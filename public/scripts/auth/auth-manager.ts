@@ -9,7 +9,8 @@
  * @since: 2025-01-27
  */
 
-import { authService, AuthState, User } from '../services/auth-service.js';
+import { authService } from '../services/auth-service.js';
+import type { AuthState, AuthUser } from '../types.js';
 
 // console.log('🚀 AUTH MANAGER SCRIPT LOADING...');
 
@@ -178,7 +179,7 @@ class AuthManager {
     /**
      * Show authenticated state
      */
-    private showAuthenticated(user: User): void {
+    private showAuthenticated(user: AuthUser): void {
         if (this.loginPrompt) this.loginPrompt.style.display = 'none';
         if (this.authLoading) this.authLoading.style.display = 'none';
         if (this.userInfo) this.userInfo.style.display = 'block';

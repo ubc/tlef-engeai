@@ -62,6 +62,7 @@ EngE-AI is an AI-powered study assistant for engineering courses at UBC. Student
 
 ### Frontend (`public/scripts/`)
 
+- **Types:** `types.ts` — Frontend type definitions. Self-contained; must NOT import from `src/`. Shared types are duplicated from `src/functions/types.ts` and kept in sync manually. Import from `./types.js` or `../types.js`.
 - **Entry points:** `entry/` — student-mode, instructor-mode, course-selection
 - **Features:** `feature/` — chat, documents, flags, monitor, assistant-prompts, system-prompts, course-information, student-flag-history, artefact, render-chat
 - **Services:** `services/` — auth-service, rag-service, document-upload-module, inactivity-tracker (kebab-case filenames)
@@ -121,6 +122,8 @@ EngE-AI is an AI-powered study assistant for engineering courses at UBC. Student
 | **Styling** | See Styling section | Use `<styling_AI_suggest>` only; do not implement directly |
 
 ### Discovery Step (Before Coding)
+
+**Frontend types rule:** `public/scripts/types.ts` must NOT import from backend (`src/`). Duplicate shared types and keep them in sync manually with `src/functions/types.ts`.
 
 1. Check frontend version: `public/scripts/frontend-version.ts`
 2. Check backend version: `src/utils/backend-version.ts`

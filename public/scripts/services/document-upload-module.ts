@@ -16,19 +16,7 @@
  * @version: 1.0.0
  */
 
-import { AdditionalMaterial } from '../../../src/functions/types';
-
-export interface UploadResult {
-    success: boolean;
-    document?: AdditionalMaterial;
-    chunksGenerated?: number;
-    error?: string;
-}
-
-export interface ValidationResult {
-    isValid: boolean;
-    error?: string;
-}
+import { AdditionalMaterial, UploadResult, ValidationResult } from '../types.js';
 
 /**
  * Document Upload Module Class

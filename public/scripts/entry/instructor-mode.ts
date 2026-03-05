@@ -1,5 +1,5 @@
 import { loadComponentHTML, renderFeatherIcons } from "../api/api.js";
-import { activeCourse, User } from "../../../src/functions/types.js";
+import { activeCourse, User } from "../types.js";
 import { instructorUserFactory } from "../factories/instructor-user-factory.js";
 import { initializeDocumentsPage } from "../feature/documents.js";
 import { renderOnCourseSetup } from "../onboarding/course-setup.js";

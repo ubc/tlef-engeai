@@ -8,8 +8,8 @@
  */
 
 import { loadComponentHTML, renderFeatherIcons } from "../api/api.js";
-import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, dismissUnstruggleBlock, CreateChatRequest } from "../api/chat-api.js";
-import { Chat, ChatMessage, CourseUser, activeCourse } from "../../../src/functions/types.js";
+import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, dismissUnstruggleBlock } from "../api/chat-api.js";
+import { Chat, ChatMessage, CourseUser, activeCourse, ChatManagerConfig, CreateChatRequest } from "../types.js";
 import { RenderChat } from "./render-chat.js";
 import { showDisclaimerModal, showDeleteConfirmationModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
 
@@ -126,15 +126,6 @@ export function renderLatexInHtmlContent(element: HTMLElement): void {
     renderMath();
 }
 
-
-/**
- * Chat Manager Configuration
- */
-export interface ChatManagerConfig {
-    isInstructor: boolean;
-    userContext: CourseUser;  // Always use CourseUser for both students and instructors
-    onModeSpecificCallback?: (action: string, data?: any) => void;
-}
 
 /**
  * Unified Chat Manager Class

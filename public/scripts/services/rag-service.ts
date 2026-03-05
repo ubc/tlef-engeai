@@ -9,8 +9,8 @@
  * @version: 1.0.0
  */
 
-import { AdditionalMaterial } from '../../../src/functions/types';
-import { DocumentUploadModule, UploadResult } from './document-upload-module.js';
+import { DocumentUploadModule } from './document-upload-module.js';
+import type { AdditionalMaterial, UploadResult } from '../types.js';
 
 /**
  * Uploads content to the RAG system using the DocumentUploadModule

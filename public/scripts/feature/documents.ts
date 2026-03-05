@@ -24,9 +24,10 @@ import {
     TopicOrWeekItem, 
     AdditionalMaterial, 
     activeCourse 
-} from '../../../src/functions/types';
+} from '../types.js';
 import { uploadRAGContent } from '../services/rag-service.js';
-import { DocumentUploadModule, UploadResult } from '../services/document-upload-module.js';
+import { DocumentUploadModule } from '../services/document-upload-module.js';
+import type { UploadResult } from '../types.js';
 import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal } from '../ui/modal-overlay.js';
 import { showToast } from '../ui/toast-notification.js';
 import { renderFeatherIcons } from '../api/api.js';

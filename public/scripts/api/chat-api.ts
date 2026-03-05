@@ -8,43 +8,7 @@
  * @since: 2025-01-27
  */
 
-import { Chat, ChatMessage } from '../../../src/functions/types.js';
-
-/**
- * Create Chat Request interface
- */
-export interface CreateChatRequest {
-    userID: string;
-    courseName: string;
-    date: string;
-}
-
-/**
- * API Response interfaces for chat operations
- */
-export interface ChatResponse {
-    success: boolean;
-    message?: string;
-    error?: string;
-}
-
-export interface CreateChatResponse extends ChatResponse {
-    chatId?: string;
-    initAssistantMessage?: {
-        id: string;
-        sender: 'bot';
-        userId: number;
-        courseName: string;
-        text: string;
-        timestamp: number;
-    };
-}
-
-export interface SendMessageResponse {
-    success: boolean;
-    message?: ChatMessage;
-    error?: string;
-}
+import { Chat, ChatMessage, CreateChatRequest, CreateChatResponse, ChatApiResponse, SendMessageResponse } from '../types.js';
 
 /**
  * Create a new chat on the server
@@ -120,7 +84,7 @@ export async function sendMessageToChat(
  * @param chatId - ID of the chat to delete
  * @returns Promise with deletion response
  */
-export async function deleteChat(chatId: string): Promise<ChatResponse> {
+export async function deleteChat(chatId: string): Promise<ChatApiResponse> {
     try {
         const response = await fetch(`/api/chat/${chatId}`, {
             method: 'DELETE',
@@ -221,7 +185,7 @@ export async function dismissUnstruggleBlock(
  * @param isPinned - Pin status
  * @returns Promise with update response
  */
-export async function updateChatPinStatus(chatId: string, isPinned: boolean): Promise<ChatResponse> {
+export async function updateChatPinStatus(chatId: string, isPinned: boolean): Promise<ChatApiResponse> {
     try {
         const response = await fetch(`/api/chat/${chatId}/pin`, {
             method: 'PUT',

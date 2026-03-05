@@ -10,39 +10,16 @@
 
 // Artefact functionality disabled for now
 
+import type { MessageReply } from '../types.js';
+
 declare const feather: { replace: () => void };
-
-export interface ChatResponse {
-    reply: string;
-    timestamp: number;
-}
-
-export interface CreateChatRequest {
-    userID: string;
-    courseName: string;
-    date: string;
-}
-
-export interface CreateChatResponse {
-    success: boolean;
-    chatId?: string;
-    error?: string;
-    initAssistantMessage?: {
-        id: string;
-        sender: string;
-        userId: number;
-        courseName: string;
-        text: string;
-        timestamp: number;
-    };
-}
 
 /**
  * Send a message to the server and return the response
  * @param text - The message to send to the server
  * @returns The response from the server
  */
-export async function sendMessageToServer(text: string): Promise<ChatResponse> {
+export async function sendMessageToServer(text: string): Promise<MessageReply> {
     const res = await fetch('/api/chat/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

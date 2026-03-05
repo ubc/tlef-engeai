@@ -14,12 +14,7 @@
  * @since: 2025-02-13
  */
 
-import { CourseUser } from '../../../src/functions/types.js';
-
-/** Context for creating a student user from API response */
-export interface StudentUserContext {
-    apiUser: Partial<CourseUser> & { userId: string; name: string };
-}
+import { CourseUser, StudentUserContext } from '../types.js';
 
 /**
  * Factory for creating validated student CourseUser objects

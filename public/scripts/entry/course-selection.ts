@@ -4,7 +4,7 @@
  * Displays available courses and handles course entry
  */
 
-import { GlobalUser } from '../../../src/functions/types.js';
+import { GlobalUser } from '../types.js';
 import { showConfirmModal, showErrorModal, showSuccessModal, showInactivityWarningModal, ModalOverlay } from '../ui/modal-overlay.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
 import { authService } from '../services/auth-service.js';

@@ -26,7 +26,7 @@
  */
 
 import { loadComponentHTML } from "../api/api.js";
-import { activeCourse } from "../../../src/functions/types.js";
+import { activeCourse } from "../types.js";
 import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
 
 // Make currentClass globally accessible

@@ -28,7 +28,7 @@
  */
 
 import { loadComponentHTML } from "../api/api.js";
-import { User } from "../../../src/functions/types.js";
+import { User } from "../types.js";
 import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
 import { getArtefactHandler } from "../feature/artefact.js";
 import { authService } from "../services/auth-service.js";

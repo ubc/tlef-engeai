@@ -14,14 +14,8 @@
  * @since: 2025-02-13
  */
 
-import { CourseUser, activeCourse } from '../../../src/functions/types.js';
-import type { AuthState } from '../services/auth-service.js';
-
-/** Context for creating an instructor user from auth + course data */
-export interface InstructorUserContext {
-    authState: AuthState;
-    courseContext?: activeCourse | null;
-}
+import { CourseUser, activeCourse, InstructorUserContext } from '../types.js';
+import type { AuthState } from '../types.js';
 
 /**
  * Factory for creating validated instructor CourseUser objects

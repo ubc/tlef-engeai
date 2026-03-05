@@ -9,7 +9,7 @@
  * @since: 2025-01-27
  */
 
-import { activeCourse, InitialAssistantPrompt, DEFAULT_PROMPT_ID } from '../../../src/functions/types.js';
+import { activeCourse, InitialAssistantPrompt, DEFAULT_PROMPT_ID } from '../types.js';
 import { renderFeatherIcons } from '../api/api.js';
 import { showConfirmModal, showSimpleErrorModal, showErrorModal } from '../ui/modal-overlay.js';
 import { showSuccessToast, showErrorToast } from '../ui/toast-notification.js';

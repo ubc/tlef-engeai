@@ -8,16 +8,7 @@
  */
 
 import { showSimpleErrorModal } from "../ui/modal-overlay.js";
-
-/**
- * Artefact data structure
- */
-export interface ArtefactData {
-    id: string;
-    mermaidCode: string;
-    isOpen: boolean;
-    messageId: string;
-}
+import type { ArtefactData } from "../types.js";
 
 /**
  * Artefact Handler Class
