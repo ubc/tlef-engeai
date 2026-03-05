@@ -1,4 +1,4 @@
-import { renderFeatherIcons } from "../functions/api.js";
+import { renderFeatherIcons } from "../api/api.js";
 
 /**
  * Monitor Dashboard Types

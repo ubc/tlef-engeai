@@ -8,8 +8,8 @@
  */
 
 // Import modal and toast functions
-import { showConfirmModal } from '../modal-overlay.js';
-import { showSuccessToast, showErrorToast } from '../toast-notification.js';
+import { showConfirmModal } from '../ui/modal-overlay.js';
+import { showSuccessToast, showErrorToast } from '../ui/toast-notification.js';
 
 // Types for flags - matching backend FlagReport interface
 interface FlagReport {

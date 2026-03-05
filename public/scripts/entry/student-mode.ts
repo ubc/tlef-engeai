@@ -1,14 +1,14 @@
 // public/scripts/student-mode.ts
 
-import { loadComponentHTML, renderFeatherIcons } from './functions/api.js';
-import { ChatManager } from './feature/chat.js';
-import { authService } from './services/AuthService.js';
-import { studentUserFactory } from './factories/StudentUserFactory.js';
-import { renderStudentOnboarding } from './onboarding/student-onboarding.js';
-import { initializeStudentFlagHistory } from './feature/student-flag-history.js';
-import { showConfirmModal, showInactivityWarningModal } from './modal-overlay.js';
-import { renderAbout } from './about/about.js';
-import { inactivityTracker } from './services/InactivityTracker.js';
+import { loadComponentHTML, renderFeatherIcons } from '../api/api.js';
+import { ChatManager } from '../feature/chat.js';
+import { authService } from '../services/auth-service.js';
+import { studentUserFactory } from '../factories/student-user-factory.js';
+import { renderStudentOnboarding } from '../onboarding/student-onboarding.js';
+import { initializeStudentFlagHistory } from '../feature/student-flag-history.js';
+import { showConfirmModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
+import { renderAbout } from '../about/about.js';
+import { inactivityTracker } from '../services/inactivity-tracker.js';
 import { 
     getCourseIdFromURL, 
     getStudentViewFromURL, 
@@ -16,7 +16,7 @@ import {
     navigateToStudentView,
     navigateToStudentChat,
     isStudentOnboardingURL
-} from './utils/url-parser.js';
+} from '../utils/url-parser.js';
 
 // Authentication check function
 async function checkAuthentication(): Promise<boolean> {

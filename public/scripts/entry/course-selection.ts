@@ -4,10 +4,10 @@
  * Displays available courses and handles course entry
  */
 
-import { GlobalUser } from '../../src/functions/types.js';
-import { showConfirmModal, showErrorModal, showSuccessModal, showInactivityWarningModal, ModalOverlay } from './modal-overlay.js';
-import { inactivityTracker } from './services/InactivityTracker.js';
-import { authService } from './services/AuthService.js';
+import { GlobalUser } from '../../../src/functions/types.js';
+import { showConfirmModal, showErrorModal, showSuccessModal, showInactivityWarningModal, ModalOverlay } from '../ui/modal-overlay.js';
+import { inactivityTracker } from '../services/inactivity-tracker.js';
+import { authService } from '../services/auth-service.js';
 
 // Store current user's affiliation to check if they're an instructor
 let currentUserAffiliation: 'student' | 'faculty' | null = null;

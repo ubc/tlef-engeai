@@ -7,7 +7,7 @@
  * @since: 2025-01-27
  */
 
-import { showSimpleErrorModal } from "../modal-overlay.js";
+import { showSimpleErrorModal } from "../ui/modal-overlay.js";
 
 /**
  * Artefact data structure

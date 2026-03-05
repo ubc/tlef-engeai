@@ -7,11 +7,11 @@
  * @since: 2025-01-27
  */
 
-import { loadComponentHTML, renderFeatherIcons } from "../functions/api.js";
-import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, dismissUnstruggleBlock, CreateChatRequest } from "../functions/chat-api.js";
+import { loadComponentHTML, renderFeatherIcons } from "../api/api.js";
+import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, dismissUnstruggleBlock, CreateChatRequest } from "../api/chat-api.js";
 import { Chat, ChatMessage, CourseUser, activeCourse } from "../../../src/functions/types.js";
 import { RenderChat } from "./render-chat.js";
-import { showDisclaimerModal, showDeleteConfirmationModal, showSimpleErrorModal } from "../modal-overlay.js";
+import { showDisclaimerModal, showDeleteConfirmationModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
 
 /**
  * Chat Metadata Interface - Lightweight chat information without full message history

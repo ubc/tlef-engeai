@@ -25,11 +25,11 @@ import {
     AdditionalMaterial, 
     activeCourse 
 } from '../../../src/functions/types';
-import { uploadRAGContent } from '../services/RAGService.js';
-import { DocumentUploadModule, UploadResult } from '../services/DocumentUploadModule.js';
-import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal } from '../modal-overlay.js';
-import { showToast } from '../toast-notification.js';
-import { renderFeatherIcons } from '../functions/api.js';
+import { uploadRAGContent } from '../services/rag-service.js';
+import { DocumentUploadModule, UploadResult } from '../services/document-upload-module.js';
+import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal } from '../ui/modal-overlay.js';
+import { showToast } from '../ui/toast-notification.js';
+import { renderFeatherIcons } from '../api/api.js';
 
 // In-memory store for the course data
 let courseData: TopicOrWeekInstance[] = [];

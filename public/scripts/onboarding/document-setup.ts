@@ -22,10 +22,10 @@
  * @version: 1.0.0
  */
 
-import { loadComponentHTML } from "../functions/api.js";
+import { loadComponentHTML } from "../api/api.js";
 import { activeCourse, LearningObjective, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem } from "../../../src/functions/types.js";
-import { showErrorModal, showHelpModal, showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal } from "../modal-overlay.js";
-import { DocumentUploadModule, UploadResult } from '../services/DocumentUploadModule.js';
+import { showErrorModal, showHelpModal, showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal } from "../ui/modal-overlay.js";
+import { DocumentUploadModule, UploadResult } from '../services/document-upload-module.js';
 
 // ===========================================
 // TYPE DEFINITIONS

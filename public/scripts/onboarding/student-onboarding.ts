@@ -27,11 +27,11 @@
  * @version: 1.0.0
  */
 
-import { loadComponentHTML } from "../functions/api.js";
+import { loadComponentHTML } from "../api/api.js";
 import { User } from "../../../src/functions/types.js";
-import { showErrorModal, showHelpModal } from "../modal-overlay.js";
+import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
 import { getArtefactHandler } from "../feature/artefact.js";
-import { authService } from "../services/AuthService.js";
+import { authService } from "../services/auth-service.js";
 
 // Declare feather for TypeScript
 declare const feather: any;

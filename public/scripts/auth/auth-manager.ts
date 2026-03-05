@@ -9,7 +9,7 @@
  * @since: 2025-01-27
  */
 
-import { authService, AuthState, User } from './services/AuthService.js';
+import { authService, AuthState, User } from '../services/auth-service.js';
 
 // console.log('🚀 AUTH MANAGER SCRIPT LOADING...');
 

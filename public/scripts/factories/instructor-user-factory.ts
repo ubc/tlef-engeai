@@ -15,7 +15,7 @@
  */
 
 import { CourseUser, activeCourse } from '../../../src/functions/types.js';
-import type { AuthState } from '../services/AuthService.js';
+import type { AuthState } from '../services/auth-service.js';
 
 /** Context for creating an instructor user from auth + course data */
 export interface InstructorUserContext {

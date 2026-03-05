@@ -1,21 +1,21 @@
-import { loadComponentHTML, renderFeatherIcons } from "./functions/api.js";
-import { activeCourse, User } from "../../src/functions/types.js";
-import { instructorUserFactory } from "./factories/InstructorUserFactory.js";
-import { initializeDocumentsPage } from "./feature/documents.js";
-import { renderOnCourseSetup } from "./onboarding/course-setup.js";
-import { renderDocumentSetup } from "./onboarding/document-setup.js";
-import { renderFlagSetup } from "./onboarding/flag-setup.js";
-import { renderMonitorSetup } from "./onboarding/monitor-setup.js";
-import { initializeFlags } from "./feature/flags.js";
-import { initializeMonitorDashboard } from "./feature/monitor.js";
-import { ChatManager } from "./feature/chat.js";
-import { authService } from './services/AuthService.js';
-import { showConfirmModal, showInactivityWarningModal } from './modal-overlay.js';
-import { renderAbout } from './about/about.js';
-import { initializeCourseInformation } from './feature/course-information.js';
-import { inactivityTracker } from './services/InactivityTracker.js';
-import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from './feature/assistant-prompts.js';
-import { initializeSystemPrompts, hasUnsavedSystemPromptChanges, resetUnsavedSystemPromptChanges } from './feature/system-prompts.js';
+import { loadComponentHTML, renderFeatherIcons } from "../api/api.js";
+import { activeCourse, User } from "../../../src/functions/types.js";
+import { instructorUserFactory } from "../factories/instructor-user-factory.js";
+import { initializeDocumentsPage } from "../feature/documents.js";
+import { renderOnCourseSetup } from "../onboarding/course-setup.js";
+import { renderDocumentSetup } from "../onboarding/document-setup.js";
+import { renderFlagSetup } from "../onboarding/flag-setup.js";
+import { renderMonitorSetup } from "../onboarding/monitor-setup.js";
+import { initializeFlags } from "../feature/flags.js";
+import { initializeMonitorDashboard } from "../feature/monitor.js";
+import { ChatManager } from "../feature/chat.js";
+import { authService } from '../services/auth-service.js';
+import { showConfirmModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
+import { renderAbout } from '../about/about.js';
+import { initializeCourseInformation } from '../feature/course-information.js';
+import { inactivityTracker } from '../services/inactivity-tracker.js';
+import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from '../feature/assistant-prompts.js';
+import { initializeSystemPrompts, hasUnsavedSystemPromptChanges, resetUnsavedSystemPromptChanges } from '../feature/system-prompts.js';
 import { 
     getCourseIdFromURL, 
     getInstructorViewFromURL, 
@@ -24,7 +24,7 @@ import {
     navigateToChat,
     getInstructorOnboardingStageFromURL,
     isNewCourseOnboardingURL
-} from './utils/url-parser.js';
+} from '../utils/url-parser.js';
 
 // Authentication check function
 async function checkAuthentication(): Promise<boolean> {

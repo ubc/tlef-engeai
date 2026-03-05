@@ -25,9 +25,9 @@
  * @version: 1.0.0
  */
 
-import { loadComponentHTML } from "../functions/api.js";
+import { loadComponentHTML } from "../api/api.js";
 import { activeCourse } from "../../../src/functions/types.js";
-import { showErrorModal, showHelpModal } from "../modal-overlay.js";
+import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
 
 // Make currentClass globally accessible
 declare global {
@@ -1145,5 +1145,5 @@ function setupResizeListener(state: MonitorSetupState): void {
 }
 
 // Additional imports for instructor-mode integration
-import { renderFeatherIcons } from "../functions/api.js";
+import { renderFeatherIcons } from "../api/api.js";
 

@@ -60,7 +60,7 @@ export class ChatApp {
     private ragConfig: any;
     private llmProvider: any;
     private chatTimers: Map<string, NodeJS.Timeout>; // Maps chatId to cleanup timer
-    private chatInactivityTimeout: number = 5 * 60 * 1000; // 5 minutes in milliseconds
+    private chatInactivityTimeout: number = 0.5 * 60 * 1000; // 5 minutes in milliseconds
 
     constructor(config: AppConfig) {
         this.llmModule = new LLMModule(config.llmConfig);

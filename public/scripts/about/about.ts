@@ -18,7 +18,7 @@
  * @version: 1.0.0
  */
 
-import { loadComponentHTML } from "../functions/api.js";
+import { loadComponentHTML } from "../api/api.js";
 
 // Declare feather for TypeScript
 declare const feather: any;

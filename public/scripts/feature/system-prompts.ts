@@ -11,9 +11,9 @@
  */
 
 import { activeCourse, SystemPromptItem, DEFAULT_BASE_PROMPT_ID, DEFAULT_LEARNING_OBJECTIVES_ID, DEFAULT_STRUGGLE_TOPICS_ID, LearningObjective } from '../../../src/functions/types.js';
-import { renderFeatherIcons } from '../functions/api.js';
-import { showConfirmModal, showSimpleErrorModal, showErrorModal } from '../modal-overlay.js';
-import { showSuccessToast, showErrorToast } from '../toast-notification.js';
+import { renderFeatherIcons } from '../api/api.js';
+import { showConfirmModal, showSimpleErrorModal, showErrorModal } from '../ui/modal-overlay.js';
+import { showSuccessToast, showErrorToast } from '../ui/toast-notification.js';
 
 const DRAFT_PROMPT_ID = 'draft-new';
 

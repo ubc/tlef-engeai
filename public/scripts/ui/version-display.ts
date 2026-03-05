@@ -4,7 +4,7 @@
  * Format: "F v1.0.0" and "B v1.0.0"
  */
 
-import { frontendVersion } from './frontend-version.js';
+import { frontendVersion } from '../frontend-version.js';
 
 const VERSION_DISPLAY_ID = 'version-display';
 const API_VERSION_URL = '/api/version';
