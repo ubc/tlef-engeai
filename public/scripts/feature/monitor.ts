@@ -3,10 +3,11 @@ import { renderFeatherIcons } from "../functions/api.js";
 /**
  * Monitor Dashboard Types
  */
-interface StudentData {
+interface UserData {
     id: string;
     name: string;
-    tokens: number;
+    role: 'student' | 'instructor';
+    conversationCount: number;
     chatHistory: ChatSession[];
 }
 
@@ -33,8 +34,8 @@ interface DateRange {
  * Monitor Dashboard Class
  */
 class MonitorDashboard {
-    private students: StudentData[] = [];
-    private currentSort: 'tokens' | 'name' = 'tokens';
+    private users: UserData[] = [];
+    private currentSort: 'conversations' | 'name' = 'conversations';
     private selectedDateRange: DateRange = { start: null, end: null };
     private isCalendarOpen: boolean = false;
     private courseId: string | null = null;
@@ -65,7 +66,7 @@ class MonitorDashboard {
     private async loadChatTitles(): Promise<void> {
         if (!this.courseId) {
             console.error('[MONITOR] ❌ Cannot load chat titles: no course ID');
-            this.students = [];
+            this.users = [];
             this.render();
             return;
         }
@@ -86,236 +87,33 @@ class MonitorDashboard {
             const result = await response.json();
             
             if (result.success && result.data) {
-                // Transform API data to StudentData format
-                this.students = result.data.map((student: any) => ({
-                    id: student.studentId,
-                    name: student.studentName,
-                    tokens: 0, // Set tokens to 0 as requested
-                    chatHistory: student.chats.map((chat: any) => ({
+                // Transform API data to UserData format (students and instructors)
+                this.users = result.data.map((user: any) => ({
+                    id: user.userId,
+                    name: user.userName,
+                    role: user.role || (user.affiliation === 'faculty' ? 'instructor' : 'student'),
+                    conversationCount: (user.chats || []).length,
+                    chatHistory: (user.chats || []).map((chat: any) => ({
                         id: chat.id,
                         title: chat.title,
                         date: new Date(), // Date not provided by API, use current date
-                        tokensUsed: 0 // Set tokens to 0 as requested
+                        tokensUsed: 0 // Reserved for future use
                     }))
                 }));
 
-                // console.log('[MONITOR] ✅ Loaded chat titles for', this.students.length, 'students');
+                // console.log('[MONITOR] ✅ Loaded chat titles for', this.users.length, 'users');
             } else {
                 console.error('[MONITOR] ❌ Failed to load chat titles:', result.error);
-                this.students = [];
+                this.users = [];
             }
         } catch (error) {
             console.error('[MONITOR] ❌ Error loading chat titles:', error);
-            this.students = [];
+            this.users = [];
         }
         
         this.render();
     }
 
-    /**
-     * Initialize mock data for students and usage statistics
-     * COMMENTED OUT: Now using real data from API
-     */
-    private initializeMockData(): void {
-        // Mock student data with chat history - 20 students
-        this.students = [
-            { 
-                id: '1', 
-                name: 'Rusdiyanto, Charisma', 
-                tokens: 1351,
-                chatHistory: [
-                    { id: '1-1', title: 'Thermodynamics Problem Set 3', date: new Date('2024-01-15'), tokensUsed: 450 },
-                    { id: '1-2', title: 'Heat Transfer Calculations', date: new Date('2024-01-14'), tokensUsed: 320 },
-                    { id: '1-3', title: 'Mass Balance Equations', date: new Date('2024-01-13'), tokensUsed: 280 }
-                ]
-            },
-            { 
-                id: '2', 
-                name: 'Megury, Christian', 
-                tokens: 2500,
-                chatHistory: [
-                    { id: '2-1', title: 'Fluid Mechanics Lab Report', date: new Date('2024-01-15'), tokensUsed: 680 },
-                    { id: '2-2', title: 'Bernoulli Equation Applications', date: new Date('2024-01-14'), tokensUsed: 520 },
-                    { id: '2-3', title: 'Reynolds Number Calculations', date: new Date('2024-01-13'), tokensUsed: 410 }
-                ]
-            },
-            { 
-                id: '3', 
-                name: 'Maximoff, Wanda', 
-                tokens: 5700,
-                chatHistory: [
-                    { id: '3-1', title: 'Process Control Systems Design', date: new Date('2024-01-15'), tokensUsed: 1200 },
-                    { id: '3-2', title: 'PID Controller Tuning', date: new Date('2024-01-14'), tokensUsed: 980 },
-                    { id: '3-3', title: 'Feedback Control Theory', date: new Date('2024-01-13'), tokensUsed: 750 },
-                    { id: '3-4', title: 'Laplace Transform Applications', date: new Date('2024-01-12'), tokensUsed: 650 }
-                ]
-            },
-            { 
-                id: '4', 
-                name: 'Smith, John', 
-                tokens: 1200,
-                chatHistory: [
-                    { id: '4-1', title: 'Material Properties Analysis', date: new Date('2024-01-15'), tokensUsed: 380 },
-                    { id: '4-2', title: 'Stress-Strain Relationships', date: new Date('2024-01-14'), tokensUsed: 290 }
-                ]
-            },
-            { 
-                id: '5', 
-                name: 'Johnson, Sarah', 
-                tokens: 3200,
-                chatHistory: [
-                    { id: '5-1', title: 'Chemical Reaction Kinetics', date: new Date('2024-01-15'), tokensUsed: 850 },
-                    { id: '5-2', title: 'Catalyst Design Principles', date: new Date('2024-01-14'), tokensUsed: 720 },
-                    { id: '5-3', title: 'Reaction Rate Constants', date: new Date('2024-01-13'), tokensUsed: 580 }
-                ]
-            },
-            { 
-                id: '6', 
-                name: 'Williams, Michael', 
-                tokens: 1800,
-                chatHistory: [
-                    { id: '6-1', title: 'Heat Exchanger Design', date: new Date('2024-01-15'), tokensUsed: 520 },
-                    { id: '6-2', title: 'Energy Balance Problems', date: new Date('2024-01-14'), tokensUsed: 380 }
-                ]
-            },
-            { 
-                id: '7', 
-                name: 'Brown, Emily', 
-                tokens: 4100,
-                chatHistory: [
-                    { id: '7-1', title: 'Distillation Column Design', date: new Date('2024-01-15'), tokensUsed: 980 },
-                    { id: '7-2', title: 'Vapor-Liquid Equilibrium', date: new Date('2024-01-14'), tokensUsed: 750 },
-                    { id: '7-3', title: 'McCabe-Thiele Method', date: new Date('2024-01-13'), tokensUsed: 650 }
-                ]
-            },
-            { 
-                id: '8', 
-                name: 'Jones, David', 
-                tokens: 2900,
-                chatHistory: [
-                    { id: '8-1', title: 'Pump Selection and Sizing', date: new Date('2024-01-15'), tokensUsed: 680 },
-                    { id: '8-2', title: 'Pipe Flow Calculations', date: new Date('2024-01-14'), tokensUsed: 520 }
-                ]
-            },
-            { 
-                id: '9', 
-                name: 'Garcia, Maria', 
-                tokens: 1500,
-                chatHistory: [
-                    { id: '9-1', title: 'Chemical Safety Protocols', date: new Date('2024-01-15'), tokensUsed: 420 },
-                    { id: '9-2', title: 'Hazard Identification', date: new Date('2024-01-14'), tokensUsed: 320 }
-                ]
-            },
-            { 
-                id: '10', 
-                name: 'Miller, James', 
-                tokens: 3800,
-                chatHistory: [
-                    { id: '10-1', title: 'Reactor Design Principles', date: new Date('2024-01-15'), tokensUsed: 850 },
-                    { id: '10-2', title: 'Kinetic Rate Expressions', date: new Date('2024-01-14'), tokensUsed: 720 },
-                    { id: '10-3', title: 'Batch vs Continuous Reactors', date: new Date('2024-01-13'), tokensUsed: 580 }
-                ]
-            },
-            { 
-                id: '11', 
-                name: 'Davis, Jennifer', 
-                tokens: 2200,
-                chatHistory: [
-                    { id: '11-1', title: 'Process Optimization', date: new Date('2024-01-15'), tokensUsed: 620 },
-                    { id: '11-2', title: 'Cost-Benefit Analysis', date: new Date('2024-01-14'), tokensUsed: 480 }
-                ]
-            },
-            { 
-                id: '12', 
-                name: 'Rodriguez, Carlos', 
-                tokens: 3400,
-                chatHistory: [
-                    { id: '12-1', title: 'Environmental Impact Assessment', date: new Date('2024-01-15'), tokensUsed: 780 },
-                    { id: '12-2', title: 'Sustainability Metrics', date: new Date('2024-01-14'), tokensUsed: 650 },
-                    { id: '12-3', title: 'Green Engineering Principles', date: new Date('2024-01-13'), tokensUsed: 520 }
-                ]
-            },
-            { 
-                id: '13', 
-                name: 'Martinez, Ana', 
-                tokens: 1900,
-                chatHistory: [
-                    { id: '13-1', title: 'Quality Control Systems', date: new Date('2024-01-15'), tokensUsed: 520 },
-                    { id: '13-2', title: 'Statistical Process Control', date: new Date('2024-01-14'), tokensUsed: 380 }
-                ]
-            },
-            { 
-                id: '14', 
-                name: 'Hernandez, Luis', 
-                tokens: 2600,
-                chatHistory: [
-                    { id: '14-1', title: 'Instrumentation and Control', date: new Date('2024-01-15'), tokensUsed: 680 },
-                    { id: '14-2', title: 'Sensor Selection Criteria', date: new Date('2024-01-14'), tokensUsed: 520 }
-                ]
-            },
-            { 
-                id: '15', 
-                name: 'Lopez, Carmen', 
-                tokens: 3100,
-                chatHistory: [
-                    { id: '15-1', title: 'Plant Layout Design', date: new Date('2024-01-15'), tokensUsed: 750 },
-                    { id: '15-2', title: 'Equipment Placement Optimization', date: new Date('2024-01-14'), tokensUsed: 620 },
-                    { id: '15-3', title: 'Safety Distance Calculations', date: new Date('2024-01-13'), tokensUsed: 480 }
-                ]
-            },
-            { 
-                id: '16', 
-                name: 'Gonzalez, Pedro', 
-                tokens: 1700,
-                chatHistory: [
-                    { id: '16-1', title: 'Material Selection Criteria', date: new Date('2024-01-15'), tokensUsed: 480 },
-                    { id: '16-2', title: 'Corrosion Resistance Analysis', date: new Date('2024-01-14'), tokensUsed: 360 }
-                ]
-            },
-            { 
-                id: '17', 
-                name: 'Wilson, Lisa', 
-                tokens: 4200,
-                chatHistory: [
-                    { id: '17-1', title: 'Process Simulation Software', date: new Date('2024-01-15'), tokensUsed: 950 },
-                    { id: '17-2', title: 'Aspen Plus Modeling', date: new Date('2024-01-14'), tokensUsed: 780 },
-                    { id: '17-3', title: 'Steady State Analysis', date: new Date('2024-01-13'), tokensUsed: 650 }
-                ]
-            },
-            { 
-                id: '18', 
-                name: 'Anderson, Robert', 
-                tokens: 2800,
-                chatHistory: [
-                    { id: '18-1', title: 'Economic Analysis Methods', date: new Date('2024-01-15'), tokensUsed: 680 },
-                    { id: '18-2', title: 'Capital Cost Estimation', date: new Date('2024-01-14'), tokensUsed: 520 }
-                ]
-            },
-            { 
-                id: '19', 
-                name: 'Taylor, Jessica', 
-                tokens: 3600,
-                chatHistory: [
-                    { id: '19-1', title: 'Process Integration Techniques', date: new Date('2024-01-15'), tokensUsed: 820 },
-                    { id: '19-2', title: 'Heat Integration Networks', date: new Date('2024-01-14'), tokensUsed: 680 },
-                    { id: '19-3', title: 'Pinch Analysis Methods', date: new Date('2024-01-13'), tokensUsed: 550 }
-                ]
-            },
-            { 
-                id: '20', 
-                name: 'Thomas, Christopher', 
-                tokens: 2400,
-                chatHistory: [
-                    { id: '20-1', title: 'Risk Assessment Procedures', date: new Date('2024-01-15'), tokensUsed: 620 },
-                    { id: '20-2', title: 'Failure Mode Analysis', date: new Date('2024-01-14'), tokensUsed: 480 }
-                ]
-            }
-        ];
-
-        // Initialize with no dates selected
-        this.selectedDateRange.start = null;
-        this.selectedDateRange.end = null;
-    }
 
     /**
      * Bind event listeners
@@ -335,10 +133,10 @@ class MonitorDashboard {
         // calendarOkBtn?.addEventListener('click', () => this.applyDateSelection());
 
         // Sort buttons
-        const sortTokensBtn = document.getElementById('sort-tokens');
+        const sortConversationsBtn = document.getElementById('sort-conversations');
         const sortNameBtn = document.getElementById('sort-name');
         
-        sortTokensBtn?.addEventListener('click', () => this.setSort('tokens'));
+        sortConversationsBtn?.addEventListener('click', () => this.setSort('conversations'));
         sortNameBtn?.addEventListener('click', () => this.setSort('name'));
 
         // COMMENTED OUT: Calendar modal click handler
@@ -358,7 +156,7 @@ class MonitorDashboard {
      */
     private render(): void {
         this.renderUsageStats();
-        this.renderStudentList();
+        this.renderUserList();
         this.updateDateDisplay();
         renderFeatherIcons();
     }
@@ -394,24 +192,33 @@ class MonitorDashboard {
     }
 
     /**
-     * Render student list with accordion functionality
+     * Render user list (students and instructors) with accordion functionality
      */
-    private renderStudentList(): void {
-        const studentList = document.getElementById('student-list');
-        if (!studentList) return;
+    private renderUserList(): void {
+        const userList = document.getElementById('student-list');
+        if (!userList) return;
 
-        const sortedStudents = this.getSortedStudents();
+        // Update dynamic user count in header
+        const userCountEl = document.getElementById('user-count');
+        if (userCountEl) {
+            userCountEl.textContent = `(${this.users.length})`;
+        }
+
+        const sortedUsers = this.getSortedUsers();
         
-        studentList.innerHTML = sortedStudents.map(student => `
-            <div class="student-item" data-student-id="${student.id}">
-                <div class="student-header" onclick="toggleMonitorStudentAccordion('${student.id}')">
-                <div class="student-name">${student.name}</div>
-                <div class="student-tokens">${student.tokens.toLocaleString()} tokens</div>
+        userList.innerHTML = sortedUsers.map(user => `
+            <div class="student-item" data-student-id="${user.id}">
+                <div class="student-header" onclick="toggleMonitorStudentAccordion('${user.id}')">
+                <div class="student-name">
+                    <span class="role-badge role-${user.role}">${user.role === 'instructor' ? 'Instructor' : 'Student'}</span>
+                    ${user.name}
+                </div>
+                <div class="student-conversation-count">${user.conversationCount} conversation${user.conversationCount !== 1 ? 's' : ''}</div>
                     <i data-feather="chevron-down" class="expand-arrow"></i>
                 </div>
                 <div class="monitor-student-content">
                     <div class="chat-history-list">
-                        ${student.chatHistory.map(chat => `
+                        ${user.chatHistory.map(chat => `
                             <div class="chat-history-item">
                                 <div class="chat-title">${chat.title}</div>
                                 <button class="download-button" onclick="downloadChatHistory('${chat.id}')">
@@ -430,22 +237,22 @@ class MonitorDashboard {
     }
 
     /**
-     * Get sorted students based on current sort option
+     * Get sorted users based on current sort option
      */
-    private getSortedStudents(): StudentData[] {
-        const students = [...this.students];
+    private getSortedUsers(): UserData[] {
+        const users = [...this.users];
         
-        if (this.currentSort === 'tokens') {
-            return students.sort((a, b) => b.tokens - a.tokens);
+        if (this.currentSort === 'conversations') {
+            return users.sort((a, b) => b.conversationCount - a.conversationCount);
         } else {
-            return students.sort((a, b) => a.name.localeCompare(b.name));
+            return users.sort((a, b) => a.name.localeCompare(b.name));
         }
     }
 
     /**
      * Set sort option and update UI
      */
-    private setSort(sort: 'tokens' | 'name'): void {
+    private setSort(sort: 'conversations' | 'name'): void {
         this.currentSort = sort;
         
         // Update button states
@@ -455,8 +262,8 @@ class MonitorDashboard {
         const activeBtn = document.getElementById(`sort-${sort}`);
         activeBtn?.classList.add('active');
         
-        // Re-render student list
-        this.renderStudentList();
+        // Re-render user list
+        this.renderUserList();
     }
 
     /**

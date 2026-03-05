@@ -169,6 +169,7 @@
 }
 
 .modal-btn-secondary {
+    display: none;
     background-color: #6c757d;
     color: white;
 }
