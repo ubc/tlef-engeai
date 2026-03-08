@@ -778,6 +778,21 @@ function updateStepIndicators(state: FlagSetupState): void {
 }
 
 /**
+ * Sets the next button text while preserving the icon (for mobile icon-only display)
+ * 
+ * @param nextBtn - The next button element
+ * @param text - The text to display
+ */
+function setNextButtonText(nextBtn: HTMLButtonElement, text: string): void {
+    const textSpan = nextBtn.querySelector('.nav-btn-text');
+    if (textSpan) {
+        textSpan.textContent = text;
+    } else {
+        nextBtn.textContent = text;
+    }
+}
+
+/**
  * Updates the navigation buttons based on current step
  * 
  * @param state - The flag setup state object
@@ -792,11 +807,11 @@ function updateNavigationButtons(state: FlagSetupState): void {
     
     if (nextBtn) {
         if (state.currentStep === state.totalSteps) {
-            nextBtn.textContent = 'Complete Setup';
+            setNextButtonText(nextBtn, 'Complete Setup');
             // Ensure button is enabled on final step
             nextBtn.disabled = false;
         } else {
-            nextBtn.textContent = 'Next';
+            setNextButtonText(nextBtn, 'Next');
             
             // Check if next step requires completion of current step
             const nextStepElement = document.getElementById(`content-step-${state.currentStep + 1}`);
@@ -806,7 +821,7 @@ function updateNavigationButtons(state: FlagSetupState): void {
                     const requiredStep = parseInt(requiresCompletion);
                     if (!state.completedSteps.has(requiredStep)) {
                         nextBtn.disabled = true;
-                        nextBtn.textContent = 'Complete Previous Step First';
+                        setNextButtonText(nextBtn, 'Complete Previous Step First');
                     } else {
                         nextBtn.disabled = false;
                     }
@@ -854,7 +869,7 @@ function markStepCompleted(stepNumber: number): void {
                 const requiresCompletion = nextStepElement.getAttribute('data-requires-completion');
                 if (requiresCompletion && parseInt(requiresCompletion) === stepNumber) {
                     nextBtn.disabled = false;
-                    nextBtn.textContent = 'Next';
+                    setNextButtonText(nextBtn, 'Next');
                 }
             }
         }

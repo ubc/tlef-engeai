@@ -345,6 +345,19 @@ graph TD
             if (typeof (window as any).feather !== 'undefined') {
                 (window as any).feather.replace();
             }
+        } else if (useModalMode && onboardingContainer) {
+            // Panel exists (e.g. from student-onboarding HTML) but we need modal mode on mobile
+            // Move panel into modal wrapper
+            panel.remove();
+            const wrapper = document.createElement('div');
+            wrapper.className = 'artefact-modal-wrapper';
+            const backdrop = document.createElement('div');
+            backdrop.className = 'artefact-modal-backdrop';
+            backdrop.setAttribute('aria-hidden', 'true');
+            wrapper.appendChild(backdrop);
+            wrapper.appendChild(panel);
+            document.body.appendChild(wrapper);
+            // Do not add artefact-open to container - modal overlays everything
         }
 
         // Show the panel first

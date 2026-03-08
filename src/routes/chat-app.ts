@@ -456,15 +456,25 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
         
         // userId already validated above when fetching from MongoDB
 
-        // Validate chat exists
+        // Validate chat exists (or restore from database if evicted from memory)
         if (!chatApp.validateChatExists(chatId)) {
-            //START DEBUG LOG : DEBUG-CODE(SEND-MSG-004)
-            console.log('❌ VALIDATION FAILED: Chat not found in memory');
-            //END DEBUG LOG : DEBUG-CODE(SEND-MSG-004)
-            return res.status(404).json({ 
-                success: false, 
-                error: 'Chat not found' 
-            });
+            // Attempt to restore chat from database before returning 404
+            if (!courseName) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'No active course selected'
+                });
+            }
+            const restored = await chatApp.restoreChatFromDatabase(chatId, courseName, userId);
+            if (!restored) {
+                //START DEBUG LOG : DEBUG-CODE(SEND-MSG-004)
+                console.log('❌ VALIDATION FAILED: Chat not found in memory and restore failed');
+                //END DEBUG LOG : DEBUG-CODE(SEND-MSG-004)
+                return res.status(404).json({
+                    success: false,
+                    error: 'Chat not found'
+                });
+            }
         }
 
         // Check if this is a questionUnstruggle response (natural language format)

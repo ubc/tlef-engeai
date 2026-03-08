@@ -714,13 +714,13 @@ function updateNavigationButtons(state: StudentOnboardingState): void {
         if (state.currentStep === state.totalSteps) {
             nextBtn.innerHTML = `
                 <i data-feather="check" class="feather"></i>
-                Start Chatting
+                <span class="nav-btn-text">Start Chatting</span>
             `;
             nextBtn.classList.remove('btn-next');
             nextBtn.classList.add('btn-finish');
         } else {
             nextBtn.innerHTML = `
-                Next
+                <span class="nav-btn-text">Next</span>
                 <i data-feather="chevron-right" class="feather"></i>
             `;
             nextBtn.classList.remove('btn-finish');

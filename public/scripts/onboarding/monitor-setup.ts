@@ -355,12 +355,12 @@ function updateNavigationButtons(state: MonitorSetupState, currentStep: number):
     if (nextBtn) {
         if (currentStep === state.totalSteps) {
             nextBtn.textContent = 'Complete Setup';
-            nextBtn.innerHTML = 'Complete Setup <i data-feather="check"></i>';
+            nextBtn.innerHTML = '<span class="nav-btn-text">Complete Setup</span> <i data-feather="check"></i>';
             // Ensure button is enabled on final step
             nextBtn.disabled = false;
         } else {
             nextBtn.textContent = 'Next';
-            nextBtn.innerHTML = 'Next <i data-feather="chevron-right"></i>';
+            nextBtn.innerHTML = '<span class="nav-btn-text">Next</span> <i data-feather="chevron-right"></i>';
             nextBtn.disabled = false;
         }
     }

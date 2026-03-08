@@ -532,24 +532,6 @@
 
 /* Responsive Design - Matching instructor pattern */
 /* Note: Flag history uses scrollable list - no pagination indicators */
-@media (max-width: 960px) {
-    .flag-header {
-        padding: 15px;
-    }
-    
-    .flag-header h1 {
-        font-size: 1.5rem;
-    }
-    
-    .flags-list {
-        gap: 3px;
-    }
-    
-    .flag-card {
-        padding: 12px 16px;
-    }
-}
-
 /* Mobile: full-width cards, compact layout, no pagination */
 @media (max-width: 768px) {
     .flag-header {

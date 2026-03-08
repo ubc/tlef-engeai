@@ -433,6 +433,11 @@
     visibility: hidden;
 }
 
+/* Ensure upload modal appears above fixed nav during document setup onboarding */
+body.onboarding-active .upload-modal-overlay {
+    z-index: 10000;
+}
+
 /* Upload State Indicators */
 .upload-modal-overlay.uploading .modal-container {
     border-left: 4px solid #17a2b8; /* Blue for uploading */
@@ -507,6 +512,12 @@
     font-size: 18px;
     cursor: pointer;
     color: var(--text-secondary);
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 /* Upload Status Icon */

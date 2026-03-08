@@ -589,14 +589,14 @@ function updateNavigationButtons(state: DocumentSetupState): void {
     }
     
     if (nextBtn) {
-        if (state.currentStep === state.totalSteps) {
-            nextBtn.textContent = 'Complete Setup';
-            // Ensure button is enabled on final step
-            nextBtn.disabled = false;
+        const navTextSpan = nextBtn.querySelector('.nav-btn-text');
+        const label = state.currentStep === state.totalSteps ? 'Complete Setup' : 'Next';
+        if (navTextSpan) {
+            navTextSpan.textContent = label;
         } else {
-            nextBtn.textContent = 'Next';
-            nextBtn.disabled = false;
+            nextBtn.textContent = label;
         }
+        nextBtn.disabled = false;
     }
 }
 
