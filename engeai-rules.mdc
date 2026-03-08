@@ -246,6 +246,14 @@ For styling tasks: suggest changes inside this tag only. Do not implement direct
 - After any code change that affects behavior, interfaces, or architecture
 - Update both inline TSDoc and `/documentation` files as needed
 
+### File location
+
+Add the file location int he frist line of the file - Easier to be track by the AI in the long turn. For example:
+
+```
+// public/scripts/api.ts
+```
+
 ### File Header
 
 Use `@latest frontend version` or `@latest backend version` (whichever applies) — easier to track which version the file was last changed in.
@@ -266,6 +274,7 @@ Use `@latest frontend version` or `@latest backend version` (whichever applies) 
 ```
 /**
  * <ClassName>
+ *
  * methods:
  *   - <method1>: explanation
  *   - <method2>: explanation
@@ -277,6 +286,7 @@ Use `@latest frontend version` or `@latest backend version` (whichever applies) 
 ```
 /**
  * <function_name>
+ *
  * @param <name> <type> — explanation and invariant
  * @param <name> <type> — explanation and invariant
  * @returns <type> — explanation and invariant

@@ -1,19 +1,27 @@
-// public/scripts/functions/chat-api.ts
+// public/scripts/api/chat-api.ts
 
 /**
- * Chat API Functions - Server-side only
- * Separated from api.ts for security reasons
+ * chat-api.ts
+ * 
  * @author: @gatahcha
- * @version: 1.0.0
- * @since: 2025-01-27
+ * @date: 2025-01-27
+ * @latest frontend version: 1.0.6
+ * @description: API helpers for chat CRUD, send message, pin/unpin, dismiss unstruggle block.
  */
 
-import { Chat, ChatMessage, CreateChatRequest, CreateChatResponse, ChatApiResponse, SendMessageResponse } from '../types.js';
+import { 
+    Chat, 
+    CreateChatRequest, 
+    CreateChatResponse, 
+    ChatApiResponse 
+} from '../types.js';
 
 /**
- * Create a new chat on the server
- * @param chatRequest - Chat creation request
- * @returns Promise with chat creation response
+ * createNewChat
+ * 
+ * @param chatRequest CreateChatRequest — userID, courseName, date
+ * @returns Promise<CreateChatResponse> — success, chatId, initAssistantMessage, or error
+ * POST to /api/chat/newchat. Returns error object on failure.
  */
 export async function createNewChat(chatRequest: CreateChatRequest): Promise<CreateChatResponse> {
     try {
@@ -41,12 +49,14 @@ export async function createNewChat(chatRequest: CreateChatRequest): Promise<Cre
 }
 
 /**
- * Send a message to the server with streaming response
- * @param chatId - ID of the chat
- * @param message - Message content
- * @param userId - User ID (instructor/student)
- * @param courseName - Course name
- * @returns Promise that resolves when message is sent
+ * sendMessageToChat
+ * 
+ * @param chatId string — ID of the chat
+ * @param message string — Message content
+ * @param userId string — User ID (instructor/student)
+ * @param courseName string — Course name
+ * @returns Promise<void>
+ * POST to /api/chat/:chatId. Streaming is handled by ChatManager, not this function.
  */
 export async function sendMessageToChat(
     chatId: string, 
@@ -80,9 +90,11 @@ export async function sendMessageToChat(
 }
 
 /**
- * Delete a chat from the server
- * @param chatId - ID of the chat to delete
- * @returns Promise with deletion response
+ * deleteChat
+ * 
+ * @param chatId string — ID of the chat to delete
+ * @returns Promise<ChatApiResponse> — success or error
+ * DELETE /api/chat/:chatId. Returns error object on failure.
  */
 export async function deleteChat(chatId: string): Promise<ChatApiResponse> {
     try {
@@ -109,10 +121,12 @@ export async function deleteChat(chatId: string): Promise<ChatApiResponse> {
 }
 
 /**
- * Get all chats for a user from the server
- * @param userId - User ID
- * @param courseName - Course name
- * @returns Promise with chats array
+ * getChats
+ * 
+ * @param userId string — User ID
+ * @param courseName string — Course name
+ * @returns Promise<Chat[]> — Array of chats; empty array on error
+ * GET /api/chat/user/:userId/course/:courseName.
  */
 export async function getChats(userId: string, courseName: string): Promise<Chat[]> {
     try {
@@ -136,12 +150,13 @@ export async function getChats(userId: string, courseName: string): Promise<Chat
 }
 
 /**
- * Dismiss the unstruggle confidence question block ("No, maybe later")
- * Removes the block from the message in MongoDB so it stays hidden on reload
- * @param chatId - ID of the chat
- * @param messageId - ID of the bot message containing the block
- * @param topic - The topic from the questionUnstruggle tag
- * @returns Promise with success and updatedText
+ * dismissUnstruggleBlock
+ * 
+ * @param chatId string — ID of the chat
+ * @param messageId string — ID of the bot message containing the block
+ * @param topic string — The topic from the questionUnstruggle tag
+ * @returns Promise<{ success: boolean; updatedText?: string; error?: string }>
+ * Dismisses "No, maybe later" unstruggle block. POST to /api/chat/:chatId/dismiss-unstruggle. Removes block from MongoDB so it stays hidden on reload.
  */
 export async function dismissUnstruggleBlock(
     chatId: string,
@@ -180,10 +195,12 @@ export async function dismissUnstruggleBlock(
 }
 
 /**
- * Update chat pin status on the server
- * @param chatId - ID of the chat
- * @param isPinned - Pin status
- * @returns Promise with update response
+ * updateChatPinStatus
+ * 
+ * @param chatId string — ID of the chat
+ * @param isPinned boolean — Pin status
+ * @returns Promise<ChatApiResponse> — success or error
+ * PUT /api/chat/:chatId/pin. Returns error object on failure.
  */
 export async function updateChatPinStatus(chatId: string, isPinned: boolean): Promise<ChatApiResponse> {
     try {

@@ -1,11 +1,21 @@
+// public/scripts/entry/course-selection.ts
+
 /**
- * COURSE SELECTION MODULE
+ * course-selection.ts
  * 
- * Displays available courses and handles course entry
+ * @author: @gatahcha
+ * @date: 2026-03-07
+ * @latest frontend version: 1.0.6
+ * @description: Displays available courses, handles course entry by ID or code, new course creation for instructors, enrollment modals.
  */
 
 import { GlobalUser } from '../types.js';
-import { showConfirmModal, showErrorModal, showSuccessModal, showInactivityWarningModal, ModalOverlay } from '../ui/modal-overlay.js';
+import { showConfirmModal, 
+    showErrorModal, 
+    showSuccessModal, 
+    showInactivityWarningModal, 
+    ModalOverlay 
+} from '../ui/modal-overlay.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
 import { authService } from '../services/auth-service.js';
 
@@ -15,11 +25,12 @@ let currentUserAffiliation: 'student' | 'faculty' | null = null;
 let currentGlobalUser: GlobalUser | null = null;
 
 /**
- * Initialize course selection page
+ * initializeCourseSelection
+ * @returns Promise<void>
+ * Fetches user data, sets up course buttons by affiliation, loads enrolled courses. Redirects to login if unauthenticated.
  */
 async function initializeCourseSelection(): Promise<void> {
     try {
-        // console.log('[COURSE-SELECTION] 🚀 Initializing course selection page'); // 🟢 MEDIUM: Initialization - keep for monitoring
         
         // Show loading message
         showLoadingMessage();
@@ -70,7 +81,10 @@ async function initializeCourseSelection(): Promise<void> {
 }
 
 /**
- * Load and display available courses
+ * loadCourses
+ * 
+ * @returns Promise<void>
+ * GET /api/courses. Filters to enrolled courses only, renders course cards, attaches listeners. Shows empty state if none.
  */
 async function loadCourses(): Promise<void> {
     try {
@@ -134,7 +148,10 @@ async function loadCourses(): Promise<void> {
 const EXCLUDED_INSTRUCTOR_NAMES = ['Charisma Rusdiyanto', 'Richard Tape'];
 
 /**
- * Create HTML for a Slack-style workspace row
+ * createCourseCard
+ * 
+ * @param course any — Course object (id, courseName, instructors, etc.)
+ * @returns string — HTML for workspace row with course name, instructors, enter/restart buttons
  */
 function createCourseCard(course: any): string {
     // Display instructor names - handles both old format (string[]) and new format (InstructorInfo[])
@@ -167,7 +184,10 @@ function createCourseCard(course: any): string {
 }
 
 /**
- * Attach event listeners to workspace rows
+ * attachCourseCardListeners
+ * 
+ * @returns void
+ * Binds click handlers to launch-btn, restart-onboarding-btn, and workspace-row for enter/restart actions.
  */
 function attachCourseCardListeners(): void {
     const buttons = document.querySelectorAll('.launch-btn');
@@ -218,7 +238,11 @@ function attachCourseCardListeners(): void {
 }
 
 /**
- * Enter a selected course
+ * enterCourse
+ * 
+ * @param courseId string — ID of the course to enter
+ * @returns Promise<void>
+ * POST /api/course/enter. Redirects to instructor or student view based on user role.
  */
 async function enterCourse(courseId: string): Promise<void> {
     try {
@@ -279,7 +303,12 @@ async function enterCourse(courseId: string): Promise<void> {
 }
 
 /**
- * Restart onboarding by deleting course and related collections
+ * restartOnboarding
+ * 
+ * @param courseId string — ID of the course
+ * @param courseName string — Course name for confirmation message
+ * @returns Promise<void>
+ * DELETE /api/courses/:id/restart-onboarding. Shows confirmation modal; reloads page on success.
  */
 async function restartOnboarding(courseId: string, courseName: string): Promise<void> {
     try {
@@ -456,6 +485,12 @@ async function removeCourse(courseId: string, courseName: string): Promise<void>
  * Initialize inactivity tracking for course selection page
  * Shows countdown warning modal at 4 min idle, logs out at 5 min
  */
+/**
+ * initializeInactivityTracking
+ * 
+ * @returns void
+ * Sets up inactivityTracker warning and logout events. Shows modal on warning; redirects on timeout.
+ */
 function initializeInactivityTracking(): void {
     inactivityTracker.on('warning', async (data: any) => {
         inactivityTracker.pause();
@@ -601,7 +636,10 @@ function setupRetryButton(): void {
 }
 
 /**
- * Setup course action buttons based on user affiliation
+ * setupCourseButtons
+ * 
+ * @returns void
+ * Shows add-new-course and create-new-course buttons by affiliation. Faculty: both; student: add-new only.
  */
 function setupCourseButtons(): void {
     const addNewCourseBtn = document.getElementById('add-new-course-btn');
@@ -654,9 +692,10 @@ function setupCourseButtons(): void {
 }
 
 /**
- * Create a new course object and navigate to instructor mode for onboarding
- * Stores temporary course data in sessionStorage and redirects to new-course onboarding route
- * The course will be created during onboarding, not before
+ * createNewCourseForInstructor
+ * 
+ * @returns Promise<void>
+ * Redirects to /instructor/onboarding/new-course. Course is created during onboarding, not before.
  */
 async function createNewCourseForInstructor(): Promise<void> {
     try {
@@ -714,15 +753,20 @@ async function createNewCourseForInstructor(): Promise<void> {
 }
 
 /**
- * Show enrollment modal for instructors - 6-digit course code entry
- * (Same flow as students; backend handles faculty vs student)
+ * showInstructorEnrollmentModal
+ * 
+ * @returns Promise<void>
+ * Opens course code entry modal for instructors. Same flow as students; backend handles faculty vs student.
  */
 async function showInstructorEnrollmentModal(): Promise<void> {
     await showCourseCodeEntryModal('instructor');
 }
 
 /**
- * Show enrollment modal with courses student is not enrolled in
+ * showEnrollmentModal
+ * 
+ * @returns Promise<void>
+ * Opens course code entry modal for students to join by 6-char PIN.
  */
 async function showEnrollmentModal(): Promise<void> {
     // For students, show PIN entry modal instead of course list
@@ -730,8 +774,11 @@ async function showEnrollmentModal(): Promise<void> {
 }
 
 /**
- * Show course code PIN entry modal
- * @param userType - 'student' or 'instructor' for different instructions and title
+ * showCourseCodeEntryModal
+ * 
+ * @param userType 'student' | 'instructor' — Affects modal title and instructions (default: student)
+ * @returns Promise<void>
+ * Renders modal with 6-char PIN input. POST /api/course/enter-by-code on submit.
  */
 async function showCourseCodeEntryModal(userType: 'student' | 'instructor' = 'student'): Promise<void> {
     if (!currentGlobalUser) {
@@ -875,7 +922,12 @@ async function showCourseCodeEntryModal(userType: 'student' | 'instructor' = 'st
 }
 
 /**
- * Handle course code submission
+ * handleCourseCodeSubmit
+ * 
+ * @param courseCode string — 6-character course PIN
+ * @param inputElement HTMLInputElement — Input field (disabled during request)
+ * @returns Promise<void>
+ * POST /api/course/enter-by-code. Redirects on success; shows error in modal on failure.
  */
 async function handleCourseCodeSubmit(courseCode: string, inputElement: HTMLInputElement): Promise<void> {
     const submitButton = document.getElementById('courseCodeSubmitBtn') as HTMLButtonElement;

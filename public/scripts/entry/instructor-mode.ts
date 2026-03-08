@@ -1,3 +1,14 @@
+// public/scripts/entry/instructor-mode.ts
+
+/**
+ * instructor-mode.ts
+ * 
+ * @author: @gatahcha
+ * @date: 2026-03-07
+ * @latest frontend version: 1.0.6
+ * @description: Instructor entry point. Loads documents, flags, monitor, chat, assistant/system prompts. Handles onboarding, sidebar navigation, ChatManager.
+ */
+
 import { loadComponentHTML, renderFeatherIcons } from "../api/api.js";
 import { activeCourse, User } from "../types.js";
 import { instructorUserFactory } from "../factories/instructor-user-factory.js";
@@ -26,7 +37,11 @@ import {
     isNewCourseOnboardingURL
 } from '../utils/url-parser.js';
 
-// Authentication check function
+/**
+ * checkAuthentication
+ * @returns Promise<boolean>
+ * Calls authService.checkAuthenticationAndRedirect. Returns false if unauthenticated; redirects to login.
+ */
 async function checkAuthentication(): Promise<boolean> {
     // Get courseId from URL if available, otherwise use default redirect
     const courseId = getCourseIdFromURL();
@@ -35,7 +50,10 @@ async function checkAuthentication(): Promise<boolean> {
 }
 
 /**
- * Map URL view name to StateEvent enum
+ * mapViewToStateEvent
+ * 
+ * @param view string — URL view name (documents, flags, monitor, chat, assistant-prompts, system-prompts)
+ * @returns StateEvent — Corresponding enum value; defaults to Documents
  */
 function mapViewToStateEvent(view: string): StateEvent {
     switch (view) {
@@ -325,7 +343,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // --- DOM ELEMNET SELECTORS ---
+    // --- DOM ELEMENT SELECTORS ---
     const sidebarEl = document.querySelector('.instructor-sidebar');
     const logoBox = document.querySelector('.logo-box');
     const sidebarMenuListEl =document.querySelector('.sidebar-menu-list');
@@ -360,12 +378,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Check if we're on new course onboarding route
     if (isNewCourseOnboarding) {
-        // console.log(`[INSTRUCTOR-MODE] 🎓 New course onboarding URL detected`); // 🟢 MEDIUM: Onboarding detection - keep for monitoring
         // Don't set currentState - onboarding will be handled in updateUI() based on URL
         // Skip the regular view logic below
     } else if (onboardingStageFromURL) {
         // Check if we're on an onboarding URL for existing course
-        // console.log(`[INSTRUCTOR-MODE] 🎓 Onboarding URL detected during initialization: ${onboardingStageFromURL}`); // 🟢 MEDIUM: Debug info - onboarding stage exposure
         // Don't set currentState - onboarding will be handled in updateUI() based on URL
         // Skip the regular view logic below
     } else if (viewFromURL) {
@@ -493,7 +509,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         | 'assistant-prompts-instructor'
                         | 'system-prompts-instructor'
         ) => {
-        // console.log(`🚀 [INSTRUCTOR-DEBUG] Loading component: ${componentName}`); // 🟢 MEDIUM: Component name debug info
+
 
         if (!mainContentAreaEl) {
             console.error('❌ [INSTRUCTOR-DEBUG] Main content area element not found!'); // Keep - from try-catch context
@@ -501,11 +517,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         try {
-            // console.log(`📡 [INSTRUCTOR-DEBUG] Fetching HTML for component: ${componentName}`); // 🟢 MEDIUM: Component name debug info
             const html = await loadComponentHTML(componentName);
-            // console.log(`✅ [INSTRUCTOR-DEBUG] HTML fetched successfully for: ${componentName}`); // 🟢 MEDIUM: Component name debug info
 
-            // console.log(`🎨 [INSTRUCTOR-DEBUG] Setting innerHTML for component: ${componentName}`); // 🟢 MEDIUM: Component name debug info
             mainContentAreaEl.innerHTML = html;
             
             if (componentName === 'documents-instructor') {
@@ -541,14 +554,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await initializeSystemPrompts(currentClass);
             }
             
-            // console.log(`🎨 [INSTRUCTOR-DEBUG] Rendering feather icons...`);
             renderFeatherIcons();
             
-            // console.log(`✅ [INSTRUCTOR-DEBUG] Component ${componentName} loaded successfully`);
         }
         catch (error) {
             console.error(`❌ [INSTRUCTOR-DEBUG] Error loading component ${componentName}:`, error);
-            // console.error(`❌ [INSTRUCTOR-DEBUG] Error stack:`, error instanceof Error ? error.stack : 'No stack trace');
             mainContentAreaEl.innerHTML = `<p style="color: red; text-align: center;"> Error loading content. </p>`
         }
     };
@@ -644,7 +654,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // make fucntio that makes a get request given a coursename
+    /**
+     * getCourse
+     * 
+     * @param courseName string — Course name to fetch
+     * @returns Promise<activeCourse> — Course data from GET /api/courses?name=
+     */
     async function getCourse (courseName: string){
         const response = await fetch(`/api/courses?name=${courseName}`, {
             method: 'GET',
@@ -843,6 +858,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /**
      * Load chat window component in main content area
+     * 
+     * @returns Promise<void>
+     * Loads chat-window component into main content area. Shows welcome screen if no chats exist.
      */
     const loadChatWindow = async (): Promise<void> => {
         if (!mainContentAreaEl) return;
@@ -890,6 +908,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /**
      * Load chat by ID and update URL
+     * 
+     * @param chatId string — ID of the chat to load
+     * @returns Promise<void>
+     * Loads chat by ID and updates URL. Ensures ChatManager is initialized. Shows welcome screen if chat not found.
      */
     const loadChatById = async (chatId: string): Promise<void> => {
         const courseId = getCourseIdFromURL();
@@ -957,6 +979,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /**
      * Update chat UI after ChatManager initialization
+     * 
+     * @returns void
+     * Updates chat UI after ChatManager initialization. Renders chat list in sidebar. Shows welcome screen if no chats exist.
      */
     const updateChatUI = (): void => {
         if (!chatManager) return;
@@ -981,6 +1006,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /**
      * Show welcome screen when no chats exist
+     * 
+     * @returns Promise<void>
+     * Shows welcome screen when no chats exist. Loads welcome screen component into main content area. Binds welcome screen events.
      */
     const showWelcomeScreen = async (): Promise<void> => {
         if (!mainContentAreaEl) return;
@@ -1030,7 +1058,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
-    const showChatContent = async () => {
+    /**
+     * Show chat content
+     * 
+     * @returns Promise<void>
+     * Shows chat content. Updates current state. Updates menu active state. Ensures feature sidebar is collapsed when in chat mode. Shows chat list (slides in from left to right). Loads specific chat if chatId is in URL. Initializes ChatManager if not already done.
+     */
+    const showChatContent = async (): Promise<void> => {
         // Update current state
         currentState = StateEvent.Chat;
         
@@ -1114,6 +1148,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     })
 
     // --- LOGOUT FUNCTIONALITY ---
+    /**
+     * Handle instructor logout
+     * 
+     * @returns Promise<void>
+     * Shows confirmation modal. Checks current authentication status before logout. Calls authService.logout. Redirects to login page if logout fails.
+     */
     const handleInstructorLogout = async (): Promise<void> => {
         try {
             // Show confirmation modal
@@ -1146,6 +1186,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
+    /**
+     * Attach instructor logout listener
+     * 
+     * @returns void
+     * Attaches logout button listener. Attaches about button listener. Attaches course information button listener. Attaches course selection button listener.
+     */
     const attachInstructorLogoutListener = () => {
         const logoutBtn = document.getElementById('instructor-logout-btn');
         if (!logoutBtn) {
@@ -1197,7 +1243,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
-    // --- STATE RESTORATION ---
+    /**
+     * Restore previous state
+     * 
+     * @returns void
+     * Restores previous state. Navigates back to documents view when closing about/course-info. Updates UI if no courseId is found.
+     */
     const restorePreviousState = () => {
         // console.log('[INSTRUCTOR-MODE] 🔄 Restoring previous state:', currentState);
         // Navigate back to documents view when closing about/course-info
@@ -1255,7 +1306,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 /**
- * Initialize inactivity tracking for instructor mode
+ * initializeInactivityTracking
+ * 
+ * @returns void
+ * Sets up inactivityTracker warning and logout events. Shows modal on warning; calls authService.logout on timeout.
  */
 function initializeInactivityTracking(): void {
     // console.log('[INSTRUCTOR-MODE] 🔍 Initializing inactivity tracking...'); // 🟢 MEDIUM: Initialization logging

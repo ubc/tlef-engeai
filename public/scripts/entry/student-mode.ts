@@ -1,4 +1,13 @@
-// public/scripts/student-mode.ts
+// public/scripts/entry/student-mode.ts
+
+/**
+ * student-mode.ts
+ * 
+ * @author: @gatahcha
+ * @date: 2026-03-07
+ * @latest frontend version: 1.0.6
+ * @description: Student entry point. Chat interface, profile, flag history, about. Handles onboarding, sidebar navigation, ChatManager.
+ */
 
 import { loadComponentHTML, renderFeatherIcons } from '../api/api.js';
 import { ChatManager } from '../feature/chat.js';
@@ -18,7 +27,12 @@ import {
     isStudentOnboardingURL
 } from '../utils/url-parser.js';
 
-// Authentication check function
+/**
+ * checkAuthentication
+ * 
+ * @returns Promise<boolean>
+ * Calls authService.checkAuthenticationAndRedirect. Returns false if unauthenticated; redirects to login.
+ */
 async function checkAuthentication(): Promise<boolean> {
     // Get courseId from URL if available, otherwise use default redirect
     const courseId = getCourseIdFromURL();
@@ -128,7 +142,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 /**
- * Initialize inactivity tracking for student mode
+ * initializeInactivityTracking
+ * 
+ * @returns void
+ * Sets up inactivityTracker warning and logout events. Shows modal on warning; calls authService.logout on timeout.
  */
 function initializeInactivityTracking(): void {
     // console.log('[STUDENT-MODE] 🔍 Initializing inactivity tracking...'); // 🟢 MEDIUM: Initialization logging
@@ -196,7 +213,12 @@ function initializeInactivityTracking(): void {
 }
 
 /**
- * Initialize the chat interface for the student
+ * initializeChatInterface
+ * 
+ * @param user any — Validated course user (from studentUserFactory)
+ * @param urlState { view: string | null, chatId: string | null } — Optional URL state for initial view/chat
+ * @returns Promise<void>
+ * Initializes ChatManager, loads component from URL state, attaches sidebar and logout listeners.
  */
 async function initializeChatInterface(user: any, urlState?: { view: string | null, chatId: string | null }): Promise<void> {
 
@@ -332,6 +354,72 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
 
     // Artefact functionality moved to chat.ts
 
+    // --- COMPONENT LISTENER ATTACHERS (must be defined before loadComponent to avoid TDZ) ---
+    const populateUserProfile = () => {
+        const authState = authService.getAuthState();
+        const profileName = document.getElementById('profile-name');
+        const profileAffiliation = document.getElementById('profile-affiliation');
+        const profileCourse = document.getElementById('profile-course');
+
+        if (profileName && authState.user) {
+            profileName.textContent = authState.user.name;
+        }
+        
+        if (profileAffiliation && authState.user) {
+            profileAffiliation.textContent = authState.user.affiliation || 'UBC Engineering Student';
+        }
+        
+        if (profileCourse && user) {
+            profileCourse.textContent = user.courseName;
+        }
+    };
+
+    const attachWelcomeScreenListeners = () => {
+        const welcomeBtn = document.getElementById('welcome-add-chat-btn');
+        if (!welcomeBtn) return;
+        welcomeBtn.addEventListener('click', async () => {
+            const result = await chatManager.createNewChat();
+            if (result.success) {
+                chatManager.renderChatList();
+                loadComponent('chat-window');
+                chatManager.rebindMessageEvents();
+            } else {
+                console.error('[STUDENT-MODE] ❌ Error creating new chat:', result.error);
+            }
+        });
+    };
+
+    const attachProfileListeners = () => {
+        populateUserProfile();
+        const backBtn = document.getElementById('back-to-chat-btn');
+        backBtn?.addEventListener('click', () => navigateToStudentView('chat'));
+    };
+
+    const attachFlagHistoryListeners = () => {
+        const courseId = user.courseId;
+        const userId = user.userId;
+        
+        if (!courseId || !userId) {
+            console.error('[STUDENT-MODE] ❌ Missing courseId or userId for flag history');
+            return;
+        }
+        
+        initializeStudentFlagHistory(courseId, userId);
+        
+        const backBtn = document.getElementById('flag-history-back-btn');
+        backBtn?.addEventListener('click', () => {
+            navigateToStudentView('chat');
+        });
+
+        const escHandler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                navigateToStudentView('chat');
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+    };
+
     // --- COMPONENT LOADING ---
     const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history') => {
         if (!mainContentArea) return;
@@ -421,8 +509,12 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
     // console.log('[STUDENT-MODE] 🚀 Initializing ChatManager with real user data...'); // 🟢 MEDIUM: Debug info - keep for monitoring
     
     /**
-     * Handle URL-based component loading
-     * Called after ChatManager is initialized
+     * handleURLState
+     * 
+     * @param view string | null — URL view (chat, profile, flag-history, about, welcoming-message)
+     * @param chatId string | null — Chat ID when view is chat
+     * @returns Promise<void>
+     * Loads component based on URL state. Called after ChatManager is initialized.
      */
     const handleURLState = async (view: string | null, chatId: string | null): Promise<void> => {
         if (view === 'chat' && chatId) {
@@ -444,8 +536,11 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
     };
 
     /**
-     * Load chat by ID and update URL
-     * Includes comprehensive error handling for invalid chatIds, network failures, etc.
+     * loadChatById
+     * 
+     * @param chatId string — ID of the chat to load
+     * @returns Promise<void>
+     * Updates URL, loads chat-window, switches to or restores chat. POST /api/chat/restore/:chatId if not in memory.
      */
     const loadChatById = async (chatId: string): Promise<void> => {
         // Validate chatId format (basic validation)
@@ -786,46 +881,6 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         })();
     });
 
-    // --- EVENT LISTENERS ATTACHMENT ---
-    const attachWelcomeScreenListeners = () => {
-        const welcomeBtn = document.getElementById('welcome-add-chat-btn');
-        if (!welcomeBtn) return;
-        welcomeBtn.addEventListener('click', async () => {
-            // console.log('[STUDENT-MODE] 🆕 Creating new chat from welcome screen...');
-            const result = await chatManager.createNewChat();
-            if (result.success) {
-                // console.log('[STUDENT-MODE] ✅ New chat created successfully, loading chat window');
-                
-                // Update chat list in sidebar
-                chatManager.renderChatList();
-                
-                // Load chat window in main content area after creating new chat
-                loadComponent('chat-window');
-                
-                // Re-bind message events after creating new chat
-                chatManager.rebindMessageEvents();
-            } else {
-                console.error('[STUDENT-MODE] ❌ Error creating new chat:', result.error);
-            }
-        });
-    };
-
-    const attachChatWindowListeners = () => {
-        // Chat window listeners are now handled by ChatManager
-        // This function is kept for compatibility but ChatManager handles all chat events
-    };
-
-    const attachProfileListeners = () => {
-        // Populate user profile information
-        populateUserProfile();
-        
-        // Back to chat button
-        const backBtn = document.getElementById('back-to-chat-btn');
-        backBtn?.addEventListener('click', () => navigateToStudentView('chat'));
-    };
-
-    // Artefact functionality moved to chat.ts
-
     // --- EVENT HANDLERS ---
     // Chat creation is now handled by ChatManager
 
@@ -866,61 +921,6 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
     // Flagging support is now handled by ChatManager
 
     // Message context menu is now handled by ChatManager
-
-    // --- PROFILE FUNCTIONALITY ---
-    const populateUserProfile = () => {
-        const authState = authService.getAuthState();
-        const profileName = document.getElementById('profile-name');
-        const profileAffiliation = document.getElementById('profile-affiliation');
-        const profileCourse = document.getElementById('profile-course');
-
-        if (profileName && authState.user) {
-            profileName.textContent = authState.user.name;
-        }
-        
-        if (profileAffiliation && authState.user) {
-            profileAffiliation.textContent = authState.user.affiliation || 'UBC Engineering Student';
-        }
-        
-        if (profileCourse && user) {
-            profileCourse.textContent = user.courseName;
-        }
-    };
-
-    const attachFlagHistoryListeners = () => {
-        // console.log('[STUDENT-MODE] 🏴 Initializing flag history...');
-
-        // Initialize flag history with user context
-        const courseId = user.courseId;
-        const userId = user.userId;
-        
-        if (!courseId || !userId) {
-            console.error('[STUDENT-MODE] ❌ Missing courseId or userId for flag history');
-            return;
-        }
-        
-        // Initialize the flag history interface
-        initializeStudentFlagHistory(courseId, userId);
-        
-        // Back button listener - return to chat view
-        const backBtn = document.getElementById('flag-history-back-btn');
-        backBtn?.addEventListener('click', () => {
-            // console.log('[STUDENT-MODE] 🔙 Back button clicked, returning to chat');
-            navigateToStudentView('chat');
-        });
-
-        // Also support ESC key
-        const escHandler = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                // console.log('[STUDENT-MODE] 🔙 ESC key pressed in flag history, returning to chat');
-                navigateToStudentView('chat');
-                
-                // Remove listener after handling
-                document.removeEventListener('keydown', escHandler);
-            }
-        };
-        document.addEventListener('keydown', escHandler);
-    };
 
     const attachProfileButtonListener = () => {
         const profileBtn = document.getElementById('profile-btn');
@@ -981,7 +981,11 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
 }
 
 /**
- * Update companion text with current course name
+ * updateCompanionText
+ * 
+ * @param user any — User with courseName
+ * @returns void
+ * Sets companion-text element to user.courseName or 'Engineering'.
  */
 function updateCompanionText(user: any): void {
     // console.log('[STUDENT-MODE] 🔍 Updating companion text with user:', user);

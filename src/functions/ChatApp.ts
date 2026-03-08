@@ -1,3 +1,5 @@
+// public/scripts/feature/artefact.ts
+
 /**
  * ChatApp Class
  * 
