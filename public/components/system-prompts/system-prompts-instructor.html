@@ -1,12 +1,17 @@
 <div class="container">
     <link rel="stylesheet" href="/styles/system-prompts.css">
     <main class="main-content">
-        <div class="system-prompts-header">
-            <h1>System Prompts</h1>
-            <button class="system-add-prompt-btn" id="system-add-prompt-btn">
-                <i data-feather="plus"></i>
-                <span>Add New System Prompt Item</span>
+        <div class="system-prompts-header mobile-header-bar">
+            <button id="instructor-hamburger-btn" class="instructor-mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
+                <i data-feather="menu"></i>
             </button>
+            <h1 class="mobile-header-title">System Prompts</h1>
+            <div class="system-prompts-header-actions">
+                <button class="system-add-prompt-btn" id="system-add-prompt-btn" title="Add New System Prompt Item" aria-label="Add New System Prompt Item">
+                    <i data-feather="plus"></i>
+                    <span class="btn-text">Add New System Prompt Item</span>
+                </button>
+            </div>
         </div>
 
         <div id="system-prompts-container" class="system-prompts-container">

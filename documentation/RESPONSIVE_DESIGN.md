@@ -141,6 +141,32 @@ The student onboarding mobile improvements (see `STUDENT_ONBOARDING_MOBILE_IMPRO
 
 ---
 
+## Student Mobile Header Pattern
+
+The student mode uses a consistent mobile header pattern across welcome screen, chat window, and flag history.
+
+### Structure
+
+- **Welcome screen** (`welcome-screen.html`): `mobile-header-bar` with hamburger button only (no title).
+- **Chat window** (`chat-window.html`): `chat-header` with `mobile-hamburger-btn`, `chat-title`, and actions (artefact, pin, delete).
+- **Flag history** (`flag-history.html`): `flag-header` with hamburger + `<h1>Flag History</h1>`.
+
+### CSS (`student-mode.css`)
+
+- `.mobile-hamburger-btn`: `display: none` by default; `display: inline-flex` in `@media (max-width: 768px)`.
+- `.mobile-header-bar`: flex row, hamburger + optional title, padding, border, background.
+- `.chat-header`: sticky, contains hamburger + title + actions.
+- Sidebar: fixed, `translateX(-100%)` off-screen; `.mobile-open` slides it in.
+- `.sidebar-overlay`: dimmed backdrop when sidebar is open.
+
+### Behavior
+
+- Hamburger toggles sidebar via `.mobile-open` and overlay.
+- Header lives inside the main content area, not a separate top bar.
+- Breakpoint: **768px**.
+
+---
+
 ## Testing Checklist
 
 - [ ] 320px (small phone)

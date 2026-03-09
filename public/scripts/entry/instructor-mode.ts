@@ -344,7 +344,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- DOM ELEMENT SELECTORS ---
-    const sidebarEl = document.querySelector('.instructor-sidebar');
+    const sidebarEl = document.querySelector('.instructor-sidebar') as HTMLElement | null;
     const logoBox = document.querySelector('.logo-box');
     const sidebarMenuListEl =document.querySelector('.sidebar-menu-list');
     const sidebarCollapseButton = document.querySelector('.sidebar-collapse-icon');
@@ -352,6 +352,59 @@ document.addEventListener('DOMContentLoaded', async () => {
     const mainContentAreaEl = document.getElementById('main-content-area');
     const instructorFeatureSidebarEl = document.querySelector('.instructor-feature-sidebar');
     const chatListEl = document.getElementById('chat-list');
+    const instructorSidebarOverlayEl = document.getElementById('instructor-sidebar-overlay');
+
+    // --- MOBILE SIDEBAR ---
+    const MOBILE_BREAKPOINT = 768;
+    const isMobileView = (): boolean => window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches;
+
+    const openMobileSidebar = (): void => {
+        if (!sidebarEl || !instructorSidebarOverlayEl) return;
+        sidebarEl.classList.add('mobile-open');
+        instructorSidebarOverlayEl.classList.add('show');
+        instructorSidebarOverlayEl.setAttribute('aria-hidden', 'false');
+    };
+
+    const closeMobileSidebar = (): void => {
+        if (!sidebarEl || !instructorSidebarOverlayEl) return;
+        sidebarEl.classList.remove('mobile-open');
+        instructorSidebarOverlayEl.classList.remove('show');
+        instructorSidebarOverlayEl.setAttribute('aria-hidden', 'true');
+    };
+
+    const toggleMobileSidebar = (): void => {
+        if (!sidebarEl) return;
+        if (sidebarEl.classList.contains('mobile-open')) {
+            closeMobileSidebar();
+        } else {
+            openMobileSidebar();
+        }
+    };
+
+    // Event delegation for hamburger (works across all loaded components including chat/welcome)
+    document.addEventListener('click', (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('#hamburger-btn') || target.closest('#instructor-hamburger-btn') ||
+            target.closest('.mobile-hamburger-btn') || target.closest('.instructor-mobile-hamburger-btn')) {
+            if (isMobileView()) {
+                toggleMobileSidebar();
+            }
+        }
+    });
+
+    // Overlay click closes sidebar
+    instructorSidebarOverlayEl?.addEventListener('click', () => {
+        if (isMobileView()) closeMobileSidebar();
+    });
+
+    // Close sidebar when clicking any sidebar menu item or footer button
+    sidebarEl?.addEventListener('click', (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('.menu-list-item') || target.closest('.instructor-sidebar-footer button') ||
+            target.closest('.chat-item') || target.closest('.add-chat-btn')) {
+            if (isMobileView()) closeMobileSidebar();
+        }
+    });
 
     // Current State
     let currentState: StateEvent = StateEvent.Documents;
@@ -459,6 +512,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Show welcome screen (chat view with no chats)
                 currentState = StateEvent.Chat;
                 await showChatContent();
+            } else if (
+                (view === 'monitor' || view === 'assistant-prompts' || view === 'system-prompts') &&
+                window.innerWidth < 768
+            ) {
+                // Desktop-first warning on mobile/tablet
+                const result = await showConfirmModal(
+                    'Desktop Recommended',
+                    'This feature is usually handled on desktop. Are you sure you want to continue on a non-desktop device?',
+                    'Continue',
+                    'Go Back'
+                );
+                if (result.action === 'continue') {
+                    currentState = mapViewToStateEvent(view);
+                    updateUI();
+                } else {
+                    navigateToInstructorView('documents');
+                }
             } else {
                 // Load component for current view
                 currentState = mapViewToStateEvent(view);
@@ -1298,6 +1368,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Show welcome screen (chat view with no chats)
         currentState = StateEvent.Chat;
         await showChatContent();
+    } else if (
+        (viewFromURL === 'monitor' || viewFromURL === 'assistant-prompts' || viewFromURL === 'system-prompts') &&
+        window.innerWidth < 768
+    ) {
+        // Desktop-first warning for Monitor, Assistant Prompts, System Prompts on mobile/tablet
+        const result = await showConfirmModal(
+            'Desktop Recommended',
+            'This feature is usually handled on desktop. Are you sure you want to continue on a non-desktop device?',
+            'Continue',
+            'Go Back'
+        );
+        if (result.action === 'continue') {
+            updateUI();
+        } else {
+            navigateToInstructorView('documents');
+        }
     } else {
         // Load component for current view
         updateUI();

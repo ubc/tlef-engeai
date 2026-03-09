@@ -1,72 +1,80 @@
 <div class="flag-instructor-container">
     <link rel="stylesheet" href="/styles/instructor-components/flag-instructor.css">
     <main class="main-content">
-        <!-- Header with title and navigation tiles -->
-        <header class="flags-header">
-            <div class="header-left">
-                <h1>Flag Management</h1>
-                <div class="last-updated">Last Updated: 8:30 AM, May 17, 2026</div>
-            </div>
-            <div class="header-right">
-                <!-- <button id="delete-all-flags-button" class="delete-all-flags-button" title="Delete all flags for this course">
-                    <i data-feather="trash-2"></i>
-                    <span>Delete All Flags</span>
-                </button> -->
-                <div class="nav-tiles">
-                    <div class="nav-tile active" data-section="unresolved-flags">
-                        <i data-feather="alert-triangle"></i>
-                        <span class="count" id="unresolved-flags-count"></span>
-                    </div>
-                    <div class="nav-tile" data-section="resolved-flags">
-                        <i data-feather="check"></i>
-                        <span class="count" id="resolved-flags-count"></span>
-                    </div>
-                </div>
-                <div class="time-filter-dropdown">
-                    <select id="time-filter">
-                        <option value="recent">Recent Flags</option>
-                        <option value="former">Former Flags</option>
-                    </select>
-                    <i data-feather="chevron-down"></i>
-                </div>
-            </div>
+        <!-- Row 1: Header (hamburger + title only) -->
+        <header class="flags-header mobile-header-bar">
+            <button id="instructor-hamburger-btn" class="instructor-mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
+                <i data-feather="menu"></i>
+            </button>
+            <h1 class="mobile-header-title">Flag</h1>
         </header>
 
-        <!-- Filter checkboxes section -->
-        <section class="filter-section">
-            <div class="filter-checkboxes">
-                <label class="filter-checkbox">
-                    <input type="checkbox" data-filter="innacurate_response" checked>
-                    <span class="checkmark">✓</span>
-                    <span class="filter-text">Wrong calculations, formulas, or engineering principles</span>
-                </label>
-                <label class="filter-checkbox">
-                    <input type="checkbox" data-filter="harassment" checked>
-                    <span class="checkmark">✓</span>
-                    <span class="filter-text">Contains harassment, or content that violates EDI (Equity, Diversity, Inclusion) principles</span>
-                </label>
-                <label class="filter-checkbox">
-                    <input type="checkbox" data-filter="inappropriate" checked>
-                    <span class="checkmark">✓</span>
-                    <span class="filter-text">Response veers into personal opinions, political views, or non-academic discussions inappropriate for engineering education</span>
-                </label>
-                <label class="filter-checkbox">
-                    <input type="checkbox" data-filter="dishonesty" checked>
-                    <span class="checkmark">✓</span>
-                    <span class="filter-text">Provides content that appears copied from sources without attribution or encourages academic dishonesty</span>
-                </label>
-                <label class="filter-checkbox">
-                    <input type="checkbox" data-filter="interface bug" checked>
-                    <span class="checkmark">✓</span>
-                    <span class="filter-text">Interface bugs or usability issues</span>
-                </label>
-                <label class="filter-checkbox">
-                    <input type="checkbox" data-filter="other" checked>
-                    <span class="checkmark">✓</span>
-                    <span class="filter-text">Others</span>
-                </label>
+        <!-- Row 2: Toolbar (Unresolved, Resolved, Filter) -->
+        <div class="flag-toolbar">
+            <div class="nav-tiles">
+                <div class="nav-tile active" data-section="unresolved-flags">
+                    <i data-feather="alert-triangle"></i>
+                    <span class="count" id="unresolved-flags-count"></span>
+                </div>
+                <div class="nav-tile" data-section="resolved-flags">
+                    <i data-feather="check"></i>
+                    <span class="count" id="resolved-flags-count"></span>
+                </div>
             </div>
-        </section>
+            <button id="flag-filter-btn" class="filter-btn" title="Filter flags" aria-label="Filter flags">
+                <i data-feather="filter"></i>
+            </button>
+        </div>
+
+        <!-- Filter modal overlay (hidden by default) -->
+        <div id="flag-filter-modal" class="flag-filter-modal" aria-hidden="true">
+            <div class="flag-filter-modal-backdrop"></div>
+            <div class="flag-filter-modal-content">
+                <div class="flag-filter-modal-header">
+                    <h3>Filter by flag type</h3>
+                    <button id="flag-filter-close-btn" class="flag-filter-close-btn" aria-label="Close filter">
+                        <i data-feather="x"></i>
+                    </button>
+                </div>
+                <div class="flag-filter-modal-body">
+                    <div class="filter-checkboxes" id="flag-filter-checkboxes">
+                        <label class="filter-checkbox">
+                            <input type="checkbox" data-filter="innacurate_response" checked>
+                            <span class="checkmark">✓</span>
+                            <span class="filter-text">Wrong calculations, formulas, or engineering principles</span>
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" data-filter="harassment" checked>
+                            <span class="checkmark">✓</span>
+                            <span class="filter-text">Contains harassment, or content that violates EDI (Equity, Diversity, Inclusion) principles</span>
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" data-filter="inappropriate" checked>
+                            <span class="checkmark">✓</span>
+                            <span class="filter-text">Response veers into personal opinions, political views, or non-academic discussions inappropriate for engineering education</span>
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" data-filter="dishonesty" checked>
+                            <span class="checkmark">✓</span>
+                            <span class="filter-text">Provides content that appears copied from sources without attribution or encourages academic dishonesty</span>
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" data-filter="interface bug" checked>
+                            <span class="checkmark">✓</span>
+                            <span class="filter-text">Interface bugs or usability issues</span>
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" data-filter="other" checked>
+                            <span class="checkmark">✓</span>
+                            <span class="filter-text">Others</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="flag-filter-modal-footer">
+                    <button id="flag-filter-apply-btn" class="flag-filter-apply-btn">Apply</button>
+                </div>
+            </div>
+        </div>
 
         <!-- Flag list - dynamically populated by TypeScript -->
         <section class="flags-list" id="flags-list">

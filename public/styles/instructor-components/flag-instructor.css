@@ -23,12 +23,12 @@
     margin: 0 auto;
 }
 
-/* Header Section - Matching documents design */
+/* Header Section - Row 1: hamburger + title only (Documents pattern) */
 .flags-header {
     background: var(--color-chbe-green);
     border-radius: 10px;
     padding: 20px;
-    margin-bottom: 20px;
+    margin-bottom: 12px;
     border: 1px solid var(--border-color);
     box-shadow: 
         0px 2px 8px rgba(0, 0, 0, 0.1),
@@ -38,29 +38,31 @@
     z-index: 10;
     top: 0;
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 20px;
+    align-items: center;
+    gap: 0.75rem;
 }
 
-.header-left h1 {
+.flags-header .mobile-header-title {
     font-size: 20px;
     font-weight: 600;
     color: white;
-    margin: 0 0 5px 0;
-}
-
-.header-left .last-updated {
-    font-size: 12px;
-    color: white;
-    opacity: 0.9;
     margin: 0;
+    flex: 1;
+    min-width: 0;
 }
 
-.header-right {
+/* Toolbar Section - Row 2: Unresolved, Resolved, Filter */
+.flag-toolbar {
     display: flex;
-    align-items: flex-start;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
     gap: 15px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    background: var(--background-2);
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
 }
 
 /* Delete All Flags Button */
@@ -105,14 +107,14 @@
     color: white;
 }
 
-/* Navigation Tiles */
+/* Navigation Tiles - green background, white text */
 .nav-tiles {
     display: flex;
     gap: 10px;
 }
 
 .nav-tile {
-    background: rgba(255,255,255,0.1);
+    background: var(--color-chbe-green);
     border: 1px solid rgba(255,255,255,0.4);
     border-radius: 10px;
     padding: 8px 12px;
@@ -120,18 +122,20 @@
     align-items: center;
     gap: 8px;
     cursor: pointer;
-    transition: background-color 0.2s ease;
+    transition: background-color 0.2s ease, opacity 0.2s ease;
     min-width: 60px;
     justify-content: center;
+    color: white;
 }
 
 .nav-tile:hover {
-    background: rgba(255,255,255,0.2);
+    opacity: 0.9;
 }
 
 .nav-tile.active {
-    background: rgba(255,255,255,0.3);
-    border-color: rgba(255,255,255,0.6);
+    background: var(--color-chbe-green);
+    border-color: rgba(255,255,255,0.8);
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.5);
 }
 
 .nav-tile i {
@@ -144,47 +148,39 @@
     color: white;
     font-weight: 700;
     font-size: 12px;
-    background: white;
-    color: var(--color-chbe-green);
+    background: rgba(255,255,255,0.3);
+    color: white;
     border-radius: 9999px;
     padding: 2px 8px;
 }
 
-/* Time Filter Dropdown */
-.time-filter-dropdown {
-    position: relative;
+/* Filter button in toolbar */
+.filter-btn {
+    background: var(--color-chbe-green);
+    border: 1px solid var(--color-chbe-green);
+    border-radius: 10px;
+    padding: 8px 14px;
     display: flex;
     align-items: center;
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.4);
-    border-radius: 10px;
-    padding: 8px 12px;
+    justify-content: center;
     cursor: pointer;
-    min-width: 160px;
-}
-
-.time-filter-dropdown:hover {
-    background: rgba(255,255,255,0.2);
-}
-
-.time-filter-dropdown select {
-    background: transparent;
-    border: none;
+    transition: background-color 0.2s ease;
     color: white;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    outline: none;
-    appearance: none;
-    width: 100%;
 }
 
-.time-filter-dropdown i {
+.filter-btn:hover {
+    background: #2d7a2d;
+}
+
+.filter-btn i {
     width: 16px;
     height: 16px;
     color: white;
-    margin-left: 8px;
-    pointer-events: none;
+}
+
+/* Time Filter Dropdown - hidden (disabled per design) */
+.time-filter-dropdown {
+    display: none;
 }
 
 /* Choose Date Button */
@@ -217,14 +213,111 @@
     color: white;
 }
 
-/* Filter Section - Matching documents style */
+/* Filter Section - hidden, moved to modal */
 .filter-section {
+    display: none;
+}
+
+/* Filter Modal Overlay */
+.flag-filter-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+
+.flag-filter-modal.is-open {
+    display: flex;
+}
+
+.flag-filter-modal-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.flag-filter-modal-content {
+    position: relative;
     background: var(--chat-bg);
-    border-radius: 10px;
+    border-radius: 12px;
     border: 1px solid var(--border-color);
-    padding: 15px 20px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    width: 90%;
+    max-width: 480px;
+    max-height: 85vh;
+    overflow: hidden;
+    animation: slideInDown 0.3s ease;
+}
+
+.flag-filter-modal-header {
+    background: var(--color-chbe-green);
+    color: white;
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.flag-filter-modal-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.flag-filter-close-btn {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.flag-filter-close-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.flag-filter-close-btn i {
+    width: 18px;
+    height: 18px;
+}
+
+.flag-filter-modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    max-height: 50vh;
+}
+
+.flag-filter-modal-footer {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border-color);
+    background: var(--background-2);
+}
+
+.flag-filter-apply-btn {
+    background: var(--color-chbe-green);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    width: 100%;
+}
+
+.flag-filter-apply-btn:hover {
+    background: #2d7a2d;
 }
 
 .filter-checkboxes {
@@ -671,5 +764,101 @@
 
 .calendar-ok-btn:hover {
     background: #2d7a2d;
+}
+
+/* ===========================================
+   RESPONSIVE DESIGN (768px)
+   =========================================== */
+
+@media (max-width: 768px) {
+    /* flags-header: about-like styling (hamburger + title only) */
+    .flags-header.mobile-header-bar {
+        padding: 12px 16px;
+        background: var(--chat-bg);
+        border: none !important;
+        border-radius: 12px;
+        margin-bottom: 10px;
+        box-shadow: none;
+        flex-direction: row;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .flags-header.mobile-header-bar .mobile-header-title {
+        flex: 1;
+        min-width: 0;
+        font-size: 1.25rem;
+        color: var(--color-chbe-green);
+        font-weight: 600;
+    }
+
+    .flags-header.mobile-header-bar .instructor-mobile-hamburger-btn {
+        color: var(--color-chbe-green);
+        padding: 0 !important;
+    }
+
+    .flags-header.mobile-header-bar .instructor-mobile-hamburger-btn:hover {
+        background-color: rgba(92, 138, 58, 0.1);
+        color: var(--color-chbe-green);
+    }
+
+    /* Toolbar: nav tiles + filter on light background */
+    .flag-toolbar {
+        padding: 10px 16px;
+        margin-bottom: 0px;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        background: transparent;
+        border: none;
+    }
+
+    .nav-tiles {
+        flex-wrap: wrap;
+    }
+
+    .nav-tile {
+        min-width: 44px;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--color-chbe-green);
+        color: white;
+    }
+
+    .filter-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .time-filter-dropdown select {
+        min-height: 44px;
+        padding: 0.5rem 0.75rem;
+    }
+
+    .filter-section .filter-checkboxes {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .filter-checkbox {
+        min-height: 44px;
+        padding: 0.5rem 0;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .report-card .resolve-button,
+    .report-card .response-actions button {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.75rem 1rem;
+    }
+
+    .flags-list {
+        padding:0.75rem;
+    }
 }
 

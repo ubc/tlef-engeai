@@ -106,6 +106,7 @@ EngE-AI is an AI-powered study assistant for engineering courses at UBC. Student
 ### Fixed Sequence (All Task Types)
 
 1. **Plan** — Understand requirements, design interfaces/architecture, write a short plan
+   - **Plan file location:** When the user asks for a plan, write the plan file inside the `planner/` folder (create it if it does not exist).
 2. **Implement** — Code following the plan
 3. **Document** — Update docs and TSDoc per format below
 4. **Test** — Ask if user wants testing; if yes, create test checklist or test files

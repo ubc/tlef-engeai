@@ -498,16 +498,33 @@ function hideLoadingState(): void {
  * Setup event listeners for filtering and collapse functionality
  */
 function setupEventListeners(): void {
-    // Filter checkbox listeners
-    const filterCheckboxes = document.querySelectorAll('.filter-checkbox input[type="checkbox"]');
+    // Filter checkbox listeners (in modal)
+    const filterCheckboxes = document.querySelectorAll('#flag-filter-checkboxes .filter-checkbox input[type="checkbox"]');
     filterCheckboxes.forEach(checkbox => {
         checkbox.addEventListener('change', handleFilterChange);
     });
 
-    // Time filter dropdown listener
-    const timeFilter = document.getElementById('time-filter') as HTMLSelectElement;
-    if (timeFilter) {
-        timeFilter.addEventListener('change', handleTimeFilterChange);
+    // Filter modal: open
+    const filterBtn = document.getElementById('flag-filter-btn');
+    if (filterBtn) {
+        filterBtn.addEventListener('click', openFilterModal);
+    }
+
+    // Filter modal: close (X button, Apply button, backdrop)
+    const closeBtn = document.getElementById('flag-filter-close-btn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeFilterModal);
+    }
+    const applyBtn = document.getElementById('flag-filter-apply-btn');
+    if (applyBtn) {
+        applyBtn.addEventListener('click', closeFilterModal);
+    }
+    const modal = document.getElementById('flag-filter-modal');
+    if (modal) {
+        const backdrop = modal.querySelector('.flag-filter-modal-backdrop');
+        if (backdrop) {
+            backdrop.addEventListener('click', closeFilterModal);
+        }
     }
 
     // Flag card collapse listeners (event delegation)
@@ -534,6 +551,28 @@ function setupEventListeners(): void {
 }
 
 /**
+ * Open filter modal overlay
+ */
+function openFilterModal(): void {
+    const modal = document.getElementById('flag-filter-modal');
+    if (modal) {
+        modal.classList.add('is-open');
+        modal.setAttribute('aria-hidden', 'false');
+    }
+}
+
+/**
+ * Close filter modal overlay
+ */
+function closeFilterModal(): void {
+    const modal = document.getElementById('flag-filter-modal');
+    if (modal) {
+        modal.classList.remove('is-open');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+}
+
+/**
  * Handle filter checkbox changes
  */
 function handleFilterChange(event: Event): void {
@@ -544,7 +583,7 @@ function handleFilterChange(event: Event): void {
     
     if (checkbox.checked) {
         currentFilters.flagTypes.add(flagType);
-                    } else {
+    } else {
         currentFilters.flagTypes.delete(flagType);
     }
     
