@@ -891,8 +891,10 @@ graph TD
                 const dy = e.touches[0].clientY - e.touches[1].clientY;
                 lastTouchDistance = Math.sqrt(dx * dx + dy * dy);
             }
-            e.preventDefault();
-        });
+            if (e.touches.length === 1 || e.touches.length === 2) {
+                e.preventDefault();
+            }
+        }, { passive: false });
 
         container.addEventListener('touchmove', (e) => {
             if (e.touches.length === 1) {
@@ -926,8 +928,10 @@ graph TD
                 
                 lastTouchDistance = distance;
             }
-            e.preventDefault();
-        });
+            if (e.touches.length === 1 || e.touches.length === 2) {
+                e.preventDefault();
+            }
+        }, { passive: false });
     }
 
 
