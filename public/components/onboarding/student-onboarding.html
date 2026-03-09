@@ -1,7 +1,7 @@
 <!-- STUDENT ONBOARDING COMPONENT -->
 <!-- 4-step onboarding following instructor onboarding design patterns -->
 
-<div class="onboarding">
+<div class="onboarding student-onboarding">
     <!-- LEFT STEPS PANEL -->
     <div class="onboarding-steps-panel">
         <!-- Logo Box -->
@@ -117,7 +117,7 @@
         <div class="content-step active" id="step-1">
             <div class="content-step-inner">
                 <div class="step-header">
-                    <h1>Welcome to EngE-AI!</h1>
+                    <h1 class="welcome-title">Welcome to EngE-AI!</h1>
                     <p>Your AI-powered study assistant for engineering students</p>
                 </div>
 
@@ -278,6 +278,7 @@
                     </div>
 
                     <div class="demo-interactive">
+                        <div id="demo-artefact-content" class="artefact-demo-container"></div>
                         <p>Click the button below to see how interactive diagrams work:</p>
                         <button class="artefact-button" id="demo-artefact-btn">
                             <i data-feather="image"></i>
@@ -396,10 +397,10 @@
         <div class="onboarding-navigation">
             <button class="nav-btn btn-back" id="back-btn" style="display: none;">
                 <i data-feather="chevron-left" class="feather"></i>
-                Back
+                <span class="nav-btn-text">Back</span>
             </button>
             <button class="nav-btn btn-next" id="next-btn">
-                Next
+                <span class="nav-btn-text">Next</span>
                 <i data-feather="chevron-right" class="feather"></i>
             </button>
         </div>

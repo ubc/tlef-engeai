@@ -10,7 +10,7 @@
  * @version 1.0.0
  */
 
-import { renderFeatherIcons } from '../functions/api.js';
+import { renderFeatherIcons } from '../api/api.js';
 
 // API Base URL
 const API_BASE_URL = '/api/courses';

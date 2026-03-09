@@ -10,20 +10,7 @@
  * @since: 2025-01-27
  */
 
-export interface InactivityTrackerConfig {
-    warningTimeoutMs?: number; // Default: 4 minutes
-    logoutTimeoutMs?: number;   // Default: 5 minutes
-    serverSyncIntervalMs?: number; // Default: 30 seconds
-    activityDebounceMs?: number;   // Default: 100ms
-}
-
-export interface ActivityData {
-    lastActivityTime: number;
-    serverLastActivityTime?: number;
-    currentTime: number;
-}
-
-export type InactivityEvent = 'warning' | 'logout' | 'activity-reset';
+import type { InactivityTrackerConfig, ActivityData, InactivityEvent } from '../types.js';
 
 export class InactivityTracker {
     private static instance: InactivityTracker | null = null;

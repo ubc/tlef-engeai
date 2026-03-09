@@ -1,32 +1,29 @@
+// public/scripts/factories/student-user-factory.ts
 /**
- * Student User Factory - Validated creation of student CourseUser objects
- *
- * Handles student user creation from API responses with:
- * - Input validation and error boundaries
- * - Safe fallbacks for incomplete/malformed API data
- * - Consistent CourseUser structure for student mode
- *
- * Kept separate from InstructorUserFactory so instructor auth logic
- * is never sent to student clients (principle of least privilege).
- *
- * @author: EngE-AI Team
- * @version: 1.0.0
- * @since: 2025-02-13
+ * student-user-factory.ts
+ * 
+ * @author: @gatahcha
+ * @date: 2026-03-07
+ * @latest frontend version: 1.0.6
+ * @description: Validated creation of student CourseUser objects. 
  */
 
-import { CourseUser } from '../../../src/functions/types.js';
-
-/** Context for creating a student user from API response */
-export interface StudentUserContext {
-    apiUser: Partial<CourseUser> & { userId: string; name: string };
-}
+import { CourseUser, StudentUserContext } from '../types.js';
 
 /**
- * Factory for creating validated student CourseUser objects
+ * StudentUserFactory
+ * 
+ * @returns CourseUser
+ * Validates context and creates a CourseUser for student mode.
  */
 export class StudentUserFactory {
+    
     /**
      * Create a validated CourseUser for student mode from API response
+     * 
+     * @param context StudentUserContext
+     * @returns CourseUser
+     * Validates context and creates a CourseUser for student mode from API response.
      */
     createUser(context: StudentUserContext): CourseUser {
         this.validateContext(context);
@@ -48,6 +45,13 @@ export class StudentUserFactory {
         };
     }
 
+    /**
+     * Validate context
+     * 
+     * @param context StudentUserContext
+     * @returns void
+     * Validates the context for student user creation.
+     */
     private validateContext(context: StudentUserContext): void {
         if (!context.apiUser) {
             throw new Error('API user data is required for student user creation');

@@ -1,48 +1,27 @@
-// public/scripts/api.ts
+// public/scripts/api/api.ts
 
 /**
- * API for the student mode
- * 
+ * api.ts
  * @author: @gatahcha
- * @version: 1.0.0
- * @since: 2025-08-16
+ * @date: 2026-03-07
+ * @latest frontend version: 1.0.6
+ * @description: API helpers for student mode: send message, load component HTML, render Feather icons.
  */
 
 // Artefact functionality disabled for now
 
+import type { MessageReply } from '../types.js';
+
 declare const feather: { replace: () => void };
 
-export interface ChatResponse {
-    reply: string;
-    timestamp: number;
-}
-
-export interface CreateChatRequest {
-    userID: string;
-    courseName: string;
-    date: string;
-}
-
-export interface CreateChatResponse {
-    success: boolean;
-    chatId?: string;
-    error?: string;
-    initAssistantMessage?: {
-        id: string;
-        sender: string;
-        userId: number;
-        courseName: string;
-        text: string;
-        timestamp: number;
-    };
-}
-
 /**
- * Send a message to the server and return the response
- * @param text - The message to send to the server
- * @returns The response from the server
+ * sendMessageToServer
+ * 
+ * @param text string — The message to send to the server
+ * @returns Promise<MessageReply> — Reply and server timestamp
+ * Sends message via POST to /api/chat/message, returns reply and timestamp.
  */
-export async function sendMessageToServer(text: string): Promise<ChatResponse> {
+export async function sendMessageToServer(text: string): Promise<MessageReply> {
     const res = await fetch('/api/chat/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -54,9 +33,29 @@ export async function sendMessageToServer(text: string): Promise<ChatResponse> {
 }
 
 /**
- * Load the HTML for a component
- * @param componentName - The name of the component to load
- * @returns The HTML for the component
+ * loadComponentHTML
+ * 
+ * @param componentName string — Name of the component to load
+ * (welcome-screen, 
+ * chat-window, 
+ * flag-history, 
+ * profile, 
+ * disclaimer, 
+ * flag-instructor, 
+ * monitor-instructor, 
+ * documents-instructor, 
+ * course-setup, 
+ * document-setup, 
+ * flag-setup, 
+ * monitor-setup, 
+ * student-onboarding, 
+ * about, 
+ * course-information, 
+ * assistant-prompts-instructor, 
+ * system-prompts-instructor)
+ * 
+ * @returns Promise<string> — HTML string for the component
+ * Fetches component HTML from /components/{category}/{componentName}.html based on component type.
  */
 export async function loadComponentHTML(
     componentName:  | 'welcome-screen' 
@@ -80,13 +79,13 @@ export async function loadComponentHTML(
 
     let response: Response;
 
-    //Using swtich logic for page request
+    // Using switch logic for page request
     switch (componentName) {
         case 'welcome-screen':
         case 'chat-window' :
         case 'flag-history':
         case 'disclaimer':
-            response = await fetch(`/components/chat/${componentName}.html`);
+            response = await fetch(`/components/chat/${componentName}.html`); 
             break;
         case 'profile':
             response = await fetch(`/components/profile/${componentName}.html`);
@@ -131,7 +130,10 @@ export async function loadComponentHTML(
 }
 
 /**
- * Render Feather icons
+ * renderFeatherIcons
+ * 
+ * @returns void
+ * Replaces placeholder elements with Feather icons via feather.replace().
  */
 export function renderFeatherIcons(): void {
     try { feather.replace(); } catch {}

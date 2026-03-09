@@ -416,6 +416,9 @@ body {
 .onboarding-active #main-content-area {
     width: 100%;
     padding: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Chat Window - Remove scrolling, let message area handle it */
@@ -587,6 +590,18 @@ body.modal-open {
 .sidebar-overlay.show {
     display: block;
     opacity: 1;
+}
+
+.btn-back {
+    background-color: var(--background-2);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-back:hover {
+    background-color: var(--background-2);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
 }
 
 @media (max-width: 768px) {

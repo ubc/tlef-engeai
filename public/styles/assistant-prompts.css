@@ -36,6 +36,15 @@
     top: 0;
 }
 
+.assistant-prompts-header.mobile-header-bar {
+    gap: 0.75rem;
+}
+
+.assistant-prompts-header .mobile-header-title {
+    flex: 1;
+    min-width: 0;
+}
+
 .assistant-prompts-header h1 {
     color: white;
     margin: 0;
@@ -45,11 +54,12 @@
 .assistant-add-prompt-btn {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 8px;
     padding: 8px 10px;
-    background: white;
-    color: var(--color-chbe-green);
-    border: 2px solid white;
+    background: var(--color-chbe-green);
+    color: white;
+    border: 2px solid var(--color-chbe-green);
     border-radius: 8px;
     font-size: 0.8rem;
     font-weight: 600;
@@ -59,17 +69,24 @@
 
 .assistant-add-prompt-btn i,
 .assistant-add-prompt-btn svg {
-    width: 14px;
-    height: 14px;
+    width: 18px;
+    height: 18px;
+    color: white;
 }
 
 .assistant-add-prompt-btn:hover {
-    background: var(--hover-bg);
-    border-color: var(--hover-bg);
+    background: #3d5a26;
+    border-color: #3d5a26;
+    color: white;
 }
 
 .assistant-add-prompt-btn:active {
     transform: scale(0.98);
+}
+
+/* Header add button: icon only (text hidden) */
+.assistant-add-prompt-btn .btn-text {
+    display: none;
 }
 
 .assistant-prompts-container {
@@ -382,24 +399,62 @@
 
 /* Responsive design */
 @media (max-width: 768px) {
-    .assistant-prompts-header {
-        flex-direction: column;
-        gap: 15px;
-        align-items: stretch;
+    /* assistant-prompts-header.mobile-header-bar: about-like styling (single header) */
+    .assistant-prompts-header.mobile-header-bar {
+        padding: 12px 16px;
+        background: var(--chat-bg);
+        border: none !important;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        box-shadow: none;
+        flex-direction: row;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .assistant-prompts-header.mobile-header-bar h1,
+    .assistant-prompts-header.mobile-header-bar .mobile-header-title {
+        font-size: 1.25rem;
+        color: var(--color-chbe-green);
+        font-weight: 600;
+    }
+
+    .assistant-prompts-header.mobile-header-bar .instructor-mobile-hamburger-btn {
+        color: var(--color-chbe-green);
+        padding: 0 !important;
+    }
+
+    .assistant-prompts-header.mobile-header-bar .instructor-mobile-hamburger-btn:hover {
+        background-color: rgba(92, 138, 58, 0.1);
+        color: var(--color-chbe-green);
+    }
+
+    .assistant-prompts-header.mobile-header-bar .assistant-prompts-header-actions {
+        flex: 0 0 auto;
     }
 
     .assistant-add-prompt-btn {
-        width: 100%;
-        justify-content: center;
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.5rem;
     }
 
+    /* Prompt card actions: icon-only, horizontal, tidy on mobile */
     .prompt-actions {
-        flex-direction: column;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0.5rem;
     }
 
     .prompt-actions button {
-        width: 100%;
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.5rem;
         justify-content: center;
+    }
+
+    .prompt-actions button span {
+        display: none;
     }
 }
 

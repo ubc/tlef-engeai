@@ -1,34 +1,30 @@
+// public/scripts/factories/instructor-user-factory.ts
+
 /**
- * Instructor User Factory - Validated creation of instructor CourseUser objects
- *
- * Handles instructor user creation with:
- * - Input validation and error boundaries
- * - Safe fallbacks for undefined course data (e.g. courseName)
- * - Consistent CourseUser structure for instructor mode
- *
- * Kept separate from StudentUserFactory so instructor auth logic
- * is never sent to student clients (principle of least privilege).
- *
- * @author: EngE-AI Team
- * @version: 1.0.0
- * @since: 2025-02-13
+ * instructor-user-factory.ts
+ * 
+ * @author: @gatahcha
+ * @date: 2026-03-07
+ * @latest frontend version: 1.0.6
+ * @description: Validated creation of instructor CourseUser objects. 
  */
 
-import { CourseUser, activeCourse } from '../../../src/functions/types.js';
-import type { AuthState } from '../services/AuthService.js';
-
-/** Context for creating an instructor user from auth + course data */
-export interface InstructorUserContext {
-    authState: AuthState;
-    courseContext?: activeCourse | null;
-}
+import { CourseUser, InstructorUserContext } from '../types.js';
 
 /**
- * Factory for creating validated instructor CourseUser objects
+ * InstructorUserFactory
+ * 
+ * @returns CourseUser
+ * Validates context and creates a CourseUser for instructor mode.
  */
 export class InstructorUserFactory {
+    
     /**
      * Create a validated CourseUser for instructor mode
+     * 
+     * @param context InstructorUserContext
+     * @returns CourseUser
+     * Validates context and creates a CourseUser for instructor mode.
      */
     createUser(context: InstructorUserContext): CourseUser {
         this.validateContext(context);
@@ -53,6 +49,13 @@ export class InstructorUserFactory {
         };
     }
 
+    /**
+     * Validate context
+     * 
+     * @param context InstructorUserContext
+     * @returns void
+     * Validates the context for instructor user creation.
+     */
     private validateContext(context: InstructorUserContext): void {
         if (!context.authState) {
             throw new Error('AuthState is required for instructor user creation');

@@ -1,12 +1,17 @@
 <div class="container">
     <link rel="stylesheet" href="/styles/assistant-prompts.css">
     <main class="main-content">
-        <div class="assistant-prompts-header">
-            <h1>Initial Assistant Prompts</h1>
-            <button class="assistant-add-prompt-btn" id="assistant-add-prompt-btn">
-                <i data-feather="plus"></i>
-                <span>Add New Initial Assistant Prompt</span>
+        <div class="assistant-prompts-header mobile-header-bar">
+            <button id="instructor-hamburger-btn" class="instructor-mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
+                <i data-feather="menu"></i>
             </button>
+            <h1 class="mobile-header-title">Initial Assistant Prompts</h1>
+            <div class="assistant-prompts-header-actions">
+                <button class="assistant-add-prompt-btn" id="assistant-add-prompt-btn" title="Add New Initial Assistant Prompt" aria-label="Add New Initial Assistant Prompt">
+                    <i data-feather="plus"></i>
+                    <span class="btn-text">Add New Initial Assistant Prompt</span>
+                </button>
+            </div>
         </div>
 
         <div id="assistant-prompts-container" class="assistant-prompts-container">

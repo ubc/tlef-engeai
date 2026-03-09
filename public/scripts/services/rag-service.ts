@@ -9,8 +9,8 @@
  * @version: 1.0.0
  */
 
-import { AdditionalMaterial } from '../../../src/functions/types';
-import { DocumentUploadModule, UploadResult } from './DocumentUploadModule.js';
+import { DocumentUploadModule } from './document-upload-module.js';
+import type { AdditionalMaterial, UploadResult } from '../types.js';
 
 /**
  * Uploads content to the RAG system using the DocumentUploadModule
@@ -22,7 +22,7 @@ export async function uploadRAGContent(content: AdditionalMaterial): Promise<Upl
     // console.log('DEBUG #23 : Uploading content to RAG system'); // 🟢 MEDIUM: Upload operation logging
 
     try {
-        const uploadModule = new DocumentUploadModule((progress, stage) => {
+        const uploadModule = new DocumentUploadModule((progress: number, stage: string) => {
             // console.log(`Upload progress: ${progress}% - ${stage}`); // 🟢 MEDIUM: Progress logging
         });
 

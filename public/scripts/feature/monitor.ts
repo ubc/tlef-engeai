@@ -1,4 +1,4 @@
-import { renderFeatherIcons } from "../functions/api.js";
+import { renderFeatherIcons } from "../api/api.js";
 
 /**
  * Monitor Dashboard Types
@@ -132,12 +132,12 @@ class MonitorDashboard {
         // const calendarOkBtn = document.getElementById('calendar-ok-btn');
         // calendarOkBtn?.addEventListener('click', () => this.applyDateSelection());
 
-        // Sort buttons
-        const sortConversationsBtn = document.getElementById('sort-conversations');
-        const sortNameBtn = document.getElementById('sort-name');
-        
-        sortConversationsBtn?.addEventListener('click', () => this.setSort('conversations'));
-        sortNameBtn?.addEventListener('click', () => this.setSort('name'));
+        // Sort dropdown
+        const sortSelect = document.getElementById('sort-select') as HTMLSelectElement | null;
+        sortSelect?.addEventListener('change', (e) => {
+            const value = (e.target as HTMLSelectElement).value as 'conversations' | 'name';
+            this.setSort(value);
+        });
 
         // COMMENTED OUT: Calendar modal click handler
         // Close calendar when clicking outside
@@ -255,12 +255,9 @@ class MonitorDashboard {
     private setSort(sort: 'conversations' | 'name'): void {
         this.currentSort = sort;
         
-        // Update button states
-        const sortButtons = document.querySelectorAll('.sort-btn');
-        sortButtons.forEach(btn => btn.classList.remove('active'));
-        
-        const activeBtn = document.getElementById(`sort-${sort}`);
-        activeBtn?.classList.add('active');
+        // Update dropdown value
+        const sortSelect = document.getElementById('sort-select') as HTMLSelectElement | null;
+        if (sortSelect) sortSelect.value = sort;
         
         // Re-render user list
         this.renderUserList();

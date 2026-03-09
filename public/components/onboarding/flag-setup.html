@@ -94,15 +94,16 @@
 
     <!-- Right Content Area -->
     <div class="onboarding-content-area">
-        <!-- Help Menu -->
-        <div class="help-menu">
-            <button class="help-btn" id="helpBtn">
-                <i data-feather="info"></i>
-                <span>Help</span>
-            </button>
-        </div>
+        <div class="onboarding-content-steps">
+            <!-- Help Menu -->
+            <div class="help-menu">
+                <button class="help-btn" id="helpBtn">
+                    <i data-feather="info"></i>
+                    <span>Help</span>
+                </button>
+            </div>
 
-        <!-- Step 1: Welcome -->
+            <!-- Step 1: Welcome -->
         <div class="content-step active" id="content-step-1">
             <div class="content-step-inner">
                 <div class="step-header">
@@ -398,16 +399,18 @@
             </div>
         </div>
 
+        </div><!-- /.onboarding-content-steps -->
+
         <!-- Navigation -->
         <div class="onboarding-navigation">
             <button class="nav-btn btn-back" id="backBtn" style="display: none;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="15,18 9,12 15,6"></polyline>
                 </svg>
-                Back
+                <span class="nav-btn-text">Back</span>
             </button>
             <button class="nav-btn btn-next" id="nextBtn">
-                Next
+                <span class="nav-btn-text">Next</span>
                 <i data-feather="chevron-right"></i>
             </button>
         </div>

@@ -2,8 +2,11 @@
     <link rel="stylesheet" href="/styles/instructor-components/documents.css">
     <link rel="stylesheet" href="/styles/modal-overlay.css">
     <main class="main-content">
-        <div class="document-header">
-            <h1>Documents</h1>
+        <div class="document-header mobile-header-bar">
+            <button id="instructor-hamburger-btn" class="instructor-mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
+                <i data-feather="menu"></i>
+            </button>
+            <h1 class="mobile-header-title">Documents</h1>
         </div>
         
         <!-- Division Control Panel -->
@@ -12,11 +15,22 @@
                 <div class="content-status status-add-division" id="add-division-btn">
                     Add Division
                 </div>
-                <div class="content-status status-delete-all-divisions" id="delete-all-divisions-btn">
-                    Delete All Divisions
+                <div class="division-actions-desktop">
+                    <div class="content-status status-delete-all-divisions" id="delete-all-divisions-btn">
+                        Delete All Divisions
+                    </div>
+                    <div class="content-status status-delete-all-documents" id="delete-all-documents-btn">
+                        Delete All Documents
+                    </div>
                 </div>
-                <div class="content-status status-delete-all-documents" id="delete-all-documents-btn">
-                    Delete All Documents
+                <div class="division-actions-overflow-mobile">
+                    <button class="overflow-trigger icon-btn" type="button" aria-label="More actions" aria-haspopup="true" aria-expanded="false">
+                        <i data-feather="more-vertical"></i>
+                    </button>
+                    <div class="overflow-dropdown">
+                        <button type="button" class="overflow-dropdown-item" data-trigger-id="delete-all-divisions-btn">Delete All Divisions</button>
+                        <button type="button" class="overflow-dropdown-item" data-trigger-id="delete-all-documents-btn">Delete All Documents</button>
+                    </div>
                 </div>
                 <!-- COMMENTED OUT: Nuclear Clear RAG Database button (functionality now included in Reset Dummy Courses) -->
                 <!--

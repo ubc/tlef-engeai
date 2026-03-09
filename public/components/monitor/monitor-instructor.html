@@ -2,9 +2,12 @@
     <link rel="stylesheet" href="/styles/instructor-components/monitor-instructor.css">
     <main class="main-content">
         <!-- Header Section - Matching report design -->
-        <header class="monitor-header">
+        <header class="monitor-header mobile-header-bar">
+            <button id="instructor-hamburger-btn" class="instructor-mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
+                <i data-feather="menu"></i>
+            </button>
             <div class="header-left">
-                <h1>Monitor Dashboard</h1>
+                <h1 class="mobile-header-title">Monitor</h1>
             </div>
             <div class="header-right">
                 <!-- COMMENTED OUT: Calendar feature hidden as requested -->
@@ -22,14 +25,10 @@
         <section class="student-list-section">
             <div class="student-list-header">
                 <h3>User Activity <span class="user-count" id="user-count">(0)</span></h3>
-                <div class="sort-options">
-                    <button class="sort-btn active" id="sort-conversations" data-sort="conversations">
-                        Conversations
-                    </button>
-                    <button class="sort-btn" id="sort-name" data-sort="name">
-                        Alphabetical
-                    </button>
-                </div>
+                <select class="sort-select" id="sort-select" aria-label="Sort by">
+                    <option value="conversations">Conversations</option>
+                    <option value="name">Alphabetical</option>
+                </select>
             </div>
             
             <div class="student-list" id="student-list">

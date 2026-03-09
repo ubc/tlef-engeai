@@ -43,6 +43,11 @@
     gap: 20px;
 }
 
+.monitor-header.mobile-header-bar {
+    align-items: center;
+    gap: 0.75rem;
+}
+
 .header-left h1 {
     font-size: 20px;
     font-weight: 600;
@@ -179,9 +184,19 @@
     text-align: right;
 }
 
+/* Monitor section title - about-style */
+.monitor-section-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-chbe-green);
+    margin: 0 0 1rem 0;
+    border-bottom: 2px solid var(--color-chbe-green);
+    padding-bottom: 0.5rem;
+}
+
 /* Student List Section - Matching report list design */
 .student-list-section {
-    background: var(chat-bg);
+    background: var(--chat-bg);
     border-radius: 10px;
     border: 1px solid var(--border-color);
     padding: 20px;
@@ -200,7 +215,7 @@
 .student-list-header h3 {
     font-size: 18px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-chbe-green);
     margin: 0;
 }
 
@@ -235,6 +250,28 @@
 .sort-btn.active {
     background: var(--pinned-color);
     color: white;
+    border-color: var(--pinned-color);
+}
+
+/* Sort dropdown - right of User Activity */
+.sort-select {
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    cursor: pointer;
+    min-width: 140px;
+}
+
+.sort-select:hover {
+    background: var(--hover-bg);
+}
+
+.sort-select:focus {
+    outline: none;
     border-color: var(--pinned-color);
 }
 
@@ -387,6 +424,13 @@
 
 .download-button:hover {
     background: #2d7a2d;
+}
+
+/* Download button icon size in expanded student content */
+.student-item.expanded .monitor-student-content .download-button i,
+.student-item.expanded .monitor-student-content .download-button svg {
+    width: 12px;
+    height: 12px;
 }
 
 /* Calendar Modal Styles - Consistent with overall design */
@@ -582,7 +626,109 @@
     background: #2d7a2d;
 }
 
-/* Responsive Design */
+/* Responsive Design - 768px primary breakpoint (RESPONSIVE_DESIGN.md) */
+@media (max-width: 768px) {
+    /* monitor-header.mobile-header-bar: about-like styling (single header) */
+    .monitor-header.mobile-header-bar {
+        padding: 12px 16px;
+        background: var(--chat-bg);
+        border: none !important;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        box-shadow: none;
+        flex-direction: row;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .monitor-header.mobile-header-bar .header-left {
+        flex: 1;
+        min-width: 0;
+    }
+
+    /* Override instructor-mode.css truncation so "Monitor Dashboard" is fully visible on mobile */
+    #main-content-area .monitor-header.mobile-header-bar h1,
+    #main-content-area .monitor-header.mobile-header-bar .mobile-header-title {
+        font-size: 1.25rem;
+        color: var(--color-chbe-green);
+        font-weight: 600;
+        display: block;
+        overflow: visible;
+        text-overflow: clip;
+        white-space: normal;
+    }
+
+    .monitor-section-title {
+        display: none;
+    }
+
+    .monitor-header.mobile-header-bar .instructor-mobile-hamburger-btn {
+        color: var(--color-chbe-green);
+        padding: 0 !important;
+    }
+
+    .monitor-header.mobile-header-bar .instructor-mobile-hamburger-btn:hover {
+        background-color: rgba(92, 138, 58, 0.1);
+        color: var(--color-chbe-green);
+    }
+
+    .header-right {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .nav-tiles {
+        flex-wrap: wrap;
+    }
+
+    .nav-tile {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 10px 12px;
+    }
+
+    .usage-stats-section {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+
+    .student-list-header {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        gap: 15px;
+    }
+
+    .student-list-section {
+        border: none;
+        box-shadow: none;
+        padding: 0 1rem 1rem 1rem;
+    }
+
+    .sort-select {
+        min-height: 32px;
+        align-self: flex-end;
+        flex-shrink: 0;
+    }
+
+    .student-item {
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
+    }
+
+    .student-header {
+        min-height: 44px;
+        padding: 0.75rem 1rem;
+    }
+
+    .download-button {
+        min-width: 44px;
+        min-height: 36px;
+        padding: 0rem 0.75rem;
+    }
+}
+
 @media (max-width: 960px) {
     .monitor-header {
         flex-direction: column;
@@ -610,14 +756,10 @@
     }
     
     .student-list-header {
-        flex-direction: column;
-        align-items: flex-start;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
         gap: 15px;
-    }
-    
-    .sort-options {
-        width: 100%;
-        justify-content: flex-start;
     }
     
     .calendar-modal-content {

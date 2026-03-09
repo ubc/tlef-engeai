@@ -24,9 +24,9 @@
  * @version: 3.0.0
  */
 
-import { loadComponentHTML } from "../functions/api.js";
-import { activeCourse } from "../../../src/functions/types.js";
-import { showErrorModal, showHelpModal } from "../modal-overlay.js";
+import { loadComponentHTML } from "../api/api.js";
+import { activeCourse } from "../types.js";
+import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
 
 // ===========================================
 // COURSE DUPLICATE CHECK CACHE
@@ -670,10 +670,12 @@ function updateNavigationButtons(state: OnboardingState): void {
     }
     
     if (nextBtn) {
-        if (state.currentStep === state.totalSteps) {
-            nextBtn.textContent = 'Complete Setup';
+        const label = state.currentStep === state.totalSteps ? 'Complete Setup' : 'Next';
+        const span = nextBtn.querySelector('.nav-btn-text');
+        if (span) {
+            span.textContent = label;
         } else {
-            nextBtn.textContent = 'Next';
+            nextBtn.textContent = label;
         }
     }
 }

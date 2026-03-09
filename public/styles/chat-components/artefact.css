@@ -284,3 +284,19 @@
   }
 }
 
+/* ===========================================
+   REDUCED MOTION SUPPORT
+   =========================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .artefact-modal-wrapper .artefact-panel,
+  .artefact-modal-wrapper .artefact-panel.closing {
+    animation: none;
+  }
+
+  .artefact-panel.open,
+  .artefact-panel.closing {
+    animation: none;
+  }
+}
+

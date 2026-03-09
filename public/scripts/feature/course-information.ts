@@ -14,9 +14,9 @@
  * @version: 3.0.0
  */
 
-import { activeCourse, InstructorInfo } from "../../../src/functions/types.js";
-import { showErrorModal } from "../modal-overlay.js";
-import { renderFeatherIcons } from "../functions/api.js";
+import { activeCourse, InstructorInfo } from "../types.js";
+import { showErrorModal } from "../ui/modal-overlay.js";
+import { renderFeatherIcons } from "../api/api.js";
 
 // ===========================================
 // UTILITY FUNCTIONS

@@ -97,6 +97,7 @@
     line-height: 1.5;
 }
 
+
 /* ===========================================
    COMPLETION CONTENT STYLES
    =========================================== */
@@ -773,7 +774,108 @@
    RESPONSIVE ADJUSTMENTS FOR STUDENT ONBOARDING
    =========================================== */
 
+
+@media (max-width: 480px) {
+    .content-step {
+        padding: 1rem;
+    }
+}
+
 @media (max-width: 768px) {
+    /* Hide steps panel on mobile (student onboarding only) - high specificity */
+    body.onboarding-active .student-onboarding .onboarding-steps-panel {
+        display: none !important;
+    }
+
+    /* Artefact uses modal overlay on mobile – remove from layout flow when closed.
+       Panel stays in DOM for JS to move into modal on open; display:none prevents layout impact. */
+    .student-onboarding .artefact-panel {
+        display: none !important;
+    }
+    
+    /* Onboarding constrained to viewport so content scrolls internally (fixes cut-off) */
+    body.onboarding-active .student-onboarding {
+        min-height: 100vh;
+        max-height: 100vh;
+        overflow: hidden;
+        flex: 1;
+        min-height: 0;
+    }
+    
+    /* Content area: remove border and margin */
+    .onboarding-content-area {
+        border: none !important;
+        margin: 0 !important;
+        border-radius: 0;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+    }
+    
+    /* Scrollability - this is the scroll container; remove min-height: 100vh to allow flex sizing */
+    .onboarding-content-steps {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        background: var(--chat-bg);
+        padding-bottom: 0rem; /* Space for fixed nav so content scrolls above it */
+    }
+    
+    .content-step {
+        overflow-y: auto;
+        padding: 2rem;
+    }
+    
+    /* Navigation: icon-only, fixed bottom, touch targets, box with transparent background */
+    .onboarding-navigation {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.75rem 1rem;
+        position: fixed;
+        bottom: 1rem;
+        left: 1rem;
+        right: 1rem;
+        gap: 0.5rem;
+        margin-top: 0;
+        background: transparent;
+        z-index: 10;
+    }
+    
+    .onboarding-navigation .nav-btn {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.75rem;
+    }
+    
+    /* Next/Finish button always on the right.
+     * Why it was on the left: onboarding.css sets justify-content: center for mobile.
+     * With one visible button (Back has display:none on welcome step), space-between
+     * places a single item at flex-start (left). margin-left: auto pushes it right. */
+    .onboarding-navigation .btn-next,
+    .onboarding-navigation .btn-finish {
+        margin-left: auto !important;
+    }
+    
+    .onboarding-navigation .nav-btn-text {
+        display: none;
+    }
+    
+    /* Flag demo: touch targets */
+    .flag-demo-container .timestamp-action-btn {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.5rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .flag-demo-container .timestamp-actions {
+        gap: 0.5rem;
+    }
+    
     .example-question {
         padding: 0.75rem;
     }
@@ -832,6 +934,21 @@
     to {
         opacity: 1;
         transform: translateY(0);
+    }
+}
+
+/* ===========================================
+   REDUCED MOTION SUPPORT
+   =========================================== */
+
+@media (prefers-reduced-motion: reduce) {
+    .onboarding-navigation .nav-btn,
+    .onboarding-navigation .nav-btn:hover {
+        transition: none;
+    }
+    
+    .content-step.active {
+        animation: none;
     }
 }
 

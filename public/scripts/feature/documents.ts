@@ -24,12 +24,13 @@ import {
     TopicOrWeekItem, 
     AdditionalMaterial, 
     activeCourse 
-} from '../../../src/functions/types';
-import { uploadRAGContent } from '../services/RAGService.js';
-import { DocumentUploadModule, UploadResult } from '../services/DocumentUploadModule.js';
-import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal } from '../modal-overlay.js';
-import { showToast } from '../toast-notification.js';
-import { renderFeatherIcons } from '../functions/api.js';
+} from '../types.js';
+import { uploadRAGContent } from '../services/rag-service.js';
+import { DocumentUploadModule } from '../services/document-upload-module.js';
+import type { UploadResult } from '../types.js';
+import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal } from '../ui/modal-overlay.js';
+import { showToast } from '../ui/toast-notification.js';
+import { renderFeatherIcons } from '../api/api.js';
 
 // In-memory store for the course data
 let courseData: TopicOrWeekInstance[] = [];
@@ -245,7 +246,15 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // Add Session badge/button
         const addSessionBadge = document.createElement('div');
         addSessionBadge.className = 'content-status status-add-session';
-        addSessionBadge.textContent = 'Add Section';
+        addSessionBadge.setAttribute('title', 'Add Section');
+        addSessionBadge.setAttribute('aria-label', 'Add Section');
+        const addSectionIcon = document.createElement('i');
+        addSectionIcon.setAttribute('data-feather', 'plus');
+        const addSectionText = document.createElement('span');
+        addSectionText.className = 'status-text';
+        addSectionText.textContent = 'Add Section';
+        addSessionBadge.appendChild(addSectionIcon);
+        addSessionBadge.appendChild(addSectionText);
         // Prevent header toggle when clicking Add Section
         addSessionBadge.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -272,7 +281,15 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const statusBadge = document.createElement('div');
         const isPublished = !!instance_topicOrWeek.published;
         statusBadge.className = `content-status ${isPublished ? 'status-published' : 'status-draft'}`;
-        statusBadge.textContent = isPublished ? 'Published' : 'Draft';
+        statusBadge.setAttribute('title', isPublished ? 'Published' : 'Draft');
+        statusBadge.setAttribute('aria-label', isPublished ? 'Published' : 'Draft');
+        const statusIcon = document.createElement('i');
+        statusIcon.setAttribute('data-feather', isPublished ? 'check' : 'file-text');
+        const statusText = document.createElement('span');
+        statusText.className = 'status-text';
+        statusText.textContent = isPublished ? 'Published' : 'Draft';
+        statusBadge.appendChild(statusIcon);
+        statusBadge.appendChild(statusText);
         // Prevent accordion toggle when clicking the status badge
         statusBadge.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -292,7 +309,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             // Optimistically update UI
             instance_topicOrWeek.published = checked;
             statusBadge.className = `content-status ${checked ? 'status-published' : 'status-draft'}`;
-            statusBadge.textContent = checked ? 'Published' : 'Draft';
+            statusBadge.setAttribute('title', checked ? 'Published' : 'Draft');
+            statusBadge.setAttribute('aria-label', checked ? 'Published' : 'Draft');
+            const statusIconEl = statusBadge.querySelector('i[data-feather]');
+            const statusTextEl = statusBadge.querySelector('.status-text');
+            if (statusIconEl) statusIconEl.setAttribute('data-feather', checked ? 'check' : 'file-text');
+            if (statusTextEl) statusTextEl.textContent = checked ? 'Published' : 'Draft';
             
             // Persist to backend
             try {
@@ -336,7 +358,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 toggleInput.checked = originalChecked;
                 instance_topicOrWeek.published = originalChecked;
                 statusBadge.className = `content-status ${originalChecked ? 'status-published' : 'status-draft'}`;
-                statusBadge.textContent = originalChecked ? 'Published' : 'Draft';
+                statusBadge.setAttribute('title', originalChecked ? 'Published' : 'Draft');
+                statusBadge.setAttribute('aria-label', originalChecked ? 'Published' : 'Draft');
+                const statusIconEl = statusBadge.querySelector('i[data-feather]');
+                const statusTextEl = statusBadge.querySelector('.status-text');
+                if (statusIconEl) statusIconEl.setAttribute('data-feather', originalChecked ? 'check' : 'file-text');
+                if (statusTextEl) statusTextEl.textContent = originalChecked ? 'Published' : 'Draft';
                 
                 // Show error modal
                 const errorMessage = error instanceof Error ? error.message : 'Failed to update published status. Please try again.';
@@ -349,7 +376,15 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         deleteInstanceBadge.className = 'content-status status-delete-instance';
         deleteInstanceBadge.setAttribute('data-action', 'delete-instance');
         deleteInstanceBadge.setAttribute('data-topic-or-week-instance-id', instance_topicOrWeek.id);
-        deleteInstanceBadge.textContent = 'Delete';
+        deleteInstanceBadge.setAttribute('title', 'Delete');
+        deleteInstanceBadge.setAttribute('aria-label', 'Delete');
+        const deleteInstanceIcon = document.createElement('i');
+        deleteInstanceIcon.setAttribute('data-feather', 'trash-2');
+        const deleteInstanceText = document.createElement('span');
+        deleteInstanceText.className = 'status-text';
+        deleteInstanceText.textContent = 'Delete';
+        deleteInstanceBadge.appendChild(deleteInstanceIcon);
+        deleteInstanceBadge.appendChild(deleteInstanceText);
         deleteInstanceBadge.addEventListener('click', (e) => {
             e.stopPropagation();
             deleteTopicOrWeekInstance(instance_topicOrWeek);
@@ -899,6 +934,36 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         (addDivisionBtn as any)._addDivisionHandler = addDivisionHandler;
         addDivisionBtn.addEventListener('click', addDivisionHandler);
         // console.log('🔧 Added add division handler'); // 🟢 MEDIUM: Handler management
+    }
+
+    // Division overflow dropdown (mobile): trigger click on hidden desktop buttons
+    const overflowTrigger = document.querySelector('.division-actions-overflow-mobile .overflow-trigger');
+    const overflowDropdown = document.querySelector('.division-actions-overflow-mobile .overflow-dropdown');
+    const overflowItems = document.querySelectorAll('.overflow-dropdown-item');
+    if (overflowTrigger && overflowDropdown) {
+        overflowTrigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            overflowDropdown.classList.toggle('show');
+            overflowTrigger.setAttribute('aria-expanded', overflowDropdown.classList.contains('show') ? 'true' : 'false');
+        });
+        overflowItems.forEach((item) => {
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const triggerId = (item as HTMLElement).dataset.triggerId;
+                if (triggerId) {
+                    const target = document.getElementById(triggerId);
+                    target?.click();
+                }
+                overflowDropdown.classList.remove('show');
+                overflowTrigger?.setAttribute('aria-expanded', 'false');
+            });
+        });
+        overflowDropdown.addEventListener('click', (e) => e.stopPropagation());
+        document.addEventListener('click', () => {
+            overflowDropdown.classList.remove('show');
+            overflowTrigger?.setAttribute('aria-expanded', 'false');
+        });
     }
 
     // --- Event Handler Functions ---
@@ -1616,8 +1681,16 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         statusRow.style.flex = '0 0 auto';
         const deleteBadge = document.createElement('div');
         deleteBadge.className = 'content-status status-delete-section';
-        deleteBadge.textContent = 'Delete Section';
+        deleteBadge.setAttribute('title', 'Delete Section');
+        deleteBadge.setAttribute('aria-label', 'Delete Section');
         deleteBadge.dataset.action = 'delete-section';
+        const deleteSectionIcon = document.createElement('i');
+        deleteSectionIcon.setAttribute('data-feather', 'trash-2');
+        const deleteSectionText = document.createElement('span');
+        deleteSectionText.className = 'status-text';
+        deleteSectionText.textContent = 'Delete Section';
+        deleteBadge.appendChild(deleteSectionIcon);
+        deleteBadge.appendChild(deleteSectionText);
         deleteBadge.dataset.topicOrWeekInstanceId = topicOrWeekId;
         deleteBadge.dataset.contentId = content.id;
         statusRow.appendChild(deleteBadge);

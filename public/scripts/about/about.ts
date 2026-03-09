@@ -1,3 +1,5 @@
+// public/scripts/about/about.ts
+
 /**
  * ABOUT PAGE MODULE
  * 
@@ -14,18 +16,15 @@
  * - Feather icons integration
  * 
  * @author: AI Assistant
- * @date: 2025-01-27
- * @version: 1.0.0
+ * @date: 2026-03-07
+ * @latest frontend version: 1.0.6
  */
 
-import { loadComponentHTML } from "../functions/api.js";
+import { loadComponentHTML } from "../api/api.js";
 
 // Declare feather for TypeScript
 declare const feather: any;
 
-// ===========================================
-// MAIN EXPORT FUNCTION
-// ===========================================
 
 /**
  * Renders the about page and orchestrates the complete flow.
@@ -78,9 +77,6 @@ export const renderAbout = async (context?: any): Promise<void> => {
     }
 };
 
-// ===========================================
-// INITIALIZATION FUNCTIONS
-// ===========================================
 
 /**
  * Initializes the about page interface with event listeners
@@ -89,10 +85,6 @@ async function initializeAboutPage(): Promise<void> {
     // Set up event listeners
     bindEventListeners();
 }
-
-// ===========================================
-// EVENT HANDLERS
-// ===========================================
 
 /**
  * Binds all event listeners for the about page interface
@@ -129,21 +121,3 @@ function handleBackClick(): void {
     });
     window.dispatchEvent(event);
 }
-
-// ===========================================
-// UTILITY FUNCTIONS
-// ===========================================
-
-/**
- * Validates that the about page is properly loaded
- * 
- * @returns True if about page is valid
- */
-function validateAboutPage(): boolean {
-    const container = document.getElementById('main-content-area');
-    const aboutContainer = container?.querySelector('.about-container');
-    const backBtn = document.getElementById('about-back-btn');
-    
-    return !!(container && aboutContainer && backBtn);
-}
-

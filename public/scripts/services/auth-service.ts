@@ -9,17 +9,7 @@
  * @since: 2025-01-27
  */
 
-export interface User {
-    name: string;
-    userId: string;
-    affiliation: string;
-}
-
-export interface AuthState {
-    isAuthenticated: boolean;
-    user: User | null;
-    isLoading: boolean;
-}
+import type { AuthUser, AuthState } from '../types.js';
 
 export class AuthService {
     private authState: AuthState = {
@@ -178,7 +168,7 @@ export class AuthService {
     /**
      * Get current user
      */
-    public getUser(): User | null {
+    public getUser(): AuthUser | null {
         return this.authState.user;
     }
 

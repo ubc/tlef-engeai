@@ -22,10 +22,11 @@
  * @version: 1.0.0
  */
 
-import { loadComponentHTML } from "../functions/api.js";
-import { activeCourse, LearningObjective, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem } from "../../../src/functions/types.js";
-import { showErrorModal, showHelpModal, showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal } from "../modal-overlay.js";
-import { DocumentUploadModule, UploadResult } from '../services/DocumentUploadModule.js';
+import { loadComponentHTML } from "../api/api.js";
+import { activeCourse, LearningObjective, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem } from "../types.js";
+import { showErrorModal, showHelpModal, showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal } from "../ui/modal-overlay.js";
+import { DocumentUploadModule } from '../services/document-upload-module.js';
+import type { UploadResult } from '../types.js';
 
 // ===========================================
 // TYPE DEFINITIONS
@@ -588,14 +589,14 @@ function updateNavigationButtons(state: DocumentSetupState): void {
     }
     
     if (nextBtn) {
-        if (state.currentStep === state.totalSteps) {
-            nextBtn.textContent = 'Complete Setup';
-            // Ensure button is enabled on final step
-            nextBtn.disabled = false;
+        const navTextSpan = nextBtn.querySelector('.nav-btn-text');
+        const label = state.currentStep === state.totalSteps ? 'Complete Setup' : 'Next';
+        if (navTextSpan) {
+            navTextSpan.textContent = label;
         } else {
-            nextBtn.textContent = 'Next';
-            nextBtn.disabled = false;
+            nextBtn.textContent = label;
         }
+        nextBtn.disabled = false;
     }
 }
 

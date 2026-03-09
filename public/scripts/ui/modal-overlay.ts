@@ -18,47 +18,7 @@
  * @version: 1.0.0
  */
 
-// ===========================================
-// TYPE DEFINITIONS
-// ===========================================
-
-/**
- * Available modal types
- */
-export type ModalType = 'error' | 'warning' | 'success' | 'info' | 'disclaimer' | 'custom';
-
-/**
- * Button configuration for modal footer
- */
-export interface ModalButton {
-    text: string;
-    type: 'primary' | 'secondary' | 'outline' | 'danger';
-    action?: () => void | Promise<void>;
-    closeOnClick?: boolean;
-}
-
-/**
- * Configuration options for creating a modal
- */
-export interface ModalConfig {
-    type: ModalType;
-    title: string;
-    content: string | HTMLElement;
-    buttons?: ModalButton[];
-    showCloseButton?: boolean;
-    closeOnOverlayClick?: boolean;
-    closeOnEscape?: boolean;
-    maxWidth?: string;
-    customClass?: string;
-}
-
-/**
- * Result of modal interaction
- */
-export interface ModalResult {
-    action: string;
-    data?: any;
-}
+import type { ModalType, ModalButton, ModalConfig, ModalResult } from '../types.js';
 
 // ===========================================
 // MODAL OVERLAY CLASS

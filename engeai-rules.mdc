@@ -1,294 +1,431 @@
 ---
 alwaysApply: true
 ---
-EngE-AI is an AI-powered study assistant platform that enables engineering students to interact with course material through a GenAI virtual tutor. The platform provides guided critical thinking support following Facione's model, generates context-rich real-world troubleshooting scenarios, and acts as a 24/7 virtual tutor for CHBE and MTRL engineering courses at UBC.
 
-The platform is embedded within Canvas as an iframe and integrates with UBC's authentication system. Students can ask course-related questions and receive guided responses that build critical thinking skills rather than direct answers. Instructors can upload course materials, monitor student interactions, and manage the AI's knowledge base through a comprehensive dashboard.
+# EngE-AI: Development Rules
 
-## Tech Stack Overview:
+EngE-AI is an AI-powered study assistant for engineering courses at UBC. Students ask course-related questions and receive guided responses that build critical thinking. Instructors upload materials, monitor interactions, and manage the AI knowledge base.
 
-**Architecture:**
-EngE-AI follows a split architecture with a public frontend and a private backend, adhering to clear separation of concerns for maintainability and Canvas integration compatibility.
+## Tech Stack
 
-**Stack:**
-- Frontend: HTML + Vanilla TypeScript with modern architecture patterns, styled via separate CSS files, embedded in Canvas iframe
-- Backend: Node.js (Express) with TypeScript, built with modular architecture
-- AI Integration: ChatGPT API with custom RAG implementation for context retrieval
-- Parsing & Chunking: Custom document-parsing, chunking, and embeddings modules
-- Vector Database: Qdrant for similarity search and document retrieval
-- Authentication: Canvas LTI integration with UBC CWL authentication
-- Deployment: Canvas-embedded iframe, hosted on UBC infrastructure
+- **Frontend:** Vanilla TypeScript, HTML, CSS
+- **Backend:** Node.js (Express), TypeScript
+- **Databases:** MongoDB (courses, users, chats, flags), Qdrant (vector search via UBC GenAI Toolkit)
+- **AI:** ChatGPT API, custom RAG with document chunking and embeddings
 
-**Deployment:**
-- Canvas Integration: Embedded iframe within Canvas courses
-- Production: Canvas LTI app with CWL authentication integration
+---
 
-## Frontend Architecture Standards:
+## Implemented Features
 
-**Modern Vanilla TypeScript Architecture:**
-- Use TypeScript for all frontend code with strict type checking
-- Implement modular architecture with clear separation of concerns:
-  - `lib/state/` - State management with type-safe event systems
-  - `lib/components/` - Reusable UI components and rendering logic
-  - `lib/services/` - API communication and external service integration
-  - `lib/utils/` - Utility functions and helpers
-- Follow component-based patterns even without frameworks
-- Use barrel exports (index.ts files) for clean import paths
-- Implement centralized state management with event-driven updates
+### Student Features
 
-**Code Organization Patterns:**
+| Feature | Description | Key Files |
+|---------|-------------|-----------|
+| **Chat** | RAG-powered chat with streaming responses. Uses course materials for context. Supports pin/unpin, delete, restore. | `feature/chat.ts`, `render-chat.ts`, `functions/chat-api.ts`, `ChatApp.ts` |
+| **Profile** | View and update user profile, onboarding state | `profile/` |
+| **Flag history** | View flags the student has submitted | `feature/student-flag-history.ts` |
+| **About** | About page | `about/about.ts` |
+| **Onboarding** | Student onboarding flow | `onboarding/student-onboarding.ts` |
+
+### Instructor Features
+
+| Feature | Description | Key Files |
+|---------|-------------|-----------|
+| **Documents** | Upload and manage course materials for RAG (text, PDF, DOCX). Organize by topic/week/item. | `feature/documents.ts`, `RAGService.ts`, `rag-app.ts`, `rag-routes.ts` |
+| **Flags** | View, respond to, and resolve student flags (inaccurate response, harassment, inappropriate, etc.) | `feature/flags.ts`, `mongo-routes.ts` |
+| **Monitor** | View chat titles for all students; download full conversations | `feature/monitor.ts`, `mongo-routes.ts` |
+| **Instructor chat** | Same chat interface as students, for testing | `feature/chat.ts` |
+| **Assistant prompts** | Create/edit/select initial assistant messages for new student chats | `feature/assistant-prompts.ts` |
+| **System prompts** | Configure AI behavior (base prompt, learning objectives, struggle topics) | `feature/system-prompts.ts` |
+| **Course information** | Edit course name, instructors, TAs, structure | `feature/course-information.ts` |
+| **Onboarding** | Course setup, document setup, flag setup, monitor setup | `onboarding/course-setup.ts`, `document-setup.ts`, `flag-setup.ts`, `monitor-setup.ts` |
+| **New course** | Create new course (no courseId) | `onboarding/` |
+
+### Shared Features
+
+| Feature | Description | Key Files |
+|---------|-------------|-----------|
+| **Course selection** | List courses, enter by ID or 6-char code | `course-selection.ts`, `course-entry.ts` |
+| **Auth** | CWL login, logout, session | `auth-manager.ts`, `AuthService.ts`, `auth.ts`, `passport.ts` |
+
+### Technical Features (Under the Hood)
+
+| Feature | Description | Key Files |
+|---------|-------------|-----------|
+| **Memory Agent** | Analyzes chat to detect topics students struggle with. Stores per-user in MongoDB. Injects struggle words into new chat prompts. Students can dismiss "unstruggle" blocks. | `memory-agent/memory-agent.ts`, `ChatApp.ts` |
+| **Artefact** | Renders Mermaid diagrams in chat responses. Detects code blocks, parses, displays in modal. | `feature/artefact.ts` |
+| **RAG** | Document upload → chunking → embeddings → Qdrant. Vector search for context retrieval. | `rag-app.ts`, `RAGService.ts`, `ubc-genai-toolkit-rag` |
+
+---
+
+## Architecture Briefs
+
+### Frontend (`public/scripts/`)
+
+- **Types:** `types.ts` — Frontend type definitions. Self-contained; must NOT import from `src/`. Shared types are duplicated from `src/functions/types.ts` and kept in sync manually. Import from `./types.js` or `../types.js`.
+- **Entry points:** `entry/` — student-mode, instructor-mode, course-selection
+- **Features:** `feature/` — chat, documents, flags, monitor, assistant-prompts, system-prompts, course-information, student-flag-history, artefact, render-chat
+- **Services:** `services/` — auth-service, rag-service, document-upload-module, inactivity-tracker (kebab-case filenames)
+- **API helpers:** `api/` — api, chat-api
+- **UI components:** `ui/` — modal-overlay, toast-notification, version-display
+- **Auth:** `auth/` — auth-manager
+- **Factories:** `factories/` — instructor-user-factory, student-user-factory
+- **Onboarding:** `onboarding/` — course-setup, document-setup, flag-setup, monitor-setup, student-onboarding
+- **Utilities:** `utils/` — url-parser
+
+**Related docs:** See `documentation/` for implementation details. For chat changes, check `documentation/ENDPOINT_ARCHITECTURE.md` and `src/functions/ChatApp.ts`.
+
+### Backend (`src/`)
+
+- **Routes:** `auth`, `course-routes`, `chat-app`, `rag-routes`, `mongo-routes`, `course-entry`, `user-management`, `health`, `version`
+- **Core:** `EngEAI_MongoDB` (singleton), `ChatApp`, `RAGApp`, `rag-app.ts`
+- **Middleware:** `requireAuth`, `requireCourseRole`, `passport`, `session`
+
+**Related docs:** `documentation/ENDPOINT_ARCHITECTURE.md` — routes, RBAC, API layout.
+
+### Database (MongoDB)
+
+- **Collections:** `active-course-list`, `active-users`, per-course collections (users, flags, memory-agent)
+- **Core:** `EngEAI_MongoDB` in `src/functions/EngEAI_MongoDB.ts`
+- **Data:** Courses, users, chats, flags, learning objectives, materials, system prompts
+
+### Vector Database (Qdrant)
+
+- **Access:** Via `RAGApp` and `ubc-genai-toolkit-rag` (RAGModule)
+- **Use:** Document chunks, embeddings, similarity search for RAG
+- **Storage:** Materials have `qdrantId`; course deletion cascades to Qdrant
+
+---
+
+## Development Workflow
+
+### Principle
+
+**Only change code when you and the user have agreed to the changes and you are comfortable with the information provided.** Check in on every task before proceeding.
+
+### Fixed Sequence (All Task Types)
+
+1. **Plan** — Understand requirements, design interfaces/architecture, write a short plan
+   - **Plan file location:** When the user asks for a plan, write the plan file inside the `planner/` folder (create it if it does not exist).
+2. **Implement** — Code following the plan
+3. **Document** — Update docs and TSDoc per format below
+4. **Test** — Ask if user wants testing; if yes, create test checklist or test files
+
+### Task Entry Points
+
+| Task Type | Discovery | Notes |
+|-----------|-----------|-------|
+| **New feature** | Read versions, `/documentation`, related routes/services | Plan interfaces and data flow first |
+| **Bug fix (frontend)** | Read versions, `/documentation`, related `public/scripts/` files | Fetch related docs; if stuck, ask user |
+| **Bug fix (backend)** | Read versions, `/documentation`, related `src/` routes and functions | Same as frontend |
+| **Refactor** | Read versions, `/documentation`, affected modules | Preserve behavior; update docs |
+| **Documentation update** | Read current docs and code | Follow doc format below |
+| **Styling** | See Styling section | Use `<styling_AI_suggest>` only; do not implement directly |
+
+### Discovery Step (Before Coding)
+
+**Frontend types rule:** `public/scripts/types.ts` must NOT import from backend (`src/`). Duplicate shared types and keep them in sync manually with `src/functions/types.ts`.
+
+1. Check frontend version: `public/scripts/frontend-version.ts`
+2. Check backend version: `src/utils/backend-version.ts`
+3. Read relevant files in `documentation/` (e.g. `ENDPOINT_ARCHITECTURE.md`)
+4. Use only the docs you need to reduce context
+5. If docs are missing or outdated, create or update them with the current changes
+
+**Example (bug fix: chat not loading):**
+
 ```
-public/scripts/
-├── lib/                    # Core architecture
-│   ├── state/             # State management
-│   │   ├── StateTypes.ts       # Type definitions
-│   │   ├── AppStateManager.ts  # Main state logic
-│   │   └── index.ts           # Barrel exports
-│   ├── services/          # External services
-│   │   ├── ChatAPI.ts         # Server communication
-│   │   ├── ComponentLoader.ts # Dynamic loading
-│   │   └── index.ts
-│   ├── components/        # UI components
-│   │   ├── BaseComponent.ts   # Abstract base class
-│   │   ├── MessageRenderer.ts # Message UI
-│   │   └── index.ts
-│   ├── utils/            # Utilities
-│   │   ├── DOMUtils.ts       # DOM helpers
-│   │   ├── EventBus.ts       # Event system
-│   │   └── index.ts
-│   └── index.ts          # Main library export
-└── [page].ts             # Application entry points
+1. Read frontend-version.ts → "1.0.4"
+2. Read backend-version.ts → "1.0.8"
+3. Read documentation/ENDPOINT_ARCHITECTURE.md → section 4.5 Chat
+4. Read public/scripts/feature/chat.ts, functions/chat-api.ts
+5. Read src/functions/ChatApp.ts, src/routes/chat-app.ts
+6. If no doc for chat flow → create documentation/CHAT_FLOW.md
 ```
 
-## Coding & Contribution Guidelines:
+---
 
-These rules help ensure the codebase remains clean, consistent, Canvas-compatible, and follows modern frontend architecture patterns.
+## Workflow Example (End-to-End)
 
-**Frontend Guidelines:**
+**Scenario:** Add a "Copy message" button to the chat UI.
 
-**TypeScript & Architecture:**
-- Use TypeScript for all frontend code with strict type checking enabled
-- **DO NOT modify JavaScript (.js) files directly** - all JS code is auto-compiled from TypeScript source files
-- Implement proper interfaces and type definitions in dedicated files
-- Use generic types and union types for type safety
-- Follow modular architecture patterns with clear separation of concerns
-- Use dependency injection patterns where appropriate
-- Implement proper error handling with custom error types
+1. **Plan**
+   - Add button to message UI in `render-chat.ts`
+   - Wire click → `navigator.clipboard.writeText(messageText)`
+   - Show toast on success
+   - Check in: "Plan: Add copy button to each message. Use clipboard API + toast. Proceed?"
 
-**Component Architecture:**
-- Create reusable, composable components using class-based or functional patterns
-- Use abstract base classes for shared component behavior
-- Implement proper lifecycle management (mount, unmount, cleanup)
-- Use composition over inheritance for component relationships
-- Create clear component APIs with well-defined props/parameters
+2. **Implement**
+   - Edit `render-chat.ts`, add button with class `chat-message-copy-btn`
+   - Add handler, call toast
+   - Bump `frontend-version.ts`
+   - Check in: "Implementation done. Proceed to document?"
 
-**State Management:**
-- Implement centralized state management with event-driven architecture
-- Use type-safe event systems with mapped event data types
-- Follow unidirectional data flow patterns
-- Implement proper state immutability and mutation control
-- Use the Observer pattern for reactive UI updates
+3. **Document**
+   - Update TSDoc for the render function
+   - If behavior changes, update `documentation/` as needed
+   - Check in: "Documentation updated. Proceed to test?"
 
-**Module System:**
-- Use ES6 modules with proper import/export statements
-- Implement barrel exports (index.ts) for clean import paths
-- Follow proper dependency management and avoid circular dependencies
-- Use path mapping in tsconfig.json for clean imports (@/lib/*, etc.)
-- Group related functionality into cohesive modules
+4. **Test**
+   - Ask: "Would you like for me to provide blackbox testing / validation for the changes in the frontend?"
+   - If yes → create `testing-copy-button.md` with checklist (e.g. "Click copy on message → clipboard contains text", "Toast appears")
 
-**DOM & Event Handling:**
-- Use vanilla JavaScript only — no React, Vue, or jQuery
-- Implement proper event delegation and cleanup
-- Use semantic HTML with proper ARIA attributes for accessibility
-- Create utility classes for common DOM operations
-- Implement proper memory management and event listener cleanup
+---
 
-**Styling & Assets:**
-- All CSS must be in dedicated .css files. No inline styles or <style> blocks
-- Use CSS custom properties (variables) for theming and consistency
-- Follow BEM or similar naming conventions for CSS classes
-- Implement responsive design principles for Canvas iframe compatibility
-- Use CSS Grid and Flexbox for layouts
+## Build System & TypeScript
 
-**Canvas Integration:**
-- Ensure Canvas iframe compatibility - avoid full-screen layouts, use responsive design
-- Never use localStorage, sessionStorage, or any browser storage APIs (not supported in Canvas iframes)
-- Use server-side session management for data persistence
-- Handle Canvas-specific constraints (viewport limitations, CORS, etc.)
-- Implement proper authentication flow with Canvas LTI
+- **Source:** All frontend TS in `public/scripts/`. Output in `public/dist/`.
+- **NEVER** edit `public/dist/*.js` — it is generated from TypeScript.
+- **HTML:** `<script>` tags must point to `/dist/*.js`, not `/scripts/*.ts`.
+- **Build:** Run `tsc` (or project build) to compile. Manual translation if build is unstable.
 
-**Error Handling & Validation:**
-- Implement comprehensive error boundaries and fallback UI
-- Use proper input validation with TypeScript types
-- Create user-friendly error messages for API failures
-- Implement retry mechanisms for network requests
-- Log errors appropriately without exposing sensitive information
+---
 
-**Performance & Optimization:**
-- Implement lazy loading for components and resources
-- Use efficient DOM manipulation patterns
-- Implement proper debouncing and throttling for user interactions
-- Optimize bundle size through proper tree shaking
-- Use efficient event handling patterns
+## Styling
 
-**Backend Guidelines:**
-- Write code in TypeScript with strict type checking enabled
-- Use modular functions or classes with single responsibilities
-- When using ChatGPT API or RAG system, comment what each call does and why it's needed
-- Implement proper error handling for API calls and Canvas integration
-- Ensure all endpoints are secure and properly authenticated through Canvas/CWL
-- Follow RESTful API design principles
-- Implement proper request/response validation with TypeScript interfaces
+- **Global:** `public/styles/style.css` — shared styles
+- **Page-specific:** Only when a page has many unique styles; name after page (e.g. `dashboard.css`)
+- **Order:** Link global `style.css` first, then page-specific
+- **All CSS in `.css` files** — no inline styles or `<style>` blocks
 
-**Documentation Style:**
-- Use inline comments (// this line does X) for explaining complex logic
-- Use TSDoc comments (/** ... */) before every function, class, and module
-- Document Canvas-specific integration points clearly
-- Include type definitions in documentation
-- Provide usage examples for complex components or utilities
-- Document state management patterns and event flows
+### HTML Class Names & CSS Selectors
 
-**Testing Considerations:**
-- Structure code to be easily testable with unit tests
-- Use dependency injection to enable mocking
-- Create clear interfaces for external dependencies
-- Implement proper error handling that can be tested
-- Design components with clear inputs and outputs
+- **Class names:** Use lowercase, words separated by `-` (kebab-case). Be descriptive.
+- **Avoid:** Generic names (`box`, `item`), camelCase (`myClass`), underscores (`my_class`)
+- **Prefer:** `.chat-message-container`, `.flag-report-row`, `.modal-backdrop`
+- **BEM-style (optional):** `.chat-message`, `.chat-message__copy-btn`, `.chat-message--pinned`
+- **IDs:** Use sparingly; prefer classes for styling. If using IDs, same kebab-case.
+- **Cleanup:** Remove unused classes and CSS rules. Keep selectors specific enough to avoid collisions.
 
-## Development Approach:
+**Examples:**
+- ✅ `.student-flag-history`, `.assistant-prompt-card`, `#close-artefact-btn`
+- ❌ `.StudentFlagHistory`, `.assistantPromptCard`, `.box`
 
-You are a full-stack developer contributing to EngE-AI — an AI-powered study assistant built with Node.js, TypeScript, Vanilla TypeScript frontend with modern architecture, ChatGPT API, and embedded in Canvas. Your job is to implement functionality following clean architecture principles, modern frontend patterns, optimized for clarity, maintainability, Canvas compatibility, and developer readability.
+<styling_AI_suggest>
+For styling tasks: suggest changes inside this tag only. Do not implement directly. User will review and apply manually.
+</styling_AI_suggest>
 
-### Objective
-Create complete, working code that integrates seamlessly into the EngE-AI pipeline, follows modern frontend architecture patterns, works within Canvas iframe constraints, and is easy for developers to read, follow, and extend. This includes implementing backend services (e.g., document parsing, chunking, embedding, ChatGPT integration) and frontend logic (TypeScript + modern patterns + CSS) that is clear, accessible, Canvas-compatible, and functional.
+---
 
-### Coding Style and Structure
-- Use **vanilla TypeScript** with modern architecture patterns for frontend
-- **All CSS must live in separate `.css` files** — no inline or embedded styling
-- **TypeScript for all code** (frontend and backend) with proper type definitions
-- Favor **modular, component-based architecture** with clear separation of concerns
-- Implement **centralized state management** with event-driven updates
-- Use **descriptive, typed interfaces and function signatures** (e.g., `ChatMessage`, `StateEvent`, `ApiResponse<T>`)
-- Create **reusable, composable components** following modern patterns
-- All files should contain proper documentation explaining both *what* and *why*
-- Assume you're writing for experienced developers — be clear and follow best practices
-- Ensure Canvas iframe compatibility in all frontend implementations
+## Naming Conventions
 
-### Security and Robustness
-- Implement type-safe error handling with custom error types
-- Use TypeScript's strict mode and proper type guards
-- Sanitize input and validate data with TypeScript interfaces
-- Return typed errors with proper error boundaries
-- Properly handle Canvas authentication and session management
-- Implement rate limiting for ChatGPT API calls
-- Validate all data flowing between Canvas and the application using TypeScript types
+### File Names
 
-### Project Environment
-- **Frontend:** HTML, Vanilla TypeScript with modern architecture, CSS (Canvas iframe compatible)
-- **Backend:** Node.js (Express) with TypeScript
-- **AI Integration:** ChatGPT API with custom RAG implementation
-- **Vector Search:** Qdrant for document similarity search
-- **Document Processing:** Custom parsing, chunking, and embedding pipeline
-- **File Layout:** Frontend in public/, backend in src/
-- **Canvas Integration:** LTI-compatible iframe embedding
-- **Authentication:** Canvas LTI with UBC CWL integration
-- **MVP Scope:** Virtual tutor functionality with basic RAG, no Redis caching yet
+- **Lowercase** only
+- **Multi-word:** use `-` (hyphen). Examples: `try-hard.ts`, `tetra-hes.html`, `student-flag-history.ts`, `chat-api.ts`
+- **Avoid:** `TryHard.ts`, `student_flag_history.ts`, `studentFlagHistory.ts`
 
-### Development Methodology
-1. **System 2 Thinking**  
-   Carefully break the task into discrete steps and dependencies. Design proper TypeScript interfaces and component architecture. Write these out in clear pseudocode or planning blocks.
+### Variable Names (TypeScript)
 
-2. **Tree of Thoughts**  
-   For each part, consider architectural alternatives (state management patterns, component design, etc.). Evaluate trade-offs before choosing the implementation path, especially for Canvas compatibility and maintainability.
+- **camelCase** for variables, functions, methods: `chatId`, `userName`, `sendMessageToChat()`
+- **PascalCase** for classes, interfaces, types: `ChatMessage`, `FlagReport`, `RenderChat`
+- **UPPER_SNAKE** for constants (optional): `API_BASE_URL`, `DEFAULT_PROMPT_ID`
 
-3. **Iterative Refinement**  
-   Improve your solution by thinking through edge cases, Canvas integration issues, TypeScript type safety, and future extensibility.
+### Console Log
 
-### Process for Each Task
-1. **Deep Dive Analysis**  
-   Understand the technical and logical requirements, including Canvas constraints and architecture patterns. Design proper TypeScript interfaces and component structure.
+- Use `console.log` for debugging when needed. Add a brief comment: `// DEBUG: ...` or `// TEMP: ...`
+- **Reminder:** Once you are convinced the code works, remove or comment out the associated `console.log` before finalizing.
 
-2. **Planning**  
-   Write a detailed plan including:
-   - TypeScript interfaces and type definitions
-   - Component architecture and relationships
-   - State management approach
-   - Event flow and data handling
-   Write this under a `<PLANNING>` section before implementing.
+---
 
-3. **Implementation**  
-   Follow the plan and EngE-AI's modern architecture rules. Implement every detail with:
-   - Proper TypeScript types and interfaces
-   - Component-based architecture
-   - Centralized state management
-   - Event-driven updates
-   - Canvas compatibility
-   No placeholders or missing logic.
+## Coding Style
 
-4. **Check-In**  
-   After each subtask, ask for user approval before continuing:
-   > "✅ Step 1 complete: State management system with type-safe events implemented. Move on to component architecture?"
+- **OOP:** Use classes and objects naturally to model domain concepts.
+- **Singleton:** When only one instance is needed (e.g. `EngEAI_MongoDB`, `RAGApp`, `ArtefactHandler`), use a singleton pattern.
+- **camelCase** for variables, functions, methods; **PascalCase** for classes, interfaces, types.
+- **Interfaces:** Define in `types.ts`:
+  - **Backend:** `src/functions/types.ts`
+  - **Frontend:** `public/scripts/types.ts` (or equivalent; frontend may import from backend for shared types)
+- **Shared types:** For types used across frontend and backend (e.g. API request/response, `ChatMessage`, `FlagReport`), ensure both sides have the same data structure. Keep them in sync when changing.
 
-5. **Review and Optimize**  
-   Once implemented, double-check:
-   - TypeScript type safety and strict mode compliance
-   - Component architecture and separation of concerns
-   - State management patterns and event handling
-   - Canvas compatibility and responsive design
-   - Code clarity and maintainability
+---
 
-6. **Finalization**  
-   Ensure your code is:
-   - Type-safe with proper TypeScript interfaces
-   - Following modern architecture patterns
-   - Secure and Canvas-compatible
-   - Readable and well-documented
-   - Functional with proper error handling
-   No missing pieces. No skipped validation.
+## Documentation Format
 
-**Never proceed without user explicit approval.** Always assume you're writing code that an experienced developer will extend and maintain in a Canvas environment, following modern frontend architecture principles.
+### When to Update
 
-## Core Features for MVP:
+- After any code change that affects behavior, interfaces, or architecture
+- Update both inline TSDoc and `/documentation` files as needed
 
-### Virtual Tutor (Primary MVP Feature)
-- **ChatGPT API Integration**: Implement proper API calls with TypeScript interfaces, error handling and rate limiting
-- **RAG Context Retrieval**: Custom document chunking, embedding, and similarity search with proper typing
-- **Guided Responses**: Responses that guide students through problem-solving rather than providing direct answers
-- **Chat History**: Server-side session management for conversation continuity with typed state management
-- **Canvas Integration**: Seamless iframe embedding with proper authentication and responsive component architecture
+### File location
 
-### Student Interface Requirements:
-- **Chat Interface**: Clean, accessible chat UI using component-based architecture that works within Canvas iframe
-- **Course Context**: Display current course context and available materials using typed state management
-- **Session Management**: Maintain conversation state across Canvas navigation with proper event handling
-- **Error Handling**: User-friendly error messages with typed error boundaries for API failures or connection issues
+Add the file location int he frist line of the file - Easier to be track by the AI in the long turn. For example:
 
-### Instructor Interface Requirements:
-- **Dashboard Access**: Canvas-integrated instructor view using component architecture for monitoring and management
-- **Content Management**: Upload and manage course materials for RAG system with proper TypeScript interfaces
-- **Usage Analytics**: Basic tracking of student engagement and common questions with typed data models
-- **Chat Monitoring**: Review student interactions while respecting privacy guidelines
+```
+// public/scripts/api.ts
+```
 
-### Technical Implementation:
-- **API Architecture**: RESTful endpoints with TypeScript interfaces for ChatGPT integration and RAG operations
-- **Document Processing**: Parse uploaded course materials into searchable chunks with proper typing
-- **Vector Database**: Implement Qdrant integration for similarity search with TypeScript definitions
-- **Canvas LTI**: Proper LTI tool configuration for Canvas embedding with typed authentication flow
-- **State Management**: Centralized, event-driven state management with type-safe event system
+### File Header
 
-### Canvas-Specific Considerations:
-- **Iframe Constraints**: Design responsive components for limited viewport and navigation restrictions
-- **Authentication Flow**: Handle Canvas user context and session management with typed interfaces
-- **Responsive Design**: Ensure component functionality across different Canvas layouts
-- **Cross-Origin Issues**: Properly configure CORS for Canvas integration
-- **LTI Compliance**: Follow Canvas LTI standards for tool registration and launch with proper typing
+Use `@latest frontend version` or `@latest backend version` (whichever applies) — easier to track which version the file was last changed in.
 
-**Remember**: This is an educational tool focused on developing critical thinking skills in engineering students. Every interaction should guide learning rather than provide shortcuts to answers. All code should follow modern frontend architecture patterns with proper TypeScript typing for maintainability and developer experience.
+```
+/**
+ * <filename>
+ * @author: @gatahcha
+ * @date: YYYY-MM-DD
+ * @latest frontend version: x.y.z   (for frontend files)
+ * @latest backend version: x.y.z   (for backend files)
+ * @description: <explain what is inside the document>
+ */
+```
 
-## Chat System Configuration
+### Class TSDoc
 
-### Response Timeout Settings
-- **Chat Response Timeout**: 60 seconds (1 minute) for AI responses
-- **Typing Indicator Display**: Show typing indicator while waiting for complete AI response
-- **Fallback Behavior**: Display timeout error message if response exceeds 60 seconds
-- **Implementation**: Apply timeout in both frontend and backend chat processing
+```
+/**
+ * <ClassName>
+ *
+ * methods:
+ *   - <method1>: explanation
+ *   - <method2>: explanation
+ */
+```
+
+### Function TSDoc
+
+```
+/**
+ * <function_name>
+ *
+ * @param <name> <type> — explanation and invariant
+ * @param <name> <type> — explanation and invariant
+ * @returns <type> — explanation and invariant
+ * explanation: ...
+ */
+```
+
+**Example: File header (frontend)**
+
+```typescript
+/**
+ * chat-api.ts
+ * @author: @gatahcha
+ * @date: 2025-03-05
+ * @latest frontend version: 1.0.5
+ * @description: API helpers for chat CRUD, send message, pin/unpin, dismiss unstruggle.
+ */
+```
+
+**Example: File header (backend)**
+
+```typescript
+/**
+ * ChatApp.ts
+ * @author: @gatahcha
+ * @date: 2025-03-05
+ * @latest backend version: 1.0.9
+ * @description: Chat logic, streaming, RAG integration, memory agent.
+ */
+```
+
+**Example: Class TSDoc**
+
+```typescript
+/**
+ * RenderChat
+ * methods:
+ *   - renderMessage: Renders a single message (user/bot) with LaTeX and artefacts
+ *   - renderChatList: Renders the sidebar chat list
+ *   - appendStreamingChunk: Appends streaming text to the active message
+ */
+export class RenderChat { ... }
+```
+
+**Example: Function TSDoc**
+
+```typescript
+/**
+ * sendMessageToChat
+ * @param chatId string — ID of the chat
+ * @param messageText string — User's message
+ * @returns Promise<Response> — Fetch response (streaming)
+ * Sends message to backend, returns stream for SSE consumption.
+ */
+export async function sendMessageToChat(chatId: string, messageText: string): Promise<Response> { ... }
+```
+
+---
+
+## Versioning
+
+- **When:** Bump version whenever you change code
+- **Frontend:** `public/scripts/frontend-version.ts` — update `frontendVersion`
+- **Backend:** `src/utils/backend-version.ts` — update `backendVersion`
+- **Format:** Semver (e.g. `1.0.4` → `1.0.5`)
+- **In file headers:** Use `@latest frontend version: x.y.z` or `@latest backend version: x.y.z` (not `@version`). Update this when you bump the version in the version file.
+
+---
+
+## Testing
+
+**Do not provide tests by default.** After changes, ask:
+
+- **Backend:** "Would you like for me to provide testing for the backend implementation?"
+- **Frontend:** "Would you like for me to provide blackbox testing / validation for the changes in the frontend?"
+- **Both:** "Would you like for me to give integrated testing for both the changes in the frontend and the backend?"
+
+**If user says yes:**
+
+- **Backend:** Create test files in `/test` folder. Run with `npx ts-node` directly. Do **not** change `package.json`, `package-lock.json`, or `nodemon.json`.
+- **Frontend:** Create an MD file with a checklist of blackbox tests. User runs them manually.
+- **Both:** Create an MD file with integrated test checklist.
+
+**Example: Backend test file** (`/test/chat-api.test.ts`)
+
+```typescript
+// Test: POST /api/chat/newchat creates a chat
+// Run: npx ts-node test/chat-api.test.ts
+import { createChat } from '../src/functions/chat-helpers';
+// ... test logic
+```
+
+**Example: Frontend blackbox checklist** (`testing-copy-button.md`)
+
+```markdown
+## Blackbox Tests: Copy Message Button
+1. [ ] Open chat, send a message
+2. [ ] Click copy button on a message → clipboard contains message text
+3. [ ] Toast "Copied!" appears
+4. [ ] Copy from bot message → same behavior
+```
+
+**Example: Integrated test checklist** (`testing-chat-flow.md`)
+
+```markdown
+## Integrated Tests: Chat + RAG
+1. [ ] Backend: Create chat via API → returns chatId
+2. [ ] Backend: Send message → streaming response received
+3. [ ] Frontend: New chat loads messages from API
+4. [ ] Frontend: Send message → UI updates with streamed response
+```
+
+---
+
+## Deployment
+
+**EngE-AI is deployed on-premise** (hosted on UBC infrastructure, not cloud). Staging and prod run on the same infrastructure model.
+
+### Staging
+
+Staging is used to test before prod. It has no direct connection to prod. When the user asks for a list of tests to run in staging, provide a checklist of tests that validate the implementation.
+
+### Prod
+
+(No deployment workflow defined in rules.)
+
+---
+
+## Summary
+
+- Check versions and docs before coding; if docs missing/outdated, create or update them
+- Agree before changing code; check in on every task
+- Plan → Implement → Document → Test (see Workflow Example)
+- Never edit `public/dist/*.js`
+- Bump version on code changes
+- Ask before providing tests (see Testing examples)
+- Styling: suggest inside `<styling_AI_suggest>` only
+- Files: lowercase, hyphen for multi-word (e.g. `try-hard.ts`)
+- Variables: camelCase; classes/interfaces: PascalCase
+- Interfaces in `types.ts`; shared types must match frontend and backend
+- Remove or comment out `console.log` before finalizing

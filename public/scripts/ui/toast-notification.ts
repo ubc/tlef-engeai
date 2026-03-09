@@ -9,16 +9,7 @@
  * @version: 1.0.0
  */
 
-export type ToastPosition = 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
-
-export type ToastType = 'default' | 'success' | 'error';
-
-export interface ToastConfig {
-    message: string;
-    durationMs?: number;
-    position?: ToastPosition;
-    type?: ToastType;
-}
+import type { ToastPosition, ToastType, ToastConfig } from '../types.js';
 
 /**
  * Shows a toast notification that auto-dismisses after the specified duration.

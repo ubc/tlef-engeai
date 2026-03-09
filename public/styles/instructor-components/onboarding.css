@@ -221,6 +221,15 @@
     fill: none;
 }
 
+.onboarding-content-steps {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
 .content-step {
     display: none;
     flex: 1;
@@ -264,7 +273,7 @@
     font-size: 2rem;
     font-weight: 700;
     color: #2c3e50;
-    margin: 0 0 0.75rem 0;
+    margin: 2rem 0 0.75rem 0;
 }
 
 .step-header p {
@@ -627,47 +636,6 @@
     color: #6c757d;
     cursor: not-allowed;
     transform: none;
-}
-
-/* ===========================================
-   RESPONSIVE DESIGN
-   =========================================== */
-
-@media (max-width: 768px) {
-    .onboarding {
-        flex-direction: column;
-    }
-    
-    .onboarding-steps-panel {
-        width: 100%;
-        height: auto;
-        padding: 1rem;
-        border-right: none;
-        border-bottom: 1px solid #e9ecef;
-    }
-    
-    .steps-list {
-        flex-direction: row;
-        overflow-x: auto;
-        gap: 1rem;
-    }
-    
-    .step-item {
-        flex-direction: column;
-        align-items: center;
-        text-align: center;
-        min-width: 120px;
-    }
-    
-    .content-step {
-        padding: 2rem 1.5rem;
-    }
-    
-    .onboarding-navigation {
-        position: static;
-        margin-top: 2rem;
-        justify-content: center;
-    }
 }
 
 /* ===========================================
@@ -1636,34 +1604,6 @@
     box-shadow: none;
 }
 
-/* High contrast mode support */
-@media (prefers-contrast: high) {
-    .step-circle.completed {
-        background-color: #000;
-        color: #fff;
-    }
-    
-    .step-circle.current {
-        background-color: #000;
-        color: #fff;
-    }
-    
-    .btn-next {
-        background-color: #000;
-        color: #fff;
-    }
-    
-    .accordion-header {
-        background-color: #fff;
-        border: 2px solid #000;
-    }
-    
-    .accordion-content {
-        background-color: #fff;
-        border: 2px solid #000;
-    }
-}
-
 /* Flag Setup Demo Styles */
 /* Demo empty state styling */
 .demo-empty-state {
@@ -2031,7 +1971,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
+    padding: 12px 8px;
     background: var(--hover-bg);
     border-radius: 8px;
     border: 1px solid var(--border-color);
@@ -2300,45 +2240,396 @@
     background: #2d7a2d;
 }
 
-/* Monitor Setup Responsive Design */
-@media (max-width: 960px) {
-    .monitor-header {
+/* ===========================================
+   RESPONSIVE DESIGN
+   =========================================== */
+
+   @media (max-width: 768px) {
+    .onboarding {
         flex-direction: column;
-        align-items: flex-start;
-        gap: 15px;
     }
     
-    .header-right {
-        width: 100%;
+    .content-step {
+        padding: 2rem 1.5rem;
+    }
+    
+    .onboarding-navigation {
+        position: static;
+        margin-top: 2rem;
+        justify-content: center;
+    }
+}
+
+/* Course Setup: mobile-responsive overrides (768px) */
+@media (max-width: 768px) {
+    body.onboarding-active .course-setup .onboarding-steps-panel {
+        display: none !important;
+    }
+
+    body.onboarding-active .course-setup {
+        min-height: 100vh;
+        max-height: 100vh;
+        overflow: hidden;
+        flex: 1;
+        min-height: 0;
+    }
+
+    .course-setup .onboarding-content-area {
+        border: none !important;
+        margin: 0 !important;
+        border-radius: 0;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .course-setup .onboarding-content-steps {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        background: var(--chat-bg);
+    }
+
+    .course-setup .onboarding-navigation {
+        position: fixed;
+        bottom: 1rem;
+        left: 1rem;
+        right: 1rem;
+        display: flex;
         justify-content: space-between;
+        padding: 0.75rem 1rem;
+        gap: 0.5rem;
+        margin-top: 0;
+        background: transparent;
+        z-index: 10;
     }
-    
-    .usage-stats-section {
+
+    .course-setup .onboarding-navigation .nav-btn {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.75rem;
+    }
+
+    .course-setup .onboarding-navigation .btn-next {
+        margin-left: auto !important;
+    }
+
+    .course-setup .onboarding-navigation .nav-btn-text {
+        display: none;
+    }
+
+    .course-setup select.form-input {
+        min-height: 44px;
+    }
+
+    .course-setup input[type="number"] {
+        min-height: 44px;
+    }
+
+    .course-setup .radio-option {
+        padding: 1.5rem;
+    }
+}
+
+/* Flag Setup: mobile-responsive overrides (768px) */
+@media (max-width: 768px) {
+    body.onboarding-active .flag-setup .onboarding-steps-panel {
+        display: none !important;
+    }
+
+    body.onboarding-active .flag-setup {
+        min-height: 100vh;
+        max-height: 100vh;
+        overflow: hidden;
+        flex: 1;
+        min-height: 0;
+    }
+
+    .flag-setup .onboarding-content-area {
+        border: none !important;
+        margin: 0 !important;
+        border-radius: 0;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .flag-setup .onboarding-content-steps {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        background: var(--chat-bg);
+    }
+
+    .flag-setup .onboarding-navigation {
+        position: fixed;
+        bottom: 1rem;
+        left: 1rem;
+        right: 1rem;
+        display: flex;
+        justify-content: space-between;
+        padding: 0.75rem 1rem;
+        gap: 0.5rem;
+        margin-top: 0;
+        background: transparent;
+        z-index: 10;
+    }
+
+    .flag-setup .onboarding-navigation .nav-btn {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.75rem;
+    }
+
+    .flag-setup .onboarding-navigation .btn-next {
+        margin-left: auto !important;
+    }
+
+    .flag-setup .onboarding-navigation .nav-btn-text {
+        display: none;
+    }
+
+    .flag-setup .content-step {
+        padding: 2rem 1.5rem;
+    }
+
+    /* Accordion: touch targets */
+    .flag-setup .accordion-header {
+        min-height: 44px;
+        padding: 0.75rem 1rem;
+    }
+
+    /* Report card buttons: touch targets */
+    .flag-setup .resolve-button,
+    .flag-setup .response-actions button {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.75rem 1rem;
+    }
+}
+
+/* Monitor Setup: mobile-responsive overrides (768px) */
+@media (max-width: 768px) {
+    body.onboarding-active .monitor-setup .onboarding-steps-panel {
+        display: none !important;
+    }
+
+    body.onboarding-active .monitor-setup {
+        min-height: 100vh;
+        max-height: 100vh;
+        overflow: hidden;
+        flex: 1;
+        min-height: 0;
+    }
+
+    .monitor-setup .onboarding-content-area {
+        border: none !important;
+        margin: 0 !important;
+        border-radius: 0;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .monitor-setup .content-step {
+        padding-bottom: 5rem;
+    }
+
+    body.onboarding-active .monitor-setup .onboarding-navigation {
+        position: fixed;
+        bottom: 1rem;
+        left: 1rem;
+        right: 1rem;
+        display: flex;
+        justify-content: space-between;
+        padding: 0.75rem 1rem;
+        gap: 0.5rem;
+        margin-top: 0;
+        background: transparent;
+        z-index: 10;
+    }
+
+    .monitor-setup .onboarding-navigation .nav-btn {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.75rem;
+    }
+
+    .monitor-setup .onboarding-navigation .btn-next {
+        margin-left: auto !important;
+    }
+
+    .monitor-setup .onboarding-navigation .nav-btn-text {
+        display: none;
+    }
+
+    /* Usage stats: stack vertically on narrow screens */
+    .monitor-setup .usage-stats-section {
         grid-template-columns: 1fr;
-        gap: 15px;
     }
-    
-    .student-list-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 15px;
+
+    /* Calendar modal: touch targets */
+    .monitor-setup .calendar-day {
+        min-width: 44px;
+        min-height: 44px;
     }
-    
-    .sort-options {
-        width: 100%;
-        justify-content: flex-start;
+
+    .monitor-setup .calendar-nav-btn,
+    .monitor-setup .calendar-ok-btn,
+    .monitor-setup .close-calendar-btn {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.75rem;
     }
-    
-    .calendar-modal-content {
-        width: 95%;
-        padding: 15px;
+
+    /* Student list: touch targets */
+    .monitor-setup .sort-btn {
+        min-height: 44px;
+        padding: 0.75rem 1rem;
     }
-    
-    .student-item {
-        flex-direction: column;
-        gap: 8px;
-        align-items: flex-start;
+
+    .monitor-setup .student-item,
+    .monitor-setup .student-header {
+        min-height: 44px;
     }
+
+    .monitor-setup .download-button {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.5rem 0.75rem;
+    }
+
+    .monitor-setup .monitor-student-content {
+        overflow-y: auto;
+    }
+}
+
+/* Document Setup: mobile-responsive overrides (768px) */
+@media (max-width: 768px) {
+    body.onboarding-active .document-setup .onboarding-steps-panel {
+        display: none !important;
+    }
+
+    body.onboarding-active .document-setup {
+        min-height: 100vh;
+        max-height: 100vh;
+        overflow: hidden;
+        flex: 1;
+        min-height: 0;
+    }
+
+    .document-setup .onboarding-content-area {
+        border: none !important;
+        margin: 0 !important;
+        border-radius: 0;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .document-setup .onboarding-content-steps {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        background: var(--chat-bg);
+    }
+
+    .document-setup .onboarding-navigation {
+        position: fixed;
+        bottom: 1rem;
+        left: 1rem;
+        right: 1rem;
+        display: flex;
+        justify-content: space-between;
+        padding: 0.75rem 1rem;
+        gap: 0.5rem;
+        margin-top: 0;
+        background: transparent;
+        z-index: 10;
+    }
+
+    .document-setup .onboarding-navigation .nav-btn {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.75rem;
+    }
+
+    .document-setup .onboarding-navigation .btn-next {
+        margin-left: auto !important;
+    }
+
+    .document-setup .onboarding-navigation .nav-btn-text {
+        display: none;
+    }
+
+    /* Learning Objectives (Step 2): touch targets */
+    .document-setup #demoObjectiveTitle {
+        min-height: 44px;
+    }
+
+    .document-setup .demo-objective-item .delete-demo-btn {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.5rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .document-setup .demo-actions {
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+
+    .document-setup .demo-actions .demo-btn {
+        min-height: 44px;
+        padding: 0.75rem 1rem;
+    }
+
+    /* Document Upload Demo (Step 3): touch targets */
+    .document-setup .demo-upload-card {
+        min-height: 44px;
+        padding: 1.5rem 2rem;
+    }
+
+    .document-setup .files-container {
+        max-height: 200px;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .document-setup .demo-file-item {
+        min-height: 44px;
+        padding: 0.75rem 1rem;
+    }
+
+    .document-setup .delete-file-btn {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.5rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+}
+
+/* Monitor setup: focus states for accessibility */
+.monitor-setup .sort-btn:focus-visible,
+.monitor-setup .student-header:focus-visible,
+.monitor-setup .download-button:focus-visible,
+.monitor-setup .calendar-day:focus-visible,
+.monitor-setup .calendar-nav-btn:focus-visible,
+.monitor-setup .calendar-ok-btn:focus-visible,
+.monitor-setup .close-calendar-btn:focus-visible,
+.monitor-setup .onboarding-navigation .nav-btn:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
 }
 
 @media (max-width: 480px) {
@@ -2352,5 +2643,77 @@
     
     .calendar-day {
         font-size: 12px;
+    }
+
+    .content-step-inner {
+        margin-bottom: 5rem;
+    }
+
+    /* Monitor setup: ensure calendar touch targets at smallest breakpoint */
+    .monitor-setup .calendar-day {
+        min-width: 44px;
+        min-height: 44px;
+    }
+}
+
+/* Reduced motion support (course setup) */
+@media (prefers-reduced-motion: reduce) {
+    .course-setup .onboarding-navigation .nav-btn {
+        transition: none;
+    }
+}
+
+/* Reduced motion support (flag setup) */
+@media (prefers-reduced-motion: reduce) {
+    .flag-setup .accordion-content,
+    .flag-setup .accordion-chevron,
+    .flag-setup .report-card .expanded-content,
+    .flag-setup .onboarding-navigation .nav-btn {
+        transition: none;
+    }
+}
+
+/* Reduced motion support (monitor setup) */
+@media (prefers-reduced-motion: reduce) {
+    .monitor-setup .student-item.expanded .monitor-student-content,
+    .monitor-setup .calendar-modal,
+    .monitor-setup .calendar-modal *,
+    .monitor-setup .onboarding-navigation .nav-btn {
+        transition: none;
+    }
+}
+
+/* Reduced motion support (document setup) */
+@media (prefers-reduced-motion: reduce) {
+    .document-setup .onboarding-navigation .nav-btn {
+        transition: none;
+    }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .step-circle.completed {
+        background-color: #000;
+        color: #fff;
+    }
+    
+    .step-circle.current {
+        background-color: #000;
+        color: #fff;
+    }
+    
+    .btn-next {
+        background-color: #000;
+        color: #fff;
+    }
+    
+    .accordion-header {
+        background-color: #fff;
+        border: 2px solid #000;
+    }
+    
+    .accordion-content {
+        background-color: #fff;
+        border: 2px solid #000;
     }
 }
