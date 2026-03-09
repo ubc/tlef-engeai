@@ -57,8 +57,8 @@
     justify-content: center;
     gap: 8px;
     padding: 8px 10px;
-    background: var(--color-chbe-green);
-    color: white;
+    background: white;
+    color: var(--color-chbe-green);
     border: 2px solid var(--color-chbe-green);
     border-radius: 8px;
     font-size: 0.8rem;
@@ -71,22 +71,22 @@
 .assistant-add-prompt-btn svg {
     width: 18px;
     height: 18px;
-    color: white;
+    color: var(--color-chbe-green);
 }
 
 .assistant-add-prompt-btn:hover {
-    background: #3d5a26;
-    border-color: #3d5a26;
-    color: white;
+    background: rgba(77, 122, 47, 0.08);
+    border-color: var(--color-chbe-green);
+    color: var(--color-chbe-green);
 }
 
 .assistant-add-prompt-btn:active {
     transform: scale(0.98);
 }
 
-/* Header add button: icon only (text hidden) */
+/* Desktop: show text "+ add new" (icon + text) */
 .assistant-add-prompt-btn .btn-text {
-    display: none;
+    display: inline;
 }
 
 .assistant-prompts-container {
@@ -437,6 +437,18 @@
         min-width: 44px;
         min-height: 44px;
         padding: 0.5rem;
+        background: var(--color-chbe-green);
+        color: white;
+        border-color: var(--color-chbe-green);
+    }
+
+    .assistant-add-prompt-btn i,
+    .assistant-add-prompt-btn svg {
+        color: white;
+    }
+
+    .assistant-add-prompt-btn .btn-text {
+        display: none;
     }
 
     /* Prompt card actions: icon-only, horizontal, tidy on mobile */

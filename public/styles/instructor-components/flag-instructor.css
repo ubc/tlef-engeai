@@ -294,8 +294,7 @@
 }
 
 .flag-filter-modal-header {
-    background: var(--color-chbe-green);
-    color: white;
+    color: var(--color-chbe-green);
     padding: 16px 20px;
     display: flex;
     justify-content: space-between;
@@ -311,7 +310,7 @@
 .flag-filter-close-btn {
     background: none;
     border: none;
-    color: white;
+    color: var(--color-chbe-green);
     cursor: pointer;
     padding: 4px;
     border-radius: 4px;
@@ -328,15 +327,13 @@
 }
 
 .flag-filter-modal-body {
-    padding: 20px;
+    padding: 0 20px 20px 20px;
     overflow-y: auto;
     max-height: 50vh;
 }
 
 .flag-filter-modal-footer {
     padding: 16px 20px;
-    border-top: 1px solid var(--border-color);
-    background: var(--background-2);
 }
 
 .flag-filter-apply-btn {
@@ -817,7 +814,7 @@
         box-shadow: none;
         flex-direction: column;
         align-items: flex-start;
-        gap: 15px;
+        gap: 1.5rem;
     }
 
     /* header-left: title aligned left, not centered */
@@ -851,8 +848,8 @@
     /* header-right: nav tiles + filter btn, no gap between them */
     #main-content-area .flags-header.mobile-header-bar .header-right {
         width: 100%;
-        justify-content: flex-start;
-        gap: 0;
+        justify-content: flex-end;
+        gap: 0.5rem;
     }
 
     /* Hide time-filter on mobile */
@@ -868,7 +865,7 @@
     /* nav-tiles: no gap between unresolved and resolved, ensure both visible */
     #main-content-area .flags-header.mobile-header-bar .nav-tiles {
         flex-wrap: nowrap;
-        gap: 0;
+        gap: 0.5rem;
     }
 
     #main-content-area .flags-header.mobile-header-bar .nav-tile {
