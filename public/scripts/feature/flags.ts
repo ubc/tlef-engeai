@@ -377,6 +377,9 @@ export async function initializeFlags(): Promise<void> {
         // console.log('🎧 [FLAG-DEBUG] Setting up event listeners...'); // 🟢 MEDIUM: Debug info - keep for monitoring
         setupEventListeners();
 
+        // Sync filter state to all checkboxes (inline + modal)
+        syncFilterStateToCheckboxes();
+
         // Update navigation stats
         // console.log('📊 [FLAG-DEBUG] Updating navigation stats...'); // 🟢 MEDIUM: Debug info - keep for monitoring
         updateActiveNavigation();
@@ -398,6 +401,7 @@ export async function initializeFlags(): Promise<void> {
         flagData = mockFlagData;
         renderFlags();
         setupEventListeners();
+        syncFilterStateToCheckboxes();
         updateActiveNavigation();
     }
 }
@@ -498,11 +502,19 @@ function hideLoadingState(): void {
  * Setup event listeners for filtering and collapse functionality
  */
 function setupEventListeners(): void {
-    // Filter checkbox listeners (in modal)
-    const filterCheckboxes = document.querySelectorAll('#flag-filter-checkboxes .filter-checkbox input[type="checkbox"]');
+    // Filter checkbox listeners (both inline desktop and modal mobile)
+    const filterCheckboxes = document.querySelectorAll(
+        '#flag-filter-checkboxes .filter-checkbox input[type="checkbox"], #flag-filter-checkboxes-inline .filter-checkbox input[type="checkbox"]'
+    );
     filterCheckboxes.forEach(checkbox => {
         checkbox.addEventListener('change', handleFilterChange);
     });
+
+    // Time filter dropdown
+    const timeFilterSelect = document.getElementById('time-filter');
+    if (timeFilterSelect) {
+        timeFilterSelect.addEventListener('change', handleTimeFilterChange);
+    }
 
     // Filter modal: open
     const filterBtn = document.getElementById('flag-filter-btn');
@@ -573,20 +585,37 @@ function closeFilterModal(): void {
 }
 
 /**
+ * Sync currentFilters.flagTypes to all filter checkboxes (inline + modal)
+ */
+function syncFilterStateToCheckboxes(): void {
+    const filterCheckboxes = document.querySelectorAll(
+        '#flag-filter-checkboxes .filter-checkbox input[type="checkbox"], #flag-filter-checkboxes-inline .filter-checkbox input[type="checkbox"]'
+    );
+    filterCheckboxes.forEach((checkbox) => {
+        const input = checkbox as HTMLInputElement;
+        const flagType = input.dataset.filter;
+        if (flagType) {
+            input.checked = currentFilters.flagTypes.has(flagType);
+        }
+    });
+}
+
+/**
  * Handle filter checkbox changes
  */
 function handleFilterChange(event: Event): void {
     const checkbox = event.target as HTMLInputElement;
     const flagType = checkbox.dataset.filter; // Use data-filter attribute
-    
+
     if (!flagType) return;
-    
+
     if (checkbox.checked) {
         currentFilters.flagTypes.add(flagType);
     } else {
         currentFilters.flagTypes.delete(flagType);
     }
-    
+
+    syncFilterStateToCheckboxes();
     renderFlags(); // Re-render with new filters
 }
 

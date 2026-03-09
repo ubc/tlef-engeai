@@ -718,8 +718,8 @@ body {
 }
 
 .instructor-mobile-hamburger-btn .feather {
-    width: 24px;
-    height: 24px;
+    width: 24px !important;
+    height: 24px !important;
 }
 
 @media (max-width: 768px) {
@@ -753,7 +753,7 @@ body {
 
     #main-content-area .mobile-header-bar .mobile-header-title {
         font-weight: 600;
-        font-size: 1rem;
+        font-size: 1.25rem;
         color: var(--color-chbe-green);
         flex: 1;
         min-width: 0;
@@ -795,6 +795,11 @@ body {
         padding: 8px;
     }
 
+    .instructor-feature-sidebar {
+        border: none;
+        padding: 0.75rem 0 0.75rem 0.75rem;
+    }
+
     /* When sidebar is visible on mobile, show all chat list icons */
     .instructor-sidebar.mobile-open .chat-list .icon-btn {
         display: inline-flex !important;
@@ -802,6 +807,11 @@ body {
     .instructor-sidebar.mobile-open .chat-list .chat-item > div:last-child > div:first-child {
         visibility: visible !important;
         opacity: 1 !important;
+    }
+
+    /* Hide mobile header when sidebar is open */
+    .instructor-sidebar.mobile-open ~ #main-content-area .mobile-header-bar {
+        visibility: hidden;
     }
 }
 

@@ -971,5 +971,10 @@
         padding: 0.5rem 1rem;
     }
 
+    .mobile-header-bar .icon-btn .feather {
+        width: 24px !important;
+        height: 24px !important;
+    }
+
 
 }

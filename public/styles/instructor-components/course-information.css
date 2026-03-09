@@ -457,17 +457,34 @@
     
     .course-info-main-content {
         padding: 1.5rem 1.5rem 4rem 1.5rem;
+        background: var(--chat-bg);
+    }
+
+    .course-info-content-area {
+        border:none;
     }
     
     .course-info-navigation {
         bottom: 1.5rem;
         right: 1.5rem;
-        flex-direction: column;
-        width: calc(100% - 3rem);
+        justify-content: flex-end;
+        width: auto;
     }
     
-    .nav-btn {
-        width: 100%;
+    .course-info-navigation .nav-btn {
+        width: auto;
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.75rem;
+    }
+    
+    .course-info-navigation .nav-btn-text {
+        display: none;
+    }
+
+    #main-content-area .mobile-header-bar {
+        padding: 0.75rem 1rem 1.75rem 1rem;
+        margin-bottom: 0;
     }
 }
 
