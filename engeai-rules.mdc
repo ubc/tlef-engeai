@@ -211,9 +211,9 @@ For styling tasks: suggest changes inside this tag only. Do not implement direct
 
 ### File Names
 
-- **Lowercase** only
-- **Multi-word:** use `-` (hyphen). Examples: `try-hard.ts`, `tetra-hes.html`, `student-flag-history.ts`, `chat-api.ts`
-- **Avoid:** `TryHard.ts`, `student_flag_history.ts`, `studentFlagHistory.ts`
+- **Lowercase** only — TypeScript (`.ts`) files must not use capital letters in the filename
+- **Multi-word:** use `-` (hyphen) between words. Examples: `try-hard.ts`, `tetra-hes.html`, `student-flag-history.ts`, `chat-api.ts`
+- **Avoid:** `TryHard.ts`, `ChatApp.ts`, `student_flag_history.ts`, `studentFlagHistory.ts`, `nameMatching.ts`
 
 ### Variable Names (TypeScript)
 
@@ -425,7 +425,7 @@ Staging is used to test before prod. It has no direct connection to prod. When t
 - Bump version on code changes
 - Ask before providing tests (see Testing examples)
 - Styling: suggest inside `<styling_AI_suggest>` only
-- Files: lowercase, hyphen for multi-word (e.g. `try-hard.ts`)
+- Files: lowercase, hyphen for multi-word (e.g. `try-hard.ts`). TS files: no capitals; two or more words separated by `-`
 - Variables: camelCase; classes/interfaces: PascalCase
 - Interfaces in `types.ts`; shared types must match frontend and backend
 - Remove or comment out `console.log` before finalizing
