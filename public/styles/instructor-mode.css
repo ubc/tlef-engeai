@@ -795,6 +795,11 @@ body {
         padding: 8px;
     }
 
+    .instructor-feature-sidebar {
+        border: none;
+        padding: 0.75rem 0 0.75rem 0.75rem;
+    }
+
     /* When sidebar is visible on mobile, show all chat list icons */
     .instructor-sidebar.mobile-open .chat-list .icon-btn {
         display: inline-flex !important;
@@ -802,6 +807,11 @@ body {
     .instructor-sidebar.mobile-open .chat-list .chat-item > div:last-child > div:first-child {
         visibility: visible !important;
         opacity: 1 !important;
+    }
+
+    /* Hide mobile header when sidebar is open */
+    .instructor-sidebar.mobile-open ~ #main-content-area .mobile-header-bar {
+        visibility: hidden;
     }
 }
 

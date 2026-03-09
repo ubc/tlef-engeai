@@ -60,6 +60,11 @@ export function navigateToInstructorView(view: string, chatId?: string): void {
     }
     
     const url = buildInstructorURL(courseId, view, chatId);
+
+    // Check if we're already on this URL to prevent unnecessary navigation and infinite recursion
+    if (window.location.pathname + window.location.search === url) {
+        return;
+    }
     
     // Use pushState for SPA navigation (no page reload)
     window.history.pushState({ view, chatId }, '', url);

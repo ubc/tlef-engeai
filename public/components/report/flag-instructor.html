@@ -1,32 +1,75 @@
 <div class="flag-instructor-container">
     <link rel="stylesheet" href="/styles/instructor-components/flag-instructor.css">
     <main class="main-content">
-        <!-- Row 1: Header (hamburger + title only) -->
+        <!-- Header: desktop = title + nav-tiles + time-filter; mobile = hamburger + title + nav-tiles + filter-btn -->
         <header class="flags-header mobile-header-bar">
-            <button id="instructor-hamburger-btn" class="instructor-mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
-                <i data-feather="menu"></i>
-            </button>
-            <h1 class="mobile-header-title">Flag</h1>
+            <div class="header-left">
+                <button id="instructor-hamburger-btn" class="instructor-mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
+                    <i data-feather="menu"></i>
+                </button>
+                <h1 class="mobile-header-title">Flag Management</h1>
+            </div>
+            <div class="header-right">
+                <div class="nav-tiles">
+                    <div class="nav-tile active" data-section="unresolved-flags">
+                        <i data-feather="alert-triangle"></i>
+                        <span class="count" id="unresolved-flags-count"></span>
+                    </div>
+                    <div class="nav-tile" data-section="resolved-flags">
+                        <i data-feather="check"></i>
+                        <span class="count" id="resolved-flags-count"></span>
+                    </div>
+                </div>
+                <div class="time-filter-dropdown">
+                    <select id="time-filter">
+                        <option value="recent">Recent Flags</option>
+                        <option value="former">Former Flags</option>
+                    </select>
+                    <i data-feather="chevron-down"></i>
+                </div>
+                <button id="flag-filter-btn" class="filter-btn" title="Filter flags" aria-label="Filter flags">
+                    <i data-feather="filter"></i>
+                </button>
+            </div>
         </header>
 
-        <!-- Row 2: Toolbar (Unresolved, Resolved, Filter) -->
-        <div class="flag-toolbar">
-            <div class="nav-tiles">
-                <div class="nav-tile active" data-section="unresolved-flags">
-                    <i data-feather="alert-triangle"></i>
-                    <span class="count" id="unresolved-flags-count"></span>
-                </div>
-                <div class="nav-tile" data-section="resolved-flags">
-                    <i data-feather="check"></i>
-                    <span class="count" id="resolved-flags-count"></span>
-                </div>
+        <!-- Filter section - inline on desktop, hidden on mobile -->
+        <section class="filter-section">
+            <div class="filter-checkboxes" id="flag-filter-checkboxes-inline">
+                <label class="filter-checkbox">
+                    <input type="checkbox" data-filter="innacurate_response" checked>
+                    <span class="checkmark">✓</span>
+                    <span class="filter-text">Wrong calculations, formulas, or engineering principles</span>
+                </label>
+                <label class="filter-checkbox">
+                    <input type="checkbox" data-filter="harassment" checked>
+                    <span class="checkmark">✓</span>
+                    <span class="filter-text">Contains harassment, or content that violates EDI (Equity, Diversity, Inclusion) principles</span>
+                </label>
+                <label class="filter-checkbox">
+                    <input type="checkbox" data-filter="inappropriate" checked>
+                    <span class="checkmark">✓</span>
+                    <span class="filter-text">Response veers into personal opinions, political views, or non-academic discussions inappropriate for engineering education</span>
+                </label>
+                <label class="filter-checkbox">
+                    <input type="checkbox" data-filter="dishonesty" checked>
+                    <span class="checkmark">✓</span>
+                    <span class="filter-text">Provides content that appears copied from sources without attribution or encourages academic dishonesty</span>
+                </label>
+                <label class="filter-checkbox">
+                    <input type="checkbox" data-filter="interface bug" checked>
+                    <span class="checkmark">✓</span>
+                    <span class="filter-text">Interface bugs or usability issues</span>
+                </label>
+                <label class="filter-checkbox">
+                    <input type="checkbox" data-filter="other" checked>
+                    <span class="checkmark">✓</span>
+                    <span class="filter-text">Others</span>
+                </label>
             </div>
-            <button id="flag-filter-btn" class="filter-btn" title="Filter flags" aria-label="Filter flags">
-                <i data-feather="filter"></i>
-            </button>
-        </div>
+        </section>
 
-        <!-- Filter modal overlay (hidden by default) -->
+        <!-- Filter modal overlay (mobile only) -->
         <div id="flag-filter-modal" class="flag-filter-modal" aria-hidden="true">
             <div class="flag-filter-modal-backdrop"></div>
             <div class="flag-filter-modal-content">

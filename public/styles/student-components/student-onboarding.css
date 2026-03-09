@@ -7,6 +7,33 @@
  */
 
 /* ===========================================
+   BACK BUTTON STYLING
+   =========================================== */
+
+/* Back button: use var(--background-2) instead of green on click/focus */
+.student-onboarding .onboarding-navigation .btn-back {
+    background-color: var(--background-2);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.student-onboarding .onboarding-navigation .btn-back:hover {
+    background-color: var(--background-2);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+.student-onboarding .onboarding-navigation .btn-back:active,
+.student-onboarding .onboarding-navigation .btn-back:focus,
+.student-onboarding .onboarding-navigation .btn-back:focus-visible {
+    background-color: var(--background-2);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+    outline: 2px solid var(--border-color);
+    outline-offset: 2px;
+}
+
+/* ===========================================
    CONTENT OVERFLOW HANDLING
    =========================================== */
 
@@ -900,6 +927,10 @@
     .demo-cancel-btn {
         flex: 1;
     }
+
+    .welcome-title {
+        padding: 3rem 0 0 0;
+    }
 }
 
 /* ===========================================
@@ -969,5 +1000,12 @@
     .demo-tooltip {
         border: 2px solid #000;
         background: #fff;
+    }
+    
+    .student-onboarding .onboarding-navigation .btn-back,
+    .student-onboarding .onboarding-navigation .btn-back:active,
+    .student-onboarding .onboarding-navigation .btn-back:focus {
+        background-color: var(--background-2);
+        border-color: var(--border-color);
     }
 }
