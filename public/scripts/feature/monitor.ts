@@ -618,7 +618,7 @@ function toggleMonitorStudentAccordion(studentId: string): void {
     }
 }
 
-// Make function globally available
+// Make functions globally available for inline onclick handlers
 (window as any).toggleMonitorStudentAccordion = toggleMonitorStudentAccordion;
 
 /**
@@ -682,6 +682,9 @@ async function downloadChatHistory(chatId: string): Promise<void> {
         alert(`Failed to download chat: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
+
+// Make function globally available for inline onclick handlers
+(window as any).downloadChatHistory = downloadChatHistory;
 
 /**
  * Initialize Monitor Dashboard

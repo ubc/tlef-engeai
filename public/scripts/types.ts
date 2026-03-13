@@ -4,7 +4,7 @@
  * @date: 2025-03-05
  * @latest frontend version: 1.0.6
  * @description: Frontend type definitions. Self-contained; must NOT import from src/.
- * Keep in sync manually with src/functions/types.ts when shared types change.
+ * Keep in sync manually with src/types/shared.ts when shared types change.
  */
 
 // =====================================
@@ -12,7 +12,7 @@
 // =====================================
 
 /**
- * Must match src/functions/types.ts
+ * Must match src/types/shared.ts
  * The type of chat message
  */
 export interface ChatMessage {
@@ -25,7 +25,7 @@ export interface ChatMessage {
 }
 
 /**
- * Must match src/functions/types.ts
+ * Must match src/types/shared.ts
  * The type of chat
  */
 export interface Chat {
@@ -44,7 +44,7 @@ export interface Chat {
 // ===========================================
 
 /**
- * Must match src/functions/types.ts
+ * Must match src/types/shared.ts
  * Instructor/TA data structure - stores both userId and name
  */
 export interface InstructorInfo {
@@ -53,7 +53,7 @@ export interface InstructorInfo {
 }
 
 /**
- * Must match src/functions/types.ts
+ * Must match src/types/shared.ts
  */
 export interface activeCourse {
     id : string,
@@ -79,7 +79,7 @@ export interface activeCourse {
 }
 
 /**
- * Must match src/functions/types.ts
+ * Must match src/types/shared.ts
  * Initial Assistant Prompt data structure
  * Stores custom initial assistant prompts that instructors can create and select for their courses
  */
@@ -93,14 +93,14 @@ export interface InitialAssistantPrompt {
 }
 
 /**
- * Must match src/functions/types.ts
+ * Must match src/types/shared.ts
  * Default prompt ID constant
  * Used to identify the system default initial assistant prompt
  */
 export const DEFAULT_PROMPT_ID = 'default-engeai-welcome';
 
 /**
- * Must match src/functions/types.ts
+ * Must match src/types/shared.ts
  * System Prompt Item data structure
  * Stores custom system prompt items that instructors can create and append to the system prompt
  */
@@ -115,7 +115,7 @@ export interface SystemPromptItem {
 }
 
 /**
- * Must match src/functions/types.ts
+ * Must match src/types/shared.ts
  * Default system prompt component ID constants
  * Used to identify the three default system prompt components
  */
@@ -124,7 +124,7 @@ export const DEFAULT_LEARNING_OBJECTIVES_ID = 'default-learning-objectives';
 export const DEFAULT_STRUGGLE_TOPICS_ID = 'default-struggle-topics';
 
 /**
- * Must match src/functions/types.ts
+ * Must match src/types/shared.ts
  * frameTypes: Course content organization strategy.
  * It is either percourse or perweek
  */
@@ -134,7 +134,7 @@ export type frameType =
 ;
 
 /**
- * Must match src/functions/types.ts
+ * Must match src/types/shared.ts
  * The type of content instance : by week or by topic
  */
 export interface TopicOrWeekInstance {
@@ -149,7 +149,7 @@ export interface TopicOrWeekInstance {
 }
 
 /**
- * Must match src/functions/types.ts
+ * Must match src/types/shared.ts
  * The type for a piece of course content (e.g., lecture, tutorial)
  */
 export interface TopicOrWeekItem {
@@ -167,7 +167,7 @@ export interface TopicOrWeekItem {
 }
 
 /**
- * Must match src/functions/types.ts
+ * Must match src/types/shared.ts
  * The type of a single learning objective
  */
 export interface LearningObjective {
@@ -181,13 +181,13 @@ export interface LearningObjective {
 }
 
 /**
- * Must match src/functions/types.ts
+ * Must match src/types/shared.ts
  * Additional material source type
  */
 export type AdditionalMaterialSource = 'file' | 'url' | 'text';
 
 /**
- * Must match src/functions/types.ts
+ * Must match src/types/shared.ts
  * Additional material attached to a course content item (front-end only for now)
  *
  * additional material is only applicable for text only eventually (as we use RAG)
@@ -219,7 +219,7 @@ export interface AdditionalMaterial {
 }
 
 /**
- * Must match src/functions/types.ts
+ * Must match src/types/shared.ts
  * Course-specific user data structure
  * Stores user data specific to a particular course
  * NOTE: PUID is NOT stored here for privacy - only userId is stored
@@ -238,7 +238,7 @@ export interface CourseUser {
 }
 
 /**
- * Must match src/functions/types.ts
+ * Must match src/types/shared.ts
  * Global user registry
  * Stores core user identity across all courses
  * NOTE: This is the ONLY collection that should store PUID for privacy reasons
@@ -255,7 +255,7 @@ export interface GlobalUser {
 }
 
 /**
- * Must match src/functions/types.ts
+ * Must match src/types/shared.ts
  * Backward compatibility alias
  * @deprecated Use CourseUser instead
  */

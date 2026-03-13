@@ -10,7 +10,7 @@
  * @since: 2025-01-27
  */
 
-import { LearningObjective, SystemPromptItem } from './types';
+import { LearningObjective, SystemPromptItem } from '../types/shared';
 
 /**
  * System prompt for EngE-AI - Engineering Education Assistant

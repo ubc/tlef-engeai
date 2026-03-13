@@ -9,9 +9,9 @@
  * @since: 2026-02-18
  */
 
-import { EngEAI_MongoDB } from './EngEAI_MongoDB';
+import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { addCharismaAndRichToCourse } from './instructor-helpers';
-import { activeCourse } from './types';
+import { activeCourse } from '../types/shared';
 
 const COLLECTION_NAME = 'instructor-allowed-courses';
 

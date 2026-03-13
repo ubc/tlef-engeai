@@ -1,41 +1,21 @@
+// src/routes/route-chat-app.ts
+
 /**
- *
- * This module provides Express.js routes for integrating with Ollama local LLM server
- * to enable AI-powered chat functionality for the EngE-AI platform with RAG capabilities.
- *
- * Key Features:
- * - Streaming chat responses from local Ollama instance
- * - RAG (Retrieval-Augmented Generation) with document similarity search
- * - Document retrieval from Qdrant vector database
- * - Context injection with text decorators for retrieved documents
- * - Support for conversational message history
- * - Real-time response streaming for better UX
- * - Configurable model selection (currently llama3.1:latest)
- *
- * API Endpoints:
- * - POST /chat - Send messages to Ollama with RAG and stream responses
- * - POST /chat/rag - Enhanced chat with RAG functionality
- * - GET /test - Test endpoint for API validation
- *
- * Dependencies:
- * - Ollama server running on localhost:11434
- * - Qdrant vector database for document retrieval
- * - Compatible LLM model (llama3.1:latest) installed in Ollama
- *
- * @author: EngE-AI Team
- * @version: 2.0.0
- * @since: 2025-01-27
- * 
+ * route-chat-app.ts
+ * @author: @gatahcha
+ * @date: 2026-03-13
+ * @latest backend version: 2.0.0
+ * @description: Express routes for chat CRUD, send message, pin/unpin, dismiss unstruggle, restore. Integrates ChatApp, MongoDB, RAG.
  */
 
 import dotenv from 'dotenv';
 import express, { Request, Response } from 'express';
-import {loadConfig } from './config';
-import { IDGenerator } from '../functions/unique-id-generator';
-import { ChatMessage, Chat } from '../functions/types';
-import { asyncHandlerWithAuth } from '../middleware/asyncHandler';
-import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
-import { ChatApp } from '../functions/ChatApp';
+import { loadConfig } from '../utils/config';
+import { IDGenerator } from '../utils/unique-id-generator';
+import { ChatMessage, Chat } from '../types/shared';
+import { asyncHandlerWithAuth } from '../middleware/async-handler';
+import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
+import { ChatApp } from '../chat/chat-app';
 
 import { getRandomYesResponse, getRandomNoResponse } from '../memory-agent/unstruggle-responses';
 import { memoryAgent } from '../memory-agent/memory-agent';
@@ -50,26 +30,36 @@ const appConfig = loadConfig();
 
 const chatApp = new ChatApp(appConfig);
 
-// Add process handlers for graceful shutdown
+/**
+ * SIGTERM signal handler
+ * Cleans up chat timers on server shutdown
+ */
 process.on('SIGTERM', () => {
     console.log('📴 Received SIGTERM signal, cleaning up chat timers...');
     chatApp.cleanup();
     process.exit(0);
 });
 
+/**
+ * SIGINT signal handler
+ * Cleans up chat timers on server shutdown
+ */
 process.on('SIGINT', () => {
     console.log('📴 Received SIGINT signal, cleaning up chat timers...');
     chatApp.cleanup();
     process.exit(0);
 });
 
-// console.log(`DEBUG #666: Chat exists: ${chatApp.validateChatExists('1234567890')}`);
-
 /**
- * Load chat metadata for the authenticated user (REQUIRES AUTH)
- * Returns only chat titles, IDs, and basic info without full message history
- * 
- * @returns Array of user's chat metadata from MongoDB
+ * GET /user/chats/metadata
+ * Load chat metadata for the authenticated user. Returns only chat titles, IDs, and basic info without full message history.
+ *
+ * @route GET /api/chat/user/chats/metadata
+ * @returns {object} { success: boolean, chats?: array, error?: string }
+ * @response 200 - Success
+ * @response 400 - No active course selected
+ * @response 401 - User not authenticated or not found
+ * @response 500 - Failed to load user chat metadata
  */
 router.get('/user/chats/metadata', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -137,9 +127,15 @@ router.get('/user/chats/metadata', asyncHandlerWithAuth(async (req: Request, res
 }));
 
 /**
- * Load all chats for the authenticated user (REQUIRES AUTH)
- * 
- * @returns Array of user's chats from MongoDB
+ * GET /user/chats
+ * Load all chats for the authenticated user from MongoDB.
+ *
+ * @route GET /api/chat/user/chats
+ * @returns {object} { success: boolean, chats?: array, error?: string }
+ * @response 200 - Success
+ * @response 400 - No active course selected
+ * @response 401 - User not authenticated or not found
+ * @response 500 - Failed to load user chats
  */
 router.get('/user/chats', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -215,12 +211,17 @@ router.get('/user/chats', asyncHandlerWithAuth(async (req: Request, res: Respons
 }));
 
 /**
- * create an new chat for user (REQUIRES AUTH)
- * 
- * @param userID - The user ID
- * @param courseName - The name of the course
- * @param date - The date of the chat
- * @returns The new chat ID
+ * POST /newchat
+ * Create a new chat in memory and MongoDB.
+ *
+ * @route POST /api/chat/newchat
+ * @param {string} userID - User ID (body)
+ * @param {string} courseName - Course name (body)
+ * @returns {object} { success: boolean, chatId?: string, initAssistantMessage?: object, chat?: object, error?: string }
+ * @response 200 - Success
+ * @response 400 - Missing required fields
+ * @response 401 - User not authenticated
+ * @response 500 - Failed to create new chat
  */
 router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -339,10 +340,21 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
     }
 }));
 
+
 /**
- * Dismiss unstruggle block endpoint (REQUIRES AUTH)
- * Hides the "Do you think you're confident with the topic of X?" block when user clicks "No, maybe later"
- * Updates the bot message in MongoDB by removing the <questionUnstruggle> tag
+ * POST /:chatId/dismiss-unstruggle
+ * Remove <questionUnstruggle> tag from a bot message.
+ *
+ * @route POST /api/chat/:chatId/dismiss-unstruggle
+ * @param {string} chatId - Chat ID (path param)
+ * @param {string} messageId - ID of the bot message containing the unstruggle block (body)
+ * @param {string} topic - Topic to dismiss (body)
+ * @returns {object} { success: boolean, updatedText?: string, error?: string }
+ * @response 200 - Success
+ * @response 400 - messageId and topic required, or invalid dismiss request
+ * @response 401 - User not found
+ * @response 404 - Chat not found
+ * @response 500 - Failed to dismiss unstruggle block
  */
 router.post('/:chatId/dismiss-unstruggle', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -393,7 +405,19 @@ router.post('/:chatId/dismiss-unstruggle', asyncHandlerWithAuth(async (req: Requ
 }));
 
 /**
- * Send message endpoint (REQUIRES AUTH) - Simple request-response, no streaming
+ * POST /:chatId
+ * Send a user message and receive AI response. Handles unstruggle responses and regular AI chat.
+ *
+ * @route POST /api/chat/:chatId
+ * @param {string} chatId - Chat ID (path param)
+ * @param {string} message - User message text (body)
+ * @param {string} [userId] - User ID, optional; session/MongoDB used as source of truth (body)
+ * @returns {object} { success: boolean, userMessage?: object, assistantMessage?: object, error?: string }
+ * @response 200 - Success
+ * @response 400 - Message required, or no active course selected
+ * @response 401 - User not authenticated or not found
+ * @response 404 - Chat not found
+ * @response 500 - AI communication failed or failed to process message
  */
 router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -691,7 +715,15 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
 }));
 
 /**
- * Get chat history for a specific chat (REQUIRES AUTH)
+ * GET /:chatId/history
+ * Returns messages from in-memory chat history.
+ *
+ * @route GET /api/chat/:chatId/history
+ * @param {string} chatId - Chat ID (path param)
+ * @returns {object} { success: boolean, chatId?: string, history?: array, messageCount?: number, error?: string }
+ * @response 200 - Success
+ * @response 404 - Chat not found
+ * @response 500 - Failed to get chat history
  */
 router.get('/:chatId/history', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -724,8 +756,18 @@ router.get('/:chatId/history', asyncHandlerWithAuth(async (req: Request, res: Re
     }
 }));
 
+
 /**
- * Get a specific message from a chat (REQUIRES AUTH)
+ * GET /:chatId/message/:messageId
+ * Returns a single message from chat history.
+ *
+ * @route GET /api/chat/:chatId/message/:messageId
+ * @param {string} chatId - Chat ID (path param)
+ * @param {string} messageId - Message ID (path param)
+ * @returns {object} { success: boolean, message?: object, error?: string }
+ * @response 200 - Success
+ * @response 404 - Chat or message not found
+ * @response 500 - Failed to get message
  */
 router.get('/:chatId/message/:messageId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -765,13 +807,17 @@ router.get('/:chatId/message/:messageId', asyncHandlerWithAuth(async (req: Reque
 }));
 
 /**
- * Restore a chat from MongoDB (REQUIRES AUTH)
- * 
- * Loads a past chat from MongoDB into memory with full conversation context
- * so the user can continue chatting with that conversation.
- * 
- * @param chatId - The chat ID to restore
- * @returns JSON response with restoration status
+ * POST /restore/:chatId
+ * Load chat from MongoDB into memory for continued conversation.
+ *
+ * @route POST /api/chat/restore/:chatId
+ * @param {string} chatId - Chat ID to restore (path param)
+ * @returns {object} { success: boolean, message?: string, chatId?: string, chat?: object, error?: string }
+ * @response 200 - Success
+ * @response 400 - Chat ID required or no active course selected
+ * @response 401 - User not authenticated or not found
+ * @response 404 - Chat not found or could not be restored
+ * @response 500 - Internal server error
  */
 router.post('/restore/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -863,13 +909,17 @@ router.post('/restore/:chatId', asyncHandlerWithAuth(async (req: Request, res: R
 }));
 
 /**
- * Delete a chat (REQUIRES AUTH) - Using Soft Delete
- * 
- * Marks the chat as deleted (isDeleted: true) instead of removing it from the database.
- * This preserves chat history for audit/analytics while hiding it from users.
- * 
- * @param chatId - The chat ID to delete
- * @returns JSON response with deletion status
+ * DELETE /:chatId
+ * Soft-delete chat. Marks as deleted in MongoDB and removes from memory.
+ *
+ * @route DELETE /api/chat/:chatId
+ * @param {string} chatId - Chat ID to delete (path param)
+ * @returns {object} { success: boolean, message?: string, chatId?: string, error?: string }
+ * @response 200 - Success
+ * @response 400 - Chat ID required or no active course selected
+ * @response 401 - User not authenticated or not found
+ * @response 404 - Chat not found or already deleted
+ * @response 500 - Internal server error
  */
 router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -981,11 +1031,17 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
 }));
 
 /**
- * Update chat pin status
+ * PUT /:chatId/pin
+ * Update chat pin status in MongoDB.
  *
- * @param chatId - The chat ID to update pin status for
- * @param isPinned - Boolean indicating if chat should be pinned
- * @returns JSON response with update status
+ * @route PUT /api/chat/:chatId/pin
+ * @param {string} chatId - Chat ID (path param)
+ * @param {boolean} isPinned - Whether chat should be pinned (body)
+ * @returns {object} { success: boolean, message?: string, chatId?: string, isPinned?: boolean, error?: string }
+ * @response 200 - Success
+ * @response 400 - Chat ID required, isPinned must be boolean, or no active course selected
+ * @response 401 - User not authenticated or not found
+ * @response 500 - Failed to update pin status or internal server error
  */
 router.put('/:chatId/pin', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -1097,7 +1153,12 @@ router.put('/:chatId/pin', asyncHandlerWithAuth(async (req: Request, res: Respon
 }));
 
 /**
- * Test endpoint for API validation
+ * GET /test
+ * Health check for chat API.
+ *
+ * @route GET /api/chat/test
+ * @returns {object} { success: boolean, message: string, timestamp: string, activeChats: number }
+ * @response 200 - Success
  */
 router.get('/test', async (req: Request, res: Response) => {
     res.json({ 

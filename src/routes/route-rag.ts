@@ -7,10 +7,10 @@
 
 import express, { Request, Response } from 'express';
 import multer from 'multer';
-import { RAGApp } from '../functions/rag-app';
-import { AdditionalMaterial } from '../functions/types';
-import { asyncHandlerWithAuth } from '../middleware/asyncHandler';
-import { requireInstructorForCourseAPI } from '../middleware/requireCourseRole';
+import { RAGApp } from '../rag/rag-app';
+import { AdditionalMaterial } from '../types/shared';
+import { asyncHandlerWithAuth } from '../middleware/async-handler';
+import { requireInstructorForCourseAPI } from '../middleware/require-course-role';
 
 // Extend Request interface to include file property from multer
 interface MulterRequest extends Request {
@@ -139,7 +139,26 @@ const validateFileDocument = (req: MulterRequest, res: Response, next: Function)
     next();
 };
 
-// POST /api/rag/documents/text - Upload a text document (REQUIRES AUTH - Instructors only)
+/**
+ * POST /documents/text
+ * Upload a text document to RAG. Instructors only.
+ *
+ * @route POST /api/rag/documents/text
+ * @param {string} name - Document name (body)
+ * @param {string} courseName - Course name (body)
+ * @param {string} topicOrWeekTitle - Topic or week title (body)
+ * @param {string} itemTitle - Item title (body)
+ * @param {string} text - Document text content (body)
+ * @param {string} [courseId] - Course ID for MongoDB metadata (body)
+ * @param {string} [topicOrWeekId] - Topic/week ID for MongoDB metadata (body)
+ * @param {string} [itemId] - Item ID for MongoDB metadata (body)
+ * @returns {object} { status: number, message?: string, data?: { id, name, uploaded, qdrantId, chunksGenerated }, details?: string }
+ * @response 201 - Document uploaded successfully
+ * @response 400 - Validation error (missing fields, invalid text)
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 500 - Failed to upload text document
+ */
 router.post('/documents/text', validateTextDocument, requireInstructorForCourseAPI(['body', 'session']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         console.log('🔍 BACKEND UPLOAD TEXT - Request Details:');
@@ -204,7 +223,26 @@ router.post('/documents/text', validateTextDocument, requireInstructorForCourseA
     }
 }));
 
-// POST /api/rag/documents/file - Upload a file document (REQUIRES AUTH - Instructors only)
+/**
+ * POST /documents/file
+ * Upload a file document (PDF, DOCX, HTML, MD, TXT) to RAG. Instructors only.
+ *
+ * @route POST /api/rag/documents/file
+ * @param {File} file - File upload (multipart/form-data)
+ * @param {string} name - Document name (body)
+ * @param {string} courseName - Course name (body)
+ * @param {string} topicOrWeekTitle - Topic or week title (body)
+ * @param {string} itemTitle - Item title (body)
+ * @param {string} [courseId] - Course ID for MongoDB metadata (body)
+ * @param {string} [topicOrWeekId] - Topic/week ID for MongoDB metadata (body)
+ * @param {string} [itemId] - Item ID for MongoDB metadata (body)
+ * @returns {object} { status: number, message?: string, data?: { id, name, fileName, uploaded, qdrantId, chunksGenerated }, details?: string }
+ * @response 201 - File uploaded and processed successfully
+ * @response 400 - Validation error (missing file, invalid type, size limit exceeded)
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 500 - Failed to upload file document
+ */
 router.post('/documents/file', upload.single('file'), validateFileDocument, requireInstructorForCourseAPI(['body', 'session']), asyncHandlerWithAuth(async (req: MulterRequest, res: Response) => {
     try {
         console.log('🔍 BACKEND UPLOAD FILE - Request Details:');
@@ -277,75 +315,120 @@ router.post('/documents/file', upload.single('file'), validateFileDocument, requ
     }
 }));
 
-// GET /api/rag/documents/:courseName - Get all documents from Qdrant for a specific course (REQUIRES AUTH)
+/**
+ * GET /documents/:courseName
+ * Get all documents from Qdrant for a specific course. Not implemented.
+ *
+ * @route GET /api/rag/documents/:courseName
+ * @param {string} courseName - Course name (path param)
+ * @returns {object} { message: string }
+ * @response 501 - Not implemented yet
+ */
 router.get('/documents/:courseName', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     res.status(501).json({ message: 'Not implemented yet' });
 }));
 
-// GET /api/rag/documents/:courseName/:contentTitle - Get all chunks from Qdrant for a specific content title (REQUIRES AUTH)
+/**
+ * GET /documents/:courseName/:contentTitle
+ * Get all chunks from Qdrant for a specific content title. Not implemented.
+ *
+ * @route GET /api/rag/documents/:courseName/:contentTitle
+ * @param {string} courseName - Course name (path param)
+ * @param {string} contentTitle - Content title (path param)
+ * @returns {object} { message: string }
+ * @response 501 - Not implemented yet
+ */
 router.get('/documents/:courseName/:contentTitle', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     res.status(501).json({ message: 'Not implemented yet' });
 }));
 
-// GET /api/rag/documents/:courseName/:contentTitle/:subContentTitle - Get all chunks from Qdrant for a specific subcontent title (REQUIRES AUTH)
+/**
+ * GET /documents/:courseName/:contentTitle/:subContentTitle
+ * Get all chunks from Qdrant for a specific subcontent title. Not implemented.
+ *
+ * @route GET /api/rag/documents/:courseName/:contentTitle/:subContentTitle
+ * @param {string} courseName - Course name (path param)
+ * @param {string} contentTitle - Content title (path param)
+ * @param {string} subContentTitle - Subcontent title (path param)
+ * @returns {object} { message: string }
+ * @response 501 - Not implemented yet
+ */
 router.get('/documents/:courseName/:contentTitle/:subContentTitle', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     res.status(501).json({ message: 'Not implemented yet' });
 }));
 
-// GET /api/rag/documents/:courseName/:contentTitle/:subContentTitle/:chunkNumber - Get a specific chunk from Qdrant (REQUIRES AUTH)
+/**
+ * GET /documents/:courseName/:contentTitle/:subContentTitle/:chunkNumber
+ * Get a specific chunk from Qdrant. Not implemented.
+ *
+ * @route GET /api/rag/documents/:courseName/:contentTitle/:subContentTitle/:chunkNumber
+ * @param {string} courseName - Course name (path param)
+ * @param {string} contentTitle - Content title (path param)
+ * @param {string} subContentTitle - Subcontent title (path param)
+ * @param {string} chunkNumber - Chunk number (path param)
+ * @returns {object} { message: string }
+ * @response 501 - Not implemented yet
+ */
 router.get('/documents/:courseName/:contentTitle/:subContentTitle/:chunkNumber', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     res.status(501).json({ message: 'Not implemented yet' });
 }));
 
-// POST /api/rag/search - Search for similar documents using vector similarity (REQUIRES AUTH)
+/**
+ * POST /search
+ * Search for similar documents using vector similarity. Not implemented.
+ *
+ * @route POST /api/rag/search
+ * @returns {object} { message: string }
+ * @response 501 - Not implemented yet
+ */
 router.post('/search', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     res.status(501).json({ message: 'Not implemented yet' });
 }));
 
-// DELETE /api/rag/wipe-all - Wipe all documents from RAG database for a specific course (REQUIRES AUTH - Instructors only)
-router.delete('/wipe-all', requireInstructorForCourseAPI(['query', 'body', 'session']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        console.log('🔍 BACKEND WIPE ALL DOCUMENTS - Request Details:');
-        console.log('  Headers:', req.headers);
-        console.log('  Body:', req.body);
-        console.log('  Query:', req.query);
-        console.log('  User:', req.user);
+// // DELETE /api/rag/wipe-all - Wipe all documents from RAG database for a specific course (REQUIRES AUTH - Instructors only)
+// router.delete('/wipe-all', requireInstructorForCourseAPI(['query', 'body', 'session']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+//     try {
+//         console.log('🔍 BACKEND WIPE ALL DOCUMENTS - Request Details:');
+//         console.log('  Headers:', req.headers);
+//         console.log('  Body:', req.body);
+//         console.log('  Query:', req.query);
+//         console.log('  User:', req.user);
 
-        const courseId = req.query.courseId as string;
-        if (!courseId) {
-            return res.status(400).json({
-                status: 400,
-                message: 'courseId query parameter is required'
-            });
-        }
+//         const courseId = req.query.courseId as string;
+//         if (!courseId) {
+//             return res.status(400).json({
+//                 status: 400,
+//                 message: 'courseId query parameter is required'
+//             });
+//         }
 
-        const ragApp = await RAGApp.getInstance();
-        const result = await ragApp.deleteAllDocumentsForCourseWithBreakdown(courseId);
+//         const ragApp = await RAGApp.getInstance();
+//         const result = await ragApp.deleteAllDocumentsForCourseWithBreakdown(courseId);
 
-        // Clear MongoDB additional materials
-        await ragApp.mongoDBInstance.clearAllAdditionalMaterials(courseId);
+//         // Clear MongoDB additional materials
+//         await ragApp.mongoDBInstance.clearAllAdditionalMaterials(courseId);
 
-        console.log('🔍 BACKEND WIPE ALL DOCUMENTS - Result:', { courseId, totalChunksDeleted: result.totalChunksDeleted, deletedDocuments: result.deletedDocuments.length, errors: result.errors });
+//         console.log('🔍 BACKEND WIPE ALL DOCUMENTS - Result:', { courseId, totalChunksDeleted: result.totalChunksDeleted, deletedDocuments: result.deletedDocuments.length, errors: result.errors });
 
-        res.status(200).json({
-            status: 200,
-            message: `All documents wiped from RAG database for course ${courseId} successfully`,
-            data: {
-                courseId: courseId,
-                deletedDocuments: result.deletedDocuments,
-                totalChunksDeleted: result.totalChunksDeleted,
-                errors: result.errors
-            }
-        });
+//         res.status(200).json({
+//             status: 200,
+//             message: `All documents wiped from RAG database for course ${courseId} successfully`,
+//             data: {
+//                 courseId: courseId,
+//                 deletedDocuments: result.deletedDocuments,
+//                 totalChunksDeleted: result.totalChunksDeleted,
+//                 errors: result.errors
+//             }
+//         });
 
-    } catch (error) {
-        console.error('❌ Failed to wipe RAG database:', error);
-        res.status(500).json({
-            status: 500,
-            message: 'Failed to wipe RAG database',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
-    }
-}));
+//     } catch (error) {
+//         console.error('❌ Failed to wipe RAG database:', error);
+//         res.status(500).json({
+//             status: 500,
+//             message: 'Failed to wipe RAG database',
+//             details: error instanceof Error ? error.message : 'Unknown error'
+//         });
+//     }
+// }));
 
 export default router;

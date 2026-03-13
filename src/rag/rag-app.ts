@@ -6,13 +6,13 @@
  */
 
 import { RAGModule } from "ubc-genai-toolkit-rag";
-import { AppConfig, loadConfig } from "../routes/config";
+import { AppConfig, loadConfig } from "../utils/config";
 import { LoggerInterface } from "ubc-genai-toolkit-core";
 import { LLMModule } from "ubc-genai-toolkit-llm";
 import { DocumentParsingModule } from "ubc-genai-toolkit-document-parsing";
-import { AdditionalMaterial } from "./types";
-import { EngEAI_MongoDB } from "./EngEAI_MongoDB";
-import { IDGenerator } from "./unique-id-generator";
+import { AdditionalMaterial } from "../types/shared";
+import { EngEAI_MongoDB } from "../db/enge-ai-mongodb";
+import { IDGenerator } from "../utils/unique-id-generator";
 import path from "path";
 import fs from "fs";
 

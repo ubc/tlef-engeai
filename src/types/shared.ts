@@ -1,4 +1,4 @@
-// public/scripts/types.ts
+// src/types/shared.ts
 
 /**
  * Types for the student mode

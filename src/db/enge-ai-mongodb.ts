@@ -1,11 +1,87 @@
+// src/db/enge-ai-mongodb.ts
+
+/**
+ * enge-ai-mongodb.ts
+ * @author: @gatahcha
+ * @date: 2025-03-13
+ * @latest backend version: 1.0.8
+ * @description: Singleton MongoDB access layer for EngE-AI. Manages courses, users, flags, learning objectives, materials, chats, memory agent, and instructor-allowed-courses.
+ */
+
 import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 import * as dotenv from 'dotenv';
-import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, Chat, ChatMessage, GlobalUser, CourseUser, LearningObjective, MemoryAgentEntry, InitialAssistantPrompt, DEFAULT_PROMPT_ID, SystemPromptItem, DEFAULT_BASE_PROMPT_ID, DEFAULT_LEARNING_OBJECTIVES_ID, DEFAULT_STRUGGLE_TOPICS_ID } from './types';
-import { IDGenerator } from './unique-id-generator';
-import { INITIAL_ASSISTANT_MESSAGE, SYSTEM_PROMPT } from './chat-prompts';
+import { activeCourse, 
+    AdditionalMaterial, 
+    TopicOrWeekInstance, 
+    TopicOrWeekItem, 
+    FlagReport, 
+    Chat, 
+    ChatMessage, 
+    GlobalUser, 
+    CourseUser, 
+    LearningObjective, 
+    MemoryAgentEntry, 
+    InitialAssistantPrompt,
+    DEFAULT_PROMPT_ID, 
+    SystemPromptItem, 
+    DEFAULT_BASE_PROMPT_ID, 
+    DEFAULT_LEARNING_OBJECTIVES_ID, 
+    DEFAULT_STRUGGLE_TOPICS_ID } from '../types/shared';
+import { IDGenerator } from '../utils/unique-id-generator';
+import { INITIAL_ASSISTANT_MESSAGE, SYSTEM_PROMPT } from '../chat/chat-prompts';
 
 dotenv.config();
 
+/**
+ * EngEAI_MongoDB
+ *
+ * methods:
+ *   - getInstance: Returns singleton MongoDB instance (connects on first call)
+ *   - testConnection: Pings MongoDB to verify connectivity
+ *   - postActiveCourse: Creates a new course in active-course-list
+ *   - getActiveCourse: Gets course by ID
+ *   - getActiveCourseByCode: Gets course by 6-char PIN code
+ *   - getCourseByName: Gets course by name
+ *   - getAllActiveCourses: Returns all active courses
+ *   - updateActiveCourse: Updates course by ID
+ *   - deleteActiveCourse: Deletes course and cascades to per-course collections
+ *   - removeCourseFromAllUsers: Removes course from all GlobalUsers' coursesEnrolled
+ *   - dropCollection: Drops a collection by name
+ *   - getCollectionNames: Returns users, flags, memoryAgent collection names for a course
+ *   - addLearningObjective: Adds learning objective to content item
+ *   - updateLearningObjective: Updates learning objective
+ *   - deleteLearningObjective: Deletes learning objective
+ *   - getAllLearningObjectives: Returns all learning objectives for a course
+ *   - createFlagReport: Creates flag report in course flags collection
+ *   - getAllFlagReports: Returns all flag reports for a course
+ *   - getFlagReport: Gets single flag report by ID
+ *   - updateFlagReport: Updates flag report
+ *   - deleteFlagReport: Deletes flag report
+ *   - deleteAllFlagReports: Deletes all flag reports for a course
+ *   - validateStatusTransition: Validates flag status transition (unresolved ↔ resolved)
+ *   - updateFlagStatus: Updates flag status with validation
+ *   - getFlagStatistics: Returns flag counts by type and status
+ *   - validateFlagCollection: Validates flag collection schema
+ *   - createFlagIndexes: Creates indexes on flags collection
+ *   - getFlagReportsWithUserNames: Returns flag reports with resolved user names
+ *   - addContentItem: Adds content item to topic/week
+ *   - addAdditionalMaterial: Adds additional material to content item
+ *   - clearAllAdditionalMaterials: Clears all materials for a course
+ *   - close: Closes MongoDB connection
+ *   - findUserByUserId: Finds user by userId in course (returns name, affiliation; no PUID)
+ *   - batchFindUsersByUserIds: Batch lookup users by userIds
+ *   - findStudentByUserId: Finds CourseUser (student) by userId
+ *   - findStudentByPUID: (deprecated) Finds student by PUID
+ *   - createStudent: Creates new CourseUser in course
+ *   - updateUserChat: Updates or adds chat in CourseUser's chats array
+ *   - findGlobalUserByPUID: Finds GlobalUser in active-users by PUID (only collection storing PUID)
+ *   - findGlobalUserByUserId: Finds GlobalUser by userId
+ *   - createGlobalUser: Creates new GlobalUser in active-users
+ *   - updateGlobalUser: Updates GlobalUser by PUID
+ *   - updateGlobalUserAffiliation: Updates GlobalUser affiliation (student | faculty)
+ *   - getMemoryAgentEntry: Gets struggle topics for user in course
+ *   - updateMemoryAgentStruggleWords: Updates or creates memory agent entry with struggle topics
+ */
 export class EngEAI_MongoDB {
     private static instance: EngEAI_MongoDB;
     private static activeCourseListCollection: string = 'active-course-list';
@@ -22,6 +98,12 @@ export class EngEAI_MongoDB {
         });
     }
 
+    /**
+     * getInstance
+     *
+     * @returns Promise<EngEAI_MongoDB> — Singleton instance; connects to MongoDB on first call
+     * Returns the singleton MongoDB instance. Connects to MongoDB if not already connected.
+     */
     public static async getInstance(): Promise<EngEAI_MongoDB> {
         if (!EngEAI_MongoDB.instance) {
             EngEAI_MongoDB.instance = new EngEAI_MongoDB();
@@ -40,12 +122,21 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Get the active course list collection
+     * getCourseCollection
+     *
+     * @returns Collection — MongoDB collection for active-course-list
+     * Returns the active-course-list collection. Private helper.
      */
     private getCourseCollection(): Collection {
         return this.db.collection(EngEAI_MongoDB.activeCourseListCollection);
     }
 
+    /**
+     * testConnection
+     *
+     * @returns Promise<boolean> — True if MongoDB ping succeeds, false otherwise
+     * Pings MongoDB to verify connectivity. Used for health checks.
+     */
     public async testConnection(): Promise<boolean> {
         try {
             await this.db.admin().ping();
@@ -56,7 +147,13 @@ export class EngEAI_MongoDB {
         }
     }
 
-    // Course management methods
+    /**
+     * postActiveCourse
+     *
+     * @param course activeCourse — Course document to create (id, courseName, instructors, etc.)
+     * @returns Promise<void> — Resolves when course is created; skips if course.id already exists
+     * Creates a new course in active-course-list. Creates per-course collections (users, flags, memory-agent). Generates courseCode if not provided. Idempotent for duplicate course.id.
+     */
     public postActiveCourse = async (course: activeCourse) => {
         try {
             // Check if course already exists - prevent duplicates
@@ -169,14 +266,35 @@ export class EngEAI_MongoDB {
         }
     }
 
+    /**
+     * getActiveCourse
+     *
+     * @param id string — Course ID
+     * @returns Promise<activeCourse | null> — Course document or null if not found
+     * Gets course by ID from active-course-list.
+     */
     public getActiveCourse = async (id: string) => {
         return await this.getCourseCollection().findOne({ id: id });
     }
 
+    /**
+     * getActiveCourseByCode
+     *
+     * @param courseCode string — 6-character PIN code for course entry
+     * @returns Promise<activeCourse | null> — Course document or null if not found
+     * Gets course by 6-char course code (used for student course entry).
+     */
     public getActiveCourseByCode = async (courseCode: string) => {
         return await this.getCourseCollection().findOne({ courseCode: courseCode });
     }
 
+    /**
+     * getCourseByName
+     *
+     * @param name string — Course name (exact or case-insensitive match)
+     * @returns Promise<activeCourse | null> — Course document or null if not found
+     * Gets course by name. Tries exact match first, then case-insensitive regex.
+     */
     public getCourseByName = async (name: string) => {
         // Try exact match first
         let course = await this.getCourseCollection().findOne({ courseName: name });
@@ -191,10 +309,24 @@ export class EngEAI_MongoDB {
         return course;
     }
 
+    /**
+     * getAllActiveCourses
+     *
+     * @returns Promise<activeCourse[]> — All courses in active-course-list
+     * Returns all active courses. Used for course selection and admin views.
+     */
     public getAllActiveCourses = async () => {
         return await this.getCourseCollection().find({}).toArray();
     }
 
+    /**
+     * updateActiveCourse
+     *
+     * @param id string — Course ID to update
+     * @param updateData Partial<activeCourse> — Fields to update (merged with $set)
+     * @returns Promise<activeCourse | null> — Updated course document or null
+     * Updates course by ID. Sets updatedAt automatically.
+     */
     public updateActiveCourse = async (id: string, updateData: Partial<activeCourse>) => {
         const result = await this.getCourseCollection().findOneAndUpdate(
             { id: id },
@@ -204,14 +336,23 @@ export class EngEAI_MongoDB {
         return result;
     }
 
+    /**
+     * deleteActiveCourse
+     *
+     * @param course activeCourse — Course to delete (uses course.id)
+     * @returns Promise<void> — Resolves when course document is deleted
+     * Deletes course from active-course-list. Caller must cascade to per-course collections (users, flags, memory-agent) separately.
+     */
     public deleteActiveCourse = async (course: activeCourse) => {
         await this.getCourseCollection().deleteOne({ id: course.id });
     }
 
     /**
-     * Remove a courseId from all users' coursesEnrolled array in active-users collection
-     * @param courseId - The course ID to remove from all users
-     * @returns Promise with number of users modified
+     * removeCourseFromAllUsers
+     *
+     * @param courseId string — Course ID to remove from all GlobalUsers' coursesEnrolled
+     * @returns Promise<number> — Number of users modified in active-users
+     * Removes courseId from coursesEnrolled array for all GlobalUsers. Used when deleting a course.
      */
     public removeCourseFromAllUsers = async (courseId: string): Promise<number> => {
         try {
@@ -230,9 +371,11 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Drop a collection from the database
-     * @param collectionName - The name of the collection to drop
-     * @returns Promise with success status
+     * dropCollection
+     *
+     * @param collectionName string — Name of the collection to drop
+     * @returns Promise<{ success: boolean; error?: string }> — Success status; error message if failed
+     * Drops a collection from the database. Returns success if collection does not exist (idempotent).
      */
     public dropCollection = async (collectionName: string): Promise<{ success: boolean; error?: string }> => {
         try {
@@ -253,7 +396,16 @@ export class EngEAI_MongoDB {
         }
     }
 
-    // Learning objectives methods
+    /**
+     * addLearningObjective
+     *
+     * @param courseId string — Course ID
+     * @param topicOrWeekId string — Topic/week instance ID
+     * @param contentId string — Content item ID
+     * @param learningObjective any — Learning objective object (id, LearningObjective, etc.)
+     * @returns Promise<activeCourse | null> — Updated course document or null
+     * Adds a learning objective to a content item. Uses arrayFilters for nested update.
+     */
     public addLearningObjective = async (courseId: string, topicOrWeekId: string, contentId: string, learningObjective: any) => {
         console.log('🎯 [MONGODB] addLearningObjective called with:', { courseId, topicOrWeekId, contentId, learningObjective });
         
@@ -282,6 +434,17 @@ export class EngEAI_MongoDB {
         return result;
     }
 
+    /**
+     * updateLearningObjective
+     *
+     * @param courseId string — Course ID
+     * @param topicOrWeekId string — Topic/week instance ID
+     * @param contentId string — Content item ID
+     * @param objectiveId string — Learning objective ID to update
+     * @param updateData any — Fields to update (LearningObjective text, etc.)
+     * @returns Promise<activeCourse | null> — Updated course document or null
+     * Updates a learning objective by ID. Sets updatedAt automatically.
+     */
     public updateLearningObjective = async (courseId: string, topicOrWeekId: string, contentId: string, objectiveId: string, updateData: any) => {
         const result = await this.getCourseCollection().findOneAndUpdate(
             { 
@@ -309,6 +472,16 @@ export class EngEAI_MongoDB {
         return result;
     }
 
+    /**
+     * deleteLearningObjective
+     *
+     * @param courseId string — Course ID
+     * @param topicOrWeekId string — Topic/week instance ID
+     * @param contentId string — Content item ID
+     * @param objectiveId string — Learning objective ID to delete
+     * @returns Promise<activeCourse | null> — Updated course document or null
+     * Removes a learning objective from a content item using $pull.
+     */
     public deleteLearningObjective = async (courseId: string, topicOrWeekId: string, contentId: string, objectiveId: string) => {
         console.log('🗑️ [MONGODB] deleteLearningObjective called with:', { courseId, topicOrWeekId, contentId, objectiveId });
         
@@ -338,9 +511,11 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Get all learning objectives for an entire course
-     * @param courseId - The course ID
-     * @returns Promise<LearningObjective[]> - All learning objectives across all topic/week instances and items
+     * getAllLearningObjectives
+     *
+     * @param courseId string — Course ID
+     * @returns Promise<LearningObjective[]> — All learning objectives across all topic/week instances and items
+     * Flattens and returns all learning objectives for a course. Returns empty array if course not found.
      */
     public getAllLearningObjectives = async (courseId: string): Promise<LearningObjective[]> => {
         const course = await this.getActiveCourse(courseId);
@@ -371,9 +546,11 @@ export class EngEAI_MongoDB {
     private collectionNamesCache: Map<string, {users: string, flags: string, memoryAgent: string}> = new Map();
 
     /**
-     * Get collection names for a course, either from stored course document or computed fallback
-     * @param courseName - The name of the course
-     * @returns Object with users, flags, and memoryAgent collection names
+     * getCollectionNames
+     *
+     * @param courseName string — Course name
+     * @returns Promise<{ users: string; flags: string; memoryAgent: string }> — Collection names for users, flags, memory-agent
+     * Returns collection names from course document or computed fallback ({courseName}_users, etc.). Results are cached.
      */
     public async getCollectionNames(courseName: string): Promise<{users: string, flags: string, memoryAgent: string}> {
         // Check cache first
@@ -417,15 +594,24 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Get the flags collection for a specific course
-     * @param courseName - the name of the course
-     * @returns the flags collection
+     * getFlagsCollection
+     *
+     * @param courseName string — Course name
+     * @returns Promise<Collection> — MongoDB flags collection for the course
+     * Returns the flags collection. Private helper. Uses getCollectionNames for collection name.
      */
     private async getFlagsCollection(courseName: string): Promise<Collection> {
         const collections = await this.getCollectionNames(courseName);
         return this.db.collection(collections.flags);
     }
 
+    /**
+     * createFlagReport
+     *
+     * @param flagReport FlagReport — Flag report document (id, courseName, flagType, userId, etc.)
+     * @returns Promise<InsertOneResult> — MongoDB insert result
+     * Inserts a new flag report into the course's flags collection.
+     */
     public createFlagReport = async (flagReport: FlagReport) => {
         //START DEBUG LOG : DEBUG-CODE(001)
         console.log('🏴 Creating flag report:', flagReport.id, 'for course:', flagReport.courseName);
@@ -450,6 +636,13 @@ export class EngEAI_MongoDB {
         }
     }
 
+    /**
+     * getAllFlagReports
+     *
+     * @param courseName string — Course name
+     * @returns Promise<FlagReport[]> — All flag reports for the course
+     * Returns all flag reports from the course's flags collection.
+     */
     public getAllFlagReports = async (courseName: string): Promise<FlagReport[]> => {
         //START DEBUG LOG : DEBUG-CODE(002)
         console.log('🏴 Getting flag reports for course:', courseName);
@@ -459,6 +652,14 @@ export class EngEAI_MongoDB {
         return await flagsCollection.find({}).toArray() as unknown as FlagReport[];
     }
 
+    /**
+     * getFlagReport
+     *
+     * @param courseName string — Course name
+     * @param flagId string — Flag report ID
+     * @returns Promise<FlagReport | null> — Flag report or null if not found
+     * Gets a single flag report by ID.
+     */
     public getFlagReport = async (courseName: string, flagId: string): Promise<FlagReport | null> => {
         //START DEBUG LOG : DEBUG-CODE(003)
         console.log('🏴 Getting flag report:', flagId, 'for course:', courseName);
@@ -468,6 +669,15 @@ export class EngEAI_MongoDB {
         return await flagsCollection.findOne({ id: flagId }) as FlagReport | null;
     }
 
+    /**
+     * updateFlagReport
+     *
+     * @param courseName string — Course name
+     * @param flagId string — Flag report ID to update
+     * @param updateData Partial<FlagReport> — Fields to update (merged with $set)
+     * @returns Promise<FlagReport | null> — Updated flag report or null
+     * Updates a flag report. Sets updatedAt automatically. Normalizes response to empty string if undefined.
+     */
     public updateFlagReport = async (courseName: string, flagId: string, updateData: Partial<FlagReport>) => {
         //START DEBUG LOG : DEBUG-CODE(004)
         console.log('🏴 Updating flag report:', flagId, 'for course:', courseName, 'with data:', updateData);
@@ -512,6 +722,14 @@ export class EngEAI_MongoDB {
         }
     }
 
+    /**
+     * deleteFlagReport
+     *
+     * @param courseName string — Course name
+     * @param flagId string — Flag report ID to delete
+     * @returns Promise<DeleteResult> — MongoDB delete result
+     * Deletes a single flag report by ID.
+     */
     public deleteFlagReport = async (courseName: string, flagId: string) => {
         //START DEBUG LOG : DEBUG-CODE(005)
         console.log('🏴 Deleting flag report:', flagId, 'for course:', courseName);
@@ -521,6 +739,13 @@ export class EngEAI_MongoDB {
         return await flagsCollection.deleteOne({ id: flagId });
     }
 
+    /**
+     * deleteAllFlagReports
+     *
+     * @param courseName string — Course name
+     * @returns Promise<DeleteResult> — MongoDB delete result
+     * Deletes all flag reports for a course. Used when resetting or cleaning course data.
+     */
     public deleteAllFlagReports = async (courseName: string) => {
         //START DEBUG LOG : DEBUG-CODE(006)
         console.log('🏴 Deleting all flag reports for course:', courseName);
@@ -535,10 +760,12 @@ export class EngEAI_MongoDB {
     // =====================================
 
     /**
-     * Validates flag status transition
-     * @param currentStatus - Current status of the flag
-     * @param newStatus - Desired new status
-     * @returns Validation result
+     * validateStatusTransition
+     *
+     * @param currentStatus string — Current flag status (unresolved | resolved)
+     * @param newStatus string — Desired new status
+     * @returns { isValid: boolean; error?: string } — Validation result; error message if invalid
+     * Validates flag status transition. unresolved → resolved and resolved → unresolved are allowed.
      */
     public validateStatusTransition = (currentStatus: string, newStatus: string): {
         isValid: boolean;
@@ -588,13 +815,15 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Updates flag status with validation and audit trail
-     * @param courseName - The name of the course
-     * @param flagId - The ID of the flag to update
-     * @param newStatus - The new status
-     * @param response - Optional instructor response
-     * @param instructorId - ID of the instructor making the change
-     * @returns Updated flag report
+     * updateFlagStatus
+     *
+     * @param courseName string — Course name
+     * @param flagId string — Flag report ID to update
+     * @param newStatus string — New status (unresolved | resolved)
+     * @param response string — Optional instructor response (for resolved)
+     * @param instructorId string — Optional instructor userId for audit
+     * @returns Promise<FlagReport | null> — Updated flag report or null
+     * Updates flag status with validation. Validates transition via validateStatusTransition.
      */
     public updateFlagStatus = async (
         courseName: string, 
@@ -664,9 +893,11 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Gets flag statistics for a course
-     * @param courseName - The name of the course
-     * @returns Flag statistics
+     * getFlagStatistics
+     *
+     * @param courseName string — Course name
+     * @returns Promise<{ total, unresolved, resolved, byType, byStatus, recentActivity }> — Flag counts and breakdowns
+     * Returns flag statistics: total counts, by type, by status, and recent activity (24h, 7d, 30d).
      */
     public getFlagStatistics = async (courseName: string): Promise<{
         total: number;
@@ -746,9 +977,11 @@ export class EngEAI_MongoDB {
     // =====================================
 
     /**
-     * Validates flag collection structure and integrity
-     * @param courseName - The name of the course
-     * @returns Validation result with details
+     * validateFlagCollection
+     *
+     * @param courseName string — Course name
+     * @returns Promise<{ isValid, issues, stats }> — Validation result; issues array; stats (totalFlags, invalidDocuments, etc.)
+     * Validates all flag documents in the collection. Returns issues for invalid documents.
      */
     public validateFlagCollection = async (courseName: string): Promise<{
         isValid: boolean;
@@ -819,9 +1052,11 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Validates a single flag document structure
-     * @param flagDocument - The flag document to validate
-     * @returns Validation result
+     * validateFlagDocument
+     *
+     * @param flagDocument any — Raw flag document from MongoDB
+     * @returns { isValid: boolean; issues: string[] } — Validation result; list of validation issues
+     * Validates flag document structure (required fields, types, status). Private helper.
      */
     private validateFlagDocument = (flagDocument: any): {
         isValid: boolean;
@@ -874,9 +1109,11 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Creates database indexes for optimal flag query performance
-     * @param courseName - The name of the course
-     * @returns Promise with index creation results
+     * createFlagIndexes
+     *
+     * @param courseName string — Course name
+     * @returns Promise<{ success, indexesCreated, errors }> — Index creation result; success if no errors
+     * Creates indexes on flags collection: status_createdAt, userId, courseName_status, flagType_status.
      */
     public createFlagIndexes = async (courseName: string): Promise<{
         success: boolean;
@@ -959,6 +1196,15 @@ export class EngEAI_MongoDB {
         }
     }
 
+    /**
+     * addContentItem
+     *
+     * @param courseId string — Course ID
+     * @param topicOrWeekId string — Topic/week instance ID
+     * @param contentItem any — Content item to add (TopicOrWeekItem)
+     * @returns Promise<{ success: boolean; data?: any; error?: string }> — Success status; content item or error
+     * Adds a content item to a topic/week instance. Pushes to items array and updates course.
+     */
     public addContentItem = async (courseId: string, topicOrWeekId: string, contentItem: any) => {
         try {
             console.log('📝 Adding content item to course:', courseId, 'topic/week instance:', topicOrWeekId);
@@ -995,6 +1241,16 @@ export class EngEAI_MongoDB {
         }
     }
 
+    /**
+     * addAdditionalMaterial
+     *
+     * @param courseId string — Course ID
+     * @param topicOrWeekId string — Topic/week instance ID
+     * @param itemId string — Content item ID
+     * @param material AdditionalMaterial — Material to add (name, sourceType, text/file, etc.)
+     * @returns Promise<any> — Updated course document or null
+     * Adds additional material to a content item. Uses arrayFilters for nested $push.
+     */
     public addAdditionalMaterial = async (
         courseId: string, 
         topicOrWeekId: string, 
@@ -1033,6 +1289,13 @@ export class EngEAI_MongoDB {
         }
     }
 
+    /**
+     * clearAllAdditionalMaterials
+     *
+     * @param courseId string — Course ID
+     * @returns Promise<any> — Updated course document or null
+     * Clears all additionalMaterials from all content items in the course. Uses $unset with arrayFilters.
+     */
     public clearAllAdditionalMaterials = async (courseId: string): Promise<any> => {
         try {
             console.log('🗑️ Clearing all additional materials from course:', courseId);
@@ -1062,6 +1325,12 @@ export class EngEAI_MongoDB {
         }
     }
 
+    /**
+     * close
+     *
+     * @returns Promise<void> — Resolves when MongoDB client is closed
+     * Closes the MongoDB connection. Used for graceful shutdown.
+     */
     public async close(): Promise<void> {
         try {
             await this.client.close();
@@ -1077,9 +1346,11 @@ export class EngEAI_MongoDB {
     // =====================================
 
     /**
-     * Get the user collection for a specific course
-     * @param courseName - The name of the course (e.g., "APSC 099")
-     * @returns Collection instance for the course users
+     * getUserCollection
+     *
+     * @param courseName string — Course name
+     * @returns Promise<Collection> — MongoDB users collection for the course
+     * Returns the users collection. Private helper. Uses getCollectionNames.
      */
     private async getUserCollection(courseName: string): Promise<Collection> {
         const collections = await this.getCollectionNames(courseName);
@@ -1087,11 +1358,12 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Find a user by userId in a specific course and return user details
-     * @param courseName - The name of the course
-     * @param userId - The userId to look up (string format)
-     * @returns User object with name and affiliation if found, null otherwise
-     * NOTE: PUID is not returned for privacy - only userId is used
+     * findUserByUserId
+     *
+     * @param courseName string — Course name
+     * @param userId string — User ID (string format)
+     * @returns Promise<{ name, affiliation, userId } | null> — User details or null; PUID never returned (privacy)
+     * Finds user in course by userId. Returns name, affiliation, userId only (no PUID).
      */
     public findUserByUserId = async (courseName: string, userId: string): Promise<{
         name: string;
@@ -1132,11 +1404,12 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Batch lookup multiple users by their userIds
-     * @param courseName - The name of the course
-     * @param userIds - Array of userIds to look up (string format)
-     * @returns Map of userId to user details
-     * NOTE: PUID is not returned for privacy - only userId is used
+     * batchFindUsersByUserIds
+     *
+     * @param courseName string — Course name
+     * @param userIds string[] — Array of userIds to look up
+     * @returns Promise<Map<userId, { name, affiliation, userId }>> — Map of userId to user details; PUID never returned
+     * Batch lookup users by userIds. Returns name, affiliation, userId only. Used for flag reports with user names.
      */
     public batchFindUsersByUserIds = async (courseName: string, userIds: string[]): Promise<Map<string, {
         name: string;
@@ -1179,9 +1452,11 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Get flag reports with resolved user names
-     * @param courseName - The name of the course
-     * @returns Array of flag reports with user names resolved
+     * getFlagReportsWithUserNames
+     *
+     * @param courseName string — Course name
+     * @returns Promise<Array<FlagReport & { userName?, userAffiliation? }>> — Flag reports with resolved user names
+     * Returns all flag reports with userName and userAffiliation resolved via batchFindUsersByUserIds.
      */
     public getFlagReportsWithUserNames = async (courseName: string): Promise<Array<FlagReport & {
         userName?: string;
@@ -1230,10 +1505,12 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Find a student by userId in a specific course
-     * @param courseName - The name of the course (e.g., "APSC 099")
-     * @param userId - The userId of the student (string format)
-     * @returns User object if found, null otherwise
+     * findStudentByUserId
+     *
+     * @param courseName string — Course name
+     * @param userId string — User ID (string format)
+     * @returns Promise<CourseUser | null> — CourseUser document or null if not found
+     * Finds CourseUser (student) by userId in course users collection.
      */
     public findStudentByUserId = async (courseName: string, userId: string) => {
         //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID)
@@ -1264,11 +1541,13 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * @deprecated Use findStudentByUserId instead. This method is kept for backward compatibility during migration.
-     * Find a student by PUID in a specific course
-     * @param courseName - The name of the course (e.g., "APSC 099")
-     * @param puid - The PUID of the student
-     * @returns User object if found, null otherwise
+     * findStudentByPUID
+     *
+     * @deprecated Use findStudentByUserId instead. Kept for backward compatibility.
+     * @param courseName string — Course name
+     * @param puid string — PUID of the student
+     * @returns Promise<CourseUser | null> — CourseUser document or null if not found
+     * Finds CourseUser by PUID. Deprecated; prefer findStudentByUserId (privacy).
      */
     public findStudentByPUID = async (courseName: string, puid: string) => {
         //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT)
@@ -1299,10 +1578,12 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Create a new student in a specific course
-     * @param courseName - The name of the course (e.g., "APSC 099")
-     * @param userData - The user data to create
-     * @returns Created user object
+     * createStudent
+     *
+     * @param courseName string — Course name
+     * @param userData Partial<CourseUser> — User data (name, userId, affiliation, etc.); puid excluded (privacy)
+     * @returns Promise<CourseUser> — Created CourseUser document
+     * Creates new CourseUser in course. PUID is never stored in course users (privacy).
      */
     public createStudent = async (courseName: string, userData: Partial<CourseUser>): Promise<CourseUser> => {
         //START DEBUG LOG : DEBUG-CODE(CREATE-STUDENT)
@@ -1344,10 +1625,12 @@ export class EngEAI_MongoDB {
     // =====================================
 
     /**
-     * Get all chats for a specific user by userId
-     * @param courseName - The name of the course
-     * @param userId - The userId of the user (string format)
-     * @returns Array of Chat objects (excluding soft-deleted chats)
+     * getUserChats
+     *
+     * @param courseName string — Course name
+     * @param userId string — User ID
+     * @returns Promise<Chat[]> — Array of active chats (excludes soft-deleted)
+     * Returns all chats for a user. Filters out chats where isDeleted === true.
      */
     public getUserChats = async (courseName: string, userId: string): Promise<Chat[]> => {
         //START DEBUG LOG : DEBUG-CODE(GET-USER-CHATS)
@@ -1385,10 +1668,12 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Get chat metadata for a specific user by userId (without full message history)
-     * @param courseName - The name of the course
-     * @param userId - The userId of the user (string format)
-     * @returns Array of chat metadata objects (excluding soft-deleted chats)
+     * getUserChatsMetadata
+     *
+     * @param courseName string — Course name
+     * @param userId string — User ID
+     * @returns Promise<any[]> — Chat metadata (id, courseName, itemTitle, isPinned, messageCount, lastMessageTimestamp)
+     * Returns chat metadata without full messages. Sorted by most recent first. Excludes soft-deleted.
      */
     public getUserChatsMetadata = async (courseName: string, userId: string): Promise<any[]> => {
         console.log(`[MONGODB] 📊 Getting chat metadata for user userId: ${userId} in course: ${courseName}`);
@@ -1430,10 +1715,13 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Add a new chat to a user's chats array
-     * @param courseName - The name of the course
-     * @param userId - The userId of the user (string format)
-     * @param chat - The chat object to add
+     * addChatToUser
+     *
+     * @param courseName string — Course name
+     * @param userId string — User ID
+     * @param chat Chat — Chat object to add
+     * @returns Promise<void> — Resolves when chat is added; throws if user not found
+     * Pushes a new chat to the user's chats array.
      */
     public addChatToUser = async (courseName: string, userId: string, chat: Chat): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(ADD-CHAT-TO-USER)
@@ -1467,11 +1755,14 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Update an existing chat in user's chats array
-     * @param courseName - The name of the course
-     * @param userId - The userId of the user (string format)
-     * @param chatId - The ID of the chat to update
-     * @param chat - The updated chat object
+     * updateUserChat
+     *
+     * @param courseName string — Course name
+     * @param userId string — User ID
+     * @param chatId string — Chat ID to update
+     * @param chat Chat — Updated chat object (replaces existing)
+     * @returns Promise<void> — Resolves when chat is updated; throws if not found
+     * Replaces chat in user's chats array by chatId. Uses positional $ operator.
      */
     public updateUserChat = async (courseName: string, userId: string, chatId: string, chat: Chat): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(UPDATE-USER-CHAT)
@@ -1507,11 +1798,14 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Add a message to a specific chat in user's chats array
-     * @param courseName - The name of the course
-     * @param userId - The userId of the user (string format)
-     * @param chatId - The ID of the chat
-     * @param message - The message to add
+     * addMessageToChat
+     *
+     * @param courseName string — Course name
+     * @param userId string — User ID
+     * @param chatId string — Chat ID
+     * @param message ChatMessage — Message to add (id, sender, text, timestamp, etc.)
+     * @returns Promise<void> — Resolves when message is pushed; throws if chat not found
+     * Pushes a message to the chat's messages array. Uses positional $ operator.
      */
     public addMessageToChat = async (courseName: string, userId: string, chatId: string, message: ChatMessage): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(ADD-MESSAGE-TO-CHAT)
@@ -1545,11 +1839,14 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Update chat title in user's chats array
-     * @param courseName - The name of the course
-     * @param userId - The userId of the user (string format)
-     * @param chatId - The ID of the chat to update
-     * @param newTitle - The new title for the chat
+     * updateChatTitle
+     *
+     * @param courseName string — Course name
+     * @param userId string — User ID
+     * @param chatId string — Chat ID to update
+     * @param newTitle string — New itemTitle for the chat
+     * @returns Promise<void> — Resolves when title is updated; throws if not found
+     * Updates chat's itemTitle. Used when user renames a chat.
      */
     public updateChatTitle = async (courseName: string, userId: string, chatId: string, newTitle: string): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-TITLE)
@@ -1585,11 +1882,14 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Update chat pin status
-     * @param courseName - The name of the course
-     * @param userId - The userId of the user (string format)
-     * @param chatId - The ID of the chat to update pin status for
-     * @param isPinned - Boolean indicating if chat should be pinned
+     * updateChatPinStatus
+     *
+     * @param courseName string — Course name
+     * @param userId string — User ID
+     * @param chatId string — Chat ID to update
+     * @param isPinned boolean — Whether chat should be pinned
+     * @returns Promise<void> — Resolves when pin status is updated; throws if not found
+     * Sets isPinned on chat. Used for pin/unpin in sidebar.
      */
     public updateChatPinStatus = async (courseName: string, userId: string, chatId: string, isPinned: boolean): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-PIN)
@@ -1625,13 +1925,15 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Update a specific message's text in a chat
-     * Used when dismissing the questionUnstruggle block ("No, maybe later")
-     * @param courseName - The name of the course
-     * @param userId - The userId of the user (string format)
-     * @param chatId - The ID of the chat
-     * @param messageId - The ID of the message to update
-     * @param newText - The new text content for the message
+     * updateMessageInChat
+     *
+     * @param courseName string — Course name
+     * @param userId string — User ID
+     * @param chatId string — Chat ID
+     * @param messageId string — Message ID to update
+     * @param newText string — New text content for the message
+     * @returns Promise<void> — Resolves when message is updated; throws if not found
+     * Updates a message's text in a chat. Used when dismissing questionUnstruggle ("No, maybe later").
      */
     public updateMessageInChat = async (
         courseName: string,
@@ -1669,11 +1971,13 @@ export class EngEAI_MongoDB {
     };
 
     /**
-     * Mark a chat as deleted (soft delete) instead of removing it
-     * This preserves chat history for audit/analytics while hiding it from users
-     * @param courseName - The name of the course
-     * @param userId - The userId of the user (string format)
-     * @param chatId - The ID of the chat to mark as deleted
+     * markChatAsDeleted
+     *
+     * @param courseName string — Course name
+     * @param userId string — User ID
+     * @param chatId string — Chat ID to mark as deleted
+     * @returns Promise<void> — Resolves when chat is soft-deleted; throws if not found
+     * Sets isDeleted: true on chat. Preserves history for audit; hides from getUserChats.
      */
     public markChatAsDeleted = async (courseName: string, userId: string, chatId: string): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(MARK-CHAT-DELETED)
@@ -1709,11 +2013,14 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Delete a chat from user's chats array (HARD DELETE - kept for backward compatibility)
+     * deleteChatFromUser
+     *
      * @deprecated Use markChatAsDeleted() instead for soft delete
-     * @param courseName - The name of the course
-     * @param userId - The userId of the user (string format)
-     * @param chatId - The ID of the chat to delete
+     * @param courseName string — Course name
+     * @param userId string — User ID
+     * @param chatId string — Chat ID to remove
+     * @returns Promise<void> — Resolves when chat is removed; throws if user not found
+     * Hard-deletes chat from user's chats array via $pull. Prefer markChatAsDeleted.
      */
     public deleteChatFromUser = async (courseName: string, userId: string, chatId: string): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER)
@@ -1751,14 +2058,21 @@ export class EngEAI_MongoDB {
     // ===========================================
 
     /**
-     * Get the global users collection
+     * getGlobalUserCollection
+     *
+     * @returns Collection — MongoDB active-users collection
+     * Returns the active-users collection (GlobalUser registry). Private helper.
      */
     private getGlobalUserCollection(): Collection {
         return this.db.collection(EngEAI_MongoDB.activeUsersCollection);
     }
 
     /**
-     * Find a global user by PUID
+     * findGlobalUserByPUID
+     *
+     * @param puid string — PUID (Privacy-focused Unique Identifier)
+     * @returns Promise<GlobalUser | null> — GlobalUser or null if not found
+     * Finds GlobalUser in active-users by PUID. PUID is only stored in active-users (privacy).
      */
     public findGlobalUserByPUID = async (puid: string): Promise<GlobalUser | null> => {
         const collection = this.getGlobalUserCollection();
@@ -1766,11 +2080,11 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Find a global user by userId
-     * Preferred method to avoid PUID usage in API endpoints
-     * 
-     * @param userId - The userId to look up (string format)
-     * @returns GlobalUser object if found, null otherwise
+     * findGlobalUserByUserId
+     *
+     * @param userId string — User ID (string format)
+     * @returns Promise<GlobalUser | null> — GlobalUser or null if not found
+     * Finds GlobalUser by userId. Preferred over findGlobalUserByPUID for API endpoints (avoids PUID).
      */
     public findGlobalUserByUserId = async (userId: string): Promise<GlobalUser | null> => {
         const collection = this.getGlobalUserCollection();
@@ -1778,7 +2092,11 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Create a new global user
+     * createGlobalUser
+     *
+     * @param userData Partial<GlobalUser> — User data (name, puid, userId, affiliation, status, coursesEnrolled)
+     * @returns Promise<GlobalUser> — Created GlobalUser document
+     * Creates new GlobalUser in active-users. Sets createdAt and updatedAt.
      */
     public createGlobalUser = async (userData: Partial<GlobalUser>): Promise<GlobalUser> => {
         const collection = this.getGlobalUserCollection();
@@ -1799,7 +2117,12 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Add a course to global user's enrolled courses
+     * addCourseToGlobalUser
+     *
+     * @param puid string — PUID of the GlobalUser
+     * @param courseId string — Course ID to add to coursesEnrolled
+     * @returns Promise<void> — Resolves when course is added (uses $addToSet for idempotency)
+     * Adds courseId to GlobalUser's coursesEnrolled array. Idempotent.
      */
     public addCourseToGlobalUser = async (puid: string, courseId: string): Promise<void> => {
         const collection = this.getGlobalUserCollection();
@@ -1814,7 +2137,12 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Update global user
+     * updateGlobalUser
+     *
+     * @param puid string — PUID of the GlobalUser to update
+     * @param updateData Partial<GlobalUser> — Fields to update (merged with $set)
+     * @returns Promise<GlobalUser> — Updated GlobalUser document
+     * Updates GlobalUser by PUID. Sets updatedAt automatically.
      */
     public updateGlobalUser = async (puid: string, updateData: Partial<GlobalUser>): Promise<GlobalUser> => {
         const collection = this.getGlobalUserCollection();
@@ -1834,7 +2162,12 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Update a global user's affiliation by userId
+     * updateGlobalUserAffiliation
+     *
+     * @param userId string — User ID of the GlobalUser
+     * @param affiliation 'student' | 'faculty' — New affiliation
+     * @returns Promise<GlobalUser> — Updated GlobalUser document; throws if not found
+     * Updates GlobalUser affiliation by userId. Used when reconciling CWL with DB.
      */
     public updateGlobalUserAffiliation = async (userId: string, affiliation: 'student' | 'faculty'): Promise<GlobalUser> => {
         const collection = this.getGlobalUserCollection();
@@ -1862,9 +2195,11 @@ export class EngEAI_MongoDB {
     // ===========================================
 
     /**
-     * Get the memory-agent collection for a specific course
-     * @param courseName - The name of the course (e.g., "APSC 099")
-     * @returns Collection instance for the course memory-agent entries
+     * getMemoryAgentCollection
+     *
+     * @param courseName string — Course name
+     * @returns Promise<Collection> — MongoDB memory-agent collection for the course
+     * Returns the memory-agent collection. Private helper. Uses getCollectionNames.
      */
     private async getMemoryAgentCollection(courseName: string): Promise<Collection> {
         const collections = await this.getCollectionNames(courseName);
@@ -1872,9 +2207,12 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Create a new memory agent entry for a user
-     * @param courseName - The name of the course
-     * @param entry - The memory agent entry to create
+     * createMemoryAgentEntry
+     *
+     * @param courseName string — Course name
+     * @param entry MemoryAgentEntry — Memory agent entry (name, userId, role, struggleTopics)
+     * @returns Promise<void> — Resolves when entry is created; idempotent on duplicate key
+     * Creates new memory agent entry. Treats duplicate key (11000) as success (race condition).
      */
     public createMemoryAgentEntry = async (courseName: string, entry: MemoryAgentEntry): Promise<void> => {
         console.log(`[MONGODB] 🧠 Creating memory agent entry for userId: ${entry.userId} in course: ${courseName}`);
@@ -1898,11 +2236,12 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Get memory agent entry for a specific user (READ-ONLY)
-     * Does NOT create entries - use initializeMemoryAgentForUser or ensureMemoryAgentEntryExists for creation
-     * @param courseName - The name of the course
-     * @param userId - The user ID
-     * @returns Memory agent entry if found, null if not found
+     * getMemoryAgentEntry
+     *
+     * @param courseName string — Course name
+     * @param userId string — User ID
+     * @returns Promise<MemoryAgentEntry | null> — Memory agent entry or null if not found
+     * Gets memory agent entry (struggle topics) for user. Read-only; does not create.
      */
     public getMemoryAgentEntry = async (courseName: string, userId: string): Promise<MemoryAgentEntry | null> => {
         console.log(`[MONGODB] 🔍 Getting memory agent entry for userId: ${userId} in course: ${courseName}`);
@@ -1925,10 +2264,13 @@ export class EngEAI_MongoDB {
     }
 
     /**
-     * Update struggle words for a user's memory agent entry
-     * @param courseName - The name of the course
-     * @param userId - The user ID
-     * @param struggleTopics - Array of struggle words to update
+     * updateMemoryAgentStruggleWords
+     *
+     * @param courseName string — Course name
+     * @param userId string — User ID
+     * @param struggleTopics string[] — Array of struggle words/topics to set
+     * @returns Promise<void> — Resolves when entry is updated or created
+     * Updates or creates memory agent entry with struggle topics. Upserts by userId.
      */
     public updateMemoryAgentStruggleWords = async (courseName: string, userId: string, struggleTopics: string[]): Promise<void> => {
         console.log(`[MONGODB] 🔄 Updating struggle words for userId: ${userId} in course: ${courseName}`);

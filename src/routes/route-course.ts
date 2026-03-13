@@ -7,8 +7,8 @@
 
 import express, { Request, Response } from 'express';
 import path from 'path';
-import { asyncHandlerWithAuth } from '../middleware/asyncHandler';
-import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
+import { asyncHandlerWithAuth } from '../middleware/async-handler';
+import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 
 const router = express.Router();
 
@@ -178,38 +178,307 @@ function serveStudentShell() {
     });
 }
 
-// Instructor Routes - All serve the same shell, frontend handles component loading
+/**
+ * GET /course/:courseId/instructor/documents
+ * Serves instructor documents page. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/documents
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Instructor documents page
+ * @response 301 - Redirect to / or /course-selection (auth/role failure)
+ * @response 404 - Course not found
+ * @response 500 - Server error
+ */
 router.get('/course/:courseId/instructor/documents', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+
+/**
+ * GET /course/:courseId/instructor/flags
+ * Serves instructor flags page. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/flags
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Instructor flags page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/instructor/flags', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+
+/**
+ * GET /course/:courseId/instructor/monitor
+ * Serves instructor monitor page. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/monitor
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Instructor monitor page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/instructor/monitor', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+
+/**
+ * GET /course/:courseId/instructor/chat
+ * Serves instructor chat page. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/chat
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Instructor chat page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/instructor/chat', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+
+/**
+ * GET /course/:courseId/instructor/assistant-prompts
+ * Serves assistant prompts page. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/assistant-prompts
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Assistant prompts page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/instructor/assistant-prompts', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+
+/**
+ * GET /course/:courseId/instructor/system-prompts
+ * Serves system prompts page. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/system-prompts
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - System prompts page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/instructor/system-prompts', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+
+/**
+ * GET /course/:courseId/instructor/course-information
+ * Serves course information page. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/course-information
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Course information page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/instructor/course-information', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+
+/**
+ * GET /course/:courseId/instructor/about
+ * Serves instructor about page. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/about
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Instructor about page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/instructor/about', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+
+/**
+ * GET /course/:courseId/instructor/welcoming-message
+ * Serves welcoming message page. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/welcoming-message
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Welcoming message page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/instructor/welcoming-message', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
 
-// Instructor Onboarding Routes (for existing courses)
+
+/**
+ * GET /course/:courseId/instructor/onboarding/course-setup
+ * Serves course setup onboarding page. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/onboarding/course-setup
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Course setup onboarding page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/instructor/onboarding/course-setup', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+
+/**
+ * GET /course/:courseId/instructor/onboarding/document-setup
+ * Serves document setup onboarding page. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/onboarding/document-setup
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Document setup onboarding page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/instructor/onboarding/document-setup', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+/**
+ * GET /course/:courseId/instructor/onboarding/flag-setup
+ * Serves flag setup onboarding page. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/onboarding/flag-setup
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Flag setup onboarding page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/instructor/onboarding/flag-setup', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+
+/**
+ * GET /course/:courseId/instructor/onboarding/monitor-setup
+ * Serves monitor setup onboarding page. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/onboarding/monitor-setup
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Monitor setup onboarding page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/instructor/onboarding/monitor-setup', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
 
-// New Course Onboarding Route (no courseId required - course doesn't exist yet)
+
+/**
+ * GET /instructor/onboarding/new-course
+ * Serves new course onboarding page. Requires faculty role; course does not exist yet.
+ *
+ * @route GET /instructor/onboarding/new-course
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - New course onboarding page
+ * @response 301 - Redirect to / (auth failure)
+ * @response 403 - Access denied (non-faculty)
+ * @response 500 - Server error
+ */
 router.get('/instructor/onboarding/new-course', validateInstructorAuth, serveInstructorShell());
 
-// Student Routes - All serve the same shell, frontend handles component loading
+/**
+ * GET /course/:courseId/student
+ * Serves student chat interface. Requires course access and student role.
+ *
+ * @route GET /course/:courseId/student
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves student-mode.html
+ * @response 200 - Student chat interface
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/student', validateCourseAccess, requireStudentForCourse, serveStudentShell());
+
+
+/**
+ * GET /course/:courseId/student/chat
+ * Serves student chat page. Requires course access and student role.
+ *
+ * @route GET /course/:courseId/student/chat
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves student-mode.html
+ * @response 200 - Student chat page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/student/chat', validateCourseAccess, requireStudentForCourse, serveStudentShell());
+
+
+/**
+ * GET /course/:courseId/student/profile
+ * Serves student profile page. Requires course access and student role.
+ *
+ * @route GET /course/:courseId/student/profile
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves student-mode.html
+ * @response 200 - Student profile page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/student/profile', validateCourseAccess, requireStudentForCourse, serveStudentShell());
+
+
+/**
+ * GET /course/:courseId/student/flag-history
+ * Serves student flag history page. Requires course access and student role.
+ *
+ * @route GET /course/:courseId/student/flag-history
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves student-mode.html
+ * @response 200 - Student flag history page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/student/flag-history', validateCourseAccess, requireStudentForCourse, serveStudentShell());
+
+
+/**
+ * GET /course/:courseId/student/about
+ * Serves student about page. Requires course access and student role.
+ *
+ * @route GET /course/:courseId/student/about
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves student-mode.html
+ * @response 200 - Student about page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/student/about', validateCourseAccess, requireStudentForCourse, serveStudentShell());
+
+
+/**
+ * GET /course/:courseId/student/welcoming-message
+ * Serves student welcoming message page. Requires course access and student role.
+ *
+ * @route GET /course/:courseId/student/welcoming-message
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves student-mode.html
+ * @response 200 - Student welcoming message page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/student/welcoming-message', validateCourseAccess, requireStudentForCourse, serveStudentShell());
 
-// Student Onboarding Routes
+/**
+ * GET /course/:courseId/student/onboarding/student
+ * Serves student onboarding page. Requires course access and student role.
+ *
+ * @route GET /course/:courseId/student/onboarding/student
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves student-mode.html
+ * @response 200 - Student onboarding page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/student/onboarding/student', validateCourseAccess, requireStudentForCourse, serveStudentShell());
 
-// Default instructor route - redirect to documents
+/**
+ * GET /course/:courseId/instructor
+ * Redirects to instructor documents page.
+ *
+ * @route GET /course/:courseId/instructor
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Redirects to /course/:courseId/instructor/documents
+ * @response 301 - Redirect to documents
+ * @response 404 - Course not found
+ */
 router.get('/course/:courseId/instructor', validateCourseAccess, requireInstructorForCourse, (req: Request, res: Response) => {
     const { courseId } = req.params;
     res.redirect(`/course/${courseId}/instructor/documents`);

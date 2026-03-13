@@ -31,7 +31,7 @@ import {
     LearningObjective, 
     AdditionalMaterial, 
     CourseUser
-} from "./types";
+} from "../types/shared";
 
 /**
  * ===========================================

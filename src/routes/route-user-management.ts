@@ -5,16 +5,21 @@
  */
 
 import express, { Request, Response } from 'express';
-import { asyncHandlerWithAuth } from '../middleware/asyncHandler';
-import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
-import { sanitizeGlobalUserForFrontend } from '../functions/user-utils';
+import { asyncHandlerWithAuth } from '../middleware/async-handler';
+import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
+import { sanitizeGlobalUserForFrontend } from '../utils/user-utils';
 
 const router = express.Router();
 
 /**
- * GET /api/user/current
- * 
- * Get current CourseUser from session
+ * GET /current
+ * Returns current CourseUser, sanitized GlobalUser, and current course from session.
+ *
+ * @route GET /api/user/current
+ * @returns {object} { courseUser?: object, globalUser?: object, currentCourse?: object, error?: string }
+ * @response 200 - Success
+ * @response 404 - No current course or user, or CourseUser not found
+ * @response 500 - Failed to get current user
  */
 router.get('/current', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -50,9 +55,18 @@ router.get('/current', asyncHandlerWithAuth(async (req: Request, res: Response) 
 }));
 
 /**
- * POST /api/user/update-onboarding
- * 
- * Updates CourseUser's onboarding status
+ * POST /update-onboarding
+ * Updates CourseUser onboarding status in the course-specific users collection.
+ *
+ * @route POST /api/user/update-onboarding
+ * @param {string} userId - User ID (body)
+ * @param {string} courseName - Course name (body)
+ * @param {boolean} userOnboarding - Onboarding completion status (body)
+ * @returns {object} { success: boolean, courseUser?: object, error?: string }
+ * @response 200 - Success
+ * @response 400 - userId and courseName required
+ * @response 404 - User not found
+ * @response 500 - Failed to update onboarding status
  */
 router.post('/update-onboarding', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -105,10 +119,14 @@ router.post('/update-onboarding', asyncHandlerWithAuth(async (req: Request, res:
 }));
 
 /**
- * POST /api/user/activity
- * 
- * Updates server-side last activity timestamp for cross-tab synchronization
- * Used by InactivityTracker to sync inactivity state across multiple tabs
+ * POST /activity
+ * Updates server-side last activity timestamp for cross-tab synchronization. Used by InactivityTracker.
+ *
+ * @route POST /api/user/activity
+ * @param {number} [lastActivityTime] - Client timestamp (body, optional)
+ * @returns {object} { success: boolean, currentTime?: number, serverLastActivityTime?: number, lastActivityTime?: number, error?: string }
+ * @response 200 - Success
+ * @response 500 - Failed to update activity timestamp
  */
 router.post('/activity', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {

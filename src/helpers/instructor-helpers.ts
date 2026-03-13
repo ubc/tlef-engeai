@@ -8,10 +8,8 @@
  * @since: 2025-02-23
  */
 
-import { EngEAI_MongoDB } from './EngEAI_MongoDB';
-import { GlobalUser } from './types';
-import { InstructorInfo } from './types';
-import { User } from './types';
+import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
+import { GlobalUser, InstructorInfo, User } from '../types/shared';
 
 /**
  * Returns PUIDs that should auto-add Charisma and Rich when they create a course (Alireza, Amir).

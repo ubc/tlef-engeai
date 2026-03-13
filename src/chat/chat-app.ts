@@ -1,4 +1,4 @@
-// public/scripts/feature/artefact.ts
+// src/chat/chat-app.ts
 
 /**
  * ChatApp Class
@@ -24,12 +24,12 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { LoggerInterface } from 'ubc-genai-toolkit-core';
 import { LLMModule, Message } from 'ubc-genai-toolkit-llm';
-import { AppConfig } from '../routes/config';
+import { AppConfig } from '../utils/config';
 import { RAGModule, RetrievedChunk } from 'ubc-genai-toolkit-rag';
 import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
-import { IDGenerator } from './unique-id-generator';
-import { ChatMessage, LearningObjective, TopicOrWeekInstance, TopicOrWeekItem, activeCourse, DEFAULT_PROMPT_ID, SystemPromptItem } from './types';
-import { EngEAI_MongoDB } from './EngEAI_MongoDB';
+import { IDGenerator } from '../utils/unique-id-generator';
+import { ChatMessage, LearningObjective, TopicOrWeekInstance, TopicOrWeekItem, activeCourse, DEFAULT_PROMPT_ID, SystemPromptItem } from '../types/shared';
+import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { 
     getSystemPrompt, 
     getInitialAssistantMessage, 
@@ -37,7 +37,7 @@ import {
     INITIAL_ASSISTANT_MESSAGE
 } from './chat-prompts';
 import { memoryAgent } from '../memory-agent/memory-agent';
-import { isDeveloperMode, generateMockStreamingResponse } from './developer-mode';
+import { isDeveloperMode, generateMockStreamingResponse } from '../helpers/developer-mode';
 
 /**
  * Interface for initializing a new chat conversation

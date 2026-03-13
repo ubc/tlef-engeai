@@ -19,11 +19,11 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { LLMModule } from 'ubc-genai-toolkit-llm';
-import { AppConfig, loadConfig } from '../routes/config';
-import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
-import { MemoryAgentEntry } from '../functions/types';
+import { AppConfig, loadConfig } from '../utils/config';
+import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
+import { MemoryAgentEntry } from '../types/shared';
 import { getMemoryAgentPrompt } from './memory-agent-prompt';
-import { isDeveloperMode, getMockStruggleWords } from '../functions/developer-mode';
+import { isDeveloperMode, getMockStruggleWords } from '../helpers/developer-mode';
 
 
 export class MemoryAgent {
