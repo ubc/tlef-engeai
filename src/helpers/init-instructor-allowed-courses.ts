@@ -21,7 +21,7 @@ function buildSeedData(): { puid: string; allowed_courses: string[] }[] {
 
     const charismaPuid = process.env.CHARISMA_RUSDIYANTO_PUID?.trim();
     if (charismaPuid) {
-        data.push({ puid: charismaPuid, allowed_courses: ['Test 1', 'Test 2', 'Test 3', 'CHARISMA101'] });
+        data.push({ puid: charismaPuid, allowed_courses: ['Test 1', 'Test 2', 'Test 3', 'Test 4', 'CHARISMA101'] });
     } else {
         console.warn('[INIT] CHARISMA_RUSDIYANTO_PUID not set, skipping Charisma in instructor-allowed-courses');
     }

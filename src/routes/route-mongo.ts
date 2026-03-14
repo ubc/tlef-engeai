@@ -3609,6 +3609,7 @@ router.get('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Requ
     }
 }));
 
+
 // ===========================================
 // ========= MEMORY AGENT (STRUGGLE WORDS) ===
 // ===========================================

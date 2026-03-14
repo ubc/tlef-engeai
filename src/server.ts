@@ -7,6 +7,7 @@ import ragAppRoutes from './routes/route-rag';
 import mongodbRoutes from './routes/route-mongo';
 import healthRoutes from './routes/route-health';
 import versionRoutes from './routes/route-version';
+import onboardingRoutes from './routes/route-onboarding';
 import authRoutes from './routes/route-auth';  // Import authentication routes
 import courseEntryRoutes from './routes/route-course-entry';  // Import course entry routes
 import userManagementRoutes from './routes/route-user-management';  // Import user management routes
@@ -203,6 +204,7 @@ app.use('/api/course', courseEntryRoutes);  // Course entry routes
 app.use('/api/user', userManagementRoutes);  // User management routes
 app.use('/api/health', healthRoutes);    // Health check routes
 app.use('/api/version', versionRoutes);  // Version endpoint for UI display
+app.use('/api/onboarding', onboardingRoutes);  // Onboarding demo routes (e.g. sample chat download)
 
 // Final 404 handler for any requests that do not match a route
 app.use((req: express.Request, res: express.Response) => {

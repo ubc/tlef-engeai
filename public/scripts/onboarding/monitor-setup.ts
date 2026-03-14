@@ -5,8 +5,7 @@
  * It provides a step-by-step tutorial on how to use the monitor dashboard.
  * 
  * FEATURES:
- * - 5-step onboarding process with navigation
- * - Interactive usage statistics demonstration
+ * - 4-step onboarding process with navigation
  * - Working calendar modal with date selection
  * - Interactive student sorting functionality
  * - Expandable student cards with exact monitor replication
@@ -15,10 +14,9 @@
  * 
  * ONBOARDING STEPS:
  * 1. Welcome - Introduction to monitoring capabilities
- * 2. Usage Statistics - Understanding dashboard metrics
- * 3. Student Overview - Sorting functionality and student list navigation
- * 4. Student Details - Expandable student cards and chat history access
- * 5. Congratulations - Completion and next steps
+ * 2. Student Overview - Sorting functionality and student list navigation
+ * 3. Student Details - Expandable student cards and chat history access
+ * 4. Congratulations - Completion and next steps
  * 
  * @author: gatahcha (revised)
  * @date: 2025-01-27
@@ -101,7 +99,7 @@ export const renderMonitorSetup = async (instructorCourse: activeCourse): Promis
         // Initialize monitor setup state
         const state: MonitorSetupState = {
             currentStep: 1,
-            totalSteps: 5,
+            totalSteps: 4,
             isValid: false,
             completedSteps: new Set()
         };
@@ -381,17 +379,14 @@ async function initializeStepFunctionality(stepNumber: number): Promise<void> {
             // Welcome step - no special functionality needed
             break;
         case 2:
-            // Usage statistics step - already has static demo
-            break;
-        case 3:
             // Student overview step - sorting functionality
             initializeStudentListDemo();
             break;
-        case 4:
+        case 3:
             // Student details step - accordion functionality
             initializeStudentDetailsDemo();
             break;
-        case 5:
+        case 4:
             // Completion step - no special functionality needed
             break;
     }
@@ -837,9 +832,9 @@ function demoSortStudents(sortType: 'tokens' | 'name'): void {
     // Re-render student list
     renderDemoStudentList();
     
-    // Also update student details if we're on step 5
+    // Also update student details if we're on step 3 (Student Details)
     const currentStep = (window as any).monitorSetupState?.currentStep;
-    if (currentStep === 5) {
+    if (currentStep === 3) {
         renderDemoStudentDetails();
     }
 }
@@ -918,14 +913,46 @@ function toggleDemoStudentAccordion(studentId: string): void {
 }
 
 /**
- * Demo download chat functionality
+ * Demo download chat functionality.
+ * Fetches the sample chat document from the onboarding API and triggers a file download.
+ *
+ * @param chatId - The demo chat session ID (used for display; sample content is served)
  */
-function demoDownloadChat(chatId: string): void {
-    //START DEBUG LOG : DEBUG-CODE(007)
-    // console.log(`📥 Demo download for chat session: ${chatId}`); // 🟡 HIGH: Chat session ID exposure
-    //END DEBUG LOG : DEBUG-CODE(007)
-    
-    alert(`Demo: Download functionality for chat session ${chatId} will be implemented in the actual monitor dashboard!`);
+async function demoDownloadChat(chatId: string): Promise<void> {
+    try {
+        const response = await fetch('/api/onboarding/sample-chat/download', {
+            method: 'GET',
+            credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Failed to download sample chat' }));
+            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        }
+
+        const textContent = await response.text();
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = `sample-chat-${chatId}.txt`;
+        if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+            if (filenameMatch) {
+                filename = filenameMatch[1];
+            }
+        }
+
+        const blob = new Blob([textContent], { type: 'text/plain' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('[MONITOR-SETUP] Error downloading sample chat:', error);
+        alert(`Failed to download sample chat: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
 }
 
 // ===========================================
