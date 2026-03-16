@@ -10,7 +10,7 @@
  * @since: 2025-01-27
  */
 
-import { LearningObjective, SystemPromptItem } from '../types/shared';
+import { LearningObjectiveForDisplay, SystemPromptItem } from '../types/shared';
 
 /**
  * System prompt for EngE-AI - Engineering Education Assistant
@@ -524,15 +524,16 @@ Assistant response: ...assistant response...
 
 /**
  * Helper function to format learning objectives for regex replacement
- * @param learningObjectives - Array of learning objectives
+ * Topic/week and item come from predecessor (parent hierarchy).
+ * @param learningObjectives - Array of learning objectives with predecessor context
  * @returns Formatted learning objectives string
  */
-function formatLearningObjectivesContent(learningObjectives: LearningObjective[]): string {
+function formatLearningObjectivesContent(learningObjectives: LearningObjectiveForDisplay[]): string {
     let content = '\n\n<course_learning_objectives>\n';
     content += 'The following are ALL learning objectives for this course, organized by week/topic and subsection:\n\n';
     
     learningObjectives.forEach((obj, index) => {
-        content += `${index + 1}. [${obj.topicOrWeekTitle} - ${obj.itemTitle}]: ${obj.LearningObjective}\n`;
+        content += `${index + 1}. [${obj.topicOrWeekTitle ?? ''} - ${obj.itemTitle ?? ''}]: ${obj.LearningObjective}\n`;
     });
     
     content += '\n</course_learning_objectives>\n';
@@ -554,7 +555,7 @@ function formatLearningObjectivesContent(learningObjectives: LearningObjective[]
 export function getSystemPrompt(
     baseSystemPrompt?: string,
     courseName?: string,
-    learningObjectives?: LearningObjective[],
+    learningObjectives?: LearningObjectiveForDisplay[],
     appendedSystemPromptItems?: SystemPromptItem[]
 ): string {
     // Use base prompt from database if provided, otherwise use constant

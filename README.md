@@ -8,9 +8,7 @@
 ![Passport](https://img.shields.io/badge/Passport-SAML%2FCWL-34E27A?logo=passport&logoColor=white)
 
 
-![EngE AI wallpaper](assets/engeai-wallpaper.jpg)
-
-
+<!-- ![EngE AI wallpaper](assets/engeai-wallpaper.jpg) -->
 
 
 

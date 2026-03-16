@@ -2486,6 +2486,8 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', asyncHan
             });
         }
         
+        const oldTitle = topicOrWeekInstance.title;
+        
         // Update the topic/week instance title
         topicOrWeekInstance.title = trimmedTitle;
         topicOrWeekInstance.updatedAt = new Date();
@@ -2494,6 +2496,17 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', asyncHan
         const updatedCourse = await instance.updateActiveCourse(courseId, {
             topicOrWeekInstances: course.topicOrWeekInstances
         });
+        
+        // Sync title change to Qdrant chunk metadata (non-blocking)
+        try {
+            const ragApp = await RAGApp.getInstance();
+            const result = await ragApp.updateTopicOrWeekTitleInQdrant(course.courseName, oldTitle, trimmedTitle);
+            if (result.chunksUpdated > 0) {
+                console.log(`✅ Qdrant: Updated topicOrWeekTitle in ${result.chunksUpdated} chunks`);
+            }
+        } catch (ragError) {
+            console.warn('Qdrant metadata sync failed (MongoDB update succeeded):', ragError);
+        }
         
         console.log(`✅ Topic/Week instance ${topicOrWeekId} title updated to "${trimmedTitle}"`);
         
@@ -2763,6 +2776,8 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/ti
             });
         }
         
+        const oldItemTitle = item.title || item.itemTitle || '';
+        
         // Update the item title
         item.title = trimmedTitle;
         item.itemTitle = trimmedTitle;
@@ -2773,6 +2788,22 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/ti
         const updatedCourse = await instance.updateActiveCourse(courseId, {
             topicOrWeekInstances: course.topicOrWeekInstances
         });
+        
+        // Sync title change to Qdrant chunk metadata (non-blocking)
+        try {
+            const ragApp = await RAGApp.getInstance();
+            const result = await ragApp.updateItemTitleInQdrant(
+                course.courseName,
+                topicOrWeekInstance.title,
+                oldItemTitle,
+                trimmedTitle
+            );
+            if (result.chunksUpdated > 0) {
+                console.log(`✅ Qdrant: Updated itemTitle in ${result.chunksUpdated} chunks`);
+            }
+        } catch (ragError) {
+            console.warn('Qdrant metadata sync failed (MongoDB update succeeded):', ragError);
+        }
         
         console.log(`✅ Item ${itemId} title updated to "${trimmedTitle}"`);
         

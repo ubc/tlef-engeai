@@ -1,24 +1,5 @@
 // src/chat/chat-app.ts
 
-/**
- * ChatApp Class
- * 
- * This module provides the ChatApp class for managing chat conversations,
- * RAG integration, and message handling for the EngE-AI platform.
- * 
- * Key Features:
- * - Streaming chat responses from LLM
- * - RAG (Retrieval-Augmented Generation) with document similarity search
- * - Document retrieval from Qdrant vector database
- * - Context injection with text decorators for retrieved documents
- * - Support for conversational message history
- * - Real-time response streaming for better UX
- * - Chat inactivity timer management
- * 
- * @author: EngE-AI Team
- * @version: 2.0.0
- * @since: 2025-01-27
- */
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -28,7 +9,7 @@ import { AppConfig } from '../utils/config';
 import { RAGModule, RetrievedChunk } from 'ubc-genai-toolkit-rag';
 import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
 import { IDGenerator } from '../utils/unique-id-generator';
-import { ChatMessage, LearningObjective, TopicOrWeekInstance, TopicOrWeekItem, activeCourse, DEFAULT_PROMPT_ID, SystemPromptItem } from '../types/shared';
+import { ChatMessage, LearningObjectiveForDisplay, TopicOrWeekInstance, TopicOrWeekItem, activeCourse, DEFAULT_PROMPT_ID, SystemPromptItem } from '../types/shared';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { 
     getSystemPrompt, 
@@ -50,7 +31,28 @@ export interface initChatRequest {
     initAssistantMessage: ChatMessage;
 }
 
+
+/**
+ * ChatApp Class
+ * 
+ * This module provides the ChatApp class for managing chat conversations,
+ * RAG integration, and message handling for the EngE-AI platform.
+ * 
+ * Key Features:
+ * - Streaming chat responses from LLM
+ * - RAG (Retrieval-Augmented Generation) with document similarity search
+ * - Document retrieval from Qdrant vector database
+ * - Context injection with text decorators for retrieved documents
+ * - Support for conversational message history
+ * - Real-time response streaming for better UX
+ * - Chat inactivity timer management
+ * 
+ * @author: EngE-AI Team
+ * @version: 2.0.0
+ * @since: 2026-03-16
+ */
 export class ChatApp {
+
     private llmModule: LLMModule;
     private ragModule: RAGModule | null = null;
     private logger: LoggerInterface;
@@ -416,10 +418,9 @@ export class ChatApp {
         let context = '\n\n<course_materials>\n';
         
         documents.forEach((doc, index) => {
-            context += `\n--- Document ${index + 1} ---\n`;
-            
-            // Parse metadata safely - extract only chapter and learning objectives
+            // Parse metadata safely - extract chapter, item title, and learning objectives
             let chapter = '';
+            let itemTitle = '';
             let learningObjectives: any[] = [];
             
             try {
@@ -431,8 +432,9 @@ export class ChatApp {
                     metadataObj = doc.metadata;
                 }
                 
-                // Extract chapter (topicOrWeekTitle)
+                // Extract topic/week (chapter) and item title
                 chapter = metadataObj.topicOrWeekTitle || '';
+                itemTitle = metadataObj.itemTitle || '';
                 
                 // Extract learning objectives
                 if (metadataObj.learningObjectives && Array.isArray(metadataObj.learningObjectives)) {
@@ -442,6 +444,12 @@ export class ChatApp {
                 console.warn(`⚠️ Error parsing metadata for document ${index + 1}:`, error);
                 // Continue with empty values if parsing fails
             }
+            
+            // Format document header as "[Module 1 - Part 1]" using topic/week and item title
+            const modulePartLabel = chapter && itemTitle
+                ? `[${chapter} - ${itemTitle}]`
+                : chapter || itemTitle || `Document ${index + 1}`;
+            context += `\n--- ${modulePartLabel} ---\n`;
             
             // Build formatted content with chapter and learning objectives BEFORE content
             if (chapter) {
@@ -771,6 +779,14 @@ export class ChatApp {
         return assistantMessage;
     }
 
+    /**
+     * this method initializes a new conversation for a user
+     * 
+     * @param userID - The user ID
+     * @param courseName - The course name
+     * @param date - The date of the chat
+     * @returns The initial chat request
+     */
     public async initializeConversation(userID: string, courseName: string, date: Date): Promise<initChatRequest> {
         //create chatID from the user ID
         const chatId = this.chatIDGenerator.chatID(userID, courseName, date);
@@ -824,6 +840,11 @@ export class ChatApp {
 
     /**
      * this method directly add the Default System Message to the conversation
+     * 
+     * @param chatId - The chat ID
+     * @param courseName - The course name
+     * @param struggleTopics - The struggle topics
+     * @returns void
      */
     private async addDefaultSystemMessage(chatId: string, courseName?: string, struggleTopics?: string[]): Promise<void> {
         const conversation = this.conversations.get(chatId);
@@ -833,7 +854,7 @@ export class ChatApp {
         
         // Retrieve base prompt, learning objectives, and appended items for the course
         let baseSystemPrompt: string | undefined;
-        let learningObjectives: LearningObjective[] = [];
+        let learningObjectives: LearningObjectiveForDisplay[] = [];
         let appendedSystemPromptItems: SystemPromptItem[] = [];
         
         if (courseName) {
@@ -1236,7 +1257,7 @@ export class ChatApp {
             
             // Add system message first (same as in initializeConversation)
             // Retrieve learning objectives for the course
-            let learningObjectives: LearningObjective[] = [];
+            let learningObjectives: LearningObjectiveForDisplay[] = [];
             try {
                 const course = await mongoDB.getCourseByName(courseName);
                 if (course && course.id) {

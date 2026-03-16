@@ -168,16 +168,22 @@ export interface TopicOrWeekItem {
 
 
 /**
- * The type of a single learning objective
+ * The type of a single learning objective (stored in MongoDB, used for CRUD)
  */
 export interface LearningObjective {
     id: string;
     LearningObjective: string;
-    courseName: string;
-    topicOrWeekTitle: string;
-    itemTitle: string;
     createdAt: Date;
     updatedAt: Date;
+}
+
+/**
+ * For system prompt display - topic/week and item from predecessor (parent hierarchy)
+ */
+export interface LearningObjectiveForDisplay {
+    LearningObjective: string;
+    topicOrWeekTitle: string;
+    itemTitle: string;
 }
 
 /**

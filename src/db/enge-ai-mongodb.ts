@@ -20,6 +20,7 @@ import { activeCourse,
     GlobalUser, 
     CourseUser, 
     LearningObjective, 
+    LearningObjectiveForDisplay, 
     MemoryAgentEntry, 
     InitialAssistantPrompt,
     DEFAULT_PROMPT_ID, 
@@ -514,30 +515,32 @@ export class EngEAI_MongoDB {
      * getAllLearningObjectives
      *
      * @param courseId string — Course ID
-     * @returns Promise<LearningObjective[]> — All learning objectives across all topic/week instances and items
-     * Flattens and returns all learning objectives for a course. Returns empty array if course not found.
+     * @returns Promise<LearningObjectiveForDisplay[]> — All learning objectives with topic/week and item from predecessor (parent hierarchy)
+     * Extracts LearningObjective text and attaches topicOrWeekTitle, itemTitle from parent instance and item.
+     * Uses MongoDB aggregation pipeline (BSON) to avoid fetching full course document — only returns flattened objectives.
      */
-    public getAllLearningObjectives = async (courseId: string): Promise<LearningObjective[]> => {
-        const course = await this.getActiveCourse(courseId);
-        
-        if (!course || !course.topicOrWeekInstances) {
-            return [];
-        }
-        
-        const allObjectives: LearningObjective[] = [];
-        
-        // Iterate through all topic/week instances and items to collect learning objectives
-        for (const instance of course.topicOrWeekInstances) {
-            if (instance.items) {
-                for (const item of instance.items) {
-                    if (item.learningObjectives && item.learningObjectives.length > 0) {
-                        allObjectives.push(...item.learningObjectives);
+    public getAllLearningObjectives = async (courseId: string): Promise<LearningObjectiveForDisplay[]> => {
+        const results = await this.getCourseCollection().aggregate<LearningObjectiveForDisplay>([
+            { $match: { id: courseId } },
+            { $unwind: '$topicOrWeekInstances' },
+            { $unwind: '$topicOrWeekInstances.items' },
+            { $unwind: '$topicOrWeekInstances.items.learningObjectives' },
+            {
+                $project: {
+                    _id: 0,
+                    LearningObjective: '$topicOrWeekInstances.items.learningObjectives.LearningObjective',
+                    topicOrWeekTitle: { $ifNull: ['$topicOrWeekInstances.title', ''] },
+                    itemTitle: {
+                        $ifNull: [
+                            '$topicOrWeekInstances.items.itemTitle',
+                            { $ifNull: ['$topicOrWeekInstances.items.title', ''] }
+                        ]
                     }
                 }
             }
-        }
-        
-        return allObjectives;
+        ]).toArray();
+
+        return results;
     }
 
     // Flag report methods

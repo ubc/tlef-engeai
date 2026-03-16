@@ -29,7 +29,7 @@ import { uploadRAGContent } from '../services/rag-service.js';
 import { DocumentUploadModule } from '../services/document-upload-module.js';
 import type { UploadResult } from '../types.js';
 import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal } from '../ui/modal-overlay.js';
-import { showToast } from '../ui/toast-notification.js';
+import { showToast, showSuccessToast } from '../ui/toast-notification.js';
 import { renderFeatherIcons } from '../api/api.js';
 
 // In-memory store for the course data
@@ -1225,9 +1225,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const newObjective = {
             id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             LearningObjective: learningObjective,
-            courseName: currentClass.courseName,
-            topicOrWeekTitle: instance_topicOrWeek?.title || '',
-            itemTitle: content.title,
             createdAt: new Date(),
             updatedAt: new Date()
         };
@@ -2267,6 +2264,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                         
                         // Close loading modal before exiting edit mode
                         closeModal('success');
+                        showSuccessToast(`Topic item title updated to "${updatedTitle}"`, 3000);
                         
                         // Exit edit mode with backend title
                         exitEditMode(topicOrWeekId, itemId, updatedTitle);
@@ -2310,6 +2308,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                         
                         // Close loading modal before exiting edit mode
                         closeModal('success');
+                        showSuccessToast(`Topic/week title updated to "${updatedTitle}"`, 3000);
                         
                         // Exit edit mode with backend title
                         exitEditMode(topicOrWeekId, null, updatedTitle);
