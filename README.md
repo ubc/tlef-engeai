@@ -126,6 +126,3 @@ For API reference, see [documentation/ENDPOINT_ARCHITECTURE.md](documentation/EN
 ## Continuous Integration
 
 Pushing to the main branch in this repo will trigger a deploy automatically to the staging server.
-
-
-license
