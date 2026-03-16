@@ -10,13 +10,21 @@
 import express from 'express';
 import path from 'path';
 import { passport, ubcShibStrategy, isSamlAvailable } from '../middleware/passport';
-import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
-import { sanitizeGlobalUserForFrontend } from '../functions/user-utils';
+import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
+import { sanitizeGlobalUserForFrontend } from '../utils/user-utils';
 import { resolveAffiliation, isFacultyOverridePuid } from '../utils/affiliation';
 
 const router = express.Router();
 
-// Login route - conditional based on SAML availability
+/**
+ * GET /login
+ * Initiates authentication. When SAML is available, redirects to IdP; otherwise serves local login page.
+ *
+ * @route GET /auth/login
+ * @returns {void} Redirects or serves HTML
+ * @response 200 - Local login page (HTML) when SAML_AVAILABLE=false
+ * @response 302 - Redirect to IdP or success redirect when SAML_AVAILABLE=true
+ */
 router.get('/login', (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (isSamlAvailable) {
         // SAML authentication flow
@@ -131,10 +139,28 @@ const samlCallbackHandler = [
     }
 }];
 
-// SAML callback endpoint - legacy path for compatibility
+/**
+ * POST /saml/callback
+ * Handles SAML IdP callback. Creates or updates GlobalUser, stores session, redirects to course-selection or role-restricted.
+ *
+ * @route POST /auth/saml/callback
+ * @returns {void} Redirects on success or failure
+ * @response 302 - Redirect to course-selection, role-restricted, or login-failed
+ * @response 500 - Server error during callback processing
+ */
 router.post('/saml/callback', ...samlCallbackHandler);
 
-// Local login POST endpoint (for local authentication only)
+/**
+ * POST /login
+ * Authenticates user with local username/password. Only used when SAML_AVAILABLE=false.
+ *
+ * @route POST /auth/login
+ * @param {string} username - Username (body)
+ * @param {string} password - Password (body)
+ * @returns {void} Redirects on success or failure
+ * @response 302 - Redirect to course-selection, role-restricted, or login with error
+ * @response 404 - SAML is available; this endpoint not used
+ */
 router.post('/login', (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (!isSamlAvailable) {
         //START DEBUG LOG : DEBUG-CODE(LOCAL-LOGIN-POST)
@@ -241,7 +267,14 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
     }
 });
 
-// Login failed endpoint
+/**
+ * GET /login-failed
+ * Displays login failure page when SAML authentication fails.
+ *
+ * @route GET /auth/login-failed
+ * @returns {string} HTML page with error message
+ * @response 401 - Login failed page
+ */
 router.get('/login-failed', (req: express.Request, res: express.Response) => {
     res.status(401).send(`
         <html>
@@ -254,7 +287,14 @@ router.get('/login-failed', (req: express.Request, res: express.Response) => {
     `);
 });
 
-// Logout endpoint - handles both SAML and local logout
+/**
+ * GET /logout
+ * Terminates session. For SAML: destroys local session and redirects to IdP logout; for local: destroys session and redirects home.
+ *
+ * @route GET /auth/logout
+ * @returns {void} Redirects to IdP logout URL or home
+ * @response 302 - Redirect to IdP or /
+ */
 router.get('/logout', (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (!(req as any).user) {
         return res.redirect('/');
@@ -325,10 +365,14 @@ router.get('/logout', (req: express.Request, res: express.Response, next: expres
     }
 });
 
-// Logout callback - IdP redirects here after logout
-// This endpoint handles the SAML logout response from the IdP
-// Note: In the reference implementation, this is at /auth/logout, but since our routes
-// are mounted at /auth, we use /logout/callback to avoid conflict with the main logout route
+/**
+ * GET /logout/callback
+ * Handles SAML IdP redirect after logout. Completes logout flow and redirects to home.
+ *
+ * @route GET /auth/logout/callback
+ * @returns {void} Redirects to home
+ * @response 302 - Redirect to /
+ */
 router.get('/logout/callback',
     passport.authenticate('ubcshib', { failureRedirect: '/' }),
     (req: express.Request, res: express.Response) => {
@@ -337,7 +381,17 @@ router.get('/logout/callback',
     }
 );
 
-// Get current user info (API endpoint)
+/**
+ * GET /current-user
+ * Returns authenticated user info from session and database. Sanitizes GlobalUser (no PUID) for frontend.
+ *
+ * @route GET /auth/current-user
+ * @returns {object} { authenticated: boolean, user?: object, globalUser?: object, error?: string }
+ * @response 200 - Success (authenticated true/false)
+ * @response 403 - User data validation failed
+ * @response 404 - User not found in database
+ * @response 500 - Session incomplete or failed to fetch user
+ */
 router.get('/current-user', async (req: express.Request, res: express.Response) => {
     //START DEBUG LOG : DEBUG-CODE(AUTH-CURRENT-USER)
     console.log('[SERVER] 🔍 /auth/current-user endpoint called');
@@ -440,7 +494,17 @@ router.get('/current-user', async (req: express.Request, res: express.Response) 
     }
 });
 
-// Get current user info (API endpoint) - Legacy endpoint
+/**
+ * GET /me
+ * Legacy endpoint. Returns authenticated user info from session and database. Prefer /current-user.
+ *
+ * @route GET /auth/me
+ * @returns {object} { authenticated: boolean, user?: object, globalUser?: object, error?: string }
+ * @response 200 - Success (authenticated true/false)
+ * @response 403 - User data validation failed
+ * @response 404 - User not found in database
+ * @response 500 - Session incomplete or failed to fetch user
+ */
 router.get('/me', async (req: express.Request, res: express.Response) => {
     //START DEBUG LOG : DEBUG-CODE(AUTH-ME)
     console.log('[SERVER] 🔍 /auth/me endpoint called');
@@ -535,7 +599,14 @@ router.get('/me', async (req: express.Request, res: express.Response) => {
     }
 });
 
-// Get authentication configuration (API endpoint)
+/**
+ * GET /config
+ * Returns authentication configuration (SAML availability) for frontend.
+ *
+ * @route GET /auth/config
+ * @returns {object} { samlAvailable: boolean }
+ * @response 200 - Success
+ */
 router.get('/config', (req: express.Request, res: express.Response) => {
     //START DEBUG LOG : DEBUG-CODE(AUTH-CONFIG)
     console.log('[SERVER] 🔍 /auth/config endpoint called');
@@ -546,8 +617,15 @@ router.get('/config', (req: express.Request, res: express.Response) => {
     });
 });
 
-// CWL login route - always attempts SAML/CWL login if SAML is configured
-// Works even when SAML_AVAILABLE=false, as long as SAML environment variables are present
+/**
+ * GET /login/cwl
+ * Forces CWL/SAML login. Redirects to IdP when SAML is configured; returns 503 when not configured.
+ *
+ * @route GET /auth/login/cwl
+ * @returns {void} Redirects to IdP or serves HTML error
+ * @response 302 - Redirect to IdP or success
+ * @response 503 - SAML not configured
+ */
 router.get('/login/cwl', (req: express.Request, res: express.Response, next: express.NextFunction) => {
     //START DEBUG LOG : DEBUG-CODE(CWL-LOGIN)
     console.log('[AUTH] Initiating CWL login (forced SAML)...');

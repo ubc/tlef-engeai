@@ -5,16 +5,24 @@
  */
 
 import express, { Request, Response } from 'express';
-import { asyncHandlerWithAuth } from '../middleware/asyncHandler';
-import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
-import { GlobalUser, CourseUser, User } from '../functions/types';
+import { asyncHandlerWithAuth } from '../middleware/async-handler';
+import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
+import { GlobalUser, CourseUser, User } from '../types/shared';
 
 const router = express.Router();
 
 /**
- * POST /api/course/enter
- * 
- * Enters a course by creating/retrieving CourseUser
+ * POST /enter
+ * Enters a course by courseId. Creates or retrieves CourseUser, stores course in session, returns redirect path.
+ *
+ * @route POST /api/course/enter
+ * @param {string} courseId - Course ID (body)
+ * @returns {object} { redirect?: string, requiresOnboarding?: boolean, courseUser?: object, courseName?: string, error?: string }
+ * @response 200 - Success
+ * @response 400 - Course ID required
+ * @response 401 - User not authenticated
+ * @response 404 - Course not found
+ * @response 500 - Failed to enter course
  */
 router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -220,9 +228,17 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
 }));
 
 /**
- * POST /api/course/enter-by-code
- * 
- * Enters a course using a 6-character course code PIN
+ * POST /enter-by-code
+ * Enters a course using a 6-character uppercase alphanumeric course code.
+ *
+ * @route POST /api/course/enter-by-code
+ * @param {string} courseCode - 6-character course code (body)
+ * @returns {object} { redirect?: string, requiresOnboarding?: boolean, courseUser?: object, courseName?: string, error?: string }
+ * @response 200 - Success
+ * @response 400 - Course code required or invalid format
+ * @response 401 - User not authenticated
+ * @response 404 - Course not found
+ * @response 500 - Failed to enter course
  */
 router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -437,9 +453,14 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
 }));
 
 /**
- * GET /api/course/current
- * 
- * Get current course information from session
+ * GET /current
+ * Returns current course information from session.
+ *
+ * @route GET /api/course/current
+ * @returns {object} { course?: object, error?: string }
+ * @response 200 - Success
+ * @response 404 - No current course in session
+ * @response 500 - Failed to get current course
  */
 router.get('/current', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {

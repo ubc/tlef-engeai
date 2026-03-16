@@ -9,9 +9,9 @@
  * @since: 2026-02-18
  */
 
-import { EngEAI_MongoDB } from './EngEAI_MongoDB';
+import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { addCharismaAndRichToCourse } from './instructor-helpers';
-import { activeCourse } from './types';
+import { activeCourse } from '../types/shared';
 
 const COLLECTION_NAME = 'instructor-allowed-courses';
 
@@ -21,7 +21,7 @@ function buildSeedData(): { puid: string; allowed_courses: string[] }[] {
 
     const charismaPuid = process.env.CHARISMA_RUSDIYANTO_PUID?.trim();
     if (charismaPuid) {
-        data.push({ puid: charismaPuid, allowed_courses: ['Test 1', 'Test 2', 'Test 3', 'CHARISMA101'] });
+        data.push({ puid: charismaPuid, allowed_courses: ['Test 1', 'Test 2', 'Test 3', 'Test 4', 'CHARISMA101'] });
     } else {
         console.warn('[INIT] CHARISMA_RUSDIYANTO_PUID not set, skipping Charisma in instructor-allowed-courses');
     }
@@ -64,50 +64,50 @@ function buildSeedData(): { puid: string; allowed_courses: string[] }[] {
     return data;
 }
 
-/**
- * Ensures Charisma and Rich are instructors in all courses in active-course-list.
- * Creates GlobalUser for them if needed, adds to instructors, CourseUser, and coursesEnrolled.
- */
-async function ensureCharismaAndRichInAllCourses(instance: EngEAI_MongoDB): Promise<void> {
-    const charismaPuid = process.env.CHARISMA_RUSDIYANTO_PUID?.trim();
-    const richardPuid = process.env.RICHARD_TAPE_PUID?.trim();
-    if (!charismaPuid && !richardPuid) {
-        console.log('[INIT] CHARISMA_RUSDIYANTO_PUID and RICHARD_TAPE_PUID not set, skipping ensureCharismaAndRichInAllCourses');
-        return;
-    }
+// /**
+//  * Ensures Charisma and Rich are instructors in all courses in active-course-list.
+//  * Creates GlobalUser for them if needed, adds to instructors, CourseUser, and coursesEnrolled.
+//  */
+// async function ensureCharismaAndRichInAllCourses(instance: EngEAI_MongoDB): Promise<void> {
+//     const charismaPuid = process.env.CHARISMA_RUSDIYANTO_PUID?.trim();
+//     const richardPuid = process.env.RICHARD_TAPE_PUID?.trim();
+//     if (!charismaPuid && !richardPuid) {
+//         console.log('[INIT] CHARISMA_RUSDIYANTO_PUID and RICHARD_TAPE_PUID not set, skipping ensureCharismaAndRichInAllCourses');
+//         return;
+//     }
 
-    const courses = await instance.getAllActiveCourses();
-    if (courses.length === 0) {
-        console.log('[INIT] No courses in active-course-list, nothing to sync');
-        return;
-    }
+//     const courses = await instance.getAllActiveCourses();
+//     if (courses.length === 0) {
+//         console.log('[INIT] No courses in active-course-list, nothing to sync');
+//         return;
+//     }
 
-    let updatedCount = 0;
-    for (const course of courses) {
-        const courseData = course as unknown as activeCourse;
-        const courseId = courseData.id;
-        const courseName = courseData.courseName;
-        const existingInstructors = courseData.instructors || [];
+//     let updatedCount = 0;
+//     for (const course of courses) {
+//         const courseData = course as unknown as activeCourse;
+//         const courseId = courseData.id;
+//         const courseName = courseData.courseName;
+//         const existingInstructors = courseData.instructors || [];
 
-        const updatedInstructors = await addCharismaAndRichToCourse(
-            instance,
-            courseId,
-            courseName,
-            existingInstructors
-        );
+//         const updatedInstructors = await addCharismaAndRichToCourse(
+//             instance,
+//             courseId,
+//             courseName,
+//             existingInstructors
+//         );
 
-        if (updatedInstructors.length !== existingInstructors.length) {
-            await instance.updateActiveCourse(courseId, { instructors: updatedInstructors });
-            updatedCount++;
-        }
-    }
+//         if (updatedInstructors.length !== existingInstructors.length) {
+//             await instance.updateActiveCourse(courseId, { instructors: updatedInstructors });
+//             updatedCount++;
+//         }
+//     }
 
-    if (updatedCount > 0) {
-        console.log(`[INIT] Added Charisma and Rich to ${updatedCount} course(s)`);
-    } else {
-        console.log('[INIT] All courses already have Charisma and Rich, no updates needed');
-    }
-}
+//     if (updatedCount > 0) {
+//         console.log(`[INIT] Added Charisma and Rich to ${updatedCount} course(s)`);
+//     } else {
+//         console.log('[INIT] All courses already have Charisma and Rich, no updates needed');
+//     }
+// }
 
 /**
  * Drops instructor-allowed-courses, re-seeds with PUID schema, and ensures Charisma/Rich in all courses.
@@ -128,8 +128,8 @@ export async function initInstructorAllowedCourses(): Promise<void> {
             console.log(`[INIT] Created ${COLLECTION_NAME} collection with ${seedData.length} instructor mappings (PUID-based)`);
         }
 
-        // Ensure Charisma and Rich are in all initiated courses
-        await ensureCharismaAndRichInAllCourses(instance);
+        // // Ensure Charisma and Rich are in all initiated courses
+        // await ensureCharismaAndRichInAllCourses(instance);
     } catch (error) {
         console.error(`[INIT] Failed to initialize ${COLLECTION_NAME}:`, error);
         throw error;

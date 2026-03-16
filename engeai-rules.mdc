@@ -62,7 +62,7 @@ EngE-AI is an AI-powered study assistant for engineering courses at UBC. Student
 
 ### Frontend (`public/scripts/`)
 
-- **Types:** `types.ts` — Frontend type definitions. Self-contained; must NOT import from `src/`. Shared types are duplicated from `src/functions/types.ts` and kept in sync manually. Import from `./types.js` or `../types.js`.
+- **Types:** `types.ts` — Frontend type definitions. Self-contained; must NOT import from `src/`. Shared types are duplicated from `src/types/shared.ts` and kept in sync manually. Import from `./types.js` or `../types.js`.
 - **Entry points:** `entry/` — student-mode, instructor-mode, course-selection
 - **Features:** `feature/` — chat, documents, flags, monitor, assistant-prompts, system-prompts, course-information, student-flag-history, artefact, render-chat
 - **Services:** `services/` — auth-service, rag-service, document-upload-module, inactivity-tracker (kebab-case filenames)
@@ -73,20 +73,20 @@ EngE-AI is an AI-powered study assistant for engineering courses at UBC. Student
 - **Onboarding:** `onboarding/` — course-setup, document-setup, flag-setup, monitor-setup, student-onboarding
 - **Utilities:** `utils/` — url-parser
 
-**Related docs:** See `documentation/` for implementation details. For chat changes, check `documentation/ENDPOINT_ARCHITECTURE.md` and `src/functions/ChatApp.ts`.
+**Related docs:** See `documentation/` for implementation details. For chat changes, check `documentation/ENDPOINT_ARCHITECTURE.md` and `src/chat/chat-app.ts`.
 
 ### Backend (`src/`)
 
-- **Routes:** `auth`, `course-routes`, `chat-app`, `rag-routes`, `mongo-routes`, `course-entry`, `user-management`, `health`, `version`
-- **Core:** `EngEAI_MongoDB` (singleton), `ChatApp`, `RAGApp`, `rag-app.ts`
-- **Middleware:** `requireAuth`, `requireCourseRole`, `passport`, `session`
+- **Routes:** `route-auth`, `route-course`, `route-chat-app`, `route-rag`, `route-mongo`, `route-course-entry`, `route-user-management`, `route-health`, `route-version`
+- **Core:** `db/enge-ai-mongodb`, `chat/chat-app`, `rag/rag-app`
+- **Middleware:** `require-auth`, `require-course-role`, `passport`, `session`
 
 **Related docs:** `documentation/ENDPOINT_ARCHITECTURE.md` — routes, RBAC, API layout.
 
 ### Database (MongoDB)
 
 - **Collections:** `active-course-list`, `active-users`, per-course collections (users, flags, memory-agent)
-- **Core:** `EngEAI_MongoDB` in `src/functions/EngEAI_MongoDB.ts`
+- **Core:** `EngEAI_MongoDB` in `src/db/enge-ai-mongodb.ts`
 - **Data:** Courses, users, chats, flags, learning objectives, materials, system prompts
 
 ### Vector Database (Qdrant)
@@ -124,7 +124,7 @@ EngE-AI is an AI-powered study assistant for engineering courses at UBC. Student
 
 ### Discovery Step (Before Coding)
 
-**Frontend types rule:** `public/scripts/types.ts` must NOT import from backend (`src/`). Duplicate shared types and keep them in sync manually with `src/functions/types.ts`.
+**Frontend types rule:** `public/scripts/types.ts` must NOT import from backend (`src/`). Duplicate shared types and keep them in sync manually with `src/types/shared.ts`.
 
 1. Check frontend version: `public/scripts/frontend-version.ts`
 2. Check backend version: `src/utils/backend-version.ts`
@@ -139,7 +139,7 @@ EngE-AI is an AI-powered study assistant for engineering courses at UBC. Student
 2. Read backend-version.ts → "1.0.8"
 3. Read documentation/ENDPOINT_ARCHITECTURE.md → section 4.5 Chat
 4. Read public/scripts/feature/chat.ts, functions/chat-api.ts
-5. Read src/functions/ChatApp.ts, src/routes/chat-app.ts
+5. Read src/chat/chat-app.ts, src/routes/route-chat-app.ts
 6. If no doc for chat flow → create documentation/CHAT_FLOW.md
 ```
 
@@ -234,7 +234,7 @@ For styling tasks: suggest changes inside this tag only. Do not implement direct
 - **Singleton:** When only one instance is needed (e.g. `EngEAI_MongoDB`, `RAGApp`, `ArtefactHandler`), use a singleton pattern.
 - **camelCase** for variables, functions, methods; **PascalCase** for classes, interfaces, types.
 - **Interfaces:** Define in `types.ts`:
-  - **Backend:** `src/functions/types.ts`
+  - **Backend:** `src/types/shared.ts`
   - **Frontend:** `public/scripts/types.ts` (or equivalent; frontend may import from backend for shared types)
 - **Shared types:** For types used across frontend and backend (e.g. API request/response, `ChatMessage`, `FlagReport`), ensure both sides have the same data structure. Keep them in sync when changing.
 

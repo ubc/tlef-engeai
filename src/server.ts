@@ -2,21 +2,22 @@ import dotenv from 'dotenv';
 import express from 'express';
 import path from 'path';
 // import cors from 'cors';
-import chatAppRoutes from './routes/chat-app';
-import ragAppRoutes from './routes/rag-routes';
-import mongodbRoutes from './routes/mongo-routes';
-import healthRoutes from './routes/health';
-import versionRoutes from './routes/version';
-import authRoutes from './routes/auth';  // Import authentication routes
-import courseEntryRoutes from './routes/course-entry';  // Import course entry routes
-import userManagementRoutes from './routes/user-management';  // Import user management routes
-import courseRoutes from './routes/course-routes';  // Import course routes
+import chatAppRoutes from './routes/route-chat-app';
+import ragAppRoutes from './routes/route-rag';
+import mongodbRoutes from './routes/route-mongo';
+import healthRoutes from './routes/route-health';
+import versionRoutes from './routes/route-version';
+import onboardingRoutes from './routes/route-onboarding';
+import authRoutes from './routes/route-auth';  // Import authentication routes
+import courseEntryRoutes from './routes/route-course-entry';  // Import course entry routes
+import userManagementRoutes from './routes/route-user-management';  // Import user management routes
+import courseRoutes from './routes/route-course';  // Import course routes
 
 // Import SAML authentication middleware
 import sessionMiddleware from './middleware/session';
 import { passport } from './middleware/passport';
-import { EngEAI_MongoDB } from './functions/EngEAI_MongoDB';
-import { initInstructorAllowedCourses } from './functions/initInstructorAllowedCourses';
+import { EngEAI_MongoDB } from './db/enge-ai-mongodb';
+import { initInstructorAllowedCourses } from './helpers/init-instructor-allowed-courses';
 import { resolveAffiliation, isFacultyOverridePuid } from './utils/affiliation';
 
 dotenv.config();
@@ -203,6 +204,7 @@ app.use('/api/course', courseEntryRoutes);  // Course entry routes
 app.use('/api/user', userManagementRoutes);  // User management routes
 app.use('/api/health', healthRoutes);    // Health check routes
 app.use('/api/version', versionRoutes);  // Version endpoint for UI display
+app.use('/api/onboarding', onboardingRoutes);  // Onboarding demo routes (e.g. sample chat download)
 
 // Final 404 handler for any requests that do not match a route
 app.use((req: express.Request, res: express.Response) => {

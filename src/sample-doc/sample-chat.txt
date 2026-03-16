@@ -1,0 +1,39 @@
+========================================
+CHAT CONVERSATION EXPORT
+========================================
+
+Student: Lorem Ipsum Dolor 
+Student ID: 1c61ceb0dfdd
+Course: Test 1
+Chat ID: dcb6c3bf619b
+Chat Title: It s great that you re curious To help you
+Topic/Week: N/A
+Created: N/A
+========================================
+
+--- Messages ---
+
+Message 1:
+  Role: unknown
+  Content: [Empty]
+  Timestamp: 1772739340405
+
+Message 2:
+  Role: unknown
+  Content: [Empty]
+  Timestamp: 1772739515891
+
+Message 3:
+  Role: unknown
+  Content: [Empty]
+  Timestamp: 1772739515882
+
+Message 4:
+  Role: unknown
+  Content: [Empty]
+  Timestamp: 1772742166548
+
+Message 5:
+  Role: unknown
+  Content: [Empty]
+  Timestamp: 1772742166544

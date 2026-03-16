@@ -653,9 +653,6 @@ async function addDemoObjective(): Promise<void> {
     const newObjective: LearningObjective = {
         id: `obj-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         LearningObjective: learningObjective,
-        courseName: currentCourse.courseName,
-        topicOrWeekTitle: firstInstance.title,
-        itemTitle: firstItem.title,
         createdAt: new Date(),
         updatedAt: new Date()
     };

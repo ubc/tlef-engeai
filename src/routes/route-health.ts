@@ -1,10 +1,18 @@
 import { Router, Request, Response } from 'express';
-import { asyncHandler } from '../middleware/asyncHandler';
-import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
+import { asyncHandler } from '../middleware/async-handler';
+import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 
 const router = Router();
 
-// GET /api/health - Health check endpoint
+/**
+ * GET /
+ * Health check endpoint. Verifies MongoDB connection.
+ *
+ * @route GET /api/health
+ * @returns {object} { success: boolean, data?: { status, database, connectionState, timestamp }, error?: string }
+ * @response 200 - Healthy, database connected
+ * @response 503 - Database connection unhealthy
+ */
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();

@@ -6,13 +6,13 @@
  */
 
 import { RAGModule } from "ubc-genai-toolkit-rag";
-import { AppConfig, loadConfig } from "../routes/config";
+import { AppConfig, loadConfig } from "../utils/config";
 import { LoggerInterface } from "ubc-genai-toolkit-core";
 import { LLMModule } from "ubc-genai-toolkit-llm";
 import { DocumentParsingModule } from "ubc-genai-toolkit-document-parsing";
-import { AdditionalMaterial } from "./types";
-import { EngEAI_MongoDB } from "./EngEAI_MongoDB";
-import { IDGenerator } from "./unique-id-generator";
+import { AdditionalMaterial } from "../types/shared";
+import { EngEAI_MongoDB } from "../db/enge-ai-mongodb";
+import { IDGenerator } from "../utils/unique-id-generator";
 import path from "path";
 import fs from "fs";
 
@@ -400,6 +400,101 @@ export class RAGApp {
             });
             throw error;
         }
+    }
+
+    /**
+     * Update payload metadata for chunks matching the given filter.
+     * Uses Qdrant set_payload API for partial metadata update.
+     *
+     * @param filter - Metadata filter to find affected chunks (e.g. { courseName, topicOrWeekTitle })
+     * @param payloadUpdate - Payload fields to set (partial update)
+     * @returns Number of chunks updated
+     */
+    async updateChunkMetadata(
+        filter: Record<string, any>,
+        payloadUpdate: Record<string, any>
+    ): Promise<{ chunksUpdated: number }> {
+        try {
+            const chunks = await this.rag.getDocumentsByMetadata(filter);
+            if (!chunks || chunks.length === 0) {
+                this.logger.debug('[RAG UPDATE] No chunks found matching filter:', filter);
+                return { chunksUpdated: 0 };
+            }
+
+            const pointIds = chunks.map((doc: any) => doc.id);
+            const qdrantConfig = this.config.ragConfig.qdrantConfig;
+            if (!qdrantConfig?.url || !qdrantConfig?.collectionName) {
+                throw new Error('Qdrant config missing url or collectionName');
+            }
+
+            const baseUrl = qdrantConfig.url.replace(/\/$/, '');
+            const payloadUrl = `${baseUrl}/collections/${qdrantConfig.collectionName}/points/payload`;
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json',
+            };
+            if (qdrantConfig.apiKey) {
+                headers['api-key'] = qdrantConfig.apiKey;
+            }
+
+            const response = await fetch(payloadUrl, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    points: pointIds,
+                    payload: payloadUpdate,
+                    wait: true,
+                }),
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`Qdrant set_payload failed: ${response.status} ${errText}`);
+            }
+
+            this.logger.info('[RAG UPDATE] Successfully updated chunk metadata', {
+                filter,
+                payloadUpdate,
+                chunksUpdated: pointIds.length,
+            });
+            return { chunksUpdated: pointIds.length };
+        } catch (error) {
+            this.logger.error('[RAG UPDATE] Failed to update chunk metadata:', { filter, payloadUpdate, error: error as any });
+            throw error;
+        }
+    }
+
+    /**
+     * Update topic/week title in Qdrant chunk metadata when a division title is renamed.
+     *
+     * @param courseName - Course name
+     * @param oldTitle - Previous topic/week title
+     * @param newTitle - New topic/week title
+     */
+    async updateTopicOrWeekTitleInQdrant(courseName: string, oldTitle: string, newTitle: string): Promise<{ chunksUpdated: number }> {
+        return this.updateChunkMetadata(
+            { courseName, topicOrWeekTitle: oldTitle },
+            { topicOrWeekTitle: newTitle }
+        );
+    }
+
+    /**
+     * Update item title in Qdrant chunk metadata when a section title is renamed.
+     *
+     * @param courseName - Course name
+     * @param topicOrWeekTitle - Topic/week title (division) containing the item
+     * @param oldItemTitle - Previous item title
+     * @param newItemTitle - New item title
+     */
+    async updateItemTitleInQdrant(
+        courseName: string,
+        topicOrWeekTitle: string,
+        oldItemTitle: string,
+        newItemTitle: string
+    ): Promise<{ chunksUpdated: number }> {
+        return this.updateChunkMetadata(
+            { courseName, topicOrWeekTitle, itemTitle: oldItemTitle },
+            { itemTitle: newItemTitle }
+        );
     }
 
     /**

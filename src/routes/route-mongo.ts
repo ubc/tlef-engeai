@@ -31,15 +31,15 @@
  */
 
 import express, { Request, Response } from 'express';
-import { asyncHandler, asyncHandlerWithAuth } from '../middleware/asyncHandler';
-import { requireInstructorForCourseAPI, requireInstructorGlobal } from '../middleware/requireCourseRole';
-import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
-import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt, SystemPromptItem } from '../functions/types';
-import { IDGenerator } from '../functions/unique-id-generator';
+import { asyncHandler, asyncHandlerWithAuth } from '../middleware/async-handler';
+import { requireInstructorForCourseAPI, requireInstructorGlobal } from '../middleware/require-course-role';
+import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
+import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt, SystemPromptItem } from '../types/shared';
+import { IDGenerator } from '../utils/unique-id-generator';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import dotenv from 'dotenv';
-import { RAGApp } from '../functions/rag-app';
-import { addCharismaAndRichToCourse } from '../functions/instructor-helpers';
+import { RAGApp } from '../rag/rag-app';
+import { addCharismaAndRichToCourse } from '../helpers/instructor-helpers';
 
 const router = express.Router();
 export default router;
@@ -225,7 +225,24 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
 
 // Routes
 
-// POST /api/courses - Create a new course (REQUIRES AUTH - Instructors only)
+/**
+ * POST /
+ * Create a new course. Instructors only.
+ *
+ * @route POST /api/courses
+ * @param {string} courseName - Course name (body)
+ * @param {string} frameType - Frame type: "byWeek" or "byTopic" (body)
+ * @param {number} tilesNumber - Number of tiles (body)
+ * @param {array} instructors - Instructors array (body)
+ * @param {array} teachingAssistants - Teaching assistants array (body)
+ * @returns {object} { success: boolean, data?: activeCourse, message?: string, error?: string }
+ * @response 201 - Course created successfully
+ * @response 400 - Validation error (missing or invalid fields)
+ * @response 401 - User not authenticated
+ * @response 403 - Instructors only
+ * @response 409 - Course with this ID already exists
+ * @response 500 - Failed to create course
+ */
 router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -505,7 +522,15 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
     }
 }));
 
-// GET /api/courses/check-exists?name=X - Check if course exists (always 200, no 404)
+/**
+ * GET /check-exists
+ * Check if a course exists by name. Always returns 200.
+ *
+ * @route GET /api/courses/check-exists
+ * @param {string} [name] - Course name (query)
+ * @returns {object} { success: boolean, exists?: boolean }
+ * @response 200 - Success (exists: true if course found, false otherwise)
+ */
 router.get('/check-exists', asyncHandler(async (req: Request, res: Response) => {
     const courseName = req.query.name as string;
     if (!courseName || typeof courseName !== 'string') {
@@ -516,7 +541,16 @@ router.get('/check-exists', asyncHandler(async (req: Request, res: Response) => 
     return res.status(200).json({ success: true, exists: !!course });
 }));
 
-// GET /api/courses/allowed-for-instructor - Get allowed courses for current instructor (REQUIRES AUTH)
+/**
+ * GET /allowed-for-instructor
+ * Get courses allowed for the current instructor. Instructors only.
+ *
+ * @route GET /api/courses/allowed-for-instructor
+ * @returns {object} { success: boolean, allowedCourses?: string[], error?: string }
+ * @response 200 - Success
+ * @response 401 - Not authenticated
+ * @response 403 - Instructors only
+ */
 router.get('/allowed-for-instructor', requireInstructorGlobal, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const globalUser = (req.session as any).globalUser;
     if (!globalUser) {
@@ -656,8 +690,16 @@ router.delete('/clear-active-users', requireInstructorGlobal, asyncHandlerWithAu
 }));
 */
 
-// GET /api/courses - Get all courses or course by name (query param)
-// GET /api/courses?name=CHBE241 - Get course by name
+/**
+ * GET /
+ * Get all courses or a single course by name.
+ *
+ * @route GET /api/courses
+ * @param {string} [name] - Course name filter (query)
+ * @returns {object} { success: boolean, data?: activeCourse | activeCourse[], count?: number, error?: string }
+ * @response 200 - Success (data: single course if name provided, array if not; count when listing all)
+ * @response 404 - Course not found (when name provided)
+ */
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
     
@@ -691,7 +733,16 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     }
 }));
 
-// GET /api/courses/:id - Get course by ID (must be after /check-exists and /allowed-for-instructor)
+/**
+ * GET /:id
+ * Get a course by ID.
+ *
+ * @route GET /api/courses/:id
+ * @param {string} id - Course ID (path param)
+ * @returns {object} { success: boolean, data?: activeCourse, error?: string }
+ * @response 200 - Success
+ * @response 404 - Course not found
+ */
 router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
     const course = await instance.getActiveCourse(req.params.id);
@@ -709,7 +760,19 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
     });
 }));
 
-// PUT /api/courses/:id - Update course (REQUIRES AUTH - Instructors only)
+/**
+ * PUT /:id
+ * Update a course. Instructors only.
+ *
+ * @route PUT /api/courses/:id
+ * @param {string} id - Course ID (path param)
+ * @param {object} body - Update payload (body)
+ * @returns {object} { success: boolean, data?: activeCourse, message?: string, error?: string }
+ * @response 200 - Course updated successfully
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course not found
+ */
 router.put('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
     
@@ -733,7 +796,21 @@ router.put('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWith
     });
 }));
 
-// POST /api/courses/:courseId/instructors - Add instructor to course's instructors array
+/**
+ * POST /:courseId/instructors
+ * Add an instructor to a course's instructors array. Instructors only.
+ *
+ * @route POST /api/courses/:courseId/instructors
+ * @param {string} courseId - Course ID (path param)
+ * @param {object} body - Instructor data (body)
+ * @returns {object} { success: boolean, data?: object, message?: string, error?: string }
+ * @response 200 - Instructor added successfully
+ * @response 400 - Validation error
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course not found
+ * @response 500 - Failed to add instructor
+ */
 router.post('/:courseId/instructors', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { courseId } = req.params;
@@ -827,8 +904,19 @@ router.post('/:courseId/instructors', requireInstructorForCourseAPI(['params']),
     }
 }));
 
-// DELETE /api/courses/:id/restart-onboarding - Restart onboarding by deleting course and related collections, then recreating with empty defaults
-// NOTE: This route must come before the general /:id route to ensure proper matching
+/**
+ * DELETE /:id/restart-onboarding
+ * Restart onboarding by deleting course and related collections, then recreating with empty defaults. Instructors only.
+ *
+ * @route DELETE /api/courses/:id/restart-onboarding
+ * @param {string} id - Course ID (path param)
+ * @returns {object} { success: boolean, message?: string, data?: { courseId, courseName }, error?: string }
+ * @response 200 - Onboarding restarted successfully
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course not found
+ * @response 500 - Failed to restart onboarding
+ */
 router.delete('/:id/restart-onboarding', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
     
@@ -1026,7 +1114,18 @@ router.delete('/:id/remove', requireInstructorForCourseAPI(['paramsId']), asyncH
 }));
 */
 
-// DELETE /api/courses/:id - Delete course (REQUIRES AUTH - Instructors only)
+/**
+ * DELETE /:id
+ * Delete a course. Instructors only.
+ *
+ * @route DELETE /api/courses/:id
+ * @param {string} id - Course ID (path param)
+ * @returns {object} { success: boolean, message?: string, error?: string }
+ * @response 200 - Course deleted successfully
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course not found
+ */
 router.delete('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
     
@@ -1048,7 +1147,20 @@ router.delete('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerW
     });
 }));
 
-// POST /api/courses/:courseId/topic-or-week-instances - Add a new topic/week instance (REQUIRES AUTH)
+/**
+ * POST /:courseId/topic-or-week-instances
+ * Add a new topic/week instance to a course. Instructors only.
+ *
+ * @route POST /api/courses/:courseId/topic-or-week-instances
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} [title] - Instance title (body); defaults to "Week N" or "Topic N"
+ * @returns {object} { success: boolean, data?: TopicOrWeekInstance, message?: string, error?: string }
+ * @response 201 - Topic/Week instance added successfully
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course not found
+ * @response 500 - Failed to add topic/week instance
+ */
 router.post('/:courseId/topic-or-week-instances', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -1109,7 +1221,22 @@ router.post('/:courseId/topic-or-week-instances', requireInstructorForCourseAPI(
     }
 }));
 
-// POST /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items - Add a new content item (section) to a topic/week instance (REQUIRES AUTH)
+/**
+ * POST /:courseId/topic-or-week-instances/:topicOrWeekId/items
+ * Add a new content item (section) to a topic/week instance. Instructors only.
+ *
+ * @route POST /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {object} contentItem - Content item with title, learningObjectives, additionalMaterials (body)
+ * @returns {object} { success: boolean, data?: TopicOrWeekItem, message?: string, error?: string }
+ * @response 201 - Content item added successfully
+ * @response 400 - Valid content item title required
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course or topic/week instance not found
+ * @response 500 - Failed to add content item
+ */
 router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -1163,7 +1290,19 @@ router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items', requireIn
     }
 }));
 
-// GET /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives - Get learning objectives for a course item
+/**
+ * GET /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives
+ * Get learning objectives for a course content item.
+ *
+ * @route GET /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {string} itemId - Content item ID (path param)
+ * @returns {object} { success: boolean, data?: array, message?: string, error?: string }
+ * @response 200 - Learning objectives retrieved successfully
+ * @response 404 - Course, topic/week instance, or content item not found
+ * @response 500 - Failed to get learning objectives
+ */
 router.get('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives', asyncHandler(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -1209,7 +1348,22 @@ router.get('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/obje
     }
 }));
 
-// POST /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives - Add a learning objective (REQUIRES AUTH)
+/**
+ * POST /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives
+ * Add a learning objective to a content item. Instructors only.
+ *
+ * @route POST /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {string} itemId - Content item ID (path param)
+ * @param {object} learningObjective - Learning objective with LearningObjective text (body)
+ * @returns {object} { success: boolean, data?: object, message?: string, error?: string }
+ * @response 200 - Learning objective added successfully
+ * @response 400 - Missing or invalid learningObjective
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 500 - Failed to add learning objective
+ */
 router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         console.log('🎯 [BACKEND] Add learning objective request received');
@@ -1260,7 +1414,23 @@ router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/obj
     }
 }));
 
-// PUT /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId - Update a learning objective (REQUIRES AUTH)
+/**
+ * PUT /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId
+ * Update a learning objective. Instructors only.
+ *
+ * @route PUT /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {string} itemId - Content item ID (path param)
+ * @param {string} objectiveId - Learning objective ID (path param)
+ * @param {object} updateData - Update payload with LearningObjective text (body)
+ * @returns {object} { success: boolean, data?: object, message?: string, error?: string }
+ * @response 200 - Learning objective updated successfully
+ * @response 400 - Missing or invalid updateData
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 500 - Failed to update learning objective
+ */
 router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -1300,7 +1470,21 @@ router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/obje
     }
 }));
 
-// DELETE /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId - Delete a learning objective (REQUIRES AUTH)
+/**
+ * DELETE /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId
+ * Delete a learning objective. Instructors only.
+ *
+ * @route DELETE /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {string} itemId - Content item ID (path param)
+ * @param {string} objectiveId - Learning objective ID (path param)
+ * @returns {object} { success: boolean, data?: object, message?: string, error?: string }
+ * @response 200 - Learning objective deleted successfully
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 500 - Failed to delete learning objective
+ */
 router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         console.log('🗑️ [BACKEND] Delete learning objective request received');
@@ -1336,7 +1520,23 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/o
 // ========= FLAG REPORT ROUTES ============
 // ===========================================
 
-// POST /api/courses/:courseId/flags - Create a new flag report (REQUIRES AUTH)
+/**
+ * POST /:courseId/flags
+ * Create a new flag report for a course.
+ *
+ * @route POST /api/courses/:courseId/flags
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} flagType - Flag type: innacurate_response, harassment, inappropriate, dishonesty, interface bug, other (body)
+ * @param {string} reportType - Report type (body)
+ * @param {string} chatContent - Chat content being flagged (body)
+ * @param {string} userId - User ID (body)
+ * @returns {object} { success: boolean, message?: string, data?: { id, insertedId }, error?: string }
+ * @response 201 - Flag report created successfully
+ * @response 400 - Missing required fields or invalid flagType
+ * @response 401 - User not authenticated
+ * @response 404 - Course not found
+ * @response 500 - Failed to create flag report
+ */
 router.post('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -1411,7 +1611,19 @@ router.post('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: R
     }
 }));
 
-// GET /api/courses/:courseId/flags - Get all flag reports for a course (REQUIRES AUTH - Instructors only)
+/**
+ * GET /:courseId/flags
+ * Get all flag reports for a course. Instructors only.
+ *
+ * @route GET /api/courses/:courseId/flags
+ * @param {string} courseId - Course ID (path param)
+ * @returns {object} { success: boolean, data?: FlagReport[], count?: number, error?: string }
+ * @response 200 - Success
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course not found
+ * @response 500 - Failed to get flag reports
+ */
 router.get('/:courseId/flags', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -1442,7 +1654,19 @@ router.get('/:courseId/flags', requireInstructorForCourseAPI(['params']), asyncH
     }
 }));
 
-// GET /api/courses/:courseId/flags/with-names - Get flag reports with resolved user names (REQUIRES AUTH - Instructors only)
+/**
+ * GET /:courseId/flags/with-names
+ * Get flag reports with resolved user names for a course. Instructors only.
+ *
+ * @route GET /api/courses/:courseId/flags/with-names
+ * @param {string} courseId - Course ID (path param)
+ * @returns {object} { success: boolean, data?: array, count?: number, error?: string }
+ * @response 200 - Success
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course not found
+ * @response 500 - Failed to get flag reports with names
+ */
 router.get('/:courseId/flags/with-names', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -1477,7 +1701,19 @@ router.get('/:courseId/flags/with-names', requireInstructorForCourseAPI(['params
     }
 }));
 
-// GET /api/courses/:courseId/flags/:flagId - Get a specific flag report (REQUIRES AUTH - Instructors only)
+/**
+ * GET /:courseId/flags/:flagId
+ * Get a specific flag report by ID. Instructors only.
+ *
+ * @route GET /api/courses/:courseId/flags/:flagId
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} flagId - Flag report ID (path param)
+ * @returns {object} { success: boolean, data?: FlagReport, error?: string }
+ * @response 200 - Success
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course or flag report not found
+ */
 router.get('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -1514,7 +1750,23 @@ router.get('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params'])
     }
 }));
 
-// PUT /api/courses/:courseId/flags/:flagId - Update a flag report (REQUIRES AUTH - Instructors only)
+/**
+ * PUT /:courseId/flags/:flagId
+ * Update a flag report (status, response). Instructors only.
+ *
+ * @route PUT /api/courses/:courseId/flags/:flagId
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} flagId - Flag report ID (path param)
+ * @param {string} [status] - Status: "unresolved" or "resolved" (body)
+ * @param {string} [response] - Response text (body)
+ * @returns {object} { success: boolean, message?: string, data?: FlagReport, error?: string }
+ * @response 200 - Flag report updated successfully
+ * @response 400 - Invalid status or no valid fields to update
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course or flag report not found
+ * @response 500 - Failed to update flag report
+ */
 router.put('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -1581,7 +1833,22 @@ router.put('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params'])
     }
 }));
 
-// PATCH /api/courses/:courseId/flags/:flagId/response - Update response for resolved flags only (REQUIRES AUTH - Instructors only)
+/**
+ * PATCH /:courseId/flags/:flagId/response
+ * Update response text for a resolved flag only. Instructors only.
+ *
+ * @route PATCH /api/courses/:courseId/flags/:flagId/response
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} flagId - Flag report ID (path param)
+ * @param {string} [response] - Response text (body)
+ * @returns {object} { success: boolean, message?: string, data?: FlagReport, error?: string }
+ * @response 200 - Flag response updated successfully
+ * @response 400 - Can only update response for resolved flags
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course or flag report not found
+ * @response 500 - Failed to update flag response
+ */
 router.patch('/:courseId/flags/:flagId/response', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -1650,7 +1917,20 @@ router.patch('/:courseId/flags/:flagId/response', requireInstructorForCourseAPI(
     }
 }));
 
-// DELETE /api/courses/:courseId/flags/:flagId - Delete a flag report (REQUIRES AUTH - Instructors only)
+/**
+ * DELETE /:courseId/flags/:flagId
+ * Delete a flag report. Instructors only.
+ *
+ * @route DELETE /api/courses/:courseId/flags/:flagId
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} flagId - Flag report ID (path param)
+ * @returns {object} { success: boolean, message?: string, deletedCount?: number, error?: string }
+ * @response 200 - Flag report deleted successfully
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course or flag report not found
+ * @response 500 - Failed to delete flag report
+ */
 router.delete('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -1692,7 +1972,19 @@ router.delete('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params
     }
 }));
 
-// DELETE /api/courses/:courseId/flags - Delete all flag reports for a course (REQUIRES AUTH - Instructors only)
+/**
+ * DELETE /:courseId/flags
+ * Delete all flag reports for a course. Instructors only.
+ *
+ * @route DELETE /api/courses/:courseId/flags
+ * @param {string} courseId - Course ID (path param)
+ * @returns {object} { success: boolean, message?: string, deletedCount?: number, error?: string }
+ * @response 200 - All flag reports deleted successfully
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course not found
+ * @response 500 - Failed to delete flag reports
+ */
 router.delete('/:courseId/flags', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -1731,7 +2023,19 @@ router.delete('/:courseId/flags', requireInstructorForCourseAPI(['params']), asy
 // ========= DATABASE MANAGEMENT ROUTES =====
 // ===========================================
 
-// POST /api/courses/:courseId/flags/create-indexes - Create database indexes for flag collection (REQUIRES AUTH - Instructors only)
+/**
+ * POST /:courseId/flags/create-indexes
+ * Create database indexes for flag collection. Instructors only.
+ *
+ * @route POST /api/courses/:courseId/flags/create-indexes
+ * @param {string} courseId - Course ID (path param)
+ * @returns {object} { success: boolean, message?: string, data?: { indexesCreated, errors }, error?: string }
+ * @response 200 - Indexes created (success may be false if some failed)
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course not found
+ * @response 500 - Failed to create indexes
+ */
 router.post('/:courseId/flags/create-indexes', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -1769,7 +2073,19 @@ router.post('/:courseId/flags/create-indexes', requireInstructorForCourseAPI(['p
     }
 }));
 
-// GET /api/courses/:courseId/flags/validate - Validate flag collection integrity (REQUIRES AUTH - Instructors only)
+/**
+ * GET /:courseId/flags/validate
+ * Validate flag collection integrity. Instructors only.
+ *
+ * @route GET /api/courses/:courseId/flags/validate
+ * @param {string} courseId - Course ID (path param)
+ * @returns {object} { success: boolean, data?: object, error?: string }
+ * @response 200 - Validation result
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course not found
+ * @response 500 - Failed to validate flag collection
+ */
 router.get('/:courseId/flags/validate', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -1803,7 +2119,18 @@ router.get('/:courseId/flags/validate', requireInstructorForCourseAPI(['params']
     }
 }));
 
-// GET /api/courses/:courseId/flags/statistics - Get flag statistics (REQUIRES AUTH - Instructors only)
+/**
+ * GET /:courseId/flags/statistics
+ * Get flag statistics for a course.
+ *
+ * @route GET /api/courses/:courseId/flags/statistics
+ * @param {string} courseId - Course ID (path param)
+ * @returns {object} { success: boolean, data?: object, error?: string }
+ * @response 200 - Success
+ * @response 401 - User not authenticated
+ * @response 404 - Course not found
+ * @response 500 - Failed to get flag statistics
+ */
 router.get('/:courseId/flags/statistics', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -1837,7 +2164,19 @@ router.get('/:courseId/flags/statistics', asyncHandlerWithAuth(async (req: Reque
     }
 }));
 
-// GET /api/courses/:courseId/flags/student/:userId - Get flag reports for a specific student (REQUIRES AUTH - Student view)
+/**
+ * GET /:courseId/flags/student/:userId
+ * Get flag reports for a specific student in a course.
+ *
+ * @route GET /api/courses/:courseId/flags/student/:userId
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} userId - User ID (path param)
+ * @returns {object} { success: boolean, data?: FlagReport[], count?: number, error?: string }
+ * @response 200 - Success
+ * @response 401 - User not authenticated
+ * @response 404 - Course not found
+ * @response 500 - Failed to get student flag reports
+ */
 router.get('/:courseId/flags/student/:userId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -1879,7 +2218,22 @@ router.get('/:courseId/flags/student/:userId', asyncHandlerWithAuth(async (req: 
     }
 }));
 
-// DELETE /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/materials/:materialId - Delete a material (REQUIRES AUTH - Instructors only)
+/**
+ * DELETE /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/materials/:materialId
+ * Delete an additional material from a content item. Removes from MongoDB and Qdrant. Instructors only.
+ *
+ * @route DELETE /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/materials/:materialId
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {string} itemId - Content item ID (path param)
+ * @param {string} materialId - Material ID (path param)
+ * @returns {object} { success: boolean, message?: string, data?: { materialId, deleted, materialName, chunksDeleted }, error?: string }
+ * @response 200 - Material deleted successfully
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course, topic/week, item, or material not found
+ * @response 500 - Failed to delete material
+ */
 router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/materials/:materialId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { courseId, topicOrWeekId, itemId, materialId } = req.params;
@@ -1976,7 +2330,19 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
     }
 }));
 
-// DELETE /api/courses/:courseId/documents/all - Delete all RAG documents (REQUIRES AUTH - Instructors only)
+/**
+ * DELETE /:courseId/documents/all
+ * Delete all RAG documents for a course (Qdrant and MongoDB additionalMaterials). Instructors only.
+ *
+ * @route DELETE /api/courses/:courseId/documents/all
+ * @param {string} courseId - Course ID (path param)
+ * @returns {object} { success: boolean, message?: string, data?: { deletedCount, courseId }, error?: string }
+ * @response 200 - All documents deleted successfully
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course not found
+ * @response 500 - Failed to delete documents
+ */
 router.delete('/:courseId/documents/all', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { courseId } = req.params;
@@ -2055,7 +2421,21 @@ router.delete('/:courseId/documents/all', requireInstructorForCourseAPI(['params
 
 
 
-// PATCH /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/title - Update topic/week instance title (REQUIRES AUTH)
+/**
+ * PATCH /:courseId/topic-or-week-instances/:topicOrWeekId/title
+ * Update a topic/week instance title.
+ *
+ * @route PATCH /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/title
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {string} title - New title (body)
+ * @returns {object} { success: boolean, data?: TopicOrWeekInstance, message?: string, error?: string }
+ * @response 200 - Title updated successfully
+ * @response 400 - Invalid or empty title
+ * @response 401 - User not authenticated
+ * @response 404 - Course or topic/week instance not found
+ * @response 500 - Failed to update title
+ */
 router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -2106,6 +2486,8 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', asyncHan
             });
         }
         
+        const oldTitle = topicOrWeekInstance.title;
+        
         // Update the topic/week instance title
         topicOrWeekInstance.title = trimmedTitle;
         topicOrWeekInstance.updatedAt = new Date();
@@ -2114,6 +2496,17 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', asyncHan
         const updatedCourse = await instance.updateActiveCourse(courseId, {
             topicOrWeekInstances: course.topicOrWeekInstances
         });
+        
+        // Sync title change to Qdrant chunk metadata (non-blocking)
+        try {
+            const ragApp = await RAGApp.getInstance();
+            const result = await ragApp.updateTopicOrWeekTitleInQdrant(course.courseName, oldTitle, trimmedTitle);
+            if (result.chunksUpdated > 0) {
+                console.log(`✅ Qdrant: Updated topicOrWeekTitle in ${result.chunksUpdated} chunks`);
+            }
+        } catch (ragError) {
+            console.warn('Qdrant metadata sync failed (MongoDB update succeeded):', ragError);
+        }
         
         console.log(`✅ Topic/Week instance ${topicOrWeekId} title updated to "${trimmedTitle}"`);
         
@@ -2132,7 +2525,21 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', asyncHan
     }
 }));
 
-// PATCH /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/published - Update topic/week instance published status (REQUIRES AUTH)
+/**
+ * PATCH /:courseId/topic-or-week-instances/:topicOrWeekId/published
+ * Update a topic/week instance published status.
+ *
+ * @route PATCH /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/published
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {boolean} published - Published status (body)
+ * @returns {object} { success: boolean, data?: TopicOrWeekInstance, message?: string, error?: string }
+ * @response 200 - Published status updated successfully
+ * @response 400 - Published must be a boolean
+ * @response 401 - User not authenticated
+ * @response 404 - Course or topic/week instance not found
+ * @response 500 - Failed to update published status
+ */
 router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/published', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -2193,7 +2600,21 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/published', asyn
     }
 }));
 
-// DELETE /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId - Delete a topic/week instance (REQUIRES AUTH - Instructors only)
+/**
+ * DELETE /:courseId/topic-or-week-instances/:topicOrWeekId
+ * Delete a topic/week instance. At least one must remain. Instructors only.
+ *
+ * @route DELETE /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @returns {object} { success: boolean, data?: { deletedTopicOrWeekId, deletedDocuments, totalChunksDeleted }, message?: string, error?: string }
+ * @response 200 - Topic/week instance deleted successfully
+ * @response 400 - Cannot delete last instance
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course or topic/week instance not found
+ * @response 500 - Failed to delete topic/week instance
+ */
 router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -2279,7 +2700,22 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId', requireInstru
     }
 }));
 
-// PATCH /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/title - Update item title (REQUIRES AUTH)
+/**
+ * PATCH /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/title
+ * Update a content item title.
+ *
+ * @route PATCH /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/title
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {string} itemId - Content item ID (path param)
+ * @param {string} title - New title (body)
+ * @returns {object} { success: boolean, data?: TopicOrWeekItem, message?: string, error?: string }
+ * @response 200 - Item title updated successfully
+ * @response 400 - Invalid or empty title
+ * @response 401 - User not authenticated
+ * @response 404 - Course, topic/week, or item not found
+ * @response 500 - Failed to update item title
+ */
 router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
@@ -2340,6 +2776,8 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/ti
             });
         }
         
+        const oldItemTitle = item.title || item.itemTitle || '';
+        
         // Update the item title
         item.title = trimmedTitle;
         item.itemTitle = trimmedTitle;
@@ -2350,6 +2788,22 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/ti
         const updatedCourse = await instance.updateActiveCourse(courseId, {
             topicOrWeekInstances: course.topicOrWeekInstances
         });
+        
+        // Sync title change to Qdrant chunk metadata (non-blocking)
+        try {
+            const ragApp = await RAGApp.getInstance();
+            const result = await ragApp.updateItemTitleInQdrant(
+                course.courseName,
+                topicOrWeekInstance.title,
+                oldItemTitle,
+                trimmedTitle
+            );
+            if (result.chunksUpdated > 0) {
+                console.log(`✅ Qdrant: Updated itemTitle in ${result.chunksUpdated} chunks`);
+            }
+        } catch (ragError) {
+            console.warn('Qdrant metadata sync failed (MongoDB update succeeded):', ragError);
+        }
         
         console.log(`✅ Item ${itemId} title updated to "${trimmedTitle}"`);
         
@@ -2368,7 +2822,21 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/ti
     }
 }));
 
-// DELETE /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId - Delete a content item (section) (REQUIRES AUTH)
+/**
+ * DELETE /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId
+ * Delete a content item (section) from a topic/week instance. Cleans up RAG documents.
+ *
+ * @route DELETE /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {string} itemId - Content item ID (path param)
+ * @returns {object} { success: boolean, data?: { deletedItemId, topicOrWeekId, remainingItems, deletedDocuments, totalChunksDeleted }, message?: string, error?: string }
+ * @response 200 - Content item deleted successfully
+ * @response 400 - Missing required params
+ * @response 401 - User not authenticated
+ * @response 404 - Course, topic/week, or item not found
+ * @response 500 - Failed to delete content item
+ */
 router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         console.log('🗑️ [BACKEND] Delete content item request received');
@@ -2907,8 +3375,16 @@ router.post('/admin/reset-vector-database', asyncHandlerWithAuth(async (req: Req
 // ===========================================
 
 /**
- * GET /api/courses/monitor/:courseId/chat-titles - Get chat titles for all users (students and instructors) (REQUIRES AUTH - Instructors only)
- * Returns lightweight list of chat titles without full message history
+ * GET /monitor/:courseId/chat-titles
+ * Get chat titles for all users (students and instructors). Lightweight list without full message history.
+ *
+ * @route GET /api/courses/monitor/:courseId/chat-titles
+ * @param {string} courseId - Course ID (path param)
+ * @returns {object} { success: boolean, data?: array, count?: number, error?: string }
+ * @response 200 - Success
+ * @response 401 - User not authenticated
+ * @response 404 - Course not found
+ * @response 500 - Failed to get chat titles
  */
 router.get('/monitor/:courseId/chat-titles', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -2978,8 +3454,17 @@ router.get('/monitor/:courseId/chat-titles', asyncHandlerWithAuth(async (req: Re
 }));
 
 /**
- * GET /api/courses/monitor/:courseId/chat/:chatId/download - Download full conversation (REQUIRES AUTH - Instructors only)
- * Returns full chat conversation with all messages in hierarchical format
+ * GET /monitor/:courseId/chat/:chatId/download
+ * Download full chat conversation with all messages in hierarchical format.
+ *
+ * @route GET /api/courses/monitor/:courseId/chat/:chatId/download
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} chatId - Chat ID (path param)
+ * @returns {object} Plain text file download
+ * @response 200 - Success (Content-Type: text/plain, Content-Disposition: attachment)
+ * @response 401 - User not authenticated
+ * @response 404 - Course or chat not found
+ * @response 500 - Failed to download chat
  */
 router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
@@ -3079,7 +3564,18 @@ router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(asyn
 // ========= INITIAL ASSISTANT PROMPTS ======
 // ===========================================
 
-// GET /api/courses/:courseId/assistant-prompts - Get all prompts for course (REQUIRES AUTH - Instructors only)
+/**
+ * GET /:courseId/assistant-prompts
+ * Get all initial assistant prompts for a course. Instructors only.
+ *
+ * @route GET /api/courses/:courseId/assistant-prompts
+ * @param {string} courseId - Course ID (path param)
+ * @returns {object} { success: boolean, data?: InitialAssistantPrompt[], error?: string }
+ * @response 200 - Success
+ * @response 403 - Instructor access required or not in course
+ * @response 404 - Course not found
+ * @response 500 - Failed to get assistant prompts
+ */
 router.get('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const globalUser = (req.session as any).globalUser;
@@ -3143,6 +3639,7 @@ router.get('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Requ
         });
     }
 }));
+
 
 // ===========================================
 // ========= MEMORY AGENT (STRUGGLE WORDS) ===
@@ -3260,7 +3757,20 @@ router.delete('/:courseId/memory-agent/struggle-words', asyncHandlerWithAuth(asy
 */
 // END COMMENTED OUT: Struggle words endpoints
 
-// POST /api/courses/:courseId/assistant-prompts - Create new prompt (REQUIRES AUTH - Instructors only)
+/**
+ * POST /:courseId/assistant-prompts
+ * Create a new initial assistant prompt. Instructors only.
+ *
+ * @route POST /api/courses/:courseId/assistant-prompts
+ * @param {string} courseId - Course ID (path param)
+ * @param {object} body - Prompt data (body)
+ * @returns {object} { success: boolean, data?: InitialAssistantPrompt, error?: string }
+ * @response 201 - Prompt created successfully
+ * @response 400 - Validation error
+ * @response 403 - Instructor access required or not in course
+ * @response 404 - Course not found
+ * @response 500 - Failed to create prompt
+ */
 router.post('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const globalUser = (req.session as any).globalUser;
@@ -3345,7 +3855,21 @@ router.post('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Req
     }
 }));
 
-// PUT /api/courses/:courseId/assistant-prompts/:promptId - Update prompt (REQUIRES AUTH - Instructors only)
+/**
+ * PUT /:courseId/assistant-prompts/:promptId
+ * Update an initial assistant prompt. Instructors only.
+ *
+ * @route PUT /api/courses/:courseId/assistant-prompts/:promptId
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} promptId - Prompt ID (path param)
+ * @param {object} body - Update payload (body)
+ * @returns {object} { success: boolean, data?: InitialAssistantPrompt, error?: string }
+ * @response 200 - Prompt updated successfully
+ * @response 400 - Validation error
+ * @response 403 - Instructor access required or not in course
+ * @response 404 - Course or prompt not found
+ * @response 500 - Failed to update prompt
+ */
 router.put('/:courseId/assistant-prompts/:promptId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const globalUser = (req.session as any).globalUser;
@@ -3424,7 +3948,20 @@ router.put('/:courseId/assistant-prompts/:promptId', asyncHandlerWithAuth(async 
     }
 }));
 
-// DELETE /api/courses/:courseId/assistant-prompts/:promptId - Delete prompt (REQUIRES AUTH - Instructors only)
+/**
+ * DELETE /:courseId/assistant-prompts/:promptId
+ * Delete an initial assistant prompt. Instructors only.
+ *
+ * @route DELETE /api/courses/:courseId/assistant-prompts/:promptId
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} promptId - Prompt ID (path param)
+ * @returns {object} { success: boolean, message?: string, error?: string }
+ * @response 200 - Prompt deleted successfully
+ * @response 400 - Cannot delete active prompt
+ * @response 403 - Instructor access required or not in course
+ * @response 404 - Course or prompt not found
+ * @response 500 - Failed to delete prompt
+ */
 router.delete('/:courseId/assistant-prompts/:promptId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const globalUser = (req.session as any).globalUser;
@@ -3485,7 +4022,19 @@ router.delete('/:courseId/assistant-prompts/:promptId', asyncHandlerWithAuth(asy
     }
 }));
 
-// POST /api/courses/:courseId/assistant-prompts/:promptId/select - Select prompt as active (REQUIRES AUTH - Instructors only)
+/**
+ * POST /:courseId/assistant-prompts/:promptId/select
+ * Select a prompt as the active initial assistant prompt. Instructors only.
+ *
+ * @route POST /api/courses/:courseId/assistant-prompts/:promptId/select
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} promptId - Prompt ID (path param)
+ * @returns {object} { success: boolean, data?: object, error?: string }
+ * @response 200 - Prompt selected successfully
+ * @response 403 - Instructor access required or not in course
+ * @response 404 - Course or prompt not found
+ * @response 500 - Failed to select prompt
+ */
 router.post('/:courseId/assistant-prompts/:promptId/select', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const globalUser = (req.session as any).globalUser;
@@ -3555,7 +4104,18 @@ router.post('/:courseId/assistant-prompts/:promptId/select', asyncHandlerWithAut
 // ========= SYSTEM PROMPT ITEMS API ========
 // ===========================================
 
-// GET /api/courses/:courseId/system-prompts - Get all system prompt items (REQUIRES AUTH - Instructors only)
+/**
+ * GET /:courseId/system-prompts
+ * Get all system prompt items for a course. Instructors only.
+ *
+ * @route GET /api/courses/:courseId/system-prompts
+ * @param {string} courseId - Course ID (path param)
+ * @returns {object} { success: boolean, data?: SystemPromptItem[], error?: string }
+ * @response 200 - Success
+ * @response 403 - Instructor access required or not in course
+ * @response 404 - Course not found
+ * @response 500 - Failed to get system prompts
+ */
 router.get('/:courseId/system-prompts', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const globalUser = (req.session as any).globalUser;
@@ -3620,7 +4180,20 @@ router.get('/:courseId/system-prompts', asyncHandlerWithAuth(async (req: Request
     }
 }));
 
-// POST /api/courses/:courseId/system-prompts - Create new system prompt item (REQUIRES AUTH - Instructors only)
+/**
+ * POST /:courseId/system-prompts
+ * Create a new system prompt item. Instructors only.
+ *
+ * @route POST /api/courses/:courseId/system-prompts
+ * @param {string} courseId - Course ID (path param)
+ * @param {object} body - System prompt item data (body)
+ * @returns {object} { success: boolean, data?: SystemPromptItem, error?: string }
+ * @response 201 - System prompt item created successfully
+ * @response 400 - Validation error
+ * @response 403 - Instructor access required or not in course
+ * @response 404 - Course not found
+ * @response 500 - Failed to create system prompt item
+ */
 router.post('/:courseId/system-prompts', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const globalUser = (req.session as any).globalUser;
@@ -3706,7 +4279,21 @@ router.post('/:courseId/system-prompts', asyncHandlerWithAuth(async (req: Reques
     }
 }));
 
-// PUT /api/courses/:courseId/system-prompts/:itemId - Update system prompt item (REQUIRES AUTH - Instructors only)
+/**
+ * PUT /:courseId/system-prompts/:itemId
+ * Update a system prompt item. Instructors only.
+ *
+ * @route PUT /api/courses/:courseId/system-prompts/:itemId
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} itemId - System prompt item ID (path param)
+ * @param {object} body - Update payload (body)
+ * @returns {object} { success: boolean, data?: SystemPromptItem, error?: string }
+ * @response 200 - System prompt item updated successfully
+ * @response 400 - Validation error
+ * @response 403 - Instructor access required or not in course
+ * @response 404 - Course or item not found
+ * @response 500 - Failed to update system prompt item
+ */
 router.put('/:courseId/system-prompts/:itemId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const globalUser = (req.session as any).globalUser;
@@ -3785,7 +4372,19 @@ router.put('/:courseId/system-prompts/:itemId', asyncHandlerWithAuth(async (req:
     }
 }));
 
-// DELETE /api/courses/:courseId/system-prompts/:itemId - Delete system prompt item (REQUIRES AUTH - Instructors only)
+/**
+ * DELETE /:courseId/system-prompts/:itemId
+ * Delete a system prompt item. Instructors only.
+ *
+ * @route DELETE /api/courses/:courseId/system-prompts/:itemId
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} itemId - System prompt item ID (path param)
+ * @returns {object} { success: boolean, message?: string, error?: string }
+ * @response 200 - System prompt item deleted successfully
+ * @response 403 - Instructor access required or not in course
+ * @response 404 - Course or item not found
+ * @response 500 - Failed to delete system prompt item
+ */
 router.delete('/:courseId/system-prompts/:itemId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const globalUser = (req.session as any).globalUser;
@@ -3856,7 +4455,19 @@ router.delete('/:courseId/system-prompts/:itemId', asyncHandlerWithAuth(async (r
     }
 }));
 
-// POST /api/courses/:courseId/system-prompts/:itemId/append - Toggle append status (REQUIRES AUTH - Instructors only)
+/**
+ * POST /:courseId/system-prompts/:itemId/append
+ * Toggle append status for a system prompt item. Instructors only.
+ *
+ * @route POST /api/courses/:courseId/system-prompts/:itemId/append
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} itemId - System prompt item ID (path param)
+ * @returns {object} { success: boolean, data?: SystemPromptItem, error?: string }
+ * @response 200 - Append status toggled successfully
+ * @response 403 - Instructor access required or not in course
+ * @response 404 - Course or item not found
+ * @response 500 - Failed to toggle append status
+ */
 router.post('/:courseId/system-prompts/:itemId/append', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const globalUser = (req.session as any).globalUser;
@@ -3931,7 +4542,20 @@ router.post('/:courseId/system-prompts/:itemId/append', asyncHandlerWithAuth(asy
     }
 }));
 
-// POST /api/courses/:courseId/system-prompts/save-changes - Save multiple append status changes (REQUIRES AUTH - Instructors only)
+/**
+ * POST /:courseId/system-prompts/save-changes
+ * Save multiple append status changes for system prompt items. Instructors only.
+ *
+ * @route POST /api/courses/:courseId/system-prompts/save-changes
+ * @param {string} courseId - Course ID (path param)
+ * @param {object} body - Array of items with append status changes (body)
+ * @returns {object} { success: boolean, data?: object, error?: string }
+ * @response 200 - Changes saved successfully
+ * @response 400 - Validation error
+ * @response 403 - Instructor access required or not in course
+ * @response 404 - Course not found
+ * @response 500 - Failed to save changes
+ */
 router.post('/:courseId/system-prompts/save-changes', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const globalUser = (req.session as any).globalUser;

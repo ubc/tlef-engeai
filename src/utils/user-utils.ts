@@ -8,7 +8,7 @@
  * @since: 2025-01-27
  */
 
-import { GlobalUser } from './types';
+import { GlobalUser } from '../types/shared';
 
 /**
  * Sanitize GlobalUser object for frontend responses

@@ -1,4 +1,36 @@
-// public/scripts/feature/artefact.ts
+// src/chat/chat-app.ts
+
+
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { LoggerInterface } from 'ubc-genai-toolkit-core';
+import { LLMModule, Message } from 'ubc-genai-toolkit-llm';
+import { AppConfig } from '../utils/config';
+import { RAGModule, RetrievedChunk } from 'ubc-genai-toolkit-rag';
+import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
+import { IDGenerator } from '../utils/unique-id-generator';
+import { ChatMessage, LearningObjectiveForDisplay, TopicOrWeekInstance, TopicOrWeekItem, activeCourse, DEFAULT_PROMPT_ID, SystemPromptItem } from '../types/shared';
+import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
+import { 
+    getSystemPrompt, 
+    getInitialAssistantMessage, 
+    formatRAGPrompt,
+    INITIAL_ASSISTANT_MESSAGE
+} from './chat-prompts';
+import { memoryAgent } from '../memory-agent/memory-agent';
+import { isDeveloperMode, generateMockStreamingResponse } from '../helpers/developer-mode';
+
+/**
+ * Interface for initializing a new chat conversation
+ */
+export interface initChatRequest {
+    userID: string;
+    courseName: string;
+    date: Date;
+    chatId: string;
+    initAssistantMessage: ChatMessage;
+}
+
 
 /**
  * ChatApp Class
@@ -17,40 +49,10 @@
  * 
  * @author: EngE-AI Team
  * @version: 2.0.0
- * @since: 2025-01-27
+ * @since: 2026-03-16
  */
-
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { LoggerInterface } from 'ubc-genai-toolkit-core';
-import { LLMModule, Message } from 'ubc-genai-toolkit-llm';
-import { AppConfig } from '../routes/config';
-import { RAGModule, RetrievedChunk } from 'ubc-genai-toolkit-rag';
-import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
-import { IDGenerator } from './unique-id-generator';
-import { ChatMessage, LearningObjective, TopicOrWeekInstance, TopicOrWeekItem, activeCourse, DEFAULT_PROMPT_ID, SystemPromptItem } from './types';
-import { EngEAI_MongoDB } from './EngEAI_MongoDB';
-import { 
-    getSystemPrompt, 
-    getInitialAssistantMessage, 
-    formatRAGPrompt,
-    INITIAL_ASSISTANT_MESSAGE
-} from './chat-prompts';
-import { memoryAgent } from '../memory-agent/memory-agent';
-import { isDeveloperMode, generateMockStreamingResponse } from './developer-mode';
-
-/**
- * Interface for initializing a new chat conversation
- */
-export interface initChatRequest {
-    userID: string;
-    courseName: string;
-    date: Date;
-    chatId: string;
-    initAssistantMessage: ChatMessage;
-}
-
 export class ChatApp {
+
     private llmModule: LLMModule;
     private ragModule: RAGModule | null = null;
     private logger: LoggerInterface;
@@ -416,10 +418,9 @@ export class ChatApp {
         let context = '\n\n<course_materials>\n';
         
         documents.forEach((doc, index) => {
-            context += `\n--- Document ${index + 1} ---\n`;
-            
-            // Parse metadata safely - extract only chapter and learning objectives
+            // Parse metadata safely - extract chapter, item title, and learning objectives
             let chapter = '';
+            let itemTitle = '';
             let learningObjectives: any[] = [];
             
             try {
@@ -431,8 +432,9 @@ export class ChatApp {
                     metadataObj = doc.metadata;
                 }
                 
-                // Extract chapter (topicOrWeekTitle)
+                // Extract topic/week (chapter) and item title
                 chapter = metadataObj.topicOrWeekTitle || '';
+                itemTitle = metadataObj.itemTitle || '';
                 
                 // Extract learning objectives
                 if (metadataObj.learningObjectives && Array.isArray(metadataObj.learningObjectives)) {
@@ -443,10 +445,18 @@ export class ChatApp {
                 // Continue with empty values if parsing fails
             }
             
-            // Build formatted content with chapter and learning objectives BEFORE content
-            if (chapter) {
-                context += `chapter: ${chapter}\n`;
-            }
+            // Format document header as "[Document N] [Module 1 - Part 1]" using topic/week and item title
+            const docNum = index + 1;
+            const modulePartLabel = chapter && itemTitle
+                ? `[${chapter} - ${itemTitle}]`
+                : chapter || itemTitle || null;
+            const headerLabel = modulePartLabel ? `[Document ${docNum}] ${modulePartLabel}` : `[Document ${docNum}]`;
+            context += `\n--- ${headerLabel} ---\n`;
+            
+            // // Build formatted content with chapter and learning objectives BEFORE content
+            // if (chapter) {
+            //     context += `chapter: ${chapter}\n`;
+            // }
             
             if (learningObjectives.length > 0) {
                 context += `learningObjectives:\n`;
@@ -469,6 +479,8 @@ export class ChatApp {
         // console.log(`DEBUG #287: Formatted documents for context: ${context}`);
         return context;
     }
+
+
     /**
      * Send a user message and get response from LLM with RAG context
      * 
@@ -771,6 +783,14 @@ export class ChatApp {
         return assistantMessage;
     }
 
+    /**
+     * this method initializes a new conversation for a user
+     * 
+     * @param userID - The user ID
+     * @param courseName - The course name
+     * @param date - The date of the chat
+     * @returns The initial chat request
+     */
     public async initializeConversation(userID: string, courseName: string, date: Date): Promise<initChatRequest> {
         //create chatID from the user ID
         const chatId = this.chatIDGenerator.chatID(userID, courseName, date);
@@ -824,6 +844,11 @@ export class ChatApp {
 
     /**
      * this method directly add the Default System Message to the conversation
+     * 
+     * @param chatId - The chat ID
+     * @param courseName - The course name
+     * @param struggleTopics - The struggle topics
+     * @returns void
      */
     private async addDefaultSystemMessage(chatId: string, courseName?: string, struggleTopics?: string[]): Promise<void> {
         const conversation = this.conversations.get(chatId);
@@ -833,7 +858,7 @@ export class ChatApp {
         
         // Retrieve base prompt, learning objectives, and appended items for the course
         let baseSystemPrompt: string | undefined;
-        let learningObjectives: LearningObjective[] = [];
+        let learningObjectives: LearningObjectiveForDisplay[] = [];
         let appendedSystemPromptItems: SystemPromptItem[] = [];
         
         if (courseName) {
@@ -1236,7 +1261,7 @@ export class ChatApp {
             
             // Add system message first (same as in initializeConversation)
             // Retrieve learning objectives for the course
-            let learningObjectives: LearningObjective[] = [];
+            let learningObjectives: LearningObjectiveForDisplay[] = [];
             try {
                 const course = await mongoDB.getCourseByName(courseName);
                 if (course && course.id) {

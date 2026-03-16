@@ -1,55 +1,134 @@
-# TLEF ENGE-AI
+# TLEF ENGE AI
 
-This is a template Node.js application.
+![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
+![Express](https://img.shields.io/badge/Express-5.1-000000?logo=express&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-6.3-47A248?logo=mongodb&logoColor=white)
+![Qdrant](https://img.shields.io/badge/Qdrant-Vector%20DB-2B9B3F?logo=qdrant&logoColor=white)
+![Passport](https://img.shields.io/badge/Passport-SAML%2FCWL-34E27A?logo=passport&logoColor=white)
 
-## Local set up
 
-1. Clone this repo locally
+<!-- ![EngE AI wallpaper](assets/engeai-wallpaper.jpg) -->
 
-```
-git clone https://github.com/ubc/tlef-engeai.git
-```
 
-2. Install dependencies.
 
-Change into the directory created with the above install and then run
+EngE-AI is an AI-powered learning assistant for UBC Engineering courses which emphasizes on developing student's critical thinking.
+---
 
-```
-npm install
-```
+## Features
 
-## Configuration
+### Instructor
+- Course creation and management
+- Document upload (PDF, DOCX) for RAG
+- Learning objectives and materials
+- Flags management and responses
+- Student chat monitoring
+- Assistant and system prompts configuration
 
-Before running the application, you need to create a `.env` file in the root of the project. This file is used for local configuration and is not committed to version control.
+### Student
+- Course-aware AI chat
+- Flag creation ("I'm struggling")
+- Flag history
+- Access to course materials and objectives
 
-Create a file named `.env` at the root of this project and add the following content:
+### Technical
+- Vector search (Qdrant)
+- Streaming chat responses
+- Session-based authentication
+- MongoDB for courses and users
+- Custom UBC Shibboleth SAML 2.0 authentication strategy for Passport.js
 
-```
-TLEF_ENGE_AI_PORT=8020
-```
+---
 
-## Development
+## Recent Update
 
-To run the application in development mode, run the following command:
+<!-- Add recent changes here -->
 
-```bash
-npm run dev
-```
+---
 
-This will start the Node.js server with `nodemon` for backend reloading and also launch `BrowserSync`. BrowserSync will automatically open a new tab in your browser. Use the URL it provides for development.
+## How to Set It Up
 
-Any changes to frontend files in the `public` directory will cause the browser to reload automatically. Changes to backend files in the `src` directory will cause the server to restart.
+### Prerequisites
 
-## Production
+- **Node.js** (v18+)
+- **MongoDB** (running and accessible)
+- **Qdrant** (vector database)
+- **LLM endpoint** (e.g. Ollama or other provider)
+- **SAML** (optional): IdP metadata, issuer, callback URL for CWL auth. For local development, use [docker-simple-saml](https://github.com/ubc/docker-simple-saml) as a containerized IdP.
 
-To run the application in production mode, use the following command:
+### Setup Steps
 
-```bash
-npm start
-```
+1. Clone the repo:
 
-We will have an environment file in staging and production. This will allow us to keep our local, staging, and production code bases consistent but have a place to put secrets, or URLs to different services. i.e. Locally, you will have a 'fake cwl' service running that runs on a localhost URL and there are Staging and Production CWL services that run on different URLs. So the URL for the authentication end points should be something we keep in our environment files such that each environment knows where to go.
+   ```bash
+   git clone https://github.com/ubc/tlef-engeai.git
+   cd tlef-engeai
+   ```
+
+2. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+3. Create a `.env` file in the project root (see Environment Variables below).
+
+4. Run the application:
+   - **Development:** `npm run dev` (nodemon + BrowserSync)
+   - **Production:** `npm start`
+
+### Environment Variables
+
+| Group | Variables |
+|-------|-----------|
+| **Server** | `TLEF_ENGE_AI_PORT` (default 8020) |
+| **MongoDB** | `MONGO_HOST`, `MONGO_PORT`, `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_AUTH_SOURCE`, `MONGO_DB_NAME` |
+| **Qdrant** | `QDRANT_URL`, `QDRANT_COLLECTION_NAME`, `QDRANT_VECTOR_SIZE`, `QDRANT_DISTANCE_METRIC`, `QDRANT_API_KEY` (optional) |
+| **LLM** | `LLM_PROVIDER`, `LLM_ENDPOINT`, `LLM_DEFAULT_MODEL`, `LLM_API_KEY` |
+| **Embeddings** | `EMBEDDING_PROVIDER`, `EMBEDDINGS_ENDPOINT`, `EMBEDDINGS_MODEL` |
+| **RAG** | `RAG_CHUNK_SIZE`, `RAG_OVERLAP_SIZE`, `RAG_CHUNKING_STRATEGY`, `RAG_MIN_CHUNK_SIZE` |
+| **SAML** | `SAML_AVAILABLE`, `SAML_ISSUER`, `SAML_CALLBACK_URL`, `SAML_ENTRY_POINT`, `SAML_LOGOUT_URL`, `SAML_METADATA_URL`, `SAML_ENVIRONMENT` |
+| **Session** | `SESSION_SECRET`, `SESSION_TIMEOUT_MS` |
+| **Optional** | `DEBUG`, `DEVELOPING_MODE` (mock LLM), instructor PUID overrides |
+
+---
+
+## Teams
+
+| Role | Name |
+|------|------|
+| Principal Investigator | [Alireza Bagherzadeh](https://chbe.ubc.ca/s-alireza-bagherzadeh/) — Associate Professor of Teaching, CHBE |
+| Co-Investigator | [Amir M. Dehkhoda](https://mtrl.ubc.ca/amir-m-dehkhoda/) — Assistant Professor of Teaching, Materials Engineering |
+| Software Developer | [Richard Tape](https://ctlt.ubc.ca/2022/11/15/richard-tape/) |
+| Software Developer | Charisma Rusdiyanto |
+
+---
+
+## How to Contribute
+
+1. Fork the repo
+2. Create a feature branch
+3. Follow existing code style (TypeScript, Express patterns)
+4. Submit a pull request
+
+For API reference, see [documentation/ENDPOINT_ARCHITECTURE.md](documentation/ENDPOINT_ARCHITECTURE.md).
+
+---
+
+## Documentation
+
+- [Endpoint Architecture](documentation/ENDPOINT_ARCHITECTURE.md)
+- [Responsive Design](documentation/RESPONSIVE_DESIGN.md)
+- [docker-simple-saml](https://github.com/ubc/docker-simple-saml) — Containerized SAML 2.0 IdP for local development
+
+---
 
 ## Continuous Integration
 
 Pushing to the main branch in this repo will trigger a deploy automatically to the staging server.
+
+---
+
+## License
+
+ISC

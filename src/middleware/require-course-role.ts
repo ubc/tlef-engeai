@@ -6,7 +6,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { EngEAI_MongoDB } from '../functions/EngEAI_MongoDB';
+import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 
 type CourseIdSource = 'params' | 'paramsId' | 'body' | 'query' | 'session';
 
