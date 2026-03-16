@@ -2,7 +2,7 @@
  * types.ts
  * @author: @gatahcha
  * @date: 2025-03-05
- * @latest frontend version: 1.0.6
+ * @latest app version: 1.2.9.9
  * @description: Frontend type definitions. Self-contained; must NOT import from src/.
  * Keep in sync manually with src/types/shared.ts when shared types change.
  */

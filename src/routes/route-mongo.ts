@@ -40,6 +40,7 @@ import { memoryAgent } from '../memory-agent/memory-agent';
 import dotenv from 'dotenv';
 import { RAGApp } from '../rag/rag-app';
 import { addCharismaAndRichToCourse } from '../helpers/instructor-helpers';
+import { appLogger } from '../utils/logger';
 
 const router = express.Router();
 export default router;
@@ -150,7 +151,7 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
     const course = req.body as activeCourse;
     
     if (!course) {
-        console.log("🔴 Request body is required");
+        appLogger.log("🔴 Request body is required");
         return res.status(400).json({
             success: false,
             error: 'Request body is required'
@@ -158,7 +159,7 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
     }
 
     if (!course.courseName || typeof course.courseName !== 'string' || course.courseName.trim() === '') {
-        console.log("🔴 Course name is required and must be a non-empty string");
+        appLogger.log("🔴 Course name is required and must be a non-empty string");
         return res.status(400).json({
             success: false,
             error: 'Course name is required and must be a non-empty string'
@@ -166,7 +167,7 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
     }
 
     if (!course.frameType || !['byWeek', 'byTopic'].includes(course.frameType)) {
-        console.log("🔴 Frame type is required and must be either \"byWeek\" or \"byTopic\"");
+        appLogger.log("🔴 Frame type is required and must be either \"byWeek\" or \"byTopic\"");
         return res.status(400).json({
             success: false,
             error: 'Frame type is required and must be either "byWeek" or "byTopic"'
@@ -174,7 +175,7 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
     }
 
     if (!course.tilesNumber || typeof course.tilesNumber !== 'number' || course.tilesNumber <= 0) {
-        console.log("🔴 Tiles number is required and must be a positive number");
+        appLogger.log("🔴 Tiles number is required and must be a positive number");
         return res.status(400).json({
             success: false,
             error: 'Tiles number is required and must be a positive number'
@@ -183,7 +184,7 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
 
     // Instructors can be empty - backend adds the authenticated creator as instructor
     if (!course.instructors || !Array.isArray(course.instructors)) {
-        console.log("🔴 Instructors must be an array");
+        appLogger.log("🔴 Instructors must be an array");
         return res.status(400).json({
             success: false,
             error: 'Instructors must be an array'
@@ -191,7 +192,7 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
     }
 
     if (!course.teachingAssistants || !Array.isArray(course.teachingAssistants)) {
-        console.log("🔴 Teaching assistants must be an array");
+        appLogger.log("🔴 Teaching assistants must be an array");
         return res.status(400).json({
             success: false,
             error: 'Teaching assistants must be an array'
@@ -200,7 +201,7 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
 
     // Accept Date object or date string (from JSON)
     if (!course.date) {
-        console.log("🔴 Date is required");
+        appLogger.log("🔴 Date is required");
         return res.status(400).json({
             success: false,
             error: 'Date is required'
@@ -212,7 +213,7 @@ const validateNewCourse = (req: Request, res: Response, next: Function) => {
         if (typeof course.date === 'string') {
             course.date = new Date(course.date);
         } else {
-            console.log("🔴 Date must be a Date object or valid date string");
+            appLogger.log("🔴 Date must be a Date object or valid date string");
             return res.status(400).json({
                 success: false,
                 error: 'Date must be a Date object or valid date string'
@@ -420,7 +421,7 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
                 userId: creatorUserId,
                 name: creatorName
             });
-            console.log(`[CREATE-COURSE] Added course creator ${creatorName} (${creatorUserId}) to instructors array`);
+            appLogger.log(`[CREATE-COURSE] Added course creator ${creatorName} (${creatorUserId}) to instructors array`);
         }
 
         let courseData: activeCourse = {
@@ -464,12 +465,12 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
                 };
                 
                 await instance.createStudent(courseName, newCourseUserData);
-                console.log(`[CREATE-COURSE] Created CourseUser entry for creator ${creatorName} (${creatorUserId}) in ${collectionNames.users}`);
+                appLogger.log(`[CREATE-COURSE] Created CourseUser entry for creator ${creatorName} (${creatorUserId}) in ${collectionNames.users}`);
             } else {
-                console.log(`[CREATE-COURSE] CourseUser entry already exists for creator ${creatorName} (${creatorUserId})`);
+                appLogger.log(`[CREATE-COURSE] CourseUser entry already exists for creator ${creatorName} (${creatorUserId})`);
             }
         } catch (courseUserError) {
-            console.error(`[CREATE-COURSE] ⚠️ Error creating CourseUser for creator:`, courseUserError);
+            appLogger.error(`[CREATE-COURSE] ⚠️ Error creating CourseUser for creator:`, { error: courseUserError });
             // Continue even if CourseUser creation fails - course is already created
         }
 
@@ -477,10 +478,10 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
         try {
             if (!globalUser.coursesEnrolled.includes(id)) {
                 await instance.addCourseToGlobalUser(globalUser.puid, id);
-                console.log(`[CREATE-COURSE] Added course ${id} to creator's enrolled list`);
+                appLogger.log(`[CREATE-COURSE] Added course ${id} to creator's enrolled list`);
             }
         } catch (enrollmentError) {
-            console.error(`[CREATE-COURSE] ⚠️ Error adding course to creator's enrolled list:`, enrollmentError);
+            appLogger.error(`[CREATE-COURSE] ⚠️ Error adding course to creator's enrolled list:`, { error: enrollmentError });
             // Continue even if enrollment fails - course is already created
         }
 
@@ -495,9 +496,9 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
             );
             await instance.updateActiveCourse(id, { instructors: instructorsWithCR });
             courseData = { ...courseData, instructors: instructorsWithCR };
-            console.log(`[CREATE-COURSE] Added Charisma and Rich to course ${id} (creator: ${creatorName})`);
+            appLogger.log(`[CREATE-COURSE] Added Charisma and Rich to course ${id} (creator: ${creatorName})`);
         } catch (crError) {
-            console.error(`[CREATE-COURSE] Error adding Charisma and Rich to course:`, crError);
+            appLogger.error(`[CREATE-COURSE] Error adding Charisma and Rich to course:`, { error: crError });
         }
 
         // Since activeCourse is the correct type, we can return it directly
@@ -619,7 +620,7 @@ router.get('/export/database', requireInstructorGlobal, asyncHandlerWithAuth(asy
                 exportText += '\n\n';
 
             } catch (collectionError) {
-                console.error(`Error reading collection ${collectionName}:`, collectionError);
+                appLogger.error(`Error reading collection ${collectionName}:`, { error: collectionError });
                 exportText += `[Error reading collection: ${collectionError instanceof Error ? collectionError.message : 'Unknown error'}]\n\n\n`;
             }
         }
@@ -633,7 +634,7 @@ router.get('/export/database', requireInstructorGlobal, asyncHandlerWithAuth(asy
         res.send(exportText);
 
     } catch (error) {
-        console.error('Error exporting database:', error);
+        appLogger.error('Error exporting database:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to export database',
@@ -661,10 +662,10 @@ router.delete('/clear-active-users', requireInstructorGlobal, asyncHandlerWithAu
                 const courseDeleteResult = await courseUsersColl.deleteMany({});
                 totalCourseUsersDeleted += courseDeleteResult.deletedCount;
                 if (courseDeleteResult.deletedCount > 0) {
-                    console.log(`[CLEAR-ACTIVE-USERS] Cleared ${courseDeleteResult.deletedCount} user(s) from course ${courseName}`);
+                    appLogger.log(`[CLEAR-ACTIVE-USERS] Cleared ${courseDeleteResult.deletedCount} user(s) from course ${courseName}`);
                 }
             } catch (courseErr) {
-                console.warn(`[CLEAR-ACTIVE-USERS] Could not clear users for course ${courseName}:`, courseErr);
+                appLogger.warn(`[CLEAR-ACTIVE-USERS] Could not clear users for course ${courseName}:`, { error: courseErr });
                 // Continue with other courses - don't fail if one course collection is missing
             }
         }
@@ -680,7 +681,7 @@ router.delete('/clear-active-users', requireInstructorGlobal, asyncHandlerWithAu
             courseUsersDeletedCount: totalCourseUsersDeleted
         });
     } catch (error) {
-        console.error('Error clearing active users:', error);
+        appLogger.error('Error clearing active users:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to clear active users',
@@ -886,7 +887,7 @@ router.post('/:courseId/instructors', requireInstructorForCourseAPI(['params']),
             instructors: updatedInstructors
         } as Partial<activeCourse>);
         
-        console.log(`[ADD-INSTRUCTOR] Added instructor ${instructorName} (${instructorUserId}) to course ${courseId}`);
+        appLogger.log(`[ADD-INSTRUCTOR] Added instructor ${instructorName} (${instructorUserId}) to course ${courseId}`);
         
         res.status(200).json({
             success: true,
@@ -895,7 +896,7 @@ router.post('/:courseId/instructors', requireInstructorForCourseAPI(['params']),
         });
         
     } catch (error) {
-        console.error('[ADD-INSTRUCTOR] Error:', error);
+        appLogger.error('[ADD-INSTRUCTOR] Error:', { error });
         return res.status(500).json({
             success: false,
             error: 'Failed to add instructor to course',
@@ -942,14 +943,14 @@ router.delete('/:id/restart-onboarding', requireInstructorForCourseAPI(['paramsI
         // Drop the users collection
         const usersDropResult = await instance.dropCollection(collectionNames.users);
         if (!usersDropResult.success) {
-            console.error(`Failed to drop ${collectionNames.users}:`, usersDropResult.error);
+            appLogger.error(`Failed to drop ${collectionNames.users}:`, { error: usersDropResult.error });
             // Continue with other operations even if one fails
         }
         
         // Drop the flags collection
         const flagsDropResult = await instance.dropCollection(collectionNames.flags);
         if (!flagsDropResult.success) {
-            console.error(`Failed to drop ${collectionNames.flags}:`, flagsDropResult.error);
+            appLogger.error(`Failed to drop ${collectionNames.flags}:`, { error: flagsDropResult.error });
             // Continue with other operations even if one fails
         }
         
@@ -987,7 +988,7 @@ router.delete('/:id/restart-onboarding', requireInstructorForCourseAPI(['paramsI
             }
         });
     } catch (error) {
-        console.error('Error restarting onboarding:', error);
+        appLogger.error('Error restarting onboarding:', { error });
         return res.status(500).json({
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -1016,15 +1017,15 @@ router.delete('/:id/remove', requireInstructorForCourseAPI(['paramsId']), asyncH
         const courseData = course as unknown as activeCourse;
         const courseName = courseData.courseName;
         
-        console.log(`🗑️ Removing course ${courseId} (${courseName}) and all associated data...`);
+        appLogger.log(`🗑️ Removing course ${courseId} (${courseName}) and all associated data...`);
         
         // Step 2: Remove courseId from all users' coursesEnrolled in active-users
         let usersModified = 0;
         try {
             usersModified = await mongoDB.removeCourseFromAllUsers(courseId);
-            console.log(`✅ Removed course from ${usersModified} user(s) in active-users`);
+            appLogger.log(`✅ Removed course from ${usersModified} user(s) in active-users`);
         } catch (error) {
-            console.error(`❌ Failed to remove course from active-users:`, error);
+            appLogger.error(`❌ Failed to remove course from active-users:`, { error });
             // Continue with other operations even if this fails
         }
         
@@ -1046,15 +1047,15 @@ router.delete('/:id/remove', requireInstructorForCourseAPI(['paramsId']), asyncH
                 const dropResult = await mongoDB.dropCollection(collectionName);
                 if (dropResult.success) {
                     droppedCollections.push(collectionName);
-                    console.log(`✅ Dropped collection: ${collectionName}`);
+                    appLogger.log(`✅ Dropped collection: ${collectionName}`);
                 } else {
                     errors.push(`Failed to drop ${collectionName}: ${dropResult.error}`);
-                    console.error(`❌ Failed to drop ${collectionName}:`, dropResult.error);
+                    appLogger.error(`❌ Failed to drop ${collectionName}:`, { error: dropResult.error });
                 }
             } catch (error) {
                 const errorMsg = `Error dropping ${collectionName}: ${error instanceof Error ? error.message : 'Unknown error'}`;
                 errors.push(errorMsg);
-                console.error(`❌ ${errorMsg}`);
+                appLogger.error(`❌ ${errorMsg}`);
             }
         }
         
@@ -1068,17 +1069,17 @@ router.delete('/:id/remove', requireInstructorForCourseAPI(['paramsId']), asyncH
             if (qdrantResult.errors && qdrantResult.errors.length > 0) {
                 qdrantErrors.push(...qdrantResult.errors);
             }
-            console.log(`✅ Deleted ${qdrantDeleted} Qdrant document(s) for course`);
+            appLogger.log(`✅ Deleted ${qdrantDeleted} Qdrant document(s) for course`);
         } catch (error) {
             const errorMsg = `Failed to delete Qdrant documents: ${error instanceof Error ? error.message : 'Unknown error'}`;
             qdrantErrors.push(errorMsg);
-            console.error(`❌ ${errorMsg}`);
+            appLogger.error(`❌ ${errorMsg}`);
             // Continue with course deletion even if Qdrant fails
         }
         
         // Step 6: Remove course from active-course-list
         await mongoDB.deleteActiveCourse(courseData);
-        console.log(`✅ Removed course from active-course-list`);
+        appLogger.log(`✅ Removed course from active-course-list`);
         
         // Build success message
         let message = `Course "${courseName}" removed successfully. `;
@@ -1104,7 +1105,7 @@ router.delete('/:id/remove', requireInstructorForCourseAPI(['paramsId']), asyncH
         });
         
     } catch (error) {
-        console.error('❌ Error removing course:', error);
+        appLogger.error('❌ Error removing course:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to remove course',
@@ -1216,7 +1217,7 @@ router.post('/:courseId/topic-or-week-instances', requireInstructorForCourseAPI(
 
         return res.status(201).json({ success: true, data: newInstance, message: 'Topic/Week instance added successfully' });
     } catch (error) {
-        console.error('Error adding topic/week instance:', error);
+        appLogger.error('Error adding topic/week instance:', { error });
         return res.status(500).json({ success: false, error: 'Failed to add topic/week instance' });
     }
 }));
@@ -1285,7 +1286,7 @@ router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items', requireIn
 
         return res.status(201).json({ success: true, data: newItem, message: 'Content item added successfully' });
     } catch (error) {
-        console.error('Error adding content item:', error);
+        appLogger.error('Error adding content item:', { error });
         return res.status(500).json({ success: false, error: 'Failed to add content item' });
     }
 }));
@@ -1340,7 +1341,7 @@ router.get('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/obje
             message: 'Learning objectives retrieved successfully'
         });
     } catch (error) {
-        console.error('Error getting learning objectives:', error);
+        appLogger.error('Error getting learning objectives:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to get learning objectives'
@@ -1366,9 +1367,9 @@ router.get('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/obje
  */
 router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        console.log('🎯 [BACKEND] Add learning objective request received');
-        console.log('🔍 [BACKEND] Request params:', req.params);
-        console.log('🔍 [BACKEND] Request body:', req.body);
+        appLogger.log('🎯 [BACKEND] Add learning objective request received');
+        appLogger.log('🔍 [BACKEND] Request params:', req.params);
+        appLogger.log('🔍 [BACKEND] Request body:', req.body);
         
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, topicOrWeekId, itemId } = req.params;
@@ -1394,11 +1395,11 @@ router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/obj
         learningObjective.createdAt = learningObjective.createdAt || new Date();
         learningObjective.updatedAt = new Date();
         
-        console.log('📡 [BACKEND] Calling addLearningObjective with:', { courseId, topicOrWeekId, itemId, learningObjective });
+        appLogger.log('📡 [BACKEND] Calling addLearningObjective with:', { courseId, topicOrWeekId, itemId, learningObjective });
         
         const result = await instance.addLearningObjective(courseId, topicOrWeekId, itemId, learningObjective);
         
-        console.log('✅ [BACKEND] Add learning objective result:', result);
+        appLogger.log('✅ [BACKEND] Add learning objective result:', result);
         
         res.status(200).json({
             success: true,
@@ -1406,7 +1407,7 @@ router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/obj
             message: 'Learning objective added successfully'
         });
     } catch (error) {
-        console.error('Error adding learning objective:', error);
+        appLogger.error('Error adding learning objective:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to add learning objective'
@@ -1462,7 +1463,7 @@ router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/obje
             message: 'Learning objective updated successfully'
         });
     } catch (error) {
-        console.error('Error updating learning objective:', error);
+        appLogger.error('Error updating learning objective:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to update learning objective'
@@ -1487,17 +1488,17 @@ router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/obje
  */
 router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        console.log('🗑️ [BACKEND] Delete learning objective request received');
-        console.log('🔍 [BACKEND] Request params:', req.params);
+        appLogger.log('🗑️ [BACKEND] Delete learning objective request received');
+        appLogger.log('🔍 [BACKEND] Request params:', req.params);
         
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, topicOrWeekId, itemId, objectiveId } = req.params;
         
-        console.log('📡 [BACKEND] Calling deleteLearningObjective with:', { courseId, topicOrWeekId, itemId, objectiveId });
+        appLogger.log('📡 [BACKEND] Calling deleteLearningObjective with:', { courseId, topicOrWeekId, itemId, objectiveId });
         
         const result = await instance.deleteLearningObjective(courseId, topicOrWeekId, itemId, objectiveId);
         
-        console.log('✅ [BACKEND] Delete learning objective result:', result);
+        appLogger.log('✅ [BACKEND] Delete learning objective result:', result);
         
         res.status(200).json({
             success: true,
@@ -1505,7 +1506,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/o
             message: 'Learning objective deleted successfully'
         });
     } catch (error) {
-        console.error('Error deleting learning objective:', error);
+        appLogger.error('Error deleting learning objective:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to delete learning objective'
@@ -1589,7 +1590,7 @@ router.post('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: R
         };
 
         //START DEBUG LOG : DEBUG-CODE(006)
-        console.log('🏴 Creating flag report with ID:', flagReport.id);
+        appLogger.log('🏴 Creating flag report with ID:', flagReport.id);
         //END DEBUG LOG : DEBUG-CODE(006)
 
         const result = await instance.createFlagReport(flagReport);
@@ -1603,7 +1604,7 @@ router.post('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: R
             }
         });
     } catch (error) {
-        console.error('Error creating flag report:', error);
+        appLogger.error('Error creating flag report:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to create flag report'
@@ -1646,7 +1647,7 @@ router.get('/:courseId/flags', requireInstructorForCourseAPI(['params']), asyncH
             count: flagReports.length
         });
     } catch (error) {
-        console.error('Error getting flag reports:', error);
+        appLogger.error('Error getting flag reports:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to get flag reports'
@@ -1682,7 +1683,7 @@ router.get('/:courseId/flags/with-names', requireInstructorForCourseAPI(['params
         }
 
         //START DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES-API)
-        console.log('🔍 Getting flag reports with user names for course:', course.courseName);
+        appLogger.log('🔍 Getting flag reports with user names for course:', course.courseName);
         //END DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES-API)
 
         const flagsWithNames = await instance.getFlagReportsWithUserNames(course.courseName);
@@ -1693,7 +1694,7 @@ router.get('/:courseId/flags/with-names', requireInstructorForCourseAPI(['params
             count: flagsWithNames.length
         });
     } catch (error) {
-        console.error('Error getting flag reports with user names:', error);
+        appLogger.error('Error getting flag reports with user names:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to get flag reports with user names'
@@ -1742,7 +1743,7 @@ router.get('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params'])
             data: flagReport
         });
     } catch (error) {
-        console.error('Error getting flag report:', error);
+        appLogger.error('Error getting flag report:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to get flag report'
@@ -1803,7 +1804,7 @@ router.put('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params'])
         }
 
         //START DEBUG LOG : DEBUG-CODE(007)
-        console.log('🏴 Updating flag report:', flagId, 'with data:', updateData);
+        appLogger.log('🏴 Updating flag report:', flagId, 'with data:', updateData);
         //END DEBUG LOG : DEBUG-CODE(007)
 
         const result = await instance.updateFlagReport(course.courseName, flagId, updateData);
@@ -1815,9 +1816,9 @@ router.put('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params'])
             });
         }
 
-        console.log('='.repeat(60));
-        console.log('🏴 Result:', JSON.stringify(result, null, 2));
-        console.log('='.repeat(60));
+        appLogger.log('='.repeat(60));
+        appLogger.log('🏴 Result:', JSON.stringify(result, null, 2));
+        appLogger.log('='.repeat(60));
         
         res.json({
             success: true,
@@ -1825,7 +1826,7 @@ router.put('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params'])
             data: result
         });
     } catch (error) {
-        console.error('Error updating flag report:', error);
+        appLogger.error('Error updating flag report:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to update flag report'
@@ -1886,9 +1887,9 @@ router.patch('/:courseId/flags/:flagId/response', requireInstructorForCourseAPI(
             updatedAt: new Date()
         };
 
-        console.log('='.repeat(60));
-        console.log('🏴 Updating resolved flag response:', flagId, 'with data:', updateData);
-        console.log('='.repeat(60));
+        appLogger.log('='.repeat(60));
+        appLogger.log('🏴 Updating resolved flag response:', flagId, 'with data:', updateData);
+        appLogger.log('='.repeat(60));
 
         const result = await instance.updateFlagReport(course.courseName, flagId, updateData);
 
@@ -1899,9 +1900,9 @@ router.patch('/:courseId/flags/:flagId/response', requireInstructorForCourseAPI(
             });
         }
 
-        console.log('='.repeat(60));
-        console.log('🏴 Response update result:', JSON.stringify(result, null, 2));
-        console.log('='.repeat(60));
+        appLogger.log('='.repeat(60));
+        appLogger.log('🏴 Response update result:', JSON.stringify(result, null, 2));
+        appLogger.log('='.repeat(60));
 
         res.json({
             success: true,
@@ -1909,7 +1910,7 @@ router.patch('/:courseId/flags/:flagId/response', requireInstructorForCourseAPI(
             data: result
         });
     } catch (error) {
-        console.error('Error updating flag response:', error);
+        appLogger.error('Error updating flag response:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to update flag response'
@@ -1946,7 +1947,7 @@ router.delete('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params
         }
 
         //START DEBUG LOG : DEBUG-CODE(008)
-        console.log('🏴 Deleting flag report:', flagId, 'from course:', course.courseName);
+        appLogger.log('🏴 Deleting flag report:', flagId, 'from course:', course.courseName);
         //END DEBUG LOG : DEBUG-CODE(008)
 
         const result = await instance.deleteFlagReport(course.courseName, flagId);
@@ -1964,7 +1965,7 @@ router.delete('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params
             deletedCount: result.deletedCount
         });
     } catch (error) {
-        console.error('Error deleting flag report:', error);
+        appLogger.error('Error deleting flag report:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to delete flag report'
@@ -2000,7 +2001,7 @@ router.delete('/:courseId/flags', requireInstructorForCourseAPI(['params']), asy
         }
 
         //START DEBUG LOG : DEBUG-CODE(009)
-        console.log('🏴 Deleting all flag reports from course:', course.courseName);
+        appLogger.log('🏴 Deleting all flag reports from course:', course.courseName);
         //END DEBUG LOG : DEBUG-CODE(009)
 
         const result = await instance.deleteAllFlagReports(course.courseName);
@@ -2011,7 +2012,7 @@ router.delete('/:courseId/flags', requireInstructorForCourseAPI(['params']), asy
             deletedCount: result.deletedCount
         });
     } catch (error) {
-        console.error('Error deleting all flag reports:', error);
+        appLogger.error('Error deleting all flag reports:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to delete all flag reports'
@@ -2051,7 +2052,7 @@ router.post('/:courseId/flags/create-indexes', requireInstructorForCourseAPI(['p
         }
 
         //START DEBUG LOG : DEBUG-CODE(CREATE-INDEXES-API)
-        console.log('📊 Creating indexes for flag collection:', course.courseName);
+        appLogger.log('📊 Creating indexes for flag collection:', course.courseName);
         //END DEBUG LOG : DEBUG-CODE(CREATE-INDEXES-API)
 
         const result = await instance.createFlagIndexes(course.courseName);
@@ -2065,7 +2066,7 @@ router.post('/:courseId/flags/create-indexes', requireInstructorForCourseAPI(['p
             }
         });
     } catch (error) {
-        console.error('Error creating indexes:', error);
+        appLogger.error('Error creating indexes:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to create indexes'
@@ -2101,7 +2102,7 @@ router.get('/:courseId/flags/validate', requireInstructorForCourseAPI(['params']
         }
 
         //START DEBUG LOG : DEBUG-CODE(VALIDATE-COLLECTION-API)
-        console.log('🔍 Validating flag collection for course:', course.courseName);
+        appLogger.log('🔍 Validating flag collection for course:', course.courseName);
         //END DEBUG LOG : DEBUG-CODE(VALIDATE-COLLECTION-API)
 
         const validation = await instance.validateFlagCollection(course.courseName);
@@ -2111,7 +2112,7 @@ router.get('/:courseId/flags/validate', requireInstructorForCourseAPI(['params']
             data: validation
         });
     } catch (error) {
-        console.error('Error validating flag collection:', error);
+        appLogger.error('Error validating flag collection:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to validate flag collection'
@@ -2146,7 +2147,7 @@ router.get('/:courseId/flags/statistics', asyncHandlerWithAuth(async (req: Reque
         }
 
         //START DEBUG LOG : DEBUG-CODE(GET-STATISTICS-API)
-        console.log('📊 Getting flag statistics for course:', course.courseName);
+        appLogger.log('📊 Getting flag statistics for course:', course.courseName);
         //END DEBUG LOG : DEBUG-CODE(GET-STATISTICS-API)
 
         const statistics = await instance.getFlagStatistics(course.courseName);
@@ -2156,7 +2157,7 @@ router.get('/:courseId/flags/statistics', asyncHandlerWithAuth(async (req: Reque
             data: statistics
         });
     } catch (error) {
-        console.error('Error getting flag statistics:', error);
+        appLogger.error('Error getting flag statistics:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to get flag statistics'
@@ -2192,7 +2193,7 @@ router.get('/:courseId/flags/student/:userId', asyncHandlerWithAuth(async (req: 
         }
 
         //START DEBUG LOG : DEBUG-CODE(GET-STUDENT-FLAGS-API)
-        console.log('🔍 Getting flag reports for student:', userId, 'in course:', course.courseName);
+        appLogger.log('🔍 Getting flag reports for student:', userId, 'in course:', course.courseName);
         //END DEBUG LOG : DEBUG-CODE(GET-STUDENT-FLAGS-API)
 
         // Get all flags and filter by userId
@@ -2210,7 +2211,7 @@ router.get('/:courseId/flags/student/:userId', asyncHandlerWithAuth(async (req: 
             count: studentFlags.length
         });
     } catch (error) {
-        console.error('Error getting student flag reports:', error);
+        appLogger.error('Error getting student flag reports:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to get student flag reports'
@@ -2238,7 +2239,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
     try {
         const { courseId, topicOrWeekId, itemId, materialId } = req.params;
         
-        console.log(`🗑️ Deleting material ${materialId} from course ${courseId}, topic/week instance ${topicOrWeekId}, item ${itemId}`);
+        appLogger.log(`🗑️ Deleting material ${materialId} from course ${courseId}, topic/week instance ${topicOrWeekId}, item ${itemId}`);
         
         // Get MongoDB instance
         const mongoDB = await EngEAI_MongoDB.getInstance();
@@ -2285,9 +2286,9 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
                 const ragApp = await RAGApp.getInstance();
                 const deleteResult = await ragApp.deleteDocument(materialId, courseId, topicOrWeekId, itemId);
                 qdrantResult = { materialName: deleteResult.materialName, chunksDeleted: deleteResult.chunksDeleted };
-                console.log(`✅ Material ${materialId} deleted from Qdrant`);
+                appLogger.log(`✅ Material ${materialId} deleted from Qdrant`);
             } catch (qdrantError) {
-                console.error('Failed to delete from Qdrant:', qdrantError);
+                appLogger.error('Failed to delete from Qdrant:', { error: qdrantError });
                 return res.status(500).json({
                     success: false,
                     error: 'Failed to delete material from vector database'
@@ -2308,7 +2309,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
             });
         }
         
-        console.log(`✅ Material ${materialId} deleted from MongoDB`);
+        appLogger.log(`✅ Material ${materialId} deleted from MongoDB`);
         
         res.json({
             success: true,
@@ -2322,7 +2323,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
         });
         
     } catch (error) {
-        console.error('Error deleting material:', error);
+        appLogger.error('Error deleting material:', { error });
         res.status(500).json({
             success: false,
             error: 'Failed to delete material'
@@ -2347,11 +2348,11 @@ router.delete('/:courseId/documents/all', requireInstructorForCourseAPI(['params
     try {
         const { courseId } = req.params;
         
-        console.log('🔍 BACKEND DELETE ALL DOCUMENTS - Request Details:');
-        console.log('  Headers:', req.headers);
-        console.log('  Params:', req.params);
-        console.log('  User:', req.user);
-        console.log(`🗑️ Deleting all documents from course ${courseId}`);
+        appLogger.log('🔍 BACKEND DELETE ALL DOCUMENTS - Request Details:');
+        appLogger.log('  Headers:', req.headers);
+        appLogger.log('  Params:', req.params);
+        appLogger.log('  User:', req.user);
+        appLogger.log(`🗑️ Deleting all documents from course ${courseId}`);
         
         // Get MongoDB instance
         const mongoDB = await EngEAI_MongoDB.getInstance();
@@ -2369,9 +2370,9 @@ router.delete('/:courseId/documents/all', requireInstructorForCourseAPI(['params
         try {
             const ragApp = await RAGApp.getInstance();
             const qdrantResult = await ragApp.deleteAllDocumentsForCourse(courseId);
-            console.log(`✅ Deleted ${qdrantResult.deletedCount} documents from Qdrant`);
+            appLogger.log(`✅ Deleted ${qdrantResult.deletedCount} documents from Qdrant`);
         } catch (qdrantError) {
-            console.error('Failed to delete from Qdrant:', qdrantError);
+            appLogger.error('Failed to delete from Qdrant:', { error: qdrantError });
             return res.status(500).json({
                 success: false,
                 error: 'Failed to delete documents from vector database'
@@ -2399,7 +2400,7 @@ router.delete('/:courseId/documents/all', requireInstructorForCourseAPI(['params
             });
         }
         
-        console.log(`✅ Deleted ${totalDeleted} documents from MongoDB`);
+        appLogger.log(`✅ Deleted ${totalDeleted} documents from MongoDB`);
         
         res.json({
             success: true,
@@ -2411,7 +2412,7 @@ router.delete('/:courseId/documents/all', requireInstructorForCourseAPI(['params
         });
         
     } catch (error) {
-        console.error('Error deleting all documents:', error);
+        appLogger.error('Error deleting all documents:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to delete all documents'
@@ -2502,13 +2503,13 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', asyncHan
             const ragApp = await RAGApp.getInstance();
             const result = await ragApp.updateTopicOrWeekTitleInQdrant(course.courseName, oldTitle, trimmedTitle);
             if (result.chunksUpdated > 0) {
-                console.log(`✅ Qdrant: Updated topicOrWeekTitle in ${result.chunksUpdated} chunks`);
+                appLogger.log(`✅ Qdrant: Updated topicOrWeekTitle in ${result.chunksUpdated} chunks`);
             }
         } catch (ragError) {
-            console.warn('Qdrant metadata sync failed (MongoDB update succeeded):', ragError);
+            appLogger.warn('Qdrant metadata sync failed (MongoDB update succeeded):', ragError);
         }
         
-        console.log(`✅ Topic/Week instance ${topicOrWeekId} title updated to "${trimmedTitle}"`);
+        appLogger.log(`✅ Topic/Week instance ${topicOrWeekId} title updated to "${trimmedTitle}"`);
         
         res.status(200).json({
             success: true,
@@ -2517,7 +2518,7 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', asyncHan
         });
         
     } catch (error) {
-        console.error('Error updating topic/week instance title:', error);
+        appLogger.error('Error updating topic/week instance title:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to update topic/week instance title'
@@ -2583,7 +2584,7 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/published', asyn
             topicOrWeekInstances: course.topicOrWeekInstances
         });
         
-        console.log(`✅ Topic/Week instance ${topicOrWeekId} published status updated to ${published}`);
+        appLogger.log(`✅ Topic/Week instance ${topicOrWeekId} published status updated to ${published}`);
         
         res.status(200).json({
             success: true,
@@ -2592,7 +2593,7 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/published', asyn
         });
         
     } catch (error) {
-        console.error('Error updating topic/week instance published status:', error);
+        appLogger.error('Error updating topic/week instance published status:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to update topic/week instance published status'
@@ -2670,17 +2671,17 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId', requireInstru
                     deletedDocuments.push({ name: r.value.materialName, chunksDeleted: r.value.chunksDeleted });
                     totalChunksDeleted += r.value.chunksDeleted;
                 } else {
-                    console.warn(`RAG cleanup failed for material ${i}:`, r.reason);
+                    appLogger.warn(`RAG cleanup failed for material ${i}:`, r.reason);
                 }
             });
         } catch (ragError) {
-            console.warn('RAG cleanup failed (continuing with deletion):', ragError);
+            appLogger.warn('RAG cleanup failed (continuing with deletion):', ragError);
         }
 
         const filteredInstances = instances.filter((i: TopicOrWeekInstance) => i.id !== topicOrWeekId);
         await instance.updateActiveCourse(courseId, { topicOrWeekInstances: filteredInstances } as any);
 
-        console.log(`✅ Topic/Week instance ${topicOrWeekId} deleted successfully`);
+        appLogger.log(`✅ Topic/Week instance ${topicOrWeekId} deleted successfully`);
 
         res.status(200).json({
             success: true,
@@ -2692,7 +2693,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId', requireInstru
             message: 'Topic/Week instance deleted successfully'
         });
     } catch (error) {
-        console.error('Error deleting topic/week instance:', error);
+        appLogger.error('Error deleting topic/week instance:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to delete topic/week instance'
@@ -2799,13 +2800,13 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/ti
                 trimmedTitle
             );
             if (result.chunksUpdated > 0) {
-                console.log(`✅ Qdrant: Updated itemTitle in ${result.chunksUpdated} chunks`);
+                appLogger.log(`✅ Qdrant: Updated itemTitle in ${result.chunksUpdated} chunks`);
             }
         } catch (ragError) {
-            console.warn('Qdrant metadata sync failed (MongoDB update succeeded):', ragError);
+            appLogger.warn('Qdrant metadata sync failed (MongoDB update succeeded):', ragError);
         }
         
-        console.log(`✅ Item ${itemId} title updated to "${trimmedTitle}"`);
+        appLogger.log(`✅ Item ${itemId} title updated to "${trimmedTitle}"`);
         
         res.status(200).json({
             success: true,
@@ -2814,7 +2815,7 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/ti
         });
         
     } catch (error) {
-        console.error('Error updating item title:', error);
+        appLogger.error('Error updating item title:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to update item title'
@@ -2839,8 +2840,8 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/ti
  */
 router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        console.log('🗑️ [BACKEND] Delete content item request received');
-        console.log('🔍 [BACKEND] Request params:', req.params);
+        appLogger.log('🗑️ [BACKEND] Delete content item request received');
+        appLogger.log('🔍 [BACKEND] Request params:', req.params);
         
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, topicOrWeekId, itemId } = req.params;
@@ -2897,11 +2898,11 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
                     deletedDocuments.push({ name: r.value.materialName, chunksDeleted: r.value.chunksDeleted });
                     totalChunksDeleted += r.value.chunksDeleted;
                 } else {
-                    console.warn(`RAG cleanup failed for material ${i}:`, r.reason);
+                    appLogger.warn(`RAG cleanup failed for material ${i}:`, r.reason);
                 }
             });
         } catch (ragError) {
-            console.warn('RAG cleanup failed (continuing with deletion):', ragError);
+            appLogger.warn('RAG cleanup failed (continuing with deletion):', ragError);
         }
         
         // Remove the item from the topic/week instance
@@ -2913,7 +2914,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
             topicOrWeekInstances: course.topicOrWeekInstances
         });
         
-        console.log(`✅ Content item ${itemId} deleted successfully from topic/week instance ${topicOrWeekId}`);
+        appLogger.log(`✅ Content item ${itemId} deleted successfully from topic/week instance ${topicOrWeekId}`);
         
         res.status(200).json({
             success: true,
@@ -2928,7 +2929,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
         });
         
     } catch (error) {
-        console.error('Error deleting content item:', error);
+        appLogger.error('Error deleting content item:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to delete content item'
@@ -3058,7 +3059,7 @@ router.get('/export/course-info', asyncHandlerWithAuth(async (req: Request, res:
         res.send(exportText);
         
     } catch (error) {
-        console.error('Error exporting course information:', error);
+        appLogger.error('Error exporting course information:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to export course information',
@@ -3075,7 +3076,7 @@ router.get('/export/course-info', asyncHandlerWithAuth(async (req: Request, res:
 /*
 router.post('/admin/reset-database', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        console.log('🗑️ [ADMIN] Reset Database request received');
+        appLogger.log('🗑️ [ADMIN] Reset Database request received');
         
         const mongoDB = await EngEAI_MongoDB.getInstance();
         
@@ -3083,7 +3084,7 @@ router.post('/admin/reset-database', asyncHandlerWithAuth(async (req: Request, r
         const allCollections = await mongoDB.db.listCollections().toArray();
         const collectionNames = allCollections.map(col => col.name);
         
-        console.log(`📋 Found ${collectionNames.length} collection(s) in database`);
+        appLogger.log(`📋 Found ${collectionNames.length} collection(s) in database`);
         
         // Collections to preserve initially (will be cleared later)
         const preservedCollections = ['active-course-list', 'active-users'];
@@ -3093,7 +3094,7 @@ router.post('/admin/reset-database', asyncHandlerWithAuth(async (req: Request, r
             name => !preservedCollections.includes(name)
         );
         
-        console.log(`🗑️ Dropping ${collectionsToDrop.length} collection(s)`);
+        appLogger.log(`🗑️ Dropping ${collectionsToDrop.length} collection(s)`);
         
         // Step 2: Drop all collections except preserved ones
         const droppedCollections: string[] = [];
@@ -3104,40 +3105,40 @@ router.post('/admin/reset-database', asyncHandlerWithAuth(async (req: Request, r
                 const dropResult = await mongoDB.dropCollection(collectionName);
                 if (dropResult.success) {
                     droppedCollections.push(collectionName);
-                    console.log(`✅ Dropped collection: ${collectionName}`);
+                    appLogger.log(`✅ Dropped collection: ${collectionName}`);
                 } else {
                     errors.push(`Failed to drop ${collectionName}: ${dropResult.error}`);
-                    console.error(`❌ Failed to drop ${collectionName}:`, dropResult.error);
+                    appLogger.error(`❌ Failed to drop ${collectionName}:`, { error: dropResult.error });
                 }
             } catch (error) {
                 const errorMsg = `Error dropping ${collectionName}: ${error instanceof Error ? error.message : 'Unknown error'}`;
                 errors.push(errorMsg);
-                console.error(`❌ ${errorMsg}`);
+                appLogger.error(`❌ ${errorMsg}`);
             }
         }
         
         // Step 3: Clear active-course-list
-        console.log('🧹 Clearing active-course-list...');
+        appLogger.log('🧹 Clearing active-course-list...');
         try {
             const activeCourseListCollection = mongoDB.db.collection('active-course-list');
             const deleteResult = await activeCourseListCollection.deleteMany({});
-            console.log(`✅ Deleted ${deleteResult.deletedCount} course(s) from active-course-list`);
+            appLogger.log(`✅ Deleted ${deleteResult.deletedCount} course(s) from active-course-list`);
         } catch (error) {
             const errorMsg = `Failed to clear active-course-list: ${error instanceof Error ? error.message : 'Unknown error'}`;
             errors.push(errorMsg);
-            console.error(`❌ ${errorMsg}`);
+            appLogger.error(`❌ ${errorMsg}`);
         }
         
         // Step 4: Clear active-users
-        console.log('🧹 Clearing active-users...');
+        appLogger.log('🧹 Clearing active-users...');
         try {
             const activeUsersCollection = mongoDB.db.collection('active-users');
             const deleteResult = await activeUsersCollection.deleteMany({});
-            console.log(`✅ Deleted ${deleteResult.deletedCount} user(s) from active-users`);
+            appLogger.log(`✅ Deleted ${deleteResult.deletedCount} user(s) from active-users`);
         } catch (error) {
             const errorMsg = `Failed to clear active-users: ${error instanceof Error ? error.message : 'Unknown error'}`;
             errors.push(errorMsg);
-            console.error(`❌ ${errorMsg}`);
+            appLogger.error(`❌ ${errorMsg}`);
         }
         
         // Step 5: Wipe vector database using NuclearClearRAGDatabase
@@ -3150,11 +3151,11 @@ router.post('/admin/reset-database', asyncHandlerWithAuth(async (req: Request, r
             if (qdrantResult.errors && qdrantResult.errors.length > 0) {
                 qdrantErrors.push(...qdrantResult.errors);
             }
-            console.log(`✅ Deleted ${qdrantDeleted} Qdrant document(s) (nuclear clear)`);
+            appLogger.log(`✅ Deleted ${qdrantDeleted} Qdrant document(s) (nuclear clear)`);
         } catch (error) {
             const errorMsg = `Failed to clear vector database: ${error instanceof Error ? error.message : 'Unknown error'}`;
             qdrantErrors.push(errorMsg);
-            console.error(`❌ ${errorMsg}`);
+            appLogger.error(`❌ ${errorMsg}`);
             // Continue even if Qdrant fails
         }
         
@@ -3164,7 +3165,7 @@ router.post('/admin/reset-database', asyncHandlerWithAuth(async (req: Request, r
             message += ` (${allErrors.length} error(s) occurred)`;
         }
         
-        console.log(`✅ ${message}`);
+        appLogger.log(`✅ ${message}`);
         
         res.status(200).json({
             success: true,
@@ -3177,7 +3178,7 @@ router.post('/admin/reset-database', asyncHandlerWithAuth(async (req: Request, r
         });
         
     } catch (error) {
-        console.error('❌ Error resetting database:', error);
+        appLogger.error('❌ Error resetting database:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to reset database',
@@ -3189,7 +3190,7 @@ router.post('/admin/reset-database', asyncHandlerWithAuth(async (req: Request, r
 // POST /api/courses/admin/reset-mongodb - Reset MongoDB only (commented out)
 router.post('/admin/reset-mongodb', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        console.log('🗑️ [ADMIN] Reset MongoDB request received');
+        appLogger.log('🗑️ [ADMIN] Reset MongoDB request received');
         
         const mongoDB = await EngEAI_MongoDB.getInstance();
         
@@ -3197,7 +3198,7 @@ router.post('/admin/reset-mongodb', asyncHandlerWithAuth(async (req: Request, re
         const allCollections = await mongoDB.db.listCollections().toArray();
         const collectionNames = allCollections.map(col => col.name);
         
-        console.log(`📋 Found ${collectionNames.length} collection(s) in database`);
+        appLogger.log(`📋 Found ${collectionNames.length} collection(s) in database`);
         
         // Collections to preserve initially (will be cleared later)
         const preservedCollections = ['active-course-list', 'active-users'];
@@ -3207,7 +3208,7 @@ router.post('/admin/reset-mongodb', asyncHandlerWithAuth(async (req: Request, re
             name => !preservedCollections.includes(name)
         );
         
-        console.log(`🗑️ Dropping ${collectionsToDrop.length} collection(s)`);
+        appLogger.log(`🗑️ Dropping ${collectionsToDrop.length} collection(s)`);
         
         // Step 2: Drop all collections except preserved ones
         const droppedCollections: string[] = [];
@@ -3218,61 +3219,61 @@ router.post('/admin/reset-mongodb', asyncHandlerWithAuth(async (req: Request, re
                 const dropResult = await mongoDB.dropCollection(collectionName);
                 if (dropResult.success) {
                     droppedCollections.push(collectionName);
-                    console.log(`✅ Dropped collection: ${collectionName}`);
+                    appLogger.log(`✅ Dropped collection: ${collectionName}`);
                 } else {
                     errors.push(`Failed to drop ${collectionName}: ${dropResult.error}`);
-                    console.error(`❌ Failed to drop ${collectionName}:`, dropResult.error);
+                    appLogger.error(`❌ Failed to drop ${collectionName}:`, { error: dropResult.error });
                 }
             } catch (error) {
                 const errorMsg = `Error dropping ${collectionName}: ${error instanceof Error ? error.message : 'Unknown error'}`;
                 errors.push(errorMsg);
-                console.error(`❌ ${errorMsg}`);
+                appLogger.error(`❌ ${errorMsg}`);
             }
         }
         
         // Step 3: Clear active-course-list
-        console.log('🧹 Clearing active-course-list...');
+        appLogger.log('🧹 Clearing active-course-list...');
         try {
             const activeCourseListCollection = mongoDB.db.collection('active-course-list');
             const deleteResult = await activeCourseListCollection.deleteMany({});
-            console.log(`✅ Deleted ${deleteResult.deletedCount} course(s) from active-course-list`);
+            appLogger.log(`✅ Deleted ${deleteResult.deletedCount} course(s) from active-course-list`);
         } catch (error) {
             const errorMsg = `Failed to clear active-course-list: ${error instanceof Error ? error.message : 'Unknown error'}`;
             errors.push(errorMsg);
-            console.error(`❌ ${errorMsg}`);
+            appLogger.error(`❌ ${errorMsg}`);
         }
         
         // Step 4: Clear active-users
-        console.log('🧹 Clearing active-users...');
+        appLogger.log('🧹 Clearing active-users...');
         try {
             const activeUsersCollection = mongoDB.db.collection('active-users');
             const deleteResult = await activeUsersCollection.deleteMany({});
-            console.log(`✅ Deleted ${deleteResult.deletedCount} user(s) from active-users`);
+            appLogger.log(`✅ Deleted ${deleteResult.deletedCount} user(s) from active-users`);
         } catch (error) {
             const errorMsg = `Failed to clear active-users: ${error instanceof Error ? error.message : 'Unknown error'}`;
             errors.push(errorMsg);
-            console.error(`❌ ${errorMsg}`);
+            appLogger.error(`❌ ${errorMsg}`);
         }
         
         // Step 5: Recreate active-course-list and active-users as empty collections
-        console.log('📝 Ensuring active-course-list and active-users collections exist...');
+        appLogger.log('📝 Ensuring active-course-list and active-users collections exist...');
         try {
             // Check if collections exist, create if they don't
             const collections = await mongoDB.db.listCollections({ name: 'active-course-list' }).toArray();
             if (collections.length === 0) {
                 await mongoDB.db.createCollection('active-course-list');
-                console.log('✅ Created active-course-list collection');
+                appLogger.log('✅ Created active-course-list collection');
             }
             
             const usersCollections = await mongoDB.db.listCollections({ name: 'active-users' }).toArray();
             if (usersCollections.length === 0) {
                 await mongoDB.db.createCollection('active-users');
-                console.log('✅ Created active-users collection');
+                appLogger.log('✅ Created active-users collection');
             }
         } catch (error) {
             const errorMsg = `Error ensuring collections exist: ${error instanceof Error ? error.message : 'Unknown error'}`;
             errors.push(errorMsg);
-            console.error(`❌ ${errorMsg}`);
+            appLogger.error(`❌ ${errorMsg}`);
         }
         
         let message = `MongoDB reset successfully. Dropped ${droppedCollections.length} collection(s), cleared active-course-list and active-users.`;
@@ -3280,22 +3281,22 @@ router.post('/admin/reset-mongodb', asyncHandlerWithAuth(async (req: Request, re
             message += ` (${errors.length} error(s) occurred)`;
         }
         
-        console.log(`✅ ${message}`);
+        appLogger.log(`✅ ${message}`);
         
         // Log out the user gracefully (logout + destroy session)
         req.logout((logoutErr) => {
             if (logoutErr) {
-                console.error('❌ Error during logout after MongoDB reset:', logoutErr);
+                appLogger.error('❌ Error during logout after MongoDB reset:', logoutErr);
                 errors.push(`Logout failed: ${logoutErr.message}`);
             }
             
             // Destroy the session after logout
             (req.session as any).destroy((sessionErr: any) => {
                 if (sessionErr) {
-                    console.error('❌ Error destroying session after MongoDB reset:', sessionErr);
+                    appLogger.error('❌ Error destroying session after MongoDB reset:', sessionErr);
                     errors.push(`Session destruction failed: ${sessionErr.message}`);
                 } else {
-                    console.log('✅ Session destroyed successfully after MongoDB reset');
+                    appLogger.log('✅ Session destroyed successfully after MongoDB reset');
                 }
                 
                 res.status(200).json({
@@ -3310,7 +3311,7 @@ router.post('/admin/reset-mongodb', asyncHandlerWithAuth(async (req: Request, re
         });
         
     } catch (error) {
-        console.error('❌ Error resetting MongoDB:', error);
+        appLogger.error('❌ Error resetting MongoDB:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to reset MongoDB',
@@ -3322,7 +3323,7 @@ router.post('/admin/reset-mongodb', asyncHandlerWithAuth(async (req: Request, re
 // POST /api/admin/reset-vector-database - Reset vector database only (commented out)
 router.post('/admin/reset-vector-database', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        console.log('🗑️ [ADMIN] Reset Vector Database request received');
+        appLogger.log('🗑️ [ADMIN] Reset Vector Database request received');
         
         // Wipe vector database using NuclearClearRAGDatabase
         let qdrantDeleted = 0;
@@ -3334,11 +3335,11 @@ router.post('/admin/reset-vector-database', asyncHandlerWithAuth(async (req: Req
             if (qdrantResult.errors && qdrantResult.errors.length > 0) {
                 qdrantErrors.push(...qdrantResult.errors);
             }
-            console.log(`✅ Deleted ${qdrantDeleted} Qdrant document(s) (nuclear clear)`);
+            appLogger.log(`✅ Deleted ${qdrantDeleted} Qdrant document(s) (nuclear clear)`);
         } catch (error) {
             const errorMsg = `Failed to clear vector database: ${error instanceof Error ? error.message : 'Unknown error'}`;
             qdrantErrors.push(errorMsg);
-            console.error(`❌ ${errorMsg}`);
+            appLogger.error(`❌ ${errorMsg}`);
             throw error;
         }
         
@@ -3347,7 +3348,7 @@ router.post('/admin/reset-vector-database', asyncHandlerWithAuth(async (req: Req
             message += ` (${qdrantErrors.length} error(s) occurred)`;
         }
         
-        console.log(`✅ ${message}`);
+        appLogger.log(`✅ ${message}`);
         
         res.status(200).json({
             success: true,
@@ -3359,7 +3360,7 @@ router.post('/admin/reset-vector-database', asyncHandlerWithAuth(async (req: Req
         });
         
     } catch (error) {
-        console.error('❌ Error resetting vector database:', error);
+        appLogger.error('❌ Error resetting vector database:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to reset vector database',
@@ -3444,7 +3445,7 @@ router.get('/monitor/:courseId/chat-titles', asyncHandlerWithAuth(async (req: Re
         });
         
     } catch (error) {
-        console.error('Error getting chat titles:', error);
+        appLogger.error('Error getting chat titles:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to get chat titles',
@@ -3551,7 +3552,7 @@ router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(asyn
         res.send(exportText);
         
     } catch (error) {
-        console.error('Error downloading chat:', error);
+        appLogger.error('Error downloading chat:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to download chat',
@@ -3631,7 +3632,7 @@ router.get('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Requ
             data: prompts
         });
     } catch (error) {
-        console.error('Error getting initial assistant prompts:', error);
+        appLogger.error('Error getting initial assistant prompts:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to get initial assistant prompts',
@@ -3689,7 +3690,7 @@ router.get('/:courseId/memory-agent/struggle-words', asyncHandlerWithAuth(async 
         const filtered = struggleWords.filter(w => !w.startsWith('---'));
         res.json({ success: true, data: filtered });
     } catch (error) {
-        console.error('Error getting struggle words:', error);
+        appLogger.error('Error getting struggle words:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to get struggle words',
@@ -3746,7 +3747,7 @@ router.delete('/:courseId/memory-agent/struggle-words', asyncHandlerWithAuth(asy
             message: `Removed ${filtered.length} struggle words`
         });
     } catch (error) {
-        console.error('Error removing struggle words:', error);
+        appLogger.error('Error removing struggle words:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to remove struggle words',
@@ -3846,7 +3847,7 @@ router.post('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Req
             message: 'Initial assistant prompt created successfully'
         });
     } catch (error) {
-        console.error('Error creating initial assistant prompt:', error);
+        appLogger.error('Error creating initial assistant prompt:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to create initial assistant prompt',
@@ -3939,7 +3940,7 @@ router.put('/:courseId/assistant-prompts/:promptId', asyncHandlerWithAuth(async 
             message: 'Initial assistant prompt updated successfully'
         });
     } catch (error) {
-        console.error('Error updating initial assistant prompt:', error);
+        appLogger.error('Error updating initial assistant prompt:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to update initial assistant prompt',
@@ -4013,7 +4014,7 @@ router.delete('/:courseId/assistant-prompts/:promptId', asyncHandlerWithAuth(asy
             message: 'Initial assistant prompt deleted successfully'
         });
     } catch (error) {
-        console.error('Error deleting initial assistant prompt:', error);
+        appLogger.error('Error deleting initial assistant prompt:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to delete initial assistant prompt',
@@ -4091,7 +4092,7 @@ router.post('/:courseId/assistant-prompts/:promptId/select', asyncHandlerWithAut
             message: 'Initial assistant prompt selected successfully'
         });
     } catch (error) {
-        console.error('Error selecting initial assistant prompt:', error);
+        appLogger.error('Error selecting initial assistant prompt:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to select initial assistant prompt',
@@ -4171,7 +4172,7 @@ router.get('/:courseId/system-prompts', asyncHandlerWithAuth(async (req: Request
             data: items
         });
     } catch (error) {
-        console.error('Error getting system prompt items:', error);
+        appLogger.error('Error getting system prompt items:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to get system prompt items',
@@ -4270,7 +4271,7 @@ router.post('/:courseId/system-prompts', asyncHandlerWithAuth(async (req: Reques
             message: 'System prompt item created successfully'
         });
     } catch (error) {
-        console.error('Error creating system prompt item:', error);
+        appLogger.error('Error creating system prompt item:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to create system prompt item',
@@ -4363,7 +4364,7 @@ router.put('/:courseId/system-prompts/:itemId', asyncHandlerWithAuth(async (req:
             message: 'System prompt item updated successfully'
         });
     } catch (error) {
-        console.error('Error updating system prompt item:', error);
+        appLogger.error('Error updating system prompt item:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to update system prompt item',
@@ -4436,7 +4437,7 @@ router.delete('/:courseId/system-prompts/:itemId', asyncHandlerWithAuth(async (r
             message: 'System prompt item deleted successfully'
         });
     } catch (error) {
-        console.error('Error deleting system prompt item:', error);
+        appLogger.error('Error deleting system prompt item:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         
         // Check if error is about default components
@@ -4533,7 +4534,7 @@ router.post('/:courseId/system-prompts/:itemId/append', asyncHandlerWithAuth(asy
             message: `System prompt item ${append ? 'appended' : 'removed'} successfully`
         });
     } catch (error) {
-        console.error('Error toggling system prompt item append status:', error);
+        appLogger.error('Error toggling system prompt item append status:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to toggle append status',
@@ -4630,7 +4631,7 @@ router.post('/:courseId/system-prompts/save-changes', asyncHandlerWithAuth(async
             message: 'System prompt changes saved successfully'
         });
     } catch (error) {
-        console.error('Error saving system prompt changes:', error);
+        appLogger.error('Error saving system prompt changes:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to save system prompt changes',

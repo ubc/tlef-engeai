@@ -4,7 +4,7 @@
  * api.ts
  * @author: @gatahcha
  * @date: 2026-03-07
- * @latest frontend version: 1.0.6
+ * @latest app version: 1.2.9.9
  * @description: API helpers for student mode: send message, load component HTML, render Feather icons.
  */
 

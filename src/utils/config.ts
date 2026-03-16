@@ -9,7 +9,8 @@ import { LLMConfig, ProviderType as LLMProviderType } from 'ubc-genai-toolkit-ll
 import { RAGConfig, RAGProviderType, QdrantDistanceMetric } from 'ubc-genai-toolkit-rag';
 import { EmbeddingsConfig, EmbeddingProviderType } from 'ubc-genai-toolkit-embeddings';
 import { ChunkingConfig, ChunkingStrategyType } from 'ubc-genai-toolkit-chunking';
-import { ConsoleLogger, LoggerInterface } from 'ubc-genai-toolkit-core';
+import { LoggerInterface } from 'ubc-genai-toolkit-core';
+import { appLogger } from './logger';
 
 // Load environment variables from .env file
 dotenv.config({ path: require('path').resolve(__dirname, '../../.env') });
@@ -27,14 +28,14 @@ export interface AppConfig {
 export function loadConfig(): AppConfig {
 	const debug = process.env.DEBUG === 'true';
 	const developingMode = process.env.DEVELOPING_MODE === 'true';
-	const logger = new ConsoleLogger('loadConfig for EngE-AI');
+	const logger = appLogger;
 	if (debug) {
-		logger.debug('Loading configuration from environment variables...');
+		//logger.debug('Loading configuration from environment variables...');
 	}
 	
 	// Log warning when developer mode is enabled
 	if (developingMode) {
-		logger.warn('⚠️ DEVELOPING_MODE is enabled - LLM calls will be bypassed with mock responses');
+		//logger.warn('⚠️ DEVELOPING_MODE is enabled - LLM calls will be bypassed with mock responses');
 	}
 
 	// --- LLM Module Config ---
@@ -43,7 +44,7 @@ export function loadConfig(): AppConfig {
 		throw new Error(`LLM_PROVIDER environment variable is required.`);
 	}
 	else {
-		console.log(`LLM_PROVIDER environment variable is set to ${process.env.LLM_PROVIDER}.`);
+		appLogger.log(`LLM_PROVIDER environment variable is set to ${process.env.LLM_PROVIDER}.`);
 	}
 	
 	//llm provider
@@ -56,7 +57,7 @@ export function loadConfig(): AppConfig {
 		logger: logger, // Share logger
 		debug: debug,
 	};
-	// if (debug) logger.debug('LLM Config:', llmConfig);
+	// if (debug) //logger.debug('LLM Config:', llmConfig);
 
 	// --- RAG Module Config ---
 	const ragProvider = (process.env.RAG_PROVIDER || 'qdrant') as RAGProviderType;
@@ -113,7 +114,7 @@ export function loadConfig(): AppConfig {
 		debug: debug,
 		// batchSize: // Can be added from env var if needed
 	};
-	// if (debug) logger.debug('RAG Embeddings Config:', embeddingsConfig);
+	// if (debug) //logger.debug('RAG Embeddings Config:', embeddingsConfig);
 
 	// --- Qdrant Specific Config ---
 	const qdrantUrl = process.env.QDRANT_URL;
@@ -142,7 +143,7 @@ export function loadConfig(): AppConfig {
 		vectorSize: qdrantVectorSize,
 		distanceMetric: qdrantDistanceMetric,
 	};
-	if (debug) logger.debug('Qdrant Specific Config:', qdrantConfig);
+	//if (debug) //logger.debug('Qdrant Specific Config:', qdrantConfig);
 
 	// --- RAG Chunking Configuration ---
 	const ragChunkSize = parseInt(process.env.RAG_CHUNK_SIZE || '1024');
@@ -151,15 +152,15 @@ export function loadConfig(): AppConfig {
 	const ragMinChunkSize = parseInt(process.env.RAG_MIN_CHUNK_SIZE || '200');
 
 	// Log RAG Chunking Configuration
-	logger.info('🔧 RAG Chunking Configuration:');
-	logger.info(`   📏 Chunk Size: ${ragChunkSize} characters`);
-	logger.info(`   🔄 Overlap Size: ${ragOverlapSize} characters`);
-	logger.info(`   📋 Chunking Strategy: ${ragChunkingStrategy}`);
-	logger.info(`   📐 Min Chunk Size: ${ragMinChunkSize} characters`);
-	logger.info(`   📊 Overlap Percentage: ${((ragOverlapSize / ragChunkSize) * 100).toFixed(1)}%`);
+	//logger.info('🔧 RAG Chunking Configuration:');
+	//logger.info(`   📏 Chunk Size: ${ragChunkSize} characters`);
+	//logger.info(`   🔄 Overlap Size: ${ragOverlapSize} characters`);
+	//logger.info(`   📋 Chunking Strategy: ${ragChunkingStrategy}`);
+	//logger.info(`   📐 Min Chunk Size: ${ragMinChunkSize} characters`);
+	//logger.info(`   📊 Overlap Percentage: ${((ragOverlapSize / ragChunkSize) * 100).toFixed(1)}%`);
 
 	// if (debug) {
-	// 	logger.debug('RAG Chunking Config Details:', {
+	// 	//logger.debug('RAG Chunking Config Details:', {
 	// 		chunkSize: ragChunkSize,
 	// 		overlapSize: ragOverlapSize,
 	// 		chunkingStrategy: ragChunkingStrategy,
@@ -190,7 +191,7 @@ export function loadConfig(): AppConfig {
 		// Chunking configuration - NOW USING PROPER ChunkingConfig!
 		chunkingConfig: chunkingConfig
 	};
-	// if (debug) logger.debug('Assembled RAG Config:', ragConfig);
+	// if (debug) //logger.debug('Assembled RAG Config:', ragConfig);
 
 	return {
 		llmConfig,

@@ -8,6 +8,7 @@ import express, { Request, Response } from 'express';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { GlobalUser, CourseUser, User } from '../types/shared';
+import { appLogger } from '../utils/logger';
 
 const router = express.Router();
 
@@ -37,18 +38,18 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
             return res.status(400).json({ error: 'Course ID is required' });
         }
         
-        console.log(`[COURSE-ENTRY] User ${globalUser.puid} entering course ${courseId}`);
+        appLogger.log(`[COURSE-ENTRY] User ${globalUser.puid} entering course ${courseId}`);
         
         // 1. Get course details from active-course-list
         const mongoDB = await EngEAI_MongoDB.getInstance();
         const course = await mongoDB.getActiveCourse(courseId);
         
         if (!course) {
-            console.error(`[COURSE-ENTRY] Course not found: ${courseId}`);
+            appLogger.error(`[COURSE-ENTRY] Course not found: ${courseId}`);
             return res.status(404).json({ error: 'Course not found' });
         }
         
-        console.log(`[COURSE-ENTRY] Course found: ${course.courseName}`);
+        appLogger.log(`[COURSE-ENTRY] Course found: ${course.courseName}`);
         
         // 1.5. Handle instructor joining existing course
         if (globalUser.affiliation === 'faculty') {
@@ -71,7 +72,7 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
             
             // Check if instructor is already in the course's instructors array
             if (!isInstructorInArray(courseData.instructors || [])) {
-                console.log(`[COURSE-ENTRY] Instructor ${instructorUserId} not in course instructors list, adding...`);
+                appLogger.log(`[COURSE-ENTRY] Instructor ${instructorUserId} not in course instructors list, adding...`);
                 
                 // Get existing instructors and convert to new format if needed
                 const existingInstructors = courseData.instructors || [];
@@ -93,7 +94,7 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
                     instructors: updatedInstructors
                 } as any);
                 
-                console.log(`[COURSE-ENTRY] Added instructor ${instructorName} (${instructorUserId}) to course's instructors list`);
+                appLogger.log(`[COURSE-ENTRY] Added instructor ${instructorName} (${instructorUserId}) to course's instructors list`);
             }
             
             // Ensure instructor is enrolled in the course (add to coursesEnrolled)
@@ -102,7 +103,7 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
                     globalUser.puid, 
                     courseId
                 );
-                console.log(`[COURSE-ENTRY] Added course ${courseId} to instructor's enrolled list`);
+                appLogger.log(`[COURSE-ENTRY] Added course ${courseId} to instructor's enrolled list`);
             }
         }
         
@@ -115,7 +116,7 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
         
         // 3. If CourseUser doesn't exist, create it
         if (!courseUser) {
-            console.log(`[COURSE-ENTRY] CourseUser not found, creating new one`);
+            appLogger.log(`[COURSE-ENTRY] CourseUser not found, creating new one`);
             
             const newCourseUserData: Partial<User> = {
                 name: globalUser.name,
@@ -130,7 +131,7 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
             
             courseUser = await mongoDB.createStudent(course.courseName, newCourseUserData) as any;
             
-            console.log(`[COURSE-ENTRY] CourseUser created`);
+            appLogger.log(`[COURSE-ENTRY] CourseUser created`);
             
             // Initialize memory agent entry for the user
             try {
@@ -140,9 +141,9 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
                     globalUser.name,
                     globalUser.affiliation
                 );
-                console.log(`[COURSE-ENTRY] Memory agent initialized for user`);
+                appLogger.log(`[COURSE-ENTRY] Memory agent initialized for user`);
             } catch (error) {
-                console.error(`[COURSE-ENTRY] ⚠️ Error initializing memory agent:`, error);
+                appLogger.error(`[COURSE-ENTRY] ⚠️ Error initializing memory agent:`, { error });
                 // Continue even if memory agent initialization fails
             }
             
@@ -152,10 +153,10 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
                     globalUser.puid, 
                     courseId
                 );
-                console.log(`[COURSE-ENTRY] Added course to GlobalUser's enrolled list`);
+                appLogger.log(`[COURSE-ENTRY] Added course to GlobalUser's enrolled list`);
             }
         } else {
-            console.log(`[COURSE-ENTRY] CourseUser found`);
+            appLogger.log(`[COURSE-ENTRY] CourseUser found`);
             
             // Ensure course is in GlobalUser's enrolled list (fixes data inconsistency)
             if (!globalUser.coursesEnrolled.includes(courseId)) {
@@ -163,7 +164,7 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
                     globalUser.puid, 
                     courseId
                 );
-                console.log(`[COURSE-ENTRY] Added course to GlobalUser's enrolled list (was missing)`);
+                appLogger.log(`[COURSE-ENTRY] Added course to GlobalUser's enrolled list (was missing)`);
             }
         }
         
@@ -173,7 +174,7 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
             courseName: course.courseName
         };
         
-        console.log(`[COURSE-ENTRY] Course stored in session`);
+        appLogger.log(`[COURSE-ENTRY] Course stored in session`);
         
         // 6. Determine redirect based on affiliation + onboarding
         let redirect: string;
@@ -182,33 +183,33 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
         if (globalUser.affiliation === 'student' && !(courseUser as any).userOnboarding) {
             redirect = `/course/${courseId}/student/onboarding/student`;
             requiresOnboarding = true;
-            console.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
+            appLogger.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
         } else if (globalUser.affiliation === 'faculty') {
             // Check which onboarding stage is incomplete for instructors
             const courseData = course as any;
             if (!courseData.courseSetup) {
                 redirect = `/course/${courseId}/instructor/onboarding/course-setup`;
                 requiresOnboarding = true;
-                console.log(`[COURSE-ENTRY] Redirecting faculty to course-setup onboarding`);
+                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to course-setup onboarding`);
             } else if (!courseData.contentSetup) {
                 redirect = `/course/${courseId}/instructor/onboarding/document-setup`;
                 requiresOnboarding = true;
-                console.log(`[COURSE-ENTRY] Redirecting faculty to document-setup onboarding`);
+                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to document-setup onboarding`);
             } else if (!courseData.flagSetup) {
                 redirect = `/course/${courseId}/instructor/onboarding/flag-setup`;
                 requiresOnboarding = true;
-                console.log(`[COURSE-ENTRY] Redirecting faculty to flag-setup onboarding`);
+                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to flag-setup onboarding`);
             } else if (!courseData.monitorSetup) {
                 redirect = `/course/${courseId}/instructor/onboarding/monitor-setup`;
                 requiresOnboarding = true;
-                console.log(`[COURSE-ENTRY] Redirecting faculty to monitor-setup onboarding`);
+                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to monitor-setup onboarding`);
             } else {
                 redirect = `/course/${courseId}/instructor/documents`;
-                console.log(`[COURSE-ENTRY] Redirecting faculty to instructor documents`);
+                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to instructor documents`);
             }
         } else {
             redirect = `/course/${courseId}/student`;
-            console.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
+            appLogger.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
         }
         
         return res.json({
@@ -219,7 +220,7 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
         });
         
     } catch (error) {
-        console.error('[COURSE-ENTRY] Error:', error);
+        appLogger.error('[COURSE-ENTRY] Error:', { error });
         return res.status(500).json({ 
             error: 'Failed to enter course',
             message: error instanceof Error ? error.message : 'Unknown error'
@@ -259,18 +260,18 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
             return res.status(400).json({ error: 'Invalid course code format. Must be 6 uppercase alphanumeric characters.' });
         }
         
-        console.log(`[COURSE-ENTRY] User ${globalUser.puid} entering course with code: ${courseCode}`);
+        appLogger.log(`[COURSE-ENTRY] User ${globalUser.puid} entering course with code: ${courseCode}`);
         
         // 1. Get course details by course code
         const mongoDB = await EngEAI_MongoDB.getInstance();
         const course = await mongoDB.getActiveCourseByCode(courseCode);
         
         if (!course) {
-            console.error(`[COURSE-ENTRY] Course not found with code: ${courseCode}`);
+            appLogger.error(`[COURSE-ENTRY] Course not found with code: ${courseCode}`);
             return res.status(404).json({ error: 'Course not found. Please check the course code and try again.' });
         }
         
-        console.log(`[COURSE-ENTRY] Course found: ${course.courseName} (ID: ${course.id})`);
+        appLogger.log(`[COURSE-ENTRY] Course found: ${course.courseName} (ID: ${course.id})`);
         
         // 2. Use the same course entry logic as /enter endpoint
         const courseId = course.id;
@@ -296,7 +297,7 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
             
             // Check if instructor is already in the course's instructors array
             if (!isInstructorInArray(courseData.instructors || [])) {
-                console.log(`[COURSE-ENTRY] Instructor ${instructorUserId} not in course instructors list, adding...`);
+                appLogger.log(`[COURSE-ENTRY] Instructor ${instructorUserId} not in course instructors list, adding...`);
                 
                 // Get existing instructors and convert to new format if needed
                 const existingInstructors = courseData.instructors || [];
@@ -318,7 +319,7 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
                     instructors: updatedInstructors
                 } as any);
                 
-                console.log(`[COURSE-ENTRY] Added instructor ${instructorName} (${instructorUserId}) to course's instructors list`);
+                appLogger.log(`[COURSE-ENTRY] Added instructor ${instructorName} (${instructorUserId}) to course's instructors list`);
             }
             
             // Ensure instructor is enrolled in the course (add to coursesEnrolled)
@@ -327,7 +328,7 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
                     globalUser.puid, 
                     courseId
                 );
-                console.log(`[COURSE-ENTRY] Added course ${courseId} to instructor's enrolled list`);
+                appLogger.log(`[COURSE-ENTRY] Added course ${courseId} to instructor's enrolled list`);
             }
         }
         
@@ -340,7 +341,7 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
         
         // 4. If CourseUser doesn't exist, create it
         if (!courseUser) {
-            console.log(`[COURSE-ENTRY] CourseUser not found, creating new one`);
+            appLogger.log(`[COURSE-ENTRY] CourseUser not found, creating new one`);
             
             const newCourseUserData: Partial<User> = {
                 name: globalUser.name,
@@ -355,7 +356,7 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
             
             courseUser = await mongoDB.createStudent(course.courseName, newCourseUserData) as any;
             
-            console.log(`[COURSE-ENTRY] CourseUser created`);
+            appLogger.log(`[COURSE-ENTRY] CourseUser created`);
             
             // Initialize memory agent entry for the user
             try {
@@ -365,9 +366,9 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
                     globalUser.name,
                     globalUser.affiliation
                 );
-                console.log(`[COURSE-ENTRY] Memory agent initialized for user`);
+                appLogger.log(`[COURSE-ENTRY] Memory agent initialized for user`);
             } catch (error) {
-                console.error(`[COURSE-ENTRY] ⚠️ Error initializing memory agent:`, error);
+                appLogger.error(`[COURSE-ENTRY] ⚠️ Error initializing memory agent:`, { error });
                 // Continue even if memory agent initialization fails
             }
             
@@ -377,10 +378,10 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
                     globalUser.puid, 
                     courseId
                 );
-                console.log(`[COURSE-ENTRY] Added course to GlobalUser's enrolled list`);
+                appLogger.log(`[COURSE-ENTRY] Added course to GlobalUser's enrolled list`);
             }
         } else {
-            console.log(`[COURSE-ENTRY] CourseUser found`);
+            appLogger.log(`[COURSE-ENTRY] CourseUser found`);
             
             // Ensure course is in GlobalUser's enrolled list (fixes data inconsistency)
             if (!globalUser.coursesEnrolled.includes(courseId)) {
@@ -388,7 +389,7 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
                     globalUser.puid, 
                     courseId
                 );
-                console.log(`[COURSE-ENTRY] Added course to GlobalUser's enrolled list (was missing)`);
+                appLogger.log(`[COURSE-ENTRY] Added course to GlobalUser's enrolled list (was missing)`);
             }
         }
         
@@ -398,7 +399,7 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
             courseName: course.courseName
         };
         
-        console.log(`[COURSE-ENTRY] Course stored in session`);
+        appLogger.log(`[COURSE-ENTRY] Course stored in session`);
         
         // 7. Determine redirect based on affiliation + onboarding
         let redirect: string;
@@ -407,33 +408,33 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
         if (globalUser.affiliation === 'student' && !(courseUser as any).userOnboarding) {
             redirect = `/course/${courseId}/student/onboarding/student`;
             requiresOnboarding = true;
-            console.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
+            appLogger.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
         } else if (globalUser.affiliation === 'faculty') {
             // Check which onboarding stage is incomplete for instructors
             const courseData = course as any;
             if (!courseData.courseSetup) {
                 redirect = `/course/${courseId}/instructor/onboarding/course-setup`;
                 requiresOnboarding = true;
-                console.log(`[COURSE-ENTRY] Redirecting faculty to course-setup onboarding`);
+                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to course-setup onboarding`);
             } else if (!courseData.contentSetup) {
                 redirect = `/course/${courseId}/instructor/onboarding/document-setup`;
                 requiresOnboarding = true;
-                console.log(`[COURSE-ENTRY] Redirecting faculty to document-setup onboarding`);
+                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to document-setup onboarding`);
             } else if (!courseData.flagSetup) {
                 redirect = `/course/${courseId}/instructor/onboarding/flag-setup`;
                 requiresOnboarding = true;
-                console.log(`[COURSE-ENTRY] Redirecting faculty to flag-setup onboarding`);
+                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to flag-setup onboarding`);
             } else if (!courseData.monitorSetup) {
                 redirect = `/course/${courseId}/instructor/onboarding/monitor-setup`;
                 requiresOnboarding = true;
-                console.log(`[COURSE-ENTRY] Redirecting faculty to monitor-setup onboarding`);
+                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to monitor-setup onboarding`);
             } else {
                 redirect = `/course/${courseId}/instructor/documents`;
-                console.log(`[COURSE-ENTRY] Redirecting faculty to instructor documents`);
+                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to instructor documents`);
             }
         } else {
             redirect = `/course/${courseId}/student`;
-            console.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
+            appLogger.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
         }
         
         return res.json({
@@ -444,7 +445,7 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
         });
         
     } catch (error) {
-        console.error('[COURSE-ENTRY] Error:', error);
+        appLogger.error('[COURSE-ENTRY] Error:', { error });
         return res.status(500).json({ 
             error: 'Failed to enter course',
             message: error instanceof Error ? error.message : 'Unknown error'
@@ -475,7 +476,7 @@ router.get('/current', asyncHandlerWithAuth(async (req: Request, res: Response) 
         });
         
     } catch (error) {
-        console.error('[COURSE-CURRENT] Error:', error);
+        appLogger.error('[COURSE-CURRENT] Error:', { error });
         return res.status(500).json({ 
             error: 'Failed to get current course'
         });

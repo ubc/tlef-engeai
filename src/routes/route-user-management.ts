@@ -5,6 +5,7 @@
  */
 
 import express, { Request, Response } from 'express';
+import { appLogger } from '../utils/logger';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { sanitizeGlobalUserForFrontend } from '../utils/user-utils';
@@ -47,7 +48,7 @@ router.get('/current', asyncHandlerWithAuth(async (req: Request, res: Response) 
         });
         
     } catch (error) {
-        console.error('[USER-CURRENT] Error:', error);
+        appLogger.error('[USER-CURRENT] Error:', error);
         return res.status(500).json({ 
             error: 'Failed to get current user'
         });
@@ -79,7 +80,7 @@ router.post('/update-onboarding', asyncHandlerWithAuth(async (req: Request, res:
             });
         }
         
-        console.log(`[UPDATE-ONBOARDING] Updating user ${userId} in course ${courseName}`);
+        appLogger.log(`[UPDATE-ONBOARDING] Updating user ${userId} in course ${courseName}`);
         
         const mongoDB = await EngEAI_MongoDB.getInstance();
         const userCollection = mongoDB.db.collection(`${courseName}_users`);
@@ -96,13 +97,13 @@ router.post('/update-onboarding', asyncHandlerWithAuth(async (req: Request, res:
         );
         
         if (result) {
-            console.log(`[UPDATE-ONBOARDING] ✅ Onboarding status updated`);
+            appLogger.log(`[UPDATE-ONBOARDING] ✅ Onboarding status updated`);
             return res.json({
                 success: true,
                 courseUser: result
             });
         } else {
-            console.error(`[UPDATE-ONBOARDING] ❌ User not found`);
+            appLogger.error(`[UPDATE-ONBOARDING] ❌ User not found`);
             return res.status(404).json({
                 success: false,
                 error: 'User not found'
@@ -110,7 +111,7 @@ router.post('/update-onboarding', asyncHandlerWithAuth(async (req: Request, res:
         }
         
     } catch (error) {
-        console.error('[UPDATE-ONBOARDING] Error:', error);
+        appLogger.error('[UPDATE-ONBOARDING] Error:', error);
         return res.status(500).json({
             success: false,
             error: 'Failed to update onboarding status'
@@ -163,7 +164,7 @@ router.post('/activity', asyncHandlerWithAuth(async (req: Request, res: Response
         });
         
     } catch (error) {
-        console.error('[USER-ACTIVITY] Error:', error);
+        appLogger.error('[USER-ACTIVITY] Error:', error);
         return res.status(500).json({
             success: false,
             error: 'Failed to update activity timestamp'

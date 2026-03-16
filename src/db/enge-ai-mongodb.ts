@@ -4,7 +4,7 @@
  * enge-ai-mongodb.ts
  * @author: @gatahcha
  * @date: 2025-03-13
- * @latest backend version: 1.0.8
+ * @latest app version: 1.2.9.9
  * @description: Singleton MongoDB access layer for EngE-AI. Manages courses, users, flags, learning objectives, materials, chats, memory agent, and instructor-allowed-courses.
  */
 
@@ -30,6 +30,7 @@ import { activeCourse,
     DEFAULT_STRUGGLE_TOPICS_ID } from '../types/shared';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { INITIAL_ASSISTANT_MESSAGE, SYSTEM_PROMPT } from '../chat/chat-prompts';
+import { appLogger } from '../utils/logger';
 
 dotenv.config();
 
@@ -113,9 +114,9 @@ export class EngEAI_MongoDB {
             try {
                 await EngEAI_MongoDB.instance.client.connect();
                 EngEAI_MongoDB.instance.db = EngEAI_MongoDB.instance.client.db(process.env.MONGO_DB_NAME);
-                console.log('✅ MongoDB connected successfully');
+                appLogger.log('✅ MongoDB connected successfully');
             } catch (error) {
-                console.error('❌ Failed to connect to MongoDB:', error);
+                appLogger.error('❌ Failed to connect to MongoDB:', error);
                 throw new Error(`MongoDB connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
             }
         }
@@ -143,7 +144,7 @@ export class EngEAI_MongoDB {
             await this.db.admin().ping();
             return true;
         } catch (error) {
-            console.error('❌ MongoDB connection test failed:', error);
+            appLogger.error('❌ MongoDB connection test failed:', error);
             return false;
         }
     }
@@ -160,7 +161,7 @@ export class EngEAI_MongoDB {
             // Check if course already exists - prevent duplicates
             const existingCourse = await this.getActiveCourse(course.id);
             if (existingCourse) {
-                console.log(`⚠️ Course with id ${course.id} already exists, skipping creation`);
+                appLogger.log(`⚠️ Course with id ${course.id} already exists, skipping creation`);
                 return;
             }
 
@@ -190,15 +191,15 @@ export class EngEAI_MongoDB {
                     // Code exists, try with slightly modified date (add milliseconds)
                     attempts++;
                     codeDate = new Date(codeDate.getTime() + attempts);
-                    console.log(`[COURSE-CODE] Duplicate code found, retrying with modified date (attempt ${attempts})`);
+                    appLogger.log(`[COURSE-CODE] Duplicate code found, retrying with modified date (attempt ${attempts})`);
                 } while (attempts < maxAttempts);
                 
                 if (attempts >= maxAttempts) {
-                    console.error(`[COURSE-CODE] ⚠️ Failed to generate unique course code after ${maxAttempts} attempts`);
+                    appLogger.error(`[COURSE-CODE] ⚠️ Failed to generate unique course code after ${maxAttempts} attempts`);
                     // Still use the generated code (very low probability of collision)
                 }
                 
-                console.log(`[COURSE-CODE] Generated course code: ${courseCode} for course: ${courseName}`);
+                appLogger.log(`[COURSE-CODE] Generated course code: ${courseCode} for course: ${courseName}`);
             }
 
             //create users collection (idempotent - won't throw if exists)
@@ -251,17 +252,17 @@ export class EngEAI_MongoDB {
             try {
                 const indexResult = await this.createFlagIndexes(courseName);
                 if (indexResult.success) {
-                    console.log(`✅ Created ${indexResult.indexesCreated.length} indexes for course: ${courseName}`);
+                    appLogger.log(`✅ Created ${indexResult.indexesCreated.length} indexes for course: ${courseName}`);
                 } else {
-                    console.warn(`⚠️ Some indexes failed to create for course: ${courseName}`, indexResult.errors);
+                    appLogger.warn(`⚠️ Some indexes failed to create for course: ${courseName}`, indexResult.errors);
                 }
             } catch (indexError) {
-                console.error(`❌ Error creating indexes for course ${courseName}:`, indexError);
+                appLogger.error(`❌ Error creating indexes for course ${courseName}:`, indexError);
                 // Don't fail course creation if index creation fails
             }
         
         } catch (error) {
-            console.error('Error creating collections and schemas:', error);
+            appLogger.error('Error creating collections and schemas:', error);
             // Re-throw the error so callers know it failed
             throw error;
         }
@@ -362,11 +363,11 @@ export class EngEAI_MongoDB {
                 { coursesEnrolled: { $in: [courseId] } },
                 { $pull: { coursesEnrolled: courseId } } as any
             );
-            console.log(`✅ Removed course ${courseId} from ${updateResult.modifiedCount} user(s) in active-users`);
+            appLogger.log(`✅ Removed course ${courseId} from ${updateResult.modifiedCount} user(s) in active-users`);
             return updateResult.modifiedCount;
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            console.error(`❌ Error removing course from active-users:`, errorMessage);
+            appLogger.error(`❌ Error removing course from active-users:`, errorMessage);
             throw error;
         }
     }
@@ -384,15 +385,15 @@ export class EngEAI_MongoDB {
             
             if (collectionExists) {
                 await this.db.dropCollection(collectionName);
-                console.log(`✅ Successfully dropped collection: ${collectionName}`);
+                appLogger.log(`✅ Successfully dropped collection: ${collectionName}`);
                 return { success: true };
             } else {
-                console.log(`⚠️ Collection ${collectionName} does not exist, skipping drop`);
+                appLogger.log(`⚠️ Collection ${collectionName} does not exist, skipping drop`);
                 return { success: true }; // Not an error if collection doesn't exist
             }
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            console.error(`❌ Error dropping collection ${collectionName}:`, errorMessage);
+            appLogger.error(`❌ Error dropping collection ${collectionName}:`, errorMessage);
             return { success: false, error: errorMessage };
         }
     }
@@ -408,7 +409,7 @@ export class EngEAI_MongoDB {
      * Adds a learning objective to a content item. Uses arrayFilters for nested update.
      */
     public addLearningObjective = async (courseId: string, topicOrWeekId: string, contentId: string, learningObjective: any) => {
-        console.log('🎯 [MONGODB] addLearningObjective called with:', { courseId, topicOrWeekId, contentId, learningObjective });
+        appLogger.log('🎯 [MONGODB] addLearningObjective called with:', { courseId, topicOrWeekId, contentId, learningObjective });
         
         const result = await this.getCourseCollection().findOneAndUpdate(
             { 
@@ -431,7 +432,7 @@ export class EngEAI_MongoDB {
             }
         );
         
-        console.log('✅ [MONGODB] addLearningObjective result:', result);
+        appLogger.log('✅ [MONGODB] addLearningObjective result:', result);
         return result;
     }
 
@@ -484,7 +485,7 @@ export class EngEAI_MongoDB {
      * Removes a learning objective from a content item using $pull.
      */
     public deleteLearningObjective = async (courseId: string, topicOrWeekId: string, contentId: string, objectiveId: string) => {
-        console.log('🗑️ [MONGODB] deleteLearningObjective called with:', { courseId, topicOrWeekId, contentId, objectiveId });
+        appLogger.log('🗑️ [MONGODB] deleteLearningObjective called with:', { courseId, topicOrWeekId, contentId, objectiveId });
         
         const result = await this.getCourseCollection().findOneAndUpdate(
             { 
@@ -507,7 +508,7 @@ export class EngEAI_MongoDB {
             }
         );
         
-        console.log('✅ [MONGODB] deleteLearningObjective result:', result);
+        appLogger.log('✅ [MONGODB] deleteLearningObjective result:', result);
         return result;
     }
 
@@ -581,7 +582,7 @@ export class EngEAI_MongoDB {
                 return collectionNames;
             }
         } catch (error) {
-            console.warn(`[MONGODB] Warning: Could not fetch course document for ${courseName}, using computed collection names:`, error);
+            appLogger.warn(`[MONGODB] Warning: Could not fetch course document for ${courseName}, using computed collection names:`, error);
         }
 
         // Fallback to computed collection names (backward compatibility)
@@ -617,7 +618,7 @@ export class EngEAI_MongoDB {
      */
     public createFlagReport = async (flagReport: FlagReport) => {
         //START DEBUG LOG : DEBUG-CODE(001)
-        console.log('🏴 Creating flag report:', flagReport.id, 'for course:', flagReport.courseName);
+        appLogger.log('🏴 Creating flag report:', flagReport.id, 'for course:', flagReport.courseName);
         //END DEBUG LOG : DEBUG-CODE(001)
         
         try {
@@ -626,13 +627,13 @@ export class EngEAI_MongoDB {
             const result = await flagsCollection.insertOne(flagReport as any);
             
             //START DEBUG LOG : DEBUG-CODE(009)
-            console.log('🏴 Flag report created successfully:', flagReport.id, 'MongoDB ID:', result.insertedId);
+            appLogger.log('🏴 Flag report created successfully:', flagReport.id, 'MongoDB ID:', result.insertedId);
             //END DEBUG LOG : DEBUG-CODE(009)
             
             return result;
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(010)
-            console.error('🏴 Error creating flag report:', flagReport.id, 'Error:', error);
+            appLogger.log('🏴 Error creating flag report:', flagReport.id, 'Error:', error);
             //END DEBUG LOG : DEBUG-CODE(010)
             
             throw new Error(`Failed to create flag report: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -648,7 +649,7 @@ export class EngEAI_MongoDB {
      */
     public getAllFlagReports = async (courseName: string): Promise<FlagReport[]> => {
         //START DEBUG LOG : DEBUG-CODE(002)
-        console.log('🏴 Getting flag reports for course:', courseName);
+        appLogger.log('🏴 Getting flag reports for course:', courseName);
         //END DEBUG LOG : DEBUG-CODE(002)
         
         const flagsCollection = await this.getFlagsCollection(courseName);
@@ -665,7 +666,7 @@ export class EngEAI_MongoDB {
      */
     public getFlagReport = async (courseName: string, flagId: string): Promise<FlagReport | null> => {
         //START DEBUG LOG : DEBUG-CODE(003)
-        console.log('🏴 Getting flag report:', flagId, 'for course:', courseName);
+        appLogger.log('🏴 Getting flag report:', flagId, 'for course:', courseName);
         //END DEBUG LOG : DEBUG-CODE(003)
         
         const flagsCollection = await this.getFlagsCollection(courseName);
@@ -683,7 +684,7 @@ export class EngEAI_MongoDB {
      */
     public updateFlagReport = async (courseName: string, flagId: string, updateData: Partial<FlagReport>) => {
         //START DEBUG LOG : DEBUG-CODE(004)
-        console.log('🏴 Updating flag report:', flagId, 'for course:', courseName, 'with data:', updateData);
+        appLogger.log('🏴 Updating flag report:', flagId, 'for course:', courseName, 'with data:', updateData);
         //END DEBUG LOG : DEBUG-CODE(004)
         
         try {
@@ -701,8 +702,8 @@ export class EngEAI_MongoDB {
             }
 
             //START DEBUG LOG : DEBUG-CODE(011)
-            console.log('🏴 About to update with query:', { id: flagId });
-            console.log('🏴 About to update with data:', { $set: updateWithTimestamp });
+            appLogger.log('🏴 About to update with query:', { id: flagId });
+            appLogger.log('🏴 About to update with data:', { $set: updateWithTimestamp });
             //END DEBUG LOG : DEBUG-CODE(011)
 
             const result = await flagsCollection.findOneAndUpdate(
@@ -712,13 +713,13 @@ export class EngEAI_MongoDB {
             );
 
             //START DEBUG LOG : DEBUG-CODE(012)
-            console.log('🏴 Update result:', result);
+            appLogger.log('🏴 Update result:', result);
             //END DEBUG LOG : DEBUG-CODE(012)
 
             return result;
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(013)
-            console.error('🏴 Error updating flag report:', flagId, 'Error:', error);
+            appLogger.log('🏴 Error updating flag report:', flagId, 'Error:', error);
             //END DEBUG LOG : DEBUG-CODE(013)
             
             throw new Error(`Failed to update flag report: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -735,7 +736,7 @@ export class EngEAI_MongoDB {
      */
     public deleteFlagReport = async (courseName: string, flagId: string) => {
         //START DEBUG LOG : DEBUG-CODE(005)
-        console.log('🏴 Deleting flag report:', flagId, 'for course:', courseName);
+        appLogger.log('🏴 Deleting flag report:', flagId, 'for course:', courseName);
         //END DEBUG LOG : DEBUG-CODE(005)
         
         const flagsCollection = await this.getFlagsCollection(courseName);
@@ -751,7 +752,7 @@ export class EngEAI_MongoDB {
      */
     public deleteAllFlagReports = async (courseName: string) => {
         //START DEBUG LOG : DEBUG-CODE(006)
-        console.log('🏴 Deleting all flag reports for course:', courseName);
+        appLogger.log('🏴 Deleting all flag reports for course:', courseName);
         //END DEBUG LOG : DEBUG-CODE(006)
         
         const flagsCollection = await this.getFlagsCollection(courseName);
@@ -775,7 +776,7 @@ export class EngEAI_MongoDB {
         error?: string;
     } => {
         //START DEBUG LOG : DEBUG-CODE(VALIDATE-STATUS-TRANSITION)
-        console.log(`[MONGODB] 🔄 Validating status transition: ${currentStatus} -> ${newStatus}`);
+        appLogger.log(`[MONGODB] 🔄 Validating status transition: ${currentStatus} -> ${newStatus}`);
         //END DEBUG LOG : DEBUG-CODE(VALIDATE-STATUS-TRANSITION)
         
         // Valid statuses
@@ -811,7 +812,7 @@ export class EngEAI_MongoDB {
         }
         
         //START DEBUG LOG : DEBUG-CODE(VALIDATE-STATUS-TRANSITION-SUCCESS)
-        console.log(`[MONGODB] ✅ Status transition validated: ${currentStatus} -> ${newStatus}`);
+        appLogger.log(`[MONGODB] ✅ Status transition validated: ${currentStatus} -> ${newStatus}`);
         //END DEBUG LOG : DEBUG-CODE(VALIDATE-STATUS-TRANSITION-SUCCESS)
         
         return { isValid: true };
@@ -836,7 +837,7 @@ export class EngEAI_MongoDB {
         instructorId?: string
     ): Promise<FlagReport | null> => {
         //START DEBUG LOG : DEBUG-CODE(UPDATE-FLAG-STATUS)
-        console.log(`[MONGODB] 🔄 Updating flag status: ${flagId} to ${newStatus} in course: ${courseName}`);
+        appLogger.log(`[MONGODB] 🔄 Updating flag status: ${flagId} to ${newStatus} in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(UPDATE-FLAG-STATUS)
         
         try {
@@ -883,13 +884,13 @@ export class EngEAI_MongoDB {
             }
             
             //START DEBUG LOG : DEBUG-CODE(UPDATE-FLAG-STATUS-SUCCESS)
-            console.log(`[MONGODB] ✅ Flag status updated successfully: ${flagId} -> ${newStatus}`);
+            appLogger.log(`[MONGODB] ✅ Flag status updated successfully: ${flagId} -> ${newStatus}`);
             //END DEBUG LOG : DEBUG-CODE(UPDATE-FLAG-STATUS-SUCCESS)
             
             return result as unknown as FlagReport;
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(UPDATE-FLAG-STATUS-ERROR)
-            console.error(`[MONGODB] 🚨 Error updating flag status:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error updating flag status:`, error);
             //END DEBUG LOG : DEBUG-CODE(UPDATE-FLAG-STATUS-ERROR)
             throw error;
         }
@@ -915,7 +916,7 @@ export class EngEAI_MongoDB {
         };
     }> => {
         //START DEBUG LOG : DEBUG-CODE(GET-FLAG-STATS)
-        console.log(`[MONGODB] 📊 Getting flag statistics for course: ${courseName}`);
+        appLogger.log(`[MONGODB] 📊 Getting flag statistics for course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(GET-FLAG-STATS)
         
         try {
@@ -963,13 +964,13 @@ export class EngEAI_MongoDB {
             };
             
             //START DEBUG LOG : DEBUG-CODE(GET-FLAG-STATS-RESULT)
-            console.log(`[MONGODB] 📊 Flag statistics retrieved:`, stats);
+            appLogger.log(`[MONGODB] 📊 Flag statistics retrieved:`, stats);
             //END DEBUG LOG : DEBUG-CODE(GET-FLAG-STATS-RESULT)
             
             return stats;
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(GET-FLAG-STATS-ERROR)
-            console.error(`[MONGODB] 🚨 Error getting flag statistics:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error getting flag statistics:`, error);
             //END DEBUG LOG : DEBUG-CODE(GET-FLAG-STATS-ERROR)
             throw error;
         }
@@ -997,7 +998,7 @@ export class EngEAI_MongoDB {
         };
     }> => {
         //START DEBUG LOG : DEBUG-CODE(VALIDATE-FLAGS)
-        console.log('🔍 [MONGODB] Validating flag collection for course:', courseName);
+        appLogger.log('🔍 [MONGODB] Validating flag collection for course:', courseName);
         //END DEBUG LOG : DEBUG-CODE(VALIDATE-FLAGS)
         
         try {
@@ -1025,7 +1026,7 @@ export class EngEAI_MongoDB {
             const isValid = invalidDocuments === 0;
             
             //START DEBUG LOG : DEBUG-CODE(VALIDATE-FLAGS-RESULT)
-            console.log('🔍 [MONGODB] Flag collection validation result:', {
+            appLogger.log('🔍 [MONGODB] Flag collection validation result:', {
                 isValid,
                 totalFlags,
                 unresolvedFlags,
@@ -1047,7 +1048,7 @@ export class EngEAI_MongoDB {
             };
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(VALIDATE-FLAGS-ERROR)
-            console.error('🔍 [MONGODB] Error validating flag collection:', error);
+            appLogger.error('🔍 [MONGODB] Error validating flag collection:', error);
             //END DEBUG LOG : DEBUG-CODE(VALIDATE-FLAGS-ERROR)
             
             throw new Error(`Flag collection validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -1124,7 +1125,7 @@ export class EngEAI_MongoDB {
         errors: string[];
     }> => {
         //START DEBUG LOG : DEBUG-CODE(CREATE-INDEXES)
-        console.log('📊 [MONGODB] Creating indexes for flag collection:', courseName);
+        appLogger.log('📊 [MONGODB] Creating indexes for flag collection:', courseName);
         //END DEBUG LOG : DEBUG-CODE(CREATE-INDEXES)
         
         try {
@@ -1166,19 +1167,19 @@ export class EngEAI_MongoDB {
                     indexesCreated.push(indexDef.name);
                     
                     //START DEBUG LOG : DEBUG-CODE(INDEX-CREATED)
-                    console.log('📊 [MONGODB] Created index:', indexDef.name, '-', indexDef.description);
+                    appLogger.log('📊 [MONGODB] Created index:', indexDef.name, '-', indexDef.description);
                     //END DEBUG LOG : DEBUG-CODE(INDEX-CREATED)
                 } catch (indexError) {
                     const errorMsg = `Failed to create index ${indexDef.name}: ${indexError instanceof Error ? indexError.message : 'Unknown error'}`;
                     errors.push(errorMsg);
-                    console.error('📊 [MONGODB]', errorMsg);
+                    appLogger.error('📊 [MONGODB]', errorMsg);
                 }
             }
             
             const success = errors.length === 0;
             
             //START DEBUG LOG : DEBUG-CODE(CREATE-INDEXES-RESULT)
-            console.log('📊 [MONGODB] Index creation result:', {
+            appLogger.log('📊 [MONGODB] Index creation result:', {
                 success,
                 indexesCreated: indexesCreated.length,
                 errors: errors.length
@@ -1192,7 +1193,7 @@ export class EngEAI_MongoDB {
             };
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(CREATE-INDEXES-ERROR)
-            console.error('📊 [MONGODB] Error creating indexes:', error);
+            appLogger.error('📊 [MONGODB] Error creating indexes:', error);
             //END DEBUG LOG : DEBUG-CODE(CREATE-INDEXES-ERROR)
             
             throw new Error(`Index creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -1210,7 +1211,7 @@ export class EngEAI_MongoDB {
      */
     public addContentItem = async (courseId: string, topicOrWeekId: string, contentItem: any) => {
         try {
-            console.log('📝 Adding content item to course:', courseId, 'topic/week instance:', topicOrWeekId);
+            appLogger.log('📝 Adding content item to course:', courseId, 'topic/week instance:', topicOrWeekId);
             
             const course = await this.getActiveCourse(courseId);
             if (!course) {
@@ -1239,7 +1240,7 @@ export class EngEAI_MongoDB {
                 return { success: false, error: 'Failed to save content item to database' };
             }
         } catch (error) {
-            console.error('Error adding content item:', error);
+            appLogger.error('Error adding content item:', error);
             return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
         }
     }
@@ -1261,7 +1262,7 @@ export class EngEAI_MongoDB {
         material: AdditionalMaterial
     ): Promise<any> => {
         try {
-            console.log('📄 Adding additional material to course:', courseId, 'topic/week instance:', topicOrWeekId, 'item:', itemId);
+            appLogger.log('📄 Adding additional material to course:', courseId, 'topic/week instance:', topicOrWeekId, 'item:', itemId);
             
             const result = await this.getCourseCollection().findOneAndUpdate(
                 { 
@@ -1284,10 +1285,10 @@ export class EngEAI_MongoDB {
                 }
             );
             
-            console.log('✅ Additional material added successfully');
+            appLogger.log('✅ Additional material added successfully');
             return result;
         } catch (error) {
-            console.error('Error adding additional material:', error);
+            appLogger.error('Error adding additional material:', error);
             throw error;
         }
     }
@@ -1301,7 +1302,7 @@ export class EngEAI_MongoDB {
      */
     public clearAllAdditionalMaterials = async (courseId: string): Promise<any> => {
         try {
-            console.log('🗑️ Clearing all additional materials from course:', courseId);
+            appLogger.log('🗑️ Clearing all additional materials from course:', courseId);
             
             const result = await this.getCourseCollection().findOneAndUpdate(
                 { id: courseId },
@@ -1320,10 +1321,10 @@ export class EngEAI_MongoDB {
                 }
             );
             
-            console.log('✅ All additional materials cleared successfully');
+            appLogger.log('✅ All additional materials cleared successfully');
             return result;
         } catch (error) {
-            console.error('Error clearing additional materials:', error);
+            appLogger.error('Error clearing additional materials:', error);
             throw error;
         }
     }
@@ -1337,9 +1338,9 @@ export class EngEAI_MongoDB {
     public async close(): Promise<void> {
         try {
             await this.client.close();
-            console.log('✅ MongoDB connection closed');
+            appLogger.log('✅ MongoDB connection closed');
         } catch (error) {
-            console.error('❌ Error closing MongoDB connection:', error);
+            appLogger.error('❌ Error closing MongoDB connection:', error);
             throw error;
         }
     }
@@ -1374,7 +1375,7 @@ export class EngEAI_MongoDB {
         userId: string;
     } | null> => {
         //START DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID)
-        console.log(`[MONGODB] 🔍 Finding user with userId: ${userId} in course: ${courseName}`);
+        appLogger.log(`[MONGODB] 🔍 Finding user with userId: ${userId} in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID)
         
         try {
@@ -1383,7 +1384,7 @@ export class EngEAI_MongoDB {
             
             if (user) {
                 //START DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID-SUCCESS)
-                console.log(`[MONGODB] ✅ Found user:`, { name: user.name, userId: user.userId, affiliation: user.affiliation });
+                appLogger.log(`[MONGODB] ✅ Found user:`, { name: user.name, userId: user.userId, affiliation: user.affiliation });
                 //END DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID-SUCCESS)
                 
                 return {
@@ -1393,14 +1394,14 @@ export class EngEAI_MongoDB {
                 };
             } else {
                 //START DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID-NOT-FOUND)
-                console.log(`[MONGODB] ❌ User with userId ${userId} not found in course ${courseName}`);
+                appLogger.log(`[MONGODB] ❌ User with userId ${userId} not found in course ${courseName}`);
                 //END DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID-NOT-FOUND)
                 
                 return null;
             }
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID-ERROR)
-            console.error(`[MONGODB] 🚨 Error finding user with userId ${userId}:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error finding user with userId ${userId}:`, error);
             //END DEBUG LOG : DEBUG-CODE(FIND-USER-BY-ID-ERROR)
             throw error;
         }
@@ -1420,7 +1421,7 @@ export class EngEAI_MongoDB {
         userId: string;
     }>> => {
         //START DEBUG LOG : DEBUG-CODE(BATCH-FIND-USERS)
-        console.log(`[MONGODB] 🔍 Batch finding ${userIds.length} users in course: ${courseName}`);
+        appLogger.log(`[MONGODB] 🔍 Batch finding ${userIds.length} users in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(BATCH-FIND-USERS)
         
         try {
@@ -1442,13 +1443,13 @@ export class EngEAI_MongoDB {
             }
             
             //START DEBUG LOG : DEBUG-CODE(BATCH-FIND-USERS-RESULT)
-            console.log(`[MONGODB] ✅ Batch lookup found ${userMap.size} out of ${userIds.length} users`);
+            appLogger.log(`[MONGODB] ✅ Batch lookup found ${userMap.size} out of ${userIds.length} users`);
             //END DEBUG LOG : DEBUG-CODE(BATCH-FIND-USERS-RESULT)
             
             return userMap;
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(BATCH-FIND-USERS-ERROR)
-            console.error(`[MONGODB] 🚨 Error in batch user lookup:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error in batch user lookup:`, error);
             //END DEBUG LOG : DEBUG-CODE(BATCH-FIND-USERS-ERROR)
             throw error;
         }
@@ -1466,7 +1467,7 @@ export class EngEAI_MongoDB {
         userAffiliation?: string;
     }>> => {
         //START DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES)
-        console.log(`[MONGODB] 🔍 Getting flag reports with user names for course: ${courseName}`);
+        appLogger.log(`[MONGODB] 🔍 Getting flag reports with user names for course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES)
         
         try {
@@ -1495,13 +1496,13 @@ export class EngEAI_MongoDB {
             });
             
             //START DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES-RESULT)
-            console.log(`[MONGODB] ✅ Retrieved ${flagsWithNames.length} flag reports with user names`);
+            appLogger.log(`[MONGODB] ✅ Retrieved ${flagsWithNames.length} flag reports with user names`);
             //END DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES-RESULT)
             
             return flagsWithNames;
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES-ERROR)
-            console.error(`[MONGODB] 🚨 Error getting flag reports with user names:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error getting flag reports with user names:`, error);
             //END DEBUG LOG : DEBUG-CODE(GET-FLAGS-WITH-NAMES-ERROR)
             throw error;
         }
@@ -1517,7 +1518,7 @@ export class EngEAI_MongoDB {
      */
     public findStudentByUserId = async (courseName: string, userId: string) => {
         //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID)
-        console.log(`[MONGODB] 🔍 Finding student with userId: ${userId} in course: ${courseName}`);
+        appLogger.log(`[MONGODB] 🔍 Finding student with userId: ${userId} in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID)
         
         try {
@@ -1526,18 +1527,18 @@ export class EngEAI_MongoDB {
             
             if (student) {
                 //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID-SUCCESS)
-                console.log(`[MONGODB] ✅ Found existing student:`, student);
+                appLogger.log(`[MONGODB] ✅ Found existing student:`, student);
                 //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID-SUCCESS)
             } else {
                 //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID-NOT-FOUND)
-                console.log(`[MONGODB] ❌ Student with userId ${userId} not found in course ${courseName}`);
+                appLogger.log(`[MONGODB] ❌ Student with userId ${userId} not found in course ${courseName}`);
                 //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID-NOT-FOUND)
             }
             
             return student;
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID-ERROR)
-            console.error(`[MONGODB] 🚨 Error finding student with userId ${userId}:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error finding student with userId ${userId}:`, error);
             //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT-BY-USERID-ERROR)
             throw error;
         }
@@ -1554,7 +1555,7 @@ export class EngEAI_MongoDB {
      */
     public findStudentByPUID = async (courseName: string, puid: string) => {
         //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT)
-        console.log(`[MONGODB] 🔍 Finding student with PUID: ${puid} in course: ${courseName}`);
+        appLogger.log(`[MONGODB] 🔍 Finding student with PUID: ${puid} in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT)
         
         try {
@@ -1563,18 +1564,18 @@ export class EngEAI_MongoDB {
             
             if (student) {
                 //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT-SUCCESS)
-                console.log(`[MONGODB] ✅ Found existing student:`, student);
+                appLogger.log(`[MONGODB] ✅ Found existing student:`, student);
                 //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT-SUCCESS)
             } else {
                 //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT-NOT-FOUND)
-                console.log(`[MONGODB] ❌ Student with PUID ${puid} not found in course ${courseName}`);
+                appLogger.log(`[MONGODB] ❌ Student with PUID ${puid} not found in course ${courseName}`);
                 //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT-NOT-FOUND)
             }
             
             return student;
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(FIND-STUDENT-ERROR)
-            console.error(`[MONGODB] 🚨 Error finding student with PUID ${puid}:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error finding student with PUID ${puid}:`, error);
             //END DEBUG LOG : DEBUG-CODE(FIND-STUDENT-ERROR)
             throw error;
         }
@@ -1590,7 +1591,7 @@ export class EngEAI_MongoDB {
      */
     public createStudent = async (courseName: string, userData: Partial<CourseUser>): Promise<CourseUser> => {
         //START DEBUG LOG : DEBUG-CODE(CREATE-STUDENT)
-        console.log(`[MONGODB] 🚀 Creating new student in course: ${courseName}`, userData);
+        appLogger.log(`[MONGODB] 🚀 Creating new student in course: ${courseName}`, userData);
         //END DEBUG LOG : DEBUG-CODE(CREATE-STUDENT)
         
         try {
@@ -1611,13 +1612,13 @@ export class EngEAI_MongoDB {
             const result = await userCollection.insertOne(newStudent as any);
             
             //START DEBUG LOG : DEBUG-CODE(CREATE-STUDENT-SUCCESS)
-            console.log(`[MONGODB] ✅ Created new student with ID: ${studentId} (userId: ${newStudent.userId})`);
+            appLogger.log(`[MONGODB] ✅ Created new student with ID: ${studentId} (userId: ${newStudent.userId})`);
             //END DEBUG LOG : DEBUG-CODE(CREATE-STUDENT-SUCCESS)
             
             return newStudent;
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(CREATE-STUDENT-ERROR)
-            console.error(`[MONGODB] 🚨 Error creating student:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error creating student:`, error);
             //END DEBUG LOG : DEBUG-CODE(CREATE-STUDENT-ERROR)
             throw error;
         }
@@ -1637,7 +1638,7 @@ export class EngEAI_MongoDB {
      */
     public getUserChats = async (courseName: string, userId: string): Promise<Chat[]> => {
         //START DEBUG LOG : DEBUG-CODE(GET-USER-CHATS)
-        console.log(`[MONGODB] 📋 Getting chats for user userId: ${userId} in course: ${courseName}`);
+        appLogger.log(`[MONGODB] 📋 Getting chats for user userId: ${userId} in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(GET-USER-CHATS)
         
         try {
@@ -1646,7 +1647,7 @@ export class EngEAI_MongoDB {
             
             if (!user) {
                 //START DEBUG LOG : DEBUG-CODE(GET-USER-CHATS-NO-USER)
-                console.log(`[MONGODB] ⚠️ User not found with userId: ${userId}`);
+                appLogger.log(`[MONGODB] ⚠️ User not found with userId: ${userId}`);
                 //END DEBUG LOG : DEBUG-CODE(GET-USER-CHATS-NO-USER)
                 return [];
             }
@@ -1658,13 +1659,13 @@ export class EngEAI_MongoDB {
             const activeChats = allChats.filter((chat: Chat) => !chat.isDeleted);
             
             //START DEBUG LOG : DEBUG-CODE(GET-USER-CHATS-SUCCESS)
-            console.log(`[MONGODB] ✅ Found ${activeChats.length} active chats (${allChats.length - activeChats.length} deleted) for user`);
+            appLogger.log(`[MONGODB] ✅ Found ${activeChats.length} active chats (${allChats.length - activeChats.length} deleted) for user`);
             //END DEBUG LOG : DEBUG-CODE(GET-USER-CHATS-SUCCESS)
             
             return activeChats;
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(GET-USER-CHATS-ERROR)
-            console.error(`[MONGODB] 🚨 Error getting user chats:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error getting user chats:`, error);
             //END DEBUG LOG : DEBUG-CODE(GET-USER-CHATS-ERROR)
             throw error;
         }
@@ -1679,14 +1680,14 @@ export class EngEAI_MongoDB {
      * Returns chat metadata without full messages. Sorted by most recent first. Excludes soft-deleted.
      */
     public getUserChatsMetadata = async (courseName: string, userId: string): Promise<any[]> => {
-        console.log(`[MONGODB] 📊 Getting chat metadata for user userId: ${userId} in course: ${courseName}`);
+        appLogger.log(`[MONGODB] 📊 Getting chat metadata for user userId: ${userId} in course: ${courseName}`);
         
         try {
             const userCollection = await this.getUserCollection(courseName);
             const user = await userCollection.findOne({ userId: userId });
             
             if (!user) {
-                console.log(`[MONGODB] ⚠️ User not found with userId: ${userId}`);
+                appLogger.log(`[MONGODB] ⚠️ User not found with userId: ${userId}`);
                 return [];
             }
             
@@ -1708,11 +1709,11 @@ export class EngEAI_MongoDB {
                 }))
                 .sort((a: any, b: any) => b.lastMessageTimestamp - a.lastMessageTimestamp); // Sort by most recent first
             
-            console.log(`[MONGODB] ✅ Found ${activeChatsMetadata.length} active chat metadata for user`);
+            appLogger.log(`[MONGODB] ✅ Found ${activeChatsMetadata.length} active chat metadata for user`);
             
             return activeChatsMetadata;
         } catch (error) {
-            console.error(`[MONGODB] 🚨 Error getting user chat metadata:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error getting user chat metadata:`, error);
             throw error;
         }
     }
@@ -1728,7 +1729,7 @@ export class EngEAI_MongoDB {
      */
     public addChatToUser = async (courseName: string, userId: string, chat: Chat): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(ADD-CHAT-TO-USER)
-        console.log(`[MONGODB] ➕ Adding chat ${chat.id} to user userId: ${userId} in course: ${courseName}`);
+        appLogger.log(`[MONGODB] ➕ Adding chat ${chat.id} to user userId: ${userId} in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(ADD-CHAT-TO-USER)
         
         try {
@@ -1747,11 +1748,11 @@ export class EngEAI_MongoDB {
             }
             
             //START DEBUG LOG : DEBUG-CODE(ADD-CHAT-TO-USER-SUCCESS)
-            console.log(`[MONGODB] ✅ Chat added successfully to user`);
+            appLogger.log(`[MONGODB] ✅ Chat added successfully to user`);
             //END DEBUG LOG : DEBUG-CODE(ADD-CHAT-TO-USER-SUCCESS)
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(ADD-CHAT-TO-USER-ERROR)
-            console.error(`[MONGODB] 🚨 Error adding chat to user:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error adding chat to user:`, error);
             //END DEBUG LOG : DEBUG-CODE(ADD-CHAT-TO-USER-ERROR)
             throw error;
         }
@@ -1769,7 +1770,7 @@ export class EngEAI_MongoDB {
      */
     public updateUserChat = async (courseName: string, userId: string, chatId: string, chat: Chat): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(UPDATE-USER-CHAT)
-        console.log(`[MONGODB] 🔄 Updating chat ${chatId} for user userId: ${userId} in course: ${courseName}`);
+        appLogger.log(`[MONGODB] 🔄 Updating chat ${chatId} for user userId: ${userId} in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(UPDATE-USER-CHAT)
         
         try {
@@ -1790,11 +1791,11 @@ export class EngEAI_MongoDB {
             }
             
             //START DEBUG LOG : DEBUG-CODE(UPDATE-USER-CHAT-SUCCESS)
-            console.log(`[MONGODB] ✅ Chat updated successfully`);
+            appLogger.log(`[MONGODB] ✅ Chat updated successfully`);
             //END DEBUG LOG : DEBUG-CODE(UPDATE-USER-CHAT-SUCCESS)
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(UPDATE-USER-CHAT-ERROR)
-            console.error(`[MONGODB] 🚨 Error updating user chat:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error updating user chat:`, error);
             //END DEBUG LOG : DEBUG-CODE(UPDATE-USER-CHAT-ERROR)
             throw error;
         }
@@ -1812,7 +1813,7 @@ export class EngEAI_MongoDB {
      */
     public addMessageToChat = async (courseName: string, userId: string, chatId: string, message: ChatMessage): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(ADD-MESSAGE-TO-CHAT)
-        console.log(`[MONGODB] 💬 Adding message to chat ${chatId} for user userId: ${userId}`);
+        appLogger.log(`[MONGODB] 💬 Adding message to chat ${chatId} for user userId: ${userId}`);
         //END DEBUG LOG : DEBUG-CODE(ADD-MESSAGE-TO-CHAT)
         
         try {
@@ -1831,11 +1832,11 @@ export class EngEAI_MongoDB {
             }
             
             //START DEBUG LOG : DEBUG-CODE(ADD-MESSAGE-TO-CHAT-SUCCESS)
-            console.log(`[MONGODB] ✅ Message added to chat successfully`);
+            appLogger.log(`[MONGODB] ✅ Message added to chat successfully`);
             //END DEBUG LOG : DEBUG-CODE(ADD-MESSAGE-TO-CHAT-SUCCESS)
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(ADD-MESSAGE-TO-CHAT-ERROR)
-            console.error(`[MONGODB] 🚨 Error adding message to chat:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error adding message to chat:`, error);
             //END DEBUG LOG : DEBUG-CODE(ADD-MESSAGE-TO-CHAT-ERROR)
             throw error;
         }
@@ -1853,7 +1854,7 @@ export class EngEAI_MongoDB {
      */
     public updateChatTitle = async (courseName: string, userId: string, chatId: string, newTitle: string): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-TITLE)
-        console.log(`[MONGODB] 📝 Updating chat title for chat ${chatId} to "${newTitle}" for user userId: ${userId} in course: ${courseName}`);
+        appLogger.log(`[MONGODB] 📝 Updating chat title for chat ${chatId} to "${newTitle}" for user userId: ${userId} in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-TITLE)
         
         try {
@@ -1874,11 +1875,11 @@ export class EngEAI_MongoDB {
             }
             
             //START DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-TITLE-SUCCESS)
-            console.log(`[MONGODB] ✅ Chat title updated successfully to "${newTitle}"`);
+            appLogger.log(`[MONGODB] ✅ Chat title updated successfully to "${newTitle}"`);
             //END DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-TITLE-SUCCESS)
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-TITLE-ERROR)
-            console.error(`[MONGODB] 🚨 Error updating chat title:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error updating chat title:`, error);
             //END DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-TITLE-ERROR)
             throw error;
         }
@@ -1896,7 +1897,7 @@ export class EngEAI_MongoDB {
      */
     public updateChatPinStatus = async (courseName: string, userId: string, chatId: string, isPinned: boolean): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-PIN)
-        console.log(`[MONGODB] 📌 Updating chat pin status for chat ${chatId} to ${isPinned} for user userId: ${userId} in course: ${courseName}`);
+        appLogger.log(`[MONGODB] 📌 Updating chat pin status for chat ${chatId} to ${isPinned} for user userId: ${userId} in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-PIN)
 
         try {
@@ -1917,11 +1918,11 @@ export class EngEAI_MongoDB {
             }
 
             //START DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-PIN-SUCCESS)
-            console.log(`[MONGODB] ✅ Chat pin status updated successfully to ${isPinned}`);
+            appLogger.log(`[MONGODB] ✅ Chat pin status updated successfully to ${isPinned}`);
             //END DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-PIN-SUCCESS)
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-PIN-ERROR)
-            console.error(`[MONGODB] 🚨 Error updating chat pin status:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error updating chat pin status:`, error);
             //END DEBUG LOG : DEBUG-CODE(UPDATE-CHAT-PIN-ERROR)
             throw error;
         }
@@ -1968,7 +1969,7 @@ export class EngEAI_MongoDB {
                 throw new Error(`Chat or message not found: chatId=${chatId}, messageId=${messageId}`);
             }
         } catch (error) {
-            console.error(`[MONGODB] 🚨 Error updating message in chat:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error updating message in chat:`, error);
             throw error;
         }
     };
@@ -1984,7 +1985,7 @@ export class EngEAI_MongoDB {
      */
     public markChatAsDeleted = async (courseName: string, userId: string, chatId: string): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(MARK-CHAT-DELETED)
-        console.log(`[MONGODB] 🗑️ Marking chat ${chatId} as deleted for user userId: ${userId} in course: ${courseName}`);
+        appLogger.log(`[MONGODB] 🗑️ Marking chat ${chatId} as deleted for user userId: ${userId} in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(MARK-CHAT-DELETED)
         
         try {
@@ -2005,11 +2006,11 @@ export class EngEAI_MongoDB {
             }
             
             //START DEBUG LOG : DEBUG-CODE(MARK-CHAT-DELETED-SUCCESS)
-            console.log(`[MONGODB] ✅ Chat ${chatId} marked as deleted successfully`);
+            appLogger.log(`[MONGODB] ✅ Chat ${chatId} marked as deleted successfully`);
             //END DEBUG LOG : DEBUG-CODE(MARK-CHAT-DELETED-SUCCESS)
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(MARK-CHAT-DELETED-ERROR)
-            console.error(`[MONGODB] 🚨 Error marking chat as deleted:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error marking chat as deleted:`, error);
             //END DEBUG LOG : DEBUG-CODE(MARK-CHAT-DELETED-ERROR)
             throw error;
         }
@@ -2027,7 +2028,7 @@ export class EngEAI_MongoDB {
      */
     public deleteChatFromUser = async (courseName: string, userId: string, chatId: string): Promise<void> => {
         //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER)
-        console.log(`[MONGODB] 🗑️ Deleting chat ${chatId} from user userId: ${userId} in course: ${courseName}`);
+        appLogger.log(`[MONGODB] 🗑️ Deleting chat ${chatId} from user userId: ${userId} in course: ${courseName}`);
         //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER)
         
         try {
@@ -2046,11 +2047,11 @@ export class EngEAI_MongoDB {
             }
             
             //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER-SUCCESS)
-            console.log(`[MONGODB] ✅ Chat deleted successfully from user`);
+            appLogger.log(`[MONGODB] ✅ Chat deleted successfully from user`);
             //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER-SUCCESS)
         } catch (error) {
             //START DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER-ERROR)
-            console.error(`[MONGODB] 🚨 Error deleting chat from user:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error deleting chat from user:`, error);
             //END DEBUG LOG : DEBUG-CODE(DELETE-CHAT-FROM-USER-ERROR)
             throw error;
         }
@@ -2218,22 +2219,22 @@ export class EngEAI_MongoDB {
      * Creates new memory agent entry. Treats duplicate key (11000) as success (race condition).
      */
     public createMemoryAgentEntry = async (courseName: string, entry: MemoryAgentEntry): Promise<void> => {
-        console.log(`[MONGODB] 🧠 Creating memory agent entry for userId: ${entry.userId} in course: ${courseName}`);
+        appLogger.log(`[MONGODB] 🧠 Creating memory agent entry for userId: ${entry.userId} in course: ${courseName}`);
         
         try {
             const memoryAgentCollection = await this.getMemoryAgentCollection(courseName);
             await memoryAgentCollection.insertOne(entry as any);
             
-            console.log(`[MONGODB] ✅ Memory agent entry created successfully for userId: ${entry.userId}`);
+            appLogger.log(`[MONGODB] ✅ Memory agent entry created successfully for userId: ${entry.userId}`);
         } catch (error: any) {
             // Handle duplicate key error (MongoDB error code 11000) - entry already exists
             // This can happen in race conditions, so we treat it as idempotent success
             if (error.code === 11000 || error.code === 11001) {
-                console.log(`[MONGODB] ℹ️ Memory agent entry already exists for userId: ${entry.userId} (duplicate key error - treating as success)`);
+                appLogger.log(`[MONGODB] ℹ️ Memory agent entry already exists for userId: ${entry.userId} (duplicate key error - treating as success)`);
                 return; // Idempotent - entry exists, which is what we want
             }
             
-            console.error(`[MONGODB] 🚨 Error creating memory agent entry:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error creating memory agent entry:`, error);
             throw error;
         }
     }
@@ -2247,21 +2248,21 @@ export class EngEAI_MongoDB {
      * Gets memory agent entry (struggle topics) for user. Read-only; does not create.
      */
     public getMemoryAgentEntry = async (courseName: string, userId: string): Promise<MemoryAgentEntry | null> => {
-        console.log(`[MONGODB] 🔍 Getting memory agent entry for userId: ${userId} in course: ${courseName}`);
+        appLogger.log(`[MONGODB] 🔍 Getting memory agent entry for userId: ${userId} in course: ${courseName}`);
         
         try {
             const memoryAgentCollection = await this.getMemoryAgentCollection(courseName);
             const entry = await memoryAgentCollection.findOne({ userId: userId }) as MemoryAgentEntry | null;
             
             if (entry) {
-                console.log(`[MONGODB] ✅ Found memory agent entry for userId: ${userId}`);
+                appLogger.log(`[MONGODB] ✅ Found memory agent entry for userId: ${userId}`);
             } else {
-                console.log(`[MONGODB] ⚠️ Memory agent entry not found for userId: ${userId}`);
+                appLogger.log(`[MONGODB] ⚠️ Memory agent entry not found for userId: ${userId}`);
             }
             
             return entry;
         } catch (error) {
-            console.error(`[MONGODB] 🚨 Error getting memory agent entry:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error getting memory agent entry:`, error);
             throw error;
         }
     }
@@ -2276,8 +2277,8 @@ export class EngEAI_MongoDB {
      * Updates or creates memory agent entry with struggle topics. Upserts by userId.
      */
     public updateMemoryAgentStruggleWords = async (courseName: string, userId: string, struggleTopics: string[]): Promise<void> => {
-        console.log(`[MONGODB] 🔄 Updating struggle words for userId: ${userId} in course: ${courseName}`);
-        console.log(`[MONGODB] 📝 New struggle words:`, struggleTopics);
+        appLogger.log(`[MONGODB] 🔄 Updating struggle words for userId: ${userId} in course: ${courseName}`);
+        appLogger.log(`[MONGODB] 📝 New struggle words:`, struggleTopics);
         
         try {
             const memoryAgentCollection = await this.getMemoryAgentCollection(courseName);
@@ -2297,9 +2298,9 @@ export class EngEAI_MongoDB {
                 throw new Error(`Memory agent entry not found for userId: ${userId}`);
             }
             
-            console.log(`[MONGODB] ✅ Struggle words updated successfully for userId: ${userId}`);
+            appLogger.log(`[MONGODB] ✅ Struggle words updated successfully for userId: ${userId}`);
         } catch (error) {
-            console.error(`[MONGODB] 🚨 Error updating struggle words:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error updating struggle words:`, error);
             throw error;
         }
     }
@@ -2326,14 +2327,14 @@ export class EngEAI_MongoDB {
      * @param affiliation - The user's affiliation ('student' or 'faculty')
      */
     public initializeMemoryAgentForUser = async (courseName: string, userId: string, name: string, affiliation: 'student' | 'faculty'): Promise<void> => {
-        console.log(`[MONGODB] 🧠 Initializing memory agent for userId: ${userId} in course: ${courseName}`);
+        appLogger.log(`[MONGODB] 🧠 Initializing memory agent for userId: ${userId} in course: ${courseName}`);
         
         try {
             // Check if entry already exists (idempotent check)
             const existingEntry = await this.getMemoryAgentEntry(courseName, userId);
             
             if (existingEntry) {
-                console.log(`[MONGODB] ℹ️ Memory agent entry already exists for userId: ${userId}, skipping initialization (idempotent)`);
+                appLogger.log(`[MONGODB] ℹ️ Memory agent entry already exists for userId: ${userId}, skipping initialization (idempotent)`);
                 return;
             }
             
@@ -2352,11 +2353,11 @@ export class EngEAI_MongoDB {
             
             // createMemoryAgentEntry handles duplicate key errors gracefully (idempotent)
             await this.createMemoryAgentEntry(courseName, newEntry);
-            console.log(`[MONGODB] ✅ Memory agent initialized successfully for userId: ${userId} with role: ${role}`);
+            appLogger.log(`[MONGODB] ✅ Memory agent initialized successfully for userId: ${userId} with role: ${role}`);
         } catch (error) {
             // If error is not a duplicate key error, throw it
             // Duplicate key errors are already handled in createMemoryAgentEntry
-            console.error(`[MONGODB] 🚨 Error initializing memory agent:`, error);
+            appLogger.error(`[MONGODB] 🚨 Error initializing memory agent:`, error);
             throw error;
         }
     }
@@ -2581,7 +2582,7 @@ export class EngEAI_MongoDB {
                 { $set: { collectionOfInitialAssistantPrompts: prompts } }
             );
 
-            console.log(`✅ Created default prompt for course: ${courseName || courseId}`);
+            appLogger.log(`✅ Created default prompt for course: ${courseName || courseId}`);
         } else {
             // Default exists, but ensure it's selected if no other prompt is selected
             const hasSelectedPrompt = prompts.some(p => p.isSelected && !p.isDefault && p.id !== DEFAULT_PROMPT_ID);
@@ -2598,7 +2599,7 @@ export class EngEAI_MongoDB {
                     { $set: { collectionOfInitialAssistantPrompts: updatedPrompts } }
                 );
 
-                console.log(`✅ Auto-selected default prompt for course: ${courseName || courseId}`);
+                appLogger.log(`✅ Auto-selected default prompt for course: ${courseName || courseId}`);
             }
         }
     }
@@ -2789,7 +2790,7 @@ export class EngEAI_MongoDB {
                 componentType: 'base'
             };
             items.push(basePrompt);
-            console.log(`✅ Created default base system prompt for course: ${courseName || courseId}`);
+            appLogger.log(`✅ Created default base system prompt for course: ${courseName || courseId}`);
         }
 
         // Ensure learning objectives component exists
@@ -2804,7 +2805,7 @@ export class EngEAI_MongoDB {
                 componentType: 'learning-objectives'
             };
             items.push(learningObjectives);
-            console.log(`✅ Created default learning objectives component for course: ${courseName || courseId}`);
+            appLogger.log(`✅ Created default learning objectives component for course: ${courseName || courseId}`);
         }
 
         // Ensure struggle topics component exists
@@ -2819,7 +2820,7 @@ export class EngEAI_MongoDB {
                 componentType: 'struggle-topics'
             };
             items.push(struggleTopics);
-            console.log(`✅ Created default struggle topics component for course: ${courseName || courseId}`);
+            appLogger.log(`✅ Created default struggle topics component for course: ${courseName || courseId}`);
         }
 
         // Update database if any items were added

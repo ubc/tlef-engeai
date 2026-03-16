@@ -8,6 +8,7 @@
  */
 
 import session from 'express-session';
+import { appLogger } from '../utils/logger';
 
 // Only allow insecure (HTTP) cookies in local development
 // Staging and production should always use secure (HTTPS) cookies
@@ -26,7 +27,7 @@ const sessionConfig = {
     name: 'engeai.sid' // Custom session ID name for TLEF EngE-AI
 };
 
-console.log(`[SESSION] Environment: ${process.env.NODE_ENV || 'not set'}`);
-console.log(`[SESSION] Secure cookies: ${sessionConfig.cookie.secure}`);
+appLogger.log(`[SESSION] Environment: ${process.env.NODE_ENV || 'not set'}`);
+appLogger.log(`[SESSION] Secure cookies: ${sessionConfig.cookie.secure}`);
 
 export default session(sessionConfig);

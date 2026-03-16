@@ -24,6 +24,7 @@ import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { MemoryAgentEntry } from '../types/shared';
 import { getMemoryAgentPrompt } from './memory-agent-prompt';
 import { isDeveloperMode, getMockStruggleWords } from '../helpers/developer-mode';
+import { appLogger } from '../utils/logger';
 
 
 export class MemoryAgent {
@@ -51,13 +52,13 @@ export class MemoryAgent {
             const entry = await mongoDB.getMemoryAgentEntry(courseName, userId);
             
             if (!entry) {
-                console.log(`[MEMORY-AGENT] ⚠️ No memory agent entry found for userId: ${userId} after ensuring existence`);
+                appLogger.log(`[MEMORY-AGENT] ⚠️ No memory agent entry found for userId: ${userId} after ensuring existence`);
                 return ['---THE STRUGGLE WORD IS NOT PROPERLY ATTACHED TO THE USER---'];
             }
             
             return entry.struggleTopics || ["---THE STRUGGLE WORD IS NOT PROPERLY SETTLED (DEFAULT VALUE)---"];
         } catch (error) {
-            console.error(`[MEMORY-AGENT] 🚨 Error getting struggle words:`, error);
+            appLogger.error(`[MEMORY-AGENT] 🚨 Error getting struggle words:`, error);
             return ['---THE STRUGGLE WORD IS NOT PROPERLY ATTACHED (ERROR ENCOUNTERED) TO THE USER---'];
         }
     }
@@ -83,7 +84,7 @@ export class MemoryAgent {
         const userInfo = await mongoDB.findUserByUserId(courseName, userId);
         
         if (!userInfo) {
-            console.warn(`[MEMORY-AGENT] ⚠️ User not found in course ${courseName} with userId: ${userId}, cannot create memory agent entry`);
+            appLogger.warn(`[MEMORY-AGENT] ⚠️ User not found in course ${courseName} with userId: ${userId}, cannot create memory agent entry`);
             throw new Error(`User not found for userId: ${userId}`);
         }
         
@@ -95,7 +96,7 @@ export class MemoryAgent {
             userInfo.affiliation as 'student' | 'faculty'
         );
         
-        console.log(`[MEMORY-AGENT] ✅ Created memory agent entry for userId: ${userId}`);
+        appLogger.log(`[MEMORY-AGENT] ✅ Created memory agent entry for userId: ${userId}`);
     }
 
     /**
@@ -111,7 +112,7 @@ export class MemoryAgent {
         try {
             // Validate userId
             if (!userId || userId === '') {
-                console.warn(`[MEMORY-AGENT] ⚠️ Invalid userId: ${userId}, skipping struggle words update`);
+                appLogger.warn(`[MEMORY-AGENT] ⚠️ Invalid userId: ${userId}, skipping struggle words update`);
                 return;
             }
             
@@ -138,7 +139,7 @@ export class MemoryAgent {
             
             // If no new words to add, skip database update
             if (wordsToAdd.length === 0) {
-                console.log(`[MEMORY-AGENT] ℹ️ No new struggle words to add for userId: ${userId}. All words already exist.`);
+                appLogger.log(`[MEMORY-AGENT] ℹ️ No new struggle words to add for userId: ${userId}. All words already exist.`);
                 return;
             }
             
@@ -152,9 +153,9 @@ export class MemoryAgent {
             // Update in database
             await mongoDB.updateMemoryAgentStruggleWords(courseName, userId, uniqueWords);
             
-            console.log(`[MEMORY-AGENT] ✅ Updated struggle words for userId: ${userId}. Total: ${uniqueWords.length} words (+${wordsToAdd.length} new, ${normalizedExisting.length} existing)`);
+            appLogger.log(`[MEMORY-AGENT] ✅ Updated struggle words for userId: ${userId}. Total: ${uniqueWords.length} words (+${wordsToAdd.length} new, ${normalizedExisting.length} existing)`);
         } catch (error) {
-            console.error(`[MEMORY-AGENT] 🚨 Error updating struggle words:`, error);
+            appLogger.error(`[MEMORY-AGENT] 🚨 Error updating struggle words:`, error);
             throw error;
         }
     }
@@ -171,7 +172,7 @@ export class MemoryAgent {
         try {
             // Validate userId
             if (!userId || userId === '') {
-                console.warn(`[MEMORY-AGENT] ⚠️ Invalid userId: ${userId}, skipping struggle word removal`);
+                appLogger.warn(`[MEMORY-AGENT] ⚠️ Invalid userId: ${userId}, skipping struggle word removal`);
                 return;
             }
             
@@ -197,16 +198,16 @@ export class MemoryAgent {
             
             // If word wasn't found, log and return
             if (remainingWords.length === normalizedExisting.length) {
-                console.log(`[MEMORY-AGENT] ℹ️ Struggle word "${wordToRemove}" not found for userId: ${userId}. Nothing to remove.`);
+                appLogger.log(`[MEMORY-AGENT] ℹ️ Struggle word "${wordToRemove}" not found for userId: ${userId}. Nothing to remove.`);
                 return;
             }
             
             // Update in database with remaining words
             await mongoDB.updateMemoryAgentStruggleWords(courseName, userId, remainingWords);
             
-            console.log(`[MEMORY-AGENT] ✅ Removed struggle word "${wordToRemove}" for userId: ${userId}. Remaining: ${remainingWords.length} words (was ${normalizedExisting.length})`);
+            appLogger.log(`[MEMORY-AGENT] ✅ Removed struggle word "${wordToRemove}" for userId: ${userId}. Remaining: ${remainingWords.length} words (was ${normalizedExisting.length})`);
         } catch (error) {
-            console.error(`[MEMORY-AGENT] 🚨 Error removing struggle word:`, error);
+            appLogger.error(`[MEMORY-AGENT] 🚨 Error removing struggle word:`, error);
             throw error;
         }
     }
@@ -270,19 +271,19 @@ export class MemoryAgent {
             
             // Write to file
             await fs.writeFile(filePath, logContent, 'utf-8');
-            console.log(`[MEMORY-AGENT] 📄 LLM invocation logged to: ${filePath}`);
+            appLogger.log(`[MEMORY-AGENT] 📄 LLM invocation logged to: ${filePath}`);
             
             // Also log to console for immediate visibility (only request details, not response)
-            console.log(`[MEMORY-AGENT] 📤 LLM Invocation Details:`);
-            console.log(`[MEMORY-AGENT]   System Prompt Length: ${systemPrompt.length} chars (~${Math.ceil(systemPrompt.length / 4)} tokens)`);
-            console.log(`[MEMORY-AGENT]   User Message Length: ${userMessage.length} chars (~${Math.ceil(userMessage.length / 4)} tokens)`);
+            appLogger.log(`[MEMORY-AGENT] 📤 LLM Invocation Details:`);
+            appLogger.log(`[MEMORY-AGENT]   System Prompt Length: ${systemPrompt.length} chars (~${Math.ceil(systemPrompt.length / 4)} tokens)`);
+            appLogger.log(`[MEMORY-AGENT]   User Message Length: ${userMessage.length} chars (~${Math.ceil(userMessage.length / 4)} tokens)`);
             if (response !== undefined) {
-                console.log(`[MEMORY-AGENT]   Response Length: ${response.length} chars (~${Math.ceil(response.length / 4)} tokens)`);
+                appLogger.log(`[MEMORY-AGENT]   Response Length: ${response.length} chars (~${Math.ceil(response.length / 4)} tokens)`);
             }
-            console.log(`[MEMORY-AGENT]   System Prompt Preview: ${systemPrompt.substring(0, 100)}...`);
-            console.log(`[MEMORY-AGENT]   User Message Preview: ${userMessage.substring(0, 100)}...`);
+            appLogger.log(`[MEMORY-AGENT]   System Prompt Preview: ${systemPrompt.substring(0, 100)}...`);
+            appLogger.log(`[MEMORY-AGENT]   User Message Preview: ${userMessage.substring(0, 100)}...`);
         } catch (error) {
-            console.error(`[MEMORY-AGENT] 🚨 Error logging LLM invocation:`, error);
+            appLogger.error(`[MEMORY-AGENT] 🚨 Error logging LLM invocation:`, error);
             // Don't throw - logging failure shouldn't break the analysis flow
         }
     }
@@ -305,22 +306,22 @@ export class MemoryAgent {
         try {
             // Validate userId
             if (!userId || userId === '') {
-                console.warn(`[MEMORY-AGENT] ⚠️ Invalid userId: ${userId}, skipping struggle words analysis`);
+                appLogger.warn(`[MEMORY-AGENT] ⚠️ Invalid userId: ${userId}, skipping struggle words analysis`);
                 return;
             }
             
             if (!userMessages || userMessages.length === 0) {
                 //START DEBUG LOG : DEBUG-CODE(ANALYZE-AND-UPDATE-STRUGGLE-WORDS-NO-USER-MESSAGES)
-                console.log(`userMessages: ${userMessages}`);
-                console.log(`[MEMORY-AGENT] ⚠️ No user messages to analyze`);
+                appLogger.log(`userMessages: ${userMessages}`);
+                appLogger.log(`[MEMORY-AGENT] ⚠️ No user messages to analyze`);
                 return;
             }
 
             // Check if developer mode is enabled - use mock struggle words instead of LLM analysis
             if (isDeveloperMode()) {
-                console.log(`[MEMORY-AGENT] 🧪 Developer mode active - skipping LLM analysis, using mock struggle words`);
+                appLogger.log(`[MEMORY-AGENT] 🧪 Developer mode active - skipping LLM analysis, using mock struggle words`);
                 const mockStruggleWords = getMockStruggleWords();
-                console.log(`[MEMORY-AGENT] ✅ Using mock struggle words:`, mockStruggleWords);
+                appLogger.log(`[MEMORY-AGENT] ✅ Using mock struggle words:`, mockStruggleWords);
                 
                 if (mockStruggleWords.length > 0) {
                     // Update struggle words in database (ensures uniqueness)
@@ -331,10 +332,10 @@ export class MemoryAgent {
 
             // Retrieve existing struggle words to provide feedback to LLM
             const existingStruggleWords = await this.getStruggleWords(userId, courseName);
-            console.log(`[MEMORY-AGENT] 📋 Existing struggle topics (${existingStruggleWords.length}):`, existingStruggleWords);
+            appLogger.log(`[MEMORY-AGENT] 📋 Existing struggle topics (${existingStruggleWords.length}):`, existingStruggleWords);
          
             // Create conversation with system prompt that includes existing topics
-            console.log(`[MEMORY-AGENT] 🔍 Analyzing conversation for struggle topics...`);
+            appLogger.log(`[MEMORY-AGENT] 🔍 Analyzing conversation for struggle topics...`);
             const conversation = this.llmModule.createConversation();
             const systemPrompt = getMemoryAgentPrompt(existingStruggleWords);
             conversation.addMessage('system', systemPrompt);
@@ -347,7 +348,7 @@ export class MemoryAgent {
             const response = await conversation.send();
             
             if (!response || !response.content) {
-                console.warn(`[MEMORY-AGENT] ⚠️ Empty response from LLM analysis`);
+                appLogger.warn(`[MEMORY-AGENT] ⚠️ Empty response from LLM analysis`);
                 // Log to file even if response is empty
                 // await this.logLLMInvocation(userId, courseName, systemPrompt, userMessages, '');
                 return;
@@ -369,15 +370,15 @@ export class MemoryAgent {
                     struggleTopics = parsed.StruggleTopics;
                     parseSuccess = true;
                 } else if (parsed && parsed.StruggleTopics === undefined) {
-                    console.warn(`[MEMORY-AGENT] ⚠️ Response missing 'StruggleTopics' field`);
+                    appLogger.warn(`[MEMORY-AGENT] ⚠️ Response missing 'StruggleTopics' field`);
                     struggleTopics = [];
                 } else {
-                    console.warn(`[MEMORY-AGENT] ⚠️ 'StruggleTopics' is not an array in response`);
+                    appLogger.warn(`[MEMORY-AGENT] ⚠️ 'StruggleTopics' is not an array in response`);
                     struggleTopics = [];
                 }
             } catch (jsonError) {
-                console.error(`[MEMORY-AGENT] 🚨 Error parsing JSON response:`, jsonError);
-                console.error(`[MEMORY-AGENT] Response content:`, response.content);
+                appLogger.error(`[MEMORY-AGENT] 🚨 Error parsing JSON response:`, jsonError);
+                appLogger.error(`[MEMORY-AGENT] Response content:`, response.content);
                 struggleTopics = [];
             }
 
@@ -390,16 +391,16 @@ export class MemoryAgent {
             // Remove exact duplicates
             const uniqueStruggleWords = Array.from(new Set(normalizedStruggleWords));
 
-            console.log(`[MEMORY-AGENT] ✅ Extracted ${uniqueStruggleWords.length} struggle topics:`, uniqueStruggleWords);
+            appLogger.log(`[MEMORY-AGENT] ✅ Extracted ${uniqueStruggleWords.length} struggle topics:`, uniqueStruggleWords);
             
             if (uniqueStruggleWords.length > 0) {
                 // Update struggle words in database (ensures uniqueness and avoids duplicates via LLM prompt)
                 await this.updateStruggleWords(userId, courseName, uniqueStruggleWords);
             } else {
-                console.log(`[MEMORY-AGENT] ℹ️ No struggle words extracted from conversation`);
+                appLogger.log(`[MEMORY-AGENT] ℹ️ No struggle words extracted from conversation`);
             }
         } catch (error) {
-            console.error(`[MEMORY-AGENT] 🚨 Error in analyzeAndUpdateStruggleWords:`, error);
+            appLogger.error(`[MEMORY-AGENT] 🚨 Error in analyzeAndUpdateStruggleWords:`, error);
             // Don't throw - this shouldn't break the chat flow
         }
     }

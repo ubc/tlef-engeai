@@ -14,6 +14,7 @@ import { Strategy as UbcShibStrategy } from 'passport-ubcshib';
 import { Strategy as LocalStrategy } from 'passport-local';
 import fs from 'fs';
 import path from 'path';
+import { appLogger } from '../utils/logger';
 
 // Check if SAML is available from environment
 const isSamlAvailable = process.env.SAML_AVAILABLE !== 'false';
@@ -121,9 +122,9 @@ if (hasSamlConfig) {
         if (process.env.SAML_CERT_PATH) {
             try {
                 strategyConfig.cert = fs.readFileSync(process.env.SAML_CERT_PATH, 'utf-8');
-                console.log('[AUTH] 📜 Using custom IdP certificate from:', process.env.SAML_CERT_PATH);
+                appLogger.log('[AUTH] 📜 Using custom IdP certificate from:', process.env.SAML_CERT_PATH);
             } catch (certError) {
-                console.warn('[AUTH] ⚠️  Failed to load certificate, will fetch from metadata:', certError);
+                appLogger.warn('[AUTH] ⚠️  Failed to load certificate, will fetch from metadata:', certError);
             }
         }
 
@@ -131,7 +132,7 @@ if (hasSamlConfig) {
             const attributes = (profile.attributes || {}) as Record<string, AttributeValue>;
 
             // //START DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
-            // console.log('[AUTH] UBCShib profile received:', JSON.stringify(profile, null, 2));
+            // //console.log('[AUTH] UBCShib profile received:', JSON.stringify(profile, null, 2));
             // //END DEBUG LOG : DEBUG-CODE(UBCSHIB-PROFILE)
 
             // Extract PUID - it may be in attributes or at the profile root level
@@ -143,9 +144,9 @@ if (hasSamlConfig) {
                 toString(profile['urn:oid:1.3.6.1.4.1.60.6.1.6']);
 
             if (!puid) {
-                console.error('[AUTH] ❌ Missing PUID in UBCShib response');
-                console.error('[AUTH] Available attributes:', Object.keys(attributes));
-                console.error('[AUTH] Profile keys:', Object.keys(profile));
+                appLogger.error('[AUTH] ❌ Missing PUID in UBCShib response');
+                appLogger.error('[AUTH] Available attributes:', Object.keys(attributes));
+                appLogger.error('[AUTH] Profile keys:', Object.keys(profile));
                 return done(new Error('Missing required ubcEduCwlPuid attribute'));
             }
 
@@ -167,7 +168,7 @@ if (hasSamlConfig) {
                 nameIDFormat: profile.nameIDFormat
             };
 
-            //START DEBUG LOG : DEBUG-CODE(UBCSHIB-USER-CREATED)
+            /* START DEBUG LOG : DEBUG-CODE(UBCSHIB-USER-CREATED)
             console.log('[AUTH] 👤 User object created from SAML:', {
                 username: user.username,
                 puid: user.puid,
@@ -176,33 +177,29 @@ if (hasSamlConfig) {
                 affiliation: user.affiliation,
                 email: user.email
             });
-            //END DEBUG LOG : DEBUG-CODE(UBCSHIB-USER-CREATED)
+            END DEBUG LOG : DEBUG-CODE(UBCSHIB-USER-CREATED) */
 
             return done(null, user);
         });
 
         passport.use('ubcshib', ubcShibStrategy as any);
-        console.log('[AUTH] ✅ UBCShib strategy configured (available for CWL login)');
+        appLogger.log('[AUTH] ✅ UBCShib strategy configured (available for CWL login)');
     } catch (error) {
-        console.error('[AUTH] ❌ Failed to configure UBCShib strategy:', error);
-        console.log('[AUTH] ⚠️  SAML configuration found but setup failed. CWL login will not be available.');
+        appLogger.error('[AUTH] ❌ Failed to configure UBCShib strategy:', error);
+        appLogger.log('[AUTH] ⚠️  SAML configuration found but setup failed. CWL login will not be available.');
     }
 } else {
-    console.log('[AUTH] ⚠️  SAML environment variables not configured. CWL login will not be available.');
+    appLogger.log('[AUTH] ⚠️  SAML environment variables not configured. CWL login will not be available.');
 }
 
 // Always configure Local strategy (used when SAML_AVAILABLE=false or for fallback)
 const localStrategy = new LocalStrategy(
     (username: string, password: string, done: any) => {
-        //START DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-ATTEMPT)
-        console.log('[AUTH-LOCAL] 🔐 Login attempt for username:', username);
-        //END DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-ATTEMPT)
+        appLogger.log('[AUTH-LOCAL] 🔐 Login attempt for username:', username);
 
         // Check if username is 'student' or 'instructor'
         if (username !== 'student' && username !== 'instructor') {
-            //START DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-INVALID-USER)
-            console.log('[AUTH-LOCAL] ❌ Invalid username:', username);
-            //END DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-INVALID-USER)
+            appLogger.log('[AUTH-LOCAL] ❌ Invalid username:', username);
             return done(null, false, { message: 'Invalid username or password' });
         }
 
@@ -212,25 +209,21 @@ const localStrategy = new LocalStrategy(
             : process.env.FAKE_INSTRUCTOR_PASSWORD;
 
         if (password !== expectedPassword) {
-            //START DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-INVALID-PASSWORD)
-            console.log('[AUTH-LOCAL] ❌ Invalid password for user:', username);
-            //END DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-INVALID-PASSWORD)
+            appLogger.log('[AUTH-LOCAL] ❌ Invalid password for user:', username);
             return done(null, false, { message: 'Invalid username or password' });
         }
 
         // Authentication successful - return fake user
         const user = FAKE_USERS[username as 'student' | 'instructor'];
-        //START DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-SUCCESS)
-        console.log('[AUTH-LOCAL] ✅ Authentication successful for user:', username);
-        console.log('[AUTH-LOCAL] 👤 User data:', user);
-        //END DEBUG LOG : DEBUG-CODE(LOCAL-AUTH-SUCCESS)
+        appLogger.log('[AUTH-LOCAL] ✅ Authentication successful for user:', username);
+        appLogger.log('[AUTH-LOCAL] 👤 User data:', user);
 
         return done(null, user);
     }
 );
 
 passport.use('local', localStrategy);
-console.log('[AUTH] ✅ Local strategy configured (available for regular login)');
+appLogger.log('[AUTH] ✅ Local strategy configured (available for regular login)');
 
 // Serialize user to session
 passport.serializeUser((user: any, done: any) => {

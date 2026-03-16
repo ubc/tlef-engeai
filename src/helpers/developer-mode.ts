@@ -15,6 +15,8 @@
  * @since: 2025-01-27
  */
 
+import { appLogger } from '../utils/logger';
+
 /**
  * Check if developer mode is enabled
  * 
@@ -40,7 +42,7 @@ export async function generateMockStreamingResponse(
     const chunkSize = 15; // Chunk size in characters
     const delayMs = 30; // Delay between chunks in milliseconds
     
-    console.log('[DEVELOPER-MODE] 🧪 Generating mock streaming response...');
+    appLogger.log('[DEVELOPER-MODE] 🧪 Generating mock streaming response...');
     
     let fullResponse = '';
     
@@ -58,7 +60,7 @@ export async function generateMockStreamingResponse(
         }
     }
     
-    console.log('[DEVELOPER-MODE] ✅ Mock streaming response completed');
+    appLogger.log('[DEVELOPER-MODE] ✅ Mock streaming response completed');
     
     return fullResponse;
 }

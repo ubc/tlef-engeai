@@ -2,6 +2,8 @@ import dotenv from 'dotenv';
 import express from 'express';
 import path from 'path';
 // import cors from 'cors';
+import { loadConfig } from './utils/config';
+import { appLogger } from './utils/logger';
 import chatAppRoutes from './routes/route-chat-app';
 import ragAppRoutes from './routes/route-rag';
 import mongodbRoutes from './routes/route-mongo';
@@ -21,6 +23,9 @@ import { initInstructorAllowedCourses } from './helpers/init-instructor-allowed-
 import { resolveAffiliation, isFacultyOverridePuid } from './utils/affiliation';
 
 dotenv.config();
+
+const config = loadConfig();
+const logger = appLogger;
 
 const app = express();
 const port = process.env.TLEF_ENGE_AI_PORT || 8020;
@@ -46,13 +51,9 @@ const publicPath = path.join(__dirname, '../public');
 
 // Request logging middleware
 app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
-    //START DEBUG LOG : DEBUG-CODE(SERVER-REQUEST)
-    console.log(
-        `[ENGE-AI] ${new Date().toISOString()} ${req.method} ${
-            req.path
-        } - User: ${(req as any).user?.username || 'anonymous'}`
+    logger.debug(
+        `${new Date().toISOString()} ${req.method} ${req.path} - User: ${(req as any).user?.username || 'anonymous'}`
     );
-    //END DEBUG LOG : DEBUG-CODE(SERVER-REQUEST)
     next();
 });
 
@@ -63,10 +64,10 @@ app.get('/', (req: any, res: any) => {
         const redirectPath = (affiliation === 'staff' || affiliation === 'empty')
             ? '/role-restricted'
             : '/course-selection';
-        console.log('[ROUTING] Authenticated user accessed root, redirecting to', redirectPath);
+        logger.info(`[ROUTING] Authenticated user accessed root, redirecting to ${redirectPath}`);
         return res.redirect(redirectPath);
     }
-    console.log('[ROUTING] Unauthenticated user accessed root, serving index.html');
+    logger.info('[ROUTING] Unauthenticated user accessed root, serving index.html');
     return res.sendFile(path.join(publicPath, 'index.html'));
 });
 
@@ -84,8 +85,8 @@ app.use('/', courseRoutes);
 // This is the path registered with UBC's Identity Provider
 // It redirects to the main auth callback handler
 app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    console.log('[AUTH] SAML callback received at IdP-registered path: /Shibboleth.sso/SAML2/POST');
-    console.log('[AUTH] Forwarding to passport authentication handler...');
+    logger.info('[AUTH] SAML callback received at IdP-registered path: /Shibboleth.sso/SAML2/POST');
+    logger.info('[AUTH] Forwarding to passport authentication handler...');
 
     passport.authenticate('ubcshib', {
         failureRedirect: '/auth/login-failed',
@@ -111,16 +112,16 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
         const affiliation = resolution.affiliation;
 
         if (isFacultyOverridePuid(puid) && cwlAffiliation !== affiliation) {
-            console.log('[AUTH] 🔄 Affiliation override: PUID', puid, 'set to faculty');
+            logger.info(`[AUTH] 🔄 Affiliation override: PUID ${puid} set to faculty`);
         }
 
-        console.log('[AUTH] ✅ SAML authentication successful');
-        console.log('[AUTH] User PUID:', puid);
-        console.log('[AUTH] User Name:', name);
-        console.log('[AUTH] Affiliation:', affiliation, '(CWL:', cwlAffiliation, ', DB:', globalUser?.affiliation ?? 'N/A', ')');
+        logger.info('[AUTH] ✅ SAML authentication successful');
+        logger.info(`[AUTH] User PUID: ${puid}`);
+        logger.info(`[AUTH] User Name: ${name}`);
+        logger.info(`[AUTH] Affiliation: ${affiliation} (CWL: ${cwlAffiliation}, DB: ${globalUser?.affiliation ?? 'N/A'})`);
 
         if (!globalUser) {
-            console.log('[AUTH] 🆕 Creating new GlobalUser');
+            logger.info('[AUTH] 🆕 Creating new GlobalUser');
 
             globalUser = await mongoDB.createGlobalUser({
                 puid,
@@ -131,16 +132,16 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
                 status: 'active'
             });
 
-            console.log('[AUTH] ✅ GlobalUser created:', globalUser.userId);
+            logger.info(`[AUTH] ✅ GlobalUser created: ${globalUser.userId}`);
         } else {
-            console.log('[AUTH] ✅ GlobalUser found:', globalUser.userId);
+            logger.info(`[AUTH] ✅ GlobalUser found: ${globalUser.userId}`);
 
             // Reconcile DB with CWL when DB has inconsistent data (e.g. dual student+instructor stored as faculty)
             if (resolution.needsDbUpdate && (affiliation === 'student' || affiliation === 'faculty')) {
-                console.log('[AUTH] 🔄 Updating GlobalUser affiliation: DB had', globalUser.affiliation, ', CWL says', affiliation);
+                logger.info(`[AUTH] 🔄 Updating GlobalUser affiliation: DB had ${globalUser.affiliation}, CWL says ${affiliation}`);
                 globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty');
                 (req.user as any).affiliation = affiliation;
-                console.log('[AUTH] ✅ GlobalUser affiliation updated:', globalUser.userId);
+                logger.info(`[AUTH] ✅ GlobalUser affiliation updated: ${globalUser.userId}`);
             }
         }
 
@@ -150,20 +151,20 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
         // Save session before redirect
         req.session.save((saveErr) => {
             if (saveErr) {
-                console.error('[AUTH] ❌ Session save error:', saveErr);
+                logger.error('[AUTH] ❌ Session save error:', saveErr as any);
                 return res.redirect('/');
             }
 
             const redirectPath = (affiliation === 'staff' || affiliation === 'empty')
                 ? '/role-restricted'
                 : '/course-selection';
-            console.log('[AUTH] 🚀 Session saved, redirecting to', redirectPath);
-            console.log('[AUTH] 📋 Session ID:', (req as any).sessionID);
+            logger.info(`[AUTH] 🚀 Session saved, redirecting to ${redirectPath}`);
+            logger.info(`[AUTH] 📋 Session ID: ${(req as any).sessionID}`);
             res.redirect(redirectPath);
         });
 
     } catch (error) {
-        console.error('[AUTH] 🚨 Error in authentication callback:', error);
+        logger.error('[AUTH] 🚨 Error in authentication callback:', error as any);
         res.redirect('/');
     }
 });
@@ -217,15 +218,15 @@ app.use((req: express.Request, res: express.Response) => {
 });
 
 app.listen(port, async () => {
-    console.log(`[ENGE-AI] Server running on http://localhost:${port}`);
-    console.log(`[ENGE-AI] Health check: http://localhost:${port}/api/health`);
-    console.log(`[ENGE-AI] Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`[ENGE-AI] SAML Authentication: ${process.env.SAML_ENTRY_POINT ? 'Configured' : 'Not configured'}`);
-    console.log('--------------------------------');
+    logger.info(`Server running on http://localhost:${port}`);
+    logger.info(`Health check: http://localhost:${port}/api/health`);
+    logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    logger.info(`SAML Authentication: ${process.env.SAML_ENTRY_POINT ? 'Configured' : 'Not configured'}`);
+    logger.info('--------------------------------');
 
     try {
         await initInstructorAllowedCourses();
     } catch (err) {
-        console.error('[ENGE-AI] Failed to initialize instructor-allowed-courses:', err);
+        logger.error('Failed to initialize instructor-allowed-courses:', err as any);
     }
 });
