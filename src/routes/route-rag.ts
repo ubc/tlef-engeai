@@ -7,6 +7,7 @@
 
 import express, { Request, Response } from 'express';
 import multer from 'multer';
+import { appLogger } from '../utils/logger';
 import { RAGApp } from '../rag/rag-app';
 import { AdditionalMaterial } from '../types/shared';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
@@ -161,10 +162,10 @@ const validateFileDocument = (req: MulterRequest, res: Response, next: Function)
  */
 router.post('/documents/text', validateTextDocument, requireInstructorForCourseAPI(['body', 'session']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        console.log('🔍 BACKEND UPLOAD TEXT - Request Details:');
-        console.log('  Headers:', req.headers);
-        console.log('  Body:', req.body);
-        console.log('  User:', req.user);
+        appLogger.log('🔍 BACKEND UPLOAD TEXT - Request Details:');
+        appLogger.log('  Headers:', req.headers);
+        appLogger.log('  Body:', req.body);
+        appLogger.log('  User:', req.user);
 
         const ragApp = await RAGApp.getInstance();
 
@@ -182,7 +183,7 @@ router.post('/documents/text', validateTextDocument, requireInstructorForCourseA
 
         const result = await ragApp.uploadDocument(document);
 
-        console.log('🔍 BACKEND UPLOAD TEXT - RAG Upload Result:', result);
+        appLogger.log('🔍 BACKEND UPLOAD TEXT - RAG Upload Result:', result);
 
         if (result.uploaded && result.qdrantId) {
             try {
@@ -195,10 +196,10 @@ router.post('/documents/text', validateTextDocument, requireInstructorForCourseA
                     };
 
                     await ragApp.mongoDBInstance.addAdditionalMaterial(courseId, topicOrWeekId, itemId, materialWithUser);
-                    console.log('✅ Document metadata stored in MongoDB');
+                    //console.log('✅ Document metadata stored in MongoDB');
                 }
             } catch (mongoError) {
-                console.error('Failed to store document metadata in MongoDB:', mongoError);
+                //console.error('Failed to store document metadata in MongoDB:', mongoError);
             }
         }
 
@@ -245,11 +246,11 @@ router.post('/documents/text', validateTextDocument, requireInstructorForCourseA
  */
 router.post('/documents/file', upload.single('file'), validateFileDocument, requireInstructorForCourseAPI(['body', 'session']), asyncHandlerWithAuth(async (req: MulterRequest, res: Response) => {
     try {
-        console.log('🔍 BACKEND UPLOAD FILE - Request Details:');
-        console.log('  Headers:', req.headers);
-        console.log('  Body:', req.body);
-        console.log('  File:', req.file);
-        console.log('  User:', req.user);
+        appLogger.log('🔍 BACKEND UPLOAD FILE - Request Details:');
+        appLogger.log('  Headers:', req.headers);
+        appLogger.log('  Body:', req.body);
+        appLogger.log('  File:', req.file);
+        appLogger.log('  User:', req.user);
 
         const ragApp = await RAGApp.getInstance();
 
@@ -286,10 +287,10 @@ router.post('/documents/file', upload.single('file'), validateFileDocument, requ
                     };
 
                     await ragApp.mongoDBInstance.addAdditionalMaterial(courseId, topicOrWeekId, itemId, materialWithUser);
-                    console.log('✅ Document metadata stored in MongoDB');
+                    appLogger.log('✅ Document metadata stored in MongoDB');
                 }
             } catch (mongoError) {
-                console.error('Failed to store document metadata in MongoDB:', mongoError);
+                appLogger.error('Failed to store document metadata in MongoDB:', mongoError);
             }
         }
 
@@ -388,11 +389,11 @@ router.post('/search', asyncHandlerWithAuth(async (req: Request, res: Response) 
 // // DELETE /api/rag/wipe-all - Wipe all documents from RAG database for a specific course (REQUIRES AUTH - Instructors only)
 // router.delete('/wipe-all', requireInstructorForCourseAPI(['query', 'body', 'session']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
 //     try {
-//         console.log('🔍 BACKEND WIPE ALL DOCUMENTS - Request Details:');
-//         console.log('  Headers:', req.headers);
-//         console.log('  Body:', req.body);
-//         console.log('  Query:', req.query);
-//         console.log('  User:', req.user);
+//         //console.log('🔍 BACKEND WIPE ALL DOCUMENTS - Request Details:');
+//         //console.log('  Headers:', req.headers);
+//         //console.log('  Body:', req.body);
+//         //console.log('  Query:', req.query);
+//         //console.log('  User:', req.user);
 
 //         const courseId = req.query.courseId as string;
 //         if (!courseId) {
@@ -408,7 +409,7 @@ router.post('/search', asyncHandlerWithAuth(async (req: Request, res: Response) 
 //         // Clear MongoDB additional materials
 //         await ragApp.mongoDBInstance.clearAllAdditionalMaterials(courseId);
 
-//         console.log('🔍 BACKEND WIPE ALL DOCUMENTS - Result:', { courseId, totalChunksDeleted: result.totalChunksDeleted, deletedDocuments: result.deletedDocuments.length, errors: result.errors });
+//         //console.log('🔍 BACKEND WIPE ALL DOCUMENTS - Result:', { courseId, totalChunksDeleted: result.totalChunksDeleted, deletedDocuments: result.deletedDocuments.length, errors: result.errors });
 
 //         res.status(200).json({
 //             status: 200,
@@ -422,7 +423,7 @@ router.post('/search', asyncHandlerWithAuth(async (req: Request, res: Response) 
 //         });
 
 //     } catch (error) {
-//         console.error('❌ Failed to wipe RAG database:', error);
+//         //console.error('❌ Failed to wipe RAG database:', error);
 //         res.status(500).json({
 //             status: 500,
 //             message: 'Failed to wipe RAG database',

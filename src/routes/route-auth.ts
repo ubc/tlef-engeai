@@ -9,6 +9,7 @@
 
 import express from 'express';
 import path from 'path';
+import { appLogger } from '../utils/logger';
 import { passport, ubcShibStrategy, isSamlAvailable } from '../middleware/passport';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { sanitizeGlobalUserForFrontend } from '../utils/user-utils';
@@ -28,9 +29,7 @@ const router = express.Router();
 router.get('/login', (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (isSamlAvailable) {
         // SAML authentication flow
-        //START DEBUG LOG : DEBUG-CODE(SAML-LOGIN)
-        console.log('[AUTH] Initiating SAML authentication...');
-        //END DEBUG LOG : DEBUG-CODE(SAML-LOGIN)
+        appLogger.log('[AUTH] Initiating SAML authentication...');
 
         passport.authenticate('ubcshib', {
             failureRedirect: '/auth/login-failed',
@@ -38,9 +37,7 @@ router.get('/login', (req: express.Request, res: express.Response, next: express
         })(req, res, next);
     } else {
         // Local authentication - serve login page
-        //START DEBUG LOG : DEBUG-CODE(LOCAL-LOGIN-PAGE)
-        console.log('[AUTH] Serving local login page (Development Mode)');
-        //END DEBUG LOG : DEBUG-CODE(LOCAL-LOGIN-PAGE)
+        appLogger.log('[AUTH] Serving local login page (Development Mode)');
 
         const loginPagePath = path.join(__dirname, '../../public/pages/local-login.html');
         res.sendFile(loginPagePath);
@@ -50,9 +47,7 @@ router.get('/login', (req: express.Request, res: express.Response, next: express
 // SAML callback handler (shared between both callback routes)
 const samlCallbackHandler = [
     (req: express.Request, res: express.Response, next: express.NextFunction) => {
-        //START DEBUG LOG : DEBUG-CODE(SAML-CALLBACK)
-        console.log('[AUTH] SAML callback received at:', req.path);
-        //END DEBUG LOG : DEBUG-CODE(SAML-CALLBACK)
+        appLogger.log('[AUTH] SAML callback received at:', req.path);
 
         passport.authenticate('ubcshib', {
             failureRedirect: '/auth/login-failed',
@@ -79,17 +74,17 @@ const samlCallbackHandler = [
         const affiliation = resolution.affiliation;
 
         if (isFacultyOverridePuid(puid) && cwlAffiliation !== affiliation) {
-            console.log('[AUTH] 🔄 Affiliation override: PUID', puid, 'set to faculty');
+            appLogger.log('[AUTH] 🔄 Affiliation override: PUID', puid, 'set to faculty');
         }
 
-        console.log('[AUTH] ✅ SAML authentication successful');
-        console.log('[AUTH] User PUID:', puid);
-        console.log('[AUTH] User Name:', name);
-        console.log('[AUTH] Affiliation:', affiliation, '(CWL:', cwlAffiliation, ', DB:', globalUser?.affiliation ?? 'N/A', ')');
+        appLogger.log('[AUTH] ✅ SAML authentication successful');
+        appLogger.log('[AUTH] User PUID:', puid);
+        appLogger.log('[AUTH] User Name:', name);
+        appLogger.log('[AUTH] Affiliation:', affiliation, '(CWL:', cwlAffiliation, ', DB:', globalUser?.affiliation ?? 'N/A', ')');
 
         if (!globalUser) {
             // First-time user - create GlobalUser
-            console.log('[AUTH] 🆕 Creating new GlobalUser');
+            appLogger.log('[AUTH] 🆕 Creating new GlobalUser');
 
             globalUser = await mongoDB.createGlobalUser({
                 puid,
@@ -100,16 +95,16 @@ const samlCallbackHandler = [
                 status: 'active'
             });
 
-            console.log('[AUTH] ✅ GlobalUser created:', globalUser.userId);
+            appLogger.log('[AUTH] ✅ GlobalUser created:', globalUser.userId);
         } else {
-            console.log('[AUTH] ✅ GlobalUser found:', globalUser.userId);
+            appLogger.log('[AUTH] ✅ GlobalUser found:', globalUser.userId);
 
             // Reconcile DB with CWL when DB has inconsistent data (e.g. dual student+instructor stored as faculty)
             if (resolution.needsDbUpdate && (affiliation === 'student' || affiliation === 'faculty')) {
-                console.log('[AUTH] 🔄 Updating GlobalUser affiliation: DB had', globalUser.affiliation, ', CWL says', affiliation);
+                appLogger.log('[AUTH] 🔄 Updating GlobalUser affiliation: DB had', globalUser.affiliation, ', CWL says', affiliation);
                 globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty');
                 (req.user as any).affiliation = affiliation;
-                console.log('[AUTH] ✅ GlobalUser affiliation updated:', globalUser.userId);
+                appLogger.log('[AUTH] ✅ GlobalUser affiliation updated:', globalUser.userId);
             }
         }
         
@@ -121,20 +116,20 @@ const samlCallbackHandler = [
         // IMPORTANT: Save session before redirect to ensure session is persisted
         req.session.save((saveErr) => {
             if (saveErr) {
-                console.error('[AUTH] ❌ Session save error:', saveErr);
+                appLogger.error('[AUTH] ❌ Session save error:', saveErr);
                 return res.redirect('/');
             }
 
             const redirectPath = (affiliation === 'staff' || affiliation === 'empty')
                 ? '/role-restricted'
                 : '/course-selection';
-            console.log('[AUTH] 🚀 Session saved, redirecting to', redirectPath);
-            console.log('[AUTH] 📋 Session ID:', (req as any).sessionID);
+            appLogger.log('[AUTH] 🚀 Session saved, redirecting to', redirectPath);
+            appLogger.log('[AUTH] 📋 Session ID:', (req as any).sessionID);
             res.redirect(redirectPath);
         });
 
     } catch (error) {
-        console.error('[AUTH] 🚨 Error in authentication callback:', error);
+        appLogger.error('[AUTH] 🚨 Error in authentication callback:', error);
         res.redirect('/');
     }
 }];
@@ -163,27 +158,25 @@ router.post('/saml/callback', ...samlCallbackHandler);
  */
 router.post('/login', (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (!isSamlAvailable) {
-        //START DEBUG LOG : DEBUG-CODE(LOCAL-LOGIN-POST)
-        console.log('[AUTH-LOCAL] 📝 Local login POST received');
-        console.log('[AUTH-LOCAL] Username:', req.body.username);
-        //END DEBUG LOG : DEBUG-CODE(LOCAL-LOGIN-POST)
+        appLogger.log('[AUTH-LOCAL] 📝 Local login POST received');
+        appLogger.log('[AUTH-LOCAL] Username:', req.body.username);
 
         // Use custom callback to handle session saving properly
         passport.authenticate('local', async (err: any, user: any, info: any) => {
             if (err) {
-                console.error('[AUTH-LOCAL] ❌ Authentication error:', err);
+                appLogger.error('[AUTH-LOCAL] ❌ Authentication error:', err);
                 return next(err);
             }
 
             if (!user) {
-                console.log('[AUTH-LOCAL] ❌ Authentication failed:', info?.message || 'Unknown error');
+                appLogger.log('[AUTH-LOCAL] ❌ Authentication failed:', info?.message || 'Unknown error');
                 return res.redirect('/auth/login?error=auth');
             }
 
             // Log the user in and WAIT for req.logIn to complete
             req.logIn(user, async (loginErr) => {
                 if (loginErr) {
-                    console.error('[AUTH-LOCAL] ❌ Login error:', loginErr);
+                    appLogger.error('[AUTH-LOCAL] ❌ Login error:', loginErr);
                     return next(loginErr);
                 }
 
@@ -206,16 +199,16 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                     const affiliation = resolution.affiliation;
 
                     if (isFacultyOverridePuid(puid) && cwlAffiliation !== affiliation) {
-                        console.log('[AUTH-LOCAL] 🔄 Affiliation override: PUID', puid, 'set to faculty');
+                        appLogger.log('[AUTH-LOCAL] 🔄 Affiliation override: PUID', puid, 'set to faculty');
                     }
 
-                    console.log('[AUTH-LOCAL] ✅ User logged in successfully');
-                    console.log('[AUTH-LOCAL] User PUID:', puid);
-                    console.log('[AUTH-LOCAL] User Name:', name);
-                    console.log('[AUTH-LOCAL] Affiliation:', affiliation, '(local:', cwlAffiliation, ', DB:', globalUser?.affiliation ?? 'N/A', ')');
+                    appLogger.log('[AUTH-LOCAL] ✅ User logged in successfully');
+                    appLogger.log('[AUTH-LOCAL] User PUID:', puid);
+                    appLogger.log('[AUTH-LOCAL] User Name:', name);
+                    appLogger.log('[AUTH-LOCAL] Affiliation:', affiliation, '(local:', cwlAffiliation, ', DB:', globalUser?.affiliation ?? 'N/A', ')');
 
                     if (!globalUser) {
-                        console.log('[AUTH-LOCAL] 🆕 Creating new GlobalUser');
+                        appLogger.log('[AUTH-LOCAL] 🆕 Creating new GlobalUser');
                         globalUser = await mongoDB.createGlobalUser({
                             puid,
                             name,
@@ -224,16 +217,16 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                             affiliation: affiliation as 'student' | 'faculty' | 'staff' | 'empty',
                             status: 'active'
                         });
-                        console.log('[AUTH-LOCAL] ✅ GlobalUser created:', globalUser.userId);
+                        appLogger.log('[AUTH-LOCAL] ✅ GlobalUser created:', globalUser.userId);
                     } else {
-                        console.log('[AUTH-LOCAL] ✅ GlobalUser found:', globalUser.userId);
+                        appLogger.log('[AUTH-LOCAL] ✅ GlobalUser found:', globalUser.userId);
 
                         // Reconcile DB with local/CWL when DB has inconsistent data
                         if (resolution.needsDbUpdate && (affiliation === 'student' || affiliation === 'faculty')) {
-                            console.log('[AUTH-LOCAL] 🔄 Updating GlobalUser affiliation: DB had', globalUser.affiliation, ', local says', affiliation);
+                            appLogger.log('[AUTH-LOCAL] 🔄 Updating GlobalUser affiliation: DB had', globalUser.affiliation, ', local says', affiliation);
                             globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty');
                             (req.user as any).affiliation = affiliation;
-                            console.log('[AUTH-LOCAL] ✅ GlobalUser affiliation updated:', globalUser.userId);
+                            appLogger.log('[AUTH-LOCAL] ✅ GlobalUser affiliation updated:', globalUser.userId);
                         }
                     }
 
@@ -245,18 +238,18 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                     // CRITICAL: Save session before redirect
                     req.session.save((saveErr) => {
                         if (saveErr) {
-                            console.error('[AUTH-LOCAL] ❌ Session save error:', saveErr);
+                            appLogger.error('[AUTH-LOCAL] ❌ Session save error:', saveErr);
                             return next(saveErr);
                         }
 
                         const redirectPath = (affiliation === 'staff' || affiliation === 'empty')
                             ? '/role-restricted'
                             : '/course-selection';
-                        console.log('[AUTH-LOCAL] 🚀 Redirecting to', redirectPath);
+                        appLogger.log('[AUTH-LOCAL] 🚀 Redirecting to', redirectPath);
                         res.redirect(redirectPath);
                     });
                 } catch (error) {
-                    console.error('[AUTH-LOCAL] 🚨 Error in post-auth processing:', error);
+                    appLogger.error('[AUTH-LOCAL] 🚨 Error in post-auth processing:', error);
                     res.redirect('/auth/login?error=auth');
                 }
             });
@@ -302,32 +295,24 @@ router.get('/logout', (req: express.Request, res: express.Response, next: expres
 
     if (ubcShibStrategy) {
         // SAML Single Log-Out flow
-        //START DEBUG LOG : DEBUG-CODE(SAML-LOGOUT)
-        console.log('[AUTH] Initiating SAML logout...');
-        //END DEBUG LOG : DEBUG-CODE(SAML-LOGOUT)
+        appLogger.log('[AUTH] Initiating SAML logout...');
 
         ubcShibStrategy.logout(req as any, (err: any, requestUrl?: string | null) => {
             if (err) {
-                //START DEBUG LOG : DEBUG-CODE(SAML-LOGOUT-ERROR)
-                console.error('[AUTH] SAML logout error:', err);
-                //END DEBUG LOG : DEBUG-CODE(SAML-LOGOUT-ERROR)
+                appLogger.error('[AUTH] SAML logout error:', err);
                 return next(err);
             }
 
             // 1. Terminate the local passport session
             (req as any).logout((logoutErr: any) => {
                 if (logoutErr) {
-                    //START DEBUG LOG : DEBUG-CODE(SAML-PASSPORT-LOGOUT-ERROR)
-                    console.error('[AUTH] Passport logout error:', logoutErr);
-                    //END DEBUG LOG : DEBUG-CODE(SAML-PASSPORT-LOGOUT-ERROR)
+                    appLogger.error('[AUTH] Passport logout error:', logoutErr);
                     return next(logoutErr);
                 }
                 // 2. Destroy the server-side session
                 (req as any).session.destroy((sessionErr: any) => {
                     if (sessionErr) {
-                        //START DEBUG LOG : DEBUG-CODE(SAML-SESSION-DESTROY-ERROR)
-                        console.error('[AUTH] Session destruction error:', sessionErr);
-                        //END DEBUG LOG : DEBUG-CODE(SAML-SESSION-DESTROY-ERROR)
+                        appLogger.error('[AUTH] Session destruction error:', sessionErr);
                         return next(sessionErr);
                     }
                     // 3. Redirect to the SAML IdP to terminate that session
@@ -341,24 +326,21 @@ router.get('/logout', (req: express.Request, res: express.Response, next: expres
         });
     } else {
         // Local authentication logout - simple session destruction
-        //START DEBUG LOG : DEBUG-CODE(LOCAL-LOGOUT)
-        console.log('[AUTH-LOCAL] 🚪 Logging out local user...');
-
-        //END DEBUG LOG : DEBUG-CODE(LOCAL-LOGOUT)
+        appLogger.log('[AUTH-LOCAL] 🚪 Logging out local user...');
 
         (req as any).logout((logoutErr: any) => {
             if (logoutErr) {
-                console.error('[AUTH-LOCAL] ❌ Logout error:', logoutErr);
+                appLogger.error('[AUTH-LOCAL] ❌ Logout error:', logoutErr);
                 return next(logoutErr);
             }
 
             (req as any).session.destroy((sessionErr: any) => {
                 if (sessionErr) {
-                    console.error('[AUTH-LOCAL] ❌ Session destruction error:', sessionErr);
+                    appLogger.error('[AUTH-LOCAL] ❌ Session destruction error:', sessionErr);
                     return next(sessionErr);
                 }
 
-                console.log('[AUTH-LOCAL] ✅ Logout successful');
+                appLogger.log('[AUTH-LOCAL] ✅ Logout successful');
                 res.redirect('/');
             });
         });
@@ -393,16 +375,14 @@ router.get('/logout/callback',
  * @response 500 - Session incomplete or failed to fetch user
  */
 router.get('/current-user', async (req: express.Request, res: express.Response) => {
-    //START DEBUG LOG : DEBUG-CODE(AUTH-CURRENT-USER)
-    console.log('[SERVER] 🔍 /auth/current-user endpoint called');
-    console.log('[SERVER] 📊 Request details:', {
+    appLogger.log('[SERVER] 🔍 /auth/current-user endpoint called');
+    appLogger.log('[SERVER] 📊 Request details:', {
         isAuthenticated: (req as any).isAuthenticated(),
         hasUser: !!(req as any).user,
         hasGlobalUser: !!(req.session as any).globalUser,
         sessionID: (req as any).sessionID,
         userAgent: req.get('User-Agent')
     });
-    //END DEBUG LOG : DEBUG-CODE(AUTH-CURRENT-USER)
 
     if ((req as any).isAuthenticated()) {
         try {
@@ -411,7 +391,7 @@ router.get('/current-user', async (req: express.Request, res: express.Response) 
             const userId = sessionGlobalUser?.userId;
 
             if (!userId) {
-                console.error('[SERVER] ❌ No userId found in session');
+                appLogger.error('[SERVER] ❌ No userId found in session');
                 return res.status(500).json({ authenticated: false, error: 'User session incomplete - please log in again' });
             }
 
@@ -420,7 +400,7 @@ router.get('/current-user', async (req: express.Request, res: express.Response) 
             const globalUser = await mongoDB.findGlobalUserByUserId(userId);
 
             if (!globalUser) {
-                console.error('[SERVER] ❌ GlobalUser not found in database');
+                appLogger.error('[SERVER] ❌ GlobalUser not found in database');
                 return res.status(404).json({ authenticated: false, error: 'User not found in database' });
             }
 
@@ -438,11 +418,11 @@ router.get('/current-user', async (req: express.Request, res: express.Response) 
             // Bypass for faculty override PUIDs (from env: RICHARD_TAPE_PUID, CHARISMA_RUSDIYANTO_PUID)
             if (sessionUser.affiliation !== globalUser.affiliation && !isFacultyOverridePuid(globalUser.puid)) {
                 validationErrors.push(`Affiliation mismatch: session=${sessionUser.affiliation}, database=${globalUser.affiliation}`);
-                console.warn('[SERVER] ⚠️ Affiliation mismatch detected, using database value as source of truth');
+                appLogger.warn('[SERVER] ⚠️ Affiliation mismatch detected, using database value as source of truth');
             }
 
             if (criticalErrors.length > 0) {
-                console.error('[SERVER] ❌ Critical user validation failed:', criticalErrors);
+                appLogger.error('[SERVER] ❌ Critical user validation failed:', criticalErrors);
                 return res.status(403).json({
                     authenticated: false,
                     error: 'User data validation failed',
@@ -452,7 +432,7 @@ router.get('/current-user', async (req: express.Request, res: express.Response) 
 
             // Log validation warnings but don't fail
             if (validationErrors.length > 0) {
-                console.warn('[SERVER] ⚠️ User validation warnings:', validationErrors);
+                appLogger.warn('[SERVER] ⚠️ User validation warnings:', validationErrors);
             }
 
             // Build userData from database (source of truth)
@@ -462,17 +442,15 @@ router.get('/current-user', async (req: express.Request, res: express.Response) 
                 userId: globalUser.userId // From database - this is the key field
             };
 
-            //START DEBUG LOG : DEBUG-CODE(AUTH-CURRENT-USER-SUCCESS)
-            console.log('[SERVER] ✅ User is authenticated');
-            console.log('[SERVER] 👤 User data from database:', userData);
-            console.log('[SERVER] 🌍 GlobalUser from database:', {
+            appLogger.log('[SERVER] ✅ User is authenticated');
+            appLogger.log('[SERVER] 👤 User data from database:', userData);
+            appLogger.log('[SERVER] 🌍 GlobalUser from database:', {
                 userId: globalUser.userId,
                 name: globalUser.name,
                 affiliation: globalUser.affiliation,
                 status: globalUser.status,
                 coursesEnrolled: globalUser.coursesEnrolled.length
             });
-            //END DEBUG LOG : DEBUG-CODE(AUTH-CURRENT-USER-SUCCESS)
 
             res.json({
                 authenticated: true,
@@ -480,16 +458,14 @@ router.get('/current-user', async (req: express.Request, res: express.Response) 
                 globalUser: sanitizeGlobalUserForFrontend(globalUser)
             });
         } catch (error) {
-            console.error('[SERVER] 🚨 Error fetching user from database:', error);
+            appLogger.error('[SERVER] 🚨 Error fetching user from database:', error);
             res.status(500).json({ 
                 authenticated: false, 
                 error: 'Failed to fetch user data from database' 
             });
         }
     } else {
-        //START DEBUG LOG : DEBUG-CODE(AUTH-CURRENT-USER-FAIL)
-        console.log('[SERVER] ❌ User is not authenticated');
-        //END DEBUG LOG : DEBUG-CODE(AUTH-CURRENT-USER-FAIL)
+        appLogger.log('[SERVER] ❌ User is not authenticated');
         res.json({ authenticated: false });
     }
 });
@@ -506,15 +482,13 @@ router.get('/current-user', async (req: express.Request, res: express.Response) 
  * @response 500 - Session incomplete or failed to fetch user
  */
 router.get('/me', async (req: express.Request, res: express.Response) => {
-    //START DEBUG LOG : DEBUG-CODE(AUTH-ME)
-    console.log('[SERVER] 🔍 /auth/me endpoint called');
-    console.log('[SERVER] 📊 Request details:', {
+    appLogger.log('[SERVER] 🔍 /auth/me endpoint called');
+    appLogger.log('[SERVER] 📊 Request details:', {
         isAuthenticated: (req as any).isAuthenticated(),
         hasUser: !!(req as any).user,
         sessionID: (req as any).sessionID,
         userAgent: req.get('User-Agent')
     });
-    //END DEBUG LOG : DEBUG-CODE(AUTH-ME)
     
     if ((req as any).isAuthenticated()) {
         try {
@@ -523,7 +497,7 @@ router.get('/me', async (req: express.Request, res: express.Response) => {
             const userId = sessionGlobalUser?.userId;
             
             if (!userId) {
-                console.error('[SERVER] ❌ No userId found in session');
+                appLogger.error('[SERVER] ❌ No userId found in session');
                 return res.status(500).json({ authenticated: false, error: 'User session incomplete - please log in again' });
             }
 
@@ -532,7 +506,7 @@ router.get('/me', async (req: express.Request, res: express.Response) => {
             const globalUser = await mongoDB.findGlobalUserByUserId(userId);
 
             if (!globalUser) {
-                console.error('[SERVER] ❌ GlobalUser not found in database');
+                appLogger.error('[SERVER] ❌ GlobalUser not found in database');
                 return res.status(404).json({ authenticated: false, error: 'User not found in database' });
             }
 
@@ -552,7 +526,7 @@ router.get('/me', async (req: express.Request, res: express.Response) => {
             }
 
             if (validationErrors.length > 0) {
-                console.error('[SERVER] ❌ User validation failed:', validationErrors);
+                appLogger.error('[SERVER] ❌ User validation failed:', validationErrors);
                 return res.status(403).json({ 
                     authenticated: false, 
                     error: 'User data validation failed',
@@ -567,17 +541,15 @@ router.get('/me', async (req: express.Request, res: express.Response) => {
                 userId: globalUser.userId // From database - this is the key field
             };
 
-            //START DEBUG LOG : DEBUG-CODE(AUTH-ME-SUCCESS)
-            console.log('[SERVER] ✅ User is authenticated');
-            console.log('[SERVER] 👤 User data from database:', userData);
-            console.log('[SERVER] 🌍 GlobalUser from database:', {
+            appLogger.log('[SERVER] ✅ User is authenticated');
+            appLogger.log('[SERVER] 👤 User data from database:', userData);
+            appLogger.log('[SERVER] 🌍 GlobalUser from database:', {
                 userId: globalUser.userId,
                 name: globalUser.name,
                 affiliation: globalUser.affiliation,
                 status: globalUser.status,
                 coursesEnrolled: globalUser.coursesEnrolled.length
             });
-            //END DEBUG LOG : DEBUG-CODE(AUTH-ME-SUCCESS)
 
             res.json({
                 authenticated: true,
@@ -585,16 +557,14 @@ router.get('/me', async (req: express.Request, res: express.Response) => {
                 globalUser: sanitizeGlobalUserForFrontend(globalUser)
             });
         } catch (error) {
-            console.error('[SERVER] 🚨 Error fetching user from database:', error);
+            appLogger.error('[SERVER] 🚨 Error fetching user from database:', error);
             res.status(500).json({ 
                 authenticated: false, 
                 error: 'Failed to fetch user data from database' 
             });
         }
     } else {
-        //START DEBUG LOG : DEBUG-CODE(AUTH-ME-FAIL)
-        console.log('[SERVER] ❌ User is not authenticated');
-        //END DEBUG LOG : DEBUG-CODE(AUTH-ME-FAIL)
+        appLogger.log('[SERVER] ❌ User is not authenticated');
         res.json({ authenticated: false });
     }
 });
@@ -608,9 +578,7 @@ router.get('/me', async (req: express.Request, res: express.Response) => {
  * @response 200 - Success
  */
 router.get('/config', (req: express.Request, res: express.Response) => {
-    //START DEBUG LOG : DEBUG-CODE(AUTH-CONFIG)
-    console.log('[SERVER] 🔍 /auth/config endpoint called');
-    //END DEBUG LOG : DEBUG-CODE(AUTH-CONFIG)
+    appLogger.log('[SERVER] 🔍 /auth/config endpoint called');
     
     res.json({
         samlAvailable: isSamlAvailable
@@ -627,9 +595,7 @@ router.get('/config', (req: express.Request, res: express.Response) => {
  * @response 503 - SAML not configured
  */
 router.get('/login/cwl', (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    //START DEBUG LOG : DEBUG-CODE(CWL-LOGIN)
-    console.log('[AUTH] Initiating CWL login (forced SAML)...');
-    //END DEBUG LOG : DEBUG-CODE(CWL-LOGIN)
+    appLogger.log('[AUTH] Initiating CWL login (forced SAML)...');
     
     if (ubcShibStrategy) {
         // SAML strategy is available - proceed with SAML authentication
@@ -639,7 +605,7 @@ router.get('/login/cwl', (req: express.Request, res: express.Response, next: exp
         })(req, res, next);
     } else {
         // SAML strategy not configured - return error
-        console.error('[AUTH] ❌ CWL login requested but SAML strategy is not configured');
+        appLogger.error('[AUTH] ❌ CWL login requested but SAML strategy is not configured');
         res.status(503).send(`
             <html>
                 <body>

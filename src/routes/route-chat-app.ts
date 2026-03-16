@@ -20,6 +20,7 @@ import { ChatApp } from '../chat/chat-app';
 import { getRandomYesResponse, getRandomNoResponse } from '../memory-agent/unstruggle-responses';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import { stripQuestionUnstruggleTag } from '../utils/message-utils';
+import { appLogger } from '../utils/logger';
 
 // Load environment variables
 dotenv.config();
@@ -35,7 +36,7 @@ const chatApp = new ChatApp(appConfig);
  * Cleans up chat timers on server shutdown
  */
 process.on('SIGTERM', () => {
-    console.log('📴 Received SIGTERM signal, cleaning up chat timers...');
+    appLogger.log('📴 Received SIGTERM signal, cleaning up chat timers...');
     chatApp.cleanup();
     process.exit(0);
 });
@@ -45,7 +46,7 @@ process.on('SIGTERM', () => {
  * Cleans up chat timers on server shutdown
  */
 process.on('SIGINT', () => {
-    console.log('📴 Received SIGINT signal, cleaning up chat timers...');
+    appLogger.log('📴 Received SIGINT signal, cleaning up chat timers...');
     chatApp.cleanup();
     process.exit(0);
 });
@@ -69,14 +70,14 @@ router.get('/user/chats/metadata', asyncHandlerWithAuth(async (req: Request, res
         const currentCourse = (req.session as any).currentCourse;
         const courseName = currentCourse?.courseName;
         
-        console.log('\n📊 LOADING USER CHAT METADATA:');
-        console.log('='.repeat(50));
-        console.log(`PUID: ${puid}`);
-        console.log(`Course Name: ${courseName}`);
-        console.log('='.repeat(50));
+        appLogger.log('\n📊 LOADING USER CHAT METADATA:');
+        appLogger.log('='.repeat(50));
+        appLogger.log(`PUID: ${puid}`);
+        appLogger.log(`Course Name: ${courseName}`);
+        appLogger.log('='.repeat(50));
         
         if (!puid) {
-            console.log('❌ VALIDATION FAILED: PUID not found in session');
+            appLogger.log('❌ VALIDATION FAILED: PUID not found in session');
             return res.status(401).json({ 
                 success: false, 
                 error: 'User not authenticated' 
@@ -84,7 +85,7 @@ router.get('/user/chats/metadata', asyncHandlerWithAuth(async (req: Request, res
         }
         
         if (!courseName) {
-            console.log('❌ VALIDATION FAILED: Course name not found in session');
+            appLogger.log('❌ VALIDATION FAILED: Course name not found in session');
             return res.status(400).json({ 
                 success: false, 
                 error: 'No active course selected' 
@@ -97,7 +98,7 @@ router.get('/user/chats/metadata', asyncHandlerWithAuth(async (req: Request, res
         // Get userId from GlobalUser using puid
         const globalUser = await mongoDB.findGlobalUserByPUID(puid);
         if (!globalUser || !globalUser.userId) {
-            console.log('❌ VALIDATION FAILED: GlobalUser not found for puid');
+            appLogger.log('❌ VALIDATION FAILED: GlobalUser not found for puid');
             return res.status(401).json({ 
                 success: false, 
                 error: 'User not found' 
@@ -105,12 +106,12 @@ router.get('/user/chats/metadata', asyncHandlerWithAuth(async (req: Request, res
         }
         
         const userId = globalUser.userId;
-        console.log(`[CHAT-METADATA] Converting puid to userId: ${puid} -> ${userId}`);
+        appLogger.log(`[CHAT-METADATA] Converting puid to userId: ${puid} -> ${userId}`);
         
         const chatMetadata = await mongoDB.getUserChatsMetadata(courseName, userId);
         
-        console.log(`✅ LOADED ${chatMetadata.length} CHAT METADATA FROM MONGODB`);
-        console.log('='.repeat(50));
+        appLogger.log(`✅ LOADED ${chatMetadata.length} CHAT METADATA FROM MONGODB`);
+        appLogger.log('='.repeat(50));
         
         res.json({ 
             success: true, 
@@ -118,7 +119,7 @@ router.get('/user/chats/metadata', asyncHandlerWithAuth(async (req: Request, res
         });
         
     } catch (error) {
-        console.error('❌ ERROR LOADING USER CHAT METADATA:', error);
+        appLogger.error('❌ ERROR LOADING USER CHAT METADATA:', { error });
         res.status(500).json({ 
             success: false, 
             error: 'Failed to load user chat metadata' 
@@ -146,16 +147,16 @@ router.get('/user/chats', asyncHandlerWithAuth(async (req: Request, res: Respons
         const courseName = currentCourse?.courseName;
         
         //START DEBUG LOG : DEBUG-CODE(LOAD-CHATS-001)
-        console.log('\n📂 LOADING USER CHATS:');
-        console.log('='.repeat(50));
-        console.log(`PUID: ${puid}`);
-        console.log(`Course Name: ${courseName}`);
-        console.log('='.repeat(50));
+        appLogger.log('\n📂 LOADING USER CHATS:');
+        appLogger.log('='.repeat(50));
+        appLogger.log(`PUID: ${puid}`);
+        appLogger.log(`Course Name: ${courseName}`);
+        appLogger.log('='.repeat(50));
         //END DEBUG LOG : DEBUG-CODE(LOAD-CHATS-001)
         
         if (!puid) {
             //START DEBUG LOG : DEBUG-CODE(LOAD-CHATS-002)
-            console.log('❌ VALIDATION FAILED: PUID not found in session');
+            appLogger.log('❌ VALIDATION FAILED: PUID not found in session');
             //END DEBUG LOG : DEBUG-CODE(LOAD-CHATS-002)
             return res.status(401).json({ 
                 success: false, 
@@ -164,7 +165,7 @@ router.get('/user/chats', asyncHandlerWithAuth(async (req: Request, res: Respons
         }
         
         if (!courseName) {
-            console.log('❌ VALIDATION FAILED: Course name not found in session');
+            appLogger.log('❌ VALIDATION FAILED: Course name not found in session');
             return res.status(400).json({ 
                 success: false, 
                 error: 'No active course selected' 
@@ -177,7 +178,7 @@ router.get('/user/chats', asyncHandlerWithAuth(async (req: Request, res: Respons
         // Get userId from GlobalUser using puid
         const globalUser = await mongoDB.findGlobalUserByPUID(puid);
         if (!globalUser || !globalUser.userId) {
-            console.log('❌ VALIDATION FAILED: GlobalUser not found for puid');
+            appLogger.log('❌ VALIDATION FAILED: GlobalUser not found for puid');
             return res.status(401).json({ 
                 success: false, 
                 error: 'User not found' 
@@ -185,13 +186,13 @@ router.get('/user/chats', asyncHandlerWithAuth(async (req: Request, res: Respons
         }
         
         const userId = globalUser.userId;
-        console.log(`[LOAD-CHATS] Converting puid to userId: ${puid} -> ${userId}`);
+        appLogger.log(`[LOAD-CHATS] Converting puid to userId: ${puid} -> ${userId}`);
         
         const chats = await mongoDB.getUserChats(courseName, userId);
         
         //START DEBUG LOG : DEBUG-CODE(LOAD-CHATS-003)
-        console.log(`✅ LOADED ${chats.length} CHATS FROM MONGODB`);
-        console.log('='.repeat(50));
+        appLogger.log(`✅ LOADED ${chats.length} CHATS FROM MONGODB`);
+        appLogger.log('='.repeat(50));
         //END DEBUG LOG : DEBUG-CODE(LOAD-CHATS-003)
         
         res.json({ 
@@ -201,7 +202,7 @@ router.get('/user/chats', asyncHandlerWithAuth(async (req: Request, res: Respons
         
     } catch (error) {
         //START DEBUG LOG : DEBUG-CODE(LOAD-CHATS-004)
-        console.error('❌ ERROR LOADING USER CHATS:', error);
+        appLogger.error('❌ ERROR LOADING USER CHATS:', { error });
         //END DEBUG LOG : DEBUG-CODE(LOAD-CHATS-004)
         res.status(500).json({ 
             success: false, 
@@ -234,20 +235,20 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
         const puid = user?.puid;
         
         //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-001)
-        console.log('\n🆕 NEW CHAT CREATION REQUEST:');
-        console.log('='.repeat(50));
-        console.log(`User ID: ${userID}`);
-        console.log(`Course Name: ${courseName}`);
-        console.log(`PUID from session: ${puid}`);
-        console.log(`Date: ${date}`);
-        console.log(`Timestamp: ${new Date().toISOString()}`);
-        console.log('='.repeat(50));
+        appLogger.log('\n🆕 NEW CHAT CREATION REQUEST:');
+        appLogger.log('='.repeat(50));
+        appLogger.log(`User ID: ${userID}`);
+        appLogger.log(`Course Name: ${courseName}`);
+        appLogger.log(`PUID from session: ${puid}`);
+        appLogger.log(`Date: ${date}`);
+        appLogger.log(`Timestamp: ${new Date().toISOString()}`);
+        appLogger.log('='.repeat(50));
         //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-001)
     
         
         if (!userID || !courseName || !date) {
             //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-002)
-            console.log('❌ VALIDATION FAILED: Missing required fields for new chat');
+            appLogger.log('❌ VALIDATION FAILED: Missing required fields for new chat');
             //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-002)
             return res.status(400).json({ 
                 success: false, 
@@ -257,7 +258,7 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
 
         if (!puid) {
             //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-003)
-            console.log('❌ VALIDATION FAILED: PUID not found in session');
+            appLogger.log('❌ VALIDATION FAILED: PUID not found in session');
             //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-003)
             return res.status(401).json({ 
                 success: false, 
@@ -273,12 +274,12 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
         const backendWelcomeMessage = initRequest.initAssistantMessage;
         
         //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-004)
-        console.log('\n✅ NEW CHAT CREATED IN MEMORY:');
-        console.log('='.repeat(50));
-        console.log(`Generated Chat ID: ${chatId}`);
-        console.log(`Assistant Message ID: ${backendWelcomeMessage.id}`);
-        console.log(`Assistant Message Preview: "${backendWelcomeMessage.text.substring(0, 100)}..."`);
-        console.log('='.repeat(50));
+        appLogger.log('\n✅ NEW CHAT CREATED IN MEMORY:');
+        appLogger.log('='.repeat(50));
+        appLogger.log(`Generated Chat ID: ${chatId}`);
+        appLogger.log(`Assistant Message ID: ${backendWelcomeMessage.id}`);
+        appLogger.log(`Assistant Message Preview: "${backendWelcomeMessage.text.substring(0, 100)}..."`);
+        appLogger.log('='.repeat(50));
         //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-004)
         
         // Create Chat object to save to MongoDB
@@ -305,18 +306,18 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
             const userId = globalUser.userId;
             
             //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-005-PRE)
-            console.log(`[NEW-CHAT] Converting puid to userId: ${puid} -> ${userId}`);
+            appLogger.log(`[NEW-CHAT] Converting puid to userId: ${puid} -> ${userId}`);
             //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-005-PRE)
             
             await mongoDB.addChatToUser(courseName, userId, newChat);
             
             //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-005)
-            console.log('✅ CHAT SAVED TO MONGODB SUCCESSFULLY');
+            appLogger.log('✅ CHAT SAVED TO MONGODB SUCCESSFULLY');
             //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-005)
         } catch (dbError) {
             //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-006)
-            console.error('⚠️ WARNING: Failed to save chat to MongoDB:', dbError);
-            console.log('Chat created in memory but not persisted to database');
+            appLogger.error('⚠️ WARNING: Failed to save chat to MongoDB:', { error: dbError });
+            appLogger.log('Chat created in memory but not persisted to database');
             //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-006)
             // Continue execution - chat is still in memory
         }
@@ -331,7 +332,7 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
         
     } catch (error) {
         //START DEBUG LOG : DEBUG-CODE(NEW-CHAT-007)
-        console.error('❌ ERROR CREATING NEW CHAT:', error);
+        appLogger.error('❌ ERROR CREATING NEW CHAT:', { error });
         //END DEBUG LOG : DEBUG-CODE(NEW-CHAT-007)
         res.status(500).json({ 
             success: false, 
@@ -399,7 +400,7 @@ router.post('/:chatId/dismiss-unstruggle', asyncHandlerWithAuth(async (req: Requ
 
         return res.json({ success: true, updatedText: newText });
     } catch (error) {
-        console.error('❌ Error dismissing unstruggle block:', error);
+        appLogger.error('❌ Error dismissing unstruggle block:', { error });
         res.status(500).json({ success: false, error: 'Failed to dismiss unstruggle block' });
     }
 }));
@@ -446,21 +447,21 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
         const userId = globalUserFromDB.userId; // Use this consistently throughout
         
         //START DEBUG LOG : DEBUG-CODE(SEND-MSG-001)
-        console.log('\n💬 SENDING MESSAGE:');
-        console.log('='.repeat(50));
-        console.log(`Chat ID: ${chatId}`);
-        console.log(`User ID (from body): ${userIdFromBody}`);
-        console.log(`User ID (from MongoDB): ${userId}`);
-        console.log(`PUID: ${puid}`);
-        console.log(`Course: ${courseName}`);
-        console.log(`Message: ${message.substring(0, 100)}...`);
-        console.log('='.repeat(50));
+        appLogger.log('\n💬 SENDING MESSAGE:');
+        appLogger.log('='.repeat(50));
+        appLogger.log(`Chat ID: ${chatId}`);
+        appLogger.log(`User ID (from body): ${userIdFromBody}`);
+        appLogger.log(`User ID (from MongoDB): ${userId}`);
+        appLogger.log(`PUID: ${puid}`);
+        appLogger.log(`Course: ${courseName}`);
+        appLogger.log(`Message: ${message.substring(0, 100)}...`);
+        appLogger.log('='.repeat(50));
         //END DEBUG LOG : DEBUG-CODE(SEND-MSG-001)
         
         // Validate input
         if (!message) {
             //START DEBUG LOG : DEBUG-CODE(SEND-MSG-002)
-            console.log('❌ VALIDATION FAILED: Missing message');
+            appLogger.log('❌ VALIDATION FAILED: Missing message');
             //END DEBUG LOG : DEBUG-CODE(SEND-MSG-002)
             return res.status(400).json({ 
                 success: false, 
@@ -470,7 +471,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
 
         if (!puid) {
             //START DEBUG LOG : DEBUG-CODE(SEND-MSG-003)
-            console.log('❌ VALIDATION FAILED: PUID not found in session');
+            appLogger.log('❌ VALIDATION FAILED: PUID not found in session');
             //END DEBUG LOG : DEBUG-CODE(SEND-MSG-003)
             return res.status(401).json({ 
                 success: false, 
@@ -492,7 +493,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             const restored = await chatApp.restoreChatFromDatabase(chatId, courseName, userId);
             if (!restored) {
                 //START DEBUG LOG : DEBUG-CODE(SEND-MSG-004)
-                console.log('❌ VALIDATION FAILED: Chat not found in memory and restore failed');
+                appLogger.log('❌ VALIDATION FAILED: Chat not found in memory and restore failed');
                 //END DEBUG LOG : DEBUG-CODE(SEND-MSG-004)
                 return res.status(404).json({
                     success: false,
@@ -514,10 +515,10 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             const isConfident = !!yesMatch;
             
             //START DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-001)
-            console.log(`\n🔄 PROCESSING UNSTRUGGLE RESPONSE:`);
-            console.log(`Message: ${message}`);
-            console.log(`Topic: ${topic}`);
-            console.log(`Response: ${isConfident ? 'Yes (confident)' : 'No (needs practice)'}`);
+            appLogger.log(`\n🔄 PROCESSING UNSTRUGGLE RESPONSE:`);
+            appLogger.log(`Message: ${message}`);
+            appLogger.log(`Topic: ${topic}`);
+            appLogger.log(`Response: ${isConfident ? 'Yes (confident)' : 'No (needs practice)'}`);
             //END DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-001)
             
             // Get chat history to check if previous message has same topic
@@ -537,7 +538,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             
             if (isValidUnstruggle) {
                 //START DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-VALIDATION)
-                console.log('✅ Unstruggle validation passed - previous message matches');
+                appLogger.log('✅ Unstruggle validation passed - previous message matches');
                 //END DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-VALIDATION)
                 
                 // Get hardcoded response (no LLM call)
@@ -581,10 +582,10 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                     await mongoDB.addMessageToChat(courseName, userId, chatId, userMessage);
                     await mongoDB.addMessageToChat(courseName, userId, chatId, assistantMessage);
                     //START DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-002)
-                    console.log('✅ Unstruggle messages saved to MongoDB');
+                    appLogger.log('✅ Unstruggle messages saved to MongoDB');
                     //END DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-002)
                 } catch (dbError) {
-                    console.error('⚠️ WARNING: Failed to save unstruggle messages to MongoDB:', dbError);
+                    appLogger.error('⚠️ WARNING: Failed to save unstruggle messages to MongoDB:', { error: dbError });
                 }
                 
                 // Return response without sending to LLM
@@ -596,11 +597,11 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             } else {
                 // Previous message doesn't match - treat as regular message
                 //START DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-003)
-                console.log('⚠️ Unstruggle pattern detected but validation failed:');
-                console.log(`   Has unstruggle tag: ${hasUnstruggleTag}`);
-                console.log(`   Previous topic: ${prevTopic || 'none'}`);
-                console.log(`   User topic: ${topic}`);
-                console.log('   Treating as regular message.');
+                appLogger.log('⚠️ Unstruggle pattern detected but validation failed:');
+                appLogger.log(`   Has unstruggle tag: ${hasUnstruggleTag}`);
+                appLogger.log(`   Previous topic: ${prevTopic || 'none'}`);
+                appLogger.log(`   User topic: ${topic}`);
+                appLogger.log('   Treating as regular message.');
                 //END DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-003)
             }
         }
@@ -608,7 +609,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
         // REAL AI COMMUNICATION (NO STREAMING - WAIT FOR COMPLETE RESPONSE)
         try {
             //START DEBUG LOG : DEBUG-CODE(SEND-MSG-005)
-            console.log('🤖 Waiting for AI response...');
+            appLogger.log('🤖 Waiting for AI response...');
             //END DEBUG LOG : DEBUG-CODE(SEND-MSG-005)
             
             // Send message through ChatApp and wait for complete response
@@ -630,8 +631,8 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             );
 
             //START DEBUG LOG : DEBUG-CODE(SEND-MSG-006)
-            console.log('✅ AI response received');
-            console.log('📊 Response length:', assistantMessage.text.length, 'characters');
+            appLogger.log('✅ AI response received');
+            appLogger.log('📊 Response length:', assistantMessage.text.length, 'characters');
             //END DEBUG LOG : DEBUG-CODE(SEND-MSG-006)
 
             // Create the user message object (sendUserMessage adds it internally but we need to save it to DB)
@@ -650,25 +651,25 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
 
             // Save both messages to MongoDB
             // userId already fetched from MongoDB above (consistent source)
-            console.log(`[SEND-MSG] Using userId from MongoDB: ${puid} -> ${userId}`);
+            appLogger.log(`[SEND-MSG] Using userId from MongoDB: ${puid} -> ${userId}`);
             
             try {
                 // Save user message
                 await mongoDB.addMessageToChat(courseName, userId, chatId, userMessage);
                 
                 //START DEBUG LOG : DEBUG-CODE(SEND-MSG-007)
-                console.log('✅ User message saved to MongoDB');
-                console.log('   User message ID:', userMessage.id);
-                console.log('   Text:', userMessage.text.substring(0, 50) + '...');
+                appLogger.log('✅ User message saved to MongoDB');
+                appLogger.log('   User message ID:', userMessage.id);
+                appLogger.log('   Text:', userMessage.text.substring(0, 50) + '...');
                 //END DEBUG LOG : DEBUG-CODE(SEND-MSG-007)
                 
                 // Save assistant message
                 await mongoDB.addMessageToChat(courseName, userId, chatId, assistantMessage);
                 
                 //START DEBUG LOG : DEBUG-CODE(SEND-MSG-008)
-                console.log('✅ Assistant message saved to MongoDB');
-                console.log('   Assistant message ID:', assistantMessage.id);
-                console.log('   Text:', assistantMessage.text.substring(0, 50) + '...');
+                appLogger.log('✅ Assistant message saved to MongoDB');
+                appLogger.log('   Assistant message ID:', assistantMessage.id);
+                appLogger.log('   Text:', assistantMessage.text.substring(0, 50) + '...');
                 //END DEBUG LOG : DEBUG-CODE(SEND-MSG-008)
                 
                 // Check if chat title needs updating (first user-AI exchange)
@@ -679,8 +680,8 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 
             } catch (dbError) {
                 //START DEBUG LOG : DEBUG-CODE(SEND-MSG-009)
-                console.error('⚠️ WARNING: Failed to save messages to MongoDB:', dbError);
-                console.log('Messages in memory but not persisted to database');
+                appLogger.error('⚠️ WARNING: Failed to save messages to MongoDB:', { error: dbError });
+                appLogger.log('Messages in memory but not persisted to database');
                 //END DEBUG LOG : DEBUG-CODE(SEND-MSG-009)
                 // Continue execution - messages are still in memory
             }
@@ -694,7 +695,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
 
         } catch (aiError) {
             //START DEBUG LOG : DEBUG-CODE(SEND-MSG-010)
-            console.error('❌ AI Communication Error:', aiError);
+            appLogger.error('❌ AI Communication Error:', { error: aiError });
             //END DEBUG LOG : DEBUG-CODE(SEND-MSG-010)
             
             return res.status(500).json({ 
@@ -705,7 +706,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
 
     } catch (error) {
         //START DEBUG LOG : DEBUG-CODE(SEND-MSG-011)
-        console.error('❌ ERROR IN SEND MESSAGE ENDPOINT:', error);
+        appLogger.error('❌ ERROR IN SEND MESSAGE ENDPOINT:', { error });
         //END DEBUG LOG : DEBUG-CODE(SEND-MSG-011)
         res.status(500).json({ 
             success: false, 
@@ -748,7 +749,7 @@ router.get('/:chatId/history', asyncHandlerWithAuth(async (req: Request, res: Re
         });
         
     } catch (error) {
-        console.error('Error getting chat history:', error);
+        appLogger.error('Error getting chat history:', { error });
         res.status(500).json({ 
             success: false, 
             error: 'Failed to get chat history' 
@@ -798,7 +799,7 @@ router.get('/:chatId/message/:messageId', asyncHandlerWithAuth(async (req: Reque
         });
         
     } catch (error) {
-        console.error('Error getting message:', error);
+        appLogger.error('Error getting message:', { error });
         res.status(500).json({ 
             success: false, 
             error: 'Failed to get message' 
@@ -829,16 +830,16 @@ router.post('/restore/:chatId', asyncHandlerWithAuth(async (req: Request, res: R
         const currentCourse = (req.session as any).currentCourse;
         const courseName = currentCourse?.courseName;
         
-        console.log('\n🔄 CHAT RESTORATION REQUEST:');
-        console.log('='.repeat(50));
-        console.log(`Chat ID: ${chatId}`);
-        console.log(`PUID: ${puid}`);
-        console.log(`Course: ${courseName}`);
-        console.log('='.repeat(50));
+        appLogger.log('\n🔄 CHAT RESTORATION REQUEST:');
+        appLogger.log('='.repeat(50));
+        appLogger.log(`Chat ID: ${chatId}`);
+        appLogger.log(`PUID: ${puid}`);
+        appLogger.log(`Course: ${courseName}`);
+        appLogger.log('='.repeat(50));
         
         // Validate input
         if (!chatId) {
-            console.log('❌ RESTORATION FAILED: Chat ID is required');
+            appLogger.log('❌ RESTORATION FAILED: Chat ID is required');
             return res.status(400).json({
                 success: false,
                 error: 'Chat ID is required'
@@ -846,7 +847,7 @@ router.post('/restore/:chatId', asyncHandlerWithAuth(async (req: Request, res: R
         }
         
         if (!puid) {
-            console.log('❌ RESTORATION FAILED: PUID not found in session');
+            appLogger.log('❌ RESTORATION FAILED: PUID not found in session');
             return res.status(401).json({
                 success: false,
                 error: 'User not authenticated'
@@ -854,7 +855,7 @@ router.post('/restore/:chatId', asyncHandlerWithAuth(async (req: Request, res: R
         }
         
         if (!courseName) {
-            console.log('❌ RESTORATION FAILED: Course name not found in session');
+            appLogger.log('❌ RESTORATION FAILED: Course name not found in session');
             return res.status(400).json({
                 success: false,
                 error: 'No active course selected'
@@ -865,7 +866,7 @@ router.post('/restore/:chatId', asyncHandlerWithAuth(async (req: Request, res: R
         const mongoDB = await EngEAI_MongoDB.getInstance();
         const globalUser = await mongoDB.findGlobalUserByPUID(puid);
         if (!globalUser || !globalUser.userId) {
-            console.log('❌ RESTORATION FAILED: GlobalUser not found for puid');
+            appLogger.log('❌ RESTORATION FAILED: GlobalUser not found for puid');
             return res.status(401).json({
                 success: false,
                 error: 'User not found'
@@ -873,13 +874,13 @@ router.post('/restore/:chatId', asyncHandlerWithAuth(async (req: Request, res: R
         }
         
         const userId = globalUser.userId;
-        console.log(`[RESTORE-CHAT] Converting puid to userId: ${puid} -> ${userId}`);
+        appLogger.log(`[RESTORE-CHAT] Converting puid to userId: ${puid} -> ${userId}`);
         
         // Restore chat from database
         const restored = await chatApp.restoreChatFromDatabase(chatId, courseName, userId);
         
         if (restored) {
-            console.log(`✅ Chat ${chatId} restored successfully`);
+            appLogger.log(`✅ Chat ${chatId} restored successfully`);
             
             // Get the restored chat data from MongoDB to return in response
             const userChats = await mongoDB.getUserChats(courseName, userId);
@@ -892,7 +893,7 @@ router.post('/restore/:chatId', asyncHandlerWithAuth(async (req: Request, res: R
                 chat: chatData  // Add full chat object to response
             });
         } else {
-            console.log(`❌ Chat ${chatId} restoration failed`);
+            appLogger.log(`❌ Chat ${chatId} restoration failed`);
             res.status(404).json({
                 success: false,
                 error: 'Chat not found or could not be restored'
@@ -900,7 +901,7 @@ router.post('/restore/:chatId', asyncHandlerWithAuth(async (req: Request, res: R
         }
         
     } catch (error) {
-        console.error('❌ CHAT RESTORATION ERROR:', error);
+        appLogger.error('❌ CHAT RESTORATION ERROR:', { error });
         res.status(500).json({
             success: false,
             error: 'Internal server error'
@@ -932,18 +933,18 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
         const courseName = currentCourse?.courseName;
         
         //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-001)
-        console.log('\n🗑️ SOFT DELETE CHAT REQUEST:');
-        console.log('='.repeat(50));
-        console.log(`Chat ID: ${chatId}`);
-        console.log(`PUID: ${puid}`);
-        console.log(`Course: ${courseName}`);
-        console.log('='.repeat(50));
+        appLogger.log('\n🗑️ SOFT DELETE CHAT REQUEST:');
+        appLogger.log('='.repeat(50));
+        appLogger.log(`Chat ID: ${chatId}`);
+        appLogger.log(`PUID: ${puid}`);
+        appLogger.log(`Course: ${courseName}`);
+        appLogger.log('='.repeat(50));
         //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-001)
         
         // Validate input
         if (!chatId) {
             //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-002)
-            console.log('❌ SOFT DELETE FAILED: Chat ID is required');
+            appLogger.log('❌ SOFT DELETE FAILED: Chat ID is required');
             //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-002)
             return res.status(400).json({
                 success: false,
@@ -953,7 +954,7 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
         
         if (!puid) {
             //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-003)
-            console.log('❌ SOFT DELETE FAILED: PUID not found in session');
+            appLogger.log('❌ SOFT DELETE FAILED: PUID not found in session');
             //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-003)
             return res.status(401).json({
                 success: false,
@@ -962,7 +963,7 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
         }
         
         if (!courseName) {
-            console.log('❌ VALIDATION FAILED: Course name not found in session');
+            appLogger.log('❌ VALIDATION FAILED: Course name not found in session');
             return res.status(400).json({
                 success: false,
                 error: 'No active course selected'
@@ -975,11 +976,11 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
             chatApp.stopChatTimer(chatId);
             const memoryDeleted = chatApp.deleteChat(chatId);
             //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-004)
-            console.log(`✅ Chat ${chatId} removed from server memory`);
+            appLogger.log(`✅ Chat ${chatId} removed from server memory`);
             //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-004)
         } else {
             //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-005)
-            console.log(`ℹ️ Chat ${chatId} not in memory (may have been loaded from database after restart)`);
+            appLogger.log(`ℹ️ Chat ${chatId} not in memory (may have been loaded from database after restart)`);
             //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-005)
         }
         
@@ -1001,7 +1002,7 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
             await mongoDB.markChatAsDeleted(courseName, userId, chatId);
             
             //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-006)
-            console.log(`✅ Chat ${chatId} marked as deleted in database`);
+            appLogger.log(`✅ Chat ${chatId} marked as deleted in database`);
             //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-006)
             
             res.json({
@@ -1011,7 +1012,7 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
             });
         } catch (dbError) {
             //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-007)
-            console.error('⚠️ Database error during soft delete:', dbError);
+            appLogger.error('⚠️ Database error during soft delete:', { error: dbError });
             //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-007)
             res.status(404).json({
                 success: false,
@@ -1021,7 +1022,7 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
         
     } catch (error) {
         //START DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-008)
-        console.error('❌ SOFT DELETE ERROR:', error);
+        appLogger.error('❌ SOFT DELETE ERROR:', { error });
         //END DEBUG LOG : DEBUG-CODE(SOFT-DELETE-CHAT-008)
         res.status(500).json({
             success: false,
@@ -1049,17 +1050,17 @@ router.put('/:chatId/pin', asyncHandlerWithAuth(async (req: Request, res: Respon
         const { isPinned } = req.body;
 
         //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-001)
-        console.log('\n📌 PIN CHAT REQUEST:');
-        console.log('='.repeat(50));
-        console.log(`Chat ID: ${chatId}`);
-        console.log(`Pin Status: ${isPinned}`);
-        console.log('='.repeat(50));
+        appLogger.log('\n📌 PIN CHAT REQUEST:');
+        appLogger.log('='.repeat(50));
+        appLogger.log(`Chat ID: ${chatId}`);
+        appLogger.log(`Pin Status: ${isPinned}`);
+        appLogger.log('='.repeat(50));
         //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-001)
 
         // Validate input
         if (!chatId) {
             //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-002)
-            console.log('❌ PIN CHAT FAILED: Chat ID is required');
+            appLogger.log('❌ PIN CHAT FAILED: Chat ID is required');
             //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-002)
             return res.status(400).json({
                 success: false,
@@ -1069,7 +1070,7 @@ router.put('/:chatId/pin', asyncHandlerWithAuth(async (req: Request, res: Respon
 
         if (typeof isPinned !== 'boolean') {
             //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-003)
-            console.log('❌ PIN CHAT FAILED: isPinned must be a boolean');
+            appLogger.log('❌ PIN CHAT FAILED: isPinned must be a boolean');
             //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-003)
             return res.status(400).json({
                 success: false,
@@ -1085,7 +1086,7 @@ router.put('/:chatId/pin', asyncHandlerWithAuth(async (req: Request, res: Respon
 
         if (!puid) {
             //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-004)
-            console.log('❌ PIN CHAT FAILED: PUID not found in session');
+            appLogger.log('❌ PIN CHAT FAILED: PUID not found in session');
             //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-004)
             return res.status(401).json({
                 success: false,
@@ -1095,7 +1096,7 @@ router.put('/:chatId/pin', asyncHandlerWithAuth(async (req: Request, res: Respon
 
         if (!courseName) {
             //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-005)
-            console.log('❌ PIN CHAT FAILED: Course name not found in session');
+            appLogger.log('❌ PIN CHAT FAILED: Course name not found in session');
             //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-005)
             return res.status(400).json({
                 success: false,
@@ -1111,7 +1112,7 @@ router.put('/:chatId/pin', asyncHandlerWithAuth(async (req: Request, res: Respon
             const globalUser = await mongoDB.findGlobalUserByPUID(puid);
             if (!globalUser || !globalUser.userId) {
                 //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-006)
-                console.log('❌ PIN CHAT FAILED: User not found in database');
+                appLogger.log('❌ PIN CHAT FAILED: User not found in database');
                 //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-006)
                 return res.status(401).json({
                     success: false,
@@ -1123,7 +1124,7 @@ router.put('/:chatId/pin', asyncHandlerWithAuth(async (req: Request, res: Respon
             await mongoDB.updateChatPinStatus(courseName, userId, chatId, isPinned);
 
             //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-007)
-            console.log(`✅ Chat ${chatId} pin status updated to ${isPinned} in database`);
+            appLogger.log(`✅ Chat ${chatId} pin status updated to ${isPinned} in database`);
             //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-007)
 
             res.json({
@@ -1134,7 +1135,7 @@ router.put('/:chatId/pin', asyncHandlerWithAuth(async (req: Request, res: Respon
             });
         } catch (dbError) {
             //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-008)
-            console.error('⚠️ Database error during pin update:', dbError);
+            appLogger.error('⚠️ Database error during pin update:', { error: dbError });
             //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-008)
             res.status(500).json({
                 success: false,
@@ -1143,7 +1144,7 @@ router.put('/:chatId/pin', asyncHandlerWithAuth(async (req: Request, res: Respon
         }
     } catch (error) {
         //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-009)
-        console.error('🚨 Unexpected error in pin chat endpoint:', error);
+        appLogger.error('🚨 Unexpected error in pin chat endpoint:', { error });
         //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-009)
         res.status(500).json({
             success: false,

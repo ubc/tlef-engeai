@@ -7,6 +7,7 @@
 
 import express, { Request, Response } from 'express';
 import path from 'path';
+import { appLogger } from '../utils/logger';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 
@@ -35,7 +36,7 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
         
         if (!course) {
             // Return 404 with error page (not 403) to prevent courseId enumeration
-            console.log(`[COURSE-ROUTES] Course ${courseId} not found, serving error page`);
+            appLogger.log(`[COURSE-ROUTES] Course ${courseId} not found, serving error page`);
             return res.status(404).sendFile(path.join(__dirname, '../../public/pages/course-error.html'));
         }
         
@@ -53,7 +54,7 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
         const isEnrolled = globalUser.coursesEnrolled.includes(courseId);
         
         if (!isInstructor && !isEnrolled) {
-            console.log(`[COURSE-ROUTES] User ${user.puid} not authorized for course ${courseId}, serving error page`);
+            appLogger.log(`[COURSE-ROUTES] User ${user.puid} not authorized for course ${courseId}, serving error page`);
             return res.status(403).sendFile(path.join(__dirname, '../../public/pages/course-error.html'));
         }
         
@@ -77,7 +78,7 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
         
         next();
     } catch (error) {
-        console.error('[COURSE-ROUTES] Error validating course access:', error);
+        appLogger.error('[COURSE-ROUTES] Error validating course access:', error);
         // For server errors, still serve the error page but with 500 status
         res.status(500).sendFile(path.join(__dirname, '../../public/pages/course-error.html'));
     }
@@ -90,7 +91,7 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
 function requireInstructorForCourse(req: Request, res: Response, next: express.NextFunction) {
     const ctx = (req as any).courseContext;
     if (!ctx?.isInstructor) {
-        console.log(`[COURSE-ROUTES] User attempted instructor route without instructor role, redirecting to course-selection`);
+        appLogger.log(`[COURSE-ROUTES] User attempted instructor route without instructor role, redirecting to course-selection`);
         return res.redirect('/course-selection');
     }
     next();
@@ -103,7 +104,7 @@ function requireInstructorForCourse(req: Request, res: Response, next: express.N
 function requireStudentForCourse(req: Request, res: Response, next: express.NextFunction) {
     const ctx = (req as any).courseContext;
     if (!ctx?.isEnrolled || ctx?.isInstructor) {
-        console.log(`[COURSE-ROUTES] User attempted student route without student role, redirecting to course-selection`);
+        appLogger.log(`[COURSE-ROUTES] User attempted student route without student role, redirecting to course-selection`);
         return res.redirect('/course-selection');
     }
     next();
@@ -156,7 +157,7 @@ async function validateInstructorAuth(req: Request, res: Response, next: express
         
         next();
     } catch (error) {
-        console.error('[COURSE-ROUTES] Error validating instructor auth:', error);
+        appLogger.error('[COURSE-ROUTES] Error validating instructor auth:', error);
         res.status(500).send('Internal server error');
     }
 }

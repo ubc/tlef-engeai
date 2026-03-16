@@ -7,6 +7,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
+import { appLogger } from '../utils/logger';
 
 /**
  * Middleware to require authentication for protected routes
@@ -15,20 +16,16 @@ import { Request, Response, NextFunction } from 'express';
  * @param next Express next function
  */
 export const requireAuth = (req: Request, res: Response, next: NextFunction): void => {
-    //START DEBUG LOG : DEBUG-CODE(REQUIRE-AUTH)
-    console.log('[AUTH] Checking authentication for route:', req.path);
-    console.log('[AUTH] User authenticated:', (req as any).isAuthenticated());
-    console.log('[AUTH] User data:', (req as any).user ? 'Present' : 'Not present');
-    //END DEBUG LOG : DEBUG-CODE(REQUIRE-AUTH)
+    appLogger.log('[AUTH] Checking authentication for route:', req.path);
+    appLogger.log('[AUTH] User authenticated:', (req as any).isAuthenticated());
+    appLogger.log('[AUTH] User data:', (req as any).user ? 'Present' : 'Not present');
 
     if ((req as any).isAuthenticated()) {
         // User is authenticated, proceed to next middleware/route
         return next();
     } else {
         // User is not authenticated
-        //START DEBUG LOG : DEBUG-CODE(REQUIRE-AUTH-FAIL)
-        console.log('[AUTH] ❌ Authentication required but user not authenticated');
-        //END DEBUG LOG : DEBUG-CODE(REQUIRE-AUTH-FAIL)
+        appLogger.log('[AUTH] ❌ Authentication required but user not authenticated');
         
         // For API routes, return JSON error
         if (req.path.startsWith('/api/')) {
@@ -53,16 +50,12 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction): vo
  * @param next Express next function
  */
 export const requireAuthAPI = (req: Request, res: Response, next: NextFunction): void => {
-    //START DEBUG LOG : DEBUG-CODE(REQUIRE-AUTH-API)
-    console.log('[AUTH-API] Checking authentication for API route:', req.path);
-    //END DEBUG LOG : DEBUG-CODE(REQUIRE-AUTH-API)
+    appLogger.log('[AUTH-API] Checking authentication for API route:', req.path);
 
     if ((req as any).isAuthenticated()) {
         return next();
     } else {
-        //START DEBUG LOG : DEBUG-CODE(REQUIRE-AUTH-API-FAIL)
-        console.log('[AUTH-API] ❌ API authentication required but user not authenticated');
-        //END DEBUG LOG : DEBUG-CODE(REQUIRE-AUTH-API-FAIL)
+        appLogger.log('[AUTH-API] ❌ API authentication required but user not authenticated');
         
         res.status(401).json({ 
             error: 'Authentication required',
@@ -80,9 +73,7 @@ export const requireAuthAPI = (req: Request, res: Response, next: NextFunction):
  * @param next Express next function
  */
 export const optionalAuth = (req: Request, res: Response, next: NextFunction): void => {
-    //START DEBUG LOG : DEBUG-CODE(OPTIONAL-AUTH)
-    console.log('[AUTH-OPTIONAL] Checking optional authentication for route:', req.path);
-    //END DEBUG LOG : DEBUG-CODE(OPTIONAL-AUTH)
+    appLogger.log('[AUTH-OPTIONAL] Checking optional authentication for route:', req.path);
     
     // Always proceed, authentication is optional
     return next();

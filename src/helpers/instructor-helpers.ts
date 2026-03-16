@@ -10,6 +10,7 @@
 
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { GlobalUser, InstructorInfo, User } from '../types/shared';
+import { appLogger } from '../utils/logger';
 
 /**
  * Returns PUIDs that should auto-add Charisma and Rich when they create a course (Alireza, Amir).
@@ -44,7 +45,7 @@ export async function getOrCreateCharismaAndRich(mongoDB: EngEAI_MongoDB): Promi
 
     for (const { puid, name } of configs) {
         if (!puid) {
-            console.warn(`[INSTRUCTOR-HELPERS] Skipping ${name}: PUID env var not set`);
+            appLogger.warn(`[INSTRUCTOR-HELPERS] Skipping ${name}: PUID env var not set`);
             continue;
         }
         let user = await mongoDB.findGlobalUserByPUID(puid);
@@ -57,7 +58,7 @@ export async function getOrCreateCharismaAndRich(mongoDB: EngEAI_MongoDB): Promi
                 affiliation: 'faculty',
                 status: 'active'
             });
-            console.log(`[INSTRUCTOR-HELPERS] Created GlobalUser for ${name} (${user.userId})`);
+            appLogger.log(`[INSTRUCTOR-HELPERS] Created GlobalUser for ${name} (${user.userId})`);
         }
         results.push(user);
     }
@@ -106,7 +107,7 @@ export async function addCharismaAndRichToCourse(
         // 1. Add to instructors if not present
         if (!isInstructorInArray(instructors, user.userId)) {
             instructors.push({ userId: user.userId, name: user.name });
-            console.log(`[INSTRUCTOR-HELPERS] Added ${user.name} (${user.userId}) to course ${courseId}`);
+            appLogger.log(`[INSTRUCTOR-HELPERS] Added ${user.name} (${user.userId}) to course ${courseId}`);
         }
 
         // 2. Always ensure CourseUser exists in {courseName}_users
@@ -124,20 +125,20 @@ export async function addCharismaAndRichToCourse(
                     chats: []
                 };
                 await mongoDB.createStudent(courseName, newCourseUserData);
-                console.log(`[INSTRUCTOR-HELPERS] Created CourseUser for ${user.name} in course ${courseName}`);
+                appLogger.log(`[INSTRUCTOR-HELPERS] Created CourseUser for ${user.name} in course ${courseName}`);
             }
         } catch (err) {
-            console.error(`[INSTRUCTOR-HELPERS] Error creating CourseUser for ${user.name}:`, err);
+            appLogger.error(`[INSTRUCTOR-HELPERS] Error creating CourseUser for ${user.name}:`, err);
         }
 
         // 3. Always ensure course is in user's coursesEnrolled
         try {
             if (!user.coursesEnrolled.includes(courseId)) {
                 await mongoDB.addCourseToGlobalUser(user.puid, courseId);
-                console.log(`[INSTRUCTOR-HELPERS] Added course ${courseId} to ${user.name}'s enrolled list`);
+                appLogger.log(`[INSTRUCTOR-HELPERS] Added course ${courseId} to ${user.name}'s enrolled list`);
             }
         } catch (err) {
-            console.error(`[INSTRUCTOR-HELPERS] Error adding course to ${user.name}'s enrolled list:`, err);
+            appLogger.error(`[INSTRUCTOR-HELPERS] Error adding course to ${user.name}'s enrolled list:`, err);
         }
     }
 

@@ -7,6 +7,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
+import { appLogger } from '../utils/logger';
 
 type CourseIdSource = 'params' | 'paramsId' | 'body' | 'query' | 'session';
 
@@ -74,13 +75,13 @@ export function requireInstructorForCourseAPI(sources: CourseIdSource[] = ['para
                 );
 
             if (!isInstructor) {
-                console.log(`[RBAC] User ${user.puid} denied instructor API access for course ${courseId}`);
+                appLogger.log(`[RBAC] User ${user.puid} denied instructor API access for course ${courseId}`);
                 return res.status(403).json({ error: 'Instructor access required' });
             }
 
             next();
         } catch (error) {
-            console.error('[RBAC] Error in requireInstructorForCourseAPI:', error);
+            appLogger.error('[RBAC] Error in requireInstructorForCourseAPI:', error);
             res.status(500).json({ error: 'Internal server error' });
         }
     };
@@ -121,13 +122,13 @@ export function requireStudentForCourseAPI(sources: CourseIdSource[] = ['params'
             const isEnrolled = globalUser.coursesEnrolled.includes(courseId);
 
             if (!isEnrolled || isInstructor) {
-                console.log(`[RBAC] User ${user.puid} denied student API access for course ${courseId}`);
+                appLogger.log(`[RBAC] User ${user.puid} denied student API access for course ${courseId}`);
                 return res.status(403).json({ error: 'Student access required' });
             }
 
             next();
         } catch (error) {
-            console.error('[RBAC] Error in requireStudentForCourseAPI:', error);
+            appLogger.error('[RBAC] Error in requireStudentForCourseAPI:', error);
             res.status(500).json({ error: 'Internal server error' });
         }
     };
@@ -144,7 +145,7 @@ export function requireInstructorGlobal(req: Request, res: Response, next: NextF
         return res.status(401).json({ error: 'Authentication required' });
     }
     if (globalUser.affiliation !== 'faculty') {
-        console.log(`[RBAC] User ${globalUser.userId} denied global instructor access`);
+        appLogger.log(`[RBAC] User ${globalUser.userId} denied global instructor access`);
         return res.status(403).json({ error: 'Instructor access required' });
     }
     next();

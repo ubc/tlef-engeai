@@ -12,6 +12,7 @@
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { addCharismaAndRichToCourse } from './instructor-helpers';
 import { activeCourse } from '../types/shared';
+import { appLogger } from '../utils/logger';
 
 const COLLECTION_NAME = 'instructor-allowed-courses';
 
@@ -23,7 +24,7 @@ function buildSeedData(): { puid: string; allowed_courses: string[] }[] {
     if (charismaPuid) {
         data.push({ puid: charismaPuid, allowed_courses: ['Test 1', 'Test 2', 'Test 3', 'Test 4', 'CHARISMA101'] });
     } else {
-        console.warn('[INIT] CHARISMA_RUSDIYANTO_PUID not set, skipping Charisma in instructor-allowed-courses');
+        appLogger.warn('[INIT] CHARISMA_RUSDIYANTO_PUID not set, skipping Charisma in instructor-allowed-courses');
     }
 
     const alirezaPuid = process.env.ALIREZA_BAGHERZADEH_PUID?.trim();
@@ -37,7 +38,7 @@ function buildSeedData(): { puid: string; allowed_courses: string[] }[] {
             ]
         });
     } else {
-        console.warn('[INIT] ALIREZA_BAGHERZADEH_PUID not set, skipping Alireza in instructor-allowed-courses');
+        appLogger.warn('[INIT] ALIREZA_BAGHERZADEH_PUID not set, skipping Alireza in instructor-allowed-courses');
     }
 
     const amirPuid = process.env.AMIR_DEHKHODA_PUID?.trim();
@@ -51,14 +52,14 @@ function buildSeedData(): { puid: string; allowed_courses: string[] }[] {
             ]
         });
     } else {
-        console.warn('[INIT] AMIR_DEHKHODA_PUID not set, skipping Amir in instructor-allowed-courses');
+        appLogger.warn('[INIT] AMIR_DEHKHODA_PUID not set, skipping Amir in instructor-allowed-courses');
     }
 
     const richardPuid = process.env.RICHARD_TAPE_PUID?.trim();
     if (richardPuid) {
         data.push({ puid: richardPuid, allowed_courses: ['Test_1', 'Test_2', 'Test_3'] });
     } else {
-        console.warn('[INIT] RICHARD_TAPE_PUID not set, skipping Richard in instructor-allowed-courses');
+        appLogger.warn('[INIT] RICHARD_TAPE_PUID not set, skipping Richard in instructor-allowed-courses');
     }
 
     return data;
@@ -72,13 +73,13 @@ function buildSeedData(): { puid: string; allowed_courses: string[] }[] {
 //     const charismaPuid = process.env.CHARISMA_RUSDIYANTO_PUID?.trim();
 //     const richardPuid = process.env.RICHARD_TAPE_PUID?.trim();
 //     if (!charismaPuid && !richardPuid) {
-//         console.log('[INIT] CHARISMA_RUSDIYANTO_PUID and RICHARD_TAPE_PUID not set, skipping ensureCharismaAndRichInAllCourses');
+//         //console.log('[INIT] CHARISMA_RUSDIYANTO_PUID and RICHARD_TAPE_PUID not set, skipping ensureCharismaAndRichInAllCourses');
 //         return;
 //     }
 
 //     const courses = await instance.getAllActiveCourses();
 //     if (courses.length === 0) {
-//         console.log('[INIT] No courses in active-course-list, nothing to sync');
+//         //console.log('[INIT] No courses in active-course-list, nothing to sync');
 //         return;
 //     }
 
@@ -103,9 +104,9 @@ function buildSeedData(): { puid: string; allowed_courses: string[] }[] {
 //     }
 
 //     if (updatedCount > 0) {
-//         console.log(`[INIT] Added Charisma and Rich to ${updatedCount} course(s)`);
+//         //console.log(`[INIT] Added Charisma and Rich to ${updatedCount} course(s)`);
 //     } else {
-//         console.log('[INIT] All courses already have Charisma and Rich, no updates needed');
+//         //console.log('[INIT] All courses already have Charisma and Rich, no updates needed');
 //     }
 // }
 
@@ -121,17 +122,17 @@ export async function initInstructorAllowedCourses(): Promise<void> {
 
         const seedData = buildSeedData();
         if (seedData.length === 0) {
-            console.warn('[INIT] No PUID env vars set, instructor-allowed-courses will be empty');
+            appLogger.warn('[INIT] No PUID env vars set, instructor-allowed-courses will be empty');
         } else {
             const coll = instance.db.collection(COLLECTION_NAME);
             await coll.insertMany(seedData);
-            console.log(`[INIT] Created ${COLLECTION_NAME} collection with ${seedData.length} instructor mappings (PUID-based)`);
+            appLogger.log(`[INIT] Created ${COLLECTION_NAME} collection with ${seedData.length} instructor mappings (PUID-based)`);
         }
 
         // // Ensure Charisma and Rich are in all initiated courses
         // await ensureCharismaAndRichInAllCourses(instance);
     } catch (error) {
-        console.error(`[INIT] Failed to initialize ${COLLECTION_NAME}:`, error);
+        appLogger.error(`[INIT] Failed to initialize ${COLLECTION_NAME}:`, error);
         throw error;
     }
 }

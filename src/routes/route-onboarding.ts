@@ -11,6 +11,7 @@
 import { Router, Request, Response } from 'express';
 import { readFileSync, existsSync } from 'fs';
 import path from 'path';
+import { appLogger } from '../utils/logger';
 import { asyncHandler } from '../middleware/async-handler';
 
 const router = Router();
@@ -37,7 +38,7 @@ router.get(
     '/sample-chat/download',
     asyncHandler(async (req: Request, res: Response) => {
         if (!existsSync(SAMPLE_CHAT_PATH)) {
-            console.error('[ONBOARDING] Sample chat file not found:', SAMPLE_CHAT_PATH);
+            appLogger.error('[ONBOARDING] Sample chat file not found:', SAMPLE_CHAT_PATH);
             res.status(500).json({
                 error: 'Sample chat document not available',
                 message: 'The demo sample document could not be loaded.'

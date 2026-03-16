@@ -24,6 +24,7 @@
  */
 
 
+import { appLogger } from './logger';
 import { 
     activeCourse, 
     TopicOrWeekInstance, 
@@ -93,7 +94,7 @@ export class IDGenerator {
         const courseDate = activeCourse.date.toISOString(); // Full ISO string with milliseconds
 
         const hashInput = courseName + "-" + courseDate;
-        console.log(hashInput);
+        appLogger.log(hashInput);
 
         return this.uniqueIDGenerator(hashInput);
     }

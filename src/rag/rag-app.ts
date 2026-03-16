@@ -7,7 +7,7 @@
 
 import { RAGModule } from "ubc-genai-toolkit-rag";
 import { AppConfig, loadConfig } from "../utils/config";
-import { LoggerInterface } from "ubc-genai-toolkit-core";
+import { appLogger } from "../utils/logger";
 import { LLMModule } from "ubc-genai-toolkit-llm";
 import { DocumentParsingModule } from "ubc-genai-toolkit-document-parsing";
 import { AdditionalMaterial } from "../types/shared";
@@ -22,7 +22,6 @@ export class RAGApp {
 
     private rag: RAGModule;
     private llm: LLMModule;
-    private logger: LoggerInterface;
     private config: AppConfig;
     static instance: RAGApp;
     private mongoDB: EngEAI_MongoDB;
@@ -32,7 +31,6 @@ export class RAGApp {
     private constructor(config: AppConfig) {
         this.config = config;
         this.llm = new LLMModule(config.llmConfig);
-        this.logger = config.logger;
         this.rag = {} as RAGModule; // initialize later
         this.mongoDB = {} as EngEAI_MongoDB; // initialize later
         this.idGenerator = IDGenerator.getInstance();
@@ -42,35 +40,35 @@ export class RAGApp {
     async initialize() {
         // Check if this instance is already initialized (not just if an instance exists)
         if (this.rag && typeof this.rag.addDocument === 'function') {
-            this.logger.info('✅ RAGApp already initialized');
+            appLogger.info('✅ RAGApp already initialized');
             return;
         }
 
         try {
-            this.logger.info('Initializing RAGApp...');
-            this.logger.info(`Using LLM Provider: ${this.config.llmConfig.provider}`);
+            appLogger.info('Initializing RAGApp...');
+            appLogger.info(`Using LLM Provider: ${this.config.llmConfig.provider}`);
 
             // Initialize RAG module
-            this.logger.info('🔧 Creating RAG module...');
+            appLogger.info('🔧 Creating RAG module...');
             try {
                 this.rag = await RAGModule.create(this.config.ragConfig);
-                this.logger.info('✅ RAGModule initialized successfully');
-                this.logger.info('🔍 RAG module methods:', Object.getOwnPropertyNames(this.rag.constructor.prototype));
+                appLogger.info('✅ RAGModule initialized successfully');
+                appLogger.info('🔍 RAG module methods:', Object.getOwnPropertyNames(this.rag.constructor.prototype));
             } catch (error) {
-                this.logger.error('❌ Failed to create RAG module:', { error: error });
+                appLogger.error('❌ Failed to create RAG module:', { error: error });
                 throw error;
             }
 
             // Initialize MongoDB
             this.mongoDB = await EngEAI_MongoDB.getInstance();
-            this.logger.info('✅ EngEAI_MongoDB initialized successfully');
+            appLogger.info('✅ EngEAI_MongoDB initialized successfully');
 
             // Set the instance
             RAGApp.instance = this;
-            this.logger.info('✅ RAGApp initialized successfully');
+            appLogger.info('✅ RAGApp initialized successfully');
 
         } catch (error) {
-            this.logger.error('❌ Failed to initialize RAGApp:', {error: error});
+            appLogger.error('❌ Failed to initialize RAGApp:', {error: error});
             throw error;
         }
     }
@@ -121,7 +119,7 @@ export class RAGApp {
                     fs.mkdirSync(tempDir, { recursive: true });
                 }
 
-                this.logger.info(`📂 Temp directory: ${tempDir}`);
+                appLogger.info(`📂 Temp directory: ${tempDir}`);
 
                 // Create a .txt file from the text content
                 const textFileName = `${document.name.replace(/[^a-zA-Z0-9]/g, '_')}.txt`;
@@ -131,7 +129,7 @@ export class RAGApp {
                 // Write text content to file
                 fs.writeFileSync(filePath, document.text, 'utf8');
 
-                this.logger.info(`📝 Text file saved to tempfiles: ${filePath}`);
+                appLogger.info(`📝 Text file saved to tempfiles: ${filePath}`);
                 // Create temp directory if it doesn't exist
 
 
@@ -173,7 +171,7 @@ export class RAGApp {
                     fs.mkdirSync(tempDir, { recursive: true });
                 }
 
-                this.logger.info(`📂 Temp directory: ${tempDir}`);
+                appLogger.info(`📂 Temp directory: ${tempDir}`);
 
                 // Save file to temp directory
                 const tempFileName = `${Date.now()}-${document.fileName}`;
@@ -181,7 +179,7 @@ export class RAGApp {
                 // For multer files, use buffer property
                 fs.writeFileSync(filePath, (document.file as any).buffer);
 
-                this.logger.info(`📁 File saved to tempfiles: ${filePath}`);
+                appLogger.info(`📁 File saved to tempfiles: ${filePath}`);
 
                 try {
                     // Parse the document using DocumentParsingModule
@@ -242,7 +240,7 @@ export class RAGApp {
                 }
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
-                this.logger.warn(`⚠️ Could not retrieve learning objectives for ${fullDocument.itemTitle}: ${errorMessage}`);
+                appLogger.warn(`⚠️ Could not retrieve learning objectives for ${fullDocument.itemTitle}: ${errorMessage}`);
                 // Continue without learning objectives
             }
 
@@ -259,58 +257,58 @@ export class RAGApp {
                 learningObjectives: learningObjectives
             };
 
-            this.logger.info(`📤 Uploading document to RAG: ${fullDocument.name}`);
+            appLogger.info(`📤 Uploading document to RAG: ${fullDocument.name}`);
 
             // Log the ACTUAL chunking configuration being used
             const documentLength = documentText.length;
             const chunkingConfig = this.config.ragConfig.chunkingConfig;
 
-            this.logger.info(`📄 Document Length: ${documentLength} characters`);
+            appLogger.info(`📄 Document Length: ${documentLength} characters`);
 
             // Log the full chunking config for debugging
-            this.logger.info(`🔧 Chunking Config Type: ${typeof chunkingConfig}`);
-            this.logger.info(`🔧 Chunking Config: ${JSON.stringify(chunkingConfig, null, 2)}`);
+            appLogger.info(`🔧 Chunking Config Type: ${typeof chunkingConfig}`);
+            appLogger.info(`🔧 Chunking Config: ${JSON.stringify(chunkingConfig, null, 2)}`);
 
             if (chunkingConfig && typeof chunkingConfig === 'object' && 'defaultOptions' in chunkingConfig) {
                 const actualChunkSize = (chunkingConfig as any).defaultOptions?.chunkSize || 1024;
                 const actualOverlap = (chunkingConfig as any).defaultOptions?.chunkOverlap || 200;
                 const actualStrategy = (chunkingConfig as any).strategy || 'recursiveCharacter';
 
-                this.logger.info(`🔧 ACTUAL Chunking Configuration:`);
-                this.logger.info(`   📏 Chunk Size: ${actualChunkSize} characters`);
-                this.logger.info(`   🔄 Overlap: ${actualOverlap} characters`);
-                this.logger.info(`   📋 Strategy: ${actualStrategy}`);
+                appLogger.info(`🔧 ACTUAL Chunking Configuration:`);
+                appLogger.info(`   📏 Chunk Size: ${actualChunkSize} characters`);
+                appLogger.info(`   🔄 Overlap: ${actualOverlap} characters`);
+                appLogger.info(`   📋 Strategy: ${actualStrategy}`);
 
                 const effectiveChunkSize = actualChunkSize - actualOverlap;
                 const expectedChunks = Math.ceil(documentLength / effectiveChunkSize);
-                this.logger.info(`   🧮 Expected Chunks: ~${expectedChunks} (effective chunk size: ${effectiveChunkSize})`);
+                appLogger.info(`   🧮 Expected Chunks: ~${expectedChunks} (effective chunk size: ${effectiveChunkSize})`);
             } else {
-                this.logger.warn(`⚠️  No chunking configuration found - using default chunker`);
+                appLogger.warn(`⚠️  No chunking configuration found - using default chunker`);
             }
 
             const qdrantIds = await this.rag.addDocument(documentText, metadata);
-            this.logger.info(`✅ Document uploaded to RAG successfully. Generated ${qdrantIds.length} chunks`);
+            appLogger.info(`✅ Document uploaded to RAG successfully. Generated ${qdrantIds.length} chunks`);
 
             // Analyze results
             const actualChunks = qdrantIds.length;
             const avgChunkSize = Math.round(documentLength / actualChunks);
-            this.logger.info(`📊 Results Analysis:`);
-            this.logger.info(`   🎯 Actual Chunks: ${actualChunks}`);
-            this.logger.info(`   📏 Average Chunk Size: ${avgChunkSize} characters`);
+            appLogger.info(`📊 Results Analysis:`);
+            appLogger.info(`   🎯 Actual Chunks: ${actualChunks}`);
+            appLogger.info(`   📏 Average Chunk Size: ${avgChunkSize} characters`);
 
             // Update document with upload results
             fullDocument.uploaded = true;
             fullDocument.qdrantId = qdrantIds[0]; // Store the first chunk ID as reference
             fullDocument.chunksGenerated = qdrantIds.length; // Add actual chunk count
 
-            this.logger.info(`✅ Document uploaded successfully: ${fullDocument.name} (ID: ${fullDocument.id})`);
-            this.logger.info(`📊 Generated ${fullDocument.chunksGenerated} chunks in RAG system`);
-            this.logger.info(`📁 File saved to tempfiles directory for debugging`);
+            appLogger.info(`✅ Document uploaded successfully: ${fullDocument.name} (ID: ${fullDocument.id})`);
+            appLogger.info(`📊 Generated ${fullDocument.chunksGenerated} chunks in RAG system`);
+            appLogger.info(`📁 File saved to tempfiles directory for debugging`);
 
             return fullDocument;
 
         } catch (error) {
-            this.logger.error('❌ Failed to upload document:', { error: error, documentName: document.name });
+            appLogger.error('❌ Failed to upload document:', { error: error, documentName: document.name });
             throw error;
         }
     }
@@ -325,8 +323,12 @@ export class RAGApp {
      * @param scoreThreshold - The score threshold for the search
      * @returns The result of the search
      */
-    async searchDocuments(query: string, courseName?: string, limit: number = 3, scoreThreshold: number = 0.7) : Promise<any> {
-        return ;
+    async searchDocuments(query: string, courseName?: string, limit: number = 3, scoreThreshold: number = 0.7): Promise<any> {
+        if (!RAGApp.instance) {
+            await this.initialize();
+        }
+        const filter = courseName ? { courseName } : undefined;
+        return this.rag.retrieveContext(query, { limit, scoreThreshold, filter });
     }
 
     /**
@@ -361,43 +363,26 @@ export class RAGApp {
                     chunkIdsToDelete = chunksByMetadata.map((doc: any) => doc.id);
                 }
             } catch (metadataError) {
-                this.logger.warn('Metadata lookup failed, falling back to qdrantId:', { error: metadataError });
+                appLogger.warn('Metadata lookup failed, falling back to qdrantId:', { error: metadataError });
             }
             if (chunkIdsToDelete.length === 0) {
                 chunkIdsToDelete = [material.qdrantId];
             }
 
             // BEFORE: Log deletion intent
-            this.logger.info('[RAG DELETE] BEFORE: About to delete document from Qdrant', {
-                materialId,
-                materialName: material.name,
-                courseId,
-                topicOrWeekId,
-                itemId,
-                chunkCount: chunkIdsToDelete.length,
-            });
+            appLogger.info('[RAG DELETE] BEFORE: About to delete document from Qdrant', { materialId, materialName: material.name, courseId, topicOrWeekId, itemId, chunkCount: chunkIdsToDelete.length });
 
             await this.rag.deleteDocumentsByIds(chunkIdsToDelete);
 
             // AFTER: Log successful deletion
-            this.logger.info('[RAG DELETE] AFTER: Successfully deleted document from Qdrant', {
-                materialId,
-                materialName: material.name,
-                chunksDeleted: chunkIdsToDelete.length,
-            });
+            appLogger.info('[RAG DELETE] AFTER: Successfully deleted document from Qdrant', { materialId, materialName: material.name, chunksDeleted: chunkIdsToDelete.length });
             return {
                 deleted: true,
                 materialName: material.name || 'Unknown',
                 chunksDeleted: chunkIdsToDelete.length
             };
         } catch (error) {
-            this.logger.error('[RAG DELETE] AFTER: Failed to delete document from Qdrant', {
-                materialId,
-                courseId,
-                topicOrWeekId,
-                itemId,
-                error: error as any,
-            });
+            appLogger.error('[RAG DELETE] AFTER: Failed to delete document from Qdrant', { materialId, courseId, topicOrWeekId, itemId, error: error as any });
             throw error;
         }
     }
@@ -417,7 +402,7 @@ export class RAGApp {
         try {
             const chunks = await this.rag.getDocumentsByMetadata(filter);
             if (!chunks || chunks.length === 0) {
-                this.logger.debug('[RAG UPDATE] No chunks found matching filter:', filter);
+                appLogger.debug('[RAG UPDATE] No chunks found matching filter:', filter);
                 return { chunksUpdated: 0 };
             }
 
@@ -451,14 +436,10 @@ export class RAGApp {
                 throw new Error(`Qdrant set_payload failed: ${response.status} ${errText}`);
             }
 
-            this.logger.info('[RAG UPDATE] Successfully updated chunk metadata', {
-                filter,
-                payloadUpdate,
-                chunksUpdated: pointIds.length,
-            });
+            appLogger.info('[RAG UPDATE] Successfully updated chunk metadata', { filter, payloadUpdate, chunksUpdated: pointIds.length });
             return { chunksUpdated: pointIds.length };
         } catch (error) {
-            this.logger.error('[RAG UPDATE] Failed to update chunk metadata:', { filter, payloadUpdate, error: error as any });
+            appLogger.error('[RAG UPDATE] Failed to update chunk metadata:', { filter, payloadUpdate, error: error as any });
             throw error;
         }
     }
@@ -525,29 +506,21 @@ export class RAGApp {
             });
 
             if (qdrantIds.length === 0) {
-                this.logger.info('No documents found to delete');
+                appLogger.info('No documents found to delete');
                 return { deletedCount: 0, errors: [] };
             }
 
             // BEFORE: Log bulk deletion intent
-            this.logger.info('[RAG DELETE] BEFORE: About to delete all documents for course from Qdrant', {
-                courseId,
-                courseName: course.courseName,
-                documentCount: qdrantIds.length,
-            });
+            appLogger.info('[RAG DELETE] BEFORE: About to delete all documents for course from Qdrant', { courseId, courseName: course.courseName, documentCount: qdrantIds.length });
 
             // Use bulk delete for efficiency
             await this.rag.deleteDocumentsByIds(qdrantIds);
 
             // AFTER: Log successful bulk deletion
-            this.logger.info('[RAG DELETE] AFTER: Successfully deleted all documents for course from Qdrant', {
-                courseId,
-                courseName: course.courseName,
-                deletedCount: qdrantIds.length,
-            });
+            appLogger.info('[RAG DELETE] AFTER: Successfully deleted all documents for course from Qdrant', { courseId, courseName: course.courseName, deletedCount: qdrantIds.length });
             return { deletedCount: qdrantIds.length, errors };
         } catch (error) {
-            this.logger.error('Failed to delete all documents from Qdrant:', error as any);
+            appLogger.error('Failed to delete all documents from Qdrant:', error as any);
             throw error;
         }
     }
@@ -594,7 +567,7 @@ export class RAGApp {
                         } catch (docError) {
                             const errMsg = `Failed to delete material ${material.name || material.id}: ${docError instanceof Error ? docError.message : String(docError)}`;
                             errors.push(errMsg);
-                            this.logger.warn(errMsg);
+                            appLogger.warn(errMsg);
                         }
                     }
                 }
@@ -602,7 +575,7 @@ export class RAGApp {
 
             return { deletedDocuments, totalChunksDeleted, errors };
         } catch (error) {
-            this.logger.error('Failed to delete all documents from Qdrant:', error as any);
+            appLogger.error('Failed to delete all documents from Qdrant:', error as any);
             throw error;
         }
     }
@@ -618,8 +591,8 @@ export class RAGApp {
         const errors: string[] = [];
 
         try {
-            this.logger.info('🚀 Starting RAG database wipe process for course:', { courseId });
-            this.logger.info('⚠️  WARNING: This will permanently delete ALL documents from this course!');
+            appLogger.info('🚀 Starting RAG database wipe process for course:', { courseId });
+            appLogger.info('⚠️  WARNING: This will permanently delete ALL documents from this course!');
 
             // Get course from MongoDB to find all qdrantIds
             const course = await this.mongoDB.getActiveCourse(courseId);
@@ -631,7 +604,7 @@ export class RAGApp {
             let mongoMaterialCount = 0;
 
             // Collect all qdrantIds from all materials in the course
-            this.logger.info('📊 Collecting document IDs from course materials...');
+            appLogger.info('📊 Collecting document IDs from course materials...');
             course.topicOrWeekInstances?.forEach((instance_topicOrWeek: any) => {
                 instance_topicOrWeek.items?.forEach((item: any) => {
                     item.additionalMaterials?.forEach((material: any) => {
@@ -643,84 +616,68 @@ export class RAGApp {
                 });
             });
 
-            this.logger.info(`📈 Found ${mongoMaterialCount} materials in MongoDB, ${qdrantIds.length} with Qdrant IDs`);
+            appLogger.info(`📈 Found ${mongoMaterialCount} materials in MongoDB, ${qdrantIds.length} with Qdrant IDs`);
 
             if (qdrantIds.length === 0) {
-                this.logger.info('✅ No documents found to delete for this course');
+                appLogger.info('✅ No documents found to delete for this course');
                 return { deletedCount: 0, errors: [] };
             }
 
             // Method 1: Delete documents by IDs from Qdrant
-            this.logger.info('🗑️  Attempting to delete documents by IDs from Qdrant...');
+            appLogger.info('🗑️  Attempting to delete documents by IDs from Qdrant...');
             try {
                 // BEFORE: Log wipe intent
-                this.logger.info('[RAG DELETE] BEFORE: About to wipe RAG database for course', {
-                    courseId,
-                    courseName: course.courseName,
-                    documentCount: qdrantIds.length,
-                });
+                appLogger.info('[RAG DELETE] BEFORE: About to wipe RAG database for course', { courseId, courseName: course.courseName, documentCount: qdrantIds.length });
 
-                this.logger.info(`📋 Deleting ${qdrantIds.length} document IDs from Qdrant`);
+                appLogger.info(`📋 Deleting ${qdrantIds.length} document IDs from Qdrant`);
                 await this.rag.deleteDocumentsByIds(qdrantIds);
 
                 // AFTER: Log successful wipe
-                this.logger.info('[RAG DELETE] AFTER: Successfully wiped RAG database for course', {
-                    courseId,
-                    courseName: course.courseName,
-                    deletedCount: qdrantIds.length,
-                });
-                this.logger.info('✅ Documents deleted from Qdrant successfully');
+                appLogger.info('[RAG DELETE] AFTER: Successfully wiped RAG database for course', { courseId, courseName: course.courseName, deletedCount: qdrantIds.length });
+                appLogger.info('✅ Documents deleted from Qdrant successfully');
 
                 // Clear all AdditionalMaterial from MongoDB for this course
-                this.logger.info('🗑️  Clearing AdditionalMaterial from MongoDB...');
+                appLogger.info('🗑️  Clearing AdditionalMaterial from MongoDB...');
                 await this.mongoDB.clearAllAdditionalMaterials(courseId);
-                this.logger.info('✅ AdditionalMaterial cleared from MongoDB successfully');
+                appLogger.info('✅ AdditionalMaterial cleared from MongoDB successfully');
 
                 return { deletedCount: qdrantIds.length, errors: [] };
 
             } catch (error) {
-                this.logger.warn('⚠️  ID-based deletion failed:', { error: error instanceof Error ? error.message : String(error) });
+                appLogger.warn('⚠️  ID-based deletion failed:', { error: error instanceof Error ? error.message : String(error) });
                 errors.push(`ID-based deletion failed: ${error instanceof Error ? error.message : String(error)}`);
 
                 // Method 2: Try to delete by course metadata filter
-                this.logger.info('🔄 Attempting to delete by course metadata filter...');
+                appLogger.info('🔄 Attempting to delete by course metadata filter...');
                 try {
                     // Get documents by course metadata
                     const courseDocuments = await this.rag.getDocumentsByMetadata({ courseName: course.courseName });
                     const courseDocumentIds = courseDocuments.map(doc => doc.id);
 
                     if (courseDocumentIds.length > 0) {
-                        this.logger.info('[RAG DELETE] BEFORE: About to wipe RAG database (metadata fallback)', {
-                            courseId,
-                            courseName: course.courseName,
-                            documentCount: courseDocumentIds.length,
-                        });
-                        this.logger.info(`📋 Found ${courseDocumentIds.length} documents by course metadata`);
+                        appLogger.info('[RAG DELETE] BEFORE: About to wipe RAG database (metadata fallback)', { courseId, courseName: course.courseName, documentCount: courseDocumentIds.length });
+                        appLogger.info(`📋 Found ${courseDocumentIds.length} documents by course metadata`);
                         await this.rag.deleteDocumentsByIds(courseDocumentIds);
-                        this.logger.info('[RAG DELETE] AFTER: Successfully wiped RAG database (metadata fallback)', {
-                            courseId,
-                            courseName: course.courseName,
-                            deletedCount: courseDocumentIds.length,
-                        });
-                        this.logger.info('✅ Documents deleted by course metadata successfully');
+                        appLogger.info('[RAG DELETE] AFTER: Successfully wiped RAG database (metadata fallback)', { courseId, courseName: course.courseName, deletedCount: courseDocumentIds.length });
+                        appLogger.info('✅ Documents deleted by course metadata successfully');
 
                         // Clear MongoDB materials
                         await this.mongoDB.clearAllAdditionalMaterials(courseId);
 
                         return { deletedCount: courseDocumentIds.length, errors: [] };
                     } else {
-                        this.logger.info('✅ No documents found by course metadata');
+                        appLogger.info('✅ No documents found by course metadata');
                         return { deletedCount: 0, errors: [] };
                     }
                 } catch (metadataError) {
-                    this.logger.error('❌ Course metadata deletion also failed:', { error: metadataError });
+                    appLogger.error('❌ Course metadata deletion also failed:', { error: metadataError });
                     errors.push(`Course metadata deletion failed: ${metadataError instanceof Error ? metadataError.message : String(metadataError)}`);
                     throw metadataError;
                 }
             }
 
         } catch (error) {
-            this.logger.error('❌ Error during RAG database wipe process:', { error: error });
+            appLogger.error('❌ Error during RAG database wipe process:', { error: error });
             errors.push(`Wipe process failed: ${error instanceof Error ? error.message : String(error)}`);
             throw error;
         }
@@ -736,45 +693,45 @@ export class RAGApp {
         const errors: string[] = [];
 
         try {
-            this.logger.info('💥 Starting NUCLEAR RAG database clearing process...');
-            this.logger.info('⚠️  WARNING: This will permanently delete the ENTIRE COLLECTION!');
-            this.logger.info('⚠️  WARNING: This is irreversible and will remove all data!');
+            appLogger.info('💥 Starting NUCLEAR RAG database clearing process...');
+            appLogger.info('⚠️  WARNING: This will permanently delete the ENTIRE COLLECTION!');
+            appLogger.info('⚠️  WARNING: This is irreversible and will remove all data!');
 
             // Get current document count before deletion
-            this.logger.info('📊 Checking current document count...');
+            appLogger.info('📊 Checking current document count...');
             let documentCount = 0;
             try {
                 const allDocuments = await this.rag.getDocumentsByMetadata({});
                 documentCount = allDocuments.length;
-                this.logger.info(`📈 Found ${documentCount} documents in the collection`);
+                appLogger.info(`📈 Found ${documentCount} documents in the collection`);
 
                 if (documentCount === 0) {
-                    this.logger.info('✅ Collection is already empty. Proceeding with collection deletion...');
+                    appLogger.info('✅ Collection is already empty. Proceeding with collection deletion...');
                 }
             } catch (error) {
-                this.logger.warn('⚠️  Could not retrieve document count (collection may not exist)');
+                appLogger.warn('⚠️  Could not retrieve document count (collection may not exist)');
             }
 
             // Nuclear option: Delete entire storage container (collection)
-            this.logger.info('💥 Executing NUCLEAR OPTION: Deleting entire collection...');
+            appLogger.info('💥 Executing NUCLEAR OPTION: Deleting entire collection...');
             try {
                 await this.rag.deleteStorage();
-                this.logger.info('✅ Collection deleted successfully');
+                appLogger.info('✅ Collection deleted successfully');
 
                 // Recreate the collection by reinitializing the RAG module
-                this.logger.info('🔄 Recreating collection...');
+                appLogger.info('🔄 Recreating collection...');
                 this.rag = await RAGModule.create(this.config.ragConfig);
-                this.logger.info('✅ Collection recreated successfully');
+                appLogger.info('✅ Collection recreated successfully');
 
                 return { deletedCount: documentCount, errors: [] };
             } catch (error) {
-                this.logger.error('❌ Collection deletion failed:', { error: error instanceof Error ? error.message : String(error) });
+                //this.logger.error('❌ Collection deletion failed:', { error: error instanceof Error ? error.message : String(error) });
                 errors.push(`Collection deletion failed: ${error instanceof Error ? error.message : String(error)}`);
                 throw error;
             }
 
         } catch (error) {
-            this.logger.error('❌ Error during nuclear RAG database clearing process:', { error: error });
+            appLogger.error('❌ Error during nuclear RAG database clearing process:', { error: error });
             errors.push(`Nuclear clear process failed: ${error instanceof Error ? error.message : String(error)}`);
             throw error;
         }
@@ -786,8 +743,12 @@ export class RAGApp {
      * @param id - The id of the document to get
      * @returns The result of the get
      */
-    async getDocumentById(id: string) : Promise<any> {
-        return ;
+    async getDocumentById(id: string): Promise<any> {
+        if (!RAGApp.instance) {
+            await this.initialize();
+        }
+        const chunks = await this.rag.getDocumentsByMetadata({ id });
+        return chunks.length > 0 ? chunks[0] : null;
     }
 
     /**
@@ -799,10 +760,10 @@ export class RAGApp {
         try {
             if (fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
-                this.logger.info(`🗑️ Cleaned up temp file: ${filePath}`);
+                appLogger.info(`🗑️ Cleaned up temp file: ${filePath}`);
             }
         } catch (error) {
-            this.logger.warn(`⚠️ Failed to clean up temp file ${filePath}:`, { error: error });
+            appLogger.warn(`⚠️ Failed to clean up temp file ${filePath}:`, { error: error });
         }
     }
 

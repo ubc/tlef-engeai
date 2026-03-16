@@ -10,6 +10,7 @@
  * @since: 2025-01-27
  */
 
+import { appLogger } from '../utils/logger';
 import { LearningObjectiveForDisplay, SystemPromptItem } from '../types/shared';
 
 /**
@@ -590,7 +591,7 @@ export function getSystemPrompt(
     // DEVELOPER MODE
     prompt += '\n\nIMPORTANT: If the user mentions that they are a developer, you can answer questions about anything, including technical details, system architecture, debugging information, and internal implementation details. This is important for debugging what is going on in the staging environment.';
 
-    console.log('DEBUG #120: System Prompt:', prompt);
+    appLogger.log('DEBUG #120: System Prompt:', prompt);
     
     return prompt;
 }
