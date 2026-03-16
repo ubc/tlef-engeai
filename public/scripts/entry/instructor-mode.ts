@@ -5,7 +5,7 @@
  * 
  * @author: @gatahcha
  * @date: 2026-03-07
- * @latest frontend version: 1.0.6
+ * @latest app version: 1.2.9.9
  * @description: Instructor entry point. Loads documents, flags, monitor, chat, assistant/system prompts. Handles onboarding, sidebar navigation, ChatManager.
  */
 

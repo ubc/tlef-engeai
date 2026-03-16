@@ -5,7 +5,7 @@
  * 
  * @author: EngE-AI Team
  * @date: 2025-01-27
- * @latest frontend version: 1.0.6
+ * @latest app version: 1.2.9.9
  * @description: Manages authentication UI (login/logout buttons, user info). Integrates with AuthService; fetches /auth/config for SAML availability.
  */
 

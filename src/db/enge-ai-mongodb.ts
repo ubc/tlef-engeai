@@ -4,7 +4,7 @@
  * enge-ai-mongodb.ts
  * @author: @gatahcha
  * @date: 2025-03-13
- * @latest backend version: 1.0.8
+ * @latest app version: 1.2.9.9
  * @description: Singleton MongoDB access layer for EngE-AI. Manages courses, users, flags, learning objectives, materials, chats, memory agent, and instructor-allowed-courses.
  */
 

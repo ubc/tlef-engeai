@@ -5,7 +5,7 @@
  * 
  * @author: @gatahcha
  * @date: 2025-01-27
- * @latest frontend version: 1.0.6
+ * @latest app version: 1.2.9.9
  * @description: API helpers for chat CRUD, send message, pin/unpin, dismiss unstruggle block.
  */
 

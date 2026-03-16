@@ -126,21 +126,19 @@ EngE-AI is an AI-powered study assistant for engineering courses at UBC. Student
 
 **Frontend types rule:** `public/scripts/types.ts` must NOT import from backend (`src/`). Duplicate shared types and keep them in sync manually with `src/types/shared.ts`.
 
-1. Check frontend version: `public/scripts/frontend-version.ts`
-2. Check backend version: `src/utils/backend-version.ts`
-3. Read relevant files in `documentation/` (e.g. `ENDPOINT_ARCHITECTURE.md`)
-4. Use only the docs you need to reduce context
-5. If docs are missing or outdated, create or update them with the current changes
+1. Check app version: `src/utils/app-version.ts`
+2. Read relevant files in `documentation/` (e.g. `ENDPOINT_ARCHITECTURE.md`)
+3. Use only the docs you need to reduce context
+4. If docs are missing or outdated, create or update them with the current changes
 
 **Example (bug fix: chat not loading):**
 
 ```
-1. Read frontend-version.ts → "1.0.4"
-2. Read backend-version.ts → "1.0.8"
-3. Read documentation/ENDPOINT_ARCHITECTURE.md → section 4.5 Chat
-4. Read public/scripts/feature/chat.ts, functions/chat-api.ts
-5. Read src/chat/chat-app.ts, src/routes/route-chat-app.ts
-6. If no doc for chat flow → create documentation/CHAT_FLOW.md
+1. Read app-version.ts → "1.2.9.9"
+2. Read documentation/ENDPOINT_ARCHITECTURE.md → section 4.5 Chat
+3. Read public/scripts/feature/chat.ts, functions/chat-api.ts
+4. Read src/chat/chat-app.ts, src/routes/route-chat-app.ts
+5. If no doc for chat flow → create documentation/CHAT_FLOW.md
 ```
 
 ---
@@ -158,7 +156,7 @@ EngE-AI is an AI-powered study assistant for engineering courses at UBC. Student
 2. **Implement**
    - Edit `render-chat.ts`, add button with class `chat-message-copy-btn`
    - Add handler, call toast
-   - Bump `frontend-version.ts`
+   - Bump `app-version.ts` (3rd segment for frontend, 4th for backend)
    - Check in: "Implementation done. Proceed to document?"
 
 3. **Document**
@@ -257,15 +255,14 @@ Add the file location int he frist line of the file - Easier to be track by the 
 
 ### File Header
 
-Use `@latest frontend version` or `@latest backend version` (whichever applies) — easier to track which version the file was last changed in.
+Use `@latest app version: x.y.z` — easier to track which version the file was last changed in.
 
 ```
 /**
  * <filename>
  * @author: @gatahcha
  * @date: YYYY-MM-DD
- * @latest frontend version: x.y.z   (for frontend files)
- * @latest backend version: x.y.z   (for backend files)
+ * @latest app version: x.y.z
  * @description: <explain what is inside the document>
  */
 ```
@@ -302,7 +299,7 @@ Use `@latest frontend version` or `@latest backend version` (whichever applies) 
  * chat-api.ts
  * @author: @gatahcha
  * @date: 2025-03-05
- * @latest frontend version: 1.0.5
+ * @latest app version: 1.2.9.9
  * @description: API helpers for chat CRUD, send message, pin/unpin, dismiss unstruggle.
  */
 ```
@@ -314,7 +311,7 @@ Use `@latest frontend version` or `@latest backend version` (whichever applies) 
  * ChatApp.ts
  * @author: @gatahcha
  * @date: 2025-03-05
- * @latest backend version: 1.0.9
+ * @latest app version: 1.2.9.9
  * @description: Chat logic, streaming, RAG integration, memory agent.
  */
 ```
@@ -350,10 +347,10 @@ export async function sendMessageToChat(chatId: string, messageText: string): Pr
 ## Versioning
 
 - **When:** Bump version whenever you change code
-- **Frontend:** `public/scripts/frontend-version.ts` — update `frontendVersion`
-- **Backend:** `src/utils/backend-version.ts` — update `backendVersion`
-- **Format:** Semver (e.g. `1.0.4` → `1.0.5`)
-- **In file headers:** Use `@latest frontend version: x.y.z` or `@latest backend version: x.y.z` (not `@version`). Update this when you bump the version in the version file.
+- **Single source:** `src/utils/app-version.ts` — update `appVersion`
+- **Format:** `Major.Basic.FrontendMinor.BackendMinor` (e.g. `1.2.9.9`)
+- **Bump rules:** Frontend-only change → increment 3rd segment; Backend-only change → increment 4th segment; Both → increment both; Major/Basic change → increment 1st/2nd as appropriate
+- **In file headers:** Use `@latest app version: x.y.z` (not `@version`). Update this when you bump the version in the version file.
 
 ---
 

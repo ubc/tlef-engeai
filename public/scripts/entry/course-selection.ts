@@ -5,7 +5,7 @@
  * 
  * @author: @gatahcha
  * @date: 2026-03-07
- * @latest frontend version: 1.0.6
+ * @latest app version: 1.2.9.9
  * @description: Displays available courses, handles course entry by ID or code, new course creation for instructors, enrollment modals.
  */
 

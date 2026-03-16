@@ -1,21 +1,19 @@
 /**
  * Version Display
- * Renders frontend and backend versions in the bottom-left of the page.
- * Format: "F v1.0.0" and "B v1.0.0"
+ * Renders unified app version in the bottom-left of the page.
+ * Format: "v1.2.9.9" (Major.Basic.FrontendMinor.BackendMinor)
  */
-
-import { frontendVersion } from '../frontend-version.js';
 
 const VERSION_DISPLAY_ID = 'version-display';
 const API_VERSION_URL = '/api/version';
 
-/** Fetches backend version from API */
-async function fetchBackendVersion(): Promise<string> {
+/** Fetches app version from API */
+async function fetchVersion(): Promise<string> {
     try {
         const res = await fetch(API_VERSION_URL);
         if (!res.ok) return '—';
         const data = await res.json();
-        return data.backendVersion ?? '—';
+        return data.version ?? '—';
     } catch {
         return '—';
     }
@@ -26,12 +24,9 @@ async function renderVersionDisplay(): Promise<void> {
     const container = document.getElementById(VERSION_DISPLAY_ID);
     if (!container) return;
 
-    const backendVersion = await fetchBackendVersion();
+    const version = await fetchVersion();
 
-    container.innerHTML = `
-        <span class="version-line">F v${frontendVersion}</span>
-        <span class="version-line">B v${backendVersion}</span>
-    `;
+    container.innerHTML = `<span class="version-line">v${version}</span>`;
 }
 
 // Run when DOM is ready

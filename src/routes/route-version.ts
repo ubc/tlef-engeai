@@ -1,23 +1,23 @@
 /**
  * Version API route
- * Exposes backend version for display alongside frontend version in the UI.
+ * Exposes unified app version for display in the UI.
  */
 
 import { Router, Request, Response } from 'express';
-import { backendVersion } from '../utils/backend-version';
+import { appVersion } from '../utils/app-version';
 
 const router = Router();
 
 /**
  * GET /
- * Returns backend version for display alongside frontend version in the UI.
+ * Returns unified app version for display in the UI.
  *
  * @route GET /api/version
- * @returns {object} { backendVersion: string }
+ * @returns {object} { version: string }
  * @response 200 - Success
  */
 router.get('/', (_req: Request, res: Response) => {
-    res.status(200).json({ backendVersion });
+    res.status(200).json({ version: appVersion });
 });
 
 export default router;
