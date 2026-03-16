@@ -445,16 +445,18 @@ export class ChatApp {
                 // Continue with empty values if parsing fails
             }
             
-            // Format document header as "[Module 1 - Part 1]" using topic/week and item title
+            // Format document header as "[Document N] [Module 1 - Part 1]" using topic/week and item title
+            const docNum = index + 1;
             const modulePartLabel = chapter && itemTitle
                 ? `[${chapter} - ${itemTitle}]`
-                : chapter || itemTitle || `Document ${index + 1}`;
-            context += `\n--- ${modulePartLabel} ---\n`;
+                : chapter || itemTitle || null;
+            const headerLabel = modulePartLabel ? `[Document ${docNum}] ${modulePartLabel}` : `[Document ${docNum}]`;
+            context += `\n--- ${headerLabel} ---\n`;
             
-            // Build formatted content with chapter and learning objectives BEFORE content
-            if (chapter) {
-                context += `chapter: ${chapter}\n`;
-            }
+            // // Build formatted content with chapter and learning objectives BEFORE content
+            // if (chapter) {
+            //     context += `chapter: ${chapter}\n`;
+            // }
             
             if (learningObjectives.length > 0) {
                 context += `learningObjectives:\n`;
@@ -477,6 +479,8 @@ export class ChatApp {
         // console.log(`DEBUG #287: Formatted documents for context: ${context}`);
         return context;
     }
+
+
     /**
      * Send a user message and get response from LLM with RAG context
      * 
