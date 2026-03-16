@@ -416,10 +416,9 @@ export class ChatApp {
         let context = '\n\n<course_materials>\n';
         
         documents.forEach((doc, index) => {
-            // Parse metadata safely - extract chapter, item title, and learning objectives
+            // Parse metadata safely - extract chapter and item title
             let chapter = '';
             let itemTitle = '';
-            let learningObjectives: any[] = [];
             
             try {
                 // Handle metadata - could be object or string
@@ -433,43 +432,18 @@ export class ChatApp {
                 // Extract topic/week (chapter) and item title
                 chapter = metadataObj.topicOrWeekTitle || '';
                 itemTitle = metadataObj.itemTitle || '';
-                
-                // Extract learning objectives
-                if (metadataObj.learningObjectives && Array.isArray(metadataObj.learningObjectives)) {
-                    learningObjectives = metadataObj.learningObjectives;
-                }
             } catch (error) {
                 appLogger.warn(`⚠️ Error parsing metadata for document ${index + 1}:`, error);
                 // Continue with empty values if parsing fails
             }
             
-            // Format document header as "[Document N] [Module 1 - Part 1]" using topic/week and item title
-            const docNum = index + 1;
+            // Format document with START/END markers using topic/week and item title
             const modulePartLabel = chapter && itemTitle
-                ? `[${chapter} - ${itemTitle}]`
-                : chapter || itemTitle || null;
-            const headerLabel = modulePartLabel ? `[Document ${docNum}] ${modulePartLabel}` : `[Document ${docNum}]`;
-            context += `\n--- ${headerLabel} ---\n`;
-            
-            // // Build formatted content with chapter and learning objectives BEFORE content
-            // if (chapter) {
-            //     context += `chapter: ${chapter}\n`;
-            // }
-            
-            if (learningObjectives.length > 0) {
-                context += `learningObjectives:\n`;
-                learningObjectives.forEach((obj, objIndex) => {
-                    const objectiveText = obj.text || obj.LearningObjective || obj.learningObjective || '';
-                    if (objectiveText) {
-                        context += `  ${objIndex + 1}. ${objectiveText}\n`;
-                    }
-                });
-            }
-            
-            // Content comes after chapter and learning objectives
-            context += `content: ${doc.content}\n`;
-            
-            context += `\n`;
+                ? `${chapter} part ${itemTitle}`
+                : chapter || itemTitle || 'Unknown';
+            context += `\n--- START document - ${modulePartLabel} ---\n`;
+            context += `${doc.content}\n`;
+            context += `--- END document - ${modulePartLabel} ---\n`;
         });
         
         context += '\n</course_materials>\n';
