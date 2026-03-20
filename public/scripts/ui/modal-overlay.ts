@@ -19,6 +19,7 @@
  */
 
 import type { ModalType, ModalButton, ModalConfig, ModalResult } from '../types.js';
+import { DocumentUploadModule } from '../services/document-upload-module.js';
 
 // ===========================================
 // MODAL OVERLAY CLASS
@@ -1072,12 +1073,14 @@ export async function openUploadModal(
     // Create the header for the modal
     const header = document.createElement('div');
     header.className = 'modal-header';
-    const spacer = document.createElement('div');
+    const titleEl = document.createElement('h2');
+    titleEl.className = 'modal-title';
+    titleEl.textContent = 'Document Upload';
     const closeBtn = document.createElement('button');
     closeBtn.className = 'upload-close-btn';
     closeBtn.setAttribute('aria-label', 'Close');
     closeBtn.textContent = '×';
-    header.appendChild(spacer);
+    header.appendChild(titleEl);
     header.appendChild(closeBtn);
 
     // Create the content for the modal
@@ -1090,7 +1093,7 @@ export async function openUploadModal(
 
     // Create the first section for the modal (Content Title)
     const section1 = document.createElement('div');
-    section1.className = 'form-section';
+    section1.className = 'form-section form-section-inline';
 
     // Create the label for the first section
     const label1 = document.createElement('label');
@@ -1109,7 +1112,7 @@ export async function openUploadModal(
 
     // Create the upload method toggle section
     const toggleSection = document.createElement('div');
-    toggleSection.className = 'form-section';
+    toggleSection.className = 'form-section form-section-inline';
     
     // Create label
     const toggleLabel = document.createElement('label');
@@ -1242,9 +1245,32 @@ export async function openUploadModal(
     uploadMethodContent.appendChild(fileUploadSection);
     uploadMethodContent.appendChild(textInputSection);
 
-    // Append the sections to the content
-    content.appendChild(headerSection);
-    content.appendChild(uploadMethodContent);
+    // Create two-column grid: form (left) + preview (right)
+    const contentGrid = document.createElement('div');
+    contentGrid.className = 'upload-modal-content-grid';
+
+    const formColumn = document.createElement('div');
+    formColumn.className = 'upload-form-column';
+    formColumn.appendChild(headerSection);
+    formColumn.appendChild(uploadMethodContent);
+
+    const previewColumn = document.createElement('div');
+    previewColumn.className = 'upload-preview-column';
+    previewColumn.id = 'upload-preview-column';
+    const previewTitle = document.createElement('div');
+    previewTitle.className = 'upload-preview-title';
+    previewTitle.id = 'upload-preview-title';
+    previewTitle.textContent = 'Preview';
+    const previewContent = document.createElement('div');
+    previewContent.className = 'upload-preview-content';
+    previewContent.id = 'upload-preview-content';
+    previewContent.textContent = 'Parse or enter text to see preview.';
+    previewColumn.appendChild(previewTitle);
+    previewColumn.appendChild(previewContent);
+
+    contentGrid.appendChild(formColumn);
+    contentGrid.appendChild(previewColumn);
+    content.appendChild(contentGrid);
 
     // Create the footer for the modal
     const footer = document.createElement('div');
@@ -1256,12 +1282,20 @@ export async function openUploadModal(
     cancelBtn.className = 'cancel-btn';
     cancelBtn.textContent = 'Cancel';
 
-    // Create the upload button for the footer
+    // Create the Parse button
+    const parseBtn = document.createElement('button');
+    parseBtn.id = 'upload-parse-btn';
+    parseBtn.className = 'cancel-btn';
+    parseBtn.textContent = 'Parse';
+
+    // Create the Submit button (final upload)
     const uploadBtn = document.createElement('button');
     uploadBtn.id = 'upload-submit-btn';
     uploadBtn.className = 'save-btn';
-    uploadBtn.textContent = 'Upload';
+    uploadBtn.textContent = 'Submit';
+    uploadBtn.disabled = true;
     footer.appendChild(cancelBtn);
+    footer.appendChild(parseBtn);
     footer.appendChild(uploadBtn);
 
     // Append the header, content, and footer to the modal
@@ -1309,7 +1343,23 @@ export async function openUploadModal(
     // Create the event listener for the upload file button
     let selectedFile: File | null = null;
     let currentMethod: 'file' | 'text' = 'file';
-    
+    let previewReady = false;
+    const parseModule = new DocumentUploadModule();
+
+    const previewTitleEl = overlay.querySelector('#upload-preview-title') as HTMLElement;
+    const previewContentEl = overlay.querySelector('#upload-preview-content') as HTMLElement;
+    const parseBtnEl = overlay.querySelector('#upload-parse-btn') as HTMLButtonElement;
+
+    const clearPreview = () => {
+        previewReady = false;
+        uploadBtn.disabled = true;
+        if (previewTitleEl) previewTitleEl.textContent = 'Preview';
+        if (previewContentEl) {
+            previewContentEl.textContent = 'Parse or enter text to see preview.';
+            previewContentEl.classList.remove('has-content');
+        }
+    };
+
     // Get references to the toggle buttons and content sections
     const toggleButtons = overlay.querySelectorAll('.toggle-option');
     const uploadMethodContentElement = overlay.querySelector('#upload-method-content') as HTMLElement;
@@ -1340,7 +1390,8 @@ export async function openUploadModal(
             } else {
                 textAreaElement.value = '';
             }
-            
+            clearPreview();
+
             // Show/hide sections within the upload method content
             if (method === 'file') {
                 fileSectionElement.style.display = 'flex';
@@ -1363,24 +1414,65 @@ export async function openUploadModal(
         const f = hiddenInputElement.files && hiddenInputElement.files[0] ? hiddenInputElement.files[0] : null;
         selectedFile = f;
         selectedFileNameElement.textContent = f ? f.name : 'No file selected';
+        clearPreview();
     });
 
-    // Create the event listener for the upload button
+    textAreaElement.addEventListener('input', clearPreview);
+
+    // Parse button: extract text and show preview
+    parseBtnEl.addEventListener('click', async () => {
+        const name = nameInput.value.trim();
+        const text = textAreaElement.value.trim();
+        if (!name) {
+            alert('Please enter a material name.');
+            return;
+        }
+        if (currentMethod === 'file' && !selectedFile) {
+            alert('Please select a file to parse.');
+            return;
+        }
+        if (currentMethod === 'text' && !text) {
+            alert('Please enter some text content.');
+            return;
+        }
+        parseBtnEl.disabled = true;
+        parseBtnEl.textContent = 'Parsing...';
+        try {
+            const result = currentMethod === 'file' && selectedFile
+                ? await parseModule.parseDocument(selectedFile)
+                : await parseModule.parseDocument(text);
+            if (previewTitleEl) previewTitleEl.textContent = name;
+            if (previewContentEl) {
+                previewContentEl.textContent = result.extractedText || '(empty)';
+                previewContentEl.classList.add('has-content');
+            }
+            previewReady = true;
+            uploadBtn.disabled = false;
+        } catch (err) {
+            alert(`Parse failed: ${err instanceof Error ? err.message : String(err)}`);
+        } finally {
+            parseBtnEl.disabled = false;
+            parseBtnEl.textContent = 'Parse';
+        }
+    });
+
+    // Create the event listener for the upload button (Submit)
     uploadBtn.addEventListener('click', async () => {
         const name = nameInput.value.trim();
         const text = textAreaElement.value.trim();
-        
-        if (!name) { 
-            alert('Please enter a material name.'); 
-            return; 
+
+        if (!previewReady) {
+            alert('Please parse the document first to preview before submitting.');
+            return;
         }
-        
-        // Validate based on current method
+        if (!name) {
+            alert('Please enter a material name.');
+            return;
+        }
         if (currentMethod === 'file' && !selectedFile) {
             alert('Please select a file to upload.');
             return;
         }
-        
         if (currentMethod === 'text' && !text) {
             alert('Please enter some text content.');
             return;

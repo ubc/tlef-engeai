@@ -42,7 +42,9 @@ export function sanitizeGlobalUserForFrontend(globalUser: GlobalUser): Omit<Glob
         status: globalUser.status,
         coursesEnrolled: globalUser.coursesEnrolled,
         createdAt: globalUser.createdAt,
-        updatedAt: globalUser.updatedAt
+        updatedAt: globalUser.updatedAt,
+        instructorOnboardingCompleted: globalUser.instructorOnboardingCompleted ?? false,
+        studentOnboardingCompleted: globalUser.studentOnboardingCompleted ?? false
     };
 }
 

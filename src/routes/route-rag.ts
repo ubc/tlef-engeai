@@ -11,7 +11,7 @@ import { appLogger } from '../utils/logger';
 import { RAGApp } from '../rag/rag-app';
 import { AdditionalMaterial } from '../types/shared';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
-import { requireInstructorForCourseAPI } from '../middleware/require-course-role';
+import { requireInstructorForCourseAPI, requireInstructorGlobal } from '../middleware/require-course-role';
 
 // Extend Request interface to include file property from multer
 interface MulterRequest extends Request {
@@ -139,6 +139,70 @@ const validateFileDocument = (req: MulterRequest, res: Response, next: Function)
 
     next();
 };
+
+// Lighter validation for parse endpoint (file only, no metadata)
+const validateParseFile = (req: MulterRequest, res: Response, next: Function) => {
+    if (!req.file) {
+        return res.status(400).json({ status: 400, message: 'File is required' });
+    }
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    if (req.file.size > MAX_FILE_SIZE) {
+        return res.status(400).json({ status: 400, message: `File size exceeds ${MAX_FILE_SIZE / (1024 * 1024)}MB` });
+    }
+    const ext = (req.file.originalname || '').split('.').pop()?.toLowerCase();
+    if (!ext || !['pdf', 'docx', 'html', 'htm', 'md', 'txt'].includes(ext)) {
+        return res.status(400).json({ status: 400, message: 'Unsupported file type' });
+    }
+    next();
+};
+
+/**
+ * POST /documents/parse/file
+ * Parse a file to extract text (no upload to RAG). Instructors only.
+ *
+ * @route POST /api/rag/documents/parse/file
+ * @param {File} file - File upload (multipart/form-data)
+ * @returns {object} { extractedText, fileName }
+ */
+router.post('/documents/parse/file', upload.single('file'), validateParseFile, requireInstructorGlobal, asyncHandlerWithAuth(async (req: MulterRequest, res: Response) => {
+    try {
+        const ragApp = await RAGApp.getInstance();
+        const result = await ragApp.parseDocument({ file: req.file! });
+        res.status(200).json({ status: 200, data: result });
+    } catch (error) {
+        res.status(500).json({
+            status: 500,
+            message: 'Failed to parse document',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
+
+/**
+ * POST /documents/parse/text
+ * Return text as-is for preview (no upload). Instructors only.
+ *
+ * @route POST /api/rag/documents/parse/text
+ * @param {string} text - Document text (JSON body)
+ * @returns {object} { extractedText }
+ */
+router.post('/documents/parse/text', requireInstructorGlobal, asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const text = req.body?.text;
+        if (typeof text !== 'string') {
+            return res.status(400).json({ status: 400, message: 'Text is required and must be a string' });
+        }
+        const ragApp = await RAGApp.getInstance();
+        const result = await ragApp.parseDocument({ text });
+        res.status(200).json({ status: 200, data: result });
+    } catch (error) {
+        res.status(500).json({
+            status: 500,
+            message: 'Failed to parse text',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+}));
 
 /**
  * POST /documents/text

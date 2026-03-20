@@ -23,12 +23,12 @@ import {
     TopicOrWeekInstance, 
     TopicOrWeekItem, 
     AdditionalMaterial, 
-    activeCourse 
+    activeCourse
 } from '../types.js';
 import { uploadRAGContent } from '../services/rag-service.js';
 import { DocumentUploadModule } from '../services/document-upload-module.js';
 import type { UploadResult } from '../types.js';
-import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal, showCustomModal } from '../ui/modal-overlay.js';
 import { showToast, showSuccessToast } from '../ui/toast-notification.js';
 import { renderFeatherIcons } from '../api/api.js';
 
@@ -87,9 +87,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         
         // Load learning objectives from database for all content items
         await loadAllLearningObjectives();
-    // Render DOM using safe DOM APIs (no string concatenation)
-    renderDocumentsPage();
-    setupEventListeners();
 
     /**
      * Generate initial data based according to the currentClass
@@ -152,6 +149,447 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         } catch (e) {
             console.warn('⚠️ Exception fetching latest course:', e);
         }
+    }
+
+    const MIN_SCHEDULE_LEAD_MS = 60_000;
+
+    function parseTopicDate(value: unknown): Date | null {
+        if (value == null) return null;
+        if (value instanceof Date) {
+            return Number.isNaN(value.getTime()) ? null : value;
+        }
+        const d = new Date(String(value));
+        return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    function getScheduledDate(tw: TopicOrWeekInstance): Date | null {
+        const v = tw.scheduledPublishAt;
+        if (v == null || v === '') return null;
+        return parseTopicDate(v);
+    }
+
+    // Do not mix dateStyle/timeStyle with hour/minute/hour12 — that throws "Invalid option" in many engines.
+    const topicMetaDateFmt = new Intl.DateTimeFormat(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+    });
+    const topicScheduleFmt = new Intl.DateTimeFormat(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+    });
+
+    function formatTopicMetaEdited(d: Date): string {
+        return topicMetaDateFmt.format(d);
+    }
+
+    function formatScheduleLine(d: Date): string {
+        return topicScheduleFmt.format(d);
+    }
+
+    function buildLocalDateFromParts(dateYmd: string, hour12: number, minute: number, isPm: boolean): Date | null {
+        const segs = dateYmd.split('-').map((x) => parseInt(x, 10));
+        if (segs.length !== 3 || segs.some((n) => Number.isNaN(n))) return null;
+        const [y, mo, day] = segs;
+        let hour24: number;
+        if (hour12 === 12) {
+            hour24 = isPm ? 12 : 0;
+        } else {
+            hour24 = isPm ? hour12 + 12 : hour12;
+        }
+        return new Date(y, mo - 1, day, hour24, minute, 0, 0);
+    }
+
+    function mergeTopicFromServerResponse(tw: TopicOrWeekInstance, data: Record<string, unknown>): void {
+        if (typeof data.published === 'boolean') {
+            tw.published = data.published;
+        }
+        if ('scheduledPublishAt' in data) {
+            const s = data.scheduledPublishAt;
+            tw.scheduledPublishAt = s == null ? null : String(s);
+        }
+        if (data.updatedAt != null) {
+            const u = parseTopicDate(data.updatedAt);
+            if (u) tw.updatedAt = u;
+        }
+    }
+
+    function buildPublishSummaryBody(tw: TopicOrWeekInstance, mode: 'publish' | 'unpublish'): HTMLElement {
+        const wrap = document.createElement('div');
+        wrap.style.lineHeight = '1.5';
+        const p = document.createElement('p');
+        p.style.marginBottom = '0.75rem';
+        p.textContent =
+            mode === 'publish'
+                ? 'Students will see this week or topic in the course when it is published.'
+                : 'Students will no longer see this week or topic until you publish it again.';
+        wrap.appendChild(p);
+        const h = document.createElement('p');
+        h.style.fontWeight = '600';
+        h.style.marginBottom = '0.35rem';
+        h.textContent = tw.title;
+        wrap.appendChild(h);
+        const ul = document.createElement('ul');
+        ul.style.margin = '0';
+        ul.style.paddingLeft = '1.25rem';
+        for (const item of tw.items) {
+            const li = document.createElement('li');
+            li.textContent = item.itemTitle || item.title || 'Untitled section';
+            ul.appendChild(li);
+        }
+        wrap.appendChild(ul);
+        return wrap;
+    }
+
+    function syncTopicOrWeekPublishHeader(wrapper: HTMLElement, tw: TopicOrWeekInstance): void {
+        const pubBtn = wrapper.querySelector('.publish-status-btn') as HTMLButtonElement | null;
+        const schedBtn = wrapper.querySelector('.scheduled-publish-btn') as HTMLButtonElement | null;
+        const metaEdited = wrapper.querySelector('.topic-or-week-meta-edited') as HTMLElement | null;
+        const metaSched = wrapper.querySelector('.topic-or-week-meta-schedule') as HTMLElement | null;
+        if (!pubBtn || !metaEdited || !metaSched) return;
+
+        const published = !!tw.published;
+        pubBtn.classList.remove('status-published', 'status-draft');
+        pubBtn.classList.add(published ? 'status-published' : 'status-draft');
+        pubBtn.setAttribute('aria-label', published ? 'Published' : 'Draft');
+        pubBtn.setAttribute('title', published ? 'Published — click to change' : 'Draft — click to publish or schedule');
+
+        const icon = pubBtn.querySelector('i[data-feather]');
+        const textEl = pubBtn.querySelector('.status-text');
+        if (icon) icon.setAttribute('data-feather', published ? 'check' : 'file-text');
+        if (textEl) textEl.textContent = published ? 'Published' : 'Draft';
+
+        const sched = getScheduledDate(tw);
+        const showSched = !published && sched !== null;
+        if (schedBtn) {
+            schedBtn.style.display = showSched ? 'inline-flex' : 'none';
+            schedBtn.classList.remove('status-scheduled-publish', 'status-cancel-schedule');
+            const sIcon = schedBtn.querySelector('i[data-feather]');
+            const sText = schedBtn.querySelector('.status-text');
+            if (showSched && sched) {
+                schedBtn.classList.add('status-cancel-schedule');
+                const label = formatScheduleLine(sched);
+                schedBtn.setAttribute('title', `Cancel scheduled publish (${label})`);
+                schedBtn.setAttribute('aria-label', `Cancel schedule; currently ${label}`);
+                if (sIcon) sIcon.setAttribute('data-feather', 'x');
+                if (sText) sText.textContent = 'Cancel schedule';
+            }
+        }
+
+        const uAt = parseTopicDate(tw.updatedAt);
+        metaEdited.textContent = uAt ? `Last edited: ${formatTopicMetaEdited(uAt)}` : '';
+
+        if (showSched && sched) {
+            metaSched.textContent = `Publishes: ${formatScheduleLine(sched)}`;
+            metaSched.style.display = 'block';
+        } else {
+            metaSched.textContent = '';
+            metaSched.style.display = 'none';
+        }
+    }
+
+    async function patchTopicSchedule(tw: TopicOrWeekInstance, isoOrNull: string | null): Promise<{ ok: boolean; error?: string }> {
+        if (!courseId) return { ok: false, error: 'Course ID is missing' };
+        const res = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${tw.id}/publish-schedule`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ scheduledPublishAt: isoOrNull })
+        });
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            return { ok: false, error: (result as { error?: string }).error || res.statusText };
+        }
+        if ((result as { success?: boolean }).success && (result as { data?: Record<string, unknown> }).data) {
+            mergeTopicFromServerResponse(tw, (result as { data: Record<string, unknown> }).data);
+        }
+        return { ok: true };
+    }
+
+    async function patchTopicPublished(tw: TopicOrWeekInstance, published: boolean): Promise<{ ok: boolean; error?: string }> {
+        if (!courseId) return { ok: false, error: 'Course ID is missing' };
+        const res = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${tw.id}/published`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ published })
+        });
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            return { ok: false, error: (result as { error?: string }).error || res.statusText };
+        }
+        if ((result as { success?: boolean }).success && (result as { data?: Record<string, unknown> }).data) {
+            mergeTopicFromServerResponse(tw, (result as { data: Record<string, unknown> }).data);
+        }
+        return { ok: true };
+    }
+
+    function updatePublishDraftPrimaryLabel(schedulePanelOpen: boolean, tw: TopicOrWeekInstance): void {
+        const primary = document.querySelector('.modal-overlay.show .modal-btn-primary') as HTMLButtonElement | null;
+        if (!primary) return;
+        if (!schedulePanelOpen) {
+            primary.textContent = 'Publish now';
+            return;
+        }
+        primary.textContent = getScheduledDate(tw) ? 'Update schedule' : 'Schedule now';
+    }
+
+    async function openPublishDraftModal(tw: TopicOrWeekInstance, wrapper: HTMLElement): Promise<void> {
+        let schedulePanelOpen = getScheduledDate(tw) !== null;
+
+        const bodyWrap = document.createElement('div');
+        bodyWrap.className = 'publish-draft-modal-body';
+
+        const intro = document.createElement('p');
+        intro.style.marginBottom = '0.75rem';
+        intro.textContent =
+            'Students will see this week or topic in the course when it is published.';
+        bodyWrap.appendChild(intro);
+
+        const h = document.createElement('p');
+        h.style.fontWeight = '600';
+        h.style.marginBottom = '0.35rem';
+        h.textContent = tw.title;
+        bodyWrap.appendChild(h);
+
+        const ul = document.createElement('ul');
+        ul.style.margin = '0';
+        ul.style.paddingLeft = '1.25rem';
+        for (const item of tw.items) {
+            const li = document.createElement('li');
+            li.textContent = item.itemTitle || item.title || 'Untitled section';
+            ul.appendChild(li);
+        }
+        bodyWrap.appendChild(ul);
+
+        const scheduleTrigger = document.createElement('button');
+        scheduleTrigger.type = 'button';
+        scheduleTrigger.className = 'publish-modal-calendar-trigger';
+        scheduleTrigger.setAttribute('aria-expanded', schedulePanelOpen ? 'true' : 'false');
+        const calIcon = document.createElement('i');
+        calIcon.setAttribute('data-feather', 'calendar');
+        const calLabel = document.createElement('span');
+        calLabel.textContent = 'Schedule for later';
+        scheduleTrigger.appendChild(calIcon);
+        scheduleTrigger.appendChild(calLabel);
+        bodyWrap.appendChild(scheduleTrigger);
+
+        const panel = document.createElement('div');
+        panel.className = 'publish-modal-schedule-panel';
+        if (schedulePanelOpen) {
+            panel.classList.add('publish-modal-schedule-panel--open');
+        }
+
+        const dateRow = document.createElement('div');
+        dateRow.style.display = 'flex';
+        dateRow.style.flexDirection = 'column';
+        dateRow.style.gap = '4px';
+        const dateLabel = document.createElement('label');
+        dateLabel.textContent = 'Date';
+        dateLabel.setAttribute('for', `sched-date-${tw.id}-draft`);
+        const dateInput = document.createElement('input');
+        dateInput.type = 'date';
+        dateInput.id = `sched-date-${tw.id}-draft`;
+        dateInput.className = 'modal-input-field';
+        dateInput.style.width = '100%';
+        dateRow.appendChild(dateLabel);
+        dateRow.appendChild(dateInput);
+        panel.appendChild(dateRow);
+
+        const timeRow = document.createElement('div');
+        timeRow.style.display = 'flex';
+        timeRow.style.flexWrap = 'wrap';
+        timeRow.style.alignItems = 'center';
+        timeRow.style.gap = '8px';
+        const timeLbl = document.createElement('span');
+        timeLbl.textContent = 'Time';
+        timeRow.appendChild(timeLbl);
+
+        const hourSel = document.createElement('select');
+        hourSel.className = 'modal-input-field';
+        for (let hr = 1; hr <= 12; hr++) {
+            const opt = document.createElement('option');
+            opt.value = String(hr);
+            opt.textContent = String(hr);
+            hourSel.appendChild(opt);
+        }
+
+        const minSel = document.createElement('select');
+        minSel.className = 'modal-input-field';
+        for (let m = 0; m < 60; m++) {
+            const opt = document.createElement('option');
+            const label = m < 10 ? `0${m}` : String(m);
+            opt.value = String(m);
+            opt.textContent = label;
+            minSel.appendChild(opt);
+        }
+
+        const amPm = document.createElement('select');
+        amPm.className = 'modal-input-field';
+        const amOpt = document.createElement('option');
+        amOpt.value = 'am';
+        amOpt.textContent = 'AM';
+        const pmOpt = document.createElement('option');
+        pmOpt.value = 'pm';
+        pmOpt.textContent = 'PM';
+        amPm.appendChild(amOpt);
+        amPm.appendChild(pmOpt);
+
+        timeRow.appendChild(hourSel);
+        timeRow.appendChild(document.createTextNode(':'));
+        timeRow.appendChild(minSel);
+        timeRow.appendChild(amPm);
+        panel.appendChild(timeRow);
+
+        const existing = getScheduledDate(tw);
+        const base = existing ?? new Date(Date.now() + MIN_SCHEDULE_LEAD_MS + 120_000);
+        const y = base.getFullYear();
+        const mo = String(base.getMonth() + 1).padStart(2, '0');
+        const d = String(base.getDate()).padStart(2, '0');
+        dateInput.value = `${y}-${mo}-${d}`;
+        const h24 = base.getHours();
+        const isPmInit = h24 >= 12;
+        let h12 = h24 % 12;
+        if (h12 === 0) h12 = 12;
+        hourSel.value = String(h12);
+        minSel.value = String(base.getMinutes());
+        amPm.value = isPmInit ? 'pm' : 'am';
+
+        const errEl = document.createElement('p');
+        errEl.style.color = 'var(--color-eng-red, #c00)';
+        errEl.style.fontSize = '0.875rem';
+        errEl.style.minHeight = '1.2em';
+        errEl.textContent = '';
+        panel.appendChild(errEl);
+
+        bodyWrap.appendChild(panel);
+
+        const initialPrimary =
+            schedulePanelOpen ? (getScheduledDate(tw) ? 'Update schedule' : 'Schedule now') : 'Publish now';
+
+        scheduleTrigger.addEventListener('click', () => {
+            schedulePanelOpen = !schedulePanelOpen;
+            scheduleTrigger.setAttribute('aria-expanded', schedulePanelOpen ? 'true' : 'false');
+            panel.classList.toggle('publish-modal-schedule-panel--open', schedulePanelOpen);
+            if (!schedulePanelOpen) {
+                errEl.textContent = '';
+            }
+            updatePublishDraftPrimaryLabel(schedulePanelOpen, tw);
+        });
+
+        const modalPromise = showCustomModal({
+            type: 'info',
+            title: 'Publish topic/week?',
+            content: bodyWrap,
+            maxWidth: '480px',
+            buttons: [
+                { text: 'Cancel', type: 'secondary', closeOnClick: true },
+                {
+                    text: initialPrimary,
+                    type: 'primary',
+                    closeOnClick: false,
+                    action: async () => {
+                        if (!schedulePanelOpen) {
+                            const r = await patchTopicPublished(tw, true);
+                            if (!r.ok) {
+                                await showSimpleErrorModal(r.error || 'Failed to publish.', 'Publish');
+                                return;
+                            }
+                            syncTopicOrWeekPublishHeader(wrapper, tw);
+                            renderFeatherIcons();
+                            showToast(`Published "${tw.title}"`, 3000, 'top-right');
+                            closeModal('publish-now');
+                            return;
+                        }
+
+                        errEl.textContent = '';
+                        const when = buildLocalDateFromParts(
+                            dateInput.value,
+                            parseInt(hourSel.value, 10),
+                            parseInt(minSel.value, 10),
+                            amPm.value === 'pm'
+                        );
+                        if (!when) {
+                            errEl.textContent = 'Please choose a valid date and time.';
+                            return;
+                        }
+                        if (when.getTime() < Date.now() + MIN_SCHEDULE_LEAD_MS) {
+                            errEl.textContent = 'Choose a time at least one minute from now.';
+                            return;
+                        }
+                        const r = await patchTopicSchedule(tw, when.toISOString());
+                        if (!r.ok) {
+                            errEl.textContent = r.error || 'Failed to save schedule.';
+                            return;
+                        }
+                        syncTopicOrWeekPublishHeader(wrapper, tw);
+                        renderFeatherIcons();
+                        showToast(`Scheduled "${tw.title}" to publish ${formatScheduleLine(when)}`, 3500, 'top-right');
+                        closeModal('schedule-now');
+                    }
+                }
+            ]
+        });
+
+        queueMicrotask(() => {
+            renderFeatherIcons();
+            updatePublishDraftPrimaryLabel(schedulePanelOpen, tw);
+        });
+
+        await modalPromise;
+    }
+
+    async function confirmAndClearSchedule(tw: TopicOrWeekInstance, wrapper: HTMLElement): Promise<void> {
+        if (!getScheduledDate(tw)) return;
+        const result = await showConfirmModal(
+            'Cancel schedule?',
+            'This removes the scheduled publish time. You can publish or set a new time later.',
+            'Cancel schedule',
+            'Keep'
+        );
+        if (result.action !== 'cancel-schedule') return;
+        const r = await patchTopicSchedule(tw, null);
+        if (!r.ok) {
+            await showSimpleErrorModal(r.error || 'Could not cancel schedule.', 'Schedule');
+            return;
+        }
+        syncTopicOrWeekPublishHeader(wrapper, tw);
+        renderFeatherIcons();
+        showToast('Scheduled publish cancelled.', 2500, 'top-right');
+    }
+
+    async function openPublishDecisionModal(tw: TopicOrWeekInstance, wrapper: HTMLElement): Promise<void> {
+        if (tw.published) {
+            const body = buildPublishSummaryBody(tw, 'unpublish');
+            const result = await showCustomModal({
+                type: 'warning',
+                title: 'Move to draft?',
+                content: body,
+                maxWidth: '480px',
+                buttons: [
+                    { text: 'Cancel', type: 'secondary', closeOnClick: true },
+                    { text: 'Move to draft', type: 'danger', closeOnClick: true }
+                ]
+            });
+            if (result.action !== 'move-to-draft') return;
+            const r = await patchTopicPublished(tw, false);
+            if (!r.ok) {
+                await showSimpleErrorModal(r.error || 'Failed to update.', 'Publish');
+                return;
+            }
+            syncTopicOrWeekPublishHeader(wrapper, tw);
+            renderFeatherIcons();
+            showToast(`"${tw.title}" is now a draft.`, 2800, 'top-right');
+            return;
+        }
+
+        await openPublishDraftModal(tw, wrapper);
     }
 
     /**
@@ -234,10 +672,21 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
         const totalSections = instance_topicOrWeek.items.length;
         status.textContent = totalSections === 1 ? '1 section' : `${totalSections} sections`;
+
+        const meta = document.createElement('div');
+        meta.className = 'topic-or-week-meta';
+        const metaEdited = document.createElement('div');
+        metaEdited.className = 'topic-or-week-meta-line topic-or-week-meta-edited';
+        const metaSched = document.createElement('div');
+        metaSched.className = 'topic-or-week-meta-line topic-or-week-meta-schedule';
+        meta.appendChild(metaEdited);
+        meta.appendChild(metaSched);
+
         left.appendChild(title);
         left.appendChild(status);
+        left.appendChild(meta);
 
-        // create the right side of the header (add session, publish toggle/status, then expand arrow)
+        // create the right side of the header (add session, scheduled, publish status, delete, expand)
         const right = document.createElement('div');
         right.className = 'topic-or-week-status';
         // Right side does not grow
@@ -261,38 +710,35 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             addSection(instance_topicOrWeek);
         });
 
-        // Toggle switch
-        const toggleWrap = document.createElement('label');
-        toggleWrap.className = 'toggle-switch';
-        // Prevent accordion toggle when clicking the toggle switch
-        toggleWrap.addEventListener('click', (e) => {
+        const scheduledBadge = document.createElement('button');
+        scheduledBadge.type = 'button';
+        scheduledBadge.className = 'content-status status-cancel-schedule scheduled-publish-btn';
+        scheduledBadge.style.display = 'none';
+        const schedIcon = document.createElement('i');
+        schedIcon.setAttribute('data-feather', 'x');
+        const schedText = document.createElement('span');
+        schedText.className = 'status-text';
+        schedText.textContent = 'Cancel schedule';
+        scheduledBadge.appendChild(schedIcon);
+        scheduledBadge.appendChild(schedText);
+        scheduledBadge.addEventListener('click', (e) => {
             e.stopPropagation();
+            void confirmAndClearSchedule(instance_topicOrWeek, wrapper);
         });
-        const toggleInput = document.createElement('input');
-        toggleInput.type = 'checkbox';
-        toggleInput.checked = !!instance_topicOrWeek.published;
-        toggleInput.setAttribute('aria-label', `Toggle publish status for ${instance_topicOrWeek.title}`);
-        const toggleSlider = document.createElement('span');
-        toggleSlider.className = 'toggle-slider';
-        toggleWrap.appendChild(toggleInput);
-        toggleWrap.appendChild(toggleSlider);
 
-        // Published status
-        const statusBadge = document.createElement('div');
-        const isPublished = !!instance_topicOrWeek.published;
-        statusBadge.className = `content-status ${isPublished ? 'status-published' : 'status-draft'}`;
-        statusBadge.setAttribute('title', isPublished ? 'Published' : 'Draft');
-        statusBadge.setAttribute('aria-label', isPublished ? 'Published' : 'Draft');
+        const publishBtn = document.createElement('button');
+        publishBtn.type = 'button';
+        publishBtn.className = 'content-status publish-status-btn status-draft';
         const statusIcon = document.createElement('i');
-        statusIcon.setAttribute('data-feather', isPublished ? 'check' : 'file-text');
+        statusIcon.setAttribute('data-feather', 'file-text');
         const statusText = document.createElement('span');
         statusText.className = 'status-text';
-        statusText.textContent = isPublished ? 'Published' : 'Draft';
-        statusBadge.appendChild(statusIcon);
-        statusBadge.appendChild(statusText);
-        // Prevent accordion toggle when clicking the status badge
-        statusBadge.addEventListener('click', (e) => {
+        statusText.textContent = 'Draft';
+        publishBtn.appendChild(statusIcon);
+        publishBtn.appendChild(statusText);
+        publishBtn.addEventListener('click', (e) => {
             e.stopPropagation();
+            void openPublishDecisionModal(instance_topicOrWeek, wrapper);
         });
 
         // Expand icon (arrow)
@@ -301,77 +747,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         expandIcon.id = `icon-${instance_topicOrWeek.id}`;
         expandIcon.textContent = '▼';
 
-        // Wire toggle behaviour (update in-memory state, badge, and persist to backend)
-        toggleInput.addEventListener('change', async (e) => {
-            const checked = (e.currentTarget as HTMLInputElement).checked;
-            const originalChecked = !checked; // Store original state for error rollback
-            
-            // Optimistically update UI
-            instance_topicOrWeek.published = checked;
-            statusBadge.className = `content-status ${checked ? 'status-published' : 'status-draft'}`;
-            statusBadge.setAttribute('title', checked ? 'Published' : 'Draft');
-            statusBadge.setAttribute('aria-label', checked ? 'Published' : 'Draft');
-            const statusIconEl = statusBadge.querySelector('i[data-feather]');
-            const statusTextEl = statusBadge.querySelector('.status-text');
-            if (statusIconEl) statusIconEl.setAttribute('data-feather', checked ? 'check' : 'file-text');
-            if (statusTextEl) statusTextEl.textContent = checked ? 'Published' : 'Draft';
-            
-            // Persist to backend
-            try {
-                if (!courseId) {
-                    throw new Error('Course ID is missing');
-                }
-                
-                const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${instance_topicOrWeek.id}/published`, {
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({
-                        published: checked
-                    })
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || `Failed to update published status: ${response.statusText}`);
-                }
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    // Update local data with backend response
-                    if (result.data) {
-                        instance_topicOrWeek.published = result.data.published;
-                    }
-                    // console.log(`✅ Topic/Week instance ${instance_topicOrWeek.id} published status updated to ${checked}`); // 🟡 HIGH: Instance ID exposure
-                    if (checked) {
-                        showToast(`Congratulations! You published "${instance_topicOrWeek.title}"`, 3000, 'top-right');
-                    }
-                } else {
-                    throw new Error(result.error || 'Failed to update published status');
-                }
-            } catch (error) {
-                // Revert UI on error
-                console.error('Error updating published status:', error);
-                toggleInput.checked = originalChecked;
-                instance_topicOrWeek.published = originalChecked;
-                statusBadge.className = `content-status ${originalChecked ? 'status-published' : 'status-draft'}`;
-                statusBadge.setAttribute('title', originalChecked ? 'Published' : 'Draft');
-                statusBadge.setAttribute('aria-label', originalChecked ? 'Published' : 'Draft');
-                const statusIconEl = statusBadge.querySelector('i[data-feather]');
-                const statusTextEl = statusBadge.querySelector('.status-text');
-                if (statusIconEl) statusIconEl.setAttribute('data-feather', originalChecked ? 'check' : 'file-text');
-                if (statusTextEl) statusTextEl.textContent = originalChecked ? 'Published' : 'Draft';
-                
-                // Show error modal
-                const errorMessage = error instanceof Error ? error.message : 'Failed to update published status. Please try again.';
-                await showSimpleErrorModal(errorMessage, 'Update Published Status Error');
-            }
-        });
-
-        // Delete instance badge (beside toggle switch)
+        // Delete instance badge
         const deleteInstanceBadge = document.createElement('div');
         deleteInstanceBadge.className = 'content-status status-delete-instance';
         deleteInstanceBadge.setAttribute('data-action', 'delete-instance');
@@ -391,8 +767,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         });
 
         right.appendChild(addSessionBadge);
-        right.appendChild(statusBadge);
-        right.appendChild(toggleWrap);
+        right.appendChild(scheduledBadge);
+        right.appendChild(publishBtn);
         right.appendChild(deleteInstanceBadge);
         right.appendChild(expandIcon);
 
@@ -415,6 +791,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // append the header and the content to the wrapper
         wrapper.appendChild(header);
         wrapper.appendChild(contentEl);
+        syncTopicOrWeekPublishHeader(wrapper, instance_topicOrWeek);
         return wrapper;
     }
 
@@ -2690,4 +3067,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             await showSimpleErrorModal(`Failed to delete documents: ${error instanceof Error ? error.message : 'Unknown error'}`, 'Delete Error');
         }
     }
+
+    // Initial render and listeners after all nested helpers exist (Intl formatters, syncTopicOrWeekPublishHeader, etc.)
+    renderDocumentsPage();
+    setupEventListeners();
 }

@@ -1060,7 +1060,18 @@ async function completeMonitorSetup(): Promise<void> {
             throw new Error(result.error || 'Failed to update course in database');
         }
         
-        // console.log("✅ Monitor setup status persisted to database successfully!"); // 🟢 MEDIUM: Database operation success
+        // Set instructorOnboardingCompleted on GlobalUser for skip-onboarding feature
+        try {
+            const instructorCompletedRes = await fetch('/api/user/onboarding/instructor-completed', {
+                method: 'PATCH',
+                credentials: 'same-origin'
+            });
+            if (!instructorCompletedRes.ok) {
+                console.warn('[MONITOR-SETUP] Failed to set instructorOnboardingCompleted');
+            }
+        } catch (e) {
+            console.warn('[MONITOR-SETUP] Failed to set instructorOnboardingCompleted:', e);
+        }
         
         // Dispatch the completion event
         const event = new CustomEvent('monitorSetupComplete', {

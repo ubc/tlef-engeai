@@ -81,6 +81,42 @@ export class RAGApp {
         return this.instance;
     }
 
+    /**
+     * Parse a document to extract text without uploading to RAG.
+     * Used for preview before final submission.
+     *
+     * @param input - Either { file: Express.Multer.File } or { text: string }
+     * @returns { extractedText: string; fileName?: string }
+     */
+    async parseDocument(input: { file?: { buffer: Buffer; originalname?: string }; text?: string }): Promise<{ extractedText: string; fileName?: string }> {
+        if (input.text !== undefined) {
+            return { extractedText: input.text };
+        }
+        if (!input.file) {
+            throw new Error('Either file or text is required');
+        }
+        const documentFileName = input.file.originalname || '';
+        const fileExtension = documentFileName.split('.').pop()?.toLowerCase();
+        const supportedExtensions = ['docx', 'md', 'pdf', 'html', 'htm', 'txt'];
+        if (!fileExtension || !supportedExtensions.includes(fileExtension)) {
+            throw new Error(`Unsupported file type: ${fileExtension}. Supported: ${supportedExtensions.join(', ')}`);
+        }
+        const tempDir = path.join(__dirname, '..', 'tempfiles');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
+        const tempFileName = `${Date.now()}-${documentFileName}`;
+        const filePath = path.join(tempDir, tempFileName);
+        try {
+            fs.writeFileSync(filePath, (input.file as any).buffer);
+            const parseResult = await this.documentParser.parse({ filePath }, 'text');
+            return { extractedText: parseResult.content, fileName: documentFileName };
+        } finally {
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        }
+    }
 
     /**
      * Upload document to RAG

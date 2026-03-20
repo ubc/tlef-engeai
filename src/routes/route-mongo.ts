@@ -2578,6 +2578,7 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/published', asyn
         // Update the topic/week instance published status
         topicOrWeekInstance.published = published;
         topicOrWeekInstance.updatedAt = new Date();
+        topicOrWeekInstance.scheduledPublishAt = null;
         
         // Save the updated course
         const updatedCourse = await instance.updateActiveCourse(courseId, {
@@ -2597,6 +2598,89 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/published', asyn
         res.status(500).json({
             success: false,
             error: 'Failed to update topic/week instance published status'
+        });
+    }
+}));
+
+const MIN_SCHEDULE_LEAD_MS = 60_000;
+
+/**
+ * PATCH /:courseId/topic-or-week-instances/:topicOrWeekId/publish-schedule
+ * Set or clear scheduled auto-publish time (draft instances only). Instructors only.
+ */
+router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/publish-schedule', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const { courseId, topicOrWeekId } = req.params;
+        const { scheduledPublishAt } = req.body as { scheduledPublishAt?: string | null };
+
+        if (!('scheduledPublishAt' in req.body)) {
+            return res.status(400).json({
+                success: false,
+                error: 'scheduledPublishAt is required (use null to clear)'
+            });
+        }
+
+        const course = await mongo.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+
+        const topicOrWeekInstance = course.topicOrWeekInstances?.find((d: TopicOrWeekInstance) => d.id === topicOrWeekId);
+        if (!topicOrWeekInstance) {
+            return res.status(404).json({ success: false, error: 'Topic/Week instance not found' });
+        }
+
+        if (topicOrWeekInstance.published) {
+            return res.status(400).json({
+                success: false,
+                error: 'Cannot schedule publish for an already published topic/week'
+            });
+        }
+
+        if (scheduledPublishAt === null || scheduledPublishAt === '') {
+            topicOrWeekInstance.scheduledPublishAt = null;
+        } else if (typeof scheduledPublishAt === 'string') {
+            const when = new Date(scheduledPublishAt);
+            if (Number.isNaN(when.getTime())) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'scheduledPublishAt must be a valid ISO date string'
+                });
+            }
+            const now = Date.now();
+            if (when.getTime() < now + MIN_SCHEDULE_LEAD_MS) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Scheduled time must be at least one minute in the future'
+                });
+            }
+            topicOrWeekInstance.scheduledPublishAt = when;
+        } else {
+            return res.status(400).json({
+                success: false,
+                error: 'scheduledPublishAt must be a string (ISO) or null'
+            });
+        }
+
+        topicOrWeekInstance.updatedAt = new Date();
+
+        await mongo.updateActiveCourse(courseId, {
+            topicOrWeekInstances: course.topicOrWeekInstances
+        });
+
+        appLogger.log(`✅ Topic/Week ${topicOrWeekId} publish schedule updated`);
+
+        res.status(200).json({
+            success: true,
+            data: topicOrWeekInstance,
+            message: 'Publish schedule updated'
+        });
+    } catch (error) {
+        appLogger.error('Error updating publish schedule:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update publish schedule'
         });
     }
 }));

@@ -475,7 +475,8 @@ body.onboarding-active .upload-modal-overlay {
 /* Upload Modal Container */
 .upload-modal-overlay .modal-container {
     width: calc(100vw - 40px);
-    height: 50vh;
+    max-width: 900px;
+    height: calc(100vh - 40px);
     background: var(--chat-bg);
     border: 1px solid var(--border-color);
     border-radius: 12px;
@@ -497,7 +498,7 @@ body.onboarding-active .upload-modal-overlay {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 18px;
+    padding: 12px 14px;
     border-bottom: 1px solid var(--border-color);
 }
 
@@ -512,9 +513,9 @@ body.onboarding-active .upload-modal-overlay {
     font-size: 18px;
     cursor: pointer;
     color: var(--text-secondary);
-    min-width: 44px;
-    min-height: 44px;
-    padding: 0.5rem;
+    min-width: 22px;
+    min-height: 22px;
+    padding: 0rem;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -578,6 +579,56 @@ body.onboarding-active .upload-modal-overlay {
     display: flex;
     flex-direction: column;
     height: 100%;
+}
+
+/* Two-column grid: form + preview */
+.upload-modal-content-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    flex: 1;
+    min-height: 0;
+}
+
+.upload-form-column {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.upload-preview-column {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-left: 1px solid var(--border-color);
+    padding-left: 1.5rem;
+}
+
+.upload-preview-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+    flex-shrink: 0;
+}
+
+.upload-preview-content {
+    flex: 1;
+    min-height: 200px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 13px;
+    resize: none;
+    overflow-y: auto;
+    background: #fafbfc;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.upload-preview-content.has-content {
+    font-family: inherit;
 }
 
 /* Upload Content State Classes */
@@ -669,6 +720,30 @@ body.onboarding-active .upload-modal-overlay {
     margin-bottom: 1rem;
 }
 
+/* Inline form sections (label beside input/toggle) */
+.upload-header-section .form-section-inline {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 0.75rem;
+}
+
+.upload-header-section .form-section-inline .section-label {
+    margin-bottom: 0;
+    flex-shrink: 0;
+    min-width: 100px;
+}
+
+.upload-header-section .form-section-inline .text-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.upload-header-section .form-section-inline .upload-method-toggle {
+    margin-bottom: 0;
+}
+
 /* Upload Method Content */
 .upload-method-content {
     display: none;
@@ -680,6 +755,7 @@ body.onboarding-active .upload-modal-overlay {
 .upload-method-content.active {
     display: flex;
     flex-direction: column;
+    margin-top: 0.5rem;
 }
 
 /* File and Text sections within upload method content */
@@ -893,6 +969,17 @@ body.modal-open {
         height: 80vh;
         max-width: 500px;
         max-height: 600px;
+    }
+
+    .upload-modal-content-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .upload-preview-column {
+        border-left: none;
+        border-top: 1px solid var(--border-color);
+        padding-left: 0;
+        padding-top: 1rem;
     }
     
     .upload-method-toggle {

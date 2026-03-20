@@ -20,6 +20,8 @@ import sessionMiddleware from './middleware/session';
 import { passport } from './middleware/passport';
 import { EngEAI_MongoDB } from './db/enge-ai-mongodb';
 import { initInstructorAllowedCourses } from './helpers/init-instructor-allowed-courses';
+import { migrateOnboardingFlags } from './helpers/migrate-onboarding-flags';
+import { startScheduledPublishSweepInterval } from './jobs/scheduled-publish-sweep';
 import { resolveAffiliation, isFacultyOverridePuid } from './utils/affiliation';
 
 dotenv.config();
@@ -229,4 +231,13 @@ app.listen(port, async () => {
     } catch (err) {
         logger.error('Failed to initialize instructor-allowed-courses:', err as any);
     }
+
+    try {
+        await migrateOnboardingFlags();
+    } catch (err) {
+        logger.error('Onboarding migration failed:', err as any);
+    }
+
+    startScheduledPublishSweepInterval(60_000);
+    logger.info('Scheduled publish sweep: interval started (every 60s)');
 });

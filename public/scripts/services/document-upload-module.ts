@@ -111,6 +111,40 @@ export class DocumentUploadModule {
     }
 
     /**
+     * Parse a document to extract text for preview (no upload to RAG).
+     *
+     * @param input - Either a File or a text string
+     * @returns { extractedText: string; fileName?: string }
+     */
+    public async parseDocument(input: File | string): Promise<{ extractedText: string; fileName?: string }> {
+        if (typeof input === 'string') {
+            const response = await fetch('/api/rag/documents/parse/text', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: input })
+            });
+            if (!response.ok) {
+                const err = await response.text();
+                throw new Error(`Parse failed: ${err}`);
+            }
+            const result = await response.json();
+            return result.data || { extractedText: input };
+        }
+        const formData = new FormData();
+        formData.append('file', input);
+        const response = await fetch('/api/rag/documents/parse/file', {
+            method: 'POST',
+            body: formData
+        });
+        if (!response.ok) {
+            const err = await response.text();
+            throw new Error(`Parse failed: ${err}`);
+        }
+        const result = await response.json();
+        return result.data || { extractedText: '', fileName: input.name };
+    }
+
+    /**
      * Get file extension from filename
      */
     private getFileExtension(filename: string): string {

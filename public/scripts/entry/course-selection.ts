@@ -14,6 +14,7 @@ import { showConfirmModal,
     showErrorModal, 
     showSuccessModal, 
     showInactivityWarningModal, 
+    showInputModal,
     ModalOverlay 
 } from '../ui/modal-overlay.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
@@ -693,54 +694,42 @@ function setupCourseButtons(): void {
 
 /**
  * createNewCourseForInstructor
- * 
+ *
  * @returns Promise<void>
- * Redirects to /instructor/onboarding/new-course. Course is created during onboarding, not before.
+ * Goes directly to course setup. Skip modal is shown after course-setup completes (in instructor-mode).
  */
 async function createNewCourseForInstructor(): Promise<void> {
     try {
-        // console.log('[COURSE-SELECTION] 🚀 Preparing new course onboarding...');
-
         // Get current user info to include as instructor
         const userResponse = await fetch('/auth/current-user');
         if (!userResponse.ok) {
             throw new Error('Failed to fetch user data');
         }
-        
+
         const authData = await userResponse.json();
         if (!authData.authenticated || !authData.globalUser) {
             throw new Error('User not authenticated');
         }
-        
+
         const currentUser = authData.globalUser;
-        
-        // Create a temporary course object with all setup flags set to false
-        // This will be stored in sessionStorage and loaded by instructor-mode.ts
-        // The course will be created in the database during onboarding completion
+
+        // Go directly to course setup - skip modal appears after course-setup completes
         const tempCourse: any = {
-            id: '', // Will be generated during onboarding when course is created
-            date: new Date().toISOString(), // Convert to ISO string for JSON serialization
-            courseSetup: false, // This triggers the onboarding
+            id: '',
+            date: new Date().toISOString(),
+            courseSetup: false,
             contentSetup: false,
             flagSetup: false,
             monitorSetup: false,
-            courseName: '', // Will be filled during onboarding
-            instructors: [{
-                userId: currentUser.userId,
-                name: currentUser.name
-            }], // Include creator
+            courseName: '',
+            instructors: [{ userId: currentUser.userId, name: currentUser.name }],
             teachingAssistants: [],
-            frameType: 'byWeek', // Default, will be changed during onboarding
-            tilesNumber: 12, // Default, will be set during onboarding
+            frameType: 'byWeek',
+            tilesNumber: 12,
             topicOrWeekInstances: []
         };
         
-        // Store in sessionStorage (instructor-mode.ts checks for this)
         sessionStorage.setItem('debugCourse', JSON.stringify(tempCourse));
-
-        // console.log('[COURSE-SELECTION] ✅ Temporary course data stored, redirecting to onboarding...');
-
-        // Redirect to new-course onboarding route (no courseId needed)
         window.location.href = '/instructor/onboarding/new-course';
         
     } catch (error) {
@@ -787,6 +776,7 @@ async function showCourseCodeEntryModal(userType: 'student' | 'instructor' = 'st
     }
     
     const isInstructor = userType === 'instructor';
+    const modal = new ModalOverlay();
     
     // Create modal content with PIN input
     const modalContent = document.createElement('div');
@@ -836,7 +826,7 @@ async function showCourseCodeEntryModal(userType: 'student' | 'instructor' = 'st
     codeInput.addEventListener('keydown', async (e) => {
         if (e.key === 'Enter' && codeInput.value.length === 6) {
             e.preventDefault();
-            await handleCourseCodeSubmit(codeInput.value, codeInput);
+            await handleCourseCodeSubmit(codeInput.value, codeInput, modal);
         }
     });
     
@@ -877,7 +867,7 @@ async function showCourseCodeEntryModal(userType: 'student' | 'instructor' = 'st
     
     submitButton.addEventListener('click', async () => {
         if (codeInput.value.length === 6) {
-            await handleCourseCodeSubmit(codeInput.value, codeInput);
+            await handleCourseCodeSubmit(codeInput.value, codeInput, modal);
         } else {
             showCodeError('Please enter a 6-character course code.');
         }
@@ -904,8 +894,6 @@ async function showCourseCodeEntryModal(userType: 'student' | 'instructor' = 'st
     buttonContainer.appendChild(submitButton);
     modalContent.appendChild(buttonContainer);
     
-    // Show modal using ModalOverlay
-    const modal = new ModalOverlay();
     await modal.show({
         type: 'custom',
         title: isInstructor ? 'Join Course as Instructor' : 'Enter Course Code',
@@ -926,10 +914,11 @@ async function showCourseCodeEntryModal(userType: 'student' | 'instructor' = 'st
  * 
  * @param courseCode string — 6-character course PIN
  * @param inputElement HTMLInputElement — Input field (disabled during request)
+ * @param courseCodeModal ModalOverlay — Optional; closed before showing skip modal for clearer UX
  * @returns Promise<void>
  * POST /api/course/enter-by-code. Redirects on success; shows error in modal on failure.
  */
-async function handleCourseCodeSubmit(courseCode: string, inputElement: HTMLInputElement): Promise<void> {
+async function handleCourseCodeSubmit(courseCode: string, inputElement: HTMLInputElement, courseCodeModal?: ModalOverlay): Promise<void> {
     const submitButton = document.getElementById('courseCodeSubmitBtn') as HTMLButtonElement;
     const errorMessage = document.getElementById('courseCodeError');
     
@@ -966,8 +955,75 @@ async function handleCourseCodeSubmit(courseCode: string, inputElement: HTMLInpu
             return;
         }
         
+        // Skip onboarding: if requires onboarding and user has completed before, offer skip
+        // Close course code modal first so skip modal is clearly visible (displayed after code validated)
+        const courseId = data.courseId || data.courseUser?.courseId || data.redirect?.match(/\/course\/([^/]+)\//)?.[1];
+        const isStudentOnboardingRedirect = data.redirect?.includes('/student/onboarding/');
+        const isInstructorOnboardingRedirect = data.redirect?.includes('/instructor/onboarding/');
+        const showStudentSkip = data.requiresOnboarding && data.studentOnboardingCompleted === true && isStudentOnboardingRedirect && currentGlobalUser;
+        const showInstructorSkip = data.requiresOnboarding && data.instructorOnboardingCompleted === true && isInstructorOnboardingRedirect && currentGlobalUser && courseId;
+
+        if ((showStudentSkip || showInstructorSkip) && courseCodeModal) {
+            courseCodeModal.close('success');
+        }
+
+        // Student skip: requires onboarding + completed student onboarding before
+        if (showStudentSkip) {
+            const skipResult = await showConfirmModal(
+                'Skip Onboarding?',
+                "You've completed student onboarding before. Skip for this course?",
+                'Skip',
+                'Show Onboarding'
+            );
+
+            if (skipResult.action === 'confirm' && currentGlobalUser) {
+                const updateRes = await fetch('/api/user/update-onboarding', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        userId: currentGlobalUser.userId,
+                        courseName: data.courseName,
+                        userOnboarding: true
+                    })
+                });
+                const updateData = await updateRes.json();
+                if (updateData.success && courseId) {
+                    window.location.href = `/course/${courseId}/student`;
+                    return;
+                }
+            }
+        }
+        // Instructor skip: requires onboarding + completed instructor onboarding before
+        else if (showInstructorSkip) {
+            const skipResult = await showConfirmModal(
+                'Skip Setup?',
+                "You've completed instructor setup before. Skip the full setup for this course?",
+                'Skip',
+                'Full Setup'
+            );
+
+            if (skipResult.action === 'confirm') {
+                const updateRes = await fetch(`/api/courses/${courseId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        courseSetup: true,
+                        contentSetup: true,
+                        flagSetup: true,
+                        monitorSetup: true
+                    })
+                });
+                const updateData = await updateRes.json();
+                if (updateData.success) {
+                    window.location.href = `/course/${courseId}/instructor/documents`;
+                    return;
+                }
+            }
+        }
+
         // Success - redirect to appropriate page
-        // console.log('[COURSE-SELECTION] ✅ Redirecting to:', data.redirect);
         window.location.href = data.redirect;
         
     } catch (error) {

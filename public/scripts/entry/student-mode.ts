@@ -65,9 +65,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Note: We'll validate courseId matches session after courseUser is fetched
     
     try {
-        // Fetch current CourseUser from session
+        // Fetch current CourseUser and GlobalUser from session
         const response = await fetch('/api/user/current');
-        const { courseUser } = await response.json();
+        const { courseUser, globalUser } = await response.json();
         
         if (!courseUser) {
             console.error('[STUDENT-MODE] ❌ No course user found');
@@ -93,7 +93,39 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Check if we're on an onboarding URL
         if (isStudentOnboardingURL()) {
-            // console.log('[STUDENT-MODE] 🎓 Onboarding URL detected');
+            // Student skip onboarding: if user has completed before, offer skip
+            if (!validatedCourseUser.userOnboarding && globalUser?.studentOnboardingCompleted === true) {
+                const skipResult = await showConfirmModal(
+                    'Skip Onboarding?',
+                    "You've completed student onboarding before. Skip for this course?",
+                    'Skip',
+                    'Show Onboarding'
+                );
+                
+                if (skipResult.action === 'confirm') {
+                    const userId = validatedCourseUser.userId || courseUser?.userId;
+                    if (userId) {
+                        const updateRes = await fetch('/api/user/update-onboarding', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'same-origin',
+                            body: JSON.stringify({
+                                userId,
+                                courseName: validatedCourseUser.courseName,
+                                userOnboarding: true
+                            })
+                        });
+                        const updateData = await updateRes.json();
+                        if (updateData.success) {
+                            const courseId = getCourseIdFromURL();
+                            if (courseId) {
+                                window.location.href = `/course/${courseId}/student`;
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
 
             // Preserve URL state for after onboarding (using closure variable)
             const intendedView = 'chat'; // Default to chat after onboarding

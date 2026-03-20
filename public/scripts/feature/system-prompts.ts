@@ -195,6 +195,11 @@ function renderPrompts(): void {
         setupCardEventListeners(item.id);
     });
 
+    // Setup event listeners for base prompt (it's not in itemsToRender)
+    if (basePrompt) {
+        setupCardEventListeners(basePrompt.id);
+    }
+
     // Setup event listeners for default components (learning objectives and struggle topics)
     setupDefaultComponentEventListeners();
 

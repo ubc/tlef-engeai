@@ -144,6 +144,8 @@ export interface TopicOrWeekInstance {
     title: string;
     courseName: string;
     published: boolean;
+    /** ISO date when this instance should auto-publish; only meaningful when published is false */
+    scheduledPublishAt?: Date | string | null;
     items: TopicOrWeekItem[]; // previously content, previously courseItem
     createdAt: Date;
     updatedAt: Date;
@@ -269,6 +271,10 @@ export interface GlobalUser {
     status: 'active' | 'inactive';
     createdAt: Date;
     updatedAt: Date;
+    /** true if user has completed any instructor onboarding (optional for backward compat) */
+    instructorOnboardingCompleted?: boolean;
+    /** true if user has completed any student onboarding (optional for backward compat) */
+    studentOnboardingCompleted?: boolean;
 }
 
 /**
