@@ -76,8 +76,13 @@
 
 .assistant-add-prompt-btn:hover {
     background: rgba(77, 122, 47, 0.08);
-    border-color: var(--color-chbe-green);
-    color: var(--color-chbe-green);
+    border-color: white;
+    color: white;
+}
+
+.assistant-add-prompt-btn:hover i,
+.assistant-add-prompt-btn:hover svg {
+    color: white;
 }
 
 .assistant-add-prompt-btn:active {

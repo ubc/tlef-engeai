@@ -2607,7 +2607,9 @@ const MIN_SCHEDULE_LEAD_MS = 60_000;
 /**
  * PATCH /:courseId/topic-or-week-instances/:topicOrWeekId/publish-schedule
  * Set or clear scheduled auto-publish time (draft instances only). Instructors only.
+ * TEMPORARILY DISABLED - Feature coming soon
  */
+/*
 router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/publish-schedule', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
@@ -2684,6 +2686,7 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/publish-schedule
         });
     }
 }));
+*/
 
 /**
  * DELETE /:courseId/topic-or-week-instances/:topicOrWeekId

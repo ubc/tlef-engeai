@@ -32,6 +32,9 @@ import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConf
 import { showToast, showSuccessToast } from '../ui/toast-notification.js';
 import { renderFeatherIcons } from '../api/api.js';
 
+// Feature flag for scheduled publish - set to true to enable
+const SCHEDULED_PUBLISH_ENABLED = false;
+
 // In-memory store for the course data
 let courseData: TopicOrWeekInstance[] = [];
 
@@ -294,6 +297,42 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         }
     }
 
+    function showScheduleComingSoonModal(): void {
+        showCustomModal({
+            type: 'info',
+            title: 'Scheduled Publishing Coming Soon',
+            content: createComingSoonContent(),
+            maxWidth: '480px',
+            buttons: [
+                { text: 'Got it', type: 'primary', closeOnClick: true }
+            ]
+        });
+    }
+
+    function createComingSoonContent(): HTMLElement {
+        const wrapper = document.createElement('div');
+        wrapper.style.display = 'flex';
+        wrapper.style.flexDirection = 'column';
+        wrapper.style.gap = '1rem';
+
+        const message = document.createElement('p');
+        message.style.margin = '0';
+        message.style.lineHeight = '1.6';
+        message.textContent = 'We\'re working on adding the ability to schedule when your content publishes. For now, you can publish content immediately.';
+        wrapper.appendChild(message);
+
+        const icon = document.createElement('i');
+        icon.setAttribute('data-feather', 'clock');
+        icon.style.width = '24px';
+        icon.style.height = '24px';
+        icon.style.marginTop = '0.5rem';
+        wrapper.appendChild(icon);
+
+        return wrapper;
+    }
+
+    // TEMPORARILY DISABLED - Scheduled publish feature coming soon
+    /*
     async function patchTopicSchedule(tw: TopicOrWeekInstance, isoOrNull: string | null): Promise<{ ok: boolean; error?: string }> {
         if (!courseId) return { ok: false, error: 'Course ID is missing' };
         const res = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${tw.id}/publish-schedule`, {
@@ -311,6 +350,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         }
         return { ok: true };
     }
+    */
 
     async function patchTopicPublished(tw: TopicOrWeekInstance, published: boolean): Promise<{ ok: boolean; error?: string }> {
         if (!courseId) return { ok: false, error: 'Course ID is missing' };
@@ -474,6 +514,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             schedulePanelOpen ? (getScheduledDate(tw) ? 'Update schedule' : 'Schedule now') : 'Publish now';
 
         scheduleTrigger.addEventListener('click', () => {
+            if (!SCHEDULED_PUBLISH_ENABLED) {
+                showScheduleComingSoonModal();
+                return;
+            }
             schedulePanelOpen = !schedulePanelOpen;
             scheduleTrigger.setAttribute('aria-expanded', schedulePanelOpen ? 'true' : 'false');
             panel.classList.toggle('publish-modal-schedule-panel--open', schedulePanelOpen);
@@ -509,6 +553,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                         }
 
                         errEl.textContent = '';
+                        /*
                         const when = buildLocalDateFromParts(
                             dateInput.value,
                             parseInt(hourSel.value, 10),
@@ -532,6 +577,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                         renderFeatherIcons();
                         showToast(`Scheduled "${tw.title}" to publish ${formatScheduleLine(when)}`, 3500, 'top-right');
                         closeModal('schedule-now');
+                        */
                     }
                 }
             ]
@@ -545,6 +591,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         await modalPromise;
     }
 
+    // TEMPORARILY DISABLED - Scheduled publish feature coming soon
+    /*
     async function confirmAndClearSchedule(tw: TopicOrWeekInstance, wrapper: HTMLElement): Promise<void> {
         if (!getScheduledDate(tw)) return;
         const result = await showConfirmModal(
@@ -563,6 +611,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         renderFeatherIcons();
         showToast('Scheduled publish cancelled.', 2500, 'top-right');
     }
+    */
 
     async function openPublishDecisionModal(tw: TopicOrWeekInstance, wrapper: HTMLElement): Promise<void> {
         if (tw.published) {
@@ -723,7 +772,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         scheduledBadge.appendChild(schedText);
         scheduledBadge.addEventListener('click', (e) => {
             e.stopPropagation();
-            void confirmAndClearSchedule(instance_topicOrWeek, wrapper);
+            // void confirmAndClearSchedule(instance_topicOrWeek, wrapper);
         });
 
         const publishBtn = document.createElement('button');

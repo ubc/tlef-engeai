@@ -498,13 +498,50 @@ body.onboarding-active .upload-modal-overlay {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 16px;
     padding: 12px 14px;
     border-bottom: 1px solid var(--border-color);
 }
 
+/* Title + Toggle Wrapper (grouped together on left) */
+.upload-modal-overlay .modal-title-toggle-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+}
+
 .upload-modal-overlay .modal-header h2 { 
     font-size: 18px; 
-    color: var(--text-primary); 
+    color: var(--text-primary);
+    margin: 0;
+    flex-shrink: 0;
+}
+
+/* Header Upload Method Toggle */
+.upload-modal-overlay .upload-header-toggle {
+    display: flex;
+    background: #f8f9fa;
+    border-radius: 6px;
+    padding: 3px;
+    border: 1px solid var(--border-color);
+    flex-shrink: 0;
+    margin:0;
+}
+
+.upload-modal-overlay .upload-header-toggle .toggle-option {
+    flex: 1;
+    padding: 6px 12px;
+    font-size: 12px;
+    gap: 4px;
+}
+
+.upload-modal-overlay .upload-header-toggle .toggle-icon {
+    font-size: 14px;
+}
+
+.upload-modal-overlay .upload-header-toggle .toggle-text {
+    font-size: 12px;
 }
 
 .upload-modal-overlay .modal-header .upload-close-btn {
@@ -519,6 +556,7 @@ body.onboarding-active .upload-modal-overlay {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
 }
 
 /* Upload Status Icon */
@@ -581,54 +619,11 @@ body.onboarding-active .upload-modal-overlay {
     height: 100%;
 }
 
-/* Two-column grid: form + preview */
-.upload-modal-content-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.5rem;
-    flex: 1;
-    min-height: 0;
-}
-
 .upload-form-column {
     display: flex;
     flex-direction: column;
-    min-height: 0;
-}
-
-.upload-preview-column {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    border-left: 1px solid var(--border-color);
-    padding-left: 1.5rem;
-}
-
-.upload-preview-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 0.5rem;
-    flex-shrink: 0;
-}
-
-.upload-preview-content {
     flex: 1;
-    min-height: 200px;
-    padding: 10px 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    font-size: 13px;
-    resize: none;
-    overflow-y: auto;
-    background: #fafbfc;
-    color: var(--text-primary);
-    white-space: pre-wrap;
-    word-wrap: break-word;
-}
-
-.upload-preview-content.has-content {
-    font-family: inherit;
+    min-height: 0;
 }
 
 /* Upload Content State Classes */
@@ -971,17 +966,6 @@ body.modal-open {
         max-height: 600px;
     }
 
-    .upload-modal-content-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .upload-preview-column {
-        border-left: none;
-        border-top: 1px solid var(--border-color);
-        padding-left: 0;
-        padding-top: 1rem;
-    }
-    
     .upload-method-toggle {
         flex-direction: column;
         gap: 4px;

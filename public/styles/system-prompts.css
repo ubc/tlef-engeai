@@ -76,8 +76,13 @@
 
 .system-add-prompt-btn:hover {
     background: rgba(77, 122, 47, 0.08);
-    border-color: var(--color-chbe-green);
-    color: var(--color-chbe-green);
+    border-color: white;
+    color: white;
+}
+
+.system-add-prompt-btn:hover i,
+.system-add-prompt-btn:hover svg {
+    color: white;
 }
 
 .system-add-prompt-btn:active {

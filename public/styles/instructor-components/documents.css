@@ -172,6 +172,13 @@
     gap: 10px;
 }
 
+/* Same vertical metrics across chips in topic header and session status row */
+.topic-or-week-status .content-status,
+.content-status-row .content-status {
+    line-height: 1.2;
+    box-sizing: border-box;
+}
+
 .completion-status {
     color: #525252; /* Darker gray for better contrast (was #6c757d) */
     font-size: 14px;
@@ -321,53 +328,46 @@
 }
 
 button.content-status {
-    font: inherit;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.2;
     cursor: pointer;
     transition: all 0.3s ease;
+    appearance: none;
+    margin: 0;
+    vertical-align: middle;
 }
 
-/* Publish / draft header chips: borderless text buttons */
+/* Publish header: 1px transparent border so box height matches bordered neighbors (draft overrides color) */
 .publish-status-btn.content-status {
-    border: none;
+    border: 1px solid transparent;
     background: transparent;
-    padding: 4px 6px;
-    border-radius: 6px;
+    padding: 4px 8px;
+    border-radius: 4px;
 }
 
 .publish-status-btn.status-draft {
-    font-size: 14px;
-    font-weight: 600;
-    color: #c45c00;
-}
-
-.publish-status-btn.status-draft .feather {
-    width: 17px;
-    height: 17px;
+    background: rgba(255, 152, 0, 0.1);
+    color: #e67e22;
+    border: 1px solid #e67e22;
 }
 
 .publish-status-btn.status-published {
-    font-size: 14px;
-    font-weight: 700;
     color: var(--pinned-color, #3d5a26);
 }
 
-.publish-status-btn.status-published .feather {
-    width: 16px;
-    height: 16px;
+.publish-status-btn.status-draft:hover {
+    background: rgba(255, 152, 0, 0.2);
+    border-color: #d35400;
+    color: #a84300;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(255, 152, 0, 0.3);
 }
 
-.publish-status-btn.status-draft:hover,
 .publish-status-btn.status-published:hover {
     transform: none;
     box-shadow: none;
-    background: rgba(0, 0, 0, 0.04);
-}
-
-.publish-status-btn.status-draft:hover {
-    color: #a84300;
-}
-
-.publish-status-btn.status-published:hover {
     color: #2d5016;
     background: rgba(76, 175, 80, 0.12);
 }
@@ -377,21 +377,13 @@ button.content-status {
     outline-offset: 2px;
 }
 
-/* Cancel scheduled publish (replaces purple “Scheduled” chip) */
+/* Cancel scheduled publish — transparent border matches chip box height */
 .scheduled-publish-btn.status-cancel-schedule {
-    border: none;
+    border: 1px solid transparent;
     background: transparent;
     color: var(--color-eng-red, #c82333);
-    font-weight: 700;
-    font-size: 13px;
-    padding: 4px 6px;
-    border-radius: 6px;
-}
-
-.scheduled-publish-btn.status-cancel-schedule .feather {
-    width: 18px;
-    height: 18px;
-    stroke-width: 2.25px;
+    padding: 4px 8px;
+    border-radius: 4px;
 }
 
 .scheduled-publish-btn.status-cancel-schedule:hover {
