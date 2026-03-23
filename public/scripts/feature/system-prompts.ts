@@ -12,7 +12,8 @@
 
 import { activeCourse, SystemPromptItem, DEFAULT_BASE_PROMPT_ID, DEFAULT_LEARNING_OBJECTIVES_ID, DEFAULT_STRUGGLE_TOPICS_ID, LearningObjective } from '../types.js';
 import { renderFeatherIcons } from '../api/api.js';
-import { showConfirmModal, showSimpleErrorModal, showErrorModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showSimpleErrorModal, showErrorModal, openContentInputModal } from '../ui/modal-overlay.js';
+import { DocumentUploadModule } from '../services/document-upload-module.js';
 import { showSuccessToast, showErrorToast } from '../ui/toast-notification.js';
 
 const DRAFT_PROMPT_ID = 'draft-new';
@@ -476,9 +477,7 @@ function setupCardEventListeners(itemId: string): void {
 }
 
 /**
- * Handle adding a new prompt.
- * Creates a draft in the UI first; only persists to server when user saves.
- * Cancel removes the draft without creating anything.
+ * Handle adding a new system prompt item via shared content modal (file or text).
  */
 function handleAddPrompt(): void {
     if (!currentCourse?.id) {
@@ -491,34 +490,65 @@ function handleAddPrompt(): void {
         return;
     }
 
-    draftItem = {
-        id: DRAFT_PROMPT_ID,
-        title: 'Untitled',
-        content: '',
-        dateCreated: new Date(),
-        componentType: 'custom',
-        isAppended: false,
-        isDefault: false
-    };
-    editingItemId = DRAFT_PROMPT_ID;
-    renderPrompts();
+    if (editingItemId !== null) {
+        showErrorToast('Please finish or cancel editing before adding a new prompt item.');
+        return;
+    }
 
-    setTimeout(() => {
-        const newCard = document.querySelector(`[data-prompt-id="${DRAFT_PROMPT_ID}"]`) as HTMLElement;
-        if (newCard) {
-            const titleField = newCard.querySelector('[data-field="title"]') as HTMLElement;
-            if (titleField) {
-                titleField.focus();
-                const range = document.createRange();
-                range.selectNodeContents(titleField);
-                const selection = window.getSelection();
-                if (selection) {
-                    selection.removeAllRanges();
-                    selection.addRange(range);
-                }
+    void openContentInputModal({
+        title: 'Add system prompt item',
+        initialMethod: 'text',
+        allowEmptyText: true,
+        strings: {
+            nameLabel: 'Title',
+            namePlaceholder: 'Prompt item title...',
+            textLabel: 'Prompt text',
+            textPlaceholder: 'Paste or type the system prompt text...',
+            submitLabel: 'Submit',
+            cancelLabel: 'Cancel'
+        },
+        loadingContent: {
+            title: 'Saving',
+            line1: 'Creating your prompt item...',
+            line2: 'Please wait.'
+        },
+        onSubmit: async (payload) => {
+            const title = payload.name.trim();
+            if (!title) {
+                alert('Please enter a title.');
+                return { success: false };
             }
+            let content = payload.text;
+            if (payload.sourceType === 'file' && payload.file) {
+                const mod = new DocumentUploadModule();
+                const v = mod.validateFile(payload.file);
+                if (!v.isValid) {
+                    alert(v.error);
+                    return { success: false };
+                }
+                const parsed = await mod.parseDocument(payload.file);
+                content = parsed.extractedText;
+            }
+            const response = await fetch(`/api/courses/${currentCourse!.id}/system-prompts`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, content: content.trim() })
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error((err as { error?: string }).error || 'Failed to create prompt item');
+            }
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to create prompt item');
+            }
+            await loadSystemPrompts();
+            renderPrompts();
+            showSuccessToast('Prompt item created successfully!');
+            return { success: true, skipSuccessModal: true };
         }
-    }, 100);
+    });
 }
 
 /**
@@ -572,12 +602,6 @@ async function handleSavePrompt(itemId: string): Promise<void> {
     if (!title) {
         showErrorToast('Title cannot be empty.');
         titleField.focus();
-        return;
-    }
-
-    if (!content) {
-        showErrorToast('Content cannot be empty.');
-        contentField.focus();
         return;
     }
 

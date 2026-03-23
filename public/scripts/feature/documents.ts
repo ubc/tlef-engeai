@@ -514,10 +514,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             schedulePanelOpen ? (getScheduledDate(tw) ? 'Update schedule' : 'Schedule now') : 'Publish now';
 
         scheduleTrigger.addEventListener('click', () => {
-            if (!SCHEDULED_PUBLISH_ENABLED) {
-                showScheduleComingSoonModal();
-                return;
-            }
             schedulePanelOpen = !schedulePanelOpen;
             scheduleTrigger.setAttribute('aria-expanded', schedulePanelOpen ? 'true' : 'false');
             panel.classList.toggle('publish-modal-schedule-panel--open', schedulePanelOpen);
@@ -549,6 +545,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                             renderFeatherIcons();
                             showToast(`Published "${tw.title}"`, 3000, 'top-right');
                             closeModal('publish-now');
+                            return;
+                        }
+
+                        // Schedule panel is open - user clicked "Schedule now" button
+                        if (!SCHEDULED_PUBLISH_ENABLED) {
+                            showScheduleComingSoonModal();
                             return;
                         }
 

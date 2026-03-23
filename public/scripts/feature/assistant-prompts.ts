@@ -11,7 +11,8 @@
 
 import { activeCourse, InitialAssistantPrompt, DEFAULT_PROMPT_ID } from '../types.js';
 import { renderFeatherIcons } from '../api/api.js';
-import { showConfirmModal, showSimpleErrorModal, showErrorModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showSimpleErrorModal, showErrorModal, openContentInputModal } from '../ui/modal-overlay.js';
+import { DocumentUploadModule } from '../services/document-upload-module.js';
 import { showSuccessToast, showErrorToast } from '../ui/toast-notification.js';
 
 const DRAFT_PROMPT_ID = 'draft-new';
@@ -293,9 +294,7 @@ function setupCardEventListeners(promptId: string): void {
 }
 
 /**
- * Handle adding a new prompt.
- * Creates a draft in the UI first; only persists to server when user saves.
- * Cancel removes the draft without creating anything.
+ * Handle adding a new prompt via shared content modal (file or text).
  */
 function handleAddPrompt(): void {
     if (!currentCourse?.id) {
@@ -308,33 +307,65 @@ function handleAddPrompt(): void {
         return;
     }
 
-    draftPrompt = {
-        id: DRAFT_PROMPT_ID,
-        title: 'Untitled',
-        content: '',
-        dateCreated: new Date(),
-        isSelected: false,
-        isDefault: false
-    };
-    editingPromptId = DRAFT_PROMPT_ID;
-    renderPrompts();
+    if (editingPromptId !== null) {
+        showErrorToast('Please finish or cancel editing before adding a new prompt.');
+        return;
+    }
 
-    setTimeout(() => {
-        const newCard = document.querySelector(`[data-prompt-id="${DRAFT_PROMPT_ID}"]`) as HTMLElement;
-        if (newCard) {
-            const titleField = newCard.querySelector('[data-field="title"]') as HTMLElement;
-            if (titleField) {
-                titleField.focus();
-                const range = document.createRange();
-                range.selectNodeContents(titleField);
-                const selection = window.getSelection();
-                if (selection) {
-                    selection.removeAllRanges();
-                    selection.addRange(range);
-                }
+    void openContentInputModal({
+        title: 'Add initial assistant prompt',
+        initialMethod: 'text',
+        allowEmptyText: true,
+        strings: {
+            nameLabel: 'Title',
+            namePlaceholder: 'Prompt title...',
+            textLabel: 'Prompt text',
+            textPlaceholder: 'Paste or type the assistant prompt text...',
+            submitLabel: 'Submit',
+            cancelLabel: 'Cancel'
+        },
+        loadingContent: {
+            title: 'Saving',
+            line1: 'Creating your prompt...',
+            line2: 'Please wait.'
+        },
+        onSubmit: async (payload) => {
+            const title = payload.name.trim();
+            if (!title) {
+                alert('Please enter a title.');
+                return { success: false };
             }
+            let content = payload.text;
+            if (payload.sourceType === 'file' && payload.file) {
+                const mod = new DocumentUploadModule();
+                const v = mod.validateFile(payload.file);
+                if (!v.isValid) {
+                    alert(v.error);
+                    return { success: false };
+                }
+                const parsed = await mod.parseDocument(payload.file);
+                content = parsed.extractedText;
+            }
+            const response = await fetch(`/api/courses/${currentCourse!.id}/assistant-prompts`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, content: content.trim() })
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error((err as { error?: string }).error || 'Failed to create prompt');
+            }
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to create prompt');
+            }
+            await loadPrompts();
+            renderPrompts();
+            showSuccessToast('Prompt created successfully!');
+            return { success: true, skipSuccessModal: true };
         }
-    }, 100);
+    });
 }
 
 /**
@@ -389,12 +420,6 @@ async function handleSavePrompt(promptId: string): Promise<void> {
     if (!title) {
         showErrorToast('Title cannot be empty.');
         titleField.focus();
-        return;
-    }
-
-    if (!content) {
-        showErrorToast('Content cannot be empty.');
-        contentField.focus();
         return;
     }
 
