@@ -903,6 +903,58 @@ body.onboarding-active .upload-modal-overlay {
     flex-shrink: 0; /* Prevent footer from shrinking */
 }
 
+/* Content input modal: footer buttons (works without documents.css on assistant/system pages) */
+.upload-modal-overlay .modal-footer .cancel-btn {
+    padding: 0.6rem 1.1rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    background: #6c757d;
+    color: #fff;
+}
+
+.upload-modal-overlay .modal-footer .cancel-btn:hover {
+    background: #5a6268;
+}
+
+.upload-modal-overlay .modal-footer .save-btn {
+    padding: 0.6rem 1.1rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    min-width: 100px;
+    font-family: inherit;
+    background: var(--color-chbe-green, #4d7a2f);
+    color: #fff;
+}
+
+.upload-modal-overlay .modal-footer .save-btn:hover:not(:disabled) {
+    filter: brightness(0.95);
+}
+
+/* Edit mode primary action: blue when enabled */
+.upload-modal-overlay .modal-footer .save-btn.save-btn--primary:not(:disabled) {
+    background: #2563eb;
+    color: #fff;
+}
+
+.upload-modal-overlay .modal-footer .save-btn.save-btn--primary:not(:disabled):hover {
+    background: #1d4ed8;
+    filter: none;
+}
+
+.upload-modal-overlay .modal-footer .save-btn:disabled,
+.upload-modal-overlay .modal-footer .save-btn.save-btn--disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: none;
+}
+
 /* Upload Success/Error Message Styling */
 .upload-success-message .success-icon {
     font-size: 3rem;

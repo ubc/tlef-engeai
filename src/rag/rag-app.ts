@@ -109,6 +109,10 @@ export class RAGApp {
         const filePath = path.join(tempDir, tempFileName);
         try {
             fs.writeFileSync(filePath, (input.file as any).buffer);
+            if (fileExtension === 'txt') {
+                const extractedText = fs.readFileSync(filePath, 'utf8');
+                return { extractedText, fileName: documentFileName };
+            }
             const parseResult = await this.documentParser.parse({ filePath }, 'text');
             return { extractedText: parseResult.content, fileName: documentFileName };
         } finally {
@@ -218,13 +222,15 @@ export class RAGApp {
                 appLogger.info(`📁 File saved to tempfiles: ${filePath}`);
 
                 try {
-                    // Parse the document using DocumentParsingModule
-                    const parseResult = await this.documentParser.parse(
-                        { filePath: filePath },
-                        'text'
-                    );
-
-                    documentText = parseResult.content;
+                    if (fileExtension === 'txt') {
+                        documentText = fs.readFileSync(filePath, 'utf8');
+                    } else {
+                        const parseResult = await this.documentParser.parse(
+                            { filePath: filePath },
+                            'text'
+                        );
+                        documentText = parseResult.content;
+                    }
 
                     // Create full instance of the document
                     fullDocument = {

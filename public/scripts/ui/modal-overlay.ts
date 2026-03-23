@@ -51,8 +51,17 @@ export interface ContentInputModalStrings {
     textRequiredMessage?: string;
 }
 
+export interface ContentInputInitialValues {
+    title: string;
+    text: string;
+    method?: 'file' | 'text';
+}
+
 export interface ContentInputModalOptions {
     title: string;
+    /** Edit mode: prefilled fields, Save disabled until dirty, confirm on close */
+    mode?: 'create' | 'edit';
+    initialValues?: ContentInputInitialValues;
     initialMethod?: 'file' | 'text';
     strings?: ContentInputModalStrings;
     /** HTML file input accept attribute (default: document types) */
@@ -1111,14 +1120,22 @@ export async function openContentInputModal(options: ContentInputModalOptions): 
         return;
     }
 
+    const isEditMode = options.mode === 'edit';
+    if (isEditMode && !options.initialValues) {
+        console.error('openContentInputModal: edit mode requires initialValues');
+        return;
+    }
+
     const s = options.strings ?? {};
     const nameLabel = s.nameLabel ?? 'Content Title';
     const namePlaceholder = s.namePlaceholder ?? 'Enter a name...';
     const textLabel = s.textLabel ?? 'Content Text';
     const textPlaceholder = s.textPlaceholder ?? 'Enter or paste content here...';
     const cancelLabel = s.cancelLabel ?? 'Cancel';
-    const submitLabel = s.submitLabel ?? 'Submit';
-    const initialMethod: 'file' | 'text' = options.initialMethod ?? 'file';
+    const submitLabel = s.submitLabel ?? (isEditMode ? 'Save edit' : 'Submit');
+    const initialMethod: 'file' | 'text' = isEditMode
+        ? options.initialValues!.method ?? 'text'
+        : options.initialMethod ?? 'file';
     const allowEmptyText = options.allowEmptyText ?? false;
     const fileAccept = options.fileAccept ?? '.pdf,.docx,.html,.htm,.md,.txt';
     const loadingDefault = {
@@ -1297,8 +1314,15 @@ export async function openContentInputModal(options: ContentInputModalOptions): 
 
     const uploadBtn = document.createElement('button');
     uploadBtn.id = 'upload-submit-btn';
+    uploadBtn.type = 'button';
     uploadBtn.className = 'save-btn';
     uploadBtn.textContent = submitLabel;
+    if (isEditMode) {
+        uploadBtn.classList.add('save-btn--primary');
+        uploadBtn.disabled = true;
+        uploadBtn.classList.add('save-btn--disabled');
+        uploadBtn.setAttribute('aria-disabled', 'true');
+    }
     footer.appendChild(cancelBtn);
     footer.appendChild(uploadBtn);
 
@@ -1306,16 +1330,62 @@ export async function openContentInputModal(options: ContentInputModalOptions): 
     modal.appendChild(content);
     modal.appendChild(footer);
 
+    if (isEditMode && options.initialValues) {
+        nameInput.value = options.initialValues.title;
+        textArea.value = options.initialValues.text;
+    }
+
+    const snapshotTitle = isEditMode && options.initialValues ? options.initialValues.title.trim() : '';
+    const snapshotText = isEditMode && options.initialValues ? options.initialValues.text : '';
+
+    let selectedFile: File | null = null;
+    let currentMethod: 'file' | 'text' = initialMethod;
+
     const close = () => {
         window.removeEventListener('keydown', keyHandler);
         mount.innerHTML = '';
         document.body.classList.remove('modal-open');
     };
 
+    function computeDirty(): boolean {
+        if (!isEditMode) return true;
+        const titleNow = nameInput.value.trim();
+        const textNow = textArea.value;
+        if (titleNow !== snapshotTitle) return true;
+        if (textNow !== snapshotText) return true;
+        if (selectedFile !== null) return true;
+        return false;
+    }
+
+    function updateDirtyState(): void {
+        if (!isEditMode) return;
+        const dirty = computeDirty();
+        uploadBtn.disabled = !dirty;
+        uploadBtn.classList.toggle('save-btn--disabled', !dirty);
+        uploadBtn.setAttribute('aria-disabled', dirty ? 'false' : 'true');
+    }
+
+    async function requestClose(): Promise<void> {
+        if (isEditMode && computeDirty()) {
+            const r = await showConfirmModal(
+                'Discard changes?',
+                'You have unsaved changes. Discard them and close?',
+                'Discard',
+                'Keep editing'
+            );
+            if (r.action !== 'discard') return;
+        }
+        close();
+    }
+
     function keyHandler(e: KeyboardEvent) {
         if (e.key === 'Escape') {
-            close();
+            e.preventDefault();
+            void requestClose();
         } else if (e.key === 'Enter') {
+            if (isEditMode && uploadBtn.disabled) {
+                return;
+            }
             const activeElement = document.activeElement;
             if (
                 activeElement &&
@@ -1329,16 +1399,13 @@ export async function openContentInputModal(options: ContentInputModalOptions): 
         }
     }
 
-    closeBtn.addEventListener('click', close);
-    cancelBtn.addEventListener('click', close);
+    closeBtn.addEventListener('click', () => void requestClose());
+    cancelBtn.addEventListener('click', () => void requestClose());
     overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) close();
+        if (e.target === overlay) void requestClose();
     });
 
     window.addEventListener('keydown', keyHandler);
-
-    let selectedFile: File | null = null;
-    let currentMethod: 'file' | 'text' = initialMethod;
 
     const toggleButtons = overlay.querySelectorAll('.toggle-option');
     const fileSectionElement = overlay.querySelector('#file-upload-section') as HTMLElement;
@@ -1373,21 +1440,35 @@ export async function openContentInputModal(options: ContentInputModalOptions): 
                 hiddenInputElement.value = '';
                 selectedFileNameElement.textContent = 'No file selected';
             } else {
-                textAreaElement.value = '';
+                if (!isEditMode) {
+                    textAreaElement.value = '';
+                }
             }
             applyMethodVisibility(method);
             currentMethod = method;
+            updateDirtyState();
         });
     });
+
+    nameInput.addEventListener('input', updateDirtyState);
+    textArea.addEventListener('input', updateDirtyState);
 
     uploadFileBtnElement.addEventListener('click', () => hiddenInputElement.click());
     hiddenInputElement.addEventListener('change', () => {
         const f = hiddenInputElement.files && hiddenInputElement.files[0] ? hiddenInputElement.files[0] : null;
         selectedFile = f;
         selectedFileNameElement.textContent = f ? f.name : 'No file selected';
+        updateDirtyState();
     });
 
+    if (isEditMode) {
+        updateDirtyState();
+    }
+
     uploadBtn.addEventListener('click', async () => {
+        if (isEditMode && uploadBtn.disabled) {
+            return;
+        }
         const name = nameInput.value.trim();
         const text = textAreaElement.value.trim();
 
