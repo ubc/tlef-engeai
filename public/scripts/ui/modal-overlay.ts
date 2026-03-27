@@ -1560,6 +1560,97 @@ export async function openContentInputModal(options: ContentInputModalOptions): 
     });
 }
 
+/** Read-only prompt review: same upload-modal shell, no file/text inputs. */
+export interface PromptReviewModalOptions {
+    title: string;
+    body: string;
+}
+
+/**
+ * Opens a read-only overlay to review full prompt text (instructor assistant/system prompts).
+ * Uses `#upload-modal-mount` and `upload-modal-overlay` shell; header title is `Display: {name}`.
+ */
+export function openPromptReviewModal(options: PromptReviewModalOptions): void {
+    const mount = getOrCreateContentInputModalMount();
+    if (!mount) {
+        console.error('Prompt review modal mount could not be created.');
+        return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay upload-modal-overlay prompt-review-modal';
+    overlay.setAttribute('aria-labelledby', 'prompt-review-modal-title');
+    mount.innerHTML = '';
+    mount.appendChild(overlay);
+    document.body.classList.add('modal-open');
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-container';
+    overlay.appendChild(modal);
+    overlay.offsetHeight;
+    overlay.classList.add('show');
+
+    const header = document.createElement('div');
+    header.className = 'modal-header';
+
+    const titleEl = document.createElement('h2');
+    titleEl.id = 'prompt-review-modal-title';
+    titleEl.className = 'modal-title';
+    titleEl.textContent = `Display: ${options.title}`;
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'upload-close-btn';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.textContent = '×';
+    header.appendChild(titleEl);
+    header.appendChild(closeBtn);
+
+    const content = document.createElement('div');
+    content.className = 'modal-content prompt-review-modal-content';
+
+    const bodyPre = document.createElement('pre');
+    bodyPre.className = 'prompt-review-body text-area';
+    bodyPre.textContent = options.body;
+
+    content.appendChild(bodyPre);
+
+    const footer = document.createElement('div');
+    footer.className = 'modal-footer';
+
+    const okBtn = document.createElement('button');
+    okBtn.type = 'button';
+    okBtn.id = 'prompt-review-ok-btn';
+    okBtn.className = 'save-btn save-btn--primary';
+    okBtn.textContent = 'OK';
+
+    footer.appendChild(okBtn);
+
+    modal.appendChild(header);
+    modal.appendChild(content);
+    modal.appendChild(footer);
+
+    const close = (): void => {
+        window.removeEventListener('keydown', keyHandler);
+        mount.innerHTML = '';
+        document.body.classList.remove('modal-open');
+    };
+
+    function keyHandler(e: KeyboardEvent): void {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            close();
+        }
+    }
+
+    closeBtn.addEventListener('click', close);
+    okBtn.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) close();
+    });
+    window.addEventListener('keydown', keyHandler);
+}
+
 /**
  * Opens a document upload modal for adding course materials
  *
@@ -1785,5 +1876,6 @@ export default {
     showInactivityWarningModal,
     openUploadModal,
     openContentInputModal,
+    openPromptReviewModal,
     closeModal
 };

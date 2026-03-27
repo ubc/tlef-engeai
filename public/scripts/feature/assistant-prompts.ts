@@ -11,7 +11,8 @@
 
 import { activeCourse, InitialAssistantPrompt, DEFAULT_PROMPT_ID } from '../types.js';
 import { renderFeatherIcons } from '../api/api.js';
-import { showConfirmModal, showSimpleErrorModal, showErrorModal, openContentInputModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showSimpleErrorModal, showErrorModal, openContentInputModal, openPromptReviewModal } from '../ui/modal-overlay.js';
+import { needsExpandButton, truncateToFirstLine } from '../utils/prompt-preview.js';
 import { DocumentUploadModule } from '../services/document-upload-module.js';
 import { showSuccessToast, showErrorToast } from '../ui/toast-notification.js';
 
@@ -136,9 +137,9 @@ function renderPromptCard(prompt: InitialAssistantPrompt): string {
     const selectedBadge = isSelected ? '<span class="selected-badge">Selected</span>' : '';
     const defaultBadge = isDefault ? '<span class="default-badge">Default</span>' : '';
 
-    const truncatedContent = truncateContent(prompt.content || '', 3);
-    const isTruncated = (prompt.content || '').length > truncatedContent.length;
-    const displayContent = isTruncated ? truncatedContent : (prompt.content || '');
+    const rawContent = prompt.content || '';
+    const previewLine = truncateToFirstLine(rawContent);
+    const showExpand = needsExpandButton(rawContent);
 
     return `
         <div class="prompt-card ${selectedClass}" data-prompt-id="${prompt.id}">
@@ -150,11 +151,11 @@ function renderPromptCard(prompt: InitialAssistantPrompt): string {
                 </div>
             </div>
             <div class="prompt-content-wrapper">
-                <div class="prompt-content" data-field="content" data-prompt-id="${prompt.id}">
-                    ${escapeHtml(displayContent)}
+                <div class="prompt-content prompt-content--preview" data-field="content" data-prompt-id="${prompt.id}">
+                    ${escapeHtml(previewLine)}
                 </div>
-                ${isTruncated ? `
-                    <button class="expand-toggle" data-prompt-id="${prompt.id}" data-expanded="false">
+                ${showExpand ? `
+                    <button type="button" class="expand-toggle" data-prompt-id="${prompt.id}" aria-label="View full prompt">
                         <i data-feather="chevron-down"></i>
                     </button>
                 ` : ''}
@@ -208,7 +209,7 @@ function setupCardEventListeners(promptId: string): void {
     // Expand/collapse toggle
     const expandToggle = card.querySelector('.expand-toggle');
     if (expandToggle) {
-        expandToggle.addEventListener('click', () => handleToggleExpand(promptId));
+        expandToggle.addEventListener('click', () => handleOpenReviewModal(promptId));
     }
 
 }
@@ -294,7 +295,7 @@ function handleEditPrompt(promptId: string): void {
 
     void openContentInputModal({
         mode: 'edit',
-        title: 'Edit initial assistant prompt',
+        title: `Edit: ${prompt.title || 'Untitled'}`,
         initialMethod: 'text',
         initialValues: {
             title: prompt.title || '',
@@ -474,50 +475,15 @@ async function handleSelectPrompt(promptId: string): Promise<void> {
 }
 
 /**
- * Handle toggling content expansion
- * @param promptId - The prompt ID
+ * Open read-only review modal with full prompt body
  */
-function handleToggleExpand(promptId: string): void {
-    const card = document.querySelector(`[data-prompt-id="${promptId}"]`) as HTMLElement;
-    if (!card) return;
-
-    const expandToggle = card.querySelector('.expand-toggle') as HTMLElement;
-    const contentField = card.querySelector('.prompt-content') as HTMLElement;
-    
-    if (!expandToggle || !contentField) return;
-
-    const isExpanded = expandToggle.getAttribute('data-expanded') === 'true';
+function handleOpenReviewModal(promptId: string): void {
     const prompt = prompts.find(p => p.id === promptId);
-    
     if (!prompt) return;
-
-    if (isExpanded) {
-        // Collapse
-        contentField.textContent = truncateContent(prompt.content, 3);
-        expandToggle.setAttribute('data-expanded', 'false');
-        expandToggle.innerHTML = '<i data-feather="chevron-down"></i>';
-    } else {
-        // Expand
-        contentField.textContent = prompt.content;
-        expandToggle.setAttribute('data-expanded', 'true');
-        expandToggle.innerHTML = '<i data-feather="chevron-up"></i>';
-    }
-
-    renderFeatherIcons();
-}
-
-/**
- * Truncate content to specified number of lines
- * @param content - The content to truncate
- * @param maxLines - Maximum number of lines
- * @returns Truncated content
- */
-function truncateContent(content: string, maxLines: number): string {
-    const lines = content.split('\n');
-    if (lines.length <= maxLines) {
-        return content;
-    }
-    return lines.slice(0, maxLines).join('\n') + '...';
+    openPromptReviewModal({
+        title: prompt.title || 'Untitled',
+        body: prompt.content || ''
+    });
 }
 
 /**

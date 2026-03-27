@@ -4467,10 +4467,19 @@ router.put('/:courseId/system-prompts/:itemId', asyncHandlerWithAuth(async (req:
         });
     } catch (error) {
         appLogger.error('Error updating system prompt item:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+        if (errorMessage.includes('Cannot edit the default base system prompt component')) {
+            return res.status(400).json({
+                success: false,
+                error: errorMessage
+            });
+        }
+
         res.status(500).json({
             success: false,
             error: 'Failed to update system prompt item',
-            details: error instanceof Error ? error.message : 'Unknown error'
+            details: errorMessage
         });
     }
 }));

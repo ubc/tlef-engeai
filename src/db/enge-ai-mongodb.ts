@@ -2680,6 +2680,12 @@ export class EngEAI_MongoDB {
             throw new Error(`System prompt item with id ${itemId} not found`);
         }
 
+        const itemToUpdate = items[itemIndex];
+        const isBaseComponent = itemToUpdate.componentType === 'base' || itemToUpdate.id === DEFAULT_BASE_PROMPT_ID;
+        if (isBaseComponent && (updates.title !== undefined || updates.content !== undefined)) {
+            throw new Error('Cannot edit the default base system prompt component');
+        }
+
         items[itemIndex] = { ...items[itemIndex], ...updates };
 
         await this.getCourseCollection().updateOne(
