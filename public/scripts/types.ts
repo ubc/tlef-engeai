@@ -417,7 +417,7 @@ export type ModalType = 'error' | 'warning' | 'success' | 'info' | 'disclaimer' 
 /** Button configuration for modal footer */
 export interface ModalButton {
     text: string;
-    type: 'primary' | 'secondary' | 'outline' | 'danger';
+    type: 'primary' | 'secondary' | 'outline' | 'danger' | 'muted';
     action?: () => void | Promise<void>;
     closeOnClick?: boolean;
 }

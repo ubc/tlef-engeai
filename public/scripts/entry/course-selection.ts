@@ -10,7 +10,9 @@
  */
 
 import { GlobalUser } from '../types.js';
-import { showConfirmModal, 
+import { showConfirmModal,
+    showSkipOnboardingModal,
+    showSimpleErrorModal,
     showErrorModal, 
     showSuccessModal, 
     showInactivityWarningModal, 
@@ -969,14 +971,12 @@ async function handleCourseCodeSubmit(courseCode: string, inputElement: HTMLInpu
 
         // Student skip: requires onboarding + completed student onboarding before
         if (showStudentSkip) {
-            const skipResult = await showConfirmModal(
+            const skipResult = await showSkipOnboardingModal(
                 'Skip Onboarding?',
-                "You've completed student onboarding before. Skip for this course?",
-                'Skip',
-                'Show Onboarding'
+                "You've completed student onboarding before. Skip for this course?"
             );
 
-            if (skipResult.action === 'confirm' && currentGlobalUser) {
+            if (skipResult.action === 'skip' && currentGlobalUser) {
                 const updateRes = await fetch('/api/user/update-onboarding', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -992,18 +992,20 @@ async function handleCourseCodeSubmit(courseCode: string, inputElement: HTMLInpu
                     window.location.href = `/course/${courseId}/student`;
                     return;
                 }
+                await showSimpleErrorModal(
+                    updateData.error || 'Could not update onboarding. Continuing with setup.',
+                    'Skip onboarding failed'
+                );
             }
         }
         // Instructor skip: requires onboarding + completed instructor onboarding before
         else if (showInstructorSkip) {
-            const skipResult = await showConfirmModal(
+            const skipResult = await showSkipOnboardingModal(
                 'Skip Setup?',
-                "You've completed instructor setup before. Skip the full setup for this course?",
-                'Skip',
-                'Full Setup'
+                "You've completed instructor setup before. Skip the full setup for this course?"
             );
 
-            if (skipResult.action === 'confirm') {
+            if (skipResult.action === 'skip') {
                 const updateRes = await fetch(`/api/courses/${courseId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
@@ -1020,6 +1022,10 @@ async function handleCourseCodeSubmit(courseCode: string, inputElement: HTMLInpu
                     window.location.href = `/course/${courseId}/instructor/documents`;
                     return;
                 }
+                await showSimpleErrorModal(
+                    updateData.error || 'Could not update course. Continuing with setup.',
+                    'Skip setup failed'
+                );
             }
         }
 

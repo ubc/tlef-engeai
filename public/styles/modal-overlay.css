@@ -169,7 +169,6 @@
 }
 
 .modal-btn-secondary {
-    display: none;
     background-color: #6c757d;
     color: white;
 }
@@ -197,6 +196,17 @@
 
 .modal-btn-danger:hover {
     background-color: #c82333;
+    transform: translateY(-1px);
+}
+
+.modal-btn-muted {
+    background-color: #adb5bd;
+    color: #212529;
+}
+
+.modal-btn-muted:hover {
+    background-color: #868e96;
+    color: #212529;
     transform: translateY(-1px);
 }
 

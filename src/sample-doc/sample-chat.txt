@@ -14,26 +14,26 @@ Created: N/A
 --- Messages ---
 
 Message 1:
-  Role: unknown
-  Content: [Empty]
+  Role: Student
+  Content: What is the difference between stress and strain?
   Timestamp: 1772739340405
 
 Message 2:
-  Role: unknown
-  Content: [Empty]
+  Role: Assistant
+  Content: Stress is force per unit area; strain is the resulting deformation. In one dimension, stress σ = F/A and strain ε = ΔL/L₀.
   Timestamp: 1772739515891
 
 Message 3:
-  Role: unknown
-  Content: [Empty]
+  Role: Student
+  Content: Can you give a quick example?
   Timestamp: 1772739515882
 
 Message 4:
-  Role: unknown
-  Content: [Empty]
+  Role: Assistant
+  Content: Sure — imagine pulling a bar: if you apply 100 N over 0.01 m², stress is 10 kPa. If the bar stretches 0.1% of its length, strain is 0.001.
   Timestamp: 1772742166548
 
 Message 5:
-  Role: unknown
-  Content: [Empty]
+  Role: Student
+  Content: Thanks, that helps.
   Timestamp: 1772742166544

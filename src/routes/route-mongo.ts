@@ -3609,7 +3609,22 @@ router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(asyn
         exportText += `Created: ${chat.createdAt || 'N/A'}\n`;
         exportText += `========================================\n\n`;
         
-        // Export messages
+        // Export messages (ChatMessage uses sender + text; legacy may use role + content)
+        const exportRoleLabel = (msg: any): string => {
+            const s = msg?.sender;
+            if (s === 'user') return 'Student';
+            if (s === 'bot') return 'Assistant';
+            if (typeof msg?.role === 'string' && msg.role.trim()) return msg.role.trim();
+            return 'unknown';
+        };
+        const exportMessageBody = (msg: any): string => {
+            const raw = msg?.text ?? msg?.content;
+            if (raw == null) return '[Empty]';
+            const str = typeof raw === 'string' ? raw : String(raw);
+            const trimmed = str.trim();
+            return trimmed.length > 0 ? str : '[Empty]';
+        };
+
         exportText += `--- Messages ---\n\n`;
         const messages = chat.messages || [];
         if (messages.length === 0) {
@@ -3618,8 +3633,8 @@ router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(asyn
             for (let i = 0; i < messages.length; i++) {
                 const message = messages[i];
                 exportText += `Message ${i + 1}:\n`;
-                exportText += `  Role: ${message.role || 'unknown'}\n`;
-                exportText += `  Content: ${message.content || '[Empty]'}\n`;
+                exportText += `  Role: ${exportRoleLabel(message)}\n`;
+                exportText += `  Content: ${exportMessageBody(message)}\n`;
                 if (message.timestamp) {
                     exportText += `  Timestamp: ${message.timestamp}\n`;
                 }

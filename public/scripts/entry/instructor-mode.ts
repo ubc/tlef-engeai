@@ -21,7 +21,7 @@ import { initializeFlags } from "../feature/flags.js";
 import { initializeMonitorDashboard } from "../feature/monitor.js";
 import { ChatManager } from "../feature/chat.js";
 import { authService } from '../services/auth-service.js';
-import { showConfirmModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
 import { renderAbout } from '../about/about.js';
 import { initializeCourseInformation } from '../feature/course-information.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
@@ -1200,13 +1200,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const userData = userRes.ok ? await userRes.json() : {};
             const globalUser = userData.globalUser;
             if (globalUser?.instructorOnboardingCompleted === true) {
-                const skipResult = await showConfirmModal(
+                const skipResult = await showSkipOnboardingModal(
                     'Skip Setup?',
-                    "You've completed instructor setup before. Skip the rest and go to your course?",
-                    'Skip',
-                    'Full Setup'
+                    "You've completed instructor setup before. Skip the rest and go to your course?"
                 );
-                if (skipResult.action === 'confirm') {
+                if (skipResult.action === 'skip') {
                     const updateRes = await fetch(`/api/courses/${courseId}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
@@ -1223,6 +1221,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         window.location.href = `/course/${courseId}/instructor/documents`;
                         return;
                     }
+                    await showSimpleErrorModal(
+                        updateData.error || 'Could not update course. Continuing with setup.',
+                        'Skip setup failed'
+                    );
                 }
             }
 
@@ -1236,13 +1238,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const userData = userRes.ok ? await userRes.json() : {};
                 const globalUser = userData.globalUser;
                 if (globalUser?.instructorOnboardingCompleted === true) {
-                    const skipResult = await showConfirmModal(
+                    const skipResult = await showSkipOnboardingModal(
                         'Skip Setup?',
-                        "You've completed instructor setup before. Skip the rest and go to your course?",
-                        'Skip',
-                        'Full Setup'
+                        "You've completed instructor setup before. Skip the rest and go to your course?"
                     );
-                    if (skipResult.action === 'confirm') {
+                    if (skipResult.action === 'skip') {
                         const updateRes = await fetch(`/api/courses/${courseId}`, {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
@@ -1259,6 +1259,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                             window.location.href = `/course/${courseId}/instructor/documents`;
                             return;
                         }
+                        await showSimpleErrorModal(
+                            updateData.error || 'Could not update course. Continuing with setup.',
+                            'Skip setup failed'
+                        );
                     }
                 }
                 window.location.href = `/course/${courseId}/instructor/onboarding/document-setup`;

@@ -15,7 +15,7 @@ import { authService } from '../services/auth-service.js';
 import { studentUserFactory } from '../factories/student-user-factory.js';
 import { renderStudentOnboarding } from '../onboarding/student-onboarding.js';
 import { initializeStudentFlagHistory } from '../feature/student-flag-history.js';
-import { showConfirmModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
 import { renderAbout } from '../about/about.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
 import { 
@@ -95,14 +95,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (isStudentOnboardingURL()) {
             // Student skip onboarding: if user has completed before, offer skip
             if (!validatedCourseUser.userOnboarding && globalUser?.studentOnboardingCompleted === true) {
-                const skipResult = await showConfirmModal(
+                const skipResult = await showSkipOnboardingModal(
                     'Skip Onboarding?',
-                    "You've completed student onboarding before. Skip for this course?",
-                    'Skip',
-                    'Show Onboarding'
+                    "You've completed student onboarding before. Skip for this course?"
                 );
                 
-                if (skipResult.action === 'confirm') {
+                if (skipResult.action === 'skip') {
                     const userId = validatedCourseUser.userId || courseUser?.userId;
                     if (userId) {
                         const updateRes = await fetch('/api/user/update-onboarding', {
@@ -123,6 +121,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 return;
                             }
                         }
+                        await showSimpleErrorModal(
+                            updateData.error || 'Could not update onboarding. Continuing with setup.',
+                            'Skip onboarding failed'
+                        );
                     }
                 }
             }

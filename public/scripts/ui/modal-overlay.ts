@@ -730,6 +730,27 @@ export async function showConfirmModal(
 }
 
 /**
+ * Skip vs continue onboarding: Continue Onboarding (muted), Skip (primary).
+ * Resolved `action` values are slugified button labels (e.g. skip, continue-onboarding).
+ */
+export async function showSkipOnboardingModal(
+    title: string,
+    message: string
+): Promise<ModalResult> {
+    const modal = getModal();
+    return modal.show({
+        type: 'info',
+        title,
+        content: message,
+        maxWidth: '480px',
+        buttons: [
+            { text: 'Continue Onboarding', type: 'muted', closeOnClick: true },
+            { text: 'Skip', type: 'primary', closeOnClick: true }
+        ]
+    });
+}
+
+/**
  * Shows an input modal for text entry
  * 
  * @param title - Modal title
@@ -1750,6 +1771,7 @@ export default {
     showSuccessModal,
     showInfoModal,
     showConfirmModal,
+    showSkipOnboardingModal,
     showInputModal,
     showDisclaimerModal,
     showHelpModal,
