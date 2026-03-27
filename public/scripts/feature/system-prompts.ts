@@ -3,14 +3,14 @@
  * 
  * This module handles the creation, editing, deletion, and append/remove functionality
  * for system prompt items. System prompts are composed of base prompt, learning objectives,
- * struggle topics (always included), and custom appended items.
+ * and custom appended items. (Struggle-topics informational card is hidden for now.)
  * 
  * @author: EngE-AI Team
  * @version: 1.0.0
  * @since: 2025-01-27
  */
 
-import { activeCourse, SystemPromptItem, DEFAULT_BASE_PROMPT_ID, DEFAULT_LEARNING_OBJECTIVES_ID, DEFAULT_STRUGGLE_TOPICS_ID, LearningObjective } from '../types.js';
+import { activeCourse, SystemPromptItem, DEFAULT_BASE_PROMPT_ID, DEFAULT_LEARNING_OBJECTIVES_ID } from '../types.js';
 import { renderFeatherIcons } from '../api/api.js';
 import { showConfirmModal, showSimpleErrorModal, showErrorModal, openContentInputModal, openPromptReviewModal } from '../ui/modal-overlay.js';
 import { needsExpandButton, truncateToFirstLine } from '../utils/prompt-preview.js';
@@ -23,57 +23,6 @@ let learningObjectivesCount: number = 0;
 
 function getLearningObjectivesFullContent(): string {
     return 'The following are ALL learning objectives for this course, organized by week/topic and subsection:\n\n\nWhen helping students, reference these learning objectives to ensure alignment with course goals.';
-}
-
-function formatStruggleTopicsQuoted(struggleTopics?: string[]): string {
-    return struggleTopics && struggleTopics.length > 0
-        ? struggleTopics.map((topic) => `"${topic}"`).join(', ')
-        : '"thermodynamics", "kinetics", "equilibrium"';
-}
-
-/** Canonical full text for the struggle-topics block (preview + review modal). */
-function getStruggleTopicsFullContent(struggleTopics?: string[]): string {
-    const struggleTopicsQuoted = formatStruggleTopicsQuoted(struggleTopics);
-    return `
-
-===========================================
-STRUGGLE TOPICS HANDLING
-===========================================
-
-Student struggles with the following topics:
-${struggleTopicsQuoted}
-
-Before responding when struggle topics are discussed, verify:
-☐ STOPPED using Socratic or guided-discovery questioning
-☐ Providing direct, clear, step-by-step explanations
-☐ Using concrete numerical examples
-☐ Breaking concepts into simple, explicit steps
-☐ Asked at MOST ONE follow-up question (simple understanding check, not Socratic)
-☐ Chose SINGLE most relevant struggle topic from exact list above
-☐ Did NOT use synonyms, related concepts, or variations - ONLY exact topic name
-
-Example (correct usage):
-You've explained the Nernst equation really well. Let's walk through a concrete example step by step using actual values so the relationship is clear.
-
-===========================================
-UNSTRUGGLE TOPICS HANDLING
-===========================================
-
-If you find <questionUnstruggle reveal="TRUE"> at the end of the response, then please add <questionUnstruggle Topic="topic"> to the end of the response, where the topic is the single most relevant struggle topic from the exact list above.
-
-Before adding the <questionUnstruggle> tag, verify:
-☐ The chosen topic is the single most relevant struggle topic from the exact list above.
-☐ The chosen topic is not a synonym, related concept, or variation of the exact topic name.
-☐ If the chat does not explicitly display <questionUnstruggle reveal="TRUE">, then do not add the <questionUnstruggle Topic="topic"> tag.
-☐ Make sure you put the <questionUnstruggle Topic="topic"> tag at the end of the response.
-
-Example:
-User prompt: .....user prompt..... (with no struggle topic)
-Assistant response: .....assistant response..... (with no struggle topic)
-
-User prompt: .....user prompt...<questionUnstruggle reveal="TRUE">...
-Assistant response: ...assistant response...
-<questionUnstruggle Topic="thermodynamics">`;
 }
 
 /**
@@ -119,7 +68,7 @@ function setupEventListeners(): void {
 }
 
 /**
- * Setup event listeners for default components (learning objectives and struggle topics)
+ * Setup event listeners for default components (learning objectives)
  */
 function setupDefaultComponentEventListeners(): void {
     const learningObjectivesCard = document.querySelector(`[data-prompt-id="${DEFAULT_LEARNING_OBJECTIVES_ID}"]`);
@@ -127,14 +76,6 @@ function setupDefaultComponentEventListeners(): void {
         const expandToggle = learningObjectivesCard.querySelector('.expand-toggle') as HTMLElement;
         if (expandToggle) {
             expandToggle.addEventListener('click', () => handleOpenReviewModal(DEFAULT_LEARNING_OBJECTIVES_ID));
-        }
-    }
-
-    const struggleTopicsCard = document.querySelector(`[data-prompt-id="${DEFAULT_STRUGGLE_TOPICS_ID}"]`);
-    if (struggleTopicsCard) {
-        const expandToggle = struggleTopicsCard.querySelector('.expand-toggle') as HTMLElement;
-        if (expandToggle) {
-            expandToggle.addEventListener('click', () => handleOpenReviewModal(DEFAULT_STRUGGLE_TOPICS_ID));
         }
     }
 }
@@ -216,8 +157,6 @@ function renderPrompts(): void {
 
     // Separate default components from custom items
     const basePrompt = items.find(item => item.componentType === 'base' || item.id === DEFAULT_BASE_PROMPT_ID);
-    const learningObjectives = items.find(item => item.componentType === 'learning-objectives' || item.id === DEFAULT_LEARNING_OBJECTIVES_ID);
-    const struggleTopics = items.find(item => item.componentType === 'struggle-topics' || item.id === DEFAULT_STRUGGLE_TOPICS_ID);
     const customItems = items.filter(item => item.componentType === 'custom');
     const itemsToRender = customItems;
 
@@ -230,9 +169,6 @@ function renderPrompts(): void {
 
     // Render learning objectives component (always included default component)
     html += renderLearningObjectivesComponent();
-
-    // Render struggle topics component (always included default component)
-    html += renderStruggleTopicsComponent([]);
 
     // Render custom items
     itemsToRender.forEach(item => {
@@ -251,7 +187,7 @@ function renderPrompts(): void {
         setupCardEventListeners(basePrompt.id);
     }
 
-    // Setup event listeners for default components (learning objectives and struggle topics)
+    // Setup event listeners for default components (learning objectives)
     setupDefaultComponentEventListeners();
 
     // Render feather icons again after DOM update
@@ -279,35 +215,6 @@ function renderLearningObjectivesComponent(): string {
                 </div>
                 ${showExpand ? `
                     <button type="button" class="expand-toggle" data-prompt-id="${DEFAULT_LEARNING_OBJECTIVES_ID}" aria-label="View full prompt">
-                        <i data-feather="chevron-down"></i>
-                    </button>
-                ` : ''}
-            </div>
-        </div>
-    `;
-}
-
-/**
- * Render struggle topics component (informational display)
- */
-function renderStruggleTopicsComponent(struggleTopics?: string[]): string {
-    const fullContent = getStruggleTopicsFullContent(struggleTopics);
-    const previewLine = truncateToFirstLine(fullContent);
-    const showExpand = needsExpandButton(fullContent);
-
-    return `
-        <div class="prompt-card appended default-component" data-prompt-id="${DEFAULT_STRUGGLE_TOPICS_ID}">
-            <span class="appended-badge">Appended</span>
-            <span class="always-included-badge">Always Included</span>
-            <div class="prompt-header">
-                <div class="prompt-title">Struggle Topics</div>
-            </div>
-            <div class="prompt-content-wrapper">
-                <div class="prompt-content informational prompt-content--preview">
-                    ${escapeHtml(previewLine)}
-                </div>
-                ${showExpand ? `
-                    <button type="button" class="expand-toggle" data-prompt-id="${DEFAULT_STRUGGLE_TOPICS_ID}" aria-label="View full prompt">
                         <i data-feather="chevron-down"></i>
                     </button>
                 ` : ''}
@@ -432,13 +339,6 @@ function handleOpenReviewModal(itemId: string): void {
         openPromptReviewModal({
             title: 'Learning Objectives',
             body: getLearningObjectivesFullContent()
-        });
-        return;
-    }
-    if (itemId === DEFAULT_STRUGGLE_TOPICS_ID) {
-        openPromptReviewModal({
-            title: 'Struggle Topics',
-            body: getStruggleTopicsFullContent()
         });
         return;
     }
