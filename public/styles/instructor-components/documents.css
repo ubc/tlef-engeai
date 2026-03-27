@@ -172,9 +172,32 @@
     gap: 10px;
 }
 
+/* Same vertical metrics across chips in topic header and session status row */
+.topic-or-week-status .content-status,
+.content-status-row .content-status {
+    line-height: 1.2;
+    box-sizing: border-box;
+}
+
 .completion-status {
     color: #525252; /* Darker gray for better contrast (was #6c757d) */
     font-size: 14px;
+}
+
+.topic-or-week-meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    line-height: 1.4;
+}
+
+.topic-or-week-meta-line {
+    display: block;
+}
+
+.topic-or-week-meta-schedule {
+    margin-top: 2px;
+    color: #5b4aa8;
 }
 
 .expand-icon {
@@ -293,16 +316,141 @@
 }
 
 .status-published {
-    background: rgba(76, 175, 80, 0.2); /* Darker background for better contrast */
-    color: #3d5a26; /* Even darker green text for better contrast (was #4a6b2f) */
-    border: 1px solid #3d5a26; /* Darker border */
+    background: rgba(76, 175, 80, 0.2);
+    color: #3d5a26;
+    border: 1px solid #3d5a26;
 }
-
 
 .status-draft {
     background: rgba(255, 152, 0, 0.1);
     color: #e67e22;
     border: 1px solid #e67e22;
+}
+
+button.content-status {
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    appearance: none;
+    margin: 0;
+    vertical-align: middle;
+}
+
+/* Publish header: 1px transparent border so box height matches bordered neighbors (draft overrides color) */
+.publish-status-btn.content-status {
+    border: 1px solid transparent;
+    background: transparent;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.publish-status-btn.status-draft {
+    background: rgba(255, 152, 0, 0.1);
+    color: #e67e22;
+    border: 1px solid #e67e22;
+}
+
+.publish-status-btn.status-published {
+    color: var(--pinned-color, #3d5a26);
+}
+
+.publish-status-btn.status-draft:hover {
+    background: rgba(255, 152, 0, 0.2);
+    border-color: #d35400;
+    color: #a84300;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(255, 152, 0, 0.3);
+}
+
+.publish-status-btn.status-published:hover {
+    transform: none;
+    box-shadow: none;
+    color: #2d5016;
+    background: rgba(76, 175, 80, 0.12);
+}
+
+.publish-status-btn:focus-visible {
+    outline: 2px solid var(--color-chbe-green, #5c8a3a);
+    outline-offset: 2px;
+}
+
+/* Cancel scheduled publish — transparent border matches chip box height */
+.scheduled-publish-btn.status-cancel-schedule {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--color-eng-red, #c82333);
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.scheduled-publish-btn.status-cancel-schedule:hover {
+    background: rgba(200, 35, 51, 0.1);
+    transform: none;
+    box-shadow: none;
+}
+
+.scheduled-publish-btn.status-cancel-schedule:focus-visible {
+    outline: 2px solid var(--color-eng-red, #c82333);
+    outline-offset: 2px;
+}
+
+/* Publish modal: expandable schedule */
+.publish-draft-modal-body {
+    line-height: 1.5;
+}
+
+.publish-modal-calendar-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+    padding: 8px 10px;
+    border: none;
+    background: rgba(0, 0, 0, 0.04);
+    border-radius: 8px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    transition: background 0.2s ease;
+}
+
+.publish-modal-calendar-trigger:hover {
+    background: rgba(0, 0, 0, 0.07);
+}
+
+.publish-modal-calendar-trigger .feather {
+    width: 18px;
+    height: 18px;
+    color: var(--color-chbe-green, #5c8a3a);
+}
+
+.publish-modal-calendar-trigger:focus-visible {
+    outline: 2px solid var(--color-chbe-green, #5c8a3a);
+    outline-offset: 2px;
+}
+
+.publish-modal-schedule-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+    padding-top: 4px;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: max-height 0.28s ease, opacity 0.2s ease;
+}
+
+.publish-modal-schedule-panel.publish-modal-schedule-panel--open {
+    max-height: 320px;
+    opacity: 1;
+    pointer-events: auto;
 }
 
 /* Division Control Panel Styles */
@@ -659,52 +807,7 @@
 .additional-material .am-meta { font-size: 12px; color: var(--text-secondary); }
 
 
-.toggle-switch {
-    position: relative;
-    display: inline-block;
-    width: 44px;
-    height: 22px;
-}
-
-.toggle-switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-
-.toggle-slider {
-    position: absolute;
-    cursor: pointer;
-    inset: 0;
-    background-color: #ccc;
-    transition: 0.3s ease;
-    border-radius: 30px;
-}
-
-.toggle-slider::before{
-    position: absolute;
-    content: "";
-    height: 15px;
-    width: 15px;
-    left: 4px;
-    bottom: 4px;
-    background-color: white;
-    transition: 0.3s;
-    border-radius: 50%;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-input:checked + .toggle-slider {
-    background-color: var(--color-chbe-green);
-}
-
-input:checked + .toggle-slider::before {
-    transform: translateX(20px);
-}
-
-.toggle-slider:hover {
-    box-shadow: 0 0 8px rgba(0,0,0,0.1);
-}
+/* Publish toggle removed — publish/schedule uses modal + status buttons */
 
 /* Rename Icon Styles */
 .rename-icon {

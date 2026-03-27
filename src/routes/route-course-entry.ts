@@ -212,11 +212,17 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
             appLogger.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
         }
         
+        // Fetch fresh GlobalUser for skip-onboarding feature (student + instructor)
+        const freshGlobalUser = await mongoDB.findGlobalUserByUserId(globalUser.userId);
+        
         return res.json({
             redirect,
             requiresOnboarding,
+            studentOnboardingCompleted: freshGlobalUser?.studentOnboardingCompleted ?? false,
+            instructorOnboardingCompleted: freshGlobalUser?.instructorOnboardingCompleted ?? false,
             courseUser,
-            courseName: course.courseName
+            courseName: course.courseName,
+            courseId: course.id
         });
         
     } catch (error) {
@@ -437,11 +443,17 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
             appLogger.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
         }
         
+        // Fetch fresh GlobalUser for skip-onboarding feature (student + instructor)
+        const freshGlobalUser = await mongoDB.findGlobalUserByUserId(globalUser.userId);
+        
         return res.json({
             redirect,
             requiresOnboarding,
+            studentOnboardingCompleted: freshGlobalUser?.studentOnboardingCompleted ?? false,
+            instructorOnboardingCompleted: freshGlobalUser?.instructorOnboardingCompleted ?? false,
             courseUser,
-            courseName: course.courseName
+            courseName: course.courseName,
+            courseId: course.id
         });
         
     } catch (error) {

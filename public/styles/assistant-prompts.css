@@ -76,8 +76,13 @@
 
 .assistant-add-prompt-btn:hover {
     background: rgba(77, 122, 47, 0.08);
-    border-color: var(--color-chbe-green);
-    color: var(--color-chbe-green);
+    border-color: white;
+    color: white;
+}
+
+.assistant-add-prompt-btn:hover i,
+.assistant-add-prompt-btn:hover svg {
+    color: white;
 }
 
 .assistant-add-prompt-btn:active {
@@ -214,6 +219,7 @@
 .prompt-content-wrapper {
     position: relative;
     margin-bottom: 15px;
+    min-width: 0;
 }
 
 .prompt-content-wrapper::before {
@@ -255,6 +261,22 @@
 .prompt-content:not([data-editing="true"]) {
     cursor: default;
     user-select: text;
+}
+
+/* Single-line list preview; full text opens in review modal */
+.prompt-content.prompt-content--preview {
+    min-height: 0;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: normal;
+    overflow-wrap: normal;
+}
+
+/* Keep one line; leave room for absolutely positioned expand button */
+.prompt-content-wrapper:has(.expand-toggle) .prompt-content.prompt-content--preview {
+    padding-right: 40px;
 }
 
 .prompt-content:empty:before {

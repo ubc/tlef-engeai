@@ -11,15 +11,13 @@
 
 import { activeCourse, InitialAssistantPrompt, DEFAULT_PROMPT_ID } from '../types.js';
 import { renderFeatherIcons } from '../api/api.js';
-import { showConfirmModal, showSimpleErrorModal, showErrorModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showSimpleErrorModal, showErrorModal, openContentInputModal, openPromptReviewModal } from '../ui/modal-overlay.js';
+import { needsExpandButton, truncateToFirstLine } from '../utils/prompt-preview.js';
+import { DocumentUploadModule } from '../services/document-upload-module.js';
 import { showSuccessToast, showErrorToast } from '../ui/toast-notification.js';
-
-const DRAFT_PROMPT_ID = 'draft-new';
 
 let currentCourse: activeCourse | null = null;
 let prompts: InitialAssistantPrompt[] = [];
-let editingPromptId: string | null = null;
-let draftPrompt: InitialAssistantPrompt | null = null;
 
 /**
  * Initialize the assistant prompts page
@@ -105,7 +103,7 @@ function renderPrompts(): void {
         return;
     }
 
-    const promptsToRender = prompts.concat(draftPrompt ? [draftPrompt] : []);
+    const promptsToRender = prompts;
 
     if (promptsToRender.length === 0) {
         container.innerHTML = `
@@ -134,70 +132,49 @@ function renderPrompts(): void {
  */
 function renderPromptCard(prompt: InitialAssistantPrompt): string {
     const isSelected = prompt.isSelected;
-    const isEditing = editingPromptId === prompt.id;
     const isDefault = prompt.isDefault || prompt.id === DEFAULT_PROMPT_ID;
     const selectedClass = isSelected ? 'selected' : '';
     const selectedBadge = isSelected ? '<span class="selected-badge">Selected</span>' : '';
     const defaultBadge = isDefault ? '<span class="default-badge">Default</span>' : '';
-    
-    // Truncate content for display (3 lines) - but only if not editing
-    const truncatedContent = truncateContent(prompt.content || '', 3);
-    const isTruncated = !isEditing && (prompt.content || '').length > truncatedContent.length;
-    const displayContent = isTruncated ? truncatedContent : (prompt.content || '');
+
+    const rawContent = prompt.content || '';
+    const previewLine = truncateToFirstLine(rawContent);
+    const showExpand = needsExpandButton(rawContent);
 
     return `
         <div class="prompt-card ${selectedClass}" data-prompt-id="${prompt.id}">
             ${selectedBadge}
             ${defaultBadge}
             <div class="prompt-header">
-                <div class="prompt-title" 
-                     contenteditable="${isEditing && !isDefault ? 'true' : 'false'}" 
-                     data-field="title"
-                     data-prompt-id="${prompt.id}"
-                     ${isEditing ? 'data-editing="true"' : ''}>
+                <div class="prompt-title" data-field="title" data-prompt-id="${prompt.id}">
                     ${escapeHtml(prompt.title || 'Untitled')}
                 </div>
             </div>
             <div class="prompt-content-wrapper">
-                <div class="prompt-content" 
-                     contenteditable="${isEditing && !isDefault ? 'true' : 'false'}" 
-                     data-field="content"
-                     data-prompt-id="${prompt.id}"
-                     ${isEditing ? 'data-editing="true"' : ''}>
-                    ${escapeHtml(displayContent)}
+                <div class="prompt-content prompt-content--preview" data-field="content" data-prompt-id="${prompt.id}">
+                    ${escapeHtml(previewLine)}
                 </div>
-                ${isTruncated ? `
-                    <button class="expand-toggle" data-prompt-id="${prompt.id}" data-expanded="false">
+                ${showExpand ? `
+                    <button type="button" class="expand-toggle" data-prompt-id="${prompt.id}" aria-label="View full prompt">
                         <i data-feather="chevron-down"></i>
                     </button>
                 ` : ''}
             </div>
             <div class="prompt-actions">
-                ${isEditing ? `
-                    <button class="btn-save" data-prompt-id="${prompt.id}">
-                        <i data-feather="check"></i>
-                        <span>Save</span>
+                ${!isDefault ? `
+                    <button class="btn-edit" data-prompt-id="${prompt.id}">
+                        <i data-feather="edit"></i>
+                        <span>Edit</span>
                     </button>
-                    <button class="btn-cancel" data-prompt-id="${prompt.id}">
-                        <i data-feather="x"></i>
-                        <span>Cancel</span>
+                    <button class="btn-delete" data-prompt-id="${prompt.id}">
+                        <i data-feather="trash-2"></i>
+                        <span>Delete</span>
                     </button>
-                ` : `
-                    ${!isDefault ? `
-                        <button class="btn-edit" data-prompt-id="${prompt.id}">
-                            <i data-feather="edit"></i>
-                            <span>Edit</span>
-                        </button>
-                        <button class="btn-delete" data-prompt-id="${prompt.id}">
-                            <i data-feather="trash-2"></i>
-                            <span>Delete</span>
-                        </button>
-                    ` : ''}
-                    <button class="btn-choose" data-prompt-id="${prompt.id}" ${isSelected ? 'disabled' : ''}>
-                        <i data-feather="check-circle"></i>
-                        <span>Choose</span>
-                    </button>
-                `}
+                ` : ''}
+                <button class="btn-choose" data-prompt-id="${prompt.id}" ${isSelected ? 'disabled' : ''}>
+                    <i data-feather="check-circle"></i>
+                    <span>Choose</span>
+                </button>
             </div>
         </div>
     `;
@@ -217,18 +194,6 @@ function setupCardEventListeners(promptId: string): void {
         editBtn.addEventListener('click', () => handleEditPrompt(promptId));
     }
 
-    // Save button
-    const saveBtn = card.querySelector('.btn-save');
-    if (saveBtn) {
-        saveBtn.addEventListener('click', () => handleSavePrompt(promptId));
-    }
-
-    // Cancel button
-    const cancelBtn = card.querySelector('.btn-cancel');
-    if (cancelBtn) {
-        cancelBtn.addEventListener('click', () => handleCancelEdit(promptId));
-    }
-
     // Delete button
     const deleteBtn = card.querySelector('.btn-delete');
     if (deleteBtn) {
@@ -244,58 +209,13 @@ function setupCardEventListeners(promptId: string): void {
     // Expand/collapse toggle
     const expandToggle = card.querySelector('.expand-toggle');
     if (expandToggle) {
-        expandToggle.addEventListener('click', () => handleToggleExpand(promptId));
+        expandToggle.addEventListener('click', () => handleOpenReviewModal(promptId));
     }
 
-    // Handle inline editing for title and content - only when in edit mode
-    const titleField = card.querySelector('[data-field="title"]') as HTMLElement;
-    const contentField = card.querySelector('[data-field="content"]') as HTMLElement;
-    const isCurrentlyEditing = editingPromptId === promptId;
-
-    if (titleField && isCurrentlyEditing) {
-        // Track if title was changed
-        let titleChanged = false;
-
-        titleField.addEventListener('input', () => {
-            titleChanged = true;
-        });
-
-        titleField.addEventListener('keydown', (e: KeyboardEvent) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                contentField?.focus();
-            }
-            if (e.key === 'Escape' && editingPromptId === promptId) {
-                handleCancelEdit(promptId);
-            }
-        });
-    }
-
-    if (contentField && isCurrentlyEditing) {
-        // Track if content was changed
-        let contentChanged = false;
-
-        contentField.addEventListener('input', () => {
-            contentChanged = true;
-        });
-
-        contentField.addEventListener('keydown', (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && editingPromptId === promptId) {
-                handleCancelEdit(promptId);
-            }
-            // Allow Enter for new lines, Ctrl+Enter or Cmd+Enter to save
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                e.preventDefault();
-                handleSavePrompt(promptId);
-            }
-        });
-    }
 }
 
 /**
- * Handle adding a new prompt.
- * Creates a draft in the UI first; only persists to server when user saves.
- * Cancel removes the draft without creating anything.
+ * Handle adding a new prompt via shared content modal (file or text).
  */
 function handleAddPrompt(): void {
     if (!currentCourse?.id) {
@@ -303,181 +223,136 @@ function handleAddPrompt(): void {
         return;
     }
 
-    if (draftPrompt) {
-        showErrorToast('Please save or cancel the current prompt first.');
-        return;
-    }
-
-    draftPrompt = {
-        id: DRAFT_PROMPT_ID,
-        title: 'Untitled',
-        content: '',
-        dateCreated: new Date(),
-        isSelected: false,
-        isDefault: false
-    };
-    editingPromptId = DRAFT_PROMPT_ID;
-    renderPrompts();
-
-    setTimeout(() => {
-        const newCard = document.querySelector(`[data-prompt-id="${DRAFT_PROMPT_ID}"]`) as HTMLElement;
-        if (newCard) {
-            const titleField = newCard.querySelector('[data-field="title"]') as HTMLElement;
-            if (titleField) {
-                titleField.focus();
-                const range = document.createRange();
-                range.selectNodeContents(titleField);
-                const selection = window.getSelection();
-                if (selection) {
-                    selection.removeAllRanges();
-                    selection.addRange(range);
-                }
+    void openContentInputModal({
+        title: 'Add initial assistant prompt',
+        initialMethod: 'text',
+        allowEmptyText: true,
+        strings: {
+            nameLabel: 'Title',
+            namePlaceholder: 'Prompt title...',
+            textLabel: 'Prompt text',
+            textPlaceholder: 'Paste or type the assistant prompt text...',
+            submitLabel: 'Submit',
+            cancelLabel: 'Cancel'
+        },
+        loadingContent: {
+            title: 'Saving',
+            line1: 'Creating your prompt...',
+            line2: 'Please wait.'
+        },
+        onSubmit: async (payload) => {
+            const title = payload.name.trim();
+            if (!title) {
+                alert('Please enter a title.');
+                return { success: false };
             }
+            let content = payload.text;
+            if (payload.sourceType === 'file' && payload.file) {
+                const mod = new DocumentUploadModule();
+                const v = mod.validateFile(payload.file);
+                if (!v.isValid) {
+                    alert(v.error);
+                    return { success: false };
+                }
+                const parsed = await mod.parseDocument(payload.file);
+                content = parsed.extractedText;
+            }
+            const response = await fetch(`/api/courses/${currentCourse!.id}/assistant-prompts`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, content: content.trim() })
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error((err as { error?: string }).error || 'Failed to create prompt');
+            }
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to create prompt');
+            }
+            await loadPrompts();
+            renderPrompts();
+            showSuccessToast('Prompt created successfully!');
+            return { success: true, skipSuccessModal: true };
         }
-    }, 100);
+    });
 }
 
 /**
- * Handle editing a prompt
+ * Handle editing a prompt via content modal
  * @param promptId - The prompt ID
  */
 function handleEditPrompt(promptId: string): void {
-    // If already editing this prompt, do nothing
-    if (editingPromptId === promptId) {
-        return;
-    }
-    editingPromptId = promptId;
-    renderPrompts();
-    
-    // Focus on title field after render
-    setTimeout(() => {
-        const card = document.querySelector(`[data-prompt-id="${promptId}"]`) as HTMLElement;
-        if (card) {
-            const titleField = card.querySelector('[data-field="title"]') as HTMLElement;
-            if (titleField) {
-                titleField.focus();
-            }
-        }
-    }, 100);
-}
-
-/**
- * Handle saving a prompt
- * @param promptId - The prompt ID
- */
-async function handleSavePrompt(promptId: string): Promise<void> {
     if (!currentCourse?.id) {
-        await showErrorModal('Course ID is missing. Please refresh the page.', 'Error');
+        showErrorToast('Course ID is missing. Please refresh the page.');
         return;
     }
+    const prompt = prompts.find(p => p.id === promptId);
+    if (!prompt) return;
+    const isDefault = prompt.isDefault || prompt.id === DEFAULT_PROMPT_ID;
+    if (isDefault) return;
 
-    const card = document.querySelector(`[data-prompt-id="${promptId}"]`) as HTMLElement;
-    if (!card) {
-        return;
-    }
-
-    const titleField = card.querySelector('[data-field="title"]') as HTMLElement;
-    const contentField = card.querySelector('[data-field="content"]') as HTMLElement;
-
-    if (!titleField || !contentField) {
-        return;
-    }
-
-    const title = titleField.textContent?.trim() || '';
-    const content = contentField.textContent?.trim() || '';
-
-    if (!title) {
-        showErrorToast('Title cannot be empty.');
-        titleField.focus();
-        return;
-    }
-
-    if (!content) {
-        showErrorToast('Content cannot be empty.');
-        contentField.focus();
-        return;
-    }
-
-    const isDraft = promptId === DRAFT_PROMPT_ID;
-
-    try {
-        if (isDraft) {
-            // Create new prompt on server
-            const response = await fetch(`/api/courses/${currentCourse.id}/assistant-prompts`, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ title, content })
-            });
-
-            if (!response.ok) {
-                const result = await response.json();
-                throw new Error(result.error || 'Failed to create prompt');
+    void openContentInputModal({
+        mode: 'edit',
+        title: `Edit: ${prompt.title || 'Untitled'}`,
+        initialMethod: 'text',
+        initialValues: {
+            title: prompt.title || '',
+            text: prompt.content || '',
+            method: 'text'
+        },
+        allowEmptyText: true,
+        strings: {
+            nameLabel: 'Title',
+            namePlaceholder: 'Prompt title...',
+            textLabel: 'Prompt text',
+            textPlaceholder: 'Paste or type the assistant prompt text...',
+            submitLabel: 'Save edit',
+            cancelLabel: 'Cancel'
+        },
+        loadingContent: {
+            title: 'Saving',
+            line1: 'Updating your prompt...',
+            line2: 'Please wait.'
+        },
+        onSubmit: async (payload) => {
+            const title = payload.name.trim();
+            if (!title) {
+                alert('Please enter a title.');
+                return { success: false };
             }
-
-            const result = await response.json();
-            if (result.success) {
-                draftPrompt = null;
-                editingPromptId = null;
-                await loadPrompts();
-                renderPrompts();
-                showSuccessToast('Prompt created successfully!');
-            } else {
-                throw new Error(result.error || 'Failed to create prompt');
+            let content = payload.text;
+            if (payload.sourceType === 'file' && payload.file) {
+                const mod = new DocumentUploadModule();
+                const v = mod.validateFile(payload.file);
+                if (!v.isValid) {
+                    alert(v.error);
+                    return { success: false };
+                }
+                const parsed = await mod.parseDocument(payload.file);
+                content = parsed.extractedText;
             }
-        } else {
-            const response = await fetch(`/api/courses/${currentCourse.id}/assistant-prompts/${promptId}`, {
+            const response = await fetch(`/api/courses/${currentCourse!.id}/assistant-prompts/${promptId}`, {
                 method: 'PUT',
                 credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    title: title,
-                    content: content
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, content: content.trim() })
             });
-
             if (!response.ok) {
-                const result = await response.json();
-                throw new Error(result.error || 'Failed to update prompt');
+                const err = await response.json().catch(() => ({}));
+                throw new Error((err as { error?: string }).error || 'Failed to update prompt');
             }
-
             const result = await response.json();
-            if (result.success) {
-                editingPromptId = null;
-                await loadPrompts();
-                renderPrompts();
-                showSuccessToast('Prompt updated successfully!');
-            } else {
+            if (!result.success) {
                 throw new Error(result.error || 'Failed to update prompt');
             }
-        }
-    } catch (error) {
-        console.error('❌ [ASSISTANT-PROMPTS] Error saving prompt:', error);
-        showErrorToast(
-            error instanceof Error ? error.message : 'Failed to save prompt. Please try again.'
-        );
-    }
-}
-
-/**
- * Handle canceling edit
- * @param promptId - The prompt ID
- */
-function handleCancelEdit(promptId: string): void {
-    if (promptId === DRAFT_PROMPT_ID) {
-        draftPrompt = null;
-        editingPromptId = null;
-        renderPrompts();
-    } else {
-        editingPromptId = null;
-        loadPrompts().then(() => {
+            await loadPrompts();
             renderPrompts();
-        });
-    }
+            showSuccessToast('Prompt updated successfully!');
+            return { success: true, skipSuccessModal: true };
+        }
+    });
 }
 
 /**
@@ -600,50 +475,15 @@ async function handleSelectPrompt(promptId: string): Promise<void> {
 }
 
 /**
- * Handle toggling content expansion
- * @param promptId - The prompt ID
+ * Open read-only review modal with full prompt body
  */
-function handleToggleExpand(promptId: string): void {
-    const card = document.querySelector(`[data-prompt-id="${promptId}"]`) as HTMLElement;
-    if (!card) return;
-
-    const expandToggle = card.querySelector('.expand-toggle') as HTMLElement;
-    const contentField = card.querySelector('.prompt-content') as HTMLElement;
-    
-    if (!expandToggle || !contentField) return;
-
-    const isExpanded = expandToggle.getAttribute('data-expanded') === 'true';
-    const prompt = promptId === DRAFT_PROMPT_ID ? draftPrompt : prompts.find(p => p.id === promptId);
-    
+function handleOpenReviewModal(promptId: string): void {
+    const prompt = prompts.find(p => p.id === promptId);
     if (!prompt) return;
-
-    if (isExpanded) {
-        // Collapse
-        contentField.textContent = truncateContent(prompt.content, 3);
-        expandToggle.setAttribute('data-expanded', 'false');
-        expandToggle.innerHTML = '<i data-feather="chevron-down"></i>';
-    } else {
-        // Expand
-        contentField.textContent = prompt.content;
-        expandToggle.setAttribute('data-expanded', 'true');
-        expandToggle.innerHTML = '<i data-feather="chevron-up"></i>';
-    }
-
-    renderFeatherIcons();
-}
-
-/**
- * Truncate content to specified number of lines
- * @param content - The content to truncate
- * @param maxLines - Maximum number of lines
- * @returns Truncated content
- */
-function truncateContent(content: string, maxLines: number): string {
-    const lines = content.split('\n');
-    if (lines.length <= maxLines) {
-        return content;
-    }
-    return lines.slice(0, maxLines).join('\n') + '...';
+    openPromptReviewModal({
+        title: prompt.title || 'Untitled',
+        body: prompt.content || ''
+    });
 }
 
 /**
@@ -662,14 +502,13 @@ function escapeHtml(text: string): string {
  * @returns True if there are unsaved changes
  */
 export function hasUnsavedPromptChanges(): boolean {
-    return editingPromptId !== null || draftPrompt !== null;
+    return false;
 }
 
 /**
  * Reset unsaved changes flag
  */
 export function resetUnsavedPromptChanges(): void {
-    editingPromptId = null;
-    draftPrompt = null;
+    /* Prompt edits use modal; no page-level draft state */
 }
 

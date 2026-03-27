@@ -20,6 +20,76 @@
 
 import type { ModalType, ModalButton, ModalConfig, ModalResult } from '../types.js';
 
+/** Payload passed to {@link openContentInputModal} submit handler */
+export interface ContentInputPayload {
+    name: string;
+    sourceType: 'file' | 'text';
+    file: File | null;
+    text: string;
+    fileName?: string;
+}
+
+/** Result from submit handler; drives loading/success modals */
+export interface ContentInputSubmitResult {
+    success: boolean;
+    chunksGenerated?: number;
+    successTitle?: string;
+    successMessage?: string;
+    /** If true, do not show {@link showSuccessModal} after close */
+    skipSuccessModal?: boolean;
+}
+
+export interface ContentInputModalStrings {
+    nameLabel?: string;
+    namePlaceholder?: string;
+    textLabel?: string;
+    textPlaceholder?: string;
+    submitLabel?: string;
+    cancelLabel?: string;
+    nameRequiredMessage?: string;
+    fileRequiredMessage?: string;
+    textRequiredMessage?: string;
+}
+
+export interface ContentInputInitialValues {
+    title: string;
+    text: string;
+    method?: 'file' | 'text';
+}
+
+export interface ContentInputModalOptions {
+    title: string;
+    /** Edit mode: prefilled fields, Save disabled until dirty, confirm on close */
+    mode?: 'create' | 'edit';
+    initialValues?: ContentInputInitialValues;
+    initialMethod?: 'file' | 'text';
+    strings?: ContentInputModalStrings;
+    /** HTML file input accept attribute (default: document types) */
+    fileAccept?: string;
+    /** When source is text, allow empty textarea (matches prompt POST APIs). Default false. */
+    allowEmptyText?: boolean;
+    onSubmit: (payload: ContentInputPayload) => Promise<ContentInputSubmitResult | void>;
+    /** Copy for {@link showContentLoadingModal} while onSubmit runs */
+    loadingContent?: {
+        title: string;
+        line1: string;
+        line2: string;
+    };
+}
+
+const CONTENT_INPUT_MODAL_MOUNT_ID = 'upload-modal-mount';
+
+function getOrCreateContentInputModalMount(): HTMLElement | null {
+    let el = document.getElementById(CONTENT_INPUT_MODAL_MOUNT_ID);
+    if (!el) {
+        el = document.createElement('div');
+        el.id = CONTENT_INPUT_MODAL_MOUNT_ID;
+        el.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(el);
+    }
+    return el;
+}
+
 // ===========================================
 // MODAL OVERLAY CLASS
 // ===========================================
@@ -660,6 +730,27 @@ export async function showConfirmModal(
 }
 
 /**
+ * Skip vs continue onboarding: Continue Onboarding (muted), Skip (primary).
+ * Resolved `action` values are slugified button labels (e.g. skip, continue-onboarding).
+ */
+export async function showSkipOnboardingModal(
+    title: string,
+    message: string
+): Promise<ModalResult> {
+    const modal = getModal();
+    return modal.show({
+        type: 'info',
+        title,
+        content: message,
+        maxWidth: '480px',
+        buttons: [
+            { text: 'Continue Onboarding', type: 'muted', closeOnClick: true },
+            { text: 'Skip', type: 'primary', closeOnClick: true }
+        ]
+    });
+}
+
+/**
  * Shows an input modal for text entry
  * 
  * @param title - Modal title
@@ -897,24 +988,14 @@ export async function showDeleteConfirmationModal(itemType: string, itemName?: s
     });
 }
 
-/**
- * Shows an upload loading modal with progress indication
- * 
- * @returns Promise that resolves when modal is closed
- */
-export async function showUploadLoadingModal(): Promise<ModalResult> {
-    const modal = getModal();
-    return modal.show({
-        type: 'info',
-        title: 'Uploading Document',
-        content: `
+const CONTENT_LOADING_MODAL_HTML = (line1: string, line2: string) => `
             <div style="text-align: center; padding: 20px;">
                 <div style="font-size: 48px; margin-bottom: 16px;">📄</div>
                 <p style="margin-bottom: 16px; color: var(--text-primary);">
-                    Uploading your document...
+                    ${line1}
                 </p>
                 <p style="color: var(--text-secondary); font-size: 14px;">
-                    Please wait while we process and store your document.
+                    ${line2}
                 </p>
                 <div style="margin-top: 20px;">
                     <div style="width: 100%; height: 4px; background-color: #e0e0e0; border-radius: 2px; overflow: hidden;">
@@ -929,12 +1010,38 @@ export async function showUploadLoadingModal(): Promise<ModalResult> {
                     100% { transform: translateX(100%); }
                 }
             </style>
-        `,
+        `;
+
+/**
+ * Generic loading modal (upload, save, parse, etc.)
+ */
+export async function showContentLoadingModal(options?: {
+    title?: string;
+    line1?: string;
+    line2?: string;
+}): Promise<ModalResult> {
+    const modal = getModal();
+    return modal.show({
+        type: 'info',
+        title: options?.title ?? 'Uploading Document',
+        content: CONTENT_LOADING_MODAL_HTML(
+            options?.line1 ?? 'Uploading your document...',
+            options?.line2 ?? 'Please wait while we process and store your document.'
+        ),
         showCloseButton: false,
         closeOnOverlayClick: false,
         closeOnEscape: false,
         maxWidth: '400px'
     });
+}
+
+/**
+ * Shows an upload loading modal with progress indication
+ *
+ * @returns Promise that resolves when modal is closed
+ */
+export async function showUploadLoadingModal(): Promise<ModalResult> {
+    return showContentLoadingModal();
 }
 
 /**
@@ -1020,444 +1127,587 @@ export function closeModal(action: string = 'close'): void {
 }
 
 // ===========================================
-// UPLOAD MODAL FUNCTION
+// CONTENT INPUT MODAL (shared: documents + prompts)
 // ===========================================
 
 /**
- * Opens a document upload modal for adding course materials
- * 
- * @param topicOrWeekId - The ID of the topic/week instance
- * @param itemId - The ID of the content item
- * @param onUpload - Callback function called when upload is successful
- * @returns Promise<void>
+ * Shared modal: title + File/Text toggle + name + file or textarea.
+ * Mount uses `#upload-modal-mount` when present, otherwise creates it on `document.body`.
  */
-export async function openUploadModal(
-    topicOrWeekId: string, 
-    itemId: string, 
-    onUpload?: (material: any) => Promise<{ success: boolean; chunksGenerated?: number } | void>
-): Promise<void> {
-    // console.log('🔍 OPEN UPLOAD MODAL CALLED'); // 🟢 MEDIUM: Debug info
-    // console.log('  - topicOrWeekId:', topicOrWeekId); // 🟡 HIGH: Upload parameter exposure
-    // console.log('  - itemId:', itemId); // 🟡 HIGH: Upload parameter exposure
-    // console.log('  - onUpload callback provided:', !!onUpload); // 🟢 MEDIUM: Callback presence
-    // console.log('  - onUpload callback type:', typeof onUpload); // 🟢 MEDIUM: Callback type
-    
-    // Get the mount point for the modal
-    const mount = document.getElementById('upload-modal-mount');
+export async function openContentInputModal(options: ContentInputModalOptions): Promise<void> {
+    const mount = getOrCreateContentInputModalMount();
     if (!mount) {
-        console.error('Upload modal mount point not found! Make sure #upload-modal-mount exists in the HTML.');
+        console.error('Content input modal mount could not be created.');
         return;
     }
-    
-    console.log('Upload modal mount point found:', mount);
 
-    // Create the overlay for the modal
+    const isEditMode = options.mode === 'edit';
+    if (isEditMode && !options.initialValues) {
+        console.error('openContentInputModal: edit mode requires initialValues');
+        return;
+    }
+
+    const s = options.strings ?? {};
+    const nameLabel = s.nameLabel ?? 'Content Title';
+    const namePlaceholder = s.namePlaceholder ?? 'Enter a name...';
+    const textLabel = s.textLabel ?? 'Content Text';
+    const textPlaceholder = s.textPlaceholder ?? 'Enter or paste content here...';
+    const cancelLabel = s.cancelLabel ?? 'Cancel';
+    const submitLabel = s.submitLabel ?? (isEditMode ? 'Save edit' : 'Submit');
+    const initialMethod: 'file' | 'text' = isEditMode
+        ? options.initialValues!.method ?? 'text'
+        : options.initialMethod ?? 'file';
+    const allowEmptyText = options.allowEmptyText ?? false;
+    const fileAccept = options.fileAccept ?? '.pdf,.docx,.html,.htm,.md,.txt';
+    const loadingDefault = {
+        title: 'Uploading Document',
+        line1: 'Uploading your document...',
+        line2: 'Please wait while we process and store your document.'
+    };
+    const loading = options.loadingContent ?? loadingDefault;
+
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay upload-modal-overlay';
     mount.innerHTML = '';
     mount.appendChild(overlay);
     document.body.classList.add('modal-open');
 
-    // Create the modal
     const modal = document.createElement('div');
     modal.className = 'modal-container';
     overlay.appendChild(modal);
-
-    // Trigger reflow to ensure initial state is rendered before showing
     overlay.offsetHeight;
-
-    // Show the modal
     overlay.classList.add('show');
 
-    // Create the header for the modal
     const header = document.createElement('div');
     header.className = 'modal-header';
-    const spacer = document.createElement('div');
+    const titleEl = document.createElement('h2');
+    titleEl.className = 'modal-title';
+    titleEl.textContent = options.title;
+
+    const headerToggleContainer = document.createElement('div');
+    headerToggleContainer.className = 'upload-method-toggle upload-header-toggle';
+    headerToggleContainer.id = 'upload-method-toggle';
+
+    const headerFileToggleBtn = document.createElement('button');
+    headerFileToggleBtn.type = 'button';
+    headerFileToggleBtn.className = 'toggle-option';
+    headerFileToggleBtn.setAttribute('data-method', 'file');
+
+    const headerFileIcon = document.createElement('span');
+    headerFileIcon.className = 'toggle-icon';
+    headerFileIcon.textContent = '📁';
+    const headerFileText = document.createElement('span');
+    headerFileText.className = 'toggle-text';
+    headerFileText.textContent = 'File';
+    headerFileToggleBtn.appendChild(headerFileIcon);
+    headerFileToggleBtn.appendChild(headerFileText);
+
+    const headerTextToggleBtn = document.createElement('button');
+    headerTextToggleBtn.type = 'button';
+    headerTextToggleBtn.className = 'toggle-option';
+    headerTextToggleBtn.setAttribute('data-method', 'text');
+    const headerTextIcon = document.createElement('span');
+    headerTextIcon.className = 'toggle-icon';
+    headerTextIcon.textContent = '📝';
+    const headerTextText = document.createElement('span');
+    headerTextText.className = 'toggle-text';
+    headerTextText.textContent = 'Text';
+    headerTextToggleBtn.appendChild(headerTextIcon);
+    headerTextToggleBtn.appendChild(headerTextText);
+
+    if (initialMethod === 'file') {
+        headerFileToggleBtn.classList.add('active');
+    } else {
+        headerTextToggleBtn.classList.add('active');
+    }
+
+    headerToggleContainer.appendChild(headerFileToggleBtn);
+    headerToggleContainer.appendChild(headerTextToggleBtn);
+
+    const titleToggleWrapper = document.createElement('div');
+    titleToggleWrapper.className = 'modal-title-toggle-wrapper';
+    titleToggleWrapper.appendChild(titleEl);
+    titleToggleWrapper.appendChild(headerToggleContainer);
+
     const closeBtn = document.createElement('button');
     closeBtn.className = 'upload-close-btn';
     closeBtn.setAttribute('aria-label', 'Close');
     closeBtn.textContent = '×';
-    header.appendChild(spacer);
+    header.appendChild(titleToggleWrapper);
     header.appendChild(closeBtn);
 
-    // Create the content for the modal
     const content = document.createElement('div');
     content.className = 'modal-content';
 
-    // Create the header section (Content Title + Upload Method)
     const headerSection = document.createElement('div');
     headerSection.className = 'upload-header-section';
 
-    // Create the first section for the modal (Content Title)
     const section1 = document.createElement('div');
-    section1.className = 'form-section';
+    section1.className = 'form-section form-section-inline';
 
-    // Create the label for the first section
     const label1 = document.createElement('label');
     label1.className = 'section-label';
     label1.setAttribute('for', 'mat-name');
-    label1.textContent = 'Content Title';
+    label1.textContent = nameLabel;
 
-    // Create the input for the first section
     const nameInput = document.createElement('input');
     nameInput.id = 'mat-name';
     nameInput.type = 'text';
     nameInput.className = 'text-input';
-    nameInput.placeholder = 'Enter a name for this additional material...';
+    nameInput.placeholder = namePlaceholder;
     section1.appendChild(label1);
     section1.appendChild(nameInput);
-
-    // Create the upload method toggle section
-    const toggleSection = document.createElement('div');
-    toggleSection.className = 'form-section';
-    
-    // Create label
-    const toggleLabel = document.createElement('label');
-    toggleLabel.className = 'section-label';
-    toggleLabel.textContent = 'Upload Method';
-    
-    // Create toggle container
-    const toggleContainer = document.createElement('div');
-    toggleContainer.className = 'upload-method-toggle';
-    
-    // Create file toggle button
-    const fileToggleBtn = document.createElement('button');
-    fileToggleBtn.type = 'button';
-    fileToggleBtn.className = 'toggle-option active';
-    fileToggleBtn.setAttribute('data-method', 'file');
-    
-    const fileIcon = document.createElement('span');
-    fileIcon.className = 'toggle-icon';
-    fileIcon.textContent = '📁';
-    
-    const fileText = document.createElement('span');
-    fileText.className = 'toggle-text';
-    fileText.textContent = 'Upload File';
-    
-    fileToggleBtn.appendChild(fileIcon);
-    fileToggleBtn.appendChild(fileText);
-    
-    // Create text toggle button
-    const textToggleBtn = document.createElement('button');
-    textToggleBtn.type = 'button';
-    textToggleBtn.className = 'toggle-option';
-    textToggleBtn.setAttribute('data-method', 'text');
-    
-    const textIcon = document.createElement('span');
-    textIcon.className = 'toggle-icon';
-    textIcon.textContent = '📝';
-    
-    const textText = document.createElement('span');
-    textText.className = 'toggle-text';
-    textText.textContent = 'Enter Text';
-    
-    textToggleBtn.appendChild(textIcon);
-    textToggleBtn.appendChild(textText);
-    
-    // Assemble toggle section
-    toggleContainer.appendChild(fileToggleBtn);
-    toggleContainer.appendChild(textToggleBtn);
-    toggleSection.appendChild(toggleLabel);
-    toggleSection.appendChild(toggleContainer);
-
-    // Add sections to header
     headerSection.appendChild(section1);
-    headerSection.appendChild(toggleSection);
 
-    // Create the upload method content container
     const uploadMethodContent = document.createElement('div');
     uploadMethodContent.className = 'upload-method-content active';
     uploadMethodContent.id = 'upload-method-content';
-    
-    // Create the file upload section
+
     const fileUploadSection = document.createElement('div');
     fileUploadSection.className = 'form-section';
     fileUploadSection.id = 'file-upload-section';
-    
-    // Create modal upload card (different from document-setup upload-card)
+
     const modalUploadCard = document.createElement('div');
     modalUploadCard.className = 'modal-upload-card';
-    
-    // Create upload button
+
     const uploadFileBtn = document.createElement('button');
     uploadFileBtn.type = 'button';
     uploadFileBtn.className = 'upload-file-btn';
     uploadFileBtn.id = 'upload-file-btn';
-    
     const uploadIcon = document.createElement('span');
     uploadIcon.className = 'upload-icon';
     uploadIcon.textContent = '📁';
-    
     const uploadText = document.createElement('span');
     uploadText.className = 'upload-text';
     uploadText.textContent = 'Choose File';
-    
     uploadFileBtn.appendChild(uploadIcon);
     uploadFileBtn.appendChild(uploadText);
-    
-    // Create hidden file input
+
     const hiddenInput = document.createElement('input');
     hiddenInput.type = 'file';
     hiddenInput.id = 'hidden-file-input';
     hiddenInput.style.display = 'none';
-    
-    // Create file selected display
+
     const fileSelected = document.createElement('div');
     fileSelected.className = 'file-selected';
-    
     const selectedFileName = document.createElement('span');
     selectedFileName.id = 'selected-file-name';
     selectedFileName.textContent = 'No file selected';
-    
     fileSelected.appendChild(selectedFileName);
-    
-    // Assemble modal upload card
+
     modalUploadCard.appendChild(uploadFileBtn);
     modalUploadCard.appendChild(hiddenInput);
     modalUploadCard.appendChild(fileSelected);
     fileUploadSection.appendChild(modalUploadCard);
 
-    // Create the text input section
     const textInputSection = document.createElement('div');
     textInputSection.className = 'form-section';
     textInputSection.id = 'text-input-section';
-    
-    // Create text label
-    const textLabel = document.createElement('label');
-    textLabel.className = 'section-label';
-    textLabel.setAttribute('for', 'mat-text');
-    textLabel.textContent = 'Content Text';
-    
-    // Create textarea
+
+    const textLabelEl = document.createElement('label');
+    textLabelEl.className = 'section-label';
+    textLabelEl.setAttribute('for', 'mat-text');
+    textLabelEl.textContent = textLabel;
+
     const textArea = document.createElement('textarea');
     textArea.id = 'mat-text';
     textArea.className = 'text-area';
-    textArea.placeholder = 'Enter or paste your content directly here...';
-    
-    // Assemble text input section
-    textInputSection.appendChild(textLabel);
+    textArea.placeholder = textPlaceholder;
+    textInputSection.appendChild(textLabelEl);
     textInputSection.appendChild(textArea);
 
-    // Add sections to upload method content
     uploadMethodContent.appendChild(fileUploadSection);
     uploadMethodContent.appendChild(textInputSection);
 
-    // Append the sections to the content
-    content.appendChild(headerSection);
-    content.appendChild(uploadMethodContent);
+    const formColumn = document.createElement('div');
+    formColumn.className = 'upload-form-column';
+    formColumn.appendChild(headerSection);
+    formColumn.appendChild(uploadMethodContent);
+    content.appendChild(formColumn);
 
-    // Create the footer for the modal
     const footer = document.createElement('div');
     footer.className = 'modal-footer';
 
-    // Create the cancel button for the footer
     const cancelBtn = document.createElement('button');
     cancelBtn.id = 'upload-cancel-btn';
     cancelBtn.className = 'cancel-btn';
-    cancelBtn.textContent = 'Cancel';
+    cancelBtn.textContent = cancelLabel;
 
-    // Create the upload button for the footer
     const uploadBtn = document.createElement('button');
     uploadBtn.id = 'upload-submit-btn';
+    uploadBtn.type = 'button';
     uploadBtn.className = 'save-btn';
-    uploadBtn.textContent = 'Upload';
+    uploadBtn.textContent = submitLabel;
+    if (isEditMode) {
+        uploadBtn.classList.add('save-btn--primary');
+        uploadBtn.disabled = true;
+        uploadBtn.classList.add('save-btn--disabled');
+        uploadBtn.setAttribute('aria-disabled', 'true');
+    }
     footer.appendChild(cancelBtn);
     footer.appendChild(uploadBtn);
 
-    // Append the header, content, and footer to the modal
     modal.appendChild(header);
     modal.appendChild(content);
     modal.appendChild(footer);
 
-    // Create the close function for the modal
+    if (isEditMode && options.initialValues) {
+        nameInput.value = options.initialValues.title;
+        textArea.value = options.initialValues.text;
+    }
+
+    const snapshotTitle = isEditMode && options.initialValues ? options.initialValues.title.trim() : '';
+    const snapshotText = isEditMode && options.initialValues ? options.initialValues.text : '';
+
+    let selectedFile: File | null = null;
+    let currentMethod: 'file' | 'text' = initialMethod;
+
     const close = () => {
+        window.removeEventListener('keydown', keyHandler);
         mount.innerHTML = '';
         document.body.classList.remove('modal-open');
     };
 
-    // Add the event listeners to the modal
-    closeBtn.addEventListener('click', close);
-    cancelBtn.addEventListener('click', close);
-    overlay.addEventListener('click', (e) => {
-         if (e.target === overlay) close(); 
-    });
+    function computeDirty(): boolean {
+        if (!isEditMode) return true;
+        const titleNow = nameInput.value.trim();
+        const textNow = textArea.value;
+        if (titleNow !== snapshotTitle) return true;
+        if (textNow !== snapshotText) return true;
+        if (selectedFile !== null) return true;
+        return false;
+    }
 
-    // Create the event listener for the escape key and enter key
-    const keyHandler = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') { 
-            close(); 
-            window.removeEventListener('keydown', keyHandler); 
+    function updateDirtyState(): void {
+        if (!isEditMode) return;
+        const dirty = computeDirty();
+        uploadBtn.disabled = !dirty;
+        uploadBtn.classList.toggle('save-btn--disabled', !dirty);
+        uploadBtn.setAttribute('aria-disabled', dirty ? 'false' : 'true');
+    }
+
+    async function requestClose(): Promise<void> {
+        if (isEditMode && computeDirty()) {
+            const r = await showConfirmModal(
+                'Discard changes?',
+                'You have unsaved changes. Discard them and close?',
+                'Discard',
+                'Keep editing'
+            );
+            if (r.action !== 'discard') return;
+        }
+        close();
+    }
+
+    function keyHandler(e: KeyboardEvent) {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            void requestClose();
         } else if (e.key === 'Enter') {
-            // Handle Enter key for form submission
-            const activeElement = document.activeElement;
-            
-            // If focused on input fields, don't prevent default behavior
-            if (activeElement && 
-                (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') &&
-                activeElement.getAttribute('type') !== 'button') {
-                return; // Let the input handle its own Enter key behavior
+            if (isEditMode && uploadBtn.disabled) {
+                return;
             }
-            
-            // Otherwise, trigger the upload button
+            const activeElement = document.activeElement;
+            if (
+                activeElement &&
+                (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') &&
+                activeElement.getAttribute('type') !== 'button'
+            ) {
+                return;
+            }
             e.preventDefault();
             uploadBtn.click();
         }
-    };
-    
+    }
+
+    closeBtn.addEventListener('click', () => void requestClose());
+    cancelBtn.addEventListener('click', () => void requestClose());
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) void requestClose();
+    });
+
     window.addEventListener('keydown', keyHandler);
 
-    // Create the event listener for the upload file button
-    let selectedFile: File | null = null;
-    let currentMethod: 'file' | 'text' = 'file';
-    
-    // Get references to the toggle buttons and content sections
     const toggleButtons = overlay.querySelectorAll('.toggle-option');
-    const uploadMethodContentElement = overlay.querySelector('#upload-method-content') as HTMLElement;
     const fileSectionElement = overlay.querySelector('#file-upload-section') as HTMLElement;
     const textSectionElement = overlay.querySelector('#text-input-section') as HTMLElement;
     const uploadFileBtnElement = overlay.querySelector('#upload-file-btn') as HTMLButtonElement;
     const hiddenInputElement = overlay.querySelector('#hidden-file-input') as HTMLInputElement;
     const selectedFileNameElement = overlay.querySelector('#selected-file-name') as HTMLElement;
     const textAreaElement = overlay.querySelector('#mat-text') as HTMLTextAreaElement;
-    
-    // Set up file input with supported file types
-    hiddenInputElement.accept = '.pdf,.docx,.html,.htm,.md,.txt';
-    
-    // Toggle method functionality
-    toggleButtons.forEach(button => {
+
+    hiddenInputElement.accept = fileAccept;
+
+    const applyMethodVisibility = (method: 'file' | 'text') => {
+        if (method === 'file') {
+            fileSectionElement.style.display = 'flex';
+            textSectionElement.style.display = 'none';
+            textSectionElement.classList.remove('active');
+        } else {
+            fileSectionElement.style.display = 'none';
+            textSectionElement.style.display = 'flex';
+            textSectionElement.classList.add('active');
+        }
+    };
+    applyMethodVisibility(currentMethod);
+
+    toggleButtons.forEach((button) => {
         button.addEventListener('click', () => {
             const method = button.getAttribute('data-method') as 'file' | 'text';
-            
-            // Update active state
-            toggleButtons.forEach(btn => btn.classList.remove('active'));
+            toggleButtons.forEach((btn) => btn.classList.remove('active'));
             button.classList.add('active');
-            
-            // Clear previous data when switching methods
             if (currentMethod === 'file') {
                 selectedFile = null;
                 hiddenInputElement.value = '';
                 selectedFileNameElement.textContent = 'No file selected';
             } else {
-                textAreaElement.value = '';
+                if (!isEditMode) {
+                    textAreaElement.value = '';
+                }
             }
-            
-            // Show/hide sections within the upload method content
-            if (method === 'file') {
-                fileSectionElement.style.display = 'flex';
-                textSectionElement.style.display = 'none';
-                textSectionElement.classList.remove('active');
-            } else {
-                fileSectionElement.style.display = 'none';
-                textSectionElement.style.display = 'flex';
-                textSectionElement.classList.add('active');
-            }
-            
+            applyMethodVisibility(method);
             currentMethod = method;
+            updateDirtyState();
         });
     });
-    
-    // File upload functionality
+
+    nameInput.addEventListener('input', updateDirtyState);
+    textArea.addEventListener('input', updateDirtyState);
+
     uploadFileBtnElement.addEventListener('click', () => hiddenInputElement.click());
-    
     hiddenInputElement.addEventListener('change', () => {
         const f = hiddenInputElement.files && hiddenInputElement.files[0] ? hiddenInputElement.files[0] : null;
         selectedFile = f;
         selectedFileNameElement.textContent = f ? f.name : 'No file selected';
+        updateDirtyState();
     });
 
-    // Create the event listener for the upload button
+    if (isEditMode) {
+        updateDirtyState();
+    }
+
     uploadBtn.addEventListener('click', async () => {
+        if (isEditMode && uploadBtn.disabled) {
+            return;
+        }
         const name = nameInput.value.trim();
         const text = textAreaElement.value.trim();
-        
-        if (!name) { 
-            alert('Please enter a material name.'); 
-            return; 
+
+        if (!name) {
+            alert(s.nameRequiredMessage ?? 'Please enter a name.');
+            return;
         }
-        
-        // Validate based on current method
         if (currentMethod === 'file' && !selectedFile) {
-            alert('Please select a file to upload.');
+            alert(s.fileRequiredMessage ?? 'Please select a file.');
             return;
         }
-        
-        if (currentMethod === 'text' && !text) {
-            alert('Please enter some text content.');
+        if (currentMethod === 'text' && !text && !allowEmptyText) {
+            alert(s.textRequiredMessage ?? 'Please enter some text content.');
             return;
         }
+
+        const payload: ContentInputPayload = {
+            name,
+            sourceType: currentMethod,
+            file: currentMethod === 'file' ? selectedFile : null,
+            text: currentMethod === 'text' ? text : '',
+            fileName: currentMethod === 'file' && selectedFile ? selectedFile.name : undefined
+        };
 
         try {
-            // Create the material object
-            const material = {
-                id: '',
-                name: name,
-                topicOrWeekId: topicOrWeekId,
-                itemId: itemId,
-                sourceType: currentMethod,
-                file: currentMethod === 'file' ? selectedFile : null,
-                text: currentMethod === 'text' ? text : '',
-                fileName: currentMethod === 'file' && selectedFile ? selectedFile.name : undefined,
-                date: new Date(),
-            };
+            void showContentLoadingModal({
+                title: loading.title,
+                line1: loading.line1,
+                line2: loading.line2
+            });
 
+            try {
+                const result = await options.onSubmit(payload);
+                closeModal('success');
+                close();
 
-            // Call the upload callback if provided and wait for completion
-            if (onUpload) {
-                // console.log('🔍 CALLING onUpload CALLBACK'); // 🟢 MEDIUM: Callback execution
-                // console.log('🔍 onUpload function type:', typeof onUpload); // 🟢 MEDIUM: Function type
-                
-                // Show loading modal
-                // console.log('🔍 SHOWING LOADING MODAL'); // 🟢 MEDIUM: UI state
-                const loadingModalPromise = showUploadLoadingModal();
-                // console.log('🔍 LOADING MODAL PROMISE CREATED:', loadingModalPromise); // 🟢 MEDIUM: Promise object exposure
-                
-                try {
-                    console.log('🔍 ABOUT TO CALL onUpload(material)');
-                    console.log('🔍 Calling onUpload with material:', material);
-                    
-                    const result = await onUpload(material);
-                    console.log('🔍 UPLOAD CALLBACK COMPLETED SUCCESSFULLY');
-                    console.log('🔍 Upload result:', result);
-                    
-                    // Close loading modal manually
-                    console.log('🔍 CLOSING LOADING MODAL - SUCCESS');
-                    closeModal('success');
-                    
-                    // Close upload modal before showing success modal
-                    console.log('🔍 CLOSING UPLOAD MODAL');
-                    close();
-                    
-                    // Show success modal with OK button after upload modal is closed
-                    if (result && (result as any).success) {
-                        const chunksGenerated = (result as any).chunksGenerated || 0;
-                        await showSuccessModal(
-                            `Document uploaded successfully! Generated ${chunksGenerated} searchable chunks.`,
-                            'Upload Success'
-                        );
+                const success =
+                    result &&
+                    typeof result === 'object' &&
+                    'success' in result &&
+                    (result as ContentInputSubmitResult).success;
+                if (success) {
+                    const r = result as ContentInputSubmitResult;
+                    if (r.skipSuccessModal) {
+                        return;
                     }
-                } catch (error) {
-                    console.error('❌ UPLOAD CALLBACK FAILED:', error);
-                    console.error('❌ Error details:', error);
-                    console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack');
-                    
-                    // Close loading modal manually
-                    console.log('🔍 CLOSING LOADING MODAL - ERROR');
-                    closeModal('error');
-                    
-                    const errorMessage = error instanceof Error ? error.message : String(error);
-                    alert(`Upload failed: ${errorMessage}`);
-                    // Don't close modal on error - let user try again
-                    return;
+                    const title =
+                        r.successTitle ??
+                        (r.chunksGenerated !== undefined ? 'Upload Success' : 'Success');
+                    let message = r.successMessage;
+                    if (!message && r.chunksGenerated !== undefined) {
+                        message = `Document uploaded successfully! Generated ${r.chunksGenerated} searchable chunks.`;
+                    }
+                    if (message) {
+                        await showSuccessModal(message, title);
+                    }
                 }
-            } else {
-                console.warn('⚠️ No onUpload callback provided');
-                console.warn('⚠️ onUpload is:', onUpload);
-                console.warn('⚠️ onUpload type:', typeof onUpload);
-                alert('Upload callback not available. Please try again.');
+            } catch (error) {
+                console.error('Content input submit failed:', error);
+                closeModal('error');
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                alert(`Failed: ${errorMessage}`);
             }
         } catch (error) {
-            console.error('Error in upload process:', error);
-            alert('An error occurred during upload. Please try again.');
+            console.error('Error in content input submit:', error);
+            alert('An error occurred. Please try again.');
+        }
+    });
+}
+
+/** Read-only prompt review: same upload-modal shell, no file/text inputs. */
+export interface PromptReviewModalOptions {
+    title: string;
+    body: string;
+}
+
+/**
+ * Opens a read-only overlay to review full prompt text (instructor assistant/system prompts).
+ * Uses `#upload-modal-mount` and `upload-modal-overlay` shell; header title is `Display: {name}`.
+ */
+export function openPromptReviewModal(options: PromptReviewModalOptions): void {
+    const mount = getOrCreateContentInputModalMount();
+    if (!mount) {
+        console.error('Prompt review modal mount could not be created.');
+        return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay upload-modal-overlay prompt-review-modal';
+    overlay.setAttribute('aria-labelledby', 'prompt-review-modal-title');
+    mount.innerHTML = '';
+    mount.appendChild(overlay);
+    document.body.classList.add('modal-open');
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-container';
+    overlay.appendChild(modal);
+    overlay.offsetHeight;
+    overlay.classList.add('show');
+
+    const header = document.createElement('div');
+    header.className = 'modal-header';
+
+    const titleEl = document.createElement('h2');
+    titleEl.id = 'prompt-review-modal-title';
+    titleEl.className = 'modal-title';
+    titleEl.textContent = `Display: ${options.title}`;
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'upload-close-btn';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.textContent = '×';
+    header.appendChild(titleEl);
+    header.appendChild(closeBtn);
+
+    const content = document.createElement('div');
+    content.className = 'modal-content prompt-review-modal-content';
+
+    const bodyPre = document.createElement('pre');
+    bodyPre.className = 'prompt-review-body text-area';
+    bodyPre.textContent = options.body;
+
+    content.appendChild(bodyPre);
+
+    const footer = document.createElement('div');
+    footer.className = 'modal-footer';
+
+    const okBtn = document.createElement('button');
+    okBtn.type = 'button';
+    okBtn.id = 'prompt-review-ok-btn';
+    okBtn.className = 'save-btn save-btn--primary';
+    okBtn.textContent = 'OK';
+
+    footer.appendChild(okBtn);
+
+    modal.appendChild(header);
+    modal.appendChild(content);
+    modal.appendChild(footer);
+
+    const close = (): void => {
+        window.removeEventListener('keydown', keyHandler);
+        mount.innerHTML = '';
+        document.body.classList.remove('modal-open');
+    };
+
+    function keyHandler(e: KeyboardEvent): void {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            close();
+        }
+    }
+
+    closeBtn.addEventListener('click', close);
+    okBtn.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) close();
+    });
+    window.addEventListener('keydown', keyHandler);
+}
+
+/**
+ * Opens a document upload modal for adding course materials
+ *
+ * @param topicOrWeekId - The ID of the topic/week instance
+ * @param itemId - The ID of the content item
+ * @param onUpload - Callback function called when upload is successful
+ */
+export async function openUploadModal(
+    topicOrWeekId: string,
+    itemId: string,
+    onUpload?: (material: any) => Promise<{ success: boolean; chunksGenerated?: number } | void>
+): Promise<void> {
+    await openContentInputModal({
+        title: 'Document Upload',
+        initialMethod: 'file',
+        allowEmptyText: false,
+        strings: {
+            nameLabel: 'Content Title',
+            namePlaceholder: 'Enter a name for this additional material...',
+            textLabel: 'Content Text',
+            textPlaceholder: 'Enter or paste your content directly here...',
+            nameRequiredMessage: 'Please enter a material name.',
+            fileRequiredMessage: 'Please select a file to upload.',
+            textRequiredMessage: 'Please enter some text content.'
+        },
+        onSubmit: async (payload) => {
+            if (!onUpload) {
+                alert('Upload callback not available. Please try again.');
+                return { success: false };
+            }
+            const material = {
+                id: '',
+                name: payload.name,
+                topicOrWeekId,
+                itemId,
+                sourceType: payload.sourceType,
+                file: payload.sourceType === 'file' ? payload.file : null,
+                text: payload.sourceType === 'text' ? payload.text : '',
+                fileName: payload.sourceType === 'file' && payload.file ? payload.file.name : undefined,
+                date: new Date()
+            };
+            const result = await onUpload(material);
+            if (result && (result as { success?: boolean }).success) {
+                const chunksGenerated = (result as { chunksGenerated?: number }).chunksGenerated ?? 0;
+                return {
+                    success: true,
+                    chunksGenerated,
+                    successTitle: 'Upload Success',
+                    successMessage: `Document uploaded successfully! Generated ${chunksGenerated} searchable chunks.`
+                };
+            }
+            return { success: false };
+        },
+        loadingContent: {
+            title: 'Uploading Document',
+            line1: 'Uploading your document...',
+            line2: 'Please wait while we process and store your document.'
         }
     });
 }
@@ -1612,6 +1862,7 @@ export default {
     showSuccessModal,
     showInfoModal,
     showConfirmModal,
+    showSkipOnboardingModal,
     showInputModal,
     showDisclaimerModal,
     showHelpModal,
@@ -1620,8 +1871,11 @@ export default {
     showDeletionSuccessModal,
     showDeleteConfirmationModal,
     showUploadLoadingModal,
+    showContentLoadingModal,
     showChatCreationErrorModal,
     showInactivityWarningModal,
     openUploadModal,
+    openContentInputModal,
+    openPromptReviewModal,
     closeModal
 };

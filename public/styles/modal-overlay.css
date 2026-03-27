@@ -169,7 +169,6 @@
 }
 
 .modal-btn-secondary {
-    display: none;
     background-color: #6c757d;
     color: white;
 }
@@ -197,6 +196,17 @@
 
 .modal-btn-danger:hover {
     background-color: #c82333;
+    transform: translateY(-1px);
+}
+
+.modal-btn-muted {
+    background-color: #adb5bd;
+    color: #212529;
+}
+
+.modal-btn-muted:hover {
+    background-color: #868e96;
+    color: #212529;
     transform: translateY(-1px);
 }
 
@@ -475,7 +485,8 @@ body.onboarding-active .upload-modal-overlay {
 /* Upload Modal Container */
 .upload-modal-overlay .modal-container {
     width: calc(100vw - 40px);
-    height: 50vh;
+    max-width: 900px;
+    height: calc(100vh - 40px);
     background: var(--chat-bg);
     border: 1px solid var(--border-color);
     border-radius: 12px;
@@ -497,13 +508,50 @@ body.onboarding-active .upload-modal-overlay {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 18px;
+    gap: 16px;
+    padding: 12px 14px;
     border-bottom: 1px solid var(--border-color);
+}
+
+/* Title + Toggle Wrapper (grouped together on left) */
+.upload-modal-overlay .modal-title-toggle-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
 }
 
 .upload-modal-overlay .modal-header h2 { 
     font-size: 18px; 
-    color: var(--text-primary); 
+    color: var(--text-primary);
+    margin: 0;
+    flex-shrink: 0;
+}
+
+/* Header Upload Method Toggle */
+.upload-modal-overlay .upload-header-toggle {
+    display: flex;
+    background: #f8f9fa;
+    border-radius: 6px;
+    padding: 3px;
+    border: 1px solid var(--border-color);
+    flex-shrink: 0;
+    margin:0;
+}
+
+.upload-modal-overlay .upload-header-toggle .toggle-option {
+    flex: 1;
+    padding: 6px 12px;
+    font-size: 12px;
+    gap: 4px;
+}
+
+.upload-modal-overlay .upload-header-toggle .toggle-icon {
+    font-size: 14px;
+}
+
+.upload-modal-overlay .upload-header-toggle .toggle-text {
+    font-size: 12px;
 }
 
 .upload-modal-overlay .modal-header .upload-close-btn {
@@ -512,12 +560,50 @@ body.onboarding-active .upload-modal-overlay {
     font-size: 18px;
     cursor: pointer;
     color: var(--text-secondary);
-    min-width: 44px;
-    min-height: 44px;
-    padding: 0.5rem;
+    min-width: 22px;
+    min-height: 22px;
+    padding: 0rem;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
+}
+
+/* Prompt review modal: single title "Display: …" (no upload header toggle) */
+.upload-modal-overlay.prompt-review-modal .modal-header h2.modal-title {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+}
+
+.upload-modal-overlay.prompt-review-modal .prompt-review-modal-content {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.upload-modal-overlay.prompt-review-modal .prompt-review-body {
+    flex: 1;
+    min-height: 200px;
+    max-height: 100%;
+    overflow: auto;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.5;
+    resize: none;
+}
+
+.upload-modal-overlay.prompt-review-modal .modal-footer {
+    justify-content: flex-end;
+}
+
+.upload-modal-overlay.prompt-review-modal .modal-footer .save-btn {
+    min-width: 100px;
 }
 
 /* Upload Status Icon */
@@ -578,6 +664,13 @@ body.onboarding-active .upload-modal-overlay {
     display: flex;
     flex-direction: column;
     height: 100%;
+}
+
+.upload-form-column {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
 }
 
 /* Upload Content State Classes */
@@ -669,6 +762,30 @@ body.onboarding-active .upload-modal-overlay {
     margin-bottom: 1rem;
 }
 
+/* Inline form sections (label beside input/toggle) */
+.upload-header-section .form-section-inline {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 0.75rem;
+}
+
+.upload-header-section .form-section-inline .section-label {
+    margin-bottom: 0;
+    flex-shrink: 0;
+    min-width: 100px;
+}
+
+.upload-header-section .form-section-inline .text-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.upload-header-section .form-section-inline .upload-method-toggle {
+    margin-bottom: 0;
+}
+
 /* Upload Method Content */
 .upload-method-content {
     display: none;
@@ -680,6 +797,7 @@ body.onboarding-active .upload-modal-overlay {
 .upload-method-content.active {
     display: flex;
     flex-direction: column;
+    margin-top: 0.5rem;
 }
 
 /* File and Text sections within upload method content */
@@ -832,6 +950,58 @@ body.onboarding-active .upload-modal-overlay {
     flex-shrink: 0; /* Prevent footer from shrinking */
 }
 
+/* Content input modal: footer buttons (works without documents.css on assistant/system pages) */
+.upload-modal-overlay .modal-footer .cancel-btn {
+    padding: 0.6rem 1.1rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    background: #6c757d;
+    color: #fff;
+}
+
+.upload-modal-overlay .modal-footer .cancel-btn:hover {
+    background: #5a6268;
+}
+
+.upload-modal-overlay .modal-footer .save-btn {
+    padding: 0.6rem 1.1rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    min-width: 100px;
+    font-family: inherit;
+    background: var(--color-chbe-green, #4d7a2f);
+    color: #fff;
+}
+
+.upload-modal-overlay .modal-footer .save-btn:hover:not(:disabled) {
+    filter: brightness(0.95);
+}
+
+/* Edit mode primary action: blue when enabled */
+.upload-modal-overlay .modal-footer .save-btn.save-btn--primary:not(:disabled) {
+    background: #2563eb;
+    color: #fff;
+}
+
+.upload-modal-overlay .modal-footer .save-btn.save-btn--primary:not(:disabled):hover {
+    background: #1d4ed8;
+    filter: none;
+}
+
+.upload-modal-overlay .modal-footer .save-btn:disabled,
+.upload-modal-overlay .modal-footer .save-btn.save-btn--disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: none;
+}
+
 /* Upload Success/Error Message Styling */
 .upload-success-message .success-icon {
     font-size: 3rem;
@@ -894,7 +1064,7 @@ body.modal-open {
         max-width: 500px;
         max-height: 600px;
     }
-    
+
     .upload-method-toggle {
         flex-direction: column;
         gap: 4px;

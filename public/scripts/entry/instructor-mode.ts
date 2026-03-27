@@ -21,7 +21,7 @@ import { initializeFlags } from "../feature/flags.js";
 import { initializeMonitorDashboard } from "../feature/monitor.js";
 import { ChatManager } from "../feature/chat.js";
 import { authService } from '../services/auth-service.js';
-import { showConfirmModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
 import { renderAbout } from '../about/about.js';
 import { initializeCourseInformation } from '../feature/course-information.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
@@ -1175,7 +1175,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     //set custom windows listener on onboarding
-    window.addEventListener('onboardingComplete', () => {
+    window.addEventListener('onboardingComplete', async () => {
         
         // Check if we're coming from new-course onboarding (course was just created)
         const isNewCourse = isNewCourseOnboardingURL();
@@ -1184,24 +1184,87 @@ document.addEventListener('DOMContentLoaded', async () => {
         const courseId = currentClass?.id;
         
         if (isNewCourse && courseId) {
-            
-            // Store course in session for future use
-            // The course-entry endpoint will handle this, but we can also do it here
-            fetch('/api/course/enter', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ courseId })
-            }).then(() => {
-                // Redirect to next onboarding stage
-                window.location.href = `/course/${courseId}/instructor/onboarding/document-setup`;
-            }).catch((error) => {
+            // Store course in session
+            try {
+                await fetch('/api/course/enter', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ courseId })
+                });
+            } catch (error) {
                 console.error('[INSTRUCTOR-MODE] Error entering course:', error);
-                // Still redirect even if enter fails
-                window.location.href = `/course/${courseId}/instructor/onboarding/document-setup`;
-            });
+            }
+
+            // After course-setup: if instructor has completed onboarding before, offer skip
+            const userRes = await fetch('/auth/current-user');
+            const userData = userRes.ok ? await userRes.json() : {};
+            const globalUser = userData.globalUser;
+            if (globalUser?.instructorOnboardingCompleted === true) {
+                const skipResult = await showSkipOnboardingModal(
+                    'Skip Setup?',
+                    "You've completed instructor setup before. Skip the rest and go to your course?"
+                );
+                if (skipResult.action === 'skip') {
+                    const updateRes = await fetch(`/api/courses/${courseId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            courseSetup: true,
+                            contentSetup: true,
+                            flagSetup: true,
+                            monitorSetup: true
+                        })
+                    });
+                    const updateData = await updateRes.json();
+                    if (updateData.success) {
+                        window.location.href = `/course/${courseId}/instructor/documents`;
+                        return;
+                    }
+                    await showSimpleErrorModal(
+                        updateData.error || 'Could not update course. Continuing with setup.',
+                        'Skip setup failed'
+                    );
+                }
+            }
+
+            // Redirect to next onboarding stage (document-setup)
+            window.location.href = `/course/${courseId}/instructor/onboarding/document-setup`;
         } else if (courseId) {
             // Existing course - redirect to next onboarding stage or main interface
             if (!currentClass.contentSetup) {
+                // Course-setup just completed - offer skip if instructor has done this before
+                const userRes = await fetch('/auth/current-user');
+                const userData = userRes.ok ? await userRes.json() : {};
+                const globalUser = userData.globalUser;
+                if (globalUser?.instructorOnboardingCompleted === true) {
+                    const skipResult = await showSkipOnboardingModal(
+                        'Skip Setup?',
+                        "You've completed instructor setup before. Skip the rest and go to your course?"
+                    );
+                    if (skipResult.action === 'skip') {
+                        const updateRes = await fetch(`/api/courses/${courseId}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'same-origin',
+                            body: JSON.stringify({
+                                courseSetup: true,
+                                contentSetup: true,
+                                flagSetup: true,
+                                monitorSetup: true
+                            })
+                        });
+                        const updateData = await updateRes.json();
+                        if (updateData.success) {
+                            window.location.href = `/course/${courseId}/instructor/documents`;
+                            return;
+                        }
+                        await showSimpleErrorModal(
+                            updateData.error || 'Could not update course. Continuing with setup.',
+                            'Skip setup failed'
+                        );
+                    }
+                }
                 window.location.href = `/course/${courseId}/instructor/onboarding/document-setup`;
             } else if (!currentClass.flagSetup) {
                 window.location.href = `/course/${courseId}/instructor/onboarding/flag-setup`;

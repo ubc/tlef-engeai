@@ -15,7 +15,7 @@ import { authService } from '../services/auth-service.js';
 import { studentUserFactory } from '../factories/student-user-factory.js';
 import { renderStudentOnboarding } from '../onboarding/student-onboarding.js';
 import { initializeStudentFlagHistory } from '../feature/student-flag-history.js';
-import { showConfirmModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
 import { renderAbout } from '../about/about.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
 import { 
@@ -65,9 +65,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Note: We'll validate courseId matches session after courseUser is fetched
     
     try {
-        // Fetch current CourseUser from session
+        // Fetch current CourseUser and GlobalUser from session
         const response = await fetch('/api/user/current');
-        const { courseUser } = await response.json();
+        const { courseUser, globalUser } = await response.json();
         
         if (!courseUser) {
             console.error('[STUDENT-MODE] ❌ No course user found');
@@ -93,7 +93,41 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Check if we're on an onboarding URL
         if (isStudentOnboardingURL()) {
-            // console.log('[STUDENT-MODE] 🎓 Onboarding URL detected');
+            // Student skip onboarding: if user has completed before, offer skip
+            if (!validatedCourseUser.userOnboarding && globalUser?.studentOnboardingCompleted === true) {
+                const skipResult = await showSkipOnboardingModal(
+                    'Skip Onboarding?',
+                    "You've completed student onboarding before. Skip for this course?"
+                );
+                
+                if (skipResult.action === 'skip') {
+                    const userId = validatedCourseUser.userId || courseUser?.userId;
+                    if (userId) {
+                        const updateRes = await fetch('/api/user/update-onboarding', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'same-origin',
+                            body: JSON.stringify({
+                                userId,
+                                courseName: validatedCourseUser.courseName,
+                                userOnboarding: true
+                            })
+                        });
+                        const updateData = await updateRes.json();
+                        if (updateData.success) {
+                            const courseId = getCourseIdFromURL();
+                            if (courseId) {
+                                window.location.href = `/course/${courseId}/student`;
+                                return;
+                            }
+                        }
+                        await showSimpleErrorModal(
+                            updateData.error || 'Could not update onboarding. Continuing with setup.',
+                            'Skip onboarding failed'
+                        );
+                    }
+                }
+            }
 
             // Preserve URL state for after onboarding (using closure variable)
             const intendedView = 'chat'; // Default to chat after onboarding

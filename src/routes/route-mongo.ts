@@ -2578,6 +2578,7 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/published', asyn
         // Update the topic/week instance published status
         topicOrWeekInstance.published = published;
         topicOrWeekInstance.updatedAt = new Date();
+        topicOrWeekInstance.scheduledPublishAt = null;
         
         // Save the updated course
         const updatedCourse = await instance.updateActiveCourse(courseId, {
@@ -2600,6 +2601,92 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/published', asyn
         });
     }
 }));
+
+const MIN_SCHEDULE_LEAD_MS = 60_000;
+
+/**
+ * PATCH /:courseId/topic-or-week-instances/:topicOrWeekId/publish-schedule
+ * Set or clear scheduled auto-publish time (draft instances only). Instructors only.
+ * TEMPORARILY DISABLED - Feature coming soon
+ */
+/*
+router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/publish-schedule', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const { courseId, topicOrWeekId } = req.params;
+        const { scheduledPublishAt } = req.body as { scheduledPublishAt?: string | null };
+
+        if (!('scheduledPublishAt' in req.body)) {
+            return res.status(400).json({
+                success: false,
+                error: 'scheduledPublishAt is required (use null to clear)'
+            });
+        }
+
+        const course = await mongo.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+
+        const topicOrWeekInstance = course.topicOrWeekInstances?.find((d: TopicOrWeekInstance) => d.id === topicOrWeekId);
+        if (!topicOrWeekInstance) {
+            return res.status(404).json({ success: false, error: 'Topic/Week instance not found' });
+        }
+
+        if (topicOrWeekInstance.published) {
+            return res.status(400).json({
+                success: false,
+                error: 'Cannot schedule publish for an already published topic/week'
+            });
+        }
+
+        if (scheduledPublishAt === null || scheduledPublishAt === '') {
+            topicOrWeekInstance.scheduledPublishAt = null;
+        } else if (typeof scheduledPublishAt === 'string') {
+            const when = new Date(scheduledPublishAt);
+            if (Number.isNaN(when.getTime())) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'scheduledPublishAt must be a valid ISO date string'
+                });
+            }
+            const now = Date.now();
+            if (when.getTime() < now + MIN_SCHEDULE_LEAD_MS) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Scheduled time must be at least one minute in the future'
+                });
+            }
+            topicOrWeekInstance.scheduledPublishAt = when;
+        } else {
+            return res.status(400).json({
+                success: false,
+                error: 'scheduledPublishAt must be a string (ISO) or null'
+            });
+        }
+
+        topicOrWeekInstance.updatedAt = new Date();
+
+        await mongo.updateActiveCourse(courseId, {
+            topicOrWeekInstances: course.topicOrWeekInstances
+        });
+
+        appLogger.log(`✅ Topic/Week ${topicOrWeekId} publish schedule updated`);
+
+        res.status(200).json({
+            success: true,
+            data: topicOrWeekInstance,
+            message: 'Publish schedule updated'
+        });
+    } catch (error) {
+        appLogger.error('Error updating publish schedule:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update publish schedule'
+        });
+    }
+}));
+*/
 
 /**
  * DELETE /:courseId/topic-or-week-instances/:topicOrWeekId
@@ -3522,7 +3609,22 @@ router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(asyn
         exportText += `Created: ${chat.createdAt || 'N/A'}\n`;
         exportText += `========================================\n\n`;
         
-        // Export messages
+        // Export messages (ChatMessage uses sender + text; legacy may use role + content)
+        const exportRoleLabel = (msg: any): string => {
+            const s = msg?.sender;
+            if (s === 'user') return 'Student';
+            if (s === 'bot') return 'Assistant';
+            if (typeof msg?.role === 'string' && msg.role.trim()) return msg.role.trim();
+            return 'unknown';
+        };
+        const exportMessageBody = (msg: any): string => {
+            const raw = msg?.text ?? msg?.content;
+            if (raw == null) return '[Empty]';
+            const str = typeof raw === 'string' ? raw : String(raw);
+            const trimmed = str.trim();
+            return trimmed.length > 0 ? str : '[Empty]';
+        };
+
         exportText += `--- Messages ---\n\n`;
         const messages = chat.messages || [];
         if (messages.length === 0) {
@@ -3531,8 +3633,8 @@ router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(asyn
             for (let i = 0; i < messages.length; i++) {
                 const message = messages[i];
                 exportText += `Message ${i + 1}:\n`;
-                exportText += `  Role: ${message.role || 'unknown'}\n`;
-                exportText += `  Content: ${message.content || '[Empty]'}\n`;
+                exportText += `  Role: ${exportRoleLabel(message)}\n`;
+                exportText += `  Content: ${exportMessageBody(message)}\n`;
                 if (message.timestamp) {
                     exportText += `  Timestamp: ${message.timestamp}\n`;
                 }
@@ -4365,10 +4467,19 @@ router.put('/:courseId/system-prompts/:itemId', asyncHandlerWithAuth(async (req:
         });
     } catch (error) {
         appLogger.error('Error updating system prompt item:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+        if (errorMessage.includes('Cannot edit the default base system prompt component')) {
+            return res.status(400).json({
+                success: false,
+                error: errorMessage
+            });
+        }
+
         res.status(500).json({
             success: false,
             error: 'Failed to update system prompt item',
-            details: error instanceof Error ? error.message : 'Unknown error'
+            details: errorMessage
         });
     }
 }));

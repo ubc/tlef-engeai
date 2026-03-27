@@ -39,11 +39,14 @@ router.get('/current', asyncHandlerWithAuth(async (req: Request, res: Response) 
             return res.status(404).json({ error: 'CourseUser not found' });
         }
         
+        // Fetch fresh GlobalUser from DB for up-to-date onboarding flags
+        const freshGlobalUser = await mongoDB.findGlobalUserByUserId(globalUser.userId);
+        
         // Sanitize globalUser to remove PUID before sending to frontend
         // PUID is stored in session/backend but must NEVER be exposed to frontend
         return res.json({
             courseUser,
-            globalUser: sanitizeGlobalUserForFrontend(globalUser),
+            globalUser: sanitizeGlobalUserForFrontend(freshGlobalUser ?? globalUser),
             currentCourse
         });
         
@@ -97,6 +100,19 @@ router.post('/update-onboarding', asyncHandlerWithAuth(async (req: Request, res:
         );
         
         if (result) {
+            // When student completes onboarding, set studentOnboardingCompleted on GlobalUser
+            if (userOnboarding === true) {
+                const globalUser = (req.session as any).globalUser;
+                if (globalUser?.puid) {
+                    try {
+                        await mongoDB.updateGlobalUser(globalUser.puid, { studentOnboardingCompleted: true });
+                        appLogger.log(`[UPDATE-ONBOARDING] Set studentOnboardingCompleted for user ${globalUser.userId}`);
+                    } catch (globalUserError) {
+                        appLogger.error('[UPDATE-ONBOARDING] Failed to set studentOnboardingCompleted:', globalUserError);
+                        // Don't fail the request - CourseUser was updated successfully
+                    }
+                }
+            }
             appLogger.log(`[UPDATE-ONBOARDING] ✅ Onboarding status updated`);
             return res.json({
                 success: true,
@@ -115,6 +131,37 @@ router.post('/update-onboarding', asyncHandlerWithAuth(async (req: Request, res:
         return res.status(500).json({
             success: false,
             error: 'Failed to update onboarding status'
+        });
+    }
+}));
+
+/**
+ * PATCH /onboarding/instructor-completed
+ * Sets instructorOnboardingCompleted=true on GlobalUser when instructor completes monitor setup.
+ *
+ * @route PATCH /api/user/onboarding/instructor-completed
+ * @returns {object} { success: boolean, error?: string }
+ * @response 200 - Success
+ * @response 401 - User not authenticated
+ * @response 500 - Failed to update
+ */
+router.patch('/onboarding/instructor-completed', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser?.puid) {
+            return res.status(401).json({ success: false, error: 'User not authenticated' });
+        }
+
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        await mongoDB.updateGlobalUser(globalUser.puid, { instructorOnboardingCompleted: true });
+
+        appLogger.log(`[INSTRUCTOR-ONBOARDING] Set instructorOnboardingCompleted for user ${globalUser.userId}`);
+        return res.json({ success: true });
+    } catch (error) {
+        appLogger.error('[INSTRUCTOR-ONBOARDING] Error:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Failed to update instructor onboarding status'
         });
     }
 }));

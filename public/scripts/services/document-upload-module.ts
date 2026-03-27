@@ -30,7 +30,8 @@ export class DocumentUploadModule {
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
         'text/html': ['.html', '.htm'],
         'text/markdown': ['.md'],
-        'text/plain': ['.md'], // Allow .md files even when MIME type is text/plain
+        // .txt and .md may both report as text/plain in the browser
+        'text/plain': ['.txt', '.md'],
     };
 
     // File extension to MIME type mapping for better detection
@@ -107,7 +108,48 @@ export class DocumentUploadModule {
             }
         }
 
+        if (fileExtension === '.txt') {
+            const validMimeTypes = ['text/plain', 'application/octet-stream', ''];
+            if (file.type && !validMimeTypes.includes(file.type)) {
+                console.warn(`TXT file detected with unexpected MIME type: ${file.type}. Proceeding anyway.`);
+            }
+        }
+
         return { isValid: true };
+    }
+
+    /**
+     * Parse a document to extract text for preview (no upload to RAG).
+     *
+     * @param input - Either a File or a text string
+     * @returns { extractedText: string; fileName?: string }
+     */
+    public async parseDocument(input: File | string): Promise<{ extractedText: string; fileName?: string }> {
+        if (typeof input === 'string') {
+            const response = await fetch('/api/rag/documents/parse/text', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: input })
+            });
+            if (!response.ok) {
+                const err = await response.text();
+                throw new Error(`Parse failed: ${err}`);
+            }
+            const result = await response.json();
+            return result.data || { extractedText: input };
+        }
+        const formData = new FormData();
+        formData.append('file', input);
+        const response = await fetch('/api/rag/documents/parse/file', {
+            method: 'POST',
+            body: formData
+        });
+        if (!response.ok) {
+            const err = await response.text();
+            throw new Error(`Parse failed: ${err}`);
+        }
+        const result = await response.json();
+        return result.data || { extractedText: '', fileName: input.name };
     }
 
     /**
