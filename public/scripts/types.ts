@@ -73,6 +73,7 @@ export interface activeCourse {
         users: string;
         flags: string;
         memoryAgent: string;
+        scheduledTasks?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
     collectionOfSystemPromptItems?: SystemPromptItem[];

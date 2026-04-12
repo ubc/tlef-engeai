@@ -80,6 +80,8 @@ export interface activeCourse {
         users: string;
         flags: string;
         memoryAgent: string;
+        /** Per-course scheduled publish jobs (e.g. `${courseName}_scheduled_tasks`) */
+        scheduledTasks?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
     collectionOfSystemPromptItems?: SystemPromptItem[];
@@ -149,6 +151,23 @@ export interface TopicOrWeekInstance {
     items: TopicOrWeekItem[]; // previously content, previously courseItem
     createdAt: Date;
     updatedAt: Date;
+}
+
+/** Stored in each course’s `{courseName}_scheduled_tasks` collection (one pending job per topic/week). */
+export type ScheduledTaskType = 'scheduled_topic_or_week';
+
+export interface ScheduledTopicOrWeekContent {
+    topicOrWeekId: string;
+    title: string;
+}
+
+export interface ScheduledTaskDocument {
+    id: string;
+    type: ScheduledTaskType;
+    /** Fire time — aligned with TopicOrWeekInstance.scheduledPublishAt for topic/week schedules */
+    scheduledFor: Date;
+    content: ScheduledTopicOrWeekContent;
+    courseId?: string;
 }
 
 /**

@@ -953,6 +953,11 @@ router.delete('/:id/restart-onboarding', requireInstructorForCourseAPI(['paramsI
             appLogger.error(`Failed to drop ${collectionNames.flags}:`, { error: flagsDropResult.error });
             // Continue with other operations even if one fails
         }
+
+        const schedDropResult = await instance.dropCollection(collectionNames.scheduledTasks);
+        if (!schedDropResult.success) {
+            appLogger.error(`Failed to drop ${collectionNames.scheduledTasks}:`, { error: schedDropResult.error });
+        }
         
         // Recreate the course with empty defaults but preserved courseName
         const tempCourseForId = {
@@ -2584,6 +2589,14 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/published', asyn
         const updatedCourse = await instance.updateActiveCourse(courseId, {
             topicOrWeekInstances: course.topicOrWeekInstances
         });
+
+        if (published && updatedCourse) {
+            try {
+                await instance.deleteScheduledTaskByTopicOrWeekId(course.courseName, topicOrWeekId);
+            } catch (e) {
+                appLogger.error('Failed to remove scheduled task after publish:', e);
+            }
+        }
         
         appLogger.log(`✅ Topic/Week instance ${topicOrWeekId} published status updated to ${published}`);
         
@@ -2607,9 +2620,7 @@ const MIN_SCHEDULE_LEAD_MS = 60_000;
 /**
  * PATCH /:courseId/topic-or-week-instances/:topicOrWeekId/publish-schedule
  * Set or clear scheduled auto-publish time (draft instances only). Instructors only.
- * TEMPORARILY DISABLED - Feature coming soon
  */
-/*
 router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/publish-schedule', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
@@ -2671,6 +2682,27 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/publish-schedule
             topicOrWeekInstances: course.topicOrWeekInstances
         });
 
+        try {
+            if (scheduledPublishAt === null || scheduledPublishAt === '') {
+                await mongo.deleteScheduledTaskByTopicOrWeekId(course.courseName, topicOrWeekId);
+            } else if (typeof scheduledPublishAt === 'string') {
+                const when = new Date(scheduledPublishAt);
+                await mongo.upsertScheduledTopicOrWeekTask(
+                    course.courseName,
+                    courseId,
+                    topicOrWeekId,
+                    topicOrWeekInstance.title,
+                    when
+                );
+            }
+        } catch (syncErr) {
+            appLogger.error('Error syncing scheduled-tasks collection after schedule update:', syncErr);
+            return res.status(500).json({
+                success: false,
+                error: 'Failed to sync scheduled publish task'
+            });
+        }
+
         appLogger.log(`✅ Topic/Week ${topicOrWeekId} publish schedule updated`);
 
         res.status(200).json({
@@ -2686,7 +2718,6 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/publish-schedule
         });
     }
 }));
-*/
 
 /**
  * DELETE /:courseId/topic-or-week-instances/:topicOrWeekId
@@ -2767,6 +2798,12 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId', requireInstru
 
         const filteredInstances = instances.filter((i: TopicOrWeekInstance) => i.id !== topicOrWeekId);
         await instance.updateActiveCourse(courseId, { topicOrWeekInstances: filteredInstances } as any);
+
+        try {
+            await instance.deleteScheduledTaskByTopicOrWeekId(course.courseName, topicOrWeekId);
+        } catch (e) {
+            appLogger.warn('Could not remove scheduled task row for deleted topic/week:', e);
+        }
 
         appLogger.log(`✅ Topic/Week instance ${topicOrWeekId} deleted successfully`);
 

@@ -10,6 +10,7 @@
 
 import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 import * as dotenv from 'dotenv';
+import { randomUUID } from 'crypto';
 import { activeCourse, 
     AdditionalMaterial, 
     TopicOrWeekInstance, 
@@ -27,7 +28,8 @@ import { activeCourse,
     SystemPromptItem, 
     DEFAULT_BASE_PROMPT_ID, 
     DEFAULT_LEARNING_OBJECTIVES_ID, 
-    DEFAULT_STRUGGLE_TOPICS_ID } from '../types/shared';
+    DEFAULT_STRUGGLE_TOPICS_ID,
+    ScheduledTaskDocument } from '../types/shared';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { INITIAL_ASSISTANT_MESSAGE, SYSTEM_PROMPT } from '../chat/chat-prompts';
 import { appLogger } from '../utils/logger';
@@ -49,7 +51,7 @@ dotenv.config();
  *   - deleteActiveCourse: Deletes course and cascades to per-course collections
  *   - removeCourseFromAllUsers: Removes course from all GlobalUsers' coursesEnrolled
  *   - dropCollection: Drops a collection by name
- *   - getCollectionNames: Returns users, flags, memoryAgent collection names for a course
+ *   - getCollectionNames: Returns users, flags, memoryAgent, scheduledTasks collection names for a course
  *   - addLearningObjective: Adds learning objective to content item
  *   - updateLearningObjective: Updates learning objective
  *   - deleteLearningObjective: Deletes learning objective
@@ -235,6 +237,16 @@ export class EngEAI_MongoDB {
                 }
             }
 
+            // scheduled tasks (auto-publish jobs per topic/week)
+            const scheduledTasksCollection = `${courseName}_scheduled_tasks`;
+            try {
+                await this.db.createCollection(scheduledTasksCollection);
+            } catch (error: any) {
+                if (error.codeName !== 'NamespaceExists') {
+                    throw error;
+                }
+            }
+
             // Store collection names and course code in course document
             const courseWithCollections: activeCourse = {
                 ...course,
@@ -242,7 +254,8 @@ export class EngEAI_MongoDB {
                 collections: {
                     users: userCollection,
                     flags: flagsCollection,
-                    memoryAgent: memoryAgentCollection
+                    memoryAgent: memoryAgentCollection,
+                    scheduledTasks: scheduledTasksCollection
                 }
             };
 
@@ -547,16 +560,18 @@ export class EngEAI_MongoDB {
     // Flag report methods
     
     // Cache for collection names to avoid repeated database lookups
-    private collectionNamesCache: Map<string, {users: string, flags: string, memoryAgent: string}> = new Map();
+    private collectionNamesCache: Map<string, {users: string, flags: string, memoryAgent: string, scheduledTasks: string}> = new Map();
+
+    private scheduledTasksIndexesEnsured = new Set<string>();
 
     /**
      * getCollectionNames
      *
      * @param courseName string — Course name
-     * @returns Promise<{ users: string; flags: string; memoryAgent: string }> — Collection names for users, flags, memory-agent
+     * @returns Promise collection names for users, flags, memory-agent, scheduled-tasks
      * Returns collection names from course document or computed fallback ({courseName}_users, etc.). Results are cached.
      */
-    public async getCollectionNames(courseName: string): Promise<{users: string, flags: string, memoryAgent: string}> {
+    public async getCollectionNames(courseName: string): Promise<{users: string, flags: string, memoryAgent: string, scheduledTasks: string}> {
         // Check cache first
         if (this.collectionNamesCache.has(courseName)) {
             return this.collectionNamesCache.get(courseName)!;
@@ -571,10 +586,12 @@ export class EngEAI_MongoDB {
                 course.collections.users && 
                 course.collections.flags && 
                 course.collections.memoryAgent) {
+                const scheduledTasks = course.collections.scheduledTasks ?? `${courseName}_scheduled_tasks`;
                 const collectionNames = {
                     users: course.collections.users,
                     flags: course.collections.flags,
-                    memoryAgent: course.collections.memoryAgent
+                    memoryAgent: course.collections.memoryAgent,
+                    scheduledTasks
                 };
                 
                 // Cache the result
@@ -589,13 +606,121 @@ export class EngEAI_MongoDB {
         const computedNames = {
             users: `${courseName}_users`,
             flags: `${courseName}_flags`,
-            memoryAgent: `${courseName}_memory-agent`
+            memoryAgent: `${courseName}_memory-agent`,
+            scheduledTasks: `${courseName}_scheduled_tasks`
         };
 
         // Cache the computed names
         this.collectionNamesCache.set(courseName, computedNames);
         return computedNames;
     }
+
+    /**
+     * Ensures MongoDB indexes on a course’s `{courseName}_scheduled_tasks` collection for due queries
+     * and one row per topic/week. Safe to call repeatedly; index creation errors are logged and ignored
+     * if indexes already exist.
+     *
+     * @param collection — The scheduled-tasks `Collection` handle
+     */
+    private async ensureScheduledTasksIndexes(collection: Collection): Promise<void> {
+        const name = collection.collectionName;
+        if (this.scheduledTasksIndexesEnsured.has(name)) {
+            return;
+        }
+        try {
+            await collection.createIndex({ scheduledFor: 1 });
+            await collection.createIndex({ 'content.topicOrWeekId': 1 }, { unique: true });
+        } catch (e) {
+            appLogger.warn(`[MONGODB] scheduled-tasks index create (may already exist):`, e);
+        }
+        this.scheduledTasksIndexesEnsured.add(name);
+    }
+
+    /**
+     * Returns the MongoDB collection used to store pending scheduled publish jobs for a course.
+     * Resolves the collection name via {@link getCollectionNames} and ensures indexes exist.
+     *
+     * @param courseName — Logical course name (same key used for `getCollectionNames`)
+     * @returns The scheduled-tasks collection
+     */
+    private async getScheduledTasksCollection(courseName: string): Promise<Collection> {
+        const names = await this.getCollectionNames(courseName);
+        const col = this.db.collection(names.scheduledTasks);
+        await this.ensureScheduledTasksIndexes(col);
+        return col;
+    }
+
+    /**
+     * Inserts or replaces the scheduled-task document for a draft topic/week so the runner can publish
+     * at `scheduledFor`. At most one document per `topicOrWeekId` (enforced by a unique index).
+     * Keeps a stable `id` when updating an existing row.
+     *
+     * @param courseName — Course name (determines which `{courseName}_scheduled_tasks` collection)
+     * @param courseId — Active course document id (stored on the task for debugging)
+     * @param topicOrWeekId — Topic/week instance id to publish
+     * @param title — Denormalized title for logs/UX
+     * @param scheduledFor — When to auto-publish (UTC)
+     */
+    public upsertScheduledTopicOrWeekTask = async (
+        courseName: string,
+        courseId: string,
+        topicOrWeekId: string,
+        title: string,
+        scheduledFor: Date
+    ): Promise<void> => {
+        const col = await this.getScheduledTasksCollection(courseName);
+        const existing = await col.findOne({ 'content.topicOrWeekId': topicOrWeekId });
+        const id = (existing as { id?: string } | null)?.id ?? randomUUID();
+        const doc: ScheduledTaskDocument = {
+            id,
+            type: 'scheduled_topic_or_week',
+            scheduledFor,
+            content: { topicOrWeekId, title },
+            courseId
+        };
+        if (existing) {
+            await col.replaceOne({ id }, doc as any);
+        } else {
+            await col.insertOne(doc as any);
+        }
+    };
+
+    /**
+     * Removes all scheduled-task documents for the given topic/week id (e.g. after cancel schedule,
+     * manual publish, or topic deletion).
+     *
+     * @param courseName — Course name (collection namespace)
+     * @param topicOrWeekId — Topic/week instance id
+     */
+    public deleteScheduledTaskByTopicOrWeekId = async (courseName: string, topicOrWeekId: string): Promise<void> => {
+        const names = await this.getCollectionNames(courseName);
+        await this.db.collection(names.scheduledTasks).deleteMany({ 'content.topicOrWeekId': topicOrWeekId });
+    };
+
+    /**
+     * Deletes a single scheduled-task document by its `id` field after a successful publish or when
+     * cleaning up orphans.
+     *
+     * @param courseName — Course name (collection namespace)
+     * @param taskId — Value of `ScheduledTaskDocument.id`
+     */
+    public deleteScheduledTaskById = async (courseName: string, taskId: string): Promise<void> => {
+        const names = await this.getCollectionNames(courseName);
+        await this.db.collection(names.scheduledTasks).deleteOne({ id: taskId });
+    };
+
+    /**
+     * Returns scheduled tasks for a course whose `scheduledFor` is on or before `before` (inclusive).
+     * Used by the publish runner to find work that is due.
+     *
+     * @param courseName — Course name (collection namespace)
+     * @param before — Upper bound instant (typically `new Date()`)
+     */
+    public findDueScheduledTasksForCourse = async (courseName: string, before: Date): Promise<ScheduledTaskDocument[]> => {
+        const col = await this.getScheduledTasksCollection(courseName);
+        const rows = await col.find({ scheduledFor: { $lte: before } }).toArray();
+        return rows as unknown as ScheduledTaskDocument[];
+    };
 
     /**
      * getFlagsCollection

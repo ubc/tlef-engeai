@@ -13,7 +13,7 @@
     "dev:server": "cross-env NODE_ENV=development nodemon",
     "dev:frontend": "tsc -p public/tsconfig.json --watch",
     "dev:client": "browser-sync start --proxy 'http://localhost:8020' --files 'public'",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest --config jest.config.cjs",
     "test:embedding": "ts-node src/test-scripts/test-embedding-generation.ts",
     "test:qdrant-empty": "ts-node src/test-scripts/test-qdrant-empty-upload.ts",
     "test:integrated": "ts-node src/test-scripts/test-integrated-embedding-qdrant.ts",
