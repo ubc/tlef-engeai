@@ -547,28 +547,26 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const controls = createScheduleDateTimeControls(tw, `${tw.id}-resched`);
         const { panel, dateInput, hourSel, minSel, amPm, errEl } = controls;
 
-        const applyRow = document.createElement('div');
-        applyRow.style.marginTop = '10px';
-        const applyBtn = document.createElement('button');
-        applyBtn.type = 'button';
-        applyBtn.className = 'schedule-apply-time-btn';
-        applyBtn.textContent = 'Apply new time';
-        applyRow.appendChild(applyBtn);
-        panel.appendChild(applyRow);
-
         bodyWrap.appendChild(panel);
 
-        rescheduleBtn.addEventListener('click', () => {
-            schedulePanelOpen = !schedulePanelOpen;
-            rescheduleBtn.setAttribute('aria-expanded', schedulePanelOpen ? 'true' : 'false');
-            panel.classList.toggle('publish-modal-schedule-panel--open', schedulePanelOpen);
-            if (!schedulePanelOpen) {
-                setSchedulePanelError(errEl, '');
+        function syncScheduledPublishFooterMorph(): void {
+            const footer = document.querySelector(
+                '.modal-overlay.show .modal-container.modal-scheduled-publish .modal-footer'
+            ) as HTMLElement | null;
+            const morphBtn = footer?.children[1] as HTMLButtonElement | undefined;
+            if (!morphBtn) return;
+            if (schedulePanelOpen) {
+                morphBtn.textContent = 'Apply new time';
+                morphBtn.className = 'modal-btn modal-btn-primary';
+                morphBtn.setAttribute('data-action', 'apply-new-time');
+            } else {
+                morphBtn.textContent = 'Cancel schedule';
+                morphBtn.className = 'modal-btn modal-btn-danger';
+                morphBtn.setAttribute('data-action', 'cancel-schedule');
             }
-            queueMicrotask(() => renderFeatherIcons());
-        });
+        }
 
-        applyBtn.addEventListener('click', async () => {
+        async function applyRescheduledTime(): Promise<void> {
             if (!SCHEDULED_PUBLISH_ENABLED) {
                 showScheduleComingSoonModal();
                 return;
@@ -597,6 +595,17 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             renderFeatherIcons();
             showToast(`Updated schedule to ${formatScheduleLine(when)}`, 3500, 'top-right');
             closeModal('scheduled-topic');
+        }
+
+        rescheduleBtn.addEventListener('click', () => {
+            schedulePanelOpen = !schedulePanelOpen;
+            rescheduleBtn.setAttribute('aria-expanded', schedulePanelOpen ? 'true' : 'false');
+            panel.classList.toggle('publish-modal-schedule-panel--open', schedulePanelOpen);
+            if (!schedulePanelOpen) {
+                setSchedulePanelError(errEl, '');
+            }
+            syncScheduledPublishFooterMorph();
+            queueMicrotask(() => renderFeatherIcons());
         });
 
         const modalPromise = showCustomModal({
@@ -604,6 +613,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             title: 'Scheduled publish',
             content: bodyWrap,
             maxWidth: '480px',
+            customClass: 'modal-scheduled-publish',
             buttons: [
                 { text: 'Close', type: 'secondary', closeOnClick: true },
                 {
@@ -611,11 +621,16 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                     type: 'danger',
                     closeOnClick: false,
                     action: async () => {
+                        if (schedulePanelOpen) {
+                            await applyRescheduledTime();
+                            return;
+                        }
                         const result = await showConfirmModal(
                             'Cancel schedule?',
                             'This removes the scheduled publish time. You can publish or set a new time later.',
                             'Cancel schedule',
-                            'Keep'
+                            'Keep',
+                            'danger'
                         );
                         if (result.action !== 'cancel-schedule') return;
                         const r = await patchTopicSchedule(tw, null);
@@ -1403,9 +1418,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const container = document.getElementById('documents-container');
             if (container) {
                 const el = createDivisionElement(createdInstance);
+                el.classList.add('topic-or-week-instance--enter');
                 container.appendChild(el);
-                // Re-render icons for newly added elements
+                el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 renderFeatherIcons();
+                const addedLabel =
+                    currentClass.frameType === 'byWeek' ? 'week' : 'topic';
+                showSuccessToast(`Added ${addedLabel} "${createdInstance.title}".`);
             }
 
             // Update control panel labels (if frame type-dependent)

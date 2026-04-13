@@ -709,22 +709,25 @@ export async function showInfoModal(
  * @param message - Confirmation message
  * @param confirmText - Text for confirm button
  * @param cancelText - Text for cancel button
+ * @param confirmVariant - Styling for the confirm button (destructive actions use "danger")
  * @returns Promise that resolves with user choice
  */
 export async function showConfirmModal(
     title: string = 'Confirm',
     message: string,
     confirmText: string = 'Confirm',
-    cancelText: string = 'Cancel'
+    cancelText: string = 'Cancel',
+    confirmVariant: 'primary' | 'danger' = 'primary'
 ): Promise<ModalResult> {
     const modal = getModal();
+    const confirmType = confirmVariant === 'danger' ? 'danger' : 'primary';
     return modal.show({
         type: 'info',
         title,
         content: message,
         buttons: [
             { text: cancelText, type: 'secondary', closeOnClick: true },
-            { text: confirmText, type: 'primary', closeOnClick: true }
+            { text: confirmText, type: confirmType, closeOnClick: true }
         ]
     });
 }
