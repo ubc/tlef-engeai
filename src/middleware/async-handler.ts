@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { appLogger } from '../utils/logger';
+import { runDueScheduledPublishTasksThrottled } from '../jobs/scheduled-publish-runner';
 
 // Async error handler middleware
 export const asyncHandler = (fn: Function) => {
@@ -32,8 +33,16 @@ export const asyncHandlerWithAuth = (fn: Function) => {
         }
         
         appLogger.log('[ASYNC-AUTH] ✅ User authenticated, proceeding with async handler for route:', req.path);
-        
-        // User is authenticated, proceed with async handler
-        Promise.resolve(fn(req, res, next)).catch(next);
+
+        // check for scheduled tasks
+        const run = async () => {
+            try {
+                await runDueScheduledPublishTasksThrottled();
+            } catch (e) {
+                appLogger.error('[scheduled-publish] Throttled runner failed:', e);
+            }
+            await Promise.resolve(fn(req, res, next));
+        };
+        run().catch(next);
     };
 };

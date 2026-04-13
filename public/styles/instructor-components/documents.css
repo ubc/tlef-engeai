@@ -11,6 +11,8 @@
     --pinned-color: #5c8a3a;
     --background-2: #ECE5DD;
     --footer-height: 110px;
+    /* Sky blue — distinct from .status-add-session indigo/navy */
+    --scheduled-color: #0ea5e9;
 }
 
 .container {
@@ -316,9 +318,9 @@
 }
 
 .status-published {
-    background: rgba(76, 175, 80, 0.2);
-    color: #3d5a26;
-    border: 1px solid #3d5a26;
+    background: rgba(76, 175, 80, 0.1);
+    color: var(--pinned-color);
+    border: 1px solid var(--pinned-color);
 }
 
 .status-draft {
@@ -339,7 +341,7 @@ button.content-status {
     vertical-align: middle;
 }
 
-/* Publish header: 1px transparent border so box height matches bordered neighbors (draft overrides color) */
+/* Publish header: 1px transparent border so box height matches bordered neighbors (draft/published override) */
 .publish-status-btn.content-status {
     border: 1px solid transparent;
     background: transparent;
@@ -353,8 +355,25 @@ button.content-status {
     border: 1px solid #e67e22;
 }
 
+/* Draft topic/week with a pending scheduled publish — single control (opens reschedule/cancel modal) */
+.publish-status-btn.status-scheduled {
+    background: rgba(14, 165, 233, 0.12);
+    color: var(--scheduled-color);
+    border: 1px solid var(--scheduled-color);
+}
+
+.publish-status-btn.status-scheduled:hover {
+    background: rgba(14, 165, 233, 0.22);
+    border-color: #0284c7;
+    color: #0284c7;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(14, 165, 233, 0.35);
+}
+
 .publish-status-btn.status-published {
+    background: rgba(76, 175, 80, 0.1);
     color: var(--pinned-color, #3d5a26);
+    border: 1px solid var(--pinned-color, #3d5a26);
 }
 
 .publish-status-btn.status-draft:hover {
@@ -366,10 +385,11 @@ button.content-status {
 }
 
 .publish-status-btn.status-published:hover {
-    transform: none;
-    box-shadow: none;
+    background: rgba(76, 175, 80, 0.2);
+    border-color: #2d5016;
     color: #2d5016;
-    background: rgba(76, 175, 80, 0.12);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(76, 175, 80, 0.3);
 }
 
 .publish-status-btn:focus-visible {
@@ -377,24 +397,20 @@ button.content-status {
     outline-offset: 2px;
 }
 
-/* Cancel scheduled publish — transparent border matches chip box height */
-.scheduled-publish-btn.status-cancel-schedule {
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--color-eng-red, #c82333);
-    padding: 4px 8px;
-    border-radius: 4px;
+.schedule-apply-time-btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--color-chbe-green, #5c8a3a);
+    background: var(--color-chbe-green, #5c8a3a);
+    color: #fff;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
 }
 
-.scheduled-publish-btn.status-cancel-schedule:hover {
-    background: rgba(200, 35, 51, 0.1);
-    transform: none;
-    box-shadow: none;
-}
-
-.scheduled-publish-btn.status-cancel-schedule:focus-visible {
-    outline: 2px solid var(--color-eng-red, #c82333);
-    outline-offset: 2px;
+.schedule-apply-time-btn:hover {
+    filter: brightness(0.95);
 }
 
 /* Publish modal: expandable schedule */
@@ -402,7 +418,9 @@ button.content-status {
     line-height: 1.5;
 }
 
-.publish-modal-calendar-trigger {
+/* Publish modal: "Schedule for later"; scheduled-topic modal: "Reschedule" — same control style */
+.publish-modal-calendar-trigger,
+.schedule-reschedule-trigger {
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -417,19 +435,23 @@ button.content-status {
     font-weight: 600;
     color: var(--text-primary);
     transition: background 0.2s ease;
+    line-height: 1.2;
 }
 
-.publish-modal-calendar-trigger:hover {
+.publish-modal-calendar-trigger:hover,
+.schedule-reschedule-trigger:hover {
     background: rgba(0, 0, 0, 0.07);
 }
 
-.publish-modal-calendar-trigger .feather {
+.publish-modal-calendar-trigger .feather,
+.schedule-reschedule-trigger .feather {
     width: 18px;
     height: 18px;
     color: var(--color-chbe-green, #5c8a3a);
 }
 
-.publish-modal-calendar-trigger:focus-visible {
+.publish-modal-calendar-trigger:focus-visible,
+.schedule-reschedule-trigger:focus-visible {
     outline: 2px solid var(--color-chbe-green, #5c8a3a);
     outline-offset: 2px;
 }
