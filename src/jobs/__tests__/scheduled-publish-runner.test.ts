@@ -4,6 +4,20 @@ import {
 } from '../scheduled-publish-runner';
 import type { activeCourse, TopicOrWeekInstance, ScheduledTaskDocument } from '../../types/shared';
 
+jest.mock('../scheduled-publish-audit', () => ({
+    scheduledPublishAudit: {
+        courseTasksReadFailed: jest.fn().mockResolvedValue(undefined),
+        taskRemovedNoTopicId: jest.fn().mockResolvedValue(undefined),
+        taskRemovedOrphanCourse: jest.fn().mockResolvedValue(undefined),
+        taskRemovedOrphanTopic: jest.fn().mockResolvedValue(undefined),
+        taskRemovedAlreadyPublished: jest.fn().mockResolvedValue(undefined),
+        skippedUpdateNoop: jest.fn().mockResolvedValue(undefined),
+        publishFailed: jest.fn().mockResolvedValue(undefined),
+        published: jest.fn().mockResolvedValue(undefined),
+        publishOkDeleteFailed: jest.fn().mockResolvedValue(undefined)
+    }
+}));
+
 describe('runDueScheduledPublishTasks', () => {
     beforeEach(() => {
         resetScheduledPublishThrottleForTests();

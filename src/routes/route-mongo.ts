@@ -41,6 +41,7 @@ import dotenv from 'dotenv';
 import { RAGApp } from '../rag/rag-app';
 import { addCharismaAndRichToCourse } from '../helpers/instructor-helpers';
 import { appLogger } from '../utils/logger';
+import { scheduledPublishAudit } from '../jobs/scheduled-publish-audit';
 
 const router = express.Router();
 export default router;
@@ -2593,6 +2594,13 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/published', asyn
         if (published && updatedCourse) {
             try {
                 await instance.deleteScheduledTaskByTopicOrWeekId(course.courseName, topicOrWeekId);
+                await scheduledPublishAudit.taskScheduleRemoved({
+                    courseId,
+                    courseName: course.courseName,
+                    topicOrWeekId,
+                    reason: 'manual_publish',
+                    title: topicOrWeekInstance.title
+                });
             } catch (e) {
                 appLogger.error('Failed to remove scheduled task after publish:', e);
             }
@@ -2685,6 +2693,13 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/publish-schedule
         try {
             if (scheduledPublishAt === null || scheduledPublishAt === '') {
                 await mongo.deleteScheduledTaskByTopicOrWeekId(course.courseName, topicOrWeekId);
+                await scheduledPublishAudit.taskScheduleRemoved({
+                    courseId,
+                    courseName: course.courseName,
+                    topicOrWeekId,
+                    reason: 'user_cleared',
+                    title: topicOrWeekInstance.title
+                });
             } else if (typeof scheduledPublishAt === 'string') {
                 const when = new Date(scheduledPublishAt);
                 await mongo.upsertScheduledTopicOrWeekTask(
@@ -2694,6 +2709,13 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/publish-schedule
                     topicOrWeekInstance.title,
                     when
                 );
+                await scheduledPublishAudit.taskScheduled({
+                    courseId,
+                    courseName: course.courseName,
+                    topicOrWeekId,
+                    scheduledPublishAt: when,
+                    title: topicOrWeekInstance.title
+                });
             }
         } catch (syncErr) {
             appLogger.error('Error syncing scheduled-tasks collection after schedule update:', syncErr);
@@ -2801,6 +2823,13 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId', requireInstru
 
         try {
             await instance.deleteScheduledTaskByTopicOrWeekId(course.courseName, topicOrWeekId);
+            await scheduledPublishAudit.taskScheduleRemoved({
+                courseId,
+                courseName: course.courseName,
+                topicOrWeekId,
+                reason: 'topic_deleted',
+                title: topicOrWeekInstance.title
+            });
         } catch (e) {
             appLogger.warn('Could not remove scheduled task row for deleted topic/week:', e);
         }
