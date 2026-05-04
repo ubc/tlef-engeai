@@ -36,6 +36,7 @@ import * as InstructorPromptMongo from './mongo/instructor-prompt-mongo';
 import * as MemoryAgentMongo from './mongo/memory-agent-mongo';
 import * as ScheduledTaskMongo from './mongo/scheduled-task-mongo';
 import * as TopicWeekMongo from './mongo/topic-week-mongo';
+import * as ConversationExportMongo from './mongo/conversation-export-mongo';
 
 dotenv.config();
 
@@ -98,6 +99,21 @@ export class EngEAI_MongoDB {
     }
 
     /**
+     * 
+     * close — disconnect client
+     * 
+     */
+    public async close(): Promise<void> {
+        try {
+            await this.client.close();
+            appLogger.log('✅ MongoDB connection closed');
+        } catch (error) {
+            appLogger.error('❌ Error closing MongoDB connection:', error);
+            throw error;
+        }
+    }
+
+    /**
      * testConnection — Pings MongoDB (health checks).
      * @returns true if ping succeeds
      */
@@ -110,9 +126,11 @@ export class EngEAI_MongoDB {
             return false;
         }
     }
-
+    
     /**
+     * #########################################################
      * Delegates — active course lifecycle: see course-mongo.ts
+     * #########################################################
      */
     public postActiveCourse = async (course: activeCourse) => CourseMongo.postActiveCourse(this.ctx(), course);
 
@@ -201,7 +219,9 @@ export class EngEAI_MongoDB {
         TopicWeekMongo.clearAllAdditionalMaterials(this.ctx(), courseId);
 
     /**
+     * #########################################################
      * Collection registry + scheduled publish jobs
+     * #########################################################
      */
     public async getCollectionNames(courseName: string) {
         return CollectionRegistryMongo.getCollectionNames(this.ctx(), courseName);
@@ -233,7 +253,9 @@ export class EngEAI_MongoDB {
         ScheduledTaskMongo.findDueScheduledTasksForCourse(this.ctx(), courseName, before);
 
     /**
+     * #########################################################
      * Flags — flag-mongo.ts
+     * #########################################################
      */
     public createFlagReport = async (flagReport: FlagReport) => FlagMongo.createFlagReport(this.ctx(), flagReport);
 
@@ -274,21 +296,12 @@ export class EngEAI_MongoDB {
     public getFlagReportsWithUserNames = async (courseName: string) =>
         FlagMongo.getFlagReportsWithUserNames(this.ctx(), courseName);
 
-    /**
-     * close — disconnect client
-     */
-    public async close(): Promise<void> {
-        try {
-            await this.client.close();
-            appLogger.log('✅ MongoDB connection closed');
-        } catch (error) {
-            appLogger.error('❌ Error closing MongoDB connection:', error);
-            throw error;
-        }
-    }
+    
 
     /**
+     * #########################################################
      * Course users roster — course-user-mongo.ts
+     * #########################################################
      */
     public findUserByUserId = async (courseName: string, userId: string) =>
         CourseUserMongo.findUserByUserId(this.ctx(), courseName, userId);
@@ -344,6 +357,12 @@ export class EngEAI_MongoDB {
         ChatMongo.deleteChatFromUser(this.ctx(), courseName, userId, chatId);
 
     /**
+     * Bulk conversation ZIP export — conversation-export-mongo.ts (aggregation cursor only).
+     */
+    public aggregateStudentChatsForZipExport = async (courseName: string) =>
+        ConversationExportMongo.aggregateStudentChatsForZipExport(this.ctx(), courseName);
+
+    /**
      * Global profiles — global-user-mongo.ts
      */
     public findGlobalUserByPUID = async (puid: string) => GlobalUserMongo.findGlobalUserByPUID(this.ctx(), puid);
@@ -366,7 +385,9 @@ export class EngEAI_MongoDB {
     ) => GlobalUserMongo.updateGlobalUserAffiliation(this.ctx(), userId, affiliation);
 
     /**
+     * #########################################################
      * Memory agent — memory-agent-mongo.ts
+     * #########################################################
      */
     public createMemoryAgentEntry = async (courseName: string, entry: MemoryAgentEntry) =>
         MemoryAgentMongo.createMemoryAgentEntry(this.ctx(), courseName, entry);

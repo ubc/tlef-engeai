@@ -40,8 +40,11 @@
             </div>
 
             <div class="course-summary-download-row course-summary-reveal-block" data-course-summary-reveal="download">
-                <p>When the summary is completed, the download Conversations button will be available in the sidebar.</p>
-                <button type="button" class="course-summary-download-preview" disabled>Download conversation</button>
+                <p>Download all conversations for this course as a ZIP (same export as the sidebar control).</p>
+                <button type="button" id="course-summary-download-conversations-btn" class="course-summary-download-preview">
+                    <i data-feather="download"></i>
+                    <span>Download conversations</span>
+                </button>
             </div>
         </section>
 
@@ -56,6 +59,8 @@
 
     <div class="course-summary-modal__footer">
         <div class="course-summary-progress" id="course-summary-progress" aria-label="Course summary progress"></div>
-        <button type="button" class="course-summary-next-btn" id="course-summary-next-btn">Next</button>
+        <button type="button" class="course-summary-next-btn" id="course-summary-next-btn" aria-label="Next">
+            <i data-feather="chevron-right" aria-hidden="true"></i>
+        </button>
     </div>
 </div>

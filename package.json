@@ -32,6 +32,7 @@
     "@types/marked": "^5.0.2",
     "@types/multer": "^2.0.0",
     "@types/passport": "^1.0.17",
+    "archiver": "^7.0.1",
     "chart.js": "^4.4.8",
     "cors": "^2.8.5",
     "dompurify": "^3.2.7",
@@ -56,6 +57,7 @@
     "xxhashjs": "^0.2.2"
   },
   "devDependencies": {
+    "@types/archiver": "^6.0.4",
     "@types/express": "^5.0.3",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.2.0",

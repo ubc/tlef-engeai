@@ -31,6 +31,7 @@
  */
 
 import express, { Request, Response } from 'express';
+import archiver from 'archiver';
 import { asyncHandler, asyncHandlerWithAuth } from '../middleware/async-handler';
 import { requireInstructorForCourseAPI, requireInstructorGlobal } from '../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
@@ -42,6 +43,15 @@ import { RAGApp } from '../rag/rag-app';
 import { addCharismaAndRichToCourse } from '../helpers/instructor-helpers';
 import { appLogger } from '../utils/logger';
 import { scheduledPublishAudit } from '../jobs/scheduled-publish-audit';
+import { formatSingleChatExportText } from '../helpers/conversation-export-format';
+import {
+    buildConversationExportArchiveBasename,
+    contentDispositionAttachmentZip,
+    formatYyyyMmDdForPath,
+    resolveChatExportDate,
+    sanitizeZipPathSegment
+} from '../helpers/conversation-export-path';
+import type { ConversationZipExportRow } from '../db/mongo/conversation-export-mongo';
 
 const router = express.Router();
 export default router;
@@ -3530,6 +3540,19 @@ router.post('/admin/reset-vector-database', asyncHandlerWithAuth(async (req: Req
 // MONITOR ROUTES (Instructor Only)
 // ===========================================
 
+/** Stable folder name per exported student; duplicate display names append `-userId`. */
+function monitorConversationExportUniqueStudentFolder(
+    studentName: string,
+    userId: string,
+    counts: Map<string, number>
+): string {
+    const base = sanitizeZipPathSegment(studentName || 'Unknown');
+    const n = counts.get(base) ?? 0;
+    counts.set(base, n + 1);
+    if (n === 0) return base;
+    return `${base}-${sanitizeZipPathSegment(userId)}`;
+}
+
 /**
  * GET /monitor/:courseId/chat-titles
  * Get chat titles for all users (students and instructors). Lightweight list without full message history.
@@ -3663,54 +3686,13 @@ router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(asyn
             });
         }
         
-        // Build hierarchical export text
-        let exportText = '';
-        exportText += `========================================\n`;
-        exportText += `CHAT CONVERSATION EXPORT\n`;
-        exportText += `========================================\n\n`;
-        exportText += `Student: ${userData.name || 'Unknown'}\n`;
-        exportText += `Student ID: ${userData.userId || 'N/A'}\n`;
-        exportText += `Course: ${courseName}\n`;
-        exportText += `Chat ID: ${chatId}\n`;
-        exportText += `Chat Title: ${chat.itemTitle || chat.title || 'Untitled Chat'}\n`;
-        exportText += `Topic/Week: ${chat.topicOrWeekTitle || 'N/A'}\n`;
-        exportText += `Created: ${chat.createdAt || 'N/A'}\n`;
-        exportText += `========================================\n\n`;
-        
-        // Export messages (ChatMessage uses sender + text; legacy may use role + content)
-        const exportRoleLabel = (msg: any): string => {
-            const s = msg?.sender;
-            if (s === 'user') return 'Student';
-            if (s === 'bot') return 'Assistant';
-            if (typeof msg?.role === 'string' && msg.role.trim()) return msg.role.trim();
-            return 'unknown';
-        };
-        const exportMessageBody = (msg: any): string => {
-            const raw = msg?.text ?? msg?.content;
-            if (raw == null) return '[Empty]';
-            const str = typeof raw === 'string' ? raw : String(raw);
-            const trimmed = str.trim();
-            return trimmed.length > 0 ? str : '[Empty]';
-        };
-
-        exportText += `--- Messages ---\n\n`;
-        const messages = chat.messages || [];
-        if (messages.length === 0) {
-            exportText += '[No messages]\n';
-        } else {
-            for (let i = 0; i < messages.length; i++) {
-                const message = messages[i];
-                exportText += `Message ${i + 1}:\n`;
-                exportText += `  Role: ${exportRoleLabel(message)}\n`;
-                exportText += `  Content: ${exportMessageBody(message)}\n`;
-                if (message.timestamp) {
-                    exportText += `  Timestamp: ${message.timestamp}\n`;
-                }
-                if (i < messages.length - 1) {
-                    exportText += '\n';
-                }
-            }
-        }
+        const exportText = formatSingleChatExportText({
+            courseName,
+            studentDisplayName: userData.name || 'Unknown',
+            studentUserId: userData.userId || 'N/A',
+            chatId,
+            chat
+        });
         
         // Set response headers for file download
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
@@ -3730,6 +3712,110 @@ router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(asyn
         });
     }
 }));
+
+/**
+ * GET /monitor/:courseId/conversations-export.zip
+ * Stream a ZIP of all student conversations (TXT or JSON per chat).
+ *
+ * @route GET /api/courses/monitor/:courseId/conversations-export.zip
+ * @query format — `txt` (default) or `json`
+ */
+router.get(
+    '/monitor/:courseId/conversations-export.zip',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        try {
+            const { courseId } = req.params;
+            const rawFormat = typeof req.query.format === 'string' ? req.query.format : 'txt';
+            const archiveKind = rawFormat === 'json' ? 'json' : rawFormat === 'txt' ? 'txt' : null;
+            if (!archiveKind) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Invalid format — use txt or json'
+                });
+            }
+
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const course = await mongoDB.getActiveCourse(courseId);
+            if (!course) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Course not found'
+                });
+            }
+
+            const courseData = course as activeCourse;
+            const courseName = courseData.courseName;
+            const exportedAt = new Date();
+            const archiveBasename = buildConversationExportArchiveBasename(courseName, archiveKind, exportedAt);
+            const rootPrefix = `${archiveBasename}/`;
+
+            const cursor = await mongoDB.aggregateStudentChatsForZipExport(courseName);
+
+            res.setHeader('Content-Type', 'application/zip');
+            res.setHeader('Content-Disposition', contentDispositionAttachmentZip(archiveBasename));
+
+            const archive = archiver('zip', { zlib: { level: 6 } });
+            archive.on('warning', (err: Error & { code?: string }) => {
+                if (err.code !== 'ENOENT') {
+                    appLogger.warn('[conversation-export] archiver warning:', err);
+                }
+            });
+            archive.on('error', (err: Error) => {
+                appLogger.error('[conversation-export] archiver error:', err);
+            });
+
+            archive.pipe(res);
+
+            const folderCounts = new Map<string, number>();
+
+            try {
+                for await (const row of cursor as AsyncIterable<ConversationZipExportRow>) {
+                    const chat = row.chat;
+                    const chatTitle = chat.itemTitle || chat.title || 'Untitled Chat';
+                    const studentFolder = monitorConversationExportUniqueStudentFolder(
+                        row.studentName,
+                        row.userId,
+                        folderCounts
+                    );
+                    const dateLabel = formatYyyyMmDdForPath(
+                        resolveChatExportDate(chat as unknown as Record<string, unknown>, exportedAt)
+                    );
+                    const fileStem = `${dateLabel} - ${sanitizeZipPathSegment(chatTitle)}`;
+                    const ext = archiveKind === 'txt' ? 'txt' : 'json';
+                    const zipEntryPath = `${rootPrefix}${studentFolder}/${fileStem}.${ext}`;
+
+                    const payload =
+                        archiveKind === 'txt'
+                            ? formatSingleChatExportText({
+                                  courseName,
+                                  studentDisplayName: row.studentName,
+                                  studentUserId: row.userId,
+                                  chatId: chat.id,
+                                  chat
+                              })
+                            : JSON.stringify(row, null, 2);
+
+                    archive.append(Buffer.from(payload, 'utf-8'), { name: zipEntryPath });
+                }
+
+                await archive.finalize();
+            } catch (iterErr) {
+                archive.abort();
+                throw iterErr;
+            }
+        } catch (error) {
+            appLogger.error('Error exporting conversations ZIP:', error);
+            if (!res.headersSent) {
+                res.status(500).json({
+                    success: false,
+                    error: 'Failed to export conversations',
+                    details: error instanceof Error ? error.message : 'Unknown error'
+                });
+            }
+        }
+    })
+);
 
 // ===========================================
 // ========= INITIAL ASSISTANT PROMPTS ======

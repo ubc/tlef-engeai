@@ -12,6 +12,7 @@
 import type { activeCourse } from "../types.js";
 import { authService } from "../services/auth-service.js";
 import { renderFeatherIcons } from "../api/api.js";
+import { openConversationExportFormatModal } from "./conversations-export-modal.js";
 import { chartsController, type StackedBarChartSpec } from "../ui/charts.js";
 
 type CourseSummaryStatus = 'locked' | 'available' | 'generated';
@@ -356,6 +357,11 @@ async function renderCourseSummaryModal(summary: CourseSummaryRecord, currentCla
     hydrateSummaryContent(overlay, summary);
     renderFeatherIcons();
 
+    const downloadConversationsBtn = overlay.querySelector('#course-summary-download-conversations-btn') as HTMLButtonElement | null;
+    downloadConversationsBtn?.addEventListener('click', () => {
+        openConversationExportFormatModal(currentClass.id);
+    });
+
     let currentStepIndex = 0;
 
     const closeBtn = overlay.querySelector('#course-summary-close-btn') as HTMLButtonElement | null;
@@ -381,7 +387,16 @@ async function renderCourseSummaryModal(summary: CourseSummaryRecord, currentCla
         renderProgress(overlay, activeStep);
 
         if (nextBtn) {
-            nextBtn.textContent = currentStepIndex === STEP_ORDER.length - 1 ? 'Quit' : 'Next';
+            const isLast = currentStepIndex === STEP_ORDER.length - 1;
+            if (isLast) {
+                nextBtn.innerHTML = '<i data-feather="x" aria-hidden="true"></i>';
+                nextBtn.setAttribute('aria-label', 'Quit');
+                renderFeatherIcons();
+            } else {
+                nextBtn.innerHTML = '<i data-feather="chevron-right" aria-hidden="true"></i>';
+                nextBtn.setAttribute('aria-label', 'Next');
+                renderFeatherIcons();
+            }
         }
 
         if (STEP_ORDER[currentStepIndex] === 'struggle-topics') {

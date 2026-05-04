@@ -3,12 +3,12 @@
    =========================================== */
 
 .course-summary-overlay {
-    --summary-surface: #e2e2e2;
-    --summary-text: #111;
-    --summary-muted: #565656;
+    --summary-surface: var(--background-2);
+    --summary-text: var(--text-primary);
+    --summary-muted: var(--text-secondary);
     --summary-card: rgba(255, 255, 255, 0.92);
     --summary-card-border: rgba(33, 37, 41, 0.12);
-    --summary-action: #8b8787;
+    --summary-action: var(--color-chbe-green);
 
     position: fixed;
     inset: 0;
@@ -243,27 +243,61 @@
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 1.5rem;
-    margin-top: 0.25rem;
+    margin-top: 2rem;
     text-align: left;
 }
 
 .course-summary-download-row p {
     margin: 0;
     color: var(--summary-text);
-    font-size: clamp(1rem, 1.8vw, 1.35rem);
+    font-size: 1.2rem;
     line-height: 1.25;
 }
 
+/* Matches .instructor-download-conversations-btn (sidebar footer): flex row, 20px icon, 8px radius, footer-sized width cap */
 .course-summary-download-preview {
-    border: none;
-    border-radius: 0;
-    background: rgba(128, 128, 128, 0.42);
-    color: #111;
-    cursor: not-allowed;
+    box-sizing: border-box;
+    width: min(100%, 246px);
+    justify-self: end;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--background-2);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
     font: inherit;
-    font-size: clamp(0.95rem, 1.4vw, 1.15rem);
-    padding: 0.75rem 1rem;
+    font-weight: 600;
+    color: #000000;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.2s, background-color 0.25s ease;
     white-space: nowrap;
+}
+
+.course-summary-download-preview .feather,
+.course-summary-download-preview svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    transition: margin 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.course-summary-download-preview span {
+    white-space: nowrap;
+    opacity: 1;
+    max-width: 220px;
+    overflow: hidden;
+    text-align: left;
+    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+        max-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.course-summary-download-preview:hover {
+    background-color: var(--color-chbe-green);
+    color: #fff;
+    border-color: var(--color-chbe-green);
 }
 
 .course-summary-chart-card {
@@ -295,17 +329,22 @@
 }
 
 .course-summary-modal__footer {
+    position: relative;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 1rem;
     padding: 0 2rem 1.5rem;
 }
 
 .course-summary-progress {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    pointer-events: none;
 }
 
 .course-summary-progress-dot {
@@ -322,20 +361,31 @@
 }
 
 .course-summary-next-btn {
-    min-width: 7.5rem;
+    position: relative;
+    z-index: 1;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border: none;
     border-radius: 10px;
     background: var(--summary-action);
     color: #fff;
     cursor: pointer;
     font: inherit;
-    font-size: clamp(0.95rem, 1.6vw, 1.25rem);
+    font-size: clamp(1.1rem, 2vw, 1.4rem);
     font-weight: 800;
     letter-spacing: 0.02em;
     line-height: 1;
-    padding: 0.65rem 1rem;
-    text-transform: uppercase;
+    padding: 0.65rem 0.85rem;
     transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.course-summary-next-btn .feather {
+    width: 1.35rem;
+    height: 1.35rem;
+    stroke-width: 2.5;
 }
 
 .course-summary-next-btn:hover {
@@ -372,6 +422,7 @@
     .course-summary-step--active,
     .course-summary-reveal-block--visible,
     .course-summary-next-btn,
+    .course-summary-download-preview,
     .course-summary-progress-dot {
         animation: none;
         transition: none;
@@ -424,6 +475,12 @@
         text-align: center;
     }
 
+    .course-summary-download-preview {
+        width: 100%;
+        max-width: none;
+        justify-self: center;
+    }
+
     .course-summary-metric-grid {
         gap: 1.25rem;
     }
@@ -438,6 +495,80 @@
     }
 
     .course-summary-next-btn {
-        min-width: 6.5rem;
+        min-width: 2.5rem;
+        min-height: 2.5rem;
     }
+}
+
+/* ===========================================
+   CONVERSATION EXPORT (TXT / JSON ZIP)
+   =========================================== */
+
+.conversation-export-format-modal {
+    width: min(520px, 100%);
+    min-height: auto;
+    max-height: calc(100vh - 3rem);
+}
+
+.conversation-export-format-desc {
+    margin: 0.35rem 0 0;
+    color: var(--summary-muted);
+    font-size: 0.9rem;
+    line-height: 1.45;
+}
+
+.conversation-export-format-body {
+    padding: 1rem 1.25rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    align-items: stretch;
+}
+
+.conversation-export-radio {
+    display: flex;
+    gap: 0.65rem;
+    align-items: flex-start;
+    text-align: left;
+    font-size: 0.92rem;
+    line-height: 1.35;
+    cursor: pointer;
+}
+
+.conversation-export-radio input {
+    margin-top: 0.2rem;
+}
+
+.conversation-export-format-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.65rem;
+    padding: 0 1.25rem 1.25rem;
+    flex-wrap: wrap;
+}
+
+.conversation-export-cancel-btn,
+.conversation-export-download-btn {
+    border-radius: 10px;
+    padding: 0.55rem 1rem;
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--summary-card-border);
+}
+
+.conversation-export-cancel-btn {
+    background: rgba(255, 255, 255, 0.72);
+    color: var(--text-primary, #212529);
+}
+
+.conversation-export-download-btn {
+    background: var(--summary-action);
+    color: #fff;
+    border-color: transparent;
+}
+
+.conversation-export-download-btn:disabled {
+    opacity: 0.55;
+    cursor: wait;
 }

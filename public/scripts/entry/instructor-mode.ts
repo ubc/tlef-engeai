@@ -25,6 +25,7 @@ import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showIn
 import { renderAbout } from '../about/about.js';
 import { initializeCourseInformation } from '../feature/course-information.js';
 import { initializeCourseSummary, summonCourseSummary } from '../feature/course-summary.js';
+import { openConversationExportFormatModal } from '../feature/conversations-export-modal.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
 import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from '../feature/assistant-prompts.js';
 import { initializeSystemPrompts, hasUnsavedSystemPromptChanges, resetUnsavedSystemPromptChanges } from '../feature/system-prompts.js';
@@ -37,29 +38,6 @@ import {
     getInstructorOnboardingStageFromURL,
     isNewCourseOnboardingURL
 } from '../utils/url-parser.js';
-
-/** Minimal valid empty ZIP (end-of-central-directory only). Placeholder for future export. */
-const EMPTY_CONVERSATIONS_ZIP_BYTES = new Uint8Array([
-    0x50, 0x4b, 0x05, 0x06, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-]);
-
-function downloadEmptyConversationsZipPlaceholder(): void {
-    const blob = new Blob([EMPTY_CONVERSATIONS_ZIP_BYTES], { type: 'application/zip' });
-    const url = URL.createObjectURL(blob);
-    const courseId = (window as unknown as { currentClass?: activeCourse }).currentClass?.id;
-    const base = 'course-conversations-placeholder';
-    const filename = courseId ? `${base}-${courseId}.zip` : `${base}.zip`;
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = filename;
-    anchor.rel = 'noopener';
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-}
 
 /**
  * checkAuthentication
@@ -1381,7 +1359,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const downloadConversationsBtn = document.getElementById('instructor-download-conversations-btn');
         if (downloadConversationsBtn) {
             downloadConversationsBtn.addEventListener('click', () => {
-                downloadEmptyConversationsZipPlaceholder();
+                const cc = (window as unknown as { currentClass?: activeCourse }).currentClass;
+                if (!cc?.id) {
+                    alert('Error: Course ID not found. Please refresh the page.');
+                    return;
+                }
+                openConversationExportFormatModal(cc.id);
             });
         }
 
