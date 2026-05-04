@@ -5,10 +5,74 @@
  * @description Course **roster** storage in `{courseName}_users` — privacy-focused reads (no `puid` persistence on create) plus batch helpers for flag overlays.
  */
 
+import type { Document } from 'mongodb';
 import type { CourseUser } from '../../types/shared';
 import { getCollectionNames } from './collection-registry-mongo';
 import type { MongoDalContext } from './mongo-context';
 import { appLogger } from '../../utils/logger';
+
+/** Roster metrics for instructor course summary (aligned with conversation ZIP export filters). */
+export interface CourseSummaryEngagementTotals {
+    students: number;
+    nonDeletedChats: number;
+}
+
+/**
+ * courseSummaryEngagementFacetPipeline
+ *
+ * Single `$facet` on `{courseName}_users`: student row count vs. non-deleted chat thread count
+ * for `affiliation: 'student'` only (same rules as `studentConversationZipExportPipeline`).
+ *
+ * @returns Pipeline stages (not wrapped in `aggregate([])` — pass to `collection.aggregate(...)`.
+ */
+export function courseSummaryEngagementFacetPipeline(): Document[] {
+    return [
+        {
+            $facet: {
+                studentFacet: [{ $match: { affiliation: 'student' } }, { $count: 'count' }],
+                chatFacet: [
+                    { $match: { affiliation: 'student' } },
+                    { $unwind: { path: '$chats', preserveNullAndEmptyArrays: false } },
+                    {
+                        $match: {
+                            $expr: { $ne: ['$chats.isDeleted', true] }
+                        }
+                    },
+                    { $count: 'count' }
+                ]
+            }
+        }
+    ];
+}
+
+function parseEngagementFacetRow(rows: Document[]): CourseSummaryEngagementTotals {
+    const row = rows[0] as
+        | {
+              studentFacet?: { count: number }[];
+              chatFacet?: { count: number }[];
+          }
+        | undefined;
+    const students = row?.studentFacet?.[0]?.count ?? 0;
+    const nonDeletedChats = row?.chatFacet?.[0]?.count ?? 0;
+    return { students, nonDeletedChats };
+}
+
+/**
+ * countCourseStudentsAndActiveChats
+ *
+ * @param ctx - MongoDalContext
+ * @param courseName - Logical course name (namespace for `{courseName}_users`)
+ *
+ * @returns Student roster count and count of non-deleted chat threads (export-aligned).
+ */
+export async function countCourseStudentsAndActiveChats(
+    ctx: MongoDalContext,
+    courseName: string
+): Promise<CourseSummaryEngagementTotals> {
+    const coll = await getCourseUsersMongoCollection(ctx, courseName);
+    const rows = await coll.aggregate(courseSummaryEngagementFacetPipeline()).toArray();
+    return parseEngagementFacetRow(rows);
+}
 
 /**
  * getCourseUsersMongoCollection

@@ -1,8 +1,7 @@
 /**
  * COURSE SUMMARY MODULE
  *
- * Frontend-only course summary modal prototype. Loads copy from a mock JSON file until backend
- * course-summary endpoints exist.
+ * Loads course summary from GET /api/courses/:courseId/course-summary/status (instructor auth).
  *
  * Chart rendering uses the **`chart.js` npm package**: the UMD bundle is copied to
  * `public/vendor/chart.js/chart.umd.js` by `npm run vendor:chart` and loaded by {@link chartsController}
@@ -103,7 +102,6 @@ interface CourseSummaryStackedBarValue {
 }
 
 const COURSE_SUMMARY_TEMPLATE_URL = '/components/course-summary/course-summary.html';
-const COURSE_SUMMARY_MOCK_URL = '/components/course-summary/course-summary.mock.json';
 const COURSE_SUMMARY_CSS_ID = 'course-summary-stylesheet';
 const COURSE_SUMMARY_CSS_HREF = '/styles/instructor-components/course-summary.css';
 
@@ -249,53 +247,21 @@ export async function summonCourseSummary(currentClass: activeCourse): Promise<v
 }
 
 /**
- * Fetches mock course-summary JSON and, when present, applies {@link applyCurrentCourseOverrides}.
+ * Fetches course-summary JSON from the API (live roster counts and catalog dates).
  */
 async function fetchCourseSummaryStatus(currentClass: activeCourse): Promise<CourseSummaryStatusResponse> {
-    const response = await fetch(COURSE_SUMMARY_MOCK_URL, {
+    const response = await fetch(`/api/courses/${encodeURIComponent(currentClass.id)}/course-summary/status`, {
+        credentials: 'include',
         headers: {
-            'Accept': 'application/json'
+            Accept: 'application/json'
         }
     });
 
     if (!response.ok) {
-        throw new Error('Failed to load course summary mock data');
+        throw new Error(`Course summary request failed: ${response.status}`);
     }
 
-    const status = await response.json() as CourseSummaryStatusResponse;
-    if (status.summary) {
-        status.summary = applyCurrentCourseOverrides(status.summary, currentClass);
-    }
-
-    return status;
-}
-
-/**
- * Overwrites summary course metadata with the active instructor course (id, short name, frame type, dates).
- * Date handling is temporary until real course windows are supplied by the API.
- *
- * @param summary - Record from mock or future API.
- * @param currentClass - Active course from session / URL context.
- */
-function applyCurrentCourseOverrides(summary: CourseSummaryRecord, currentClass: activeCourse): CourseSummaryRecord {
-    const courseId = currentClass.id || summary.courseId;
-    const courseName = getShortCourseName(currentClass.courseName || summary.courseName);
-    const startDate = formatDateForDisplay(currentClass.date || summary.course.startDate); // change it later
-    const endDate = formatDateForDisplay(new Date()); // change it later
-
-    return {
-        ...summary,
-        courseId,
-        courseName,
-        course: {
-            ...summary.course,
-            id: courseId,
-            name: courseName,
-            frameType: currentClass.frameType || summary.course.frameType,
-            startDate,
-            endDate
-        }
-    };
+    return (await response.json()) as CourseSummaryStatusResponse;
 }
 
 /**
@@ -320,7 +286,7 @@ function summaryPayloadAllowsSummon(response: CourseSummaryStatusResponse): bool
 }
 
 /**
- * Decides auto-open on first load: mock `shouldDisplayModal`, payload eligibility, not yet shown for this
+ * Decides auto-open on first load: `shouldDisplayModal` from API, payload eligibility, not yet shown for this
  * instructor (localStorage + `instructorDisplayStates`).
  */
 function shouldOpenCourseSummaryModal(response: CourseSummaryStatusResponse, currentClass: activeCourse): boolean {
@@ -464,11 +430,13 @@ async function fetchCourseSummaryTemplate(): Promise<string> {
 /** Writes welcome text, dates, metric targets (starting at 0), and topic chips into the overlay. */
 function hydrateSummaryContent(overlay: HTMLElement, summary: CourseSummaryRecord): void {
     const instructorName = getCurrentInstructorName(summary);
-    const courseName = summary.course.name || summary.courseName;
-    const startDate = summary.course.startDate || 'Not available';
-    const endDate = summary.course.endDate || 'Not available';
+    const rawCourseName = summary.course.name || summary.courseName;
+    const courseName = getShortCourseName(rawCourseName);
+    const startDateRaw = summary.course.startDate || '';
+    const endDateRaw = summary.course.endDate || '';
+    const startDate = startDateRaw ? formatDateForDisplay(startDateRaw) : 'Not available';
+    const endDate = endDateRaw ? formatDateForDisplay(endDateRaw) : 'Not available';
 
-    
     setText(overlay, '#course-summary-welcome', `Welcome Back, ${instructorName}!`);
     setText(overlay, '#course-summary-complete-course', courseName);
 
@@ -580,12 +548,16 @@ function mapStackedBarToChartSpec(stackedBar: CourseSummaryStackedBar): StackedB
  */
 async function renderStackedBarGraph(overlay: HTMLElement, stackedBar: CourseSummaryStackedBar): Promise<void> {
     const canvas = overlay.querySelector('#course-summary-struggle-chart') as HTMLCanvasElement | null;
+    if (!stackedBar.categories?.length || !stackedBar.series?.length) {
+        chartsController.destroyActiveChart();
+        return;
+    }
     const spec = mapStackedBarToChartSpec(stackedBar);
     await chartsController.renderStackedBarChart(canvas, spec);
 }
 
 /**
- * Records that the current instructor has seen the summary (localStorage + mock payload mutation).
+ * Records that the current instructor has seen the summary (localStorage + in-memory payload mutation).
  * Server persistence is TODO.
  */
 async function markCourseSummaryDisplayed(summary: CourseSummaryRecord, currentClass: activeCourse): Promise<void> {

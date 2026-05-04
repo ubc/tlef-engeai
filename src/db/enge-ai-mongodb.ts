@@ -318,6 +318,9 @@ export class EngEAI_MongoDB {
     public createStudent = async (courseName: string, userData: Partial<CourseUser>) =>
         CourseUserMongo.createStudent(this.ctx(), courseName, userData);
 
+    public countCourseStudentsAndActiveChats = async (courseName: string) =>
+        CourseUserMongo.countCourseStudentsAndActiveChats(this.ctx(), courseName);
+
     /**
      * Chats — chat-mongo.ts
      */

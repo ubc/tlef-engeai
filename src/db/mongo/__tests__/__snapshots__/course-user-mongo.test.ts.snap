@@ -1,0 +1,46 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`course-user-mongo course summary engagement facet pipeline matches snapshot (aligned with export student filters) 1`] = `
+[
+  {
+    "$facet": {
+      "chatFacet": [
+        {
+          "$match": {
+            "affiliation": "student",
+          },
+        },
+        {
+          "$unwind": {
+            "path": "$chats",
+            "preserveNullAndEmptyArrays": false,
+          },
+        },
+        {
+          "$match": {
+            "$expr": {
+              "$ne": [
+                "$chats.isDeleted",
+                true,
+              ],
+            },
+          },
+        },
+        {
+          "$count": "count",
+        },
+      ],
+      "studentFacet": [
+        {
+          "$match": {
+            "affiliation": "student",
+          },
+        },
+        {
+          "$count": "count",
+        },
+      ],
+    },
+  },
+]
+`;

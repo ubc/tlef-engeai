@@ -150,9 +150,14 @@ export class ChartsController {
             return;
         }
 
+        const categories = [...(spec.categories ?? [])].sort((a, b) => a.order - b.order);
+        if (categories.length === 0 || !(spec.series?.length)) {
+            this.destroyActiveChart();
+            return;
+        }
+
         this.destroyActiveChart();
 
-        const categories = [...spec.categories].sort((a, b) => a.order - b.order);
         const labels = categories.map((c) => c.label);
         const stackId = spec.stackId ?? 'stack';
 

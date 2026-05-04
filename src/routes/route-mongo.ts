@@ -1629,6 +1629,104 @@ router.post('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: R
 }));
 
 /**
+ * GET /:courseId/course-summary/status
+ * Course summary modal payload for instructors: live roster/chat counts, catalog dates, empty struggle placeholder.
+ *
+ * @route GET /api/courses/:courseId/course-summary/status
+ * @returns CourseSummaryStatusResponse-compatible JSON (see instructor `course-summary.ts`)
+ */
+router.get(
+    '/:courseId/course-summary/status',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        try {
+            const { courseId } = req.params;
+            const instance = await EngEAI_MongoDB.getInstance();
+            const course = await instance.getActiveCourse(courseId);
+            if (!course) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Course not found'
+                });
+            }
+
+            const courseData = course as activeCourse;
+            const totals = await instance.countCourseStudentsAndActiveChats(courseData.courseName);
+
+            const toYyyyMmDd = (d: Date | string | undefined): string => {
+                if (d == null) return '';
+                const date = d instanceof Date ? d : new Date(d);
+                if (Number.isNaN(date.getTime())) return '';
+                return date.toISOString().slice(0, 10);
+            };
+
+            const startDate = toYyyyMmDd(courseData.date);
+            const endDate = toYyyyMmDd(new Date()); // change it later
+
+            const nowIso = new Date().toISOString();
+            const summary = {
+                id: `summary_${courseData.id}`,
+                courseId: courseData.id,
+                courseName: courseData.courseName,
+                status: 'generated' as const,
+                isAvailable: true,
+                availableAt: null as string | null,
+                instructorDisplayStates: [] as {
+                    instructorUserId: string;
+                    instructorName?: string;
+                    hasBeenDisplayed: boolean;
+                    firstDisplayedAt: string | null;
+                    lastDisplayedAt: string | null;
+                    displayCount: number;
+                }[],
+                course: {
+                    id: courseData.id,
+                    name: courseData.courseName,
+                    frameType: courseData.frameType,
+                    startDate: startDate || '',
+                    endDate: endDate || ''
+                },
+                totals: {
+                    students: totals.students,
+                    nonDeletedChats: totals.nonDeletedChats
+                },
+                struggleTopics: {
+                    source: 'memory-agent-per-user' as const,
+                    groupedBy: 'course-topic-or-week' as const,
+                    topTopics: [] as { topic: string; studentCount: number; percentageOfStudents: number }[],
+                    stackedBar: {
+                        xAxisLabel: 'Course Topic',
+                        yAxisLabel: 'Students',
+                        categories: [] as { id: string; label: string; order: number }[],
+                        series: [] as {
+                            topic: string;
+                            color: string;
+                            values: { categoryId: string; studentCount: number; tooltip: string }[];
+                        }[]
+                    }
+                },
+                downloadConversationAvailable: true,
+                downloadConversationAvailableAt: null as string | null,
+                createdAt: nowIso,
+                updatedAt: nowIso
+            };
+
+            res.json({
+                success: true,
+                shouldDisplayModal: true,
+                summary
+            });
+        } catch (error) {
+            appLogger.error('Error building course summary status:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to load course summary'
+            });
+        }
+    })
+);
+
+/**
  * GET /:courseId/flags
  * Get all flag reports for a course. Instructors only.
  *
