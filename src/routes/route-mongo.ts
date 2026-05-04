@@ -2303,7 +2303,9 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
         }
         
         // Hard delete: Remove material from array
-        contentItem.additionalMaterials = contentItem.additionalMaterials.filter((m: any) => m.id !== materialId);
+        contentItem.additionalMaterials = (contentItem.additionalMaterials ?? []).filter(
+            (m: any) => m.id !== materialId
+        );
         
         // Update the course in MongoDB
         const result = await mongoDB.updateActiveCourse(courseId, course as any);

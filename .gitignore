@@ -17,6 +17,12 @@ deployments/
 dist/
 public/dist/
 
+# Jest coverage output
+coverage/
+
+# Chart.js UMD copied from npm by `npm run vendor:chart`
+public/vendor/chart.js/chart.umd.js
+
 # Dependency directories
 node_modules/
 

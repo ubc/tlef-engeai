@@ -284,6 +284,45 @@ body {
                 max-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Download conversations (placeholder export) — matches course info footer pattern */
+.instructor-download-conversations-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--background-2);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s, background-color 0.25s ease;
+    color: #000000;
+    overflow: hidden;
+}
+
+.instructor-download-conversations-btn:hover {
+    background-color: var(--color-chbe-green);
+    color: white;
+    border-color: var(--color-chbe-green);
+}
+
+.instructor-download-conversations-btn i {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    transition: margin 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.instructor-download-conversations-btn span {
+    white-space: nowrap;
+    opacity: 1;
+    max-width: 220px;
+    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                max-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 /* Instructor Course Selection Button Styles */
 .instructor-course-selection-btn {
     width: 100%;
@@ -369,6 +408,21 @@ body {
 }
 
 .instructor-feature-sidebar.collapsed .instructor-course-info-btn i {
+    margin: 0;
+}
+
+.instructor-feature-sidebar.collapsed .instructor-download-conversations-btn span {
+    opacity: 0;
+    max-width: 0;
+}
+
+.instructor-feature-sidebar.collapsed .instructor-download-conversations-btn {
+    justify-content: center;
+    padding: 0.5rem;
+    gap: 0;
+}
+
+.instructor-feature-sidebar.collapsed .instructor-download-conversations-btn i {
     margin: 0;
 }
 
@@ -618,6 +672,43 @@ body {
     overflow: scroll;
 }
 
+/* Floating control to open course summary (below summary modal z-index 1100) */
+.course-summary-summon-fab {
+    position: fixed;
+    right: 1.25rem;
+    bottom: 1.25rem;
+    z-index: 1005;
+    width: 3.25rem;
+    height: 3.25rem;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: var(--color-chbe-green);
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+    transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.course-summary-summon-fab:hover {
+    background: var(--color-chbe-green-dark, #3d6225);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+.course-summary-summon-fab:focus-visible {
+    outline: 3px solid var(--color-chbe-green);
+    outline-offset: 3px;
+}
+
+.course-summary-summon-fab .feather {
+    width: 1.35rem;
+    height: 1.35rem;
+}
+
 /* Hide instructor sidebar during onboarding */
 .onboarding-active .instructor-sidebar {
     display: none;
@@ -631,6 +722,10 @@ body {
     margin: 0;
     height: 100vh;
     width: 100vw;
+}
+
+.onboarding-active .course-summary-summon-fab {
+    display: none;
 }
 
 /* ===========================================

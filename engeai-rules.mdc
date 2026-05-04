@@ -86,7 +86,7 @@ EngE-AI is an AI-powered study assistant for engineering courses at UBC. Student
 ### Database (MongoDB)
 
 - **Collections:** `active-course-list`, `active-users`, per-course collections (users, flags, memory-agent)
-- **Core:** `EngEAI_MongoDB` in `src/db/enge-ai-mongodb.ts`
+- **Core:** `EngEAI_MongoDB` in `src/db/enge-ai-mongodb.ts`; domain helpers in `src/db/mongo/`
 - **Data:** Courses, users, chats, flags, learning objectives, materials, system prompts
 
 ### Vector Database (Qdrant)
