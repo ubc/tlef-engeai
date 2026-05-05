@@ -14,6 +14,46 @@ export function sanitizeZipPathSegment(label: string): string {
 }
 
 /**
+ * One folder name per student in monitor ZIP exports; duplicate display names append `-userId`.
+ * Call once per distinct student in a stable order (e.g. roster sort).
+ */
+export function monitorExportUniqueStudentFolder(
+    studentName: string,
+    userId: string,
+    counts: Map<string, number>
+): string {
+    const base = sanitizeZipPathSegment(studentName || 'Unknown');
+    const n = counts.get(base) ?? 0;
+    counts.set(base, n + 1);
+    if (n === 0) return base;
+    return `${base}-${sanitizeZipPathSegment(userId)}`;
+}
+
+/**
+ * Builds a map userId → export folder stem matching {@link monitorExportUniqueStudentFolder} for each roster row,
+ * preserving `studentsOrdered` iteration order for disambiguation.
+ */
+export function assignMonitorExportFolderPerStudent(
+    studentsOrdered: ReadonlyArray<{ studentName: string; userId: string }>
+): Map<string, string> {
+
+    // Build a map of user ids to export folder stems
+    const counts = new Map<string, number>(); 
+
+    // Map of user ids to export folder stems
+    const folderByUserId = new Map<string, string>();
+
+    // Iterate over the students ordered and assign the export folder stem for the user id
+    for (const { studentName, userId } of studentsOrdered) {
+        folderByUserId.set(userId, monitorExportUniqueStudentFolder(studentName, userId, counts));
+    }
+    return folderByUserId;
+}
+
+/** Subfolder under the export root for per-student struggle-topic files alongside chat folders. */
+export const MONITOR_EXPORT_STRUGGLE_TOPICS_FOLDER = sanitizeZipPathSegment('Struggle topics');
+
+/**
  * Format a Date as `YYYY-MM-DD` for ZIP paths only (no `/` between day/month/year —
  * slashes would split ZIP entries into nested folders).
  */

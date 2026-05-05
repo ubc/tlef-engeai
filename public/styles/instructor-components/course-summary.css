@@ -254,7 +254,7 @@
     line-height: 1.25;
 }
 
-/* Matches .instructor-download-conversations-btn (sidebar footer): flex row, 20px icon, 8px radius, footer-sized width cap */
+/* Same layout pattern as instructor footer action buttons (flex row, 20px icon, 8px radius) */
 .course-summary-download-preview {
     box-sizing: border-box;
     width: min(100%, 246px);

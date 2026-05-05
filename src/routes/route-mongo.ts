@@ -43,11 +43,17 @@ import { RAGApp } from '../rag/rag-app';
 import { addCharismaAndRichToCourse } from '../helpers/instructor-helpers';
 import { appLogger } from '../utils/logger';
 import { scheduledPublishAudit } from '../jobs/scheduled-publish-audit';
-import { formatSingleChatExportText } from '../helpers/conversation-export-format';
 import {
+    formatSingleChatExportText,
+    formatStruggleTopicsExportText,
+    struggleTopicsExportToJsonPayload
+} from '../helpers/conversation-export-format';
+import {
+    assignMonitorExportFolderPerStudent,
     buildConversationExportArchiveBasename,
     contentDispositionAttachmentZip,
     formatYyyyMmDdForPath,
+    MONITOR_EXPORT_STRUGGLE_TOPICS_FOLDER,
     resolveChatExportDate,
     sanitizeZipPathSegment
 } from '../helpers/conversation-export-path';
@@ -3638,19 +3644,6 @@ router.post('/admin/reset-vector-database', asyncHandlerWithAuth(async (req: Req
 // MONITOR ROUTES (Instructor Only)
 // ===========================================
 
-/** Stable folder name per exported student; duplicate display names append `-userId`. */
-function monitorConversationExportUniqueStudentFolder(
-    studentName: string,
-    userId: string,
-    counts: Map<string, number>
-): string {
-    const base = sanitizeZipPathSegment(studentName || 'Unknown');
-    const n = counts.get(base) ?? 0;
-    counts.set(base, n + 1);
-    if (n === 0) return base;
-    return `${base}-${sanitizeZipPathSegment(userId)}`;
-}
-
 /**
  * GET /monitor/:courseId/chat-titles
  * Get chat titles for all users (students and instructors). Lightweight list without full message history.
@@ -3813,10 +3806,10 @@ router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(asyn
 
 /**
  * GET /monitor/:courseId/conversations-export.zip
- * Stream a ZIP of all student conversations (TXT or JSON per chat).
+ * Stream a ZIP of all student conversations (TXT or JSON per chat) plus a `Struggle topics/` folder per student roster row.
  *
  * @route GET /api/courses/monitor/:courseId/conversations-export.zip
- * @query format — `txt` (default) or `json`
+ * @query format — `txt` (default) or `json` (applies to both chat exports and struggle topic files).
  */
 router.get(
     '/monitor/:courseId/conversations-export.zip',
@@ -3849,6 +3842,9 @@ router.get(
             const rootPrefix = `${archiveBasename}/`;
 
             const cursor = await mongoDB.aggregateStudentChatsForZipExport(courseName);
+            const struggleRows = await mongoDB.listStudentStruggleRowsForZipExport(courseName);
+            const folderByUserId = assignMonitorExportFolderPerStudent(struggleRows);
+            const strugglePrefix = `${rootPrefix}${MONITOR_EXPORT_STRUGGLE_TOPICS_FOLDER}/`;
 
             res.setHeader('Content-Type', 'application/zip');
             res.setHeader('Content-Disposition', contentDispositionAttachmentZip(archiveBasename));
@@ -3865,17 +3861,13 @@ router.get(
 
             archive.pipe(res);
 
-            const folderCounts = new Map<string, number>();
-
             try {
                 for await (const row of cursor as AsyncIterable<ConversationZipExportRow>) {
                     const chat = row.chat;
                     const chatTitle = chat.itemTitle || chat.title || 'Untitled Chat';
-                    const studentFolder = monitorConversationExportUniqueStudentFolder(
-                        row.studentName,
-                        row.userId,
-                        folderCounts
-                    );
+                    const studentFolder =
+                        folderByUserId.get(row.userId) ??
+                        sanitizeZipPathSegment(`${row.studentName || 'Unknown'}-${row.userId}`);
                     const dateLabel = formatYyyyMmDdForPath(
                         resolveChatExportDate(chat as unknown as Record<string, unknown>, exportedAt)
                     );
@@ -3895,6 +3887,23 @@ router.get(
                             : JSON.stringify(row, null, 2);
 
                     archive.append(Buffer.from(payload, 'utf-8'), { name: zipEntryPath });
+                }
+
+                const extSt = archiveKind === 'txt' ? 'txt' : 'json';
+                for (const srow of struggleRows) {
+                    const stem = folderByUserId.get(srow.userId)!;
+                    const strugglePath = `${strugglePrefix}${stem}.${extSt}`;
+                    const struggleInput = {
+                        userId: srow.userId,
+                        name: srow.studentName,
+                        memoryAgentCreatedAt: srow.memoryAgentCreatedAt,
+                        struggleTopics: srow.struggleTopics
+                    };
+                    const struggleBody =
+                        archiveKind === 'txt'
+                            ? formatStruggleTopicsExportText(struggleInput)
+                            : `${JSON.stringify(struggleTopicsExportToJsonPayload(struggleInput), null, 2)}\n`;
+                    archive.append(Buffer.from(struggleBody, 'utf-8'), { name: strugglePath });
                 }
 
                 await archive.finalize();

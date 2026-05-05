@@ -25,7 +25,6 @@ import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showIn
 import { renderAbout } from '../about/about.js';
 import { initializeCourseInformation } from '../feature/course-information.js';
 import { initializeCourseSummary, summonCourseSummary } from '../feature/course-summary.js';
-import { openConversationExportFormatModal } from '../feature/conversations-export-modal.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
 import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from '../feature/assistant-prompts.js';
 import { initializeSystemPrompts, hasUnsavedSystemPromptChanges, resetUnsavedSystemPromptChanges } from '../feature/system-prompts.js';
@@ -1353,18 +1352,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (courseInfoBtn) {
             courseInfoBtn.addEventListener('click', async () => {
                 navigateToInstructorView('course-information');
-            });
-        }
-
-        const downloadConversationsBtn = document.getElementById('instructor-download-conversations-btn');
-        if (downloadConversationsBtn) {
-            downloadConversationsBtn.addEventListener('click', () => {
-                const cc = (window as unknown as { currentClass?: activeCourse }).currentClass;
-                if (!cc?.id) {
-                    alert('Error: Course ID not found. Please refresh the page.');
-                    return;
-                }
-                openConversationExportFormatModal(cc.id);
             });
         }
 

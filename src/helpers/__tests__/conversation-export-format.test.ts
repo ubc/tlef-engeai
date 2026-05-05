@@ -1,4 +1,8 @@
-import { formatSingleChatExportText } from '../conversation-export-format';
+import {
+    formatSingleChatExportText,
+    formatStruggleTopicsExportText,
+    struggleTopicsExportToJsonPayload
+} from '../conversation-export-format';
 
 describe('formatSingleChatExportText', () => {
     it('matches golden transcript layout for sample chat', () => {
@@ -44,5 +48,65 @@ Message 2:
   Timestamp: 1700000000500
 `
         );
+    });
+
+    describe('formatStruggleTopicsExportText', () => {
+        it('formats header, ISO date, and bullet topics', () => {
+            const created = new Date('2026-05-01T12:00:00.000Z');
+            const out = formatStruggleTopicsExportText({
+                userId: 'u-1',
+                name: 'Jane Doe',
+                memoryAgentCreatedAt: created,
+                struggleTopics: ['loops', 'pointers']
+            });
+            expect(out).toBe(
+                `Student name: Jane Doe\nStudent ID: u-1\nMemory agent record created: 2026-05-01T12:00:00.000Z\n\nStruggle topics:\n- loops\n- pointers\n`
+            );
+        });
+
+        it('shows not initialized and (none) when missing agent row or empty topics', () => {
+            expect(
+                formatStruggleTopicsExportText({
+                    userId: 'u-2',
+                    name: 'Alex',
+                    memoryAgentCreatedAt: null,
+                    struggleTopics: []
+                })
+            ).toBe(
+                `Student name: Alex\nStudent ID: u-2\nMemory agent record created: (not initialized)\n\nStruggle topics:\n(none)\n`
+            );
+        });
+    });
+
+    describe('struggleTopicsExportToJsonPayload', () => {
+        it('maps to JSON shape with ISO string or null', () => {
+            const d = new Date('2026-05-01T12:00:00.000Z');
+            expect(
+                struggleTopicsExportToJsonPayload({
+                    userId: 'u-1',
+                    name: 'Jane',
+                    memoryAgentCreatedAt: d,
+                    struggleTopics: ['a']
+                })
+            ).toEqual({
+                userId: 'u-1',
+                name: 'Jane',
+                memoryAgentCreatedAt: '2026-05-01T12:00:00.000Z',
+                struggleTopics: ['a']
+            });
+            expect(
+                struggleTopicsExportToJsonPayload({
+                    userId: 'u-2',
+                    name: 'Pat',
+                    memoryAgentCreatedAt: null,
+                    struggleTopics: []
+                })
+            ).toEqual({
+                userId: 'u-2',
+                name: 'Pat',
+                memoryAgentCreatedAt: null,
+                struggleTopics: []
+            });
+        });
     });
 });

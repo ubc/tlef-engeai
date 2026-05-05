@@ -1,6 +1,6 @@
 /**
  * conversation-export-format.ts
- * @description Plain-text transcript formatting shared by monitor single-chat download and bulk ZIP export.
+ * @description Transcript and struggle-topic text formatting for monitor single-chat download and bulk ZIP export.
  */
 
 export function exportRoleLabel(msg: Record<string, unknown> | undefined): string {
@@ -75,4 +75,53 @@ export function formatSingleChatExportText(params: FormatSingleChatExportParams)
     }
 
     return exportText;
+}
+
+/** Input shape for structured exports in `Struggle topics/` ZIP entries. */
+export interface StruggleTopicsZipExportInput {
+    userId: string;
+    name: string;
+    memoryAgentCreatedAt: Date | null;
+    struggleTopics: readonly string[];
+}
+
+/**
+ * Human-readable struggle export with roster id, memory-agent `createdAt` (when initialized), and topics.
+ */
+export function formatStruggleTopicsExportText(input: StruggleTopicsZipExportInput): string {
+    const createdLabel =
+        input.memoryAgentCreatedAt != null
+            ? input.memoryAgentCreatedAt.toISOString()
+            : '(not initialized)';
+    const lines = [
+        `Student name: ${input.name}`,
+        `Student ID: ${input.userId}`,
+        `Memory agent record created: ${createdLabel}`,
+        '',
+        'Struggle topics:'
+    ];
+    if (input.struggleTopics.length === 0) {
+        lines.push('(none)');
+    } else {
+        for (const topic of input.struggleTopics) {
+            lines.push(`- ${topic}`);
+        }
+    }
+    return `${lines.join('\n')}\n`;
+}
+
+/** JSON-serializable body for `.json` struggle exports (ISO date or null). */
+export function struggleTopicsExportToJsonPayload(input: StruggleTopicsZipExportInput): {
+    userId: string;
+    name: string;
+    memoryAgentCreatedAt: string | null;
+    struggleTopics: string[];
+} {
+    return {
+        userId: input.userId,
+        name: input.name,
+        memoryAgentCreatedAt:
+            input.memoryAgentCreatedAt != null ? input.memoryAgentCreatedAt.toISOString() : null,
+        struggleTopics: [...input.struggleTopics]
+    };
 }

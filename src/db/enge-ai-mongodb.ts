@@ -365,6 +365,10 @@ export class EngEAI_MongoDB {
     public aggregateStudentChatsForZipExport = async (courseName: string) =>
         ConversationExportMongo.aggregateStudentChatsForZipExport(this.ctx(), courseName);
 
+    /** Roster students + memory-agent struggle topics for monitor ZIP `Struggle topics/` entries. */
+    public listStudentStruggleRowsForZipExport = async (courseName: string) =>
+        ConversationExportMongo.listStudentStruggleRowsForZipExport(this.ctx(), courseName);
+
     /**
      * Global profiles — global-user-mongo.ts
      */

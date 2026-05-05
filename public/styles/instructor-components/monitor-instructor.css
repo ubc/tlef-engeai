@@ -23,36 +23,36 @@
     margin: 0 auto;
 }
 
-/* Header Section - Matching report design */
+/* Header — layout matches Initial Assistant Prompts (.assistant-prompts-header) */
 .monitor-header {
     background: var(--color-chbe-green);
-    border-radius: 10px;
+    border-radius: 12px;
     padding: 20px;
-    margin-bottom: 22px;
+    margin-bottom: 20px;
     border: 1px solid var(--border-color);
-    box-shadow: 
-        0px 2px 8px rgba(0, 0, 0, 0.1),
-        0px 0px 0px 20px white;
+    box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.1);
     animation: slideInDown 0.5s ease-in-out;
     position: sticky;
     z-index: 10;
     top: 0;
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
-    gap: 20px;
+    align-items: center;
 }
 
 .monitor-header.mobile-header-bar {
-    align-items: center;
     gap: 0.75rem;
 }
 
-.header-left h1 {
-    font-size: 20px;
-    font-weight: 600;
+.monitor-header .mobile-header-title {
+    flex: 1;
+    min-width: 0;
+}
+
+.monitor-header h1 {
     color: white;
-    margin: 0 0 5px 0;
+    margin: 0;
+    font-size: 24px;
 }
 
 .current-date-display {
@@ -62,10 +62,47 @@
     margin: 0;
 }
 
-.header-right {
+.monitor-header-actions {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 15px;
+}
+
+/* Matches Initial Assistant Prompts .assistant-add-prompt-btn (avoid loading assistant-prompts.css here) */
+.monitor-download-conversations-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: white;
+    color: var(--color-chbe-green);
+    border: 2px solid var(--color-chbe-green);
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.22s ease;
+}
+
+.monitor-download-conversations-btn i,
+.monitor-download-conversations-btn svg {
+    width: 18px;
+    height: 18px;
+    color: var(--color-chbe-green);
+}
+
+.monitor-download-conversations-btn:hover {
+    transform: scale(1.1);
+}
+
+.monitor-download-conversations-btn:active {
+    transform: scale(1.06);
+    transition-duration: 0.12s;
+}
+
+.monitor-download-conversations-btn .btn-text {
+    display: inline;
 }
 
 /* Navigation Tiles - Removed */
@@ -641,11 +678,6 @@
         gap: 0.75rem;
     }
 
-    .monitor-header.mobile-header-bar .header-left {
-        flex: 1;
-        min-width: 0;
-    }
-
     /* Override instructor-mode.css truncation so "Monitor Dashboard" is fully visible on mobile */
     #main-content-area .monitor-header.mobile-header-bar h1,
     #main-content-area .monitor-header.mobile-header-bar .mobile-header-title {
@@ -672,9 +704,26 @@
         color: var(--color-chbe-green);
     }
 
-    .header-right {
-        width: 100%;
-        justify-content: space-between;
+    .monitor-header.mobile-header-bar .monitor-header-actions {
+        flex: 0 0 auto;
+    }
+
+    .monitor-header.mobile-header-bar .monitor-download-conversations-btn {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.5rem;
+        background: var(--color-chbe-green);
+        color: white;
+        border-color: var(--color-chbe-green);
+    }
+
+    .monitor-header.mobile-header-bar .monitor-download-conversations-btn i,
+    .monitor-header.mobile-header-bar .monitor-download-conversations-btn svg {
+        color: white;
+    }
+
+    .monitor-header.mobile-header-bar .monitor-download-conversations-btn .btn-text {
+        display: none;
     }
 
     .nav-tiles {
@@ -736,7 +785,7 @@
         gap: 15px;
     }
     
-    .header-right {
+    .monitor-header-actions {
         width: 100%;
         justify-content: space-between;
     }
