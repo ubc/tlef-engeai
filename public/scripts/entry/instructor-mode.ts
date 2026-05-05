@@ -24,6 +24,7 @@ import { authService } from '../services/auth-service.js';
 import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
 import { renderAbout } from '../about/about.js';
 import { initializeCourseInformation } from '../feature/course-information.js';
+import { initializeCourseSummary, summonCourseSummary } from '../feature/course-summary.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
 import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from '../feature/assistant-prompts.js';
 import { initializeSystemPrompts, hasUnsavedSystemPromptChanges, resetUnsavedSystemPromptChanges } from '../feature/system-prompts.js';
@@ -207,6 +208,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Make currentClass globally accessible for onboarding completion
     window.currentClass = currentClass;
+
+    if (currentClass.courseSetup && currentClass.contentSetup && currentClass.flagSetup && currentClass.monitorSetup) {
+        void initializeCourseSummary(currentClass);
+    }
     
     // Remove onboarding-active class if all setup is complete
     if (currentClass.courseSetup && currentClass.contentSetup && currentClass.flagSetup && currentClass.monitorSetup) {
@@ -1347,6 +1352,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (courseInfoBtn) {
             courseInfoBtn.addEventListener('click', async () => {
                 navigateToInstructorView('course-information');
+            });
+        }
+
+        const courseSummaryFab = document.getElementById('course-summary-summon-fab');
+        if (courseSummaryFab) {
+            courseSummaryFab.addEventListener('click', () => {
+                const cc = (window as unknown as { currentClass?: activeCourse }).currentClass;
+                if (!cc) {
+                    console.warn('[INSTRUCTOR-MODE] course summary FAB: currentClass not ready');
+                    return;
+                }
+                void summonCourseSummary(cc);
             });
         }
 

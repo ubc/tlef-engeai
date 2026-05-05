@@ -64,7 +64,7 @@
     font-size: 0.8rem;
     font-weight: 600;
     cursor: pointer;
-    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+    transition: transform 0.22s ease;
 }
 
 .system-add-prompt-btn i,
@@ -75,18 +75,12 @@
 }
 
 .system-add-prompt-btn:hover {
-    background: rgba(77, 122, 47, 0.08);
-    border-color: white;
-    color: white;
-}
-
-.system-add-prompt-btn:hover i,
-.system-add-prompt-btn:hover svg {
-    color: white;
+    transform: scale(1.1);
 }
 
 .system-add-prompt-btn:active {
-    transform: scale(0.98);
+    transform: scale(1.06);
+    transition-duration: 0.12s;
 }
 
 /* Desktop: show text "+ add new" (icon + text) */

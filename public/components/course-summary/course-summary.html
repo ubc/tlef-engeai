@@ -1,0 +1,66 @@
+<div class="course-summary-modal" role="document">
+    <div class="course-summary-modal__header">
+        <div>
+            <p class="course-summary-modal__eyebrow">Course Summary</p>
+            <h2 id="course-summary-title">Course Summary</h2>
+        </div>
+        <button type="button" class="course-summary-modal__close" id="course-summary-close-btn" aria-label="Close course summary">
+            &times;
+        </button>
+    </div>
+
+    <div class="course-summary-modal__body">
+        <section class="course-summary-step course-summary-step--active" data-course-summary-step="completion">
+            <p class="course-summary-welcome" id="course-summary-welcome">Welcome Back!</p>
+            <p class="course-summary-complete">
+                <strong id="course-summary-complete-course">This course</strong> is now complete!
+            </p>
+        </section>
+
+        <section class="course-summary-step course-summary-step--summary" data-course-summary-step="summary">
+            <h3 id="course-summary-summary-title">Course Summary</h3>
+
+            <div class="course-summary-date-grid course-summary-reveal-block" data-course-summary-reveal="overview">
+                <p>Start date: <span id="course-summary-start-date">Not available</span></p>
+                <div class="course-summary-date-icon" aria-hidden="true">
+                    <i data-feather="calendar"></i>
+                </div>
+                <p>End date: <span id="course-summary-end-date">Not available</span></p>
+            </div>
+
+            <div class="course-summary-metric-grid course-summary-reveal-block" data-course-summary-reveal="metrics">
+                <article class="course-summary-metric-card">
+                    <strong id="course-summary-students-count">0</strong>
+                    <span>Students</span>
+                </article>
+                <article class="course-summary-metric-card">
+                    <strong id="course-summary-chats-count">0</strong>
+                    <span>Conversations</span>
+                </article>
+            </div>
+
+            <div class="course-summary-download-row course-summary-reveal-block" data-course-summary-reveal="download">
+                <p>Download all conversations for this course as a ZIP (same export as <strong>Download conversations</strong> on the Monitor page).</p>
+                <button type="button" id="course-summary-download-conversations-btn" class="course-summary-download-preview">
+                    <i data-feather="download"></i>
+                    <span>Download conversations</span>
+                </button>
+            </div>
+        </section>
+
+        <section class="course-summary-step" data-course-summary-step="struggle-topics">
+            <h3>Struggle Topics Statistics</h3>
+            <div class="course-summary-chart-card">
+                <canvas id="course-summary-struggle-chart" aria-label="Stacked bar graph of struggle topic statistics"></canvas>
+            </div>
+            <div class="course-summary-topic-list" id="course-summary-topic-list" aria-label="Top struggle topics"></div>
+        </section>
+    </div>
+
+    <div class="course-summary-modal__footer">
+        <div class="course-summary-progress" id="course-summary-progress" aria-label="Course summary progress"></div>
+        <button type="button" class="course-summary-next-btn" id="course-summary-next-btn" aria-label="Next">
+            <i data-feather="chevron-right" aria-hidden="true"></i>
+        </button>
+    </div>
+</div>

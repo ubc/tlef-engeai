@@ -6,6 +6,8 @@ module.exports = {
     testMatch: ['**/__tests__/**/*.test.ts'],
     moduleFileExtensions: ['ts', 'js', 'json'],
     clearMocks: true,
+    collectCoverageFrom: ['src/db/**/*.ts', '!src/db/**/__tests__/**'],
+    coverageDirectory: 'coverage',
     globals: {
         'ts-jest': {
             tsconfig: '<rootDir>/tsconfig.jest.json'

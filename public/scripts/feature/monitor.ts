@@ -1,4 +1,5 @@
 import { renderFeatherIcons } from "../api/api.js";
+import { openConversationExportFormatModal } from "./conversations-export-modal.js";
 
 /**
  * Monitor Dashboard Types
@@ -137,6 +138,15 @@ class MonitorDashboard {
         sortSelect?.addEventListener('change', (e) => {
             const value = (e.target as HTMLSelectElement).value as 'conversations' | 'name';
             this.setSort(value);
+        });
+
+        const downloadConversationsBtn = document.getElementById('monitor-download-conversations-btn');
+        downloadConversationsBtn?.addEventListener('click', () => {
+            if (!this.courseId) {
+                alert('Error: Course ID not found. Please refresh the page.');
+                return;
+            }
+            openConversationExportFormatModal(this.courseId);
         });
 
         // COMMENTED OUT: Calendar modal click handler

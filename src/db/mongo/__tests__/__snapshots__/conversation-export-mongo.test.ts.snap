@@ -1,0 +1,121 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`conversation-export-mongo aggregation pipeline matches snapshot 1`] = `
+[
+  {
+    "$match": {
+      "affiliation": "student",
+    },
+  },
+  {
+    "$unwind": {
+      "path": "$chats",
+      "preserveNullAndEmptyArrays": false,
+    },
+  },
+  {
+    "$match": {
+      "$expr": {
+        "$ne": [
+          "$chats.isDeleted",
+          true,
+        ],
+      },
+    },
+  },
+  {
+    "$addFields": {
+      "__sortTs": {
+        "$reduce": {
+          "in": {
+            "$max": [
+              "$$value",
+              {
+                "$ifNull": [
+                  "$$this.timestamp",
+                  0,
+                ],
+              },
+            ],
+          },
+          "initialValue": 0,
+          "input": {
+            "$ifNull": [
+              "$chats.messages",
+              [],
+            ],
+          },
+        },
+      },
+      "studentName": {
+        "$ifNull": [
+          "$name",
+          "Unknown",
+        ],
+      },
+    },
+  },
+  {
+    "$sort": {
+      "__sortTs": -1,
+      "studentName": 1,
+      "userId": 1,
+    },
+  },
+  {
+    "$project": {
+      "_id": 0,
+      "chat": {
+        "courseName": "$chats.courseName",
+        "createdAt": "$chats.createdAt",
+        "id": "$chats.id",
+        "itemTitle": "$chats.itemTitle",
+        "messages": {
+          "$map": {
+            "as": "m",
+            "in": {
+              "content": "$$m.content",
+              "role": "$$m.role",
+              "sender": "$$m.sender",
+              "text": "$$m.text",
+              "timestamp": "$$m.timestamp",
+            },
+            "input": {
+              "$ifNull": [
+                "$chats.messages",
+                [],
+              ],
+            },
+          },
+        },
+        "title": "$chats.title",
+        "topicOrWeekTitle": "$chats.topicOrWeekTitle",
+      },
+      "studentName": 1,
+      "userId": 1,
+    },
+  },
+]
+`;
+
+exports[`conversation-export-mongo pretty-printed JSON row matches snapshot 1`] = `
+"{
+  "userId": "u-sample",
+  "studentName": "Alex Student",
+  "chat": {
+    "id": "chat-sample",
+    "courseName": "DemoCourse",
+    "topicOrWeekTitle": "Week 1",
+    "itemTitle": "My chat",
+    "title": "",
+    "createdAt": "2026-05-03",
+    "messages": [
+      {
+        "sender": "user",
+        "text": "Question?",
+        "timestamp": 1715000000000
+      }
+    ]
+  }
+}"
+`;
