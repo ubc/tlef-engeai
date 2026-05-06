@@ -1,4 +1,5 @@
 import { renderFeatherIcons } from "../api/api.js";
+import { fetchCourseMongoBackupZip } from "./course-mongo-backup-download.js";
 import { openConversationExportFormatModal } from "./conversations-export-modal.js";
 
 /**
@@ -147,6 +148,21 @@ class MonitorDashboard {
                 return;
             }
             openConversationExportFormatModal(this.courseId);
+        });
+
+        const mongoBackupBtn = document.getElementById('monitor-course-mongo-backup-btn');
+        mongoBackupBtn?.addEventListener('click', () => {
+            if (!this.courseId) {
+                alert('Error: Course ID not found. Please refresh the page.');
+                return;
+            }
+            const btn = mongoBackupBtn as HTMLButtonElement;
+            btn.disabled = true;
+            void fetchCourseMongoBackupZip(this.courseId).catch((err) => {
+                alert(`Mongo backup failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }).finally(() => {
+                btn.disabled = false;
+            });
         });
 
         // COMMENTED OUT: Calendar modal click handler

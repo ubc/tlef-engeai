@@ -37,6 +37,7 @@ import * as MemoryAgentMongo from './mongo/memory-agent-mongo';
 import * as ScheduledTaskMongo from './mongo/scheduled-task-mongo';
 import * as TopicWeekMongo from './mongo/topic-week-mongo';
 import * as ConversationExportMongo from './mongo/conversation-export-mongo';
+import * as CourseBackupMongo from './mongo/course-backup-mongo';
 
 dotenv.config();
 
@@ -368,6 +369,10 @@ export class EngEAI_MongoDB {
     /** Roster students + memory-agent struggle topics for monitor ZIP `Struggle topics/` entries. */
     public listStudentStruggleRowsForZipExport = async (courseName: string) =>
         ConversationExportMongo.listStudentStruggleRowsForZipExport(this.ctx(), courseName);
+
+    /** Instructor ZIP: catalog row + per-course collections as EJSON strings — course-backup-mongo.ts */
+    public loadCourseMongoBackupPayloads = async (course: activeCourse) =>
+        CourseBackupMongo.loadCourseMongoBackupPayloads(this.ctx(), course);
 
     /**
      * Global profiles — global-user-mongo.ts

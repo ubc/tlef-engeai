@@ -69,7 +69,8 @@
 }
 
 /* Matches Initial Assistant Prompts .assistant-add-prompt-btn (avoid loading assistant-prompts.css here) */
-.monitor-download-conversations-btn {
+.monitor-download-conversations-btn,
+.monitor-course-mongo-backup-btn {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -86,22 +87,27 @@
 }
 
 .monitor-download-conversations-btn i,
-.monitor-download-conversations-btn svg {
+.monitor-download-conversations-btn svg,
+.monitor-course-mongo-backup-btn i,
+.monitor-course-mongo-backup-btn svg {
     width: 18px;
     height: 18px;
     color: var(--color-chbe-green);
 }
 
-.monitor-download-conversations-btn:hover {
+.monitor-download-conversations-btn:hover,
+.monitor-course-mongo-backup-btn:hover {
     transform: scale(1.1);
 }
 
-.monitor-download-conversations-btn:active {
+.monitor-download-conversations-btn:active,
+.monitor-course-mongo-backup-btn:active {
     transform: scale(1.06);
     transition-duration: 0.12s;
 }
 
-.monitor-download-conversations-btn .btn-text {
+.monitor-download-conversations-btn .btn-text,
+.monitor-course-mongo-backup-btn .btn-text {
     display: inline;
 }
 
@@ -708,7 +714,8 @@
         flex: 0 0 auto;
     }
 
-    .monitor-header.mobile-header-bar .monitor-download-conversations-btn {
+    .monitor-header.mobile-header-bar .monitor-download-conversations-btn,
+    .monitor-header.mobile-header-bar .monitor-course-mongo-backup-btn {
         min-width: 44px;
         min-height: 44px;
         padding: 0.5rem;
@@ -718,11 +725,14 @@
     }
 
     .monitor-header.mobile-header-bar .monitor-download-conversations-btn i,
-    .monitor-header.mobile-header-bar .monitor-download-conversations-btn svg {
+    .monitor-header.mobile-header-bar .monitor-download-conversations-btn svg,
+    .monitor-header.mobile-header-bar .monitor-course-mongo-backup-btn i,
+    .monitor-header.mobile-header-bar .monitor-course-mongo-backup-btn svg {
         color: white;
     }
 
-    .monitor-header.mobile-header-bar .monitor-download-conversations-btn .btn-text {
+    .monitor-header.mobile-header-bar .monitor-download-conversations-btn .btn-text,
+    .monitor-header.mobile-header-bar .monitor-course-mongo-backup-btn .btn-text {
         display: none;
     }
 

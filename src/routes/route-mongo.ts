@@ -49,6 +49,11 @@ import {
     struggleTopicsExportToJsonPayload
 } from '../helpers/conversation-export-format';
 import {
+    buildCourseMongoBackupArchiveBasename,
+    buildCourseMongoBackupJsonFilenames,
+    courseMongoBackupFilenameSlug
+} from '../helpers/course-backup-path';
+import {
     assignMonitorExportFolderPerStudent,
     buildConversationExportArchiveBasename,
     contentDispositionAttachmentZip,
@@ -3917,6 +3922,74 @@ router.get(
                 res.status(500).json({
                     success: false,
                     error: 'Failed to export conversations',
+                    details: error instanceof Error ? error.message : 'Unknown error'
+                });
+            }
+        }
+    })
+);
+
+/**
+ * GET /:courseId/course-backup.zip
+ * Instructor-only ZIP: `{CourseName} - Backup/` with five EJSON files (catalog row + four per-course collections).
+ *
+ * @route GET /api/courses/:courseId/course-backup.zip
+ */
+router.get(
+    '/:courseId/course-backup.zip',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        try {
+            const { courseId } = req.params;
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const course = await mongoDB.getActiveCourse(courseId);
+            if (!course) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Course not found'
+                });
+            }
+
+            const courseData = course as activeCourse;
+            const displayName = courseData.courseName;
+
+            const payloads = await mongoDB.loadCourseMongoBackupPayloads(courseData);
+            const archiveBasename = buildCourseMongoBackupArchiveBasename(displayName);
+            const rootPrefix = `${archiveBasename}/`;
+            const slug = courseMongoBackupFilenameSlug(displayName);
+            const names = buildCourseMongoBackupJsonFilenames(slug);
+
+            res.setHeader('Content-Type', 'application/zip');
+            res.setHeader('Content-Disposition', contentDispositionAttachmentZip(archiveBasename));
+
+            const archive = archiver('zip', { zlib: { level: 6 } });
+            archive.on('warning', (err: Error & { code?: string }) => {
+                if (err.code !== 'ENOENT') {
+                    appLogger.warn('[course-mongo-backup] archiver warning:', err);
+                }
+            });
+            archive.on('error', (err: Error) => {
+                appLogger.error('[course-mongo-backup] archiver error:', err);
+            });
+            archive.pipe(res);
+
+            const entries: Array<[string, string]> = [
+                [`${rootPrefix}${names.activeCourseList}`, payloads.activeCourseListJson],
+                [`${rootPrefix}${names.flags}`, payloads.flagsJson],
+                [`${rootPrefix}${names.scheduledTasks}`, payloads.scheduledTasksJson],
+                [`${rootPrefix}${names.users}`, payloads.usersJson],
+                [`${rootPrefix}${names.memoryAgent}`, payloads.memoryAgentJson]
+            ];
+            for (const [path, body] of entries) {
+                archive.append(Buffer.from(`${body}\n`, 'utf-8'), { name: path });
+            }
+            await archive.finalize();
+        } catch (error) {
+            appLogger.error('Error exporting course Mongo backup ZIP:', error);
+            if (!res.headersSent) {
+                res.status(500).json({
+                    success: false,
+                    error: 'Failed to export course backup',
                     details: error instanceof Error ? error.message : 'Unknown error'
                 });
             }
