@@ -709,7 +709,7 @@ export class ChatApp {
                 // Pattern: User prompt -> LLM response -> User prompt
                 // Remove RAG document content from user messages to focus on actual conversation
                 let formattedMessages = '';
-                lastMessages.forEach((msg) => {
+                lastMessages.forEach((msg : any) => {
                     const role = msg.role === 'user' ? 'Student' : 'AI Tutor';
                     let content = msg.content;
                     
