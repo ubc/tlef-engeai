@@ -44,7 +44,8 @@ export function sanitizeGlobalUserForFrontend(globalUser: GlobalUser): Omit<Glob
         createdAt: globalUser.createdAt,
         updatedAt: globalUser.updatedAt,
         instructorOnboardingCompleted: globalUser.instructorOnboardingCompleted ?? false,
-        studentOnboardingCompleted: globalUser.studentOnboardingCompleted ?? false
+        studentOnboardingCompleted: globalUser.studentOnboardingCompleted ?? false,
+        isAdmin: globalUser.isAdmin === true
     };
 }
 

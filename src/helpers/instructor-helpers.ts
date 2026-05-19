@@ -56,7 +56,8 @@ export async function getOrCreateCharismaAndRich(mongoDB: EngEAI_MongoDB): Promi
                 userId: mongoDB.idGenerator.globalUserID(puid, name, 'faculty'),
                 coursesEnrolled: [],
                 affiliation: 'faculty',
-                status: 'active'
+                status: 'active',
+                isAdmin: true
             });
             appLogger.log(`[INSTRUCTOR-HELPERS] Created GlobalUser for ${name} (${user.userId})`);
         }

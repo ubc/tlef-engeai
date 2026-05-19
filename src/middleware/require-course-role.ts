@@ -7,6 +7,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
+import { isAdminUser } from '../utils/admin';
 import { appLogger } from '../utils/logger';
 
 type CourseIdSource = 'params' | 'paramsId' | 'body' | 'query' | 'session';
@@ -69,12 +70,12 @@ export function requireInstructorForCourseAPI(sources: CourseIdSource[] = ['para
                 return res.status(404).json({ error: 'Course not found' });
             }
 
-            const isInstructor = globalUser.affiliation === 'faculty' &&
+            const isCourseInstructor = globalUser.affiliation === 'faculty' &&
                 course.instructors?.some((inst: any) =>
                     (typeof inst === 'string' ? inst : inst.userId) === globalUser.userId
                 );
 
-            if (!isInstructor) {
+            if (!isCourseInstructor && !isAdminUser(globalUser)) {
                 appLogger.log(`[RBAC] User ${user.puid} denied instructor API access for course ${courseId}`);
                 return res.status(403).json({ error: 'Instructor access required' });
             }
@@ -144,9 +145,66 @@ export function requireInstructorGlobal(req: Request, res: Response, next: NextF
     if (!globalUser) {
         return res.status(401).json({ error: 'Authentication required' });
     }
-    if (globalUser.affiliation !== 'faculty') {
+    if (globalUser.affiliation !== 'faculty' && !isAdminUser(globalUser)) {
         appLogger.log(`[RBAC] User ${globalUser.userId} denied global instructor access`);
         return res.status(403).json({ error: 'Instructor access required' });
     }
     next();
+}
+
+/**
+ * Middleware: Require platform admin (global)
+ * Returns 403 JSON if user is not admin.
+ */
+export function requireAdminGlobal(req: Request, res: Response, next: NextFunction) {
+    const globalUser = (req.session as any)?.globalUser;
+    if (!globalUser) {
+        return res.status(401).json({ error: 'Authentication required' });
+    }
+    if (!isAdminUser(globalUser)) {
+        appLogger.log(`[RBAC] User ${globalUser.userId} denied global admin access`);
+        return res.status(403).json({ error: 'Admin access required' });
+    }
+    next();
+}
+
+/**
+ * Middleware: Require platform admin for course-scoped API endpoints
+ * Resolves courseId from params (courseId or id), body, query, or session.
+ */
+export function requireAdminForCourseAPI(sources: CourseIdSource[] = ['params', 'paramsId', 'body', 'session']) {
+    return async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const user = (req as any).user;
+            if (!user) {
+                return res.status(401).json({ error: 'Authentication required' });
+            }
+
+            const courseId = resolveCourseId(req, sources);
+            if (!courseId) {
+                return res.status(400).json({ error: 'Course ID is required' });
+            }
+
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const globalUser = await mongoDB.findGlobalUserByPUID(user.puid);
+            if (!globalUser) {
+                return res.status(401).json({ error: 'User not found' });
+            }
+
+            const course = await mongoDB.getActiveCourse(courseId);
+            if (!course) {
+                return res.status(404).json({ error: 'Course not found' });
+            }
+
+            if (!isAdminUser(globalUser)) {
+                appLogger.log(`[RBAC] User ${user.puid} denied admin API access for course ${courseId}`);
+                return res.status(403).json({ error: 'Admin access required' });
+            }
+
+            next();
+        } catch (error) {
+            appLogger.error('[RBAC] Error in requireAdminForCourseAPI:', error);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    };
 }
