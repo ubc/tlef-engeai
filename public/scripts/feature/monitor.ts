@@ -1,4 +1,5 @@
 import { renderFeatherIcons } from "../api/api.js";
+import { authService } from "../services/auth-service.js";
 import { fetchCourseMongoBackupZip } from "./course-mongo-backup-download.js";
 import { openConversationExportFormatModal } from "./conversations-export-modal.js";
 
@@ -8,7 +9,7 @@ import { openConversationExportFormatModal } from "./conversations-export-modal.
 interface UserData {
     id: string;
     name: string;
-    role: 'student' | 'instructor';
+    role: 'student' | 'instructor' | 'admin';
     conversationCount: number;
     chatHistory: ChatSession[];
 }
@@ -45,6 +46,7 @@ class MonitorDashboard {
     constructor() {
         this.getCourseId();
         this.loadChatTitles();
+        void this.configureMongoBackupButton();
         this.bindEvents();
         this.render();
     }
@@ -116,6 +118,32 @@ class MonitorDashboard {
         this.render();
     }
 
+
+    /**
+     * Show Mongo backup button only for platform admins.
+     */
+    private async configureMongoBackupButton(): Promise<void> {
+        const mongoBackupBtn = document.getElementById('monitor-course-mongo-backup-btn');
+        if (!mongoBackupBtn) return;
+
+        try {
+            await authService.checkAuthStatus();
+            const user = authService.getUser();
+            if (user?.isAdmin) {
+                mongoBackupBtn.classList.remove('monitor-backup-hidden');
+            } else {
+                mongoBackupBtn.classList.add('monitor-backup-hidden');
+            }
+        } catch {
+            mongoBackupBtn.classList.add('monitor-backup-hidden');
+        }
+    }
+
+    private static roleBadgeLabel(role: UserData['role']): string {
+        if (role === 'admin') return 'Admin';
+        if (role === 'instructor') return 'Instructor';
+        return 'Student';
+    }
 
     /**
      * Bind event listeners
@@ -236,7 +264,7 @@ class MonitorDashboard {
             <div class="student-item" data-student-id="${user.id}">
                 <div class="student-header" onclick="toggleMonitorStudentAccordion('${user.id}')">
                 <div class="student-name">
-                    <span class="role-badge role-${user.role}">${user.role === 'instructor' ? 'Instructor' : 'Student'}</span>
+                    <span class="role-badge role-${user.role}">${MonitorDashboard.roleBadgeLabel(user.role)}</span>
                     ${user.name}
                 </div>
                 <div class="student-conversation-count">${user.conversationCount} conversation${user.conversationCount !== 1 ? 's' : ''}</div>

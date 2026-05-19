@@ -33,7 +33,7 @@
 import express, { Request, Response } from 'express';
 import archiver from 'archiver';
 import { asyncHandler, asyncHandlerWithAuth } from '../middleware/async-handler';
-import { requireInstructorForCourseAPI, requireInstructorGlobal } from '../middleware/require-course-role';
+import { requireAdminForCourseAPI, requireInstructorForCourseAPI, requireInstructorGlobal } from '../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt, SystemPromptItem } from '../types/shared';
 import { IDGenerator } from '../utils/unique-id-generator';
@@ -3687,12 +3687,21 @@ router.get('/monitor/:courseId/chat-titles', asyncHandlerWithAuth(async (req: Re
             { affiliation: { $in: ['student', 'faculty'] } },
             { projection: { userId: 1, name: 1, affiliation: 1, chats: 1 } }
         ).toArray();
+
+        const adminDocs = await mongoDB.db.collection('active-users')
+            .find({ isAdmin: true }, { projection: { userId: 1 } })
+            .toArray();
+        const adminUserIds = new Set(
+            adminDocs
+                .map((u) => (u as { userId?: string }).userId)
+                .filter((id): id is string => typeof id === 'string' && id.length > 0)
+        );
         
-        // Build response with chat titles for each user (students and instructors)
+        // Build response with chat titles for each user (students, instructors, admins)
         const usersData: Array<{
             userId: string;
             userName: string;
-            role: 'student' | 'instructor';
+            role: 'student' | 'instructor' | 'admin';
             chats: Array<{ id: string; title: string }>;
         }> = [];
         
@@ -3703,11 +3712,17 @@ router.get('/monitor/:courseId/chat-titles', asyncHandlerWithAuth(async (req: Re
                 id: chat.id,
                 title: chat.itemTitle || chat.title || 'Untitled Chat'
             }));
+
+            let role: 'student' | 'instructor' | 'admin' =
+                userData.affiliation === 'faculty' ? 'instructor' : 'student';
+            if (adminUserIds.has(userData.userId)) {
+                role = 'admin';
+            }
             
             usersData.push({
                 userId: userData.userId,
                 userName: userData.name || 'Unknown User',
-                role: userData.affiliation === 'faculty' ? 'instructor' : 'student',
+                role,
                 chats: chatTitles
             });
         }
@@ -3937,7 +3952,7 @@ router.get(
  */
 router.get(
     '/:courseId/course-backup.zip',
-    requireInstructorForCourseAPI(['params']),
+    requireAdminForCourseAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
             const { courseId } = req.params;

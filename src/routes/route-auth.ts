@@ -439,7 +439,8 @@ router.get('/current-user', async (req: express.Request, res: express.Response) 
             const userData = {
                 name: globalUser.name, // From database
                 affiliation: globalUser.affiliation, // From database
-                userId: globalUser.userId // From database - this is the key field
+                userId: globalUser.userId, // From database - this is the key field
+                isAdmin: globalUser.isAdmin === true
             };
 
             appLogger.log('[SERVER] ✅ User is authenticated');
@@ -449,7 +450,8 @@ router.get('/current-user', async (req: express.Request, res: express.Response) 
                 name: globalUser.name,
                 affiliation: globalUser.affiliation,
                 status: globalUser.status,
-                coursesEnrolled: globalUser.coursesEnrolled.length
+                coursesEnrolled: globalUser.coursesEnrolled.length,
+                isAdmin: globalUser.isAdmin === true
             });
 
             res.json({
@@ -538,7 +540,8 @@ router.get('/me', async (req: express.Request, res: express.Response) => {
             const userData = {
                 name: globalUser.name, // From database
                 affiliation: globalUser.affiliation, // From database
-                userId: globalUser.userId // From database - this is the key field
+                userId: globalUser.userId, // From database - this is the key field
+                isAdmin: globalUser.isAdmin === true
             };
 
             appLogger.log('[SERVER] ✅ User is authenticated');
@@ -548,7 +551,8 @@ router.get('/me', async (req: express.Request, res: express.Response) => {
                 name: globalUser.name,
                 affiliation: globalUser.affiliation,
                 status: globalUser.status,
-                coursesEnrolled: globalUser.coursesEnrolled.length
+                coursesEnrolled: globalUser.coursesEnrolled.length,
+                isAdmin: globalUser.isAdmin === true
             });
 
             res.json({

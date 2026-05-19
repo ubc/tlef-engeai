@@ -374,6 +374,15 @@
     color: #1976d2;
 }
 
+.role-badge.role-admin {
+    background: rgba(211, 47, 47, 0.2);
+    color: #d32f2f;
+}
+
+.monitor-course-mongo-backup-btn.monitor-backup-hidden {
+    display: none;
+}
+
 .student-conversation-count {
     font-size: 13px;
     color: var(--text-secondary);

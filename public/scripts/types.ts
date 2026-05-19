@@ -266,6 +266,8 @@ export interface GlobalUser {
     instructorOnboardingCompleted?: boolean;
     /** true if user has completed any student onboarding (optional for backward compat) */
     studentOnboardingCompleted?: boolean;
+    /** platform admin — all instructor privileges plus admin-only features */
+    isAdmin?: boolean;
 }
 
 /**
@@ -343,6 +345,7 @@ export interface AuthUser {
     name: string;
     userId: string;
     affiliation: string;
+    isAdmin?: boolean;
 }
 
 /** Authentication state from AuthService */

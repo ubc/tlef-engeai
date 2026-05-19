@@ -46,11 +46,12 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
             return res.status(401).redirect('/');
         }
         
-        // Verify user is enrolled or is instructor
-        const isInstructor = globalUser.affiliation === 'faculty' && 
-                            course.instructors?.some((inst: any) => 
+        // Verify user is enrolled or is instructor (admins count as instructors for page access)
+        const isCourseInstructor = globalUser.affiliation === 'faculty' &&
+                            course.instructors?.some((inst: any) =>
                                 (typeof inst === 'string' ? inst : inst.userId) === globalUser.userId
                             );
+        const isInstructor = isCourseInstructor || globalUser.isAdmin === true;
         const isEnrolled = globalUser.coursesEnrolled.includes(courseId);
         
         if (!isInstructor && !isEnrolled) {
