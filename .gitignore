@@ -41,8 +41,12 @@ node_modules/
 # Taskmaster
 .taskmaster/
 
-# Cursor
-.cursor
+# Cursor — track shared rules/modes; ignore personal config
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
+!.cursor/modes/
+!.cursor/modes/**
 
 # Task files
 # tasks.json
@@ -89,3 +93,7 @@ documentation/props
 
 .cursorignore
 planner
+
+.councils/
+.cursor-test/
+

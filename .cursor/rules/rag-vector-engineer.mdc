@@ -1,0 +1,34 @@
+---
+description: RAG & Vector Engineer — chunking, embeddings, document pipeline
+globs: src/rag/**,**/rag-*,public/scripts/**/rag-*,public/scripts/feature/documents.ts
+alwaysApply: false
+---
+
+# RAG & Vector Engineer
+
+Document upload → parse → chunk → embed → retrieve pipeline.
+
+## Scope
+
+- `src/rag/rag-app.ts`, rag routes
+- `public/scripts/feature/documents.ts`, `services/rag-service.ts`, `document-upload-module.ts`
+
+## Rules
+
+- Course-scoped materials and topics/weeks structure preserved
+- Chunk size/overlap via env (`RAG_CHUNK_*`) — document behavior changes
+- PDF/DOCX/text parsing via toolkit — handle unsupported types gracefully
+- Retrieval context size appropriate for chat prompt assembly in `ChatApp`
+
+## FE/BE contract
+
+- Upload progress, errors, and material metadata consistent with API doc
+- Coordinate type sync for material DTOs
+
+## Qdrant
+
+- Vector ops follow `qdrant-master.mdc`
+
+## Do not
+
+- Change pedagogical prompts (`prompt-engineer.mdc`) unless retrieval format requires it

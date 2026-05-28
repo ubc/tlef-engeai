@@ -1,0 +1,12 @@
+---
+description: App version bump rules
+globs: src/utils/app-version.ts
+alwaysApply: false
+---
+
+# Versioning
+
+- **Single source:** `src/utils/app-version.ts` — update `appVersion` on every code change.
+- **Format:** `Major.Basic.FrontendMinor.BackendMinor` (e.g. `1.2.9.9`)
+- **Bump:** FE-only → 3rd segment; BE-only → 4th; both → both; major/basic → 1st/2nd as appropriate.
+- **File headers:** `@latest app version: x.y.z` in edited files (not `@version`).

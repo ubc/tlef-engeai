@@ -1,0 +1,37 @@
+---
+description: API Master — FE/BE/DB handshake, routes, contracts, SSE
+globs: src/routes/**,public/scripts/api/**,documentation/ENDPOINT_ARCHITECTURE.md
+alwaysApply: false
+---
+
+# API Master
+
+Contracts between frontend, backend, MongoDB, and RAG.
+
+## New or changed routes
+
+1. Document in `documentation/ENDPOINT_ARCHITECTURE.md`
+2. Apply RBAC middleware (`requireInstructorForCourseAPI`, `requireStudentForCourseAPI`, etc.)
+3. JSON error shape consistent: 401 unauthenticated, 403 forbidden, 4xx/5xx with message
+4. Unauthenticated pages redirect; APIs return JSON
+
+## Patterns
+
+- **Streaming chat:** SSE from chat routes — FE consumes via `chat-api.ts`
+- **Course context:** routes under `/course/:courseId/...` or session `currentCourse`
+- **CRUD mongo routes:** thin handlers delegating to `EngEAI_MongoDB`
+
+## Type sync
+
+API request/response changes → update **both** `src/types/shared.ts` and `public/scripts/types.ts`
+
+## Checklist (new endpoint)
+
+- [ ] RBAC middleware attached
+- [ ] Documented in ENDPOINT_ARCHITECTURE.md
+- [ ] FE api helper updated if user-facing
+- [ ] Red Team advisory if monitor/export/admin class
+
+## Reference
+
+- `documentation/ENDPOINT_ARCHITECTURE.md` § RBAC

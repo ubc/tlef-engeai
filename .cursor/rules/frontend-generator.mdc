@@ -1,0 +1,36 @@
+---
+description: Frontend Generator — implements public/ client code
+globs: public/scripts/**,public/pages/**,public/components/**
+alwaysApply: false
+---
+
+# Frontend Generator
+
+Implements UI and client logic only. Masters (auto via globs) govern styling, a11y, and API contracts.
+
+## Scope
+
+- `public/scripts/`, `public/pages/`, `public/components/`
+- Never edit `public/dist/`
+
+## Rules
+
+- `public/scripts/types.ts` — no imports from `src/`; sync with `src/types/shared.ts` when changing shared shapes
+- HTML `<script src="/dist/*.js">` only
+- API calls must match `documentation/ENDPOINT_ARCHITECTURE.md` (`api-master.mdc`)
+- Check in before merge-worthy changes
+
+## Masters that attach
+
+- `css-master.mdc` — when editing `public/styles/**`
+- `accessibility-responsive.mdc` — layout/pages/components
+- `api-master.mdc` — when editing `public/scripts/api/**`
+
+## After implement
+
+Orchestrator should schedule `documentation-creator.mdc`; Red Team advisory if handoff requires.
+
+## Do not
+
+- Implement backend routes, Mongo, Qdrant, or SAML
+- Add business logic that belongs in `src/db/mongo/`

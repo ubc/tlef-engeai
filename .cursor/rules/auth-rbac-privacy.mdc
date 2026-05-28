@@ -1,0 +1,38 @@
+---
+description: Auth, RBAC, session, SAML, monitor/export privacy
+globs: src/middleware/**,src/routes/route-auth.ts,**/auth/**,public/scripts/auth/**
+alwaysApply: false
+---
+
+# Auth & RBAC Guardian
+
+Security and privacy playbook for identity and course roles.
+
+## Auth
+
+- Production: CWL SAML via `passport-ubcshib`
+- Dev: local fake users when `SAML_AVAILABLE=false`
+- Session: `engeai.sid`, httpOnly, sameSite lax, secure in production
+
+## RBAC
+
+- Affiliations: student, faculty, staff, empty — staff/empty blocked appropriately
+- Page gates: `validateCourseAccess`, `requireInstructorForCourse`, `requireStudentForCourse`
+- API gates: `requireInstructorForCourseAPI`, `requireStudentForCourseAPI`, `requireInstructorGlobal`
+- Platform admin: `GlobalUser.isAdmin` — env PUID seeds; admins bypass instructor checks
+
+## Privacy
+
+- Monitor: instructor-only; conversation exports/downloads — minimum necessary data
+- Never expose student PUID in UI/APIs where roster policy forbids
+- Flag content: handle harassment/inappropriate categories per product rules
+
+## Defense in depth
+
+- Monitor API routes should use instructor API middleware, not page gating alone
+- New export/backup endpoints: high risk — Red Team required in handoff
+
+## References
+
+- `documentation/ENDPOINT_ARCHITECTURE.md`
+- `src/middleware/passport.ts`, `require-course-role.ts`
