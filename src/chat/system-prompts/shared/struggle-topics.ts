@@ -1,7 +1,6 @@
 /**
  * Struggle topics handling instructions (shared; behavior note varies by mode).
  *
- * @latest app version: 1.2.10.11
  */
 
 export type StruggleTopicOverride = 'socratic_off' | 'inherit_methodology';

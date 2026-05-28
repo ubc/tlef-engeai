@@ -1,6 +1,5 @@
 /**
  * Core identity
- * @latest app version: 1.2.10.11
  */
 
 export const CORE_IDENTITY_SECTION = `===========================================

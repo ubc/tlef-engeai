@@ -1,7 +1,6 @@
 /**
  * Appends course-specific overlays to a composed system prompt.
  *
- * @latest app version: 1.2.9.11
  */
 
 import { LearningObjectiveForDisplay } from '../../types/shared';

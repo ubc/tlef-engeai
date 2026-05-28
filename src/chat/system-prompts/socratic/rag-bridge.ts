@@ -1,6 +1,5 @@
 /**
  * Socratic RAG bridge
- * @latest app version: 1.2.10.11
  */
 
 export const RAG_BRIDGE_PROMPT = `Based on the course materials and context provided above, help the student using the Socratic method. CRITICAL: Ask ONLY ONE question at a time.

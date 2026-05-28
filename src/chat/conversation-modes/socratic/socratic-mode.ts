@@ -1,7 +1,6 @@
 /**
  * Socratic conversation mode implementation.
  *
- * @latest app version: 1.2.9.11
  */
 
 import {

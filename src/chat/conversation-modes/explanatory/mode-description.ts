@@ -1,7 +1,6 @@
 /**
  * Explanatory mode catalog — descriptions only (M1 stub).
  *
- * @latest app version: 1.2.9.11
  */
 
 import { ModeDescriptionInput } from '../metadata/conversation-mode-types';

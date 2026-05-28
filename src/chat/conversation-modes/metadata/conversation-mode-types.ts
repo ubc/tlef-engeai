@@ -1,7 +1,6 @@
 /**
  * Conversation mode metadata types.
  *
- * @latest app version: 1.2.9.11
  */
 
 /** Stable slug — stored on Chat + API */

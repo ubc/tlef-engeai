@@ -28,7 +28,7 @@ All API routes are prefixed with `/api/`. Page routes are served from `/` and `/
 | `/api/course` | courseEntryRoutes | Course entry, enter-by-code, current course |
 | `/api/user` | userManagementRoutes | User profile, onboarding, activity |
 | `/api/health` | healthRoutes | Health check |
-| `/api/version` | versionRoutes | Backend version |
+| `/api/version` | versionRoutes | App version (SemVer) |
 
 ---
 
@@ -204,7 +204,7 @@ All chat endpoints require auth. Access is scoped by session `currentCourse` and
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/api/health` | No | Health check (DB ping) |
-| GET | `/api/version` | No | Backend version |
+| GET | `/api/version` | No | App version (SemVer) |
 
 ---
 

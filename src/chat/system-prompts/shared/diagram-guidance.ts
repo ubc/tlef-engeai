@@ -1,6 +1,5 @@
 /**
  * Diagram guidance (shared across conversation modes)
- * @latest app version: 1.2.10.11
  */
 
 export const DIAGRAM_GUIDANCE_SECTION = `===========================================

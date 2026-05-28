@@ -1,7 +1,6 @@
 /**
  * Shared RAG prompt utilities.
  *
- * @latest app version: 1.2.10.11
  */
 
 export const RAG_ERROR_MESSAGE = `I apologize, but I'm having trouble accessing the course materials right now. Let me help you with your question based on general engineering principles, though I may not have access to specific course content.

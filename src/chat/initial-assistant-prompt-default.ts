@@ -1,7 +1,6 @@
 /**
  * Default welcome message for new chats (not part of the system prompt).
  *
- * @latest app version: 1.2.10.13
  */
 
 export const DEFAULT_INITIAL_ASSISTANT_MESSAGE = `Hello! I'm EngE-AI, your virtual engineering tutor. I'm here to help you work through engineering concepts and problems using guided thinking rather than just giving you the answers.

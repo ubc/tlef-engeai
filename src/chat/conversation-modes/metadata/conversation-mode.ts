@@ -1,7 +1,6 @@
 /**
  * Abstract conversation mode — prompt assembly via module registry.
  *
- * @latest app version: 1.2.9.11
  */
 
 import { appendCourseContext } from '../append-course-context';

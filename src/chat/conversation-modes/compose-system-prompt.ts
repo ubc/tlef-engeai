@@ -1,7 +1,6 @@
 /**
  * Public entry: compose system prompt for a conversation mode.
  *
- * @latest app version: 1.2.9.11
  */
 
 import { SystemPromptBuildContext } from './compose-system-prompt-context';

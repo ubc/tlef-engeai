@@ -5,7 +5,6 @@
  * course-specific topic lists. For composed student chat system prompts, see
  * `system-prompts/shared/struggle-topics.ts`.
  *
- * @latest app version: 1.2.10.13
  */
 
 /**

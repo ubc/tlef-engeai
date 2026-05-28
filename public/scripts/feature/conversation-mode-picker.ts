@@ -1,7 +1,6 @@
 /**
  * Conversation mode picker — Anthropic-style text trigger + popover (no mode icons).
  *
- * @latest app version: 1.2.10.10
  */
 
 import { fetchConversationModes } from '../api/chat-api.js';

@@ -5,7 +5,6 @@
  * 
  * @author: @gatahcha
  * @date: 2026-03-07
- * @latest app version: 1.2.9.9
  * @description: Student entry point. Chat interface, profile, flag history, about. Handles onboarding, sidebar navigation, ChatManager.
  */
 

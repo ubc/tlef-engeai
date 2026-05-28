@@ -1,6 +1,5 @@
 /**
  * Safety restrictions
- * @latest app version: 1.2.10.11
  */
 
 export const SAFETY_RESTRICTIONS_SECTION = `===========================================

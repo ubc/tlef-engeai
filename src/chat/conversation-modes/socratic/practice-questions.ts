@@ -1,6 +1,5 @@
 /**
  * Practice questions
- * @latest app version: 1.2.9.11
  */
 
 export const PRACTICE_QUESTIONS_SECTION = `===========================================

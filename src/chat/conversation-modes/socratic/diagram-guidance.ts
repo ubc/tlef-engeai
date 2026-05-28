@@ -1,6 +1,5 @@
 /**
  * Diagram guidance
- * @latest app version: 1.2.9.11
  */
 
 export const DIAGRAM_GUIDANCE_SECTION = `===========================================

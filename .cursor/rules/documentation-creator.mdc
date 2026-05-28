@@ -20,7 +20,6 @@ After implementation, sync human-readable docs with behavior.
  * filename.ts
  * @author: @gatahcha
  * @date: YYYY-MM-DD
- * @latest app version: x.y.z
  * @description: ...
  */
 ```

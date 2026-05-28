@@ -4,7 +4,6 @@
  * Merges mode metadata (picker API, validation) with prompt assembly
  * (shared + specialized sections from system-prompts/).
  *
- * @latest app version: 1.2.10.13
  */
 
 import { ConversationModeId, LearningObjectiveForDisplay, SystemPromptItem } from '../types/shared';

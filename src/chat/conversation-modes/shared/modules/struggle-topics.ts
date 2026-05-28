@@ -1,7 +1,6 @@
 /**
  * Struggle topics handling instructions (shared; behavior note varies by mode).
  *
- * @latest app version: 1.2.9.11
  */
 
 import { StruggleTopicOverride } from '../../metadata/conversation-mode-types';

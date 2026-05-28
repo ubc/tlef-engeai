@@ -1,7 +1,6 @@
 /**
  * Conversation modes package exports.
  *
- * @latest app version: 1.2.9.11
  */
 
 export {

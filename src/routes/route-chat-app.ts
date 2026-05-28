@@ -4,7 +4,6 @@
  * route-chat-app.ts
  * @author: @gatahcha
  * @date: 2026-03-13
- * @latest app version: 1.2.9.9
  * @description: Express routes for chat CRUD, send message, pin/unpin, dismiss unstruggle, restore. Integrates ChatApp, MongoDB, RAG.
  */
 

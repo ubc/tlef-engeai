@@ -1,6 +1,5 @@
 /**
  * Socratic welcome message
- * @latest app version: 1.2.9.11
  */
 
 export const INITIAL_ASSISTANT_MESSAGE = `Hello! I'm EngE-AI, your virtual engineering tutor. I'm here to help you work through engineering concepts and problems using guided thinking rather than just giving you the answers.

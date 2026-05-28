@@ -4,7 +4,6 @@
  * enge-ai-mongodb.ts
  * @author: @gatahcha
  * @date: 2025-03-13
- * @latest app version: 1.2.9.9
  * @description: Singleton MongoDB access layer for EngE-AI — façade delegates into `mongo/` (`./mongo/course-mongo`, `./mongo/flag-mongo`, `./mongo/chat-mongo`, …).
  */
 

@@ -1,6 +1,5 @@
 /**
  * Response formatting
- * @latest app version: 1.2.10.11
  */
 
 export const RESPONSE_FORMATTING_SECTION = `===========================================

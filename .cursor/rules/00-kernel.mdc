@@ -12,10 +12,10 @@ EngE-AI: UBC engineering study assistant — guided critical thinking, instructo
 1. **Check in** with the human before code changes; agree on scope first.
 2. **Plan → Implement → Document → Test** — non-trivial work gets a plan in `planner/`.
 3. **Minimal diff** — no drive-by refactors or unrelated edits.
-4. **Discovery before coding:** read `src/utils/app-version.ts` + only the docs/files needed for the task.
+4. **Discovery before coding:** read `package.json` version + only the docs/files needed for the task.
 5. **State assumptions and risks**; ask when ambiguous — do not guess.
 6. **Never edit** `public/dist/` or `dist/` — compiled output only.
-7. **Bump version** in `app-version.ts` on code changes (see `versioning.mdc`).
+7. **Bump version** in `package.json` on merge-worthy code changes (see `versioning.mdc`).
 8. **Remove debug `console.log`** before finalizing (`// DEBUG:` / `// TEMP:` during work only).
 9. **Explain tradeoffs** — senior engineer bar, not vibe coding.
 10. **Generators implement; Masters govern** — domain rules (`.mdc` globs) constrain implementation; see `AGENTS.md`.

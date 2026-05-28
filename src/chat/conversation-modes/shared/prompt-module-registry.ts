@@ -1,7 +1,6 @@
 /**
  * Switch-based registry: maps prompt module ids to section strings.
  *
- * @latest app version: 1.2.9.11
  */
 
 import { ConversationMode } from '../metadata/conversation-mode';

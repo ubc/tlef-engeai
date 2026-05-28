@@ -1,7 +1,6 @@
 /**
  * Socratic mode catalog — student-facing descriptions only (no LLM prompt bodies).
  *
- * @latest app version: 1.2.9.11
  */
 
 import { ModeDescriptionInput } from '../metadata/conversation-mode-types';

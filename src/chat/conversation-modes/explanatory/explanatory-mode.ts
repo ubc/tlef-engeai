@@ -1,7 +1,6 @@
 /**
  * Explanatory conversation mode (M1 stub — coming_soon).
  *
- * @latest app version: 1.2.9.11
  */
 
 import {

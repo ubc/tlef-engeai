@@ -1,7 +1,6 @@
 /**
  * Conversation mode factory and API catalog helpers.
  *
- * @latest app version: 1.2.9.11
  */
 
 import { ExplanatoryConversationMode } from '../explanatory/explanatory-mode';

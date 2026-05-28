@@ -1,12 +1,18 @@
 ---
-description: App version bump rules
-globs: src/utils/app-version.ts
+description: App version bump rules (SemVer)
+globs: package.json,src/utils/app-version.ts
 alwaysApply: false
 ---
 
 # Versioning
 
-- **Single source:** `src/utils/app-version.ts` — update `appVersion` on every code change.
-- **Format:** `Major.Basic.FrontendMinor.BackendMinor` (e.g. `1.2.9.9`)
-- **Bump:** FE-only → 3rd segment; BE-only → 4th; both → both; major/basic → 1st/2nd as appropriate.
-- **File headers:** `@latest app version: x.y.z` in edited files (not `@version`).
+- **Single source:** `package.json` `"version"` field — [SemVer 2.0](https://semver.org/) (`MAJOR.MINOR.PATCH`).
+- **Runtime:** `src/utils/app-version.ts` re-exports `pkg.version` for `/api/version`.
+- **Bump when:** merge-worthy code changes (features, fixes, breaking changes). Skip docs-only or trivial edits.
+- **How to bump:**
+  - PATCH (bug fixes): `npm run version:patch`
+  - MINOR (features): `npm run version:minor`
+  - MAJOR (breaking): `npm run version:major`
+- **Do not** maintain per-file version headers; use Git history instead.
+
+See `planner/semver-version-migration.md` for migration notes.

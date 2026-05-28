@@ -34,4 +34,4 @@ Only change code when you and the user have agreed. Check in on every task befor
 
 ## Example (copy message button)
 
-Plan → implement in `render-chat.ts` → bump version → TSDoc → ask for blackbox checklist.
+Plan → implement in `render-chat.ts` → bump SemVer in `package.json` → TSDoc → ask for blackbox checklist.

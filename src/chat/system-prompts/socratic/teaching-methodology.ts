@@ -1,6 +1,5 @@
 /**
  * Socratic teaching methodology
- * @latest app version: 1.2.10.11
  */
 
 export const TEACHING_METHODOLOGY_SECTION = `===========================================
