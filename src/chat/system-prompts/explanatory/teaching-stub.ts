@@ -1,0 +1,1 @@
+export const EXPLANATORY_TEACHING_STUB = "";

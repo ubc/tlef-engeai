@@ -413,11 +413,118 @@
     flex-shrink: 0;
 }
 
+.conversation-mode-wrap {
+    position: relative;
+    flex: 0 0 auto;
+    align-self: flex-end;
+    margin: 0 0.35rem 0.35rem 0.25rem;
+}
+
+.conversation-mode-trigger {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.25rem 0.4rem;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.conversation-mode-trigger:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+    color: var(--text-primary, inherit);
+}
+
+.conversation-mode-trigger:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.conversation-mode-readonly {
+    flex: 0 0 auto;
+    align-self: flex-end;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 0 0.35rem 0.35rem 0.5rem;
+    white-space: nowrap;
+}
+
+.conversation-mode-popover {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    min-width: 220px;
+    max-width: min(320px, 90vw);
+    background: var(--background-2);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+    padding: 0.35rem;
+    z-index: 20;
+    display: none;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.conversation-mode-popover.is-open {
+    display: flex;
+}
+
+.conversation-mode-option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    padding: 0.45rem 0.55rem;
+    cursor: pointer;
+    position: relative;
+}
+
+.conversation-mode-option:hover:not(:disabled) {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.conversation-mode-option:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.conversation-mode-option-title {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-primary, inherit);
+}
+
+.conversation-mode-option-subtitle {
+    font-size: 0.62rem;
+    color: var(--text-secondary);
+    line-height: 1.3;
+}
+
+.conversation-mode-option-check {
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.75rem;
+    color: var(--color-chbe-green);
+}
+
 .input-area {
     width: 100%; 
     display: flex; 
+    flex-wrap: wrap;
     justify-content: center; 
-    align-items: center; 
+    align-items: flex-end; 
     border: 1px solid var(--border-color);
     border-radius: 10px; 
     padding: 0.15rem 0.5rem; 

@@ -28,6 +28,20 @@ export interface ChatMessage {
  * Must match src/types/shared.ts
  * The type of chat
  */
+/** Must match src/types/shared.ts */
+export type ConversationModeId = 'socratic' | 'explanatory';
+
+/** Catalog item from GET /api/chat/conversation-modes */
+export interface ConversationModeCatalogItem {
+    id: ConversationModeId;
+    displayName: string;
+    shortDescription: string;
+    longDescription?: string;
+    status: 'active' | 'coming_soon';
+    isDefault: boolean;
+    sortOrder: number;
+}
+
 export interface Chat {
     id: string;
     courseName: string;
@@ -37,6 +51,7 @@ export interface Chat {
     isPinned: boolean;
     pinnedMessageId?: string | null;
     isDeleted?: boolean;  // Soft delete flag (defaults to false/undefined for backward compatibility)
+    conversationMode?: ConversationModeId;
 }
 
 // ===========================================
@@ -299,6 +314,7 @@ export interface CreateChatRequest {
     userID: string;
     courseName: string;
     date: string;
+    conversationMode?: ConversationModeId;
 }
 
 /** Response from createNewChat - extends ChatApiResponse */

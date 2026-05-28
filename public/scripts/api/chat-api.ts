@@ -9,12 +9,39 @@
  * @description: API helpers for chat CRUD, send message, pin/unpin, dismiss unstruggle block.
  */
 
-import { 
-    Chat, 
-    CreateChatRequest, 
-    CreateChatResponse, 
-    ChatApiResponse 
+import {
+    Chat,
+    ConversationModeCatalogItem,
+    CreateChatRequest,
+    CreateChatResponse,
+    ChatApiResponse,
 } from '../types.js';
+
+export interface ConversationModesApiResponse {
+    success: boolean;
+    modes?: ConversationModeCatalogItem[];
+    error?: string;
+}
+
+/**
+ * fetchConversationModes
+ * GET /api/chat/conversation-modes — catalog labels only (no prompts).
+ */
+export async function fetchConversationModes(): Promise<ConversationModesApiResponse> {
+    try {
+        const response = await fetch('/api/chat/conversation-modes');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching conversation modes:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred',
+        };
+    }
+}
 
 /**
  * createNewChat

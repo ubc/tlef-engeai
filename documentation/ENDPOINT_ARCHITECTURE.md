@@ -180,7 +180,8 @@ All chat endpoints require auth. Access is scoped by session `currentCourse` and
 |--------|------|------|------|-------------|
 | GET | `/api/chat/user/chats/metadata` | Yes | Any | List chat metadata |
 | GET | `/api/chat/user/chats` | Yes | Any | List full chats |
-| POST | `/api/chat/newchat` | Yes | Any | Create new chat |
+| GET | `/api/chat/conversation-modes` | Yes | Any | List teaching mode catalog (labels only, no prompts) |
+| POST | `/api/chat/newchat` | Yes | Any | Create new chat (`conversationMode` optional, locked at creation) |
 | POST | `/api/chat/:chatId` | Yes | Any | Send message (streaming) |
 | POST | `/api/chat/:chatId/dismiss-unstruggle` | Yes | Any | Dismiss unstruggle |
 | GET | `/api/chat/:chatId/history` | Yes | Any | Get chat history |

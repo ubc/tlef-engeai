@@ -17,7 +17,8 @@ import {
     DEFAULT_LEARNING_OBJECTIVES_ID,
     DEFAULT_STRUGGLE_TOPICS_ID
 } from '../../types/shared';
-import { INITIAL_ASSISTANT_MESSAGE, SYSTEM_PROMPT } from '../../chat/chat-prompts';
+import { DEFAULT_SOCRATIC_SYSTEM_PROMPT } from '../../chat/compose-system-prompt';
+import { DEFAULT_INITIAL_ASSISTANT_MESSAGE } from '../../chat/initial-assistant-prompt-default';
 import { activeCourseListCollection } from './mongo-collections';
 import { getActiveCourse } from './course-mongo';
 import type { MongoDalContext } from './mongo-context';
@@ -253,7 +254,7 @@ export async function selectInitialAssistantPrompt(
 /**
  * ensureDefaultPromptExists
  *
- * Bootstraps the seeded welcome message pulled from `INITIAL_ASSISTANT_MESSAGE` when missing.
+ * Bootstraps the seeded welcome message from `DEFAULT_INITIAL_ASSISTANT_MESSAGE` when missing.
  *
  * Also auto-selects the default when nothing else remains selected — keeps student UX from rendering blank states.
  *
@@ -280,7 +281,7 @@ export async function ensureDefaultPromptExists(
         const newDefaultPrompt: InitialAssistantPrompt = {
             id: DEFAULT_PROMPT_ID,
             title: 'Default Welcome Message',
-            content: INITIAL_ASSISTANT_MESSAGE,
+            content: DEFAULT_INITIAL_ASSISTANT_MESSAGE,
             dateCreated: new Date(),
             isSelected: prompts.length === 0 || !prompts.some(p => p.isSelected),
             isDefault: true
@@ -573,7 +574,7 @@ export async function ensureDefaultSystemPromptComponents(
         const basePrompt: SystemPromptItem = {
             id: DEFAULT_BASE_PROMPT_ID,
             title: 'Base System Prompt',
-            content: SYSTEM_PROMPT,
+            content: DEFAULT_SOCRATIC_SYSTEM_PROMPT,
             dateCreated: dateCreated,
             isAppended: true,
             isDefault: true,

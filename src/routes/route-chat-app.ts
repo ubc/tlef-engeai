@@ -16,6 +16,7 @@ import { ChatMessage, Chat } from '../types/shared';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { ChatApp } from '../chat/chat-app';
+import { conversationModePrompts } from '../chat/compose-system-prompt';
 
 import { getRandomYesResponse, getRandomNoResponse } from '../memory-agent/unstruggle-responses';
 import { memoryAgent } from '../memory-agent/memory-agent';
@@ -50,6 +51,28 @@ process.on('SIGINT', () => {
     chatApp.cleanup();
     process.exit(0);
 });
+
+/**
+ * GET /conversation-modes
+ * Catalog of conversation teaching modes for the chat composer (no prompt text).
+ *
+ * @route GET /api/chat/conversation-modes
+ * @returns {object} { success: boolean, modes?: array, error?: string }
+ */
+router.get('/conversation-modes', asyncHandlerWithAuth(async (_req: Request, res: Response) => {
+    try {
+        res.json({
+            success: true,
+            modes: conversationModePrompts.getModesForApiCatalog(),
+        });
+    } catch (error) {
+        appLogger.error('Error listing conversation modes:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to list conversation modes',
+        });
+    }
+}));
 
 /**
  * GET /user/chats/metadata
@@ -229,6 +252,16 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
         const userID = req.body.userID;
         const courseName = req.body.courseName;
         const date = new Date(); // the date is the current date inside the backend
+        let conversationMode;
+        try {
+            conversationMode = conversationModePrompts.resolveModeId(req.body.conversationMode);
+            conversationModePrompts.assertModeActiveForNewChat(conversationMode);
+        } catch (modeError) {
+            return res.status(400).json({
+                success: false,
+                error: modeError instanceof Error ? modeError.message : 'Invalid conversation mode',
+            });
+        }
         
         // Get user from session
         const user = (req as any).user;
@@ -267,7 +300,7 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
         }
 
         // Actually create the chat using the ChatApp class FIRST
-        const initRequest = await chatApp.initializeConversation(userID, courseName, date);
+        const initRequest = await chatApp.initializeConversation(userID, courseName, date, conversationMode);
         const chatId = initRequest.chatId;
         
         // Use the proper welcome message from the backend (includes diagrams and course context)
@@ -290,7 +323,8 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
             itemTitle: 'New Chat', // Set initial title as "New Chat"
             messages: [backendWelcomeMessage], // Use the proper backend welcome message with diagrams
             isPinned: false,
-            pinnedMessageId: null
+            pinnedMessageId: null,
+            conversationMode,
         };
         
         // Save chat to MongoDB

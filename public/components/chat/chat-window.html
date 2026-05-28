@@ -23,6 +23,18 @@
         <footer id="chat-footer" class="chat-footer">
             <div class="chat-footer-content">
                 <div class="input-area">
+                    <div id="conversation-mode-wrap" class="conversation-mode-wrap">
+                        <button
+                            type="button"
+                            id="conversation-mode-trigger"
+                            class="conversation-mode-trigger"
+                            aria-haspopup="listbox"
+                            aria-expanded="false"
+                            aria-label="Teaching mode"
+                        >Socratic</button>
+                        <div id="conversation-mode-popover" class="conversation-mode-popover" role="listbox"></div>
+                    </div>
+                    <span id="conversation-mode-readonly" class="conversation-mode-readonly" hidden></span>
                     <textarea id="chat-input" rows="1" placeholder="Enter your thoughts here!"></textarea>
                     <button id="send-btn" class="send-btn"><i data-feather="arrow-up"></i></button>
                 </div>

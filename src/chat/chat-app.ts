@@ -9,14 +9,10 @@ import { AppConfig } from '../utils/config';
 import { RAGModule, RetrievedChunk } from 'ubc-genai-toolkit-rag';
 import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
 import { IDGenerator } from '../utils/unique-id-generator';
-import { ChatMessage, LearningObjectiveForDisplay, TopicOrWeekInstance, TopicOrWeekItem, activeCourse, DEFAULT_PROMPT_ID, SystemPromptItem } from '../types/shared';
+import { ChatMessage, ConversationModeId, LearningObjectiveForDisplay, TopicOrWeekInstance, TopicOrWeekItem, activeCourse, DEFAULT_PROMPT_ID, SystemPromptItem } from '../types/shared';
+import { conversationModePrompts } from './compose-system-prompt';
+import { getDefaultAssistantMessage } from './initial-assistant-prompt-default';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
-import { 
-    getSystemPrompt, 
-    getInitialAssistantMessage, 
-    formatRAGPrompt,
-    INITIAL_ASSISTANT_MESSAGE
-} from './chat-prompts';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import { isDeveloperMode, generateMockStreamingResponse } from '../helpers/developer-mode';
 
@@ -63,6 +59,7 @@ export class ChatApp {
     private ragConfig: any;
     private llmProvider: any;
     private chatTimers: Map<string, NodeJS.Timeout>; // Maps chatId to cleanup timer
+    private chatConversationModes: Map<string, ConversationModeId>; // Maps chatId to teaching mode
     private chatInactivityTimeout: number = 5 * 60 * 1000; // 5 minutes in milliseconds
 
     constructor(config: AppConfig) {
@@ -75,7 +72,8 @@ export class ChatApp {
         this.chatIDGenerator = IDGenerator.getInstance();
         this.llmProvider = config.llmConfig.provider;
         this.chatTimers = new Map();
-            
+        this.chatConversationModes = new Map();
+
         // Initialize RAG module asynchronously
         this.initializeRAG();
     }
@@ -157,6 +155,7 @@ export class ChatApp {
         
         // Remove timer from chatTimers map
         this.chatTimers.delete(chatId);
+        this.chatConversationModes.delete(chatId);
 
         // Log state after cleanup
         const stateAfterCleanup = {
@@ -526,7 +525,8 @@ export class ChatApp {
         // ====================================================================
         
         if (documentsLength > 0) {
-            additionalContext = formatRAGPrompt(ragContext, message);
+            const conversationMode = this.chatConversationModes.get(chatId);
+            additionalContext = conversationModePrompts.formatRagPrompt(conversationMode, ragContext, message);
         }
         else {
             additionalContext = "No relevant documents from RAG found for this user message \n";
@@ -763,7 +763,12 @@ export class ChatApp {
      * @param date - The date of the chat
      * @returns The initial chat request
      */
-    public async initializeConversation(userID: string, courseName: string, date: Date): Promise<initChatRequest> {
+    public async initializeConversation(
+        userID: string,
+        courseName: string,
+        date: Date,
+        conversationMode?: ConversationModeId | string
+    ): Promise<initChatRequest> {
         //create chatID from the user ID
         const chatId = this.chatIDGenerator.chatID(userID, courseName, date);
 
@@ -776,7 +781,9 @@ export class ChatApp {
         
         this.conversations.set(chatId, this.llmModule.createConversation());
         this.chatHistory.set(chatId, []);
-        
+        const resolvedMode = conversationModePrompts.resolveModeId(conversationMode);
+        this.chatConversationModes.set(chatId, resolvedMode);
+
         // Retrieve struggle words from memory agent
         let struggleTopics: string[] = [];
         try {
@@ -860,7 +867,13 @@ export class ChatApp {
             }
         }
         
-        const defaultSystemMessage = getSystemPrompt(baseSystemPrompt, courseName, learningObjectives, appendedSystemPromptItems);
+        const modeId = this.chatConversationModes.get(chatId) ?? 'socratic';
+        const defaultSystemMessage = conversationModePrompts.composeSystemPrompt(modeId, {
+            baseSystemPrompt,
+            courseName,
+            learningObjectives,
+            appendedSystemPromptItems,
+        });
 
         try {
             conversation.addMessage('system', defaultSystemMessage);
@@ -878,7 +891,7 @@ export class ChatApp {
      * @return the message object, so this message can be passed to the client when initiate a chat
      */
     private async addDefaultAssistantMessage(chatId: string, courseName?: string): Promise<ChatMessage> {
-        let defaultMessageText: string = INITIAL_ASSISTANT_MESSAGE; // Default fallback
+        let defaultMessageText: string = getDefaultAssistantMessage();
         
         // Try to retrieve selected initial assistant prompt from course
         if (courseName) {
@@ -1228,6 +1241,9 @@ export class ChatApp {
 
             appLogger.log(`🔄 Restoring chat ${chatId} from MongoDB with ${chatData.messages.length} messages`);
 
+            const restoredMode = conversationModePrompts.resolveModeId(chatData.conversationMode);
+            this.chatConversationModes.set(chatId, restoredMode);
+
             // Create new conversation
             const conversation = this.llmModule.createConversation();
             
@@ -1278,10 +1294,14 @@ export class ChatApp {
                 }
             }
             
-            const defaultSystemMessage = getSystemPrompt(baseSystemPrompt, courseName, learningObjectives, appendedSystemPromptItems);
+            const defaultSystemMessage = conversationModePrompts.composeSystemPrompt(restoredMode, {
+                baseSystemPrompt,
+                courseName,
+                learningObjectives,
+                appendedSystemPromptItems,
+            });
 
             conversation.addMessage('system', defaultSystemMessage);
-            
 
             // Restore all messages from MongoDB in order
             const restoredMessages: ChatMessage[] = [];
@@ -1346,7 +1366,8 @@ export class ChatApp {
             
             // Remove from chat history map
             const historyDeleted = this.chatHistory.delete(chatId);
-            
+            this.chatConversationModes.delete(chatId);
+
             // Remove from chatID array
             const index = this.chatID.indexOf(chatId);
             let arrayDeleted = false;

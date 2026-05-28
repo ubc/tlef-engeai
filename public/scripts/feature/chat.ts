@@ -9,7 +9,16 @@
 
 import { loadComponentHTML, renderFeatherIcons } from "../api/api.js";
 import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, dismissUnstruggleBlock } from "../api/chat-api.js";
-import { Chat, ChatMessage, CourseUser, activeCourse, ChatManagerConfig, CreateChatRequest } from "../types.js";
+import {
+    Chat,
+    ChatMessage,
+    ConversationModeId,
+    CourseUser,
+    activeCourse,
+    ChatManagerConfig,
+    CreateChatRequest,
+} from "../types.js";
+import { ConversationModePicker } from "./conversation-mode-picker.js";
 import { RenderChat } from "./render-chat.js";
 import { showDisclaimerModal, showDeleteConfirmationModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
 
@@ -160,6 +169,9 @@ export class ChatManager {
     
     // Streaming configuration
     private readonly STREAM_DELAY_MS = 15; // Delay between words (milliseconds) - adjust for faster/slower streaming
+
+    private selectedConversationMode: ConversationModeId = 'socratic';
+    private conversationModePicker: ConversationModePicker | null = null;
     
     // ===== LOGGING HELPER METHODS =====
     
@@ -315,6 +327,7 @@ export class ChatManager {
         if (!chatId) {
             this.log('INFO', '📭 Setting active chat to null');
             this.activeChatId = null;
+            this.syncConversationModeComposer();
             this.logActiveChatState('ACTIVE_CHAT_CLEARED');
             return;
         }
@@ -351,6 +364,8 @@ export class ChatManager {
         // Set as active
         this.activeChatId = chatId;
         
+        this.syncConversationModeComposer();
+
         this.logActiveChatState('ACTIVE_CHAT_SWITCHED', {
             previousActiveChatId,
             newActiveChatId: chatId,
@@ -358,6 +373,20 @@ export class ChatManager {
             totalLoadedChats: this.chats.length,
             totalMetadataChats: this.chatMetadata.length
         });
+    }
+
+    private getActiveChatConversationMode(): ConversationModeId | undefined {
+        if (!this.activeChatId) {
+            return undefined;
+        }
+        const chat = this.chats.find((c) => c.id === this.activeChatId);
+        return chat?.conversationMode;
+    }
+
+    private syncConversationModeComposer(): void {
+        this.conversationModePicker?.syncComposerVisibility(
+            this.activeChatId ? this.getActiveChatConversationMode() ?? 'socratic' : null
+        );
     }
 
     /**
@@ -399,7 +428,8 @@ export class ChatManager {
             const chatRequest: CreateChatRequest = {
                 userID: this.config.userContext.userId,
                 courseName: this.config.userContext.courseName,
-                date: new Date().toISOString().split('T')[0]
+                date: new Date().toISOString().split('T')[0],
+                conversationMode: this.selectedConversationMode,
             };
 
             this.log('DEBUG', '📤 Sending new chat request to server:', chatRequest);
@@ -436,7 +466,8 @@ export class ChatManager {
             // Add to chats array
             this.chats.push(newChat);
             this.activeChatId = newChat.id;
-            
+            this.syncConversationModeComposer();
+
             // Add to metadata array for sidebar rendering
             const newMetadata: ChatMetadata = {
                 id: newChat.id,
@@ -1459,6 +1490,8 @@ export class ChatManager {
     }
 
     public bindMessageEvents(): void {
+        this.initConversationModePicker();
+
         const sendBtn = document.getElementById('send-btn');
         const inputEl = document.getElementById('chat-input') as HTMLTextAreaElement;
         const pinBtn = document.getElementById('pin-chat-btn');
@@ -1500,6 +1533,21 @@ export class ChatManager {
             // console.log('🗑️ Delete button clicked in chat header');
             this.handleDeleteActiveChat();
         });
+
+        this.syncConversationModeComposer();
+    }
+
+    private initConversationModePicker(): void {
+        if (this.conversationModePicker) {
+            return;
+        }
+        this.conversationModePicker = new ConversationModePicker({
+            getSelectedModeId: () => this.selectedConversationMode,
+            onModeSelect: (modeId) => {
+                this.selectedConversationMode = modeId;
+            },
+        });
+        void this.conversationModePicker.loadCatalog();
     }
 
     private bindModalEvents(): void {

@@ -27,6 +27,9 @@ export interface ChatMessage {
 /**
  * The type of chat
  */
+/** Conversation teaching mode slug — must match backend ConversationModeId */
+export type ConversationModeId = 'socratic' | 'explanatory';
+
 export interface Chat {
     id: string;
     courseName: string;
@@ -36,6 +39,8 @@ export interface Chat {
     isPinned: boolean;
     pinnedMessageId?: string | null;
     isDeleted?: boolean;  // Soft delete flag (defaults to false/undefined for backward compatibility)
+    /** Locked at new-chat creation; defaults to socratic for legacy chats */
+    conversationMode?: ConversationModeId;
 }
 
 // ===========================================

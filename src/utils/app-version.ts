@@ -5,4 +5,4 @@
  * - Backend-only change → bump 4th segment
  */
 
-export const appVersion = "1.2.9.10";
+export const appVersion = "1.2.10.13";
