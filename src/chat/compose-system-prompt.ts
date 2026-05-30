@@ -9,10 +9,6 @@
 import { ConversationModeId, LearningObjectiveForDisplay, SystemPromptItem } from '../types/shared';
 import { CORE_IDENTITY_SECTION } from './system-prompts/shared/core-identity';
 import { DIAGRAM_GUIDANCE_SECTION } from './system-prompts/shared/diagram-guidance';
-import {
-    RAG_CONTEXT_SEPARATOR,
-    RAG_ERROR_MESSAGE,
-} from './system-prompts/shared/rag-utils';
 import { RESPONSE_FORMATTING_SECTION } from './system-prompts/shared/response-formatting';
 import { SAFETY_RESTRICTIONS_SECTION } from './system-prompts/shared/safety-restrictions';
 import {
@@ -20,11 +16,9 @@ import {
     StruggleTopicOverride,
 } from './system-prompts/shared/struggle-topics';
 import { PRACTICE_QUESTIONS_SECTION } from './system-prompts/socratic/practice-questions';
-import { RAG_BRIDGE_PROMPT } from './system-prompts/socratic/rag-bridge';
 import { TEACHING_METHODOLOGY_SECTION } from './system-prompts/socratic/teaching-methodology';
 
 export type { ConversationModeId };
-export { RAG_BRIDGE_PROMPT, RAG_CONTEXT_SEPARATOR, RAG_ERROR_MESSAGE };
 
 export type ConversationModeStatus = 'active' | 'coming_soon';
 
@@ -161,28 +155,6 @@ export class ConversationModePrompts {
     }
 
     /**
-     * Formats the user turn sent to the LLM when RAG context is present.
-     *
-     * Socratic mode appends the RAG bridge instructions; other modes use context + message only.
-     *
-     * @param modeId - Teaching mode for this chat
-     * @param context - Retrieved document text (already formatted)
-     * @param userMessage - Raw student message
-     * @returns Combined prompt string for the user role
-     */
-    public formatRagPrompt(
-        modeId: ConversationModeId | string | undefined,
-        context: string,
-        userMessage: string
-    ): string {
-        const resolved = this.resolveModeId(modeId);
-        if (resolved === 'socratic') {
-            return `${context}${RAG_CONTEXT_SEPARATOR}${RAG_BRIDGE_PROMPT}${userMessage}`;
-        }
-        return `${context}${RAG_CONTEXT_SEPARATOR}${userMessage}`;
-    }
-
-    /**
      * Returns the default Socratic system prompt with no course overlays.
      *
      * Used when seeding instructor default components in MongoDB.
@@ -253,7 +225,10 @@ export class ConversationModePrompts {
     private composeModeSections(modeId: ConversationModeId): string {
         const struggleOverride = this.getStruggleOverride(modeId);
 
+        // Compose the mode sections based on the mode ID
         switch (modeId) {
+
+            // Socratic mode: 
             case 'socratic':
                 return this.joinSections([
                     CORE_IDENTITY_SECTION,

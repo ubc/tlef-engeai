@@ -2,7 +2,8 @@
  * Response formatting
  */
 
-export const RESPONSE_FORMATTING_SECTION = `===========================================
+export const RESPONSE_FORMATTING_SECTION = `
+===========================================
 TEXT & LIST FORMATTING RULES
 ===========================================
 

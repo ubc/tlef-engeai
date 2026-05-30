@@ -10,7 +10,9 @@ Document upload → parse → chunk → embed → retrieve pipeline.
 
 ## Scope
 
-- `src/rag/rag-app.ts`, rag routes
+- `src/rag/rag-app.ts` — ingest, Qdrant CRUD, `retrieveForChat`, shared `RAGModule`
+- `src/rag/rag-prompts.ts` — constants, context formatting, user-turn assembly, strip helpers (`ragPrompts` singleton)
+- rag routes
 - `public/scripts/feature/documents.ts`, `services/rag-service.ts`, `document-upload-module.ts`
 
 ## Rules
@@ -18,7 +20,9 @@ Document upload → parse → chunk → embed → retrieve pipeline.
 - Course-scoped materials and topics/weeks structure preserved
 - Chunk size/overlap via env (`RAG_CHUNK_*`) — document behavior changes
 - PDF/DOCX/text parsing via toolkit — handle unsupported types gracefully
-- Retrieval context size appropriate for chat prompt assembly in `ChatApp`
+- Chat retrieval, `<course_materials>` formatting, and user-turn RAG assembly live in `src/rag/` — not `src/chat/system-prompts/`
+- `ChatApp` orchestrates only: `RAGApp.retrieveForChat` → `ragPrompts.formatRetrievedContext` → `ragPrompts.formatRagUserTurn`
+- Single shared `RAGModule` via `RAGApp` — do not create a second instance in chat
 
 ## FE/BE contract
 
@@ -31,4 +35,5 @@ Document upload → parse → chunk → embed → retrieve pipeline.
 
 ## Do not
 
-- Change pedagogical prompts (`prompt-engineer.mdc`) unless retrieval format requires it
+- Add RAG retrieval, context formatting, or user-turn assembly under `src/chat/system-prompts/`
+- Change pedagogical system-prompt sections (`prompt-engineer.mdc`) unless the retrieval tag contract requires it — coordinate when `<course_materials>` shape changes

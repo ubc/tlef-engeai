@@ -6,10 +6,16 @@ import * as path from 'path';
 import { appLogger } from '../utils/logger';
 import { LLMModule, Message } from 'ubc-genai-toolkit-llm';
 import { AppConfig } from '../utils/config';
-import { RAGModule, RetrievedChunk } from 'ubc-genai-toolkit-rag';
+import { RAGApp } from '../rag/rag-app';
+import {
+    ragPrompts,
+    RAG_ERROR_MESSAGE,
+    RAG_NO_DOCS_MESSAGE,
+    COURSE_MATERIALS_OPEN,
+} from '../rag/rag-prompts';
 import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
 import { IDGenerator } from '../utils/unique-id-generator';
-import { ChatMessage, ConversationModeId, LearningObjectiveForDisplay, TopicOrWeekInstance, TopicOrWeekItem, activeCourse, DEFAULT_PROMPT_ID, SystemPromptItem } from '../types/shared';
+import { ChatMessage, ConversationModeId, LearningObjectiveForDisplay, activeCourse, DEFAULT_PROMPT_ID, SystemPromptItem } from '../types/shared';
 import { conversationModePrompts } from './compose-system-prompt';
 import { getDefaultAssistantMessage } from './initial-assistant-prompt-default';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
@@ -50,13 +56,11 @@ export interface initChatRequest {
 export class ChatApp {
 
     private llmModule: LLMModule;
-    private ragModule: RAGModule | null = null;
     private debug: boolean;
     private conversations : Map<string, Conversation>; // it maps chatId to conversation
     private chatHistory : Map<string, ChatMessage[]>; // it maps chatId to chat history
     private chatID : string[];
     private chatIDGenerator: IDGenerator;
-    private ragConfig: any;
     private llmProvider: any;
     private chatTimers: Map<string, NodeJS.Timeout>; // Maps chatId to cleanup timer
     private chatConversationModes: Map<string, ConversationModeId>; // Maps chatId to teaching mode
@@ -65,7 +69,6 @@ export class ChatApp {
     constructor(config: AppConfig) {
         this.llmModule = new LLMModule(config.llmConfig);
         this.debug = config.debug;
-        this.ragConfig = config.ragConfig;
         this.conversations = new Map(); 
         this.chatHistory = new Map();
         this.chatID = [];
@@ -73,22 +76,6 @@ export class ChatApp {
         this.llmProvider = config.llmConfig.provider;
         this.chatTimers = new Map();
         this.chatConversationModes = new Map();
-
-        // Initialize RAG module asynchronously
-        this.initializeRAG();
-    }
-
-    /**
-     * Initialize RAG module asynchronously
-     */
-    private async initializeRAG() {
-        try {
-            this.ragModule = await RAGModule.create(this.ragConfig);
-            appLogger.debug('RAG module initialized successfully');
-        } catch (error) {
-            appLogger.error('Failed to initialize RAG module:', error as any);
-            this.ragModule = null;
-        }
     }
 
     /**
@@ -308,151 +295,6 @@ export class ChatApp {
     }
 
     /**
-     * Retrieve relevant documents using RAG
-     * 
-     * @param query - The user's query
-     * @param courseName - The course name for context
-     * @param limit - Maximum number of documents to retrieve
-     * @param scoreThreshold - Minimum similarity score threshold
-     * @returns Array of retrieved documents
-     */
-    private async retrieveRelevantDocuments(
-        query: string, 
-        courseName: string, 
-        limit: number = 5, 
-        scoreThreshold: number = 0.4
-    ): Promise<RetrievedChunk[]> {
-        // Check if developer mode is enabled - skip RAG retrieval
-        if (isDeveloperMode()) {
-            appLogger.log('[DEVELOPER-MODE] 🧪 Skipping RAG document retrieval');
-            return [];
-        }
-        
-        if (!this.ragModule) {
-
-            // DEBUG 18: Print the query
-            appLogger.log(`DEBUG #118: RAG Query:`, query);
-            //END DEBUG 18
-            appLogger.warn('RAG module not available, skipping document retrieval');
-            return [];
-        }
-
-        try {
-            // Get course from MongoDB to check published status
-            const mongoDB = await EngEAI_MongoDB.getInstance();
-            const course = await mongoDB.getCourseByName(courseName);
-            
-            if (!course) {
-                appLogger.warn(`Course not found: ${courseName}, skipping document retrieval`);
-                return [];
-            }
-
-            // Extract published item titles
-            const publishedItemTitles: string[] = [];
-            if (course.topicOrWeekInstances) {
-                course.topicOrWeekInstances
-                    .filter((instance_topicOrWeek: TopicOrWeekInstance) => instance_topicOrWeek.published === true)
-                    .forEach((instance_topicOrWeek: TopicOrWeekInstance) => {
-                        if (instance_topicOrWeek.items) {
-                            instance_topicOrWeek.items.forEach((item: TopicOrWeekItem) => {
-                                if (item.itemTitle && !publishedItemTitles.includes(item.itemTitle)) {
-                                    publishedItemTitles.push(item.itemTitle);
-                                }
-                            });
-                        }
-                    });
-            }
-
-            // If no published items exist, return empty array
-            if (publishedItemTitles.length === 0) {
-                appLogger.debug(`No published items found for course: ${courseName}`);
-                return [];
-            }
-
-            // Build filter for RAG retrieval
-            // Qdrant filter format: must conditions with match clauses
-            const filter: Record<string, any> = {
-                must: [
-                    { key: "courseName", match: { value: courseName } },
-                    { key: "itemTitle", match: { any: publishedItemTitles } }
-                ]
-            };
-
-            // Add course context to the query for better retrieval
-            const contextualQuery = ` ${query}`;
-            
-
-            const results = await this.ragModule.retrieveContext(contextualQuery, {
-                limit: limit,
-                scoreThreshold: scoreThreshold,
-                filter: filter
-            });
-
-            // DEBUG 19: Print the results
-            appLogger.log(`DEBUG #119: RAG Results:`, results);
-            appLogger.log(`DEBUG #119: RAG Results length:`, results.length);
-            //END DEBUG 19
-
-            return results;
-        } catch (error) {
-            appLogger.debug(`❌ RAG Error:`, error as any);
-            appLogger.error('Error retrieving documents:', error as any);
-            return [];
-        }
-    }
-
-    /**
-     * Format retrieved documents for context injection
-     * 
-     * @param documents - Array of retrieved documents
-     * @returns Formatted context string
-     */
-    private formatDocumentsForContext(documents: RetrievedChunk[]): string {
-        if (documents.length === 0) {
-            return '';
-        }
-
-        let context = '\n\n<course_materials>\n';
-        
-        documents.forEach((doc, index) => {
-            // Parse metadata safely - extract chapter and item title
-            let chapter = '';
-            let itemTitle = '';
-            
-            try {
-                // Handle metadata - could be object or string
-                let metadataObj: any = {};
-                if (typeof doc.metadata === 'string') {
-                    metadataObj = JSON.parse(doc.metadata);
-                } else if (doc.metadata && typeof doc.metadata === 'object') {
-                    metadataObj = doc.metadata;
-                }
-                
-                // Extract topic/week (chapter) and item title
-                chapter = metadataObj.topicOrWeekTitle || '';
-                itemTitle = metadataObj.itemTitle || '';
-            } catch (error) {
-                appLogger.warn(`⚠️ Error parsing metadata for document ${index + 1}:`, error);
-                // Continue with empty values if parsing fails
-            }
-            
-            // Format document with START/END markers using topic/week and item title
-            const modulePartLabel = chapter && itemTitle
-                ? `${chapter} part ${itemTitle}`
-                : chapter || itemTitle || 'Unknown';
-            context += `\n--- START document - ${modulePartLabel} ---\n`;
-            context += `${doc.content}\n`;
-            context += `--- END document - ${modulePartLabel} ---\n`;
-        });
-        
-        context += '\n</course_materials>\n';
-
-        appLogger.log(`DEBUG #287: Formatted documents for context: ${context}`);
-        return context;
-    }
-
-
-    /**
      * Send a user message and get response from LLM with RAG context
      * 
      * @param message - The user's message
@@ -506,10 +348,15 @@ export class ChatApp {
 
         let ragContext : string = '';
         let documentsLength : number = 0;
+        let ragRetrievalFailed = false;
 
         try {
-            const documents = await this.retrieveRelevantDocuments(message, courseName, 3, 0.4); // Limit to 3 docs, threshold 0.4
-            ragContext = this.formatDocumentsForContext(documents);
+            const ragApp = await RAGApp.getInstance();
+            const documents = await ragApp.retrieveForChat(message, courseName, {
+                limit: 3,
+                scoreThreshold: 0.4,
+            });
+            ragContext = ragPrompts.formatRetrievedContext(documents);
             documentsLength = documents.length;
             
             appLogger.log(`📚 Captured ${documents.length} documents for storage`);
@@ -517,7 +364,7 @@ export class ChatApp {
         } catch (error) {
             appLogger.log(`❌ RAG Context Error:`, error);
             appLogger.error('Error retrieving RAG documents:', error as any);
-            // Continue without RAG context if retrieval fails
+            ragRetrievalFailed = true;
         }
 
         // ====================================================================
@@ -526,10 +373,13 @@ export class ChatApp {
         
         if (documentsLength > 0) {
             const conversationMode = this.chatConversationModes.get(chatId);
-            additionalContext = conversationModePrompts.formatRagPrompt(conversationMode, ragContext, message);
+            additionalContext = ragPrompts.formatRagUserTurn(conversationMode, ragContext, message);
+        }
+        else if (ragRetrievalFailed) {
+            additionalContext = RAG_ERROR_MESSAGE;
         }
         else {
-            additionalContext = "No relevant documents from RAG found for this user message \n";
+            additionalContext = RAG_NO_DOCS_MESSAGE;
         }
 
         // Attach struggle topics to the chat conversation for visibility
@@ -715,23 +565,8 @@ export class ChatApp {
                     
                     // Remove RAG document content from user messages
                     // RAG format: <course_materials>...</course_materials>\n\n---\n\n[bridge prompt]Student's question: [actual question]
-                    if (role === 'Student' && content.includes('<course_materials>')) {
-                        // Remove <course_materials> tags and all content inside them
-                        content = content.replace(/<course_materials>[\s\S]*?<\/course_materials>/g, '');
-                        
-                        // Remove the separator and bridge prompt
-                        content = content.replace(/\n\n---\n\n/g, '');
-                        content = content.replace(/Based on the course materials[\s\S]*?Student's question:/g, '');
-                        
-                        // Extract only the actual user question (after "Student's question:" if it still exists)
-                        const questionMarker = 'Student\'s question:';
-                        const questionIndex = content.indexOf(questionMarker);
-                        if (questionIndex !== -1) {
-                            content = content.substring(questionIndex + questionMarker.length).trim();
-                        }
-                        
-                        // Clean up any remaining whitespace
-                        content = content.trim();
+                    if (role === 'Student' && content.includes(COURSE_MATERIALS_OPEN)) {
+                        content = ragPrompts.stripRagFromUserMessage(content);
                     }
                     
                     formattedMessages += `${role}: ${content}\n\n`;

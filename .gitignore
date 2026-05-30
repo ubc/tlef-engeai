@@ -55,6 +55,9 @@ node_modules/
 /trial.ts
 src/test-scripts/
 
+# Socratic prompt stress test (local only — uncommitted)
+src/chat/__tests__/compose-system-prompt-socratic.test.ts
+
 queueTask.md
 ./src/debug/*
 ./src/tempfiles/*

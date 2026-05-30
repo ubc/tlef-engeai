@@ -249,7 +249,7 @@ All chat endpoints require auth. Access is scoped by session `currentCourse` and
 | `course-routes.ts` | validateCourseAccess, requireInstructorForCourse, requireStudentForCourse |
 | `mongo-app.ts` | EngEAI_MongoDB |
 | `rag-routes.ts` | RAGApp |
-| `chat-app.ts` | ChatApp, EngEAI_MongoDB |
+| `chat-app.ts` | ChatApp, EngEAI_MongoDB; RAG via `RAGApp` + `ragPrompts` |
 | `course-entry.ts` | EngEAI_MongoDB |
 | `user-management.ts` | EngEAI_MongoDB |
 | `auth.ts` | Passport, EngEAI_MongoDB |
@@ -330,3 +330,13 @@ console.log(res.status, await res.json());
 3. **Shared vs role-specific** — Chat, course entry, and flag creation are shared; course management, RAG upload, flags list/update, and monitor are instructor-only.
 4. **Modular routes** — Each domain (courses, chat, RAG, auth, user) has its own router for maintainability.
 5. **Session-based course context** — `currentCourse` in session drives chat and RAG operations; `courseId` in params/body drives course-scoped APIs.
+
+### Chat RAG flow (`POST /api/chat/:chatId`)
+
+On each student message, `ChatApp` orchestrates retrieval through two RAG classes (shared `RAGModule` from `RAGApp`):
+
+1. **`RAGApp.retrieveForChat`** — vector search with published-item filter (skipped in developer mode)
+2. **`ragPrompts.formatRetrievedContext`** — wraps chunks in `<course_materials>...</course_materials>`
+3. **`ragPrompts.formatRagUserTurn`** — appends mode-specific bridge (Socratic) and the raw student message
+4. Forked LLM conversation receives the assembled user turn; stored chat history keeps the clean student message only
+5. Memory-agent analysis uses **`ragPrompts.stripRagFromUserMessage`** to remove injected context from prior turns
