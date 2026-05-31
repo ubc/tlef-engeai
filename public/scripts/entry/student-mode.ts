@@ -663,7 +663,9 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                 
                 const restoreData = await restoreResponse.json();
                 if (restoreData.success) {
-                    // Chat restored, now switch to it
+                    if (restoreData.chat) {
+                        chatManager.ingestChatFromRestore(restoreData.chat);
+                    }
                     await chatManager.setActiveChatId(chatId);
                     chatManager.renderActiveChat();
                     // console.log('[STUDENT-MODE] ✅ Chat restored and loaded:', chatId);

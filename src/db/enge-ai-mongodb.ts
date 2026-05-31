@@ -14,6 +14,7 @@ import {
     AdditionalMaterial,
     Chat,
     ChatMessage,
+    PersistedConversationModeId,
     CourseUser,
     FlagReport,
     GlobalUser,
@@ -338,6 +339,13 @@ export class EngEAI_MongoDB {
 
     public addMessageToChat = async (courseName: string, userId: string, chatId: string, message: ChatMessage) =>
         ChatMongo.addMessageToChat(this.ctx(), courseName, userId, chatId, message);
+
+    public ensureChatConversationMode = async (
+        courseName: string,
+        userId: string,
+        chatId: string,
+        mode: PersistedConversationModeId = 'socratic'
+    ) => ChatMongo.ensureChatConversationMode(this.ctx(), courseName, userId, chatId, mode);
 
     public updateChatTitle = async (courseName: string, userId: string, chatId: string, newTitle: string) =>
         ChatMongo.updateChatTitle(this.ctx(), courseName, userId, chatId, newTitle);

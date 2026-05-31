@@ -1,11 +1,16 @@
 /**
- * Struggle topics handling instructions (shared; behavior note varies by mode).
+ * Struggle-topics system-prompt section for Socratic conversation mode.
  *
+ * Injected only when composing a Socratic chat system prompt (see compose-system-prompt.ts).
+ * At runtime, the memory agent attaches `<struggle_topics>` labels to user turns; when the
+ * student's question relates to a listed topic, the model follows these rules and responds
+ * with direct step-by-step explanation instead of Socratic questioning.
+ *
+ * Not used for Explanatory or other modes in the current product phase.
+ * Instructor-managed struggle text remains in struggle-topics-instructor-prompt.ts.
  */
 
-export type StruggleTopicOverride = 'socratic_off' | 'inherit_methodology';
-
-const STRUGGLE_TOPICS_BASE = `
+export const STRUGGLE_TOPICS_SECTION = `
 ===========================================
 STRUGGLE TOPICS HANDLING
 ===========================================
@@ -51,16 +56,3 @@ User prompt: .....user prompt...<questionUnstruggle reveal="TRUE">...
 Assistant response: ...assistant response...
 <questionUnstruggle Topic="thermodynamics"> 
 `;
-
-/**
- * @param override - socratic_off: struggle handling disables Socratic questioning
- */
-export function getStruggleTopicsSection(override: StruggleTopicOverride): string {
-    if (override === 'inherit_methodology') {
-        return STRUGGLE_TOPICS_BASE.replace(
-            '☐ STOPPED using Socratic or guided-discovery questioning',
-            '☐ Adjust questioning style per the active teaching methodology'
-        );
-    }
-    return STRUGGLE_TOPICS_BASE;
-}

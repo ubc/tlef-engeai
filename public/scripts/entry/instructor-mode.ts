@@ -1033,7 +1033,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (restoreResponse.ok) {
                     const restoreData = await restoreResponse.json();
                     if (restoreData.success) {
-                        // Chat restored, now switch to it
+                        if (restoreData.chat) {
+                            chatManager.ingestChatFromRestore(restoreData.chat);
+                        }
                         await chatManager.setActiveChatId(chatId);
                         chatManager.renderActiveChat();
                     } else {

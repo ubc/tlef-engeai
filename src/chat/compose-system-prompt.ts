@@ -4,6 +4,8 @@
  * Merges mode metadata (picker API, validation) with prompt assembly
  * (shared + specialized sections from system-prompts/).
  *
+ * Struggle-topics prompt section is composed into Socratic mode only; memory-agent runtime
+ * gating lives in chat-app.ts.
  */
 
 import { ConversationModeId, LearningObjectiveForDisplay, SystemPromptItem } from '../types/shared';
@@ -11,10 +13,7 @@ import { CORE_IDENTITY_SECTION } from './system-prompts/shared/core-identity';
 import { DIAGRAM_GUIDANCE_SECTION } from './system-prompts/shared/diagram-guidance';
 import { RESPONSE_FORMATTING_SECTION } from './system-prompts/shared/response-formatting';
 import { SAFETY_RESTRICTIONS_SECTION } from './system-prompts/shared/safety-restrictions';
-import {
-    getStruggleTopicsSection,
-    StruggleTopicOverride,
-} from './system-prompts/shared/struggle-topics';
+import { STRUGGLE_TOPICS_SECTION } from './system-prompts/shared/struggle-topics';
 import { PRACTICE_QUESTIONS_SECTION } from './system-prompts/socratic/practice-questions';
 import { TEACHING_METHODOLOGY_SECTION } from './system-prompts/socratic/teaching-methodology';
 
@@ -42,13 +41,11 @@ export interface SystemPromptBuildContext {
     appendedSystemPromptItems?: SystemPromptItem[];
 }
 
-interface ModeCatalogEntry extends ApiConversationModeListItem {
-    struggleTopicOverride: StruggleTopicOverride;
-}
+
 
 const DEFAULT_MODE_ID: ConversationModeId = 'socratic';
 
-const MODE_CATALOG: ModeCatalogEntry[] = [
+const MODE_CATALOG: ApiConversationModeListItem[] = [
     {
         id: 'socratic',
         displayName: 'Socratic',
@@ -58,17 +55,15 @@ const MODE_CATALOG: ModeCatalogEntry[] = [
         status: 'active',
         isDefault: true,
         sortOrder: 0,
-        struggleTopicOverride: 'socratic_off',
     },
     {
         id: 'explanatory',
         displayName: 'Explanatory',
         shortDescription: 'Clear explanations with optional check-in questions',
         longDescription: 'EngE-AI explains concepts directly, then checks your understanding.',
-        status: 'coming_soon',
+        status: 'active',
         isDefault: false,
         sortOrder: 1,
-        struggleTopicOverride: 'inherit_methodology',
     },
 ];
 
@@ -114,9 +109,7 @@ export class ConversationModePrompts {
      * @returns Catalog entries sorted by `sortOrder` (labels only, no LLM prompt text)
      */
     public getModesForApiCatalog(): ApiConversationModeListItem[] {
-        return [...MODE_CATALOG]
-            .sort((a, b) => a.sortOrder - b.sortOrder)
-            .map(({ struggleTopicOverride: _override, ...api }) => api);
+        return [...MODE_CATALOG].sort((a, b) => a.sortOrder - b.sortOrder);
     }
 
     /**
@@ -197,15 +190,20 @@ export class ConversationModePrompts {
         return prompt;
     }
 
-    private getStruggleOverride(modeId: ConversationModeId): StruggleTopicOverride {
-        const entry = MODE_CATALOG.find((m) => m.id === modeId);
-        return entry?.struggleTopicOverride ?? 'socratic_off';
-    }
-
+    /**
+     * Joins the sections into a single string.
+     * @param sections - The sections to join
+     * @returns The joined sections
+     */
     private joinSections(sections: string[]): string {
         return sections.filter((section) => section.trim()).join('\n\n');
     }
 
+    /**
+     * Formats the learning objectives content.
+     * @param learningObjectives - The learning objectives
+     * @returns The formatted learning objectives content
+     */
     private formatLearningObjectivesContent(learningObjectives: LearningObjectiveForDisplay[]): string {
         let content = '\n\n<course_learning_objectives>\n';
         content +=
@@ -222,13 +220,13 @@ export class ConversationModePrompts {
         return content;
     }
 
+    /**
+     * Composes the mode sections.
+     * @param modeId - The mode ID
+     * @returns The composed mode sections
+     */
     private composeModeSections(modeId: ConversationModeId): string {
-        const struggleOverride = this.getStruggleOverride(modeId);
-
-        // Compose the mode sections based on the mode ID
         switch (modeId) {
-
-            // Socratic mode: 
             case 'socratic':
                 return this.joinSections([
                     CORE_IDENTITY_SECTION,
@@ -237,7 +235,7 @@ export class ConversationModePrompts {
                     PRACTICE_QUESTIONS_SECTION,
                     DIAGRAM_GUIDANCE_SECTION,
                     SAFETY_RESTRICTIONS_SECTION,
-                    getStruggleTopicsSection(struggleOverride),
+                    STRUGGLE_TOPICS_SECTION,
                 ]);
             case 'explanatory':
                 return this.joinSections([
@@ -245,7 +243,6 @@ export class ConversationModePrompts {
                     RESPONSE_FORMATTING_SECTION,
                     DIAGRAM_GUIDANCE_SECTION,
                     SAFETY_RESTRICTIONS_SECTION,
-                    getStruggleTopicsSection(struggleOverride),
                 ]);
             default:
                 return this.composeModeSections(DEFAULT_MODE_ID);

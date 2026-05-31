@@ -1,12 +1,24 @@
 ---
 description: TSDoc and header standards for conversation-modes
-globs: src/chat/conversation-modes/**
+globs: src/chat/conversation-modes/**,src/chat/compose-system-prompt.ts,src/types/shared.ts
 alwaysApply: false
 ---
 
 # Conversation Modes Documentation
 
-Applies when editing `src/chat/conversation-modes/**`. Reference implementation: legacy `src/chat/compose-system-prompt.ts`.
+Applies when editing `src/chat/conversation-modes/**`, `compose-system-prompt.ts`, and `Chat.conversationMode` in `shared.ts`. Reference implementation: `src/chat/compose-system-prompt.ts`.
+
+## Mode slug resolution (non-negotiable)
+
+Valid slugs: `'socratic' | 'explanatory'` only (`ConversationModeId`).
+
+| Input | Runtime (`resolveModeId`) | Mongo backfill (`ensureChatConversationMode`) |
+|-------|---------------------------|-----------------------------------------------|
+| missing / `null` / `undefined` | `'socratic'` | write `'socratic'` |
+| typo or any other string | `'socratic'` | overwrite with `'socratic'` |
+| `'socratic'` or `'explanatory'` | unchanged | no-op |
+
+Any invalid stored value is treated as default — never propagate typos to prompts or struggle gating.
 
 ## Catalog vs prompt bodies
 

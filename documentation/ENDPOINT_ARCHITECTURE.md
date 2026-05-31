@@ -181,12 +181,13 @@ All chat endpoints require auth. Access is scoped by session `currentCourse` and
 | GET | `/api/chat/user/chats/metadata` | Yes | Any | List chat metadata |
 | GET | `/api/chat/user/chats` | Yes | Any | List full chats |
 | GET | `/api/chat/conversation-modes` | Yes | Any | List teaching mode catalog (labels only, no prompts) |
-| POST | `/api/chat/newchat` | Yes | Any | Create new chat (`conversationMode` optional, locked at creation) |
-| POST | `/api/chat/:chatId` | Yes | Any | Send message (streaming) |
+| POST | `/api/chat/newchat` | Yes | Any | Create new welcome-only chat with persisted `conversationMode: 'undeclared'` |
+| POST | `/api/chat/restore/:chatId` | Yes | Any | Restore chat into server memory; lazy mode migration uses message history |
+| PATCH | `/api/chat/:chatId/conversation-mode` | Yes | Any | Update teaching mode before the first user message; rejects chats that already contain a user turn |
+| POST | `/api/chat/:chatId` | Yes | Any | Send message; first user message finalizes an undeclared chat to `socratic` or `explanatory` before LLM processing |
 | POST | `/api/chat/:chatId/dismiss-unstruggle` | Yes | Any | Dismiss unstruggle |
 | GET | `/api/chat/:chatId/history` | Yes | Any | Get chat history |
 | GET | `/api/chat/:chatId/message/:messageId` | Yes | Any | Get single message |
-| POST | `/api/chat/restore/:chatId` | Yes | Any | Restore deleted chat |
 | DELETE | `/api/chat/:chatId` | Yes | Any | Delete chat |
 | PUT | `/api/chat/:chatId/pin` | Yes | Any | Pin/unpin chat |
 | GET | `/api/chat/test` | No | — | Test endpoint |
@@ -340,3 +341,9 @@ On each student message, `ChatApp` orchestrates retrieval through two RAG classe
 3. **`ragPrompts.formatRagUserTurn`** — appends mode-specific bridge (Socratic) and the raw student message
 4. Forked LLM conversation receives the assembled user turn; stored chat history keeps the clean student message only
 5. Memory-agent analysis uses **`ragPrompts.stripRagFromUserMessage`** to remove injected context from prior turns
+
+**Conversation mode lifecycle:** `undeclared` is a persisted chat lifecycle state, not an LLM prompt mode. New chats are stored as `conversationMode === 'undeclared'` while they contain only the welcome message. The first `POST /api/chat/:chatId` includes the selected real mode (`socratic` or `explanatory`); the backend persists that mode, rebuilds the LLM conversation, and only then processes the user turn. `PATCH /api/chat/:chatId/conversation-mode` remains available for welcome-only chats, but chats with a user message reject mode changes.
+
+**Lazy restore migration:** if `conversationMode` is already `socratic` or `explanatory`, restore leaves it unchanged. Missing, invalid, or `undeclared` rows with any user message are backfilled to `socratic` to preserve historical default behavior. Missing, invalid, or `undeclared` rows with no user messages are written as `undeclared` so the picker remains editable.
+
+**Struggle topics (current phase):** memory-agent detection and per-turn `<struggle_topics>` injection apply only to finalized Socratic chats (`conversationMode === 'socratic'`).

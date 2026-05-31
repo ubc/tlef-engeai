@@ -4,6 +4,7 @@
 
 import { COURSE_MATERIALS_OPEN, COURSE_MATERIALS_CLOSE } from '../../../rag/rag-prompts';
 
+
 export const CORE_IDENTITY_SECTION = `===========================================
 CORE IDENTITY & ROLE
 ===========================================

@@ -1,6 +1,6 @@
 /**
- * Conversation mode picker — Anthropic-style text trigger + popover (no mode icons).
- *
+ * Conversation mode picker — pill beside send.
+ * Unlocked: label + CSS chevron. Locked: label + Feather lock (CSS toggled via `.is-locked`).
  */
 
 import { fetchConversationModes } from '../api/chat-api.js';
@@ -12,43 +12,79 @@ import {
 export interface ConversationModePickerOptions {
     getSelectedModeId: () => ConversationModeId;
     onModeSelect: (modeId: ConversationModeId) => void;
+    /** Called after catalog fetch so ChatManager can re-sync lock state. */
+    onCatalogLoaded?: () => void;
+}
+
+export interface ComposerModeVisibility {
+    modeId: ConversationModeId;
+    isLocked: boolean;
 }
 
 export class ConversationModePicker {
     private modes: ConversationModeCatalogItem[] = [];
     private selectedId: ConversationModeId = 'socratic';
-    private readonly trigger: HTMLButtonElement | null;
-    private readonly popover: HTMLElement | null;
-    private readonly readonlyLabel: HTMLElement | null;
-    private readonly wrap: HTMLElement | null;
+    private isLocked = false;
+    private catalogLoaded = false;
+    private trigger: HTMLButtonElement | null = null;
+    private labelEl: HTMLElement | null = null;
+    private popover: HTMLElement | null = null;
     private popoverOpen = false;
+    private isPending = false;
 
     constructor(
         private readonly options: ConversationModePickerOptions
     ) {
-        this.trigger = document.getElementById('conversation-mode-trigger') as HTMLButtonElement | null;
-        this.popover = document.getElementById('conversation-mode-popover');
-        this.readonlyLabel = document.getElementById('conversation-mode-readonly');
-        this.wrap = document.getElementById('conversation-mode-wrap');
-        this.bindTrigger();
+        this.bindToDom();
         document.addEventListener('click', (e) => this.handleDocumentClick(e));
     }
 
+    bindToDom(): void {
+        const trigger = document.getElementById('conversation-mode-trigger') as HTMLButtonElement | null;
+        const popover = document.getElementById('conversation-mode-popover');
+
+        if (trigger === this.trigger && popover === this.popover) {
+            return;
+        }
+
+        this.trigger = trigger;
+        this.labelEl = this.trigger?.querySelector('.conversation-mode-label') ?? null;
+        this.popover = popover;
+        this.bindTrigger();
+        this.syncTriggerLabel();
+        this.applyLockedPresentation(this.isLocked);
+        this.renderPopover();
+    }
+
     async loadCatalog(): Promise<void> {
+        if (this.catalogLoaded) {
+            this.options.onCatalogLoaded?.();
+            return;
+        }
+
         const response = await fetchConversationModes();
         if (!response.success || !response.modes?.length) {
             return;
         }
+
         this.modes = [...response.modes].sort((a, b) => a.sortOrder - b.sortOrder);
+        this.catalogLoaded = true;
+
         const defaultMode =
             this.modes.find((m) => m.isDefault && m.status === 'active') ??
             this.modes.find((m) => m.status === 'active');
-        if (defaultMode) {
-            this.selectedId = defaultMode.id;
-            this.options.onModeSelect(this.selectedId);
-        }
+
+        const currentSelection = this.options.getSelectedModeId();
+        const currentIsActive = this.modes.some(
+            (m) => m.id === currentSelection && m.status === 'active'
+        );
+        this.selectedId = currentIsActive
+            ? currentSelection
+            : (defaultMode?.id ?? 'socratic');
+
         this.renderPopover();
         this.syncTriggerLabel();
+        this.options.onCatalogLoaded?.();
     }
 
     setSelectedModeId(modeId: ConversationModeId): void {
@@ -57,34 +93,51 @@ export class ConversationModePicker {
         this.renderPopover();
     }
 
+    setPending(isPending: boolean): void {
+        this.isPending = isPending;
+        this.applyLockedPresentation(this.isLocked);
+        this.renderPopover();
+    }
+
     getSelectedModeId(): ConversationModeId {
         return this.options.getSelectedModeId();
     }
 
-    /**
-     * @param activeChatModeId - When set, picker is locked and shows read-only label
-     */
-    syncComposerVisibility(activeChatModeId: ConversationModeId | null | undefined): void {
-        const hasActiveChat = Boolean(activeChatModeId);
-        if (this.wrap) {
-            this.wrap.hidden = hasActiveChat;
-        }
-        if (this.readonlyLabel) {
-            this.readonlyLabel.hidden = !hasActiveChat;
-            if (hasActiveChat && activeChatModeId) {
-                const meta = this.modes.find((m) => m.id === activeChatModeId);
-                this.readonlyLabel.textContent = meta?.displayName ?? activeChatModeId;
-            }
-        }
-        if (hasActiveChat) {
+    syncComposerVisibility({ modeId, isLocked }: ComposerModeVisibility): void {
+        this.isLocked = isLocked;
+        this.selectedId = modeId;
+        this.syncTriggerLabel();
+        this.applyLockedPresentation(isLocked);
+
+        if (isLocked) {
             this.closePopover();
+        } else {
+            this.renderPopover();
+        }
+    }
+
+    /** Re-apply `.is-locked` after global `renderFeatherIcons()` elsewhere in the app. */
+    refreshPresentationAfterIcons(): void {
+        this.applyLockedPresentation(this.isLocked);
+    }
+
+    private applyLockedPresentation(isLocked: boolean): void {
+        this.trigger?.classList.toggle('is-locked', isLocked);
+        this.trigger?.setAttribute('aria-disabled', isLocked ? 'true' : 'false');
+        this.trigger?.setAttribute('aria-busy', this.isPending ? 'true' : 'false');
+
+        if (isLocked) {
+            this.trigger?.removeAttribute('aria-haspopup');
+            this.trigger?.setAttribute('aria-expanded', 'false');
+        } else {
+            this.trigger?.setAttribute('aria-haspopup', 'listbox');
         }
     }
 
     private bindTrigger(): void {
         this.trigger?.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (this.trigger?.disabled) {
+            if (this.isLocked || this.isPending) {
                 return;
             }
             this.popoverOpen = !this.popoverOpen;
@@ -111,15 +164,15 @@ export class ConversationModePicker {
     }
 
     private syncTriggerLabel(): void {
-        if (!this.trigger) {
+        if (!this.labelEl) {
             return;
         }
         const meta = this.modes.find((m) => m.id === this.selectedId);
-        this.trigger.textContent = meta?.displayName ?? this.selectedId;
+        this.labelEl.textContent = meta?.displayName ?? this.selectedId;
     }
 
     private renderPopover(): void {
-        if (!this.popover) {
+        if (!this.popover || this.isLocked) {
             return;
         }
         this.popover.innerHTML = '';
@@ -132,7 +185,7 @@ export class ConversationModePicker {
             option.setAttribute('role', 'option');
             option.dataset.modeId = mode.id;
 
-            const isDisabled = mode.status !== 'active';
+            const isDisabled = mode.status !== 'active' || this.isPending;
             const isSelected = mode.id === this.selectedId;
             option.disabled = isDisabled;
             option.setAttribute('aria-selected', isSelected ? 'true' : 'false');

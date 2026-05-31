@@ -11,7 +11,7 @@ import dotenv from 'dotenv';
 import express, { Request, Response } from 'express';
 import { loadConfig } from '../utils/config';
 import { IDGenerator } from '../utils/unique-id-generator';
-import { ChatMessage, Chat } from '../types/shared';
+import { ChatMessage, Chat, ConversationModeId, UpdateChatConversationModeRequest, UpdateChatConversationModeResponse } from '../types/shared';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { ChatApp } from '../chat/chat-app';
@@ -251,16 +251,7 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
         const userID = req.body.userID;
         const courseName = req.body.courseName;
         const date = new Date(); // the date is the current date inside the backend
-        let conversationMode;
-        try {
-            conversationMode = conversationModePrompts.resolveModeId(req.body.conversationMode);
-            conversationModePrompts.assertModeActiveForNewChat(conversationMode);
-        } catch (modeError) {
-            return res.status(400).json({
-                success: false,
-                error: modeError instanceof Error ? modeError.message : 'Invalid conversation mode',
-            });
-        }
+        const conversationMode = 'undeclared';
         
         // Get user from session
         const user = (req as any).user;
@@ -376,6 +367,109 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
 
 
 /**
+ * PATCH /:chatId/conversation-mode
+ * Update a welcome-only chat's teaching mode before the first user message.
+ *
+ * @route PATCH /api/chat/:chatId/conversation-mode
+ * @param {string} chatId - Chat ID (path param)
+ * @param {string} conversationMode - Requested teaching mode (body)
+ * @returns {object} { success: boolean, conversationMode?: string, error?: string }
+ * @response 200 - Success
+ * @response 400 - Invalid mode, missing course, or chat already has user messages
+ * @response 401 - User not authenticated or not found
+ * @response 404 - Chat not found
+ * @response 500 - Failed to update conversation mode
+ */
+router.patch('/:chatId/conversation-mode', asyncHandlerWithAuth(async (
+    req: Request<{ chatId: string }, UpdateChatConversationModeResponse, UpdateChatConversationModeRequest>,
+    res: Response<UpdateChatConversationModeResponse>
+) => {
+    try {
+        const { chatId } = req.params;
+        const { conversationMode } = req.body;
+        const user = (req as any).user;
+        const puid = user?.puid;
+        const currentCourse = (req.session as any).currentCourse;
+        const courseName = currentCourse?.courseName;
+
+        if (!puid) {
+            return res.status(401).json({
+                success: false,
+                error: 'User not authenticated',
+            });
+        }
+
+        if (!courseName) {
+            return res.status(400).json({
+                success: false,
+                error: 'No active course selected',
+            });
+        }
+
+        if (conversationMode !== 'socratic' && conversationMode !== 'explanatory') {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid conversation mode',
+            });
+        }
+
+        let resolvedMode: ConversationModeId;
+        try {
+            resolvedMode = conversationModePrompts.resolveModeId(conversationMode);
+            conversationModePrompts.assertModeActiveForNewChat(resolvedMode);
+        } catch (modeError) {
+            return res.status(400).json({
+                success: false,
+                error: modeError instanceof Error ? modeError.message : 'Invalid conversation mode',
+            });
+        }
+
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const globalUser = await mongoDB.findGlobalUserByPUID(puid);
+        if (!globalUser || !globalUser.userId) {
+            return res.status(401).json({
+                success: false,
+                error: 'User not found',
+            });
+        }
+
+        const updatedMode = await chatApp.updateConversationModeBeforeFirstUserMessage(
+            chatId,
+            courseName,
+            globalUser.userId,
+            resolvedMode
+        );
+
+        if (!updatedMode) {
+            return res.status(404).json({
+                success: false,
+                error: 'Chat not found',
+            });
+        }
+
+        return res.json({
+            success: true,
+            conversationMode: updatedMode,
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to update conversation mode';
+        if (message === 'Conversation mode cannot be changed after the first user message') {
+            return res.status(400).json({
+                success: false,
+                error: message,
+            });
+        }
+
+        appLogger.error('❌ Error updating conversation mode:', { error });
+        return res.status(500).json({
+            success: false,
+            error: message,
+        });
+    }
+}));
+
+
+/**
  * POST /:chatId/dismiss-unstruggle
  * Remove <questionUnstruggle> tag from a bot message.
  *
@@ -446,6 +540,7 @@ router.post('/:chatId/dismiss-unstruggle', asyncHandlerWithAuth(async (req: Requ
  * @param {string} chatId - Chat ID (path param)
  * @param {string} message - User message text (body)
  * @param {string} [userId] - User ID, optional; session/MongoDB used as source of truth (body)
+ * @param {string} [conversationMode] - Selected teaching mode used to finalize undeclared chats
  * @returns {object} { success: boolean, userMessage?: object, assistantMessage?: object, error?: string }
  * @response 200 - Success
  * @response 400 - Message required, or no active course selected
@@ -456,7 +551,7 @@ router.post('/:chatId/dismiss-unstruggle', asyncHandlerWithAuth(async (req: Requ
 router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { chatId } = req.params;
-        const { message, userId: userIdFromBody } = req.body; // Rename to avoid conflict
+        const { message, userId: userIdFromBody, conversationMode } = req.body; // Rename to avoid conflict
         
         // Get user from session
         const user = (req as any).user;
@@ -514,6 +609,17 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
         
         // userId already validated above when fetching from MongoDB
 
+        if (
+            conversationMode !== undefined &&
+            conversationMode !== 'socratic' &&
+            conversationMode !== 'explanatory'
+        ) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid conversation mode'
+            });
+        }
+
         // Validate chat exists (or restore from database if evicted from memory)
         if (!chatApp.validateChatExists(chatId)) {
             // Attempt to restore chat from database before returning 404
@@ -533,6 +639,27 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                     error: 'Chat not found'
                 });
             }
+        }
+
+        if (!courseName) {
+            return res.status(400).json({
+                success: false,
+                error: 'No active course selected'
+            });
+        }
+
+        const finalizedMode = await chatApp.finalizeUndeclaredConversationModeBeforeFirstUserMessage(
+            chatId,
+            courseName,
+            userId,
+            conversationMode ?? 'socratic'
+        );
+
+        if (!finalizedMode) {
+            return res.status(404).json({
+                success: false,
+                error: 'Chat not found'
+            });
         }
 
         // Check if this is a questionUnstruggle response (natural language format)
@@ -625,7 +752,8 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 return res.json({
                     success: true,
                     userMessage: userMessage,
-                    assistantMessage: assistantMessage
+                    assistantMessage: assistantMessage,
+                    conversationMode: finalizedMode
                 });
             } else {
                 // Previous message doesn't match - treat as regular message
@@ -723,7 +851,8 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             res.json({ 
                 success: true, 
                 userMessage: userMessage,
-                assistantMessage: assistantMessage
+                assistantMessage: assistantMessage,
+                conversationMode: finalizedMode
             });
 
         } catch (aiError) {
