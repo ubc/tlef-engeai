@@ -571,7 +571,8 @@ button.content-status {
     box-shadow: 0 4px 8px rgba(106, 27, 154, 0.4);
 }
 
-.learning-objectives {
+.learning-objectives,
+.struggle-topics {
     margin: 10px 0;
 }
 

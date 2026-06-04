@@ -235,6 +235,7 @@ export interface TopicOrWeekItem {
     itemTitle: string;
     completed?: boolean;
     learningObjectives: LearningObjective[];
+    instructorStruggleTopics?: InstructorStruggleTopic[];
     additionalMaterials?: AdditionalMaterial[];
     createdAt: Date;
     updatedAt: Date;
@@ -257,6 +258,28 @@ export interface LearningObjective {
  */
 export interface LearningObjectiveForDisplay {
     LearningObjective: string;
+    topicOrWeekTitle: string;
+    itemTitle: string;
+}
+
+/**
+ * Must match src/types/shared.ts
+ * Instructor-authored struggle topic catalog entry (per section).
+ * `struggleTopic` is the verbatim label used by the memory agent and student struggle store.
+ */
+export interface InstructorStruggleTopic {
+    id: string;
+    struggleTopic: string;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+/**
+ * Must match src/types/shared.ts
+ * Flattened instructor struggle topic with parent hierarchy (memory-agent catalog).
+ */
+export interface InstructorStruggleTopicForDisplay {
+    struggleTopic: string;
     topicOrWeekTitle: string;
     itemTitle: string;
 }

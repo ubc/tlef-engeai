@@ -208,6 +208,57 @@ export class EngEAI_MongoDB {
     public getAllLearningObjectives = async (courseId: string) =>
         TopicWeekMongo.getAllLearningObjectives(this.ctx(), courseId);
 
+    /** Instructor struggle catalog CRUD — delegates to topic-week-mongo.ts */
+    public addInstructorStruggleTopic = async (
+        courseId: string,
+        topicOrWeekId: string,
+        contentId: string,
+        struggleTopic: any
+    ) =>
+        TopicWeekMongo.addInstructorStruggleTopic(
+            this.ctx(),
+            courseId,
+            topicOrWeekId,
+            contentId,
+            struggleTopic
+        );
+
+    /** PATCH one `instructorStruggleTopics[]` entry by id. */
+    public updateInstructorStruggleTopic = async (
+        courseId: string,
+        topicOrWeekId: string,
+        contentId: string,
+        struggleTopicId: string,
+        updateData: { struggleTopic: string }
+    ) =>
+        TopicWeekMongo.updateInstructorStruggleTopic(
+            this.ctx(),
+            courseId,
+            topicOrWeekId,
+            contentId,
+            struggleTopicId,
+            updateData
+        );
+
+    /** DELETE one `instructorStruggleTopics[]` entry by id. */
+    public deleteInstructorStruggleTopic = async (
+        courseId: string,
+        topicOrWeekId: string,
+        contentId: string,
+        struggleTopicId: string
+    ) =>
+        TopicWeekMongo.deleteInstructorStruggleTopic(
+            this.ctx(),
+            courseId,
+            topicOrWeekId,
+            contentId,
+            struggleTopicId
+        );
+
+    /** Flatten all instructor struggle labels with topic/week and section titles (memory-agent catalog). */
+    public getAllInstructorStruggleTopics = async (courseId: string) =>
+        TopicWeekMongo.getAllInstructorStruggleTopics(this.ctx(), courseId);
+
     public addContentItem = async (courseId: string, topicOrWeekId: string, contentItem: any) =>
         TopicWeekMongo.addContentItem(this.ctx(), courseId, topicOrWeekId, contentItem);
 

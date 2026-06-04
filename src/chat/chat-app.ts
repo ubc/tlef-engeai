@@ -452,16 +452,16 @@ export class ChatApp {
         });
         appLogger.log('='.repeat(80));
 
-        // printing out the full user prompt from this conversation
-        appLogger.log(`\n\n📝 FULL USER PROMPT FROM THIS CONVERSATION:\n\n`);
-        appLogger.log(`${message}`);
-        appLogger.log('='.repeat(80));
+        // // printing out the full user prompt from this conversation
+        // appLogger.log(`\n\n📝 FULL USER PROMPT FROM THIS CONVERSATION:\n\n`);
+        // appLogger.log(`${message}`);
+        // appLogger.log('='.repeat(80));
 
-        appLogger.log(`\n\n📝 FULL ADDITIONAL CONTEXT FROM THIS CONVERSATION:\n\n`);
-        appLogger.log(`${additionalContext}`);
-        appLogger.log('='.repeat(80));
+        // appLogger.log(`\n\n📝 FULL ADDITIONAL CONTEXT FROM THIS CONVERSATION:\n\n`);
+        // appLogger.log(`${additionalContext}`);
+        // appLogger.log('='.repeat(80));
 
-        appLogger.log(`📝 END CONVERSATION LOG\n`);
+        // appLogger.log(`📝 END CONVERSATION LOG\n`);
 
         // Calculate token statistics for file logging
         let totalCharacters = 0;
@@ -563,11 +563,11 @@ export class ChatApp {
                         formattedMessages += `${role}: ${content}\n\n`;
                     });
 
-                    // Analyze the formatted messages for struggle words
+                    // Analyze the formatted messages for struggle words (untrimmed for debug fidelity)
                     await memoryAgent.analyzeAndUpdateStruggleWords(
                         userId,
                         courseName,
-                        formattedMessages.trim()
+                        formattedMessages
                     );
 
                     appLogger.log(`🧠 Memory agent analysis completed for chat ${chatId} (analyzed last 3 of ${messageCount} messages from previous exchange)`);

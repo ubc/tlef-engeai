@@ -292,6 +292,7 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
                     topicOrWeekTitle: `Week ${i + 1}`,
                     itemTitle: `Lecture 1`,
                     learningObjectives: [],
+                    instructorStruggleTopics: [],
                     additionalMaterials: [],
                     createdAt: new Date(),
                     updatedAt: new Date(),
@@ -307,6 +308,7 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
                     topicOrWeekTitle: `Week ${i + 1}`,
                     itemTitle: `Lecture 2`,
                     learningObjectives: [],
+                    instructorStruggleTopics: [],
                     additionalMaterials: [],
                     createdAt: new Date(),
                     updatedAt: new Date(),
@@ -321,6 +323,7 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
                     topicOrWeekTitle: `Week ${i + 1}`,
                     itemTitle: `Lecture 3`,
                     learningObjectives: [],
+                    instructorStruggleTopics: [],
                     additionalMaterials: [],
                     createdAt: new Date(),
                     updatedAt: new Date(),
@@ -366,6 +369,7 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
                     topicOrWeekTitle: `Topic ${i + 1}`,
                     itemTitle: `Topic ${i + 1}`,
                     learningObjectives: [],
+                    instructorStruggleTopics: [],
                     additionalMaterials: [],
                     createdAt: new Date(),
                     updatedAt: new Date(),
@@ -1231,6 +1235,7 @@ router.post('/:courseId/topic-or-week-instances', requireInstructorForCourseAPI(
                     topicOrWeekTitle: resolvedTitle,
                     itemTitle: defaultItemTitle,
                     learningObjectives: [],
+                    instructorStruggleTopics: [],
                     additionalMaterials: [],
                     createdAt: now,
                     updatedAt: now
@@ -1539,6 +1544,183 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/o
             success: false,
             error: 'Failed to delete learning objective'
         });
+    }
+}));
+
+/**
+ * GET /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics
+ * Get instructor struggle topics (memory-agent catalog) for a course content item.
+ *
+ * @route GET /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {string} itemId - Content item ID (path param)
+ * @returns {object} { success: boolean, data?: InstructorStruggleTopic[], message?: string, error?: string }
+ * @response 200 - Struggle topics retrieved successfully
+ * @response 404 - Course, topic/week instance, or content item not found
+ * @response 500 - Failed to get struggle topics
+ */
+router.get('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics', asyncHandler(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, topicOrWeekId, itemId } = req.params;
+
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+
+        const instance_topicOrWeek = course.topicOrWeekInstances?.find((d: any) => d.id === topicOrWeekId);
+        if (!instance_topicOrWeek) {
+            return res.status(404).json({ success: false, error: 'Topic/Week instance not found' });
+        }
+
+        const contentItem = instance_topicOrWeek.items?.find((item: any) => item.id === itemId);
+        if (!contentItem) {
+            return res.status(404).json({ success: false, error: 'Content item not found' });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: contentItem.instructorStruggleTopics || [],
+            message: 'Struggle topics retrieved successfully'
+        });
+    } catch (error) {
+        appLogger.error('Error getting struggle topics:', { error });
+        res.status(500).json({ success: false, error: 'Failed to get struggle topics' });
+    }
+}));
+
+/**
+ * POST /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics
+ * Add an instructor struggle topic to a content item. Instructors only.
+ *
+ * @route POST /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {string} itemId - Content item ID (path param)
+ * @param {object} struggleTopic - Catalog entry with `struggleTopic` text (body)
+ * @returns {object} { success: boolean, data?: object, message?: string, error?: string }
+ * @response 200 - Struggle topic added successfully
+ * @response 400 - Missing or invalid struggleTopic (empty or >300 chars)
+ * @response 403 - Instructor access required for course
+ * @response 500 - Failed to add struggle topic
+ */
+router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, topicOrWeekId, itemId } = req.params;
+        const { struggleTopic } = req.body;
+
+        if (!struggleTopic) {
+            return res.status(400).json({ success: false, error: 'Missing required field: struggleTopic' });
+        }
+
+        const rawText = (struggleTopic?.struggleTopic ?? '').toString();
+        const sanitizedText = rawText.trim();
+        if (!sanitizedText) {
+            return res.status(400).json({ success: false, error: 'Struggle topic cannot be empty' });
+        }
+        if (sanitizedText.length > 300) {
+            return res.status(400).json({ success: false, error: 'Struggle topic too long (max 300 characters)' });
+        }
+
+        struggleTopic.struggleTopic = sanitizedText;
+        struggleTopic.createdAt = struggleTopic.createdAt || new Date();
+        struggleTopic.updatedAt = new Date();
+
+        const result = await instance.addInstructorStruggleTopic(courseId, topicOrWeekId, itemId, struggleTopic);
+
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'Struggle topic added successfully'
+        });
+    } catch (error) {
+        appLogger.error('Error adding struggle topic:', { error });
+        res.status(500).json({ success: false, error: 'Failed to add struggle topic' });
+    }
+}));
+
+/**
+ * PUT /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId
+ * Update an instructor struggle topic label. Instructors only.
+ *
+ * @route PUT /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {string} itemId - Content item ID (path param)
+ * @param {string} struggleTopicId - Catalog entry ID (path param)
+ * @param {object} updateData - `{ struggleTopic: string }` (body)
+ * @returns {object} { success: boolean, data?: object, message?: string, error?: string }
+ * @response 200 - Struggle topic updated successfully
+ * @response 400 - Missing or invalid updateData
+ * @response 403 - Instructor access required for course
+ * @response 500 - Failed to update struggle topic
+ */
+router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, topicOrWeekId, itemId, struggleTopicId } = req.params;
+        const { updateData } = req.body;
+
+        if (!updateData) {
+            return res.status(400).json({ success: false, error: 'Missing required field: updateData' });
+        }
+
+        const rawText = (updateData?.struggleTopic ?? '').toString();
+        const sanitizedText = rawText.trim();
+        if (!sanitizedText) {
+            return res.status(400).json({ success: false, error: 'Struggle topic cannot be empty' });
+        }
+        if (sanitizedText.length > 300) {
+            return res.status(400).json({ success: false, error: 'Struggle topic too long (max 300 characters)' });
+        }
+
+        const result = await instance.updateInstructorStruggleTopic(courseId, topicOrWeekId, itemId, struggleTopicId, {
+            struggleTopic: sanitizedText
+        });
+
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'Struggle topic updated successfully'
+        });
+    } catch (error) {
+        appLogger.error('Error updating struggle topic:', { error });
+        res.status(500).json({ success: false, error: 'Failed to update struggle topic' });
+    }
+}));
+
+/**
+ * DELETE /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId
+ * Delete an instructor struggle topic from a content item. Instructors only.
+ *
+ * @route DELETE /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {string} itemId - Content item ID (path param)
+ * @param {string} struggleTopicId - Catalog entry ID (path param)
+ * @returns {object} { success: boolean, data?: object, message?: string, error?: string }
+ * @response 200 - Struggle topic deleted successfully
+ * @response 403 - Instructor access required for course
+ * @response 500 - Failed to delete struggle topic
+ */
+router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, topicOrWeekId, itemId, struggleTopicId } = req.params;
+
+        const result = await instance.deleteInstructorStruggleTopic(courseId, topicOrWeekId, itemId, struggleTopicId);
+
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'Struggle topic deleted successfully'
+        });
+    } catch (error) {
+        appLogger.error('Error deleting struggle topic:', { error });
+        res.status(500).json({ success: false, error: 'Failed to delete struggle topic' });
     }
 }));
 

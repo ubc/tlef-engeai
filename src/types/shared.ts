@@ -301,6 +301,7 @@ export interface TopicOrWeekItem {
     itemTitle: string;
     completed?: boolean;
     learningObjectives: LearningObjective[];
+    instructorStruggleTopics?: InstructorStruggleTopic[];
     additionalMaterials?: AdditionalMaterial[];
     createdAt: Date;
     updatedAt: Date;
@@ -322,6 +323,30 @@ export interface LearningObjective {
  */
 export interface LearningObjectiveForDisplay {
     LearningObjective: string;
+    topicOrWeekTitle: string;
+    itemTitle: string;
+}
+
+/**
+ * Instructor-authored struggle topic catalog entry (per section).
+ *
+ * `struggleTopic` is the exact label the memory agent may return and that is stored on the student entry.
+ * Managed via Documents page CRUD (`/struggle-topics` API).
+ */
+export interface InstructorStruggleTopic {
+    id: string;
+    struggleTopic: string;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+/**
+ * Flattened instructor struggle topic with parent hierarchy for memory-agent prompt assembly.
+ *
+ * Produced by `getAllInstructorStruggleTopics`; not used in the main Socratic system prompt.
+ */
+export interface InstructorStruggleTopicForDisplay {
+    struggleTopic: string;
     topicOrWeekTitle: string;
     itemTitle: string;
 }
