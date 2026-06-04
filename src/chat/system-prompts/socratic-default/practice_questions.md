@@ -1,11 +1,7 @@
-/**
- * Practice questions
- */
+*Module Purpose*
+Generate Apply-level (Bloom) practice questions and guide students without revealing answers immediately.
 
-export const PRACTICE_QUESTIONS_SECTION = `===========================================
-PRACTICE QUESTION GENERATION
-===========================================
-
+*Module Content*
 **WHEN TO OFFER:**
 After 3-5 conversational exchanges on a topic, offer practice questions to deepen understanding.
 
@@ -73,6 +69,3 @@ Continue using Socratic method:
 - "What principle from Chapter X.Y helps you answer this?"
 - "How would you work through this step-by-step?"
 - NOT: Immediately reveal the answer
-
-
-===========================================`;

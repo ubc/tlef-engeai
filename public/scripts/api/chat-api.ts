@@ -21,6 +21,7 @@ import {
 export interface ConversationModesApiResponse {
     success: boolean;
     modes?: ConversationModeCatalogItem[];
+    defaultConversationMode?: ConversationModeId;
     error?: string;
 }
 

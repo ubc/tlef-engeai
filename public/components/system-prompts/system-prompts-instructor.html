@@ -1,21 +1,92 @@
-<div class="container">
+<div class="container system-prompts-container">
     <link rel="stylesheet" href="/styles/system-prompts.css">
-    <main class="main-content">
-        <div class="system-prompts-header mobile-header-bar">
+    <main class="main-content system-prompts-root">
+        <div class="system-prompts-topbar system-prompts-header mobile-header-bar">
             <button id="instructor-hamburger-btn" class="instructor-mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
                 <i data-feather="menu"></i>
             </button>
             <h1 class="mobile-header-title">System Prompts</h1>
-            <div class="system-prompts-header-actions">
-                <button class="system-add-prompt-btn" id="system-add-prompt-btn" title="Add New System Prompt Item" aria-label="Add New System Prompt Item">
-                    <i data-feather="plus"></i>
-                    <span class="btn-text">add new</span>
-                </button>
+            <div class="system-prompts-topbar-actions">
+                <div class="system-prompt-dropdown" id="system-prompt-mode-dropdown">
+                    <button
+                        type="button"
+                        id="system-prompt-mode-trigger"
+                        class="system-prompt-mode-trigger system-prompt-topbar-control"
+                        aria-haspopup="listbox"
+                        aria-expanded="false"
+                        aria-controls="system-prompt-mode-menu"
+                    >
+                        <span id="system-prompt-mode-trigger-label" class="system-prompt-mode-trigger-label">Socratic</span>
+                        <i data-feather="chevron-down" class="system-prompt-mode-chevron"></i>
+                    </button>
+                    <ul id="system-prompt-mode-menu" class="system-prompt-menu hidden" role="listbox" aria-label="Conversation mode">
+                        <li>
+                            <button type="button" class="system-prompt-menu-item" data-mode="socratic" role="option">Socratic</button>
+                        </li>
+                        <li>
+                            <button type="button" class="system-prompt-menu-item" data-mode="explanatory" role="option">Explanatory</button>
+                        </li>
+                    </ul>
+                </div>
+                <div class="system-prompt-dropdown" id="system-prompt-kebab-dropdown">
+                    <button
+                        type="button"
+                        id="system-prompt-kebab-btn"
+                        class="system-prompt-kebab-btn system-prompt-topbar-control icon-btn"
+                        title="More actions"
+                        aria-label="More actions"
+                        aria-haspopup="menu"
+                        aria-expanded="false"
+                        aria-controls="system-prompt-kebab-menu"
+                    >
+                        <i data-feather="more-vertical"></i>
+                    </button>
+                    <ul id="system-prompt-kebab-menu" class="system-prompt-menu system-prompt-kebab-menu hidden" role="menu">
+                        <li role="none">
+                            <button type="button" class="system-prompt-menu-item" data-kebab-action="reset" role="menuitem">Reset system prompt</button>
+                        </li>
+                        <li role="none">
+                            <button type="button" class="system-prompt-menu-item" data-kebab-action="set-default" role="menuitem">Set as default for new chats</button>
+                        </li>
+                    </ul>
+                </div>
             </div>
         </div>
 
-        <div id="system-prompts-container" class="system-prompts-container">
-            <!-- Prompt cards will be rendered here dynamically -->
+        <div class="system-prompts-subtoolbar">
+            <div class="system-prompt-subtoolbar-left">
+                <div class="system-prompt-editor-toggle" role="tablist" aria-label="Editor type">
+                    <button type="button" class="system-prompt-editor-tab active" data-editor="structured" role="tab" aria-selected="true">Structured</button>
+                    <button type="button" class="system-prompt-editor-tab" data-editor="plain" role="tab" aria-selected="false">Plain XML</button>
+                </div>
+                <button type="button" id="system-prompt-add-module-btn" class="system-prompt-add-module-btn" title="Add module">
+                    <i data-feather="plus"></i>
+                    <span class="btn-text">Add module</span>
+                </button>
+                <button type="button" id="system-prompt-download-btn" class="system-prompt-download-btn" title="Download instructor modules as XML">
+                    <i data-feather="download"></i>
+                    <span class="btn-text">Download</span>
+                </button>
+            </div>
+            <div class="system-prompt-subtoolbar-actions">
+                <span id="system-prompt-save-status" class="system-prompt-save-status" aria-live="polite"></span>
+                <button type="button" id="system-prompt-save-btn" class="system-prompt-save-btn" disabled>Save</button>
+            </div>
+        </div>
+
+        <div id="system-prompt-plain-warnings" class="system-prompt-plain-warnings hidden" role="alert"></div>
+
+        <div class="system-prompt-editor-body">
+            <div id="system-prompt-structured-panel" class="system-prompt-panel">
+                <div id="system-prompt-modules-list" class="system-prompt-modules-list"></div>
+            </div>
+
+            <div id="system-prompt-plain-panel" class="system-prompt-panel hidden">
+                <label for="system-prompt-plain-textarea" class="system-prompt-plain-label">Instructor modules XML (plain view)</label>
+                <div class="system-prompt-plain-panel-inner">
+                    <textarea id="system-prompt-plain-textarea" class="system-prompt-plain-textarea" spellcheck="false"></textarea>
+                </div>
+            </div>
         </div>
     </main>
 </div>

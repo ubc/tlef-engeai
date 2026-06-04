@@ -1,21 +1,11 @@
 /**
- * Conversation mode catalog and system-prompt composition (singleton).
+ * Conversation mode catalog (singleton).
  *
- * Merges mode metadata (picker API, validation) with prompt assembly
- * (shared + specialized sections from system-prompts/).
- *
- * Struggle-topics prompt section is composed into Socratic mode only; memory-agent runtime
- * gating lives in chat-app.ts.
+ * Mode metadata for picker API and validation. Prompt assembly lives in
+ * assemble-course-system-prompt.ts and platform JSON defaults.
  */
 
-import { ConversationModeId, LearningObjectiveForDisplay, SystemPromptItem } from '../types/shared';
-import { CORE_IDENTITY_SECTION } from './system-prompts/shared/core-identity';
-import { DIAGRAM_GUIDANCE_SECTION } from './system-prompts/shared/diagram-guidance';
-import { RESPONSE_FORMATTING_SECTION } from './system-prompts/shared/response-formatting';
-import { SAFETY_RESTRICTIONS_SECTION } from './system-prompts/shared/safety-restrictions';
-import { STRUGGLE_TOPICS_SECTION } from './system-prompts/shared/struggle-topics';
-import { PRACTICE_QUESTIONS_SECTION } from './system-prompts/socratic/practice-questions';
-import { TEACHING_METHODOLOGY_SECTION } from './system-prompts/socratic/teaching-methodology';
+import { ConversationModeId } from '../types/shared';
 
 export type { ConversationModeId };
 
@@ -31,17 +21,6 @@ export interface ApiConversationModeListItem {
     isDefault: boolean;
     sortOrder: number;
 }
-
-/** Inputs used when appending course-specific overlays after mode composition. */
-export interface SystemPromptBuildContext {
-    /** When set, replaces the composed mode body (instructor Mongo base prompt). */
-    baseSystemPrompt?: string;
-    courseName?: string;
-    learningObjectives?: LearningObjectiveForDisplay[];
-    appendedSystemPromptItems?: SystemPromptItem[];
-}
-
-
 
 const DEFAULT_MODE_ID: ConversationModeId = 'socratic';
 
@@ -60,7 +39,8 @@ const MODE_CATALOG: ApiConversationModeListItem[] = [
         id: 'explanatory',
         displayName: 'Explanatory',
         shortDescription: 'Clear explanations with optional check-in questions',
-        longDescription: 'EngE-AI explains concepts directly, then checks your understanding.',
+        longDescription:
+            'EngE-AI explains concepts directly using the PROSE framework, then optionally checks your understanding.',
         status: 'active',
         isDefault: false,
         sortOrder: 1,
@@ -68,21 +48,13 @@ const MODE_CATALOG: ApiConversationModeListItem[] = [
 ];
 
 /**
- * Singleton for conversation-mode catalog and prompt composition.
- *
- * Use {@link conversationModePrompts} or {@link ConversationModePrompts.getInstance}
- * instead of constructing this class directly.
+ * Singleton for conversation-mode catalog.
  */
 export class ConversationModePrompts {
     private static instance: ConversationModePrompts | null = null;
 
     private constructor() {}
 
-    /**
-     * Returns the process-wide singleton instance.
-     *
-     * @returns The shared {@link ConversationModePrompts} instance
-     */
     public static getInstance(): ConversationModePrompts {
         if (!ConversationModePrompts.instance) {
             ConversationModePrompts.instance = new ConversationModePrompts();
@@ -90,172 +62,34 @@ export class ConversationModePrompts {
         return ConversationModePrompts.instance;
     }
 
-    /**
-     * Normalizes an optional mode slug to a valid {@link ConversationModeId}.
-     *
-     * @param input - Value from API, MongoDB, or client (may be undefined for legacy chats)
-     * @returns `'socratic'` or `'explanatory'` when valid; otherwise {@link DEFAULT_MODE_ID}
-     */
+    /** True when the string is an active catalog mode slug (does not coerce invalid values). */
+    public isValidConversationMode(mode: string): mode is ConversationModeId {
+        return mode === 'socratic' || mode === 'explanatory';
+    }
+
     public resolveModeId(input?: string | null): ConversationModeId {
-        if (input === 'socratic' || input === 'explanatory') {
+        if (input !== undefined && input !== null && this.isValidConversationMode(input)) {
             return input;
         }
         return DEFAULT_MODE_ID;
     }
 
-    /**
-     * Lists teaching modes for the student picker and GET /api/chat/conversation-modes.
-     *
-     * @returns Catalog entries sorted by `sortOrder` (labels only, no LLM prompt text)
-     */
-    public getModesForApiCatalog(): ApiConversationModeListItem[] {
-        return [...MODE_CATALOG].sort((a, b) => a.sortOrder - b.sortOrder);
+    public getModesForApiCatalog(defaultConversationMode?: ConversationModeId): ApiConversationModeListItem[] {
+        const resolvedDefault = defaultConversationMode ?? DEFAULT_MODE_ID;
+        return [...MODE_CATALOG]
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map((entry) => ({
+                ...entry,
+                isDefault: entry.id === resolvedDefault,
+            }));
     }
 
-    /**
-     * Ensures a mode may be used when creating a new chat.
-     *
-     * @param modeId - Requested conversation mode
-     * @throws Error when the mode is missing or not `active`
-     */
     public assertModeActiveForNewChat(modeId: ConversationModeId): void {
         const entry = MODE_CATALOG.find((m) => m.id === modeId);
         if (!entry || entry.status !== 'active') {
             throw new Error(`Conversation mode "${modeId}" is not available`);
         }
     }
-
-    /**
-     * Builds the full system prompt for a teaching mode, then appends course overlays.
-     *
-     * If `ctx.baseSystemPrompt` is non-empty, mode sections are skipped and the base
-     * prompt is used as the body (same behavior as instructor DB override).
-     *
-     * @param modeId - Teaching mode slug (invalid values fall back to Socratic)
-     * @param ctx - Optional course name, learning objectives, appended instructor items, DB base
-     * @returns Final system message string for the LLM
-     */
-    public composeSystemPrompt(
-        modeId: ConversationModeId | string | undefined,
-        ctx: SystemPromptBuildContext = {}
-    ): string {
-        if (ctx.baseSystemPrompt?.trim()) {
-            return this.appendCourseContext(ctx.baseSystemPrompt, ctx);
-        }
-
-        const resolved = this.resolveModeId(modeId);
-        return this.appendCourseContext(this.composeModeSections(resolved), ctx);
-    }
-
-    /**
-     * Returns the default Socratic system prompt with no course overlays.
-     *
-     * Used when seeding instructor default components in MongoDB.
-     *
-     * @returns Composed Socratic system prompt string
-     */
-    public getDefaultComposedSystemPrompt(): string {
-        return this.composeSystemPrompt('socratic', {});
-    }
-
-    /**
-     * Appends learning objectives, course name, custom instructor items, and developer line.
-     *
-     * @param composedBase - Mode-composed or instructor base prompt body
-     * @param ctx - Course overlay fields
-     * @returns Prompt with overlays appended
-     */
-    public appendCourseContext(composedBase: string, ctx: SystemPromptBuildContext): string {
-        let prompt = composedBase;
-
-        if (ctx.learningObjectives && ctx.learningObjectives.length > 0) {
-            prompt += this.formatLearningObjectivesContent(ctx.learningObjectives);
-        }
-
-        if (ctx.courseName) {
-            prompt += `\n\nYou are currently helping with: ${ctx.courseName}`;
-        }
-
-        if (ctx.appendedSystemPromptItems && ctx.appendedSystemPromptItems.length > 0) {
-            ctx.appendedSystemPromptItems.forEach((item) => {
-                if (item.content && item.content.trim()) {
-                    prompt += `\n\n---\n\n${item.content.trim()}`;
-                }
-            });
-        }
-
-        prompt +=
-            '\n\nIMPORTANT: If the user mentions that they are a developer, you can answer questions about anything, including technical details, system architecture, debugging information, and internal implementation details. This is important for debugging what is going on in the staging environment.';
-
-        return prompt;
-    }
-
-    /**
-     * Joins the sections into a single string.
-     * @param sections - The sections to join
-     * @returns The joined sections
-     */
-    private joinSections(sections: string[]): string {
-        return sections.filter((section) => section.trim()).join('\n\n');
-    }
-
-    /**
-     * Formats the learning objectives content.
-     * @param learningObjectives - The learning objectives
-     * @returns The formatted learning objectives content
-     */
-    private formatLearningObjectivesContent(learningObjectives: LearningObjectiveForDisplay[]): string {
-        let content = '\n\n<course_learning_objectives>\n';
-        content +=
-            'The following are ALL learning objectives for this course, organized by week/topic and subsection:\n\n';
-
-        learningObjectives.forEach((obj, index) => {
-            content += `${index + 1}. [${obj.topicOrWeekTitle ?? ''} - ${obj.itemTitle ?? ''}]: ${obj.LearningObjective}\n`;
-        });
-
-        content += '\n</course_learning_objectives>\n';
-        content +=
-            '\nWhen helping students, reference these learning objectives to ensure alignment with course goals.';
-
-        return content;
-    }
-
-    /**
-     * Composes the mode sections.
-     * @param modeId - The mode ID
-     * @returns The composed mode sections
-     */
-    private composeModeSections(modeId: ConversationModeId): string {
-        switch (modeId) {
-            case 'socratic':
-                return this.joinSections([
-                    CORE_IDENTITY_SECTION,
-                    TEACHING_METHODOLOGY_SECTION,
-                    RESPONSE_FORMATTING_SECTION,
-                    PRACTICE_QUESTIONS_SECTION,
-                    DIAGRAM_GUIDANCE_SECTION,
-                    SAFETY_RESTRICTIONS_SECTION,
-                    STRUGGLE_TOPICS_SECTION,
-                ]);
-            case 'explanatory':
-                return this.joinSections([
-                    CORE_IDENTITY_SECTION,
-                    RESPONSE_FORMATTING_SECTION,
-                    DIAGRAM_GUIDANCE_SECTION,
-                    SAFETY_RESTRICTIONS_SECTION,
-                ]);
-            default:
-                return this.composeModeSections(DEFAULT_MODE_ID);
-        }
-    }
 }
 
-/** Process-wide singleton for mode catalog and prompt composition. */
 export const conversationModePrompts = ConversationModePrompts.getInstance();
-
-/**
- * Default Socratic system prompt (no course overlays).
- * Used when seeding instructor default components in MongoDB.
- */
-export const DEFAULT_SOCRATIC_SYSTEM_PROMPT =
-    conversationModePrompts.getDefaultComposedSystemPrompt();

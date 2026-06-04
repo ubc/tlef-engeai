@@ -20,7 +20,8 @@ import {
     GlobalUser,
     InitialAssistantPrompt,
     MemoryAgentEntry,
-    SystemPromptItem
+    SystemPromptItem,
+    ConversationModeId
 } from '../types/shared';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { appLogger } from '../utils/logger';
@@ -33,6 +34,7 @@ import * as CourseUserMongo from './mongo/course-user-mongo';
 import * as FlagMongo from './mongo/flag-mongo';
 import * as GlobalUserMongo from './mongo/global-user-mongo';
 import * as InstructorPromptMongo from './mongo/instructor-prompt-mongo';
+import * as SystemPromptConfigMongo from './mongo/system-prompt-config-mongo';
 import * as MemoryAgentMongo from './mongo/memory-agent-mongo';
 import * as ScheduledTaskMongo from './mongo/scheduled-task-mongo';
 import * as TopicWeekMongo from './mongo/topic-week-mongo';
@@ -485,4 +487,22 @@ export class EngEAI_MongoDB {
 
     public ensureDefaultSystemPromptComponents = async (courseId: string, courseName?: string) =>
         InstructorPromptMongo.ensureDefaultSystemPromptComponents(this.ctx(), courseId, courseName);
+
+    public getSystemPromptConfig = async (courseId: string) =>
+        SystemPromptConfigMongo.getSystemPromptConfig(this.ctx(), courseId);
+
+    public updateModeSystemPrompt = async (
+        courseId: string,
+        mode: ConversationModeId,
+        input: SystemPromptConfigMongo.UpdateModeSystemPromptInput
+    ) => SystemPromptConfigMongo.updateModeSystemPrompt(this.ctx(), courseId, mode, input);
+
+    public resetModeSystemPrompt = async (courseId: string, mode: ConversationModeId) =>
+        SystemPromptConfigMongo.resetModeSystemPrompt(this.ctx(), courseId, mode);
+
+    public setDefaultConversationMode = async (courseId: string, mode: ConversationModeId) =>
+        SystemPromptConfigMongo.setDefaultConversationMode(this.ctx(), courseId, mode);
+
+    public getDefaultConversationModeForCourse = async (courseId: string) =>
+        SystemPromptConfigMongo.getDefaultConversationModeForCourse(this.ctx(), courseId);
 }

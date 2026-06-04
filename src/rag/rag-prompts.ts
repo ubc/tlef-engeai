@@ -50,6 +50,26 @@ Remember: Your primary job is to ask thoughtful, guided questions - one at a tim
 
 Student's question:`;
 
+const EXPLANATORY_RAG_BRIDGE_PROMPT = `Based on the course materials and context provided above, help the student using Explanatory mode (PROSE: explain clearly from materials first).
+
+When responding:
+
+1. **EXPLAIN FIRST** - Provide a clear, step-by-step explanation before any optional check-in question. Do not withhold the explanation to force discovery.
+
+2. **CITE SPECIFIC SOURCE LOCATIONS** - Always reference where in the course materials you found the information:
+   - "According to Chapter 12.1..."
+   - "In Section 3.2, the materials discuss..."
+   - "From the module on [topic] (Section X.Y)..."
+   - If materials lack the answer, state that clearly before using general engineering knowledge
+
+3. **STRUCTURE** - Define key terms, explain in ordered steps (use HTML lists for steps), and include one minimal concrete example when helpful.
+
+4. **QUESTIONS** - Ask at most ONE short clarifying question only if the student's message is ambiguous, OR one optional comprehension check-in after explaining—not both, and never multiple discovery questions.
+
+Remember: Your primary job is to help the student understand the concept from course materials through direct explanation.
+
+Student's question:`;
+
 const DEFAULT_MODE_ID: ConversationModeId = 'socratic';
 
 const STUDENT_QUESTION_MARKER = "Student's question:";
@@ -66,8 +86,13 @@ export class RAGPrompts {
         'g'
     );
 
-    private static readonly bridgePattern = new RegExp(
+    private static readonly socraticBridgePattern = new RegExp(
         `${RAG_BRIDGE_PROMPT.split('\n')[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?Student's question:`,
+        'g'
+    );
+
+    private static readonly explanatoryBridgePattern = new RegExp(
+        `${EXPLANATORY_RAG_BRIDGE_PROMPT.split('\n')[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?Student's question:`,
         'g'
     );
 
@@ -140,7 +165,7 @@ export class RAGPrompts {
     /**
      * Formats the user turn sent to the LLM when RAG context is present.
      *
-     * Socratic mode appends the RAG bridge instructions; other modes use context + message only.
+     * Socratic and Explanatory modes append mode-specific RAG bridge instructions.
      *
      * @param modeId - Teaching mode for this chat
      * @param context - Retrieved document text (already formatted)
@@ -155,6 +180,9 @@ export class RAGPrompts {
         const resolved = this.resolveModeId(modeId);
         if (resolved === 'socratic') {
             return `${context}${RAG_CONTEXT_SEPARATOR}${RAG_BRIDGE_PROMPT}${userMessage}`;
+        }
+        if (resolved === 'explanatory') {
+            return `${context}${RAG_CONTEXT_SEPARATOR}${EXPLANATORY_RAG_BRIDGE_PROMPT}${userMessage}`;
         }
         return `${context}${RAG_CONTEXT_SEPARATOR}${userMessage}`;
     }
@@ -172,7 +200,8 @@ export class RAGPrompts {
 
         let stripped = content.replace(RAGPrompts.courseMaterialsBlock, '');
         stripped = stripped.replace(RAGPrompts.separatorPattern, '');
-        stripped = stripped.replace(RAGPrompts.bridgePattern, '');
+        stripped = stripped.replace(RAGPrompts.socraticBridgePattern, '');
+        stripped = stripped.replace(RAGPrompts.explanatoryBridgePattern, '');
 
         const questionIndex = stripped.indexOf(STUDENT_QUESTION_MARKER);
         if (questionIndex !== -1) {

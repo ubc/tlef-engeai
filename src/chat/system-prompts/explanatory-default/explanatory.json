@@ -1,0 +1,39 @@
+{
+  "version": "1.3.0",
+  "conversationMode": "explanatory",
+  "systemModules": [],
+  "instructorModules": [
+    {
+      "id": "system prompt guidance",
+      "bodyFile": "shared-default/system_prompt_guidance.md"
+    },
+    {
+      "id": "text list formatting",
+      "bodyFile": "shared-default/text_list_formatting.md"
+    },
+    {
+      "id": "latex formatting",
+      "bodyFile": "shared-default/latex_formatting.md"
+    },
+    {
+      "id": "diagram and mermaid",
+      "bodyFile": "diagram_and_mermaid.md"
+    },
+    {
+      "id": "correctness restrictions",
+      "bodyFile": "shared-default/correctness_restrictions.md"
+    },
+    {
+      "id": "explanatory prose",
+      "bodyFile": "explanatory_prose.md"
+    },
+    {
+      "id": "explanatory correctness restrictions",
+      "bodyFile": "explanatory_correctness_restrictions.md"
+    },
+    {
+      "id": "course main intro",
+      "bodyFile": "shared-default/course_main_intro.md"
+    }
+  ]
+}

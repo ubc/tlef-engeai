@@ -21,7 +21,6 @@ import { passport } from './middleware/passport';
 import { EngEAI_MongoDB } from './db/enge-ai-mongodb';
 import { initInstructorAllowedCourses } from './helpers/init-instructor-allowed-courses';
 import { migrateOnboardingFlags } from './helpers/migrate-onboarding-flags';
-import { migrateAdminUsers } from './helpers/migrate-admin-users';
 import { resolveAffiliation, isFacultyOverridePuid } from './utils/affiliation';
 
 dotenv.config();
@@ -236,12 +235,6 @@ app.listen(port, async () => {
         await migrateOnboardingFlags();
     } catch (err) {
         logger.error('Onboarding migration failed:', err as any);
-    }
-
-    try {
-        await migrateAdminUsers();
-    } catch (err) {
-        logger.error('Admin users migration failed:', err as any);
     }
 
 });

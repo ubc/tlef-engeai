@@ -15,8 +15,9 @@ import {
 } from '../rag/rag-prompts';
 import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
 import { IDGenerator } from '../utils/unique-id-generator';
-import { Chat, ChatMessage, ConversationModeId, PersistedConversationModeId, LearningObjectiveForDisplay, activeCourse, DEFAULT_PROMPT_ID, SystemPromptItem } from '../types/shared';
+import { Chat, ChatMessage, ConversationModeId, PersistedConversationModeId, LearningObjectiveForDisplay, activeCourse, DEFAULT_PROMPT_ID } from '../types/shared';
 import { conversationModePrompts } from './compose-system-prompt';
+import { assembleCourseSystemPrompt } from './system-prompts/assemble-course-system-prompt';
 import { getDefaultAssistantMessage } from './initial-assistant-prompt-default';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { memoryAgent } from '../memory-agent/memory-agent';
@@ -63,7 +64,7 @@ export class ChatApp {
     private chatIDGenerator: IDGenerator;
     private llmProvider: any;
     private chatTimers: Map<string, NodeJS.Timeout>; // Maps chatId to cleanup timer
-    private chatConversationModes: Map<string, ConversationModeId>; // Maps chatId to teaching mode
+    private chatConversationModes: Map<string, PersistedConversationModeId>; // Maps chatId to persisted teaching mode
     private chatInactivityTimeout: number = 5 * 60 * 1000; // 5 minutes in milliseconds
 
     constructor(config: AppConfig) {
@@ -372,8 +373,10 @@ export class ChatApp {
         // ====================================================================
         
         if (documentsLength > 0) {
-            const conversationMode = this.chatConversationModes.get(chatId);
-            additionalContext = ragPrompts.formatRagUserTurn(conversationMode, ragContext, message);
+            const persistedMode = this.chatConversationModes.get(chatId);
+            const ragMode: ConversationModeId =
+                persistedMode === 'explanatory' ? 'explanatory' : 'socratic';
+            additionalContext = ragPrompts.formatRagUserTurn(ragMode, ragContext, message);
         }
         else if (ragRetrievalFailed) {
             additionalContext = RAG_ERROR_MESSAGE;
@@ -606,11 +609,12 @@ export class ChatApp {
         
         this.conversations.set(chatId, this.llmModule.createConversation());
         this.chatHistory.set(chatId, []);
-        const resolvedMode = conversationModePrompts.resolveModeId(conversationMode);
-        this.chatConversationModes.set(chatId, resolvedMode);
+        const persistedMode = this.toPersistedConversationMode(conversationMode);
+        this.chatConversationModes.set(chatId, persistedMode);
 
-        // Add default system message (async: learning objectives + instructor prompt items)
-        await this.addDefaultSystemMessage(chatId, courseName);
+        if (persistedMode === 'socratic' || persistedMode === 'explanatory') {
+            await this.addDefaultSystemMessage(chatId, courseName);
+        }
         
         
         // Add default assistant message and get it (now async to retrieve selected prompt)
@@ -637,56 +641,66 @@ export class ChatApp {
     }
 
     /**
-     * Adds the composed system message (mode catalog + course overlays) to the conversation.
+     * Normalizes init/API mode input to a persisted chat mode slug.
+     */
+    private toPersistedConversationMode(
+        conversationMode?: ConversationModeId | string
+    ): PersistedConversationModeId {
+        if (conversationMode === 'undeclared') {
+            return 'undeclared';
+        }
+        if (conversationMode === 'explanatory') {
+            return 'explanatory';
+        }
+        if (conversationMode === 'socratic') {
+            return 'socratic';
+        }
+        return conversationModePrompts.resolveModeId(conversationMode);
+    }
+
+    /**
+     * Adds the composed system message (code-owned mode sections + course overlays) to the conversation.
+     *
+     * Skipped when the chat mode is `undeclared` (mode chosen on first user message).
      *
      * @param chatId - Active chat identifier
-     * @param courseName - Course used for learning objectives and instructor prompt items
+     * @param courseName - Course used for learning objectives overlay
      */
     private async addDefaultSystemMessage(chatId: string, courseName?: string): Promise<void> {
         const conversation = this.conversations.get(chatId);
         if (!conversation) {
             throw new Error('Conversation not found');
         }
-        
-        // Retrieve base prompt, learning objectives, and appended items for the course
-        let baseSystemPrompt: string | undefined;
+
+        const persistedMode = this.chatConversationModes.get(chatId);
+        if (persistedMode !== 'socratic' && persistedMode !== 'explanatory') {
+            return;
+        }
+
         let learningObjectives: LearningObjectiveForDisplay[] = [];
-        let appendedSystemPromptItems: SystemPromptItem[] = [];
-        
+        let systemPromptConfig = null;
+
         if (courseName) {
             try {
                 const mongoDB = await EngEAI_MongoDB.getInstance();
-                // Get course by name to extract courseId
                 const course = await mongoDB.getCourseByName(courseName);
-                if (course && course.id) {
-                    // Ensure default components exist
-                    await mongoDB.ensureDefaultSystemPromptComponents(course.id, courseName);
-                    
-                    // Get base system prompt (editable version from database)
-                    const basePromptItem = await mongoDB.getBaseSystemPrompt(course.id);
-                    baseSystemPrompt = basePromptItem?.content;
-                    
-                    // Get learning objectives
+                if (course?.id) {
                     learningObjectives = await mongoDB.getAllLearningObjectives(course.id);
-                    appLogger.log(`📚 Retrieved ${learningObjectives.length} learning objectives for system prompt`);
-                    
-                    // Get appended custom items
-                    appendedSystemPromptItems = await mongoDB.getAppendedSystemPromptItems(course.id);
-                    appLogger.log(`📝 Retrieved ${appendedSystemPromptItems.length} appended system prompt items`);
+                    systemPromptConfig = await mongoDB.getSystemPromptConfig(course.id);
+                    appLogger.log(
+                        `📚 Retrieved ${learningObjectives.length} learning objectives for system prompt (mode=${persistedMode})`
+                    );
                 }
             } catch (error) {
-                appLogger.error('❌ Error retrieving system prompt components:', error);
-                // Continue without components if retrieval fails (will use defaults)
+                appLogger.error('❌ Error retrieving learning objectives for system prompt:', error);
             }
         }
-        
-        // Compose the system prompt
-        const modeId = this.chatConversationModes.get(chatId) ?? 'socratic';
-        const defaultSystemMessage = conversationModePrompts.composeSystemPrompt(modeId, {
-            baseSystemPrompt,
+
+        const defaultSystemMessage = assembleCourseSystemPrompt({
+            mode: persistedMode,
             courseName,
             learningObjectives,
-            appendedSystemPromptItems,
+            config: systemPromptConfig,
         });
 
         try {
@@ -694,6 +708,34 @@ export class ChatApp {
         } catch (error) {
             appLogger.error('Error adding default message:', error);
         }
+    }
+
+    /**
+     * Builds XML system prompt from course config and platform defaults.
+     */
+    private async buildCourseSystemPromptXml(
+        courseName: string | undefined,
+        mode: ConversationModeId,
+        learningObjectives: LearningObjectiveForDisplay[]
+    ): Promise<string> {
+        let systemPromptConfig = null;
+        if (courseName) {
+            try {
+                const mongoDB = await EngEAI_MongoDB.getInstance();
+                const course = await mongoDB.getCourseByName(courseName);
+                if (course?.id) {
+                    systemPromptConfig = await mongoDB.getSystemPromptConfig(course.id);
+                }
+            } catch (error) {
+                appLogger.error('❌ Error loading system prompt config:', error);
+            }
+        }
+        return assembleCourseSystemPrompt({
+            mode,
+            courseName,
+            learningObjectives,
+            config: systemPromptConfig,
+        });
     }
 
     /**
@@ -1121,8 +1163,7 @@ export class ChatApp {
      * future modes do not receive struggle instructions, memory-agent analysis, or unstruggle tags.
      */
     private isStruggleTopicsEnabledForChat(chatId: string): boolean {
-        const modeId = this.chatConversationModes.get(chatId) ?? 'socratic';
-        return modeId === 'socratic';
+        return this.chatConversationModes.get(chatId) === 'socratic';
     }
 
     /**
@@ -1144,25 +1185,24 @@ export class ChatApp {
      * @param chat - The chat to ensure the conversation mode is persisted
      * @param courseName - The course name
      * @param userId - The user ID
-     * @returns The resolved mode id for in-memory maps and system prompt composition
+     * @returns Persisted mode for in-memory maps and system prompt composition
      */
     private async ensureLegacyChatModePersisted(
         chat: Chat,
         courseName: string,
         userId: string
-    ): Promise<ConversationModeId> {
+    ): Promise<PersistedConversationModeId> {
         const hasUserMessage = (chat.messages ?? []).some((message) => message.sender === 'user');
         const raw = chat.conversationMode;
 
-        if (raw === 'socratic' || raw === 'explanatory') {
+        if (raw === 'socratic' || raw === 'explanatory' || raw === 'undeclared') {
             return raw;
         }
 
         const targetMode: PersistedConversationModeId = hasUserMessage ? 'socratic' : 'undeclared';
-        const runtimeMode = targetMode === 'undeclared' ? 'socratic' : targetMode;
 
         if (!this.chatNeedsConversationModeBackfill(chat, targetMode)) {
-            return runtimeMode;
+            return targetMode;
         }
 
         try {
@@ -1174,7 +1214,7 @@ export class ChatApp {
             appLogger.error(`[CHAT-APP] ⚠️ Failed to backfill conversationMode for chat ${chat.id}:`, error);
             chat.conversationMode = targetMode;
         }
-        return runtimeMode;
+        return targetMode;
     }
 
     /**
@@ -1233,36 +1273,14 @@ export class ChatApp {
                 appLogger.error('❌ Error retrieving learning objectives during restore:', error);
             }
 
-            let baseSystemPrompt: string | undefined;
-            let appendedSystemPromptItems: SystemPromptItem[] = [];
-            if (courseName) {
-                try {
-                    const mongoDB = await EngEAI_MongoDB.getInstance();
-                    const course = await mongoDB.getCourseByName(courseName);
-                    if (course && course.id) {
-                        // Ensure default components exist
-                        await mongoDB.ensureDefaultSystemPromptComponents(course.id, courseName);
-                        
-                        // Get base system prompt
-                        const basePromptItem = await mongoDB.getBaseSystemPrompt(course.id);
-                        baseSystemPrompt = basePromptItem?.content;
-                        
-                        // Get appended custom items
-                        appendedSystemPromptItems = await mongoDB.getAppendedSystemPromptItems(course.id);
-                    }
-                } catch (error) {
-                    appLogger.error('❌ Error retrieving system prompt components during restore:', error);
-                }
+            if (restoredMode === 'socratic' || restoredMode === 'explanatory') {
+                const defaultSystemMessage = await this.buildCourseSystemPromptXml(
+                    courseName,
+                    restoredMode,
+                    learningObjectives
+                );
+                conversation.addMessage('system', defaultSystemMessage);
             }
-            
-            const defaultSystemMessage = conversationModePrompts.composeSystemPrompt(restoredMode, {
-                baseSystemPrompt,
-                courseName,
-                learningObjectives,
-                appendedSystemPromptItems,
-            });
-
-            conversation.addMessage('system', defaultSystemMessage);
 
             // Restore all messages from MongoDB in order
             const restoredMessages: ChatMessage[] = [];

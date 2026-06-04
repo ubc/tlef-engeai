@@ -176,7 +176,9 @@ export interface activeCourse {
         scheduledTasks?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
+    /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */
     collectionOfSystemPromptItems?: SystemPromptItem[];
+    systemPromptConfig?: CourseSystemPromptConfig;
 }
 
 /**
@@ -219,6 +221,31 @@ export interface SystemPromptItem {
 export const DEFAULT_BASE_PROMPT_ID = 'default-base-system-prompt';
 export const DEFAULT_LEARNING_OBJECTIVES_ID = 'default-learning-objectives';
 export const DEFAULT_STRUGGLE_TOPICS_ID = 'default-struggle-topics';
+
+/** Single editable module within a course system prompt (instructor-authored). */
+export interface SystemPromptModule {
+    id: string;
+    body: string;
+    sortOrder: number;
+}
+
+/** Per-mode system prompt state stored on activeCourse.systemPromptConfig.modes. */
+export interface ModeSystemPromptState {
+    usePlatformDefault: boolean;
+    modules: SystemPromptModule[];
+    updatedAt: string;
+    platformDefaultVersion?: string;
+}
+
+/** Course-level system prompt configuration (v2). */
+export interface CourseSystemPromptConfig {
+    schemaVersion: 1;
+    defaultConversationMode: ConversationModeId;
+    modes: {
+        socratic: ModeSystemPromptState;
+        explanatory: ModeSystemPromptState;
+    };
+}
 
 /**
  * frameTypes: Course content organization strategy. 

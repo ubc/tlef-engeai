@@ -26,7 +26,7 @@ import { initializeCourseInformation } from '../feature/course-information.js';
 import { initializeCourseSummary, summonCourseSummary } from '../feature/course-summary.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
 import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from '../feature/assistant-prompts.js';
-import { initializeSystemPrompts, hasUnsavedSystemPromptChanges, resetUnsavedSystemPromptChanges } from '../feature/system-prompts.js';
+import { initializeSystemPrompts, flushSystemPromptOnLeave } from '../feature/system-prompts.js';
 import { 
     getCourseIdFromURL, 
     getInstructorViewFromURL, 
@@ -591,6 +591,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         try {
+            if (
+                document.getElementById('system-prompt-modules-list') &&
+                componentName !== 'system-prompts-instructor'
+            ) {
+                await flushSystemPromptOnLeave();
+            }
+
             const html = await loadComponentHTML(componentName);
 
             mainContentAreaEl.innerHTML = html;

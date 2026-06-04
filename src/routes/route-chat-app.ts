@@ -58,11 +58,25 @@ process.on('SIGINT', () => {
  * @route GET /api/chat/conversation-modes
  * @returns {object} { success: boolean, modes?: array, error?: string }
  */
-router.get('/conversation-modes', asyncHandlerWithAuth(async (_req: Request, res: Response) => {
+router.get('/conversation-modes', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
+        let defaultConversationMode: ConversationModeId | undefined;
+        const currentCourse = (req.session as any).currentCourse;
+        const courseId = (req.query.courseId as string | undefined) ?? currentCourse?.id;
+
+        if (courseId) {
+            try {
+                const mongoDB = await EngEAI_MongoDB.getInstance();
+                defaultConversationMode = await mongoDB.getDefaultConversationModeForCourse(courseId);
+            } catch (error) {
+                appLogger.error('Error loading default conversation mode for catalog:', error);
+            }
+        }
+
         res.json({
             success: true,
-            modes: conversationModePrompts.getModesForApiCatalog(),
+            modes: conversationModePrompts.getModesForApiCatalog(defaultConversationMode),
+            defaultConversationMode: defaultConversationMode ?? 'socratic',
         });
     } catch (error) {
         appLogger.error('Error listing conversation modes:', error);

@@ -17,7 +17,7 @@ import {
     DEFAULT_LEARNING_OBJECTIVES_ID,
     DEFAULT_STRUGGLE_TOPICS_ID
 } from '../../types/shared';
-import { DEFAULT_SOCRATIC_SYSTEM_PROMPT } from '../../chat/compose-system-prompt';
+import { ensureSystemPromptConfig } from './system-prompt-config-mongo';
 import { DEFAULT_INITIAL_ASSISTANT_MESSAGE } from '../../chat/initial-assistant-prompt-default';
 import { activeCourseListCollection } from './mongo-collections';
 import { getActiveCourse } from './course-mongo';
@@ -547,77 +547,12 @@ export async function saveSystemPromptAppendChanges(
 /**
  * ensureDefaultSystemPromptComponents
  *
- * Self-heals missing **base**, **learning objectives**, and **struggle topics** placeholder components used by prompt assembly regexes.
- * 
- * @param ctx - MongoDalContext
- * @param courseId - string
- * @param courseName - string
- * @returns Promise<void>
- *
- * Persists only when at least one new component was appended (avoids noisy writes).
+ * @deprecated v2 — ensures systemPromptConfig exists (lazy migration from legacy items).
  */
 export async function ensureDefaultSystemPromptComponents(
     ctx: MongoDalContext,
     courseId: string,
-    courseName?: string
+    _courseName?: string
 ): Promise<void> {
-    const course = await getActiveCourse(ctx, courseId);
-    if (!course) {
-        throw new Error(`Course with id ${courseId} not found`);
-    }
-
-    const items = (course as unknown as activeCourse).collectionOfSystemPromptItems || [];
-    const existingIds = new Set(items.map(item => item.id));
-    const dateCreated = new Date();
-
-    if (!existingIds.has(DEFAULT_BASE_PROMPT_ID)) {
-        const basePrompt: SystemPromptItem = {
-            id: DEFAULT_BASE_PROMPT_ID,
-            title: 'Base System Prompt',
-            content: DEFAULT_SOCRATIC_SYSTEM_PROMPT,
-            dateCreated: dateCreated,
-            isAppended: true,
-            isDefault: true,
-            componentType: 'base'
-        };
-        items.push(basePrompt);
-        appLogger.log(`✅ Created default base system prompt for course: ${courseName || courseId}`);
-    }
-
-    if (!existingIds.has(DEFAULT_LEARNING_OBJECTIVES_ID)) {
-        const learningObjectives: SystemPromptItem = {
-            id: DEFAULT_LEARNING_OBJECTIVES_ID,
-            title: 'Learning Objectives',
-            content: '<learningobjectives></learningobjectives>',
-            dateCreated: dateCreated,
-            isAppended: true,
-            isDefault: true,
-            componentType: 'learning-objectives'
-        };
-        items.push(learningObjectives);
-        appLogger.log(`✅ Created default learning objectives component for course: ${courseName || courseId}`);
-    }
-
-    if (!existingIds.has(DEFAULT_STRUGGLE_TOPICS_ID)) {
-        const struggleTopics: SystemPromptItem = {
-            id: DEFAULT_STRUGGLE_TOPICS_ID,
-            title: 'Struggle Topics',
-            content: '<strugglewords></strugglewords>',
-            dateCreated: dateCreated,
-            isAppended: true,
-            isDefault: true,
-            componentType: 'struggle-topics'
-        };
-        items.push(struggleTopics);
-        appLogger.log(`✅ Created default struggle topics component for course: ${courseName || courseId}`);
-    }
-
-    const courseData = course as unknown as activeCourse;
-    const existingItems = courseData.collectionOfSystemPromptItems || [];
-    if (items.length > existingItems.length) {
-        await activeCourseListCollection(ctx.db).updateOne(
-            { id: courseId },
-            { $set: { collectionOfSystemPromptItems: items } }
-        );
-    }
+    await ensureSystemPromptConfig(ctx, courseId);
 }

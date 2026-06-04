@@ -3,7 +3,7 @@
  *
  * Used when replacing `<strugglewords>...</strugglewords>` placeholders with
  * course-specific topic lists. For composed student chat system prompts, see
- * `system-prompts/shared/struggle-topics.ts`.
+ * `system-prompts/socratic-default/socratic.json` (`struggle topics` instructor module).
  *
  */
 
