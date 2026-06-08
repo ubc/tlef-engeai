@@ -8,8 +8,18 @@
  */
 
 import { loadComponentHTML, renderFeatherIcons } from "../api/api.js";
-import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, dismissUnstruggleBlock } from "../api/chat-api.js";
-import { Chat, ChatMessage, CourseUser, activeCourse, ChatManagerConfig, CreateChatRequest } from "../types.js";
+import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, dismissUnstruggleBlock, updateChatConversationMode } from "../api/chat-api.js";
+import {
+    Chat,
+    ChatMessage,
+    ConversationModeId,
+    PersistedConversationModeId,
+    CourseUser,
+    activeCourse,
+    ChatManagerConfig,
+    CreateChatRequest,
+} from "../types.js";
+import { ConversationModePicker } from "./conversation-mode-picker.js";
 import { RenderChat } from "./render-chat.js";
 import { showDisclaimerModal, showDeleteConfirmationModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
 
@@ -160,6 +170,10 @@ export class ChatManager {
     
     // Streaming configuration
     private readonly STREAM_DELAY_MS = 15; // Delay between words (milliseconds) - adjust for faster/slower streaming
+
+    private selectedConversationMode: ConversationModeId = 'socratic';
+    private conversationModePicker: ConversationModePicker | null = null;
+    private isConversationModeUpdatePending = false;
     
     // ===== LOGGING HELPER METHODS =====
     
@@ -315,6 +329,7 @@ export class ChatManager {
         if (!chatId) {
             this.log('INFO', '📭 Setting active chat to null');
             this.activeChatId = null;
+            this.syncConversationModeComposer();
             this.logActiveChatState('ACTIVE_CHAT_CLEARED');
             return;
         }
@@ -351,6 +366,8 @@ export class ChatManager {
         // Set as active
         this.activeChatId = chatId;
         
+        this.syncConversationModeComposer();
+
         this.logActiveChatState('ACTIVE_CHAT_SWITCHED', {
             previousActiveChatId,
             newActiveChatId: chatId,
@@ -358,6 +375,129 @@ export class ChatManager {
             totalLoadedChats: this.chats.length,
             totalMetadataChats: this.chatMetadata.length
         });
+    }
+
+    private isRealConversationMode(modeId: PersistedConversationModeId | undefined): modeId is ConversationModeId {
+        return modeId === 'socratic' || modeId === 'explanatory';
+    }
+
+    private getActiveChatConversationMode(): PersistedConversationModeId | undefined {
+        if (!this.activeChatId) {
+            return undefined;
+        }
+        const chat = this.chats.find((c) => c.id === this.activeChatId);
+        return chat?.conversationMode;
+    }
+
+    /**
+     * Lock only after the student sends a message. Bot welcome alone never locks.
+     * Requires full chat messages in memory (lazy-load complete).
+     */
+    private isComposerModeLocked(): boolean {
+        if (!this.activeChatId || !this.loadedChatIds.has(this.activeChatId)) {
+            return false;
+        }
+        const chat = this.getActiveChat();
+        if (!chat) {
+            return false;
+        }
+        if (this.isRealConversationMode(chat.conversationMode)) {
+            return true;
+        }
+        return chat.messages?.some((message) => message.sender === 'user') ?? false;
+    }
+
+    private syncConversationModeComposer(): void {
+        const isLocked = this.isComposerModeLocked();
+        let modeId: ConversationModeId = this.selectedConversationMode;
+
+        if (isLocked) {
+            const persistedMode = this.getActiveChatConversationMode();
+            modeId = this.isRealConversationMode(persistedMode) ? persistedMode : this.selectedConversationMode;
+        } else if (this.activeChatId && this.loadedChatIds.has(this.activeChatId)) {
+            const persistedMode = this.getActiveChatConversationMode();
+            modeId = this.isRealConversationMode(persistedMode) ? persistedMode : this.selectedConversationMode;
+            this.selectedConversationMode = modeId;
+        }
+
+        this.conversationModePicker?.syncComposerVisibility({ modeId, isLocked });
+        this.renderFeatherIconsWithComposerSync();
+    }
+
+    private async handleConversationModeSelect(modeId: ConversationModeId): Promise<void> {
+        if (this.isConversationModeUpdatePending) {
+            this.conversationModePicker?.setSelectedModeId(this.selectedConversationMode);
+            return;
+        }
+
+        const activeChat = this.getActiveChat();
+        const previousMode = this.selectedConversationMode;
+        const previousChatMode = activeChat?.conversationMode;
+
+        this.selectedConversationMode = modeId;
+        this.syncConversationModeComposer();
+
+        if (!activeChat) {
+            return;
+        }
+
+        if (this.isComposerModeLocked()) {
+            this.selectedConversationMode = previousMode;
+            activeChat.conversationMode = previousChatMode;
+            this.syncConversationModeComposer();
+            return;
+        }
+
+        if (activeChat.conversationMode === 'undeclared') {
+            return;
+        }
+
+        this.isConversationModeUpdatePending = true;
+        this.conversationModePicker?.setPending(true);
+
+        try {
+            const response = await updateChatConversationMode(activeChat.id, modeId);
+            if (!response.success) {
+                throw new Error(response.error || 'Failed to update conversation mode');
+            }
+
+            const persistedMode = response.conversationMode ?? modeId;
+            activeChat.conversationMode = persistedMode;
+            this.selectedConversationMode = persistedMode;
+            this.syncConversationModeComposer();
+        } catch (error) {
+            const revertedMode = this.isRealConversationMode(previousChatMode)
+                ? previousChatMode
+                : previousMode;
+            activeChat.conversationMode = previousChatMode;
+            this.selectedConversationMode = revertedMode;
+            this.syncConversationModeComposer();
+            await showSimpleErrorModal(
+                error instanceof Error ? error.message : 'Failed to update conversation mode.',
+                'Conversation Mode Error'
+            );
+        } finally {
+            this.isConversationModeUpdatePending = false;
+            this.conversationModePicker?.setPending(false);
+        }
+    }
+
+    private renderFeatherIconsWithComposerSync(): void {
+        renderFeatherIcons();
+        this.conversationModePicker?.refreshPresentationAfterIcons();
+    }
+
+    /**
+     * Store a restored chat in memory so lock state can use messages[] immediately.
+     */
+    public ingestChatFromRestore(chat: Chat): void {
+        const existingIndex = this.chats.findIndex((c) => c.id === chat.id);
+        if (existingIndex >= 0) {
+            this.chats[existingIndex] = chat;
+        } else {
+            this.chats.push(chat);
+        }
+        this.loadedChatIds.add(chat.id);
     }
 
     /**
@@ -399,7 +539,7 @@ export class ChatManager {
             const chatRequest: CreateChatRequest = {
                 userID: this.config.userContext.userId,
                 courseName: this.config.userContext.courseName,
-                date: new Date().toISOString().split('T')[0]
+                date: new Date().toISOString().split('T')[0],
             };
 
             this.log('DEBUG', '📤 Sending new chat request to server:', chatRequest);
@@ -418,7 +558,7 @@ export class ChatManager {
             const newChat: Chat = (response as any).chat || {
                 id: response.chatId || Date.now().toString(),
                 courseName: this.config.userContext.courseName,
-                divisionTitle: '',
+                topicOrWeekTitle: '',
                 itemTitle: '',
                 messages: response.initAssistantMessage ? [{
                     id: response.initAssistantMessage.id,
@@ -428,15 +568,21 @@ export class ChatManager {
                     text: response.initAssistantMessage.text,
                     timestamp: response.initAssistantMessage.timestamp,
                 }] : [],
-                isPinned: false
+                isPinned: false,
+                conversationMode: 'undeclared',
             };
+
+            if (!newChat.conversationMode) {
+                newChat.conversationMode = 'undeclared';
+            }
 
             this.log('SUCCESS', `📝 New chat created: ${newChat.id} (${newChat.itemTitle})`);
 
             // Add to chats array
             this.chats.push(newChat);
             this.activeChatId = newChat.id;
-            
+            this.syncConversationModeComposer();
+
             // Add to metadata array for sidebar rendering
             const newMetadata: ChatMetadata = {
                 id: newChat.id,
@@ -492,6 +638,7 @@ export class ChatManager {
             onError?.('No active chat found');
             return;
         }
+        const selectedModeForSend = this.selectedConversationMode;
 
         // console.log('[CHAT-MANAGER] 💬 Sending message...'); // 🟢 MEDIUM: Debug info - keep for monitoring
 
@@ -505,6 +652,7 @@ export class ChatManager {
             timestamp: Date.now()
         };
         activeChat.messages.push(userMessage);
+        this.syncConversationModeComposer();
 
         // Create bot message placeholder for loading indicator
         const botMessageId = (Date.now() + 1).toString();
@@ -535,7 +683,8 @@ export class ChatManager {
                 body: JSON.stringify({
                     message: text,
                     userId: this.config.userContext.userId,
-                    courseName: this.config.userContext.courseName
+                    courseName: this.config.userContext.courseName,
+                    conversationMode: selectedModeForSend,
                 }),
             });
 
@@ -550,6 +699,10 @@ export class ChatManager {
             }
 
             // console.log('[CHAT-MANAGER] ✅ Message sent successfully'); // 🟢 MEDIUM: Success info - keep for monitoring
+            const persistedMode = data.conversationMode ?? selectedModeForSend;
+            activeChat.conversationMode = persistedMode;
+            this.selectedConversationMode = persistedMode;
+            this.syncConversationModeComposer();
 
             // Replace the placeholder messages with server response using incremental updates
             // Remove placeholder messages from DOM and data
@@ -724,7 +877,7 @@ export class ChatManager {
             chatListEl.appendChild(li);
         });
 
-        renderFeatherIcons();
+        this.renderFeatherIconsWithComposerSync();
     }
 
     /**
@@ -759,7 +912,7 @@ export class ChatManager {
         this.scrollToBottom(150);
         
         this.renderPinnedBanner(activeChat);
-        renderFeatherIcons();
+        this.syncConversationModeComposer();
         
         // Update questionUnstruggle button states after rendering
         // Use setTimeout to ensure DOM is fully updated
@@ -823,7 +976,7 @@ export class ChatManager {
         }
         
         this.renderPinnedBanner(activeChat);
-        renderFeatherIcons();
+        this.syncConversationModeComposer();
         
         // Update questionUnstruggle button states after rendering
         // Use setTimeout to ensure DOM is fully updated
@@ -944,7 +1097,7 @@ export class ChatManager {
         contentEl.innerHTML = this.renderChat.render(newText, messageId);
         renderLatexInHtmlContent(contentEl);
         
-        renderFeatherIcons();
+        this.renderFeatherIconsWithComposerSync();
         this.scrollToBottom();
         
         // Update button states after message update
@@ -1023,7 +1176,7 @@ export class ChatManager {
         // Final render to ensure everything is properly formatted
         contentEl.innerHTML = this.renderChat.render(fullText, messageId);
         renderLatexInHtmlContent(contentEl);
-        renderFeatherIcons();
+        this.renderFeatherIconsWithComposerSync();
         this.scrollToBottom();
         
         onComplete?.();
@@ -1377,6 +1530,7 @@ export class ChatManager {
             // Update the UI to reflect any changes (like updated titles)
             this.renderChatList();
             this.renderActiveChatIncremental();
+            this.syncConversationModeComposer();
             
             //START DEBUG LOG : DEBUG-CODE(REFRESH-CHAT-DATA-SUCCESS)
             // console.log('[CHAT-MANAGER] ✅ Chat data refreshed successfully');
@@ -1459,6 +1613,8 @@ export class ChatManager {
     }
 
     public bindMessageEvents(): void {
+        this.initConversationModePicker();
+
         const sendBtn = document.getElementById('send-btn');
         const inputEl = document.getElementById('chat-input') as HTMLTextAreaElement;
         const pinBtn = document.getElementById('pin-chat-btn');
@@ -1500,6 +1656,23 @@ export class ChatManager {
             // console.log('🗑️ Delete button clicked in chat header');
             this.handleDeleteActiveChat();
         });
+
+        this.syncConversationModeComposer();
+    }
+
+    private initConversationModePicker(): void {
+        if (this.conversationModePicker) {
+            this.conversationModePicker.bindToDom();
+            void this.conversationModePicker.loadCatalog();
+            this.syncConversationModeComposer();
+            return;
+        }
+        this.conversationModePicker = new ConversationModePicker({
+            getSelectedModeId: () => this.selectedConversationMode,
+            onModeSelect: (modeId) => void this.handleConversationModeSelect(modeId),
+            onCatalogLoaded: () => this.syncConversationModeComposer(),
+        });
+        void this.conversationModePicker.loadCatalog();
     }
 
     private bindModalEvents(): void {
@@ -1674,7 +1847,7 @@ export class ChatManager {
                     }
                 }
                 // Re-render icons after each chunk update
-                renderFeatherIcons();
+                this.renderFeatherIconsWithComposerSync();
             },
             (message: ChatMessage) => {
                 const botMessageElement = document.getElementById(`msg-${message.id}`);
@@ -1706,7 +1879,7 @@ export class ChatManager {
                     }, 0);
                 }
                 // Re-render icons after message completion
-                renderFeatherIcons();
+                this.renderFeatherIconsWithComposerSync();
             },
             (error: string) => {
                 const botMessage = activeChat.messages[activeChat.messages.length - 1];
@@ -2269,7 +2442,7 @@ export class ChatManager {
         chat.pinnedMessageId = null;
         this.renderActiveChatIncremental(); // Use incremental updates for pinned message removal
         this.renderChatList();
-        renderFeatherIcons();
+        this.renderFeatherIconsWithComposerSync();
     }
 
     private formatFullTimestamp(timestampMs: number | undefined): string {
@@ -2503,7 +2676,7 @@ export class ChatManager {
         });
         
         // Render feather icons
-        renderFeatherIcons();
+        this.renderFeatherIconsWithComposerSync();
         
         // Close modal function
         const closeModal = () => {

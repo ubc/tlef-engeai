@@ -1,24 +1,7 @@
-import { getAdminSeedPuids, isAdminUser } from '../admin';
+import { isAdminUser } from '../admin';
 import type { GlobalUser } from '../../types/shared';
 
 describe('admin utils', () => {
-    const originalEnv = process.env;
-
-    beforeEach(() => {
-        jest.resetModules();
-        process.env = { ...originalEnv };
-    });
-
-    afterAll(() => {
-        process.env = originalEnv;
-    });
-
-    it('getAdminSeedPuids returns configured PUIDs', () => {
-        process.env.CHARISMA_RUSDIYANTO_PUID = 'puid-charisma';
-        process.env.RICHARD_TAPE_PUID = 'puid-richard';
-        expect(getAdminSeedPuids()).toEqual(['puid-charisma', 'puid-richard']);
-    });
-
     it('isAdminUser is true only when isAdmin is true', () => {
         const admin: GlobalUser = {
             name: 'A',

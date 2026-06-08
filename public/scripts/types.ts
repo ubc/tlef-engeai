@@ -2,7 +2,6 @@
  * types.ts
  * @author: @gatahcha
  * @date: 2025-03-05
- * @latest app version: 1.2.9.9
  * @description: Frontend type definitions. Self-contained; must NOT import from src/.
  * Keep in sync manually with src/types/shared.ts when shared types change.
  */
@@ -10,10 +9,26 @@
 // =====================================
 // ========= CHAT DATA TYPE ============
 // =====================================
+//
+// Must match src/types/shared.ts (MongoDB layout):
+//   {courseName}_users.chats[]  → Chat
+//   {courseName}_memory-agent   → MemoryAgentEntry (struggleTopics; Socratic-only at runtime)
 
 /**
- * Must match src/types/shared.ts
- * The type of chat message
+ * Must match src/types/shared.ts.
+ * Selectable teaching mode; struggle overlay applies to Socratic only (current phase).
+ */
+export type ConversationModeId = 'socratic' | 'explanatory';
+
+/** Must match src/types/shared.ts. Persisted lifecycle state on Chat. */
+export type PersistedConversationModeId = ConversationModeId | 'undeclared';
+
+/** Must match src/types/shared.ts */
+export type ConversationModeStatus = 'active' | 'coming_soon';
+
+/**
+ * Must match src/types/shared.ts.
+ * Persisted turn — plain UI text only (no RAG/struggle tags in MongoDB).
  */
 export interface ChatMessage {
     id: string;
@@ -24,9 +39,21 @@ export interface ChatMessage {
     timestamp: number;
 }
 
+/** Catalog item from GET /api/chat/conversation-modes */
+export interface ConversationModeCatalogItem {
+    id: ConversationModeId;
+    displayName: string;
+    shortDescription: string;
+    longDescription?: string;
+    status: ConversationModeStatus;
+    isDefault: boolean;
+    sortOrder: number;
+}
+
 /**
- * Must match src/types/shared.ts
- * The type of chat
+ * Must match src/types/shared.ts.
+ * Embedded chat thread in `{courseName}_users.chats[]`.
+ * struggleTopics live on MemoryAgentEntry, not on Chat.
  */
 export interface Chat {
     id: string;
@@ -36,7 +63,24 @@ export interface Chat {
     messages: ChatMessage[];
     isPinned: boolean;
     pinnedMessageId?: string | null;
-    isDeleted?: boolean;  // Soft delete flag (defaults to false/undefined for backward compatibility)
+    isDeleted?: boolean;
+    /** New welcome-only chats start undeclared, then finalize on the first user message */
+    conversationMode?: PersistedConversationModeId;
+}
+
+/**
+ * Must match src/types/shared.ts.
+ * Sidebar metadata from GET /api/chat/user/chats/metadata (no messages array).
+ */
+export interface ChatMetadataSummary {
+    id: string;
+    courseName: string;
+    itemTitle: string;
+    isPinned: boolean;
+    pinnedMessageId?: string | null;
+    messageCount: number;
+    lastMessageTimestamp: number;
+    conversationMode?: PersistedConversationModeId;
 }
 
 // ===========================================
@@ -76,7 +120,9 @@ export interface activeCourse {
         scheduledTasks?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
+    /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */
     collectionOfSystemPromptItems?: SystemPromptItem[];
+    systemPromptConfig?: CourseSystemPromptConfig;
 }
 
 /**
@@ -124,6 +170,31 @@ export const DEFAULT_BASE_PROMPT_ID = 'default-base-system-prompt';
 export const DEFAULT_LEARNING_OBJECTIVES_ID = 'default-learning-objectives';
 export const DEFAULT_STRUGGLE_TOPICS_ID = 'default-struggle-topics';
 
+/** Must match src/types/shared.ts — single editable module within a course system prompt. */
+export interface SystemPromptModule {
+    id: string;
+    body: string;
+    sortOrder: number;
+}
+
+/** Must match src/types/shared.ts — per-mode system prompt state. */
+export interface ModeSystemPromptState {
+    usePlatformDefault: boolean;
+    modules: SystemPromptModule[];
+    updatedAt: string;
+    platformDefaultVersion?: string;
+}
+
+/** Must match src/types/shared.ts — course-level system prompt configuration (v2). */
+export interface CourseSystemPromptConfig {
+    schemaVersion: 1;
+    defaultConversationMode: ConversationModeId;
+    modes: {
+        socratic: ModeSystemPromptState;
+        explanatory: ModeSystemPromptState;
+    };
+}
+
 /**
  * Must match src/types/shared.ts
  * frameTypes: Course content organization strategy.
@@ -164,6 +235,7 @@ export interface TopicOrWeekItem {
     itemTitle: string;
     completed?: boolean;
     learningObjectives: LearningObjective[];
+    instructorStruggleTopics?: InstructorStruggleTopic[];
     additionalMaterials?: AdditionalMaterial[];
     createdAt: Date;
     updatedAt: Date;
@@ -186,6 +258,28 @@ export interface LearningObjective {
  */
 export interface LearningObjectiveForDisplay {
     LearningObjective: string;
+    topicOrWeekTitle: string;
+    itemTitle: string;
+}
+
+/**
+ * Must match src/types/shared.ts
+ * Instructor-authored struggle topic catalog entry (per section).
+ * `struggleTopic` is the verbatim label used by the memory agent and student struggle store.
+ */
+export interface InstructorStruggleTopic {
+    id: string;
+    struggleTopic: string;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+/**
+ * Must match src/types/shared.ts
+ * Flattened instructor struggle topic with parent hierarchy (memory-agent catalog).
+ */
+export interface InstructorStruggleTopicForDisplay {
+    struggleTopic: string;
     topicOrWeekTitle: string;
     itemTitle: string;
 }
@@ -294,11 +388,24 @@ export interface ChatApiResponse {
     error?: string;
 }
 
+/** Request body for changing a welcome-only chat's teaching mode */
+export interface UpdateChatConversationModeRequest {
+    conversationMode: ConversationModeId;
+}
+
+/** Response from PATCH /api/chat/:chatId/conversation-mode */
+export interface UpdateChatConversationModeResponse {
+    success: boolean;
+    conversationMode?: ConversationModeId;
+    error?: string;
+}
+
 /** Request payload for creating a new chat */
 export interface CreateChatRequest {
     userID: string;
     courseName: string;
     date: string;
+    conversationMode?: ConversationModeId;
 }
 
 /** Response from createNewChat - extends ChatApiResponse */
@@ -318,6 +425,7 @@ export interface CreateChatResponse extends ChatApiResponse {
 export interface SendMessageResponse {
     success: boolean;
     message?: ChatMessage;
+    conversationMode?: ConversationModeId;
     error?: string;
 }
 

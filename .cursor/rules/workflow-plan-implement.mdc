@@ -1,0 +1,37 @@
+---
+description: Plan → Implement → Document → Test workflow
+alwaysApply: false
+---
+
+# Development Workflow
+
+## Principle
+
+Only change code when you and the user have agreed. Check in on every task before proceeding.
+
+## Fixed sequence
+
+1. **Plan** — requirements, interfaces, short plan in `planner/` (create folder if missing).
+2. **Implement** — follow approved plan; minimal scope.
+3. **Document** — TSDoc + `documentation/` per `documentation-creator.mdc`.
+4. **Test** — ask before providing tests (`testing-policy.mdc`).
+
+## Task entry points
+
+| Task | Discovery |
+|------|-----------|
+| New feature | version, docs, related routes/services — plan data flow first |
+| Bug fix (FE) | version, docs, `public/scripts/` |
+| Bug fix (BE) | version, docs, `src/` routes and core modules |
+| Refactor | preserve behavior; update docs |
+| Styling | `css-master.mdc` — suggest-only unless Orchestrator waives |
+
+## Handoff artifacts
+
+- Orchestrator: `planner/<slug>-handoff.md`
+- Architect: `planner/<slug>-architecture.md`
+- Red Team: `planner/red-team-<slug>-<date>.md` (advisory)
+
+## Example (copy message button)
+
+Plan → implement in `render-chat.ts` → bump SemVer in `package.json` → TSDoc → ask for blackbox checklist.

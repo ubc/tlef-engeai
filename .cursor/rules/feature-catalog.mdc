@@ -1,0 +1,41 @@
+---
+description: Feature map and architecture briefs — load when discovering scope
+alwaysApply: false
+---
+
+# Feature Catalog & Architecture
+
+## Tech stack
+
+- **FE:** Vanilla TS, HTML, CSS → `public/scripts/`, `public/pages/`, `public/styles/`
+- **BE:** Node Express 5, TypeScript → `src/`
+- **DB:** MongoDB (`EngEAI_MongoDB`, `src/db/mongo/`), Qdrant via `RAGApp`
+- **AI:** UBC GenAI Toolkit, streaming chat, memory agent
+
+## Key features → files
+
+| Area | Key files |
+|------|-----------|
+| Chat | `public/scripts/feature/chat.ts`, `render-chat.ts`, `api/chat-api.ts`, `src/chat/chat-app.ts` |
+| Documents/RAG | `feature/documents.ts`, `services/rag-service.ts`, `src/rag/rag-app.ts` |
+| Flags | `feature/flags.ts`, `src/db/mongo/flag-mongo.ts` |
+| Monitor | `feature/monitor.ts`, export helpers |
+| Auth | `auth/auth-manager.ts`, `src/middleware/passport.ts`, `route-auth.ts` |
+| Prompts | `feature/system-prompts.ts`, `src/chat/chat-prompts.ts`, `src/memory-agent/` |
+
+## Architecture briefs
+
+- **FE:** entry/, feature/, services/, api/, ui/, onboarding/ — see `public/scripts/`
+- **BE routes:** auth, course, chat-app, rag, mongo, course-entry, user-management, health, version
+- **Mongo:** façade `enge-ai-mongodb.ts`; domains in `src/db/mongo/`
+- **Qdrant:** materials have `qdrantId`; course delete cascades vectors
+
+## Docs index
+
+- `documentation/ENDPOINT_ARCHITECTURE.md` — routes, RBAC, API
+- `documentation/MONGO_DATA_LAYER.md` — Mongo layer
+- `documentation/RESPONSIVE_DESIGN.md` — breakpoints
+
+## Deployment
+
+On-prem UBC; staging before prod. Staging checklists on request.

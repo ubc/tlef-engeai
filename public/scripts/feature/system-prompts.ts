@@ -1,647 +1,1002 @@
 /**
- * System Prompts Management
- * 
- * This module handles the creation, editing, deletion, and append/remove functionality
- * for system prompt items. System prompts are composed of base prompt, learning objectives,
- * and custom appended items. (Struggle-topics informational card is hidden for now.)
- * 
- * @author: EngE-AI Team
- * @version: 1.0.0
- * @since: 2025-01-27
+ * System Prompts Management (v2)
+ *
+ * Mode dropdown, structured/plain editors, manual save, download, kebab actions.
  */
 
-import { activeCourse, SystemPromptItem, DEFAULT_BASE_PROMPT_ID, DEFAULT_LEARNING_OBJECTIVES_ID } from '../types.js';
+import {
+    activeCourse,
+    ConversationModeId,
+    CourseSystemPromptConfig,
+    SystemPromptModule,
+} from '../types.js';
 import { renderFeatherIcons } from '../api/api.js';
-import { showConfirmModal, showSimpleErrorModal, showErrorModal, openContentInputModal, openPromptReviewModal } from '../ui/modal-overlay.js';
-import { needsExpandButton, truncateToFirstLine } from '../utils/prompt-preview.js';
-import { DocumentUploadModule } from '../services/document-upload-module.js';
-import { showSuccessToast, showErrorToast } from '../ui/toast-notification.js';
+import { showConfirmModal, showSimpleErrorModal } from '../ui/modal-overlay.js';
+import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
+
+const RESERVED_MODULE_ID_PREFIXES = ['_system_', '_runtime_'] as const;
+
+interface ModeStateWithDisplay {
+    usePlatformDefault: boolean;
+    modules: SystemPromptModule[];
+    updatedAt: string;
+    platformDefaultVersion?: string;
+    displayModules: SystemPromptModule[];
+}
+
+interface ConfigApiResponse {
+    success: boolean;
+    data?: CourseSystemPromptConfig & {
+        modes: {
+            socratic: ModeStateWithDisplay;
+            explanatory: ModeStateWithDisplay;
+        };
+    };
+    error?: string;
+}
 
 let currentCourse: activeCourse | null = null;
-let items: SystemPromptItem[] = [];
-let learningObjectivesCount: number = 0;
+let config: ConfigApiResponse['data'] | null = null;
+let activeMode: ConversationModeId = 'socratic';
+let activeEditor: 'structured' | 'plain' = 'structured';
+let workingModules: SystemPromptModule[] = [];
+let plainXmlDraft = '';
+let hasUnsavedChanges = false;
+let isSaving = false;
+/** Aborts UI listeners from the previous mount when the component HTML is reloaded. */
+let uiListenersAbort: AbortController | null = null;
 
-function getLearningObjectivesFullContent(): string {
-    return 'The following are ALL learning objectives for this course, organized by week/topic and subsection:\n\n\nWhen helping students, reference these learning objectives to ensure alignment with course goals.';
+const NEW_MODULE_BODY_TEMPLATE = '*Module Purpose*\nDescribe what this module controls in conversation.\n\n*Module Content*\n';
+
+const MODULE_TEXTAREA_MAX_HEIGHT_PX = 500;
+
+/** Grows with content up to {@link MODULE_TEXTAREA_MAX_HEIGHT_PX}, then scrolls. */
+function autoResizeModuleTextarea(textarea: HTMLTextAreaElement): void {
+    textarea.style.height = 'auto';
+    const contentHeight = textarea.scrollHeight;
+    const capped = Math.min(contentHeight, MODULE_TEXTAREA_MAX_HEIGHT_PX);
+    textarea.style.height = `${capped}px`;
+    textarea.classList.toggle('is-scrollable', contentHeight > MODULE_TEXTAREA_MAX_HEIGHT_PX);
 }
 
-/**
- * Initialize the system prompts page
- * @param course - The current course
- */
-export async function initializeSystemPrompts(course: activeCourse): Promise<void> {
-    currentCourse = course;
-    
-    // Validate courseId
-    if (!course.id || course.id.trim() === '') {
-        console.error('❌ [SYSTEM-PROMPTS] Cannot initialize: courseId is missing');
-        await showSimpleErrorModal('Cannot load system prompts: Course ID is missing. Please refresh the page.', 'Initialization Error');
+function nextUntitledModuleId(): string {
+    const untitledPattern = /^untitled_(\d+)$/i;
+    let maxOrder = 0;
+    for (const mod of workingModules) {
+        const match = mod.id.match(untitledPattern);
+        if (match) {
+            maxOrder = Math.max(maxOrder, parseInt(match[1], 10));
+        }
+    }
+    return `untitled_${maxOrder + 1}`;
+}
+
+interface SaveActiveModeOptions {
+    /** Persist even when hasUnsavedChanges is false (e.g. after delete). */
+    force?: boolean;
+    /** Optional toast after a successful save. */
+    successToast?: string;
+    /** Keep these module ids expanded after re-render. */
+    preserveExpandedIds?: string[];
+}
+
+interface RenderStructuredModulesOptions {
+    /** Module index to show expanded (e.g. newly added). */
+    expandIndex?: number;
+    /** Module index to scroll into view after render. */
+    scrollToIndex?: number;
+    /** Module ids to show expanded (preserves accordion state across re-render). */
+    expandModuleIds?: string[];
+}
+
+function getModeState(mode: ConversationModeId): ModeStateWithDisplay | null {
+    return config?.modes[mode] ?? null;
+}
+
+function getDisplayModules(mode: ConversationModeId): SystemPromptModule[] {
+    const modeState = getModeState(mode);
+    if (!modeState) {
+        return [];
+    }
+    if (modeState.usePlatformDefault) {
+        const fromApi = modeState.displayModules;
+        const fromMongo = modeState.modules;
+        const source =
+            fromApi && fromApi.length > 0
+                ? fromApi
+                : fromMongo && fromMongo.length > 0
+                  ? fromMongo
+                  : [];
+        return [...source].sort((a, b) => a.sortOrder - b.sortOrder);
+    }
+    return [...modeState.modules].sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+function getModeMenuLabel(mode: ConversationModeId): string {
+    const base = mode === 'socratic' ? 'Socratic' : 'Explanatory';
+    return config?.defaultConversationMode === mode ? `${base} (default)` : base;
+}
+
+function modulesToPlainXml(mode: ConversationModeId, modules: SystemPromptModule[]): string {
+    const sorted = [...modules].sort((a, b) => a.sortOrder - b.sortOrder);
+    const body = sorted
+        .map((m) => `<module id="${m.id}">\n${m.body}\n</module>`)
+        .join('\n');
+    return `<system_prompt mode="${mode}">\n${body}\n</system_prompt>`;
+}
+
+function getPlainContentForDownload(): string {
+    if (activeEditor === 'plain') {
+        const textarea = document.getElementById('system-prompt-plain-textarea') as HTMLTextAreaElement | null;
+        return textarea?.value ?? plainXmlDraft;
+    }
+    return modulesToPlainXml(activeMode, workingModules);
+}
+
+function isReservedModuleId(id: string): boolean {
+    return RESERVED_MODULE_ID_PREFIXES.some((prefix) => id.startsWith(prefix));
+}
+
+function normalizeModuleId(raw: string): string {
+    return raw.trim().replace(/\s+/g, '_');
+}
+
+function validateModuleId(id: string, index: number): string | null {
+    if (!id) {
+        return 'Module id cannot be empty';
+    }
+    if (isReservedModuleId(id)) {
+        return 'This id uses a reserved prefix (_system_ or _runtime_)';
+    }
+    const duplicate = workingModules.some((m, i) => i !== index && m.id === id);
+    if (duplicate) {
+        return 'Module id must be unique';
+    }
+    return null;
+}
+
+function setSaveStatus(text: string, className?: string): void {
+    const el = document.getElementById('system-prompt-save-status');
+    if (!el) {
         return;
     }
-
-    // console.log(`✅ [SYSTEM-PROMPTS] Initializing with courseId: ${course.id}`); // 🟢 MEDIUM: Course ID exposure
-
-    // Setup event listeners
-    setupEventListeners();
-
-    // Load learning objectives count
-    await loadLearningObjectivesCount();
-
-    // Load items from server
-    await loadSystemPrompts();
-
-    // Render the page
-    renderPrompts();
-
-    // Render feather icons
-    renderFeatherIcons();
-}
-
-/**
- * Setup event listeners for the page
- */
-function setupEventListeners(): void {
-    const addPromptBtn = document.getElementById('system-add-prompt-btn');
-    if (addPromptBtn) {
-        addPromptBtn.addEventListener('click', handleAddPrompt);
+    el.textContent = text;
+    el.className = 'system-prompt-save-status';
+    if (className) {
+        el.classList.add(className);
     }
 }
 
-/**
- * Setup event listeners for default components (learning objectives)
- */
-function setupDefaultComponentEventListeners(): void {
-    const learningObjectivesCard = document.querySelector(`[data-prompt-id="${DEFAULT_LEARNING_OBJECTIVES_ID}"]`);
-    if (learningObjectivesCard) {
-        const expandToggle = learningObjectivesCard.querySelector('.expand-toggle') as HTMLElement;
-        if (expandToggle) {
-            expandToggle.addEventListener('click', () => handleOpenReviewModal(DEFAULT_LEARNING_OBJECTIVES_ID));
-        }
-    }
-}
-
-/**
- * Load learning objectives count for display
- * Gets count from course content items
- */
-async function loadLearningObjectivesCount(): Promise<void> {
-    if (!currentCourse?.id) return;
-
-    try {
-        // Get learning objectives count from course content items
-        // We'll calculate it from topicOrWeekInstances
-        let count = 0;
-        if (currentCourse.topicOrWeekInstances) {
-            currentCourse.topicOrWeekInstances.forEach(instance => {
-                if (instance.items) {
-                    instance.items.forEach(item => {
-                        if (item.learningObjectives && Array.isArray(item.learningObjectives)) {
-                            count += item.learningObjectives.length;
-                        }
-                    });
-                }
-            });
-        }
-        learningObjectivesCount = count;
-    } catch (error) {
-        console.error('❌ [SYSTEM-PROMPTS] Error loading learning objectives count:', error);
-        // Continue with default count of 0
-        learningObjectivesCount = 0;
-    }
-}
-
-/**
- * Load system prompt items from the server
- */
-async function loadSystemPrompts(): Promise<void> {
-    if (!currentCourse?.id) {
-        console.error('❌ [SYSTEM-PROMPTS] Cannot load items: courseId is missing');
+function updateSaveButtonState(): void {
+    const btn = document.getElementById('system-prompt-save-btn') as HTMLButtonElement | null;
+    if (!btn) {
         return;
     }
-
-    try {
-        const response = await fetch(`/api/courses/${currentCourse.id}/system-prompts`, {
-            method: 'GET',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to load system prompts: ${response.statusText}`);
-        }
-
-        const result = await response.json();
-        if (result.success) {
-            items = result.data || [];
-            // console.log(`✅ [SYSTEM-PROMPTS] Loaded ${items.length} items`);
-        } else {
-            throw new Error(result.error || 'Failed to load system prompts');
-        }
-    } catch (error) {
-        console.error('❌ [SYSTEM-PROMPTS] Error loading system prompts:', error);
-        await showErrorModal('Failed to load system prompts. Please try again.', 'Error');
-    }
+    btn.disabled = !hasUnsavedChanges || isSaving;
 }
 
-/**
- * Render all prompts on the page
- */
-function renderPrompts(): void {
-    const container = document.getElementById('system-prompts-container');
-    if (!container) {
-        console.error('❌ [SYSTEM-PROMPTS] Prompts container not found');
-        return;
-    }
+function markDirty(): void {
+    hasUnsavedChanges = true;
+    setSaveStatus('Unsaved changes');
+    updateSaveButtonState();
+}
 
-    // Separate default components from custom items
-    const basePrompt = items.find(item => item.componentType === 'base' || item.id === DEFAULT_BASE_PROMPT_ID);
-    const customItems = items.filter(item => item.componentType === 'custom');
-    const itemsToRender = customItems;
-
-    let html = '';
-
-    // Render base system prompt
-    if (basePrompt) {
-        html += renderPromptCard(basePrompt);
-    }
-
-    // Render learning objectives component (always included default component)
-    html += renderLearningObjectivesComponent();
-
-    // Render custom items
-    itemsToRender.forEach(item => {
-        html += renderPromptCard(item);
+function closeAllDropdowns(): void {
+    document.querySelectorAll('.system-prompt-dropdown.is-open').forEach((el) => {
+        el.classList.remove('is-open');
+        const trigger = el.querySelector<HTMLButtonElement>('[aria-expanded]');
+        if (trigger) {
+            trigger.setAttribute('aria-expanded', 'false');
+        }
     });
-
-    container.innerHTML = html;
-    
-    // Setup event listeners for each card
-    itemsToRender.forEach(item => {
-        setupCardEventListeners(item.id);
-    });
-
-    // Setup event listeners for base prompt (it's not in itemsToRender)
-    if (basePrompt) {
-        setupCardEventListeners(basePrompt.id);
-    }
-
-    // Setup event listeners for default components (learning objectives)
-    setupDefaultComponentEventListeners();
-
-    // Render feather icons again after DOM update
-    renderFeatherIcons();
-}
-
-/**
- * Render learning objectives component (informational display)
- */
-function renderLearningObjectivesComponent(): string {
-    const fullContent = getLearningObjectivesFullContent();
-    const previewLine = truncateToFirstLine(fullContent);
-    const showExpand = needsExpandButton(fullContent);
-
-    return `
-        <div class="prompt-card appended default-component" data-prompt-id="${DEFAULT_LEARNING_OBJECTIVES_ID}">
-            <span class="appended-badge">Appended</span>
-            <span class="always-included-badge">Always Included</span>
-            <div class="prompt-header">
-                <div class="prompt-title">Learning Objectives</div>
-            </div>
-            <div class="prompt-content-wrapper">
-                <div class="prompt-content informational prompt-content--preview">
-                    ${escapeHtml(previewLine)}
-                </div>
-                ${showExpand ? `
-                    <button type="button" class="expand-toggle" data-prompt-id="${DEFAULT_LEARNING_OBJECTIVES_ID}" aria-label="View full prompt">
-                        <i data-feather="chevron-down"></i>
-                    </button>
-                ` : ''}
-            </div>
-        </div>
-    `;
-}
-
-/**
- * Render a single prompt card
- * @param item - The system prompt item to render
- * @returns HTML string for the card
- */
-function renderPromptCard(item: SystemPromptItem): string {
-    const isAppended = item.isAppended;
-    const isDefault = item.isDefault || ['base', 'learning-objectives', 'struggle-topics'].includes(item.componentType || '');
-    const isCustom = item.componentType === 'custom';
-    const appendedClass = isAppended ? 'appended' : '';
-    const appendedBadge = isAppended ? '<span class="appended-badge">Appended</span>' : '';
-    const alwaysIncludedBadge = isDefault ? '<span class="always-included-badge">Always Included</span>' : '';
-
-    const rawContent = item.content || '';
-    const previewLine = truncateToFirstLine(rawContent);
-    const showExpand = needsExpandButton(rawContent);
-
-    return `
-        <div class="prompt-card ${appendedClass}" data-prompt-id="${item.id}">
-            ${appendedBadge}
-            ${alwaysIncludedBadge}
-            <div class="prompt-header">
-                <div class="prompt-title" data-field="title" data-prompt-id="${item.id}">
-                    ${escapeHtml(item.title || 'Untitled')}
-                </div>
-            </div>
-            <div class="prompt-content-wrapper">
-                <div class="prompt-content prompt-content--preview" data-field="content" data-prompt-id="${item.id}">
-                    ${escapeHtml(previewLine)}
-                </div>
-                ${showExpand ? `
-                    <button type="button" class="expand-toggle" data-prompt-id="${item.id}" aria-label="View full prompt">
-                        <i data-feather="chevron-down"></i>
-                    </button>
-                ` : ''}
-            </div>
-            <div class="prompt-actions">
-                ${isCustom ? `
-                    <button class="btn-edit" data-prompt-id="${item.id}">
-                        <i data-feather="edit"></i>
-                        <span>Edit</span>
-                    </button>
-                ` : ''}
-                ${isCustom ? `
-                    <button class="btn-delete" data-prompt-id="${item.id}">
-                        <i data-feather="trash-2"></i>
-                        <span>Delete</span>
-                    </button>
-                    ${isAppended ? `
-                        <button class="btn-remove" data-prompt-id="${item.id}">
-                            <i data-feather="minus-circle"></i>
-                            <span>Remove</span>
-                        </button>
-                    ` : `
-                        <button class="btn-append" data-prompt-id="${item.id}">
-                            <i data-feather="plus-circle"></i>
-                            <span>Append</span>
-                        </button>
-                    `}
-                ` : ''}
-            </div>
-        </div>
-    `;
-}
-
-/**
- * Setup event listeners for a prompt card
- * @param itemId - The item ID
- */
-function setupCardEventListeners(itemId: string): void {
-    const card = document.querySelector(`[data-prompt-id="${itemId}"]`) as HTMLElement;
-    if (!card) return;
-
-    const item = items.find(i => i.id === itemId);
-    if (!item) return;
-
-    const isDefault = item.isDefault || ['base', 'learning-objectives', 'struggle-topics'].includes(item.componentType || '');
-
-    const editBtn = card.querySelector('.btn-edit');
-    if (editBtn) {
-        editBtn.addEventListener('click', () => handleEditPrompt(itemId));
-    }
-
-    if (!isDefault) {
-        const deleteBtn = card.querySelector('.btn-delete');
-        if (deleteBtn) {
-            deleteBtn.addEventListener('click', () => handleDeletePrompt(itemId));
-        }
-    }
-
-    if (item.componentType === 'custom') {
-        const appendBtn = card.querySelector('.btn-append');
-        if (appendBtn) {
-            appendBtn.addEventListener('click', () => handleToggleAppend(itemId, true));
-        }
-
-        const removeBtn = card.querySelector('.btn-remove');
-        if (removeBtn) {
-            removeBtn.addEventListener('click', () => handleToggleAppend(itemId, false));
-        }
-    }
-
-    const expandToggle = card.querySelector('.expand-toggle');
-    if (expandToggle) {
-        expandToggle.addEventListener('click', () => handleOpenReviewModal(itemId));
-    }
-}
-
-/**
- * Open read-only review modal; resolves body for base/custom items and default components.
- */
-function handleOpenReviewModal(itemId: string): void {
-    if (itemId === DEFAULT_LEARNING_OBJECTIVES_ID) {
-        openPromptReviewModal({
-            title: 'Learning Objectives',
-            body: getLearningObjectivesFullContent()
-        });
-        return;
-    }
-    const item = items.find(i => i.id === itemId);
-    if (!item) return;
-    openPromptReviewModal({
-        title: item.title || 'Untitled',
-        body: item.content || ''
+    document.querySelectorAll('.system-prompt-menu').forEach((menu) => {
+        menu.classList.add('hidden');
     });
 }
 
-/**
- * Handle adding a new system prompt item via shared content modal (file or text).
- */
-function handleAddPrompt(): void {
-    if (!currentCourse?.id) {
-        showErrorToast('Course ID is missing. Please refresh the page.');
+function toggleDropdown(dropdownId: string): void {
+    const dropdown = document.getElementById(dropdownId);
+    if (!dropdown) {
         return;
     }
-
-    void openContentInputModal({
-        title: 'Add system prompt item',
-        initialMethod: 'text',
-        allowEmptyText: true,
-        strings: {
-            nameLabel: 'Title',
-            namePlaceholder: 'Prompt item title...',
-            textLabel: 'Prompt text',
-            textPlaceholder: 'Paste or type the system prompt text...',
-            submitLabel: 'Submit',
-            cancelLabel: 'Cancel'
-        },
-        loadingContent: {
-            title: 'Saving',
-            line1: 'Creating your prompt item...',
-            line2: 'Please wait.'
-        },
-        onSubmit: async (payload) => {
-            const title = payload.name.trim();
-            if (!title) {
-                alert('Please enter a title.');
-                return { success: false };
-            }
-            let content = payload.text;
-            if (payload.sourceType === 'file' && payload.file) {
-                const mod = new DocumentUploadModule();
-                const v = mod.validateFile(payload.file);
-                if (!v.isValid) {
-                    alert(v.error);
-                    return { success: false };
-                }
-                const parsed = await mod.parseDocument(payload.file);
-                content = parsed.extractedText;
-            }
-            const response = await fetch(`/api/courses/${currentCourse!.id}/system-prompts`, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title, content: content.trim() })
-            });
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error((err as { error?: string }).error || 'Failed to create prompt item');
-            }
-            const result = await response.json();
-            if (!result.success) {
-                throw new Error(result.error || 'Failed to create prompt item');
-            }
-            await loadSystemPrompts();
-            renderPrompts();
-            showSuccessToast('Prompt item created successfully!');
-            return { success: true, skipSuccessModal: true };
-        }
-    });
+    const isOpen = dropdown.classList.contains('is-open');
+    closeAllDropdowns();
+    if (!isOpen) {
+        dropdown.classList.add('is-open');
+        const menu = dropdown.querySelector('.system-prompt-menu');
+        menu?.classList.remove('hidden');
+        const trigger = dropdown.querySelector<HTMLButtonElement>('[aria-expanded]');
+        trigger?.setAttribute('aria-expanded', 'true');
+    }
 }
 
-/**
- * Handle editing a prompt via content modal (base or custom)
- * @param itemId - The item ID
- */
-function handleEditPrompt(itemId: string): void {
-    if (!currentCourse?.id) {
-        showErrorToast('Course ID is missing. Please refresh the page.');
-        return;
-    }
-    const item = items.find(i => i.id === itemId);
-    if (!item) return;
-    const isCustom = item.componentType === 'custom';
-    if (!isCustom) {
-        showErrorToast('The base system prompt is read-only and cannot be edited.');
-        return;
-    }
-
-    void openContentInputModal({
-        mode: 'edit',
-        title: `Edit: ${item.title || 'Untitled'}`,
-        initialMethod: 'text',
-        initialValues: {
-            title: item.title || '',
-            text: item.content || '',
-            method: 'text'
+function setupDropdownListeners(signal: AbortSignal): void {
+    document.getElementById('system-prompt-mode-trigger')?.addEventListener(
+        'click',
+        (e) => {
+            e.stopPropagation();
+            toggleDropdown('system-prompt-mode-dropdown');
         },
-        allowEmptyText: true,
-        strings: {
-            nameLabel: 'Title',
-            namePlaceholder: 'Prompt title...',
-            textLabel: 'Prompt text',
-            textPlaceholder: 'Paste or type the system prompt text...',
-            submitLabel: 'Save edit',
-            cancelLabel: 'Cancel'
-        },
-        loadingContent: {
-            title: 'Saving',
-            line1: 'Updating your prompt...',
-            line2: 'Please wait.'
-        },
-        onSubmit: async (payload) => {
-            const title = payload.name.trim();
-            if (!title) {
-                alert('Please enter a title.');
-                return { success: false };
-            }
-            let content = payload.text;
-            if (payload.sourceType === 'file' && payload.file) {
-                const mod = new DocumentUploadModule();
-                const v = mod.validateFile(payload.file);
-                if (!v.isValid) {
-                    alert(v.error);
-                    return { success: false };
-                }
-                const parsed = await mod.parseDocument(payload.file);
-                content = parsed.extractedText;
-            }
-            const response = await fetch(`/api/courses/${currentCourse!.id}/system-prompts/${itemId}`, {
-                method: 'PUT',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title, content: content.trim() })
-            });
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error((err as { error?: string }).error || 'Failed to update prompt item');
-            }
-            const result = await response.json();
-            if (!result.success) {
-                throw new Error(result.error || 'Failed to update prompt item');
-            }
-            await loadSystemPrompts();
-            renderPrompts();
-            showSuccessToast('Prompt updated successfully!');
-            return { success: true, skipSuccessModal: true };
-        }
-    });
-}
-
-/**
- * Handle deleting a prompt
- * @param itemId - The item ID
- */
-async function handleDeletePrompt(itemId: string): Promise<void> {
-    if (!currentCourse?.id) {
-        await showErrorModal('Course ID is missing. Please refresh the page.', 'Error');
-        return;
-    }
-
-    const item = items.find(i => i.id === itemId);
-    if (!item) {
-        return;
-    }
-
-    const result = await showConfirmModal(
-        `Are you sure you want to delete "${item.title}"?`,
-        'Delete Prompt',
-        'Delete',
-        'Cancel'
+        { signal }
     );
 
-    // Check if user cancelled
-    if (result.action === 'cancel') {
-        // User cancelled - do nothing
-        return;
-    }
-
-    try {
-        const response = await fetch(`/api/courses/${currentCourse.id}/system-prompts/${itemId}`, {
-            method: 'DELETE',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (!response.ok) {
-            const result = await response.json();
-            throw new Error(result.error || 'Failed to delete prompt');
-        }
-
-        const result = await response.json();
-        if (result.success) {
-            await loadSystemPrompts();
-            renderPrompts();
-            showSuccessToast('Prompt deleted successfully!');
-        } else {
-            throw new Error(result.error || 'Failed to delete prompt');
-        }
-    } catch (error) {
-        console.error('❌ [SYSTEM-PROMPTS] Error deleting prompt:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Failed to delete prompt. Please try again.';
-        showErrorToast(errorMessage);
-    }
-}
-
-/**
- * Handle toggling append status (immediate action with modal confirmation)
- * @param itemId - The item ID
- * @param append - Whether to append (true) or remove (false)
- */
-async function handleToggleAppend(itemId: string, append: boolean): Promise<void> {
-    if (!currentCourse?.id) {
-        await showErrorModal('Course ID is missing. Please refresh the page.', 'Error');
-        return;
-    }
-
-    const item = items.find(i => i.id === itemId);
-    if (!item) {
-        return;
-    }
-
-    const actionText = append ? 'append' : 'remove';
-    const actionTextCapitalized = append ? 'Append' : 'Remove';
-    
-    // Show confirmation modal
-    const result = await showConfirmModal(
-        `${actionTextCapitalized} "${item.title}" ${append ? 'to' : 'from'} the system prompt? This will ${append ? 'add' : 'remove'} this component ${append ? 'to' : 'from'} all chat conversations.`,
-        `${actionTextCapitalized} System Prompt Item`,
-        actionTextCapitalized,
-        'Cancel'
+    document.getElementById('system-prompt-kebab-btn')?.addEventListener(
+        'click',
+        (e) => {
+            e.stopPropagation();
+            toggleDropdown('system-prompt-kebab-dropdown');
+        },
+        { signal }
     );
 
-    // Check if user cancelled
-    // The action is the button text converted to lowercase with spaces replaced by hyphens
-    // Cancel button text "Cancel" becomes action "cancel"
-    // Confirm button text "Append" becomes action "append", "Remove" becomes "remove"
-    if (result.action === 'cancel') {
-        // User cancelled - do nothing
+    document.addEventListener(
+        'click',
+        () => {
+            closeAllDropdowns();
+        },
+        { signal }
+    );
+
+    document.addEventListener(
+        'keydown',
+        (e) => {
+            if (e.key === 'Escape') {
+                closeAllDropdowns();
+            }
+        },
+        { signal }
+    );
+}
+
+async function fetchConfig(): Promise<void> {
+    if (!currentCourse?.id) {
         return;
     }
+    const response = await fetch(`/api/courses/${currentCourse.id}/system-prompts/config`);
+    const result = (await response.json()) as ConfigApiResponse;
+    if (!result.success || !result.data) {
+        throw new Error(result.error ?? 'Failed to load system prompt config');
+    }
+    config = result.data;
+}
 
-    // User confirmed - proceed with append/remove
-    // The action should be 'append' or 'remove' (from the confirm button text)
+function resolveInitialActiveMode(data: NonNullable<ConfigApiResponse['data']>): ConversationModeId {
+    const socraticDefault = data.modes.socratic.usePlatformDefault;
+    const explanatoryDefault = data.modes.explanatory.usePlatformDefault;
+    if (socraticDefault && !explanatoryDefault) {
+        return 'socratic';
+    }
+    if (explanatoryDefault && !socraticDefault) {
+        return 'explanatory';
+    }
+    return data.defaultConversationMode === 'explanatory' ? 'explanatory' : 'socratic';
+}
+
+async function restoreFromServer(): Promise<void> {
     try {
-        const response = await fetch(`/api/courses/${currentCourse.id}/system-prompts/${itemId}/append`, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ append })
-        });
-
-        if (!response.ok) {
-            const errorResult = await response.json();
-            throw new Error(errorResult.error || `Failed to ${actionText} prompt`);
-        }
-
-        const responseResult = await response.json();
-        if (responseResult.success) {
-            await loadSystemPrompts();
-            renderPrompts();
-            showSuccessToast(`System prompt item ${append ? 'appended' : 'removed'} successfully!`);
+        await fetchConfig();
+        syncWorkingModulesFromConfig();
+        updateModeDropdownLabels();
+        if (activeEditor === 'structured') {
+            renderStructuredModules();
         } else {
-            throw new Error(responseResult.error || `Failed to ${actionText} prompt`);
+            const textarea = document.getElementById('system-prompt-plain-textarea') as HTMLTextAreaElement | null;
+            if (textarea) {
+                textarea.value = plainXmlDraft;
+            }
         }
+        updateSaveButtonState();
     } catch (error) {
-        console.error(`❌ [SYSTEM-PROMPTS] Error ${actionText}ing prompt:`, error);
         showErrorToast(
-            error instanceof Error ? error.message : `Failed to ${actionText} prompt. Please try again.`
+            error instanceof Error ? error.message : 'Could not restore system prompt from server'
         );
     }
 }
 
-/**
- * Escape HTML to prevent XSS
- * @param text - Text to escape
- * @returns Escaped HTML
- */
-function escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+async function saveActiveMode(options: SaveActiveModeOptions = {}): Promise<boolean> {
+    const { force = false, successToast, preserveExpandedIds } = options;
+
+    if (!currentCourse?.id) {
+        return false;
+    }
+    if (isSaving) {
+        return false;
+    }
+    if (!force && !hasUnsavedChanges) {
+        return true;
+    }
+
+    isSaving = true;
+    setSaveStatus('Saving…', 'is-saving');
+    updateSaveButtonState();
+
+    try {
+        let modules = workingModules;
+        if (activeEditor === 'plain') {
+            const textarea = document.getElementById('system-prompt-plain-textarea') as HTMLTextAreaElement | null;
+            if (textarea) {
+                plainXmlDraft = textarea.value;
+            }
+            const validateRes = await fetch(
+                `/api/courses/${currentCourse.id}/system-prompts/config/validate-plain`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ xml: plainXmlDraft }),
+                }
+            );
+            const validateData = (await validateRes.json()) as {
+                ok?: boolean;
+                modules?: SystemPromptModule[];
+                warnings?: string[];
+            };
+            showPlainWarnings(validateData.warnings ?? [], !validateData.ok);
+            if (!validateData.ok || !validateData.modules) {
+                setSaveStatus('Fix plain XML', 'is-error');
+                return false;
+            }
+            modules = validateData.modules.map((m, index) => ({
+                ...m,
+                sortOrder: index,
+            }));
+            workingModules = modules;
+        }
+
+        const response = await fetch(
+            `/api/courses/${currentCourse.id}/system-prompts/config/modes/${activeMode}`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    modules,
+                    usePlatformDefault: false,
+                }),
+            }
+        );
+        const result = (await response.json()) as ConfigApiResponse;
+        if (!response.ok || !result.success || !result.data) {
+            throw new Error(result.error ?? 'Save failed');
+        }
+
+        config = result.data;
+        hasUnsavedChanges = false;
+        syncWorkingModulesFromConfig();
+        setSaveStatus('Saved', 'is-saved');
+        updateModeDropdownLabels();
+        if (activeEditor === 'structured') {
+            const renderOptions: RenderStructuredModulesOptions = {};
+            if (preserveExpandedIds && preserveExpandedIds.length > 0) {
+                renderOptions.expandModuleIds = preserveExpandedIds;
+            }
+            renderStructuredModules(renderOptions);
+        } else {
+            const textarea = document.getElementById('system-prompt-plain-textarea') as HTMLTextAreaElement | null;
+            if (textarea) {
+                textarea.value = plainXmlDraft;
+            }
+        }
+        if (successToast) {
+            showSuccessToast(successToast);
+        }
+        updateSaveButtonState();
+        return true;
+    } catch (error) {
+        setSaveStatus('Save failed', 'is-error');
+        showErrorToast(error instanceof Error ? error.message : 'Save failed');
+        updateSaveButtonState();
+        return false;
+    } finally {
+        isSaving = false;
+        updateSaveButtonState();
+    }
 }
 
-/**
- * Check if there are unsaved changes (for navigation warnings)
- * @returns True if there are unsaved changes
- */
+function showPlainWarnings(warnings: string[], isError: boolean): void {
+    const el = document.getElementById('system-prompt-plain-warnings');
+    if (!el) {
+        return;
+    }
+    if (warnings.length === 0) {
+        el.classList.add('hidden');
+        el.textContent = '';
+        return;
+    }
+    el.classList.remove('hidden');
+    el.textContent = (isError ? 'Validation failed: ' : 'Warnings: ') + warnings.join(' · ');
+}
+
+function syncWorkingModulesFromConfig(): void {
+    workingModules = getDisplayModules(activeMode).map((m, index) => ({
+        id: m.id,
+        body: m.body,
+        sortOrder: index,
+    }));
+    plainXmlDraft = modulesToPlainXml(activeMode, workingModules);
+}
+
+function updateModeDropdownLabels(): void {
+    const triggerLabel = document.getElementById('system-prompt-mode-trigger-label');
+    const trigger = document.getElementById('system-prompt-mode-trigger');
+    const label = getModeMenuLabel(activeMode);
+    if (triggerLabel) {
+        triggerLabel.textContent = label;
+    }
+    if (trigger) {
+        trigger.title = label;
+    }
+
+    document.querySelectorAll('.system-prompt-menu-item[data-mode]').forEach((item) => {
+        const el = item as HTMLButtonElement;
+        const mode = el.dataset.mode as ConversationModeId;
+        if (mode !== 'socratic' && mode !== 'explanatory') {
+            return;
+        }
+        const itemLabel = getModeMenuLabel(mode);
+        el.textContent = itemLabel;
+        el.title = itemLabel;
+        const isSelected = mode === activeMode;
+        el.setAttribute('aria-current', isSelected ? 'true' : 'false');
+    });
+}
+
+async function syncPlainToWorkingModules(): Promise<boolean> {
+    if (!currentCourse?.id) {
+        return false;
+    }
+    const textarea = document.getElementById('system-prompt-plain-textarea') as HTMLTextAreaElement | null;
+    if (textarea) {
+        plainXmlDraft = textarea.value;
+    }
+    if (!hasUnsavedChanges) {
+        return true;
+    }
+    const validateRes = await fetch(
+        `/api/courses/${currentCourse.id}/system-prompts/config/validate-plain`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ xml: plainXmlDraft }),
+        }
+    );
+    const validateData = (await validateRes.json()) as {
+        ok?: boolean;
+        modules?: SystemPromptModule[];
+        warnings?: string[];
+    };
+    showPlainWarnings(validateData.warnings ?? [], !validateData.ok);
+    if (!validateData.ok || !validateData.modules) {
+        return false;
+    }
+    workingModules = validateData.modules.map((m, index) => ({
+        ...m,
+        sortOrder: index,
+    }));
+    return true;
+}
+
+function renderStructuredModules(options: RenderStructuredModulesOptions = {}): void {
+    const list = document.getElementById('system-prompt-modules-list');
+    if (!list) {
+        return;
+    }
+    list.innerHTML = '';
+
+    workingModules.forEach((mod, index) => {
+        const card = document.createElement('div');
+        card.className = 'system-prompt-module-card';
+        card.dataset.index = String(index);
+
+        const header = document.createElement('div');
+        header.className = 'system-prompt-module-header';
+
+        const chevron = document.createElement('span');
+        chevron.className = 'system-prompt-module-chevron';
+        chevron.setAttribute('aria-hidden', 'true');
+        chevron.textContent = '\u25BE';
+
+        const idRow = document.createElement('div');
+        idRow.className = 'system-prompt-module-id-row';
+
+        const editIcon = document.createElement('span');
+        editIcon.className = 'system-prompt-module-edit-icon';
+        editIcon.title = 'Edit module id';
+        editIcon.innerHTML = '<i data-feather="edit-2"></i>';
+
+        const idLabel = document.createElement('span');
+        idLabel.className = 'system-prompt-module-id';
+        idLabel.textContent = mod.id;
+
+        const startIdEdit = (e: Event) => {
+            e.stopPropagation();
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'system-prompt-module-id-input';
+            input.value = mod.id;
+            idRow.replaceChild(input, idLabel);
+            input.focus();
+            input.select();
+
+            const commitId = () => {
+                const normalized = normalizeModuleId(input.value);
+                const err = validateModuleId(normalized, index);
+                if (err) {
+                    showErrorToast(err);
+                    idRow.replaceChild(idLabel, input);
+                    idLabel.textContent = mod.id;
+                    return;
+                }
+                workingModules[index] = { ...workingModules[index], id: normalized };
+                idLabel.textContent = normalized;
+                idRow.replaceChild(idLabel, input);
+                plainXmlDraft = modulesToPlainXml(activeMode, workingModules);
+                markDirty();
+            };
+
+            // Defer commit so a mousedown/click on the topbar (mode/kebab) is not lost to DOM swap.
+            input.addEventListener('blur', () => {
+                setTimeout(commitId, 0);
+            });
+            input.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter') {
+                    ev.preventDefault();
+                    input.blur();
+                }
+                if (ev.key === 'Escape') {
+                    ev.preventDefault();
+                    idRow.replaceChild(idLabel, input);
+                    idLabel.textContent = mod.id;
+                }
+                ev.stopPropagation();
+            });
+            input.addEventListener('click', (ev) => ev.stopPropagation());
+        };
+
+        editIcon.addEventListener('click', startIdEdit);
+
+        idRow.appendChild(idLabel);
+
+        const headerActions = document.createElement('div');
+        headerActions.className = 'system-prompt-module-header-actions';
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'system-prompt-module-remove';
+        removeBtn.title = 'Remove module';
+        removeBtn.innerHTML = '<i data-feather="trash-2"></i>';
+        removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            void handleRemoveModule(index);
+        });
+
+        headerActions.appendChild(editIcon);
+        headerActions.appendChild(removeBtn);
+
+        header.appendChild(chevron);
+        header.appendChild(idRow);
+        header.appendChild(headerActions);
+
+        const startCollapsed =
+            options.expandIndex !== index &&
+            !(options.expandModuleIds?.includes(mod.id) ?? false);
+        header.setAttribute('aria-expanded', startCollapsed ? 'false' : 'true');
+
+        const bodyWrap = document.createElement('div');
+        bodyWrap.className = 'system-prompt-module-body-wrap';
+        if (startCollapsed) {
+            bodyWrap.classList.add('is-collapsed');
+        }
+
+        const bodyInner = document.createElement('div');
+        bodyInner.className = 'system-prompt-module-body-inner';
+
+        const textarea = document.createElement('textarea');
+        textarea.className = 'system-prompt-module-textarea';
+        textarea.value = mod.body;
+        textarea.addEventListener('input', () => {
+            workingModules[index] = { ...workingModules[index], body: textarea.value };
+            plainXmlDraft = modulesToPlainXml(activeMode, workingModules);
+            markDirty();
+            autoResizeModuleTextarea(textarea);
+        });
+        textarea.addEventListener('click', (ev) => ev.stopPropagation());
+
+        bodyInner.appendChild(textarea);
+        bodyWrap.appendChild(bodyInner);
+
+        header.addEventListener('click', (e) => {
+            if ((e.target as HTMLElement).closest('.system-prompt-module-header-actions')) {
+                return;
+            }
+            if (isSaving) {
+                return;
+            }
+            const nowCollapsed = bodyWrap.classList.toggle('is-collapsed');
+            header.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true');
+            if (!nowCollapsed) {
+                requestAnimationFrame(() => autoResizeModuleTextarea(textarea));
+            } else if (hasUnsavedChanges) {
+                void saveActiveMode({ successToast: 'System prompt saved' });
+            }
+        });
+
+        card.appendChild(header);
+        card.appendChild(bodyWrap);
+        list.appendChild(card);
+
+        if (!startCollapsed) {
+            requestAnimationFrame(() => autoResizeModuleTextarea(textarea));
+        }
+    });
+
+    renderFeatherIcons();
+
+    if (options.scrollToIndex !== undefined) {
+        const scrollIndex = options.scrollToIndex;
+        requestAnimationFrame(() => {
+            const card = list.querySelector<HTMLElement>(
+                `.system-prompt-module-card[data-index="${scrollIndex}"]`
+            );
+            card?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+    }
+}
+
+function switchMode(mode: ConversationModeId): void {
+    if (mode === activeMode) {
+        return;
+    }
+    activeMode = mode;
+    hasUnsavedChanges = false;
+    syncWorkingModulesFromConfig();
+    updateModeDropdownLabels();
+    if (activeEditor === 'structured') {
+        renderStructuredModules();
+    } else {
+        const textarea = document.getElementById('system-prompt-plain-textarea') as HTMLTextAreaElement | null;
+        if (textarea) {
+            textarea.value = plainXmlDraft;
+        }
+    }
+    showPlainWarnings([], false);
+    setSaveStatus('');
+    updateSaveButtonState();
+}
+
+async function requestModeSwitch(target: ConversationModeId): Promise<void> {
+    if (target === activeMode) {
+        closeAllDropdowns();
+        return;
+    }
+
+    if (hasUnsavedChanges) {
+        const currentLabel = getModeMenuLabel(activeMode);
+        const targetLabel = getModeMenuLabel(target);
+        const result = await showConfirmModal(
+            'Unsaved changes',
+            `You have unsaved changes in ${currentLabel}. Save before switching to ${targetLabel}?`,
+            'Save and switch',
+            'Cancel'
+        );
+        if (result.action !== 'save-and-switch') {
+            closeAllDropdowns();
+            return;
+        }
+        const saved = await saveActiveMode();
+        if (!saved) {
+            closeAllDropdowns();
+            return;
+        }
+    }
+
+    closeAllDropdowns();
+    switchMode(target);
+}
+
+async function switchEditor(editor: 'structured' | 'plain'): Promise<void> {
+    if (editor === activeEditor) {
+        return;
+    }
+    if (editor === 'plain') {
+        plainXmlDraft = modulesToPlainXml(activeMode, workingModules);
+        const textarea = document.getElementById('system-prompt-plain-textarea') as HTMLTextAreaElement | null;
+        if (textarea) {
+            textarea.value = plainXmlDraft;
+        }
+    } else {
+        const synced = await syncPlainToWorkingModules();
+        if (!synced && hasUnsavedChanges) {
+            return;
+        }
+        renderStructuredModules();
+    }
+
+    activeEditor = editor;
+    document.querySelectorAll('.system-prompt-editor-tab').forEach((tab) => {
+        const el = tab as HTMLButtonElement;
+        const isActive = el.dataset.editor === editor;
+        el.classList.toggle('active', isActive);
+        el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+    document.getElementById('system-prompt-structured-panel')?.classList.toggle('hidden', editor !== 'structured');
+    document.getElementById('system-prompt-plain-panel')?.classList.toggle('hidden', editor !== 'plain');
+}
+
+async function handleResetMode(): Promise<void> {
+    if (!currentCourse?.id || isSaving) {
+        return;
+    }
+    closeAllDropdowns();
+    const result = await showConfirmModal(
+        'Reset to defaults',
+        `Reset ${getModeMenuLabel(activeMode)} to platform defaults? Your course-specific edits for this mode will be discarded.`,
+        'Reset',
+        'Cancel',
+        'danger'
+    );
+    if (result.action !== 'reset') {
+        return;
+    }
+
+    isSaving = true;
+    setSaveStatus('Resetting…', 'is-saving');
+    updateSaveButtonState();
+
+    try {
+        const response = await fetch(
+            `/api/courses/${currentCourse.id}/system-prompts/config/modes/${activeMode}/reset`,
+            { method: 'POST' }
+        );
+        const apiResult = (await response.json()) as ConfigApiResponse;
+        if (!response.ok || !apiResult.success || !apiResult.data) {
+            throw new Error(apiResult.error ?? 'Reset failed');
+        }
+        const resetModeState = apiResult.data.modes[activeMode];
+        if (!resetModeState.usePlatformDefault) {
+            throw new Error('Reset did not apply on server');
+        }
+
+        config = apiResult.data;
+        hasUnsavedChanges = false;
+        syncWorkingModulesFromConfig();
+        if (getDisplayModules(activeMode).length === 0) {
+            throw new Error('Reset succeeded but platform defaults could not be loaded for display');
+        }
+        updateModeDropdownLabels();
+        if (activeEditor === 'structured') {
+            renderStructuredModules();
+        } else {
+            const textarea = document.getElementById('system-prompt-plain-textarea') as HTMLTextAreaElement | null;
+            if (textarea) {
+                textarea.value = plainXmlDraft;
+            }
+        }
+        setSaveStatus('Saved', 'is-saved');
+        showSuccessToast('System prompt reset to platform defaults');
+    } catch (error) {
+        setSaveStatus('Reset failed', 'is-error');
+        showErrorToast(error instanceof Error ? error.message : 'Reset failed');
+    } finally {
+        isSaving = false;
+        updateSaveButtonState();
+    }
+}
+
+async function handleSetDefaultChatMode(): Promise<void> {
+    if (!currentCourse?.id) {
+        return;
+    }
+    closeAllDropdowns();
+    const result = await showConfirmModal(
+        'Set default for new chats',
+        `Set ${getModeMenuLabel(activeMode)} as the default conversation mode for new student chats? Students can still change mode per chat.`,
+        'Set default',
+        'Cancel'
+    );
+    if (result.action !== 'set-default') {
+        return;
+    }
+
+    const response = await fetch(
+        `/api/courses/${currentCourse.id}/system-prompts/config/default-conversation-mode`,
+        {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: activeMode }),
+        }
+    );
+    const apiResult = (await response.json()) as ConfigApiResponse;
+    if (!apiResult.success || !apiResult.data) {
+        showErrorToast(apiResult.error ?? 'Failed to set default mode');
+        return;
+    }
+    config = apiResult.data;
+    updateModeDropdownLabels();
+    showSuccessToast(`${getModeMenuLabel(activeMode)} is now the default for new chats`);
+}
+
+function handleDownload(): void {
+    closeAllDropdowns();
+    const content = getPlainContentForDownload();
+    const courseId = currentCourse?.id ?? 'course';
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `system-prompt-${activeMode}-${courseId}.txt`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+}
+
+function handleAddModule(): void {
+    const newIndex = workingModules.length;
+    workingModules.push({
+        id: nextUntitledModuleId(),
+        body: NEW_MODULE_BODY_TEMPLATE,
+        sortOrder: newIndex,
+    });
+    plainXmlDraft = modulesToPlainXml(activeMode, workingModules);
+    if (activeEditor === 'structured') {
+        renderStructuredModules({ expandIndex: newIndex, scrollToIndex: newIndex });
+    } else {
+        const textarea = document.getElementById('system-prompt-plain-textarea') as HTMLTextAreaElement | null;
+        if (textarea) {
+            textarea.value = plainXmlDraft;
+        }
+    }
+    markDirty();
+}
+
+async function handleRemoveModule(index: number): Promise<void> {
+    const result = await showConfirmModal(
+        'Remove module',
+        'Remove this module from the system prompt?',
+        'Remove',
+        'Cancel',
+        'danger'
+    );
+    if (result.action !== 'remove') {
+        return;
+    }
+    workingModules.splice(index, 1);
+    workingModules = workingModules.map((m, i) => ({ ...m, sortOrder: i }));
+    plainXmlDraft = modulesToPlainXml(activeMode, workingModules);
+    hasUnsavedChanges = true;
+    const saved = await saveActiveMode({ force: true });
+    if (!saved) {
+        await restoreFromServer();
+    }
+}
+
+function setupEventListeners(): void {
+    uiListenersAbort?.abort();
+    uiListenersAbort = new AbortController();
+    const { signal } = uiListenersAbort;
+
+    setupDropdownListeners(signal);
+
+    document.querySelectorAll('.system-prompt-menu-item[data-mode]').forEach((item) => {
+        item.addEventListener(
+            'click',
+            (e) => {
+                e.stopPropagation();
+                const mode = (item as HTMLButtonElement).dataset.mode as ConversationModeId;
+                if (mode === 'socratic' || mode === 'explanatory') {
+                    void requestModeSwitch(mode);
+                }
+            },
+            { signal }
+        );
+    });
+
+    document.querySelectorAll('.system-prompt-menu-item[data-kebab-action]').forEach((item) => {
+        item.addEventListener(
+            'click',
+            (e) => {
+                e.stopPropagation();
+                const action = (item as HTMLButtonElement).dataset.kebabAction;
+                if (action === 'reset') {
+                    void handleResetMode();
+                } else if (action === 'set-default') {
+                    void handleSetDefaultChatMode();
+                }
+            },
+            { signal }
+        );
+    });
+
+    document.getElementById('system-prompt-download-btn')?.addEventListener(
+        'click',
+        () => {
+            handleDownload();
+        },
+        { signal }
+    );
+
+    document.querySelectorAll('.system-prompt-editor-tab').forEach((tab) => {
+        tab.addEventListener(
+            'click',
+            () => {
+                const editor = (tab as HTMLButtonElement).dataset.editor as 'structured' | 'plain';
+                if (editor === 'structured' || editor === 'plain') {
+                    void switchEditor(editor);
+                }
+            },
+            { signal }
+        );
+    });
+
+    document.getElementById('system-prompt-save-btn')?.addEventListener(
+        'click',
+        () => {
+            void saveActiveMode();
+        },
+        { signal }
+    );
+
+    document.getElementById('system-prompt-add-module-btn')?.addEventListener(
+        'click',
+        () => {
+            handleAddModule();
+        },
+        { signal }
+    );
+
+    const plainTextarea = document.getElementById('system-prompt-plain-textarea') as HTMLTextAreaElement | null;
+    plainTextarea?.addEventListener(
+        'input',
+        () => {
+            plainXmlDraft = plainTextarea.value;
+            markDirty();
+        },
+        { signal }
+    );
+}
+
+export async function initializeSystemPrompts(course: activeCourse): Promise<void> {
+    currentCourse = course;
+
+    if (!course.id || course.id.trim() === '') {
+        await showSimpleErrorModal(
+            'Cannot load system prompts: Course ID is missing. Please refresh the page.',
+            'Initialization Error'
+        );
+        return;
+    }
+
+    setupEventListeners();
+
+    try {
+        await fetchConfig();
+        activeMode = resolveInitialActiveMode(config!);
+        syncWorkingModulesFromConfig();
+        updateModeDropdownLabels();
+        renderStructuredModules();
+        updateSaveButtonState();
+        renderFeatherIcons();
+    } catch (error) {
+        await showSimpleErrorModal(
+            error instanceof Error ? error.message : 'Failed to load system prompts',
+            'Load Error'
+        );
+    }
+}
+
+export async function flushSystemPromptOnLeave(): Promise<void> {
+    if (!hasUnsavedChanges) {
+        return;
+    }
+    const saved = await saveActiveMode();
+    if (!saved) {
+        showErrorToast('Could not save system prompt changes before leaving');
+    }
+}
+
 export function hasUnsavedSystemPromptChanges(): boolean {
-    return false;
+    return hasUnsavedChanges;
 }
 
-/**
- * Reset unsaved changes flag
- */
 export function resetUnsavedSystemPromptChanges(): void {
-    /* Prompt edits use modal; no page-level draft state */
+    hasUnsavedChanges = false;
+    setSaveStatus('');
+    updateSaveButtonState();
 }

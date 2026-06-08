@@ -6,17 +6,20 @@ import * as path from 'path';
 import { appLogger } from '../utils/logger';
 import { LLMModule, Message } from 'ubc-genai-toolkit-llm';
 import { AppConfig } from '../utils/config';
-import { RAGModule, RetrievedChunk } from 'ubc-genai-toolkit-rag';
+import { RAGApp } from '../rag/rag-app';
+import {
+    ragPrompts,
+    RAG_ERROR_MESSAGE,
+    RAG_NO_DOCS_MESSAGE,
+    COURSE_MATERIALS_OPEN,
+} from '../rag/rag-prompts';
 import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
 import { IDGenerator } from '../utils/unique-id-generator';
-import { ChatMessage, LearningObjectiveForDisplay, TopicOrWeekInstance, TopicOrWeekItem, activeCourse, DEFAULT_PROMPT_ID, SystemPromptItem } from '../types/shared';
+import { Chat, ChatMessage, ConversationModeId, PersistedConversationModeId, LearningObjectiveForDisplay, activeCourse, DEFAULT_PROMPT_ID } from '../types/shared';
+import { conversationModePrompts } from './compose-system-prompt';
+import { assembleCourseSystemPrompt } from './system-prompts/assemble-course-system-prompt';
+import { getDefaultAssistantMessage } from './initial-assistant-prompt-default';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
-import { 
-    getSystemPrompt, 
-    getInitialAssistantMessage, 
-    formatRAGPrompt,
-    INITIAL_ASSISTANT_MESSAGE
-} from './chat-prompts';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import { isDeveloperMode, generateMockStreamingResponse } from '../helpers/developer-mode';
 
@@ -54,43 +57,26 @@ export interface initChatRequest {
 export class ChatApp {
 
     private llmModule: LLMModule;
-    private ragModule: RAGModule | null = null;
     private debug: boolean;
     private conversations : Map<string, Conversation>; // it maps chatId to conversation
     private chatHistory : Map<string, ChatMessage[]>; // it maps chatId to chat history
     private chatID : string[];
     private chatIDGenerator: IDGenerator;
-    private ragConfig: any;
     private llmProvider: any;
     private chatTimers: Map<string, NodeJS.Timeout>; // Maps chatId to cleanup timer
+    private chatConversationModes: Map<string, PersistedConversationModeId>; // Maps chatId to persisted teaching mode
     private chatInactivityTimeout: number = 5 * 60 * 1000; // 5 minutes in milliseconds
 
     constructor(config: AppConfig) {
         this.llmModule = new LLMModule(config.llmConfig);
         this.debug = config.debug;
-        this.ragConfig = config.ragConfig;
         this.conversations = new Map(); 
         this.chatHistory = new Map();
         this.chatID = [];
         this.chatIDGenerator = IDGenerator.getInstance();
         this.llmProvider = config.llmConfig.provider;
         this.chatTimers = new Map();
-            
-        // Initialize RAG module asynchronously
-        this.initializeRAG();
-    }
-
-    /**
-     * Initialize RAG module asynchronously
-     */
-    private async initializeRAG() {
-        try {
-            this.ragModule = await RAGModule.create(this.ragConfig);
-            appLogger.debug('RAG module initialized successfully');
-        } catch (error) {
-            appLogger.error('Failed to initialize RAG module:', error as any);
-            this.ragModule = null;
-        }
+        this.chatConversationModes = new Map();
     }
 
     /**
@@ -157,6 +143,7 @@ export class ChatApp {
         
         // Remove timer from chatTimers map
         this.chatTimers.delete(chatId);
+        this.chatConversationModes.delete(chatId);
 
         // Log state after cleanup
         const stateAfterCleanup = {
@@ -309,151 +296,6 @@ export class ChatApp {
     }
 
     /**
-     * Retrieve relevant documents using RAG
-     * 
-     * @param query - The user's query
-     * @param courseName - The course name for context
-     * @param limit - Maximum number of documents to retrieve
-     * @param scoreThreshold - Minimum similarity score threshold
-     * @returns Array of retrieved documents
-     */
-    private async retrieveRelevantDocuments(
-        query: string, 
-        courseName: string, 
-        limit: number = 5, 
-        scoreThreshold: number = 0.4
-    ): Promise<RetrievedChunk[]> {
-        // Check if developer mode is enabled - skip RAG retrieval
-        if (isDeveloperMode()) {
-            appLogger.log('[DEVELOPER-MODE] 🧪 Skipping RAG document retrieval');
-            return [];
-        }
-        
-        if (!this.ragModule) {
-
-            // DEBUG 18: Print the query
-            appLogger.log(`DEBUG #118: RAG Query:`, query);
-            //END DEBUG 18
-            appLogger.warn('RAG module not available, skipping document retrieval');
-            return [];
-        }
-
-        try {
-            // Get course from MongoDB to check published status
-            const mongoDB = await EngEAI_MongoDB.getInstance();
-            const course = await mongoDB.getCourseByName(courseName);
-            
-            if (!course) {
-                appLogger.warn(`Course not found: ${courseName}, skipping document retrieval`);
-                return [];
-            }
-
-            // Extract published item titles
-            const publishedItemTitles: string[] = [];
-            if (course.topicOrWeekInstances) {
-                course.topicOrWeekInstances
-                    .filter((instance_topicOrWeek: TopicOrWeekInstance) => instance_topicOrWeek.published === true)
-                    .forEach((instance_topicOrWeek: TopicOrWeekInstance) => {
-                        if (instance_topicOrWeek.items) {
-                            instance_topicOrWeek.items.forEach((item: TopicOrWeekItem) => {
-                                if (item.itemTitle && !publishedItemTitles.includes(item.itemTitle)) {
-                                    publishedItemTitles.push(item.itemTitle);
-                                }
-                            });
-                        }
-                    });
-            }
-
-            // If no published items exist, return empty array
-            if (publishedItemTitles.length === 0) {
-                appLogger.debug(`No published items found for course: ${courseName}`);
-                return [];
-            }
-
-            // Build filter for RAG retrieval
-            // Qdrant filter format: must conditions with match clauses
-            const filter: Record<string, any> = {
-                must: [
-                    { key: "courseName", match: { value: courseName } },
-                    { key: "itemTitle", match: { any: publishedItemTitles } }
-                ]
-            };
-
-            // Add course context to the query for better retrieval
-            const contextualQuery = ` ${query}`;
-            
-
-            const results = await this.ragModule.retrieveContext(contextualQuery, {
-                limit: limit,
-                scoreThreshold: scoreThreshold,
-                filter: filter
-            });
-
-            // DEBUG 19: Print the results
-            appLogger.log(`DEBUG #119: RAG Results:`, results);
-            appLogger.log(`DEBUG #119: RAG Results length:`, results.length);
-            //END DEBUG 19
-
-            return results;
-        } catch (error) {
-            appLogger.debug(`❌ RAG Error:`, error as any);
-            appLogger.error('Error retrieving documents:', error as any);
-            return [];
-        }
-    }
-
-    /**
-     * Format retrieved documents for context injection
-     * 
-     * @param documents - Array of retrieved documents
-     * @returns Formatted context string
-     */
-    private formatDocumentsForContext(documents: RetrievedChunk[]): string {
-        if (documents.length === 0) {
-            return '';
-        }
-
-        let context = '\n\n<course_materials>\n';
-        
-        documents.forEach((doc, index) => {
-            // Parse metadata safely - extract chapter and item title
-            let chapter = '';
-            let itemTitle = '';
-            
-            try {
-                // Handle metadata - could be object or string
-                let metadataObj: any = {};
-                if (typeof doc.metadata === 'string') {
-                    metadataObj = JSON.parse(doc.metadata);
-                } else if (doc.metadata && typeof doc.metadata === 'object') {
-                    metadataObj = doc.metadata;
-                }
-                
-                // Extract topic/week (chapter) and item title
-                chapter = metadataObj.topicOrWeekTitle || '';
-                itemTitle = metadataObj.itemTitle || '';
-            } catch (error) {
-                appLogger.warn(`⚠️ Error parsing metadata for document ${index + 1}:`, error);
-                // Continue with empty values if parsing fails
-            }
-            
-            // Format document with START/END markers using topic/week and item title
-            const modulePartLabel = chapter && itemTitle
-                ? `${chapter} part ${itemTitle}`
-                : chapter || itemTitle || 'Unknown';
-            context += `\n--- START document - ${modulePartLabel} ---\n`;
-            context += `${doc.content}\n`;
-            context += `--- END document - ${modulePartLabel} ---\n`;
-        });
-        
-        context += '\n</course_materials>\n';
-
-        appLogger.log(`DEBUG #287: Formatted documents for context: ${context}`);
-        return context;
-    }
-
-
-    /**
      * Send a user message and get response from LLM with RAG context
      * 
      * @param message - The user's message
@@ -507,10 +349,15 @@ export class ChatApp {
 
         let ragContext : string = '';
         let documentsLength : number = 0;
+        let ragRetrievalFailed = false;
 
         try {
-            const documents = await this.retrieveRelevantDocuments(message, courseName, 3, 0.4); // Limit to 3 docs, threshold 0.4
-            ragContext = this.formatDocumentsForContext(documents);
+            const ragApp = await RAGApp.getInstance();
+            const documents = await ragApp.retrieveForChat(message, courseName, {
+                limit: 3,
+                scoreThreshold: 0.4,
+            });
+            ragContext = ragPrompts.formatRetrievedContext(documents);
             documentsLength = documents.length;
             
             appLogger.log(`📚 Captured ${documents.length} documents for storage`);
@@ -518,7 +365,7 @@ export class ChatApp {
         } catch (error) {
             appLogger.log(`❌ RAG Context Error:`, error);
             appLogger.error('Error retrieving RAG documents:', error as any);
-            // Continue without RAG context if retrieval fails
+            ragRetrievalFailed = true;
         }
 
         // ====================================================================
@@ -526,27 +373,29 @@ export class ChatApp {
         // ====================================================================
         
         if (documentsLength > 0) {
-            additionalContext = formatRAGPrompt(ragContext, message);
+            const persistedMode = this.chatConversationModes.get(chatId);
+            const ragMode: ConversationModeId =
+                persistedMode === 'explanatory' ? 'explanatory' : 'socratic';
+            additionalContext = ragPrompts.formatRagUserTurn(ragMode, ragContext, message);
+        }
+        else if (ragRetrievalFailed) {
+            additionalContext = RAG_ERROR_MESSAGE;
         }
         else {
-            additionalContext = "No relevant documents from RAG found for this user message \n";
+            additionalContext = RAG_NO_DOCS_MESSAGE;
         }
 
-        // Attach struggle topics to the chat conversation for visibility
-        let struggleTopics = await memoryAgent.getStruggleWords(userId, courseName);
+        // Phase note: struggle topics apply to Socratic chats only (see isStruggleTopicsEnabledForChat).
+        if (this.isStruggleTopicsEnabledForChat(chatId)) {
+            const struggleTopics = await memoryAgent.getStruggleWords(userId, courseName);
 
-
-        if (struggleTopics.length > 0) {
-            // Add struggle topics as a visible system message in the chat
-            additionalContext += `Based on our conversation, I've identified these topics you might want to focus on: <struggle_topics>${struggleTopics.join(', ')}</struggle_topics>\n\nPlease see the rules int he system prompt for how to covney information about any of these topics if the current user prompt is not asking about any of these topics`;
-
-            // Add the unstruggle instruction to the user prompt for the LLM
-            additionalContext += '\n<questionUnstruggle reveal="TRUE"> \n by this tag this means that you SHOULD select the most relevant struggle topic from the <struggle_topics> tags, and add the <questionUnstruggle Topic="topic"> tag to the end of the response. ';
+            if (struggleTopics.length > 0) {
+                additionalContext += `Based on our conversation, I've identified these topics you might want to focus on: <struggle_topics>${struggleTopics.join(', ')}</struggle_topics>\n\nPlease see the rules int he system prompt for how to covney information about any of these topics if the current user prompt is not asking about any of these topics`;
+                additionalContext += '\n<questionUnstruggle reveal="TRUE"> \n by this tag this means that you SHOULD select the most relevant struggle topic from the <struggle_topics> tags, and add the <questionUnstruggle Topic="topic"> tag to the end of the response. ';
+            } else {
+                additionalContext += '\n<questionUnstruggle reveal="FALSE"> \n by this tag this means that you should NOT add the <questionUnstruggle Topic="topic"> tag to the end of the response';
+            }
         }
-        else {
-            additionalContext += '\n<questionUnstruggle reveal="FALSE"> \n by this tag this means that you should NOT add the <questionUnstruggle Topic="topic"> tag to the end of the response';
-        }
-        
 
         // ====================================================================
         // STEP 4: CREATE FORKED CONVERSATION WITH ADDITIONAL CONTEXT
@@ -603,16 +452,16 @@ export class ChatApp {
         });
         appLogger.log('='.repeat(80));
 
-        // printing out the full user prompt from this conversation
-        appLogger.log(`\n\n📝 FULL USER PROMPT FROM THIS CONVERSATION:\n\n`);
-        appLogger.log(`${message}`);
-        appLogger.log('='.repeat(80));
+        // // printing out the full user prompt from this conversation
+        // appLogger.log(`\n\n📝 FULL USER PROMPT FROM THIS CONVERSATION:\n\n`);
+        // appLogger.log(`${message}`);
+        // appLogger.log('='.repeat(80));
 
-        appLogger.log(`\n\n📝 FULL ADDITIONAL CONTEXT FROM THIS CONVERSATION:\n\n`);
-        appLogger.log(`${additionalContext}`);
-        appLogger.log('='.repeat(80));
+        // appLogger.log(`\n\n📝 FULL ADDITIONAL CONTEXT FROM THIS CONVERSATION:\n\n`);
+        // appLogger.log(`${additionalContext}`);
+        // appLogger.log('='.repeat(80));
 
-        appLogger.log(`📝 END CONVERSATION LOG\n`);
+        // appLogger.log(`📝 END CONVERSATION LOG\n`);
 
         // Calculate token statistics for file logging
         let totalCharacters = 0;
@@ -689,67 +538,46 @@ export class ChatApp {
 
         const messageCount = conversationHistory.length;
 
-
         // 6 is chosen because we want to take the first 2 user conversation
         // {System prompt, inital assistant message, user message 1, assistant message1, user message 2, and assistant message2}
         const MEMORY_AGENT_MIN_MESSAGES_THRESHOLD = 6; 
         
         // Memory agent activates after 4 messages
 
-        try {
-            // Only analyze if conversation has more than threshold messages (previous exchanges)
-            if (messageCount > MEMORY_AGENT_MIN_MESSAGES_THRESHOLD) {
-                // Extract last 3 messages from PREVIOUS complete exchange:
-                // - Previous user message
-                // - Previous LLM response  
-                // - User message before that
-                const lastMessages = conversationHistory.slice(-3);
-                
-                // Format the last 3 messages for analysis
-                // Pattern: User prompt -> LLM response -> User prompt
-                // Remove RAG document content from user messages to focus on actual conversation
-                let formattedMessages = '';
-                lastMessages.forEach((msg : any) => {
-                    const role = msg.role === 'user' ? 'Student' : 'AI Tutor';
-                    let content = msg.content;
-                    
-                    // Remove RAG document content from user messages
-                    // RAG format: <course_materials>...</course_materials>\n\n---\n\n[bridge prompt]Student's question: [actual question]
-                    if (role === 'Student' && content.includes('<course_materials>')) {
-                        // Remove <course_materials> tags and all content inside them
-                        content = content.replace(/<course_materials>[\s\S]*?<\/course_materials>/g, '');
-                        
-                        // Remove the separator and bridge prompt
-                        content = content.replace(/\n\n---\n\n/g, '');
-                        content = content.replace(/Based on the course materials[\s\S]*?Student's question:/g, '');
-                        
-                        // Extract only the actual user question (after "Student's question:" if it still exists)
-                        const questionMarker = 'Student\'s question:';
-                        const questionIndex = content.indexOf(questionMarker);
-                        if (questionIndex !== -1) {
-                            content = content.substring(questionIndex + questionMarker.length).trim();
+        if (this.isStruggleTopicsEnabledForChat(chatId)) {
+            try {
+                if (messageCount > MEMORY_AGENT_MIN_MESSAGES_THRESHOLD) {
+                    const lastMessages = conversationHistory.slice(-3);
+
+                    let formattedMessages = '';
+
+                    // Format the last 3 messages for memory agent analysis
+                    lastMessages.forEach((msg : any) => {
+                        const role = msg.role === 'user' ? 'Student' : 'AI Tutor';
+                        let content = msg.content;
+
+                        if (role === 'Student' && content.includes(COURSE_MATERIALS_OPEN)) {
+                            content = ragPrompts.stripRagFromUserMessage(content);
                         }
-                        
-                        // Clean up any remaining whitespace
-                        content = content.trim();
-                    }
-                    
-                    formattedMessages += `${role}: ${content}\n\n`;
-                });
-                
-                // Run memory agent analysis on PREVIOUS exchange
-                await memoryAgent.analyzeAndUpdateStruggleWords(
-                    userId,
-                    courseName,
-                    formattedMessages.trim()
-                );
-                appLogger.log(`🧠 Memory agent analysis completed for chat ${chatId} (analyzed last 3 of ${messageCount} messages from previous exchange)`);
-            } else {
-                appLogger.log(`[CHAT-APP] ℹ️ Memory agent skipped: conversation has ${messageCount} messages (requires >${MEMORY_AGENT_MIN_MESSAGES_THRESHOLD})`);
+
+                        formattedMessages += `${role}: ${content}\n\n`;
+                    });
+
+                    // Analyze the formatted messages for struggle words (untrimmed for debug fidelity)
+                    await memoryAgent.analyzeAndUpdateStruggleWords(
+                        userId,
+                        courseName,
+                        formattedMessages
+                    );
+
+                    appLogger.log(`🧠 Memory agent analysis completed for chat ${chatId} (analyzed last 3 of ${messageCount} messages from previous exchange)`);
+
+                } else {
+                    appLogger.log(`[CHAT-APP] ℹ️ Memory agent skipped: conversation has ${messageCount} messages (requires >${MEMORY_AGENT_MIN_MESSAGES_THRESHOLD})`);
+                }
+            } catch (error) {
+                appLogger.error('❌ Error in memory agent analysis:', error);
             }
-        } catch (error) {
-            appLogger.error('❌ Error in memory agent analysis:', error);
-            // Don't throw - memory agent failure shouldn't break the chat flow
         }
         
         return assistantMessage;
@@ -763,7 +591,12 @@ export class ChatApp {
      * @param date - The date of the chat
      * @returns The initial chat request
      */
-    public async initializeConversation(userID: string, courseName: string, date: Date): Promise<initChatRequest> {
+    public async initializeConversation(
+        userID: string,
+        courseName: string,
+        date: Date,
+        conversationMode?: ConversationModeId | string
+    ): Promise<initChatRequest> {
         //create chatID from the user ID
         const chatId = this.chatIDGenerator.chatID(userID, courseName, date);
 
@@ -776,19 +609,12 @@ export class ChatApp {
         
         this.conversations.set(chatId, this.llmModule.createConversation());
         this.chatHistory.set(chatId, []);
-        
-        // Retrieve struggle words from memory agent
-        let struggleTopics: string[] = [];
-        try {
-            struggleTopics = await memoryAgent.getStruggleWords(userID, courseName);
-            appLogger.log(`🧠 Retrieved ${struggleTopics.length} struggle words for user ${userID}`);
-        } catch (error) {
-            appLogger.error('❌ Error retrieving struggle words:', error);
-            // Continue without struggle words if retrieval fails
+        const persistedMode = this.toPersistedConversationMode(conversationMode);
+        this.chatConversationModes.set(chatId, persistedMode);
+
+        if (persistedMode === 'socratic' || persistedMode === 'explanatory') {
+            await this.addDefaultSystemMessage(chatId, courseName);
         }
-        
-        // Add default system message (now async to retrieve learning objectives and include struggle words)
-        await this.addDefaultSystemMessage(chatId, courseName, struggleTopics);
         
         
         // Add default assistant message and get it (now async to retrieve selected prompt)
@@ -815,58 +641,101 @@ export class ChatApp {
     }
 
     /**
-     * this method directly add the Default System Message to the conversation
-     * 
-     * @param chatId - The chat ID
-     * @param courseName - The course name
-     * @param struggleTopics - The struggle topics
-     * @returns void
+     * Normalizes init/API mode input to a persisted chat mode slug.
      */
-    private async addDefaultSystemMessage(chatId: string, courseName?: string, struggleTopics?: string[]): Promise<void> {
+    private toPersistedConversationMode(
+        conversationMode?: ConversationModeId | string
+    ): PersistedConversationModeId {
+        if (conversationMode === 'undeclared') {
+            return 'undeclared';
+        }
+        if (conversationMode === 'explanatory') {
+            return 'explanatory';
+        }
+        if (conversationMode === 'socratic') {
+            return 'socratic';
+        }
+        return conversationModePrompts.resolveModeId(conversationMode);
+    }
+
+    /**
+     * Adds the composed system message (code-owned mode sections + course overlays) to the conversation.
+     *
+     * Skipped when the chat mode is `undeclared` (mode chosen on first user message).
+     *
+     * @param chatId - Active chat identifier
+     * @param courseName - Course used for learning objectives overlay
+     */
+    private async addDefaultSystemMessage(chatId: string, courseName?: string): Promise<void> {
         const conversation = this.conversations.get(chatId);
         if (!conversation) {
             throw new Error('Conversation not found');
         }
-        
-        // Retrieve base prompt, learning objectives, and appended items for the course
-        let baseSystemPrompt: string | undefined;
+
+        const persistedMode = this.chatConversationModes.get(chatId);
+        if (persistedMode !== 'socratic' && persistedMode !== 'explanatory') {
+            return;
+        }
+
         let learningObjectives: LearningObjectiveForDisplay[] = [];
-        let appendedSystemPromptItems: SystemPromptItem[] = [];
-        
+        let systemPromptConfig = null;
+
         if (courseName) {
             try {
                 const mongoDB = await EngEAI_MongoDB.getInstance();
-                // Get course by name to extract courseId
                 const course = await mongoDB.getCourseByName(courseName);
-                if (course && course.id) {
-                    // Ensure default components exist
-                    await mongoDB.ensureDefaultSystemPromptComponents(course.id, courseName);
-                    
-                    // Get base system prompt (editable version from database)
-                    const basePromptItem = await mongoDB.getBaseSystemPrompt(course.id);
-                    baseSystemPrompt = basePromptItem?.content;
-                    
-                    // Get learning objectives
+                if (course?.id) {
                     learningObjectives = await mongoDB.getAllLearningObjectives(course.id);
-                    appLogger.log(`📚 Retrieved ${learningObjectives.length} learning objectives for system prompt`);
-                    
-                    // Get appended custom items
-                    appendedSystemPromptItems = await mongoDB.getAppendedSystemPromptItems(course.id);
-                    appLogger.log(`📝 Retrieved ${appendedSystemPromptItems.length} appended system prompt items`);
+                    systemPromptConfig = await mongoDB.getSystemPromptConfig(course.id);
+                    appLogger.log(
+                        `📚 Retrieved ${learningObjectives.length} learning objectives for system prompt (mode=${persistedMode})`
+                    );
                 }
             } catch (error) {
-                appLogger.error('❌ Error retrieving system prompt components:', error);
-                // Continue without components if retrieval fails (will use defaults)
+                appLogger.error('❌ Error retrieving learning objectives for system prompt:', error);
             }
         }
-        
-        const defaultSystemMessage = getSystemPrompt(baseSystemPrompt, courseName, learningObjectives, appendedSystemPromptItems);
+
+        const defaultSystemMessage = assembleCourseSystemPrompt({
+            mode: persistedMode,
+            courseName,
+            learningObjectives,
+            config: systemPromptConfig,
+        });
 
         try {
             conversation.addMessage('system', defaultSystemMessage);
         } catch (error) {
             appLogger.error('Error adding default message:', error);
         }
+    }
+
+    /**
+     * Builds XML system prompt from course config and platform defaults.
+     */
+    private async buildCourseSystemPromptXml(
+        courseName: string | undefined,
+        mode: ConversationModeId,
+        learningObjectives: LearningObjectiveForDisplay[]
+    ): Promise<string> {
+        let systemPromptConfig = null;
+        if (courseName) {
+            try {
+                const mongoDB = await EngEAI_MongoDB.getInstance();
+                const course = await mongoDB.getCourseByName(courseName);
+                if (course?.id) {
+                    systemPromptConfig = await mongoDB.getSystemPromptConfig(course.id);
+                }
+            } catch (error) {
+                appLogger.error('❌ Error loading system prompt config:', error);
+            }
+        }
+        return assembleCourseSystemPrompt({
+            mode,
+            courseName,
+            learningObjectives,
+            config: systemPromptConfig,
+        });
     }
 
     /**
@@ -878,7 +747,7 @@ export class ChatApp {
      * @return the message object, so this message can be passed to the client when initiate a chat
      */
     private async addDefaultAssistantMessage(chatId: string, courseName?: string): Promise<ChatMessage> {
-        let defaultMessageText: string = INITIAL_ASSISTANT_MESSAGE; // Default fallback
+        let defaultMessageText: string = getDefaultAssistantMessage();
         
         // Try to retrieve selected initial assistant prompt from course
         if (courseName) {
@@ -1193,7 +1062,163 @@ export class ChatApp {
     }
 
     /**
-     * Restore a chat from MongoDB with full conversation context
+     * Updates a chat's teaching mode before the first user message and rebuilds LLM memory.
+     *
+     * @param chatId - The chat ID to update
+     * @param courseName - The course name used for MongoDB lookup and prompt overlays
+     * @param userId - Roster user ID that owns the chat
+     * @param conversationMode - Requested teaching mode
+     * @returns The persisted conversation mode, or `null` when the chat is not found
+     * @throws When the chat already contains a user message
+     */
+    public async updateConversationModeBeforeFirstUserMessage(
+        chatId: string,
+        courseName: string,
+        userId: string,
+        conversationMode: ConversationModeId
+    ): Promise<ConversationModeId | null> {
+        const resolvedMode = conversationModePrompts.resolveModeId(conversationMode);
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const userChats = await mongoDB.getUserChats(courseName, userId);
+        const chatData = userChats.find((chat) => chat.id === chatId);
+
+        if (!chatData || chatData.isDeleted) {
+            return null;
+        }
+
+        const messages = chatData.messages ?? [];
+        if (messages.some((message) => message.sender === 'user')) {
+            throw new Error('Conversation mode cannot be changed after the first user message');
+        }
+
+        await mongoDB.ensureChatConversationMode(courseName, userId, chatId, resolvedMode);
+        chatData.conversationMode = resolvedMode;
+        this.chatConversationModes.set(chatId, resolvedMode);
+
+        const conversation = this.llmModule.createConversation();
+        this.conversations.set(chatId, conversation);
+        this.chatHistory.set(chatId, [...messages]);
+
+        if (!this.chatID.includes(chatId)) {
+            this.chatID.push(chatId);
+        }
+
+        await this.addDefaultSystemMessage(chatId, courseName);
+        for (const message of messages) {
+            const role = message.sender === 'user' ? 'user' : 'assistant';
+            conversation.addMessage(role, message.text);
+        }
+
+        this.resetChatTimer(chatId);
+        return resolvedMode;
+    }
+
+    /**
+     * Finalizes an undeclared chat to a real teaching mode before first user-turn processing.
+     *
+     * @param chatId - The chat ID to finalize
+     * @param courseName - The course name used for MongoDB lookup and prompt overlays
+     * @param userId - Roster user ID that owns the chat
+     * @param conversationMode - Selected teaching mode from the first send request
+     * @returns The real mode used for runtime processing, or `null` when the chat is not found
+     * @throws When the chat already contains a user message
+     */
+    public async finalizeUndeclaredConversationModeBeforeFirstUserMessage(
+        chatId: string,
+        courseName: string,
+        userId: string,
+        conversationMode: ConversationModeId
+    ): Promise<ConversationModeId | null> {
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const userChats = await mongoDB.getUserChats(courseName, userId);
+        const chatData = userChats.find((chat) => chat.id === chatId);
+
+        if (!chatData || chatData.isDeleted) {
+            return null;
+        }
+
+        if (chatData.conversationMode !== 'undeclared') {
+            const resolvedMode = conversationModePrompts.resolveModeId(chatData.conversationMode);
+            this.chatConversationModes.set(chatId, resolvedMode);
+            return resolvedMode;
+        }
+
+        const messages = chatData.messages ?? [];
+        if (messages.some((message) => message.sender === 'user')) {
+            throw new Error('Conversation mode cannot be changed after the first user message');
+        }
+
+        return this.updateConversationModeBeforeFirstUserMessage(
+            chatId,
+            courseName,
+            userId,
+            conversationMode
+        );
+    }
+
+    /**
+     * Whether memory-agent struggle detection and per-turn struggle tags apply to this chat.
+     *
+     * Current product phase: struggle topics are a Socratic-mode overlay only. Explanatory and
+     * future modes do not receive struggle instructions, memory-agent analysis, or unstruggle tags.
+     */
+    private isStruggleTopicsEnabledForChat(chatId: string): boolean {
+        return this.chatConversationModes.get(chatId) === 'socratic';
+    }
+
+    /**
+     * True when Mongo row needs `conversationMode` persisted for the current message history.
+     */
+    private chatNeedsConversationModeBackfill(chat: Chat, targetMode: PersistedConversationModeId): boolean {
+        const raw = chat.conversationMode;
+        if (raw === undefined || raw === null) {
+            return true;
+        }
+        return raw !== targetMode;
+    }
+
+    /**
+     * Ensures legacy chats have conversationMode persisted before restore continues.
+     * Missing, invalid, or undeclared rows with user messages become `'socratic'`; welcome-only
+     * chats become `'undeclared'` so the student can still choose a real mode.
+     *
+     * @param chat - The chat to ensure the conversation mode is persisted
+     * @param courseName - The course name
+     * @param userId - The user ID
+     * @returns Persisted mode for in-memory maps and system prompt composition
+     */
+    private async ensureLegacyChatModePersisted(
+        chat: Chat,
+        courseName: string,
+        userId: string
+    ): Promise<PersistedConversationModeId> {
+        const hasUserMessage = (chat.messages ?? []).some((message) => message.sender === 'user');
+        const raw = chat.conversationMode;
+
+        if (raw === 'socratic' || raw === 'explanatory' || raw === 'undeclared') {
+            return raw;
+        }
+
+        const targetMode: PersistedConversationModeId = hasUserMessage ? 'socratic' : 'undeclared';
+
+        if (!this.chatNeedsConversationModeBackfill(chat, targetMode)) {
+            return targetMode;
+        }
+
+        try {
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            await mongoDB.ensureChatConversationMode(courseName, userId, chat.id, targetMode);
+            chat.conversationMode = targetMode;
+            appLogger.log(`[CHAT-APP] 📝 Backfilled conversationMode=${targetMode} for chat ${chat.id}`);
+        } catch (error) {
+            appLogger.error(`[CHAT-APP] ⚠️ Failed to backfill conversationMode for chat ${chat.id}:`, error);
+            chat.conversationMode = targetMode;
+        }
+        return targetMode;
+    }
+
+    /**
+     * restoreChatFromDatabase - Restore a chat from MongoDB with full conversation context
      * 
      * @param chatId - The chat ID to restore
      * @param courseName - The course name
@@ -1201,34 +1226,38 @@ export class ChatApp {
      * @returns Promise<boolean> - True if restoration was successful, false otherwise
      */
     public async restoreChatFromDatabase(chatId: string, courseName: string, userId: string): Promise<boolean> {
-        // Check if chat already exists in memory
-        if (this.conversations.has(chatId)) {
-            appLogger.log(`📋 Chat ${chatId} already exists in memory, resetting timer`);
-            this.resetChatTimer(chatId);
-            return true;
-        }
-
         try {
-            // Get MongoDB instance
+            // Get the MongoDB instance
             const mongoDB = await EngEAI_MongoDB.getInstance();
-            
-            // Fetch chat data from MongoDB
+
+            // Get the chat data from the MongoDB
             const userChats = await mongoDB.getUserChats(courseName, userId);
-            const chatData = userChats.find(chat => chat.id === chatId);
-            
+            const chatData = userChats.find((chat) => chat.id === chatId);
+
+            // If the chat data is not found, then return false
             if (!chatData) {
                 appLogger.log(`❌ Chat ${chatId} not found in MongoDB`);
                 return false;
             }
 
+            // If the chat is marked as deleted, then return false
             if (chatData.isDeleted) {
                 appLogger.log(`❌ Chat ${chatId} is marked as deleted`);
                 return false;
             }
 
+            // Ensure the legacy chat mode is persisted
+            const restoredMode = await this.ensureLegacyChatModePersisted(chatData, courseName, userId);
+            this.chatConversationModes.set(chatId, restoredMode);
+
+            if (this.conversations.has(chatId)) {
+                appLogger.log(`📋 Chat ${chatId} already exists in memory, resetting timer`);
+                this.resetChatTimer(chatId);
+                return true;
+            }
+
             appLogger.log(`🔄 Restoring chat ${chatId} from MongoDB with ${chatData.messages.length} messages`);
 
-            // Create new conversation
             const conversation = this.llmModule.createConversation();
             
             // Add system message first (same as in initializeConversation)
@@ -1242,46 +1271,16 @@ export class ChatApp {
                 }
             } catch (error) {
                 appLogger.error('❌ Error retrieving learning objectives during restore:', error);
-                // Continue without learning objectives if retrieval fails
             }
-            
-            // Retrieve struggle words from memory agent
-            let struggleTopics: string[] = [];
-            try {
-                struggleTopics = await memoryAgent.getStruggleWords(userId, courseName);
-                appLogger.log(`🧠 Retrieved ${struggleTopics.length} struggle words during chat restoration`);
-            } catch (error) {
-                appLogger.error('❌ Error retrieving struggle words during restore:', error);
-                // Continue without struggle words if retrieval fails
-            }
-            
-            // Retrieve base prompt and appended items
-            let baseSystemPrompt: string | undefined;
-            let appendedSystemPromptItems: SystemPromptItem[] = [];
-            if (courseName) {
-                try {
-                    const mongoDB = await EngEAI_MongoDB.getInstance();
-                    const course = await mongoDB.getCourseByName(courseName);
-                    if (course && course.id) {
-                        // Ensure default components exist
-                        await mongoDB.ensureDefaultSystemPromptComponents(course.id, courseName);
-                        
-                        // Get base system prompt
-                        const basePromptItem = await mongoDB.getBaseSystemPrompt(course.id);
-                        baseSystemPrompt = basePromptItem?.content;
-                        
-                        // Get appended custom items
-                        appendedSystemPromptItems = await mongoDB.getAppendedSystemPromptItems(course.id);
-                    }
-                } catch (error) {
-                    appLogger.error('❌ Error retrieving system prompt components during restore:', error);
-                }
-            }
-            
-            const defaultSystemMessage = getSystemPrompt(baseSystemPrompt, courseName, learningObjectives, appendedSystemPromptItems);
 
-            conversation.addMessage('system', defaultSystemMessage);
-            
+            if (restoredMode === 'socratic' || restoredMode === 'explanatory') {
+                const defaultSystemMessage = await this.buildCourseSystemPromptXml(
+                    courseName,
+                    restoredMode,
+                    learningObjectives
+                );
+                conversation.addMessage('system', defaultSystemMessage);
+            }
 
             // Restore all messages from MongoDB in order
             const restoredMessages: ChatMessage[] = [];
@@ -1346,7 +1345,8 @@ export class ChatApp {
             
             // Remove from chat history map
             const historyDeleted = this.chatHistory.delete(chatId);
-            
+            this.chatConversationModes.delete(chatId);
+
             // Remove from chatID array
             const index = this.chatID.indexOf(chatId);
             let arrayDeleted = false;

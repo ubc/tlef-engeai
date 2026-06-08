@@ -1,12 +1,12 @@
 {
   "name": "tlef-EngE-AI",
-  "version": "1.2.9",
+  "version": "1.4.3",
   "description": "",
   "main": "dist/server.js",
   "scripts": {
     "clean": "rm -rf dist public/dist",
     "vendor:chart": "node scripts/vendor-chart-js.cjs",
-    "build:backend": "tsc -p tsconfig.json",
+    "build:backend": "tsc -p tsconfig.json && mkdir -p dist/chat/system-prompts/shared-default dist/chat/system-prompts/socratic-default dist/chat/system-prompts/explanatory-default && cp -R src/chat/system-prompts/shared-default/. dist/chat/system-prompts/shared-default/ && cp -R src/chat/system-prompts/socratic-default/. dist/chat/system-prompts/socratic-default/ && cp -R src/chat/system-prompts/explanatory-default/. dist/chat/system-prompts/explanatory-default/",
     "build:frontend": "npm run vendor:chart && tsc -p public/tsconfig.json",
     "build": "sleep 2 && npm run clean && npm run build:backend && npm run build:frontend",
     "start": "cross-env NODE_ENV=production node dist/server.js",
@@ -18,7 +18,10 @@
     "test:embedding": "ts-node src/test-scripts/test-embedding-generation.ts",
     "test:qdrant-empty": "ts-node src/test-scripts/test-qdrant-empty-upload.ts",
     "test:integrated": "ts-node src/test-scripts/test-integrated-embedding-qdrant.ts",
-    "test:all-embedding": "ts-node src/test-scripts/run-embedding-tests.ts"
+    "test:all-embedding": "ts-node src/test-scripts/run-embedding-tests.ts",
+    "version:patch": "npm version patch --no-git-tag-version",
+    "version:minor": "npm version minor --no-git-tag-version",
+    "version:major": "npm version major --no-git-tag-version"
   },
   "keywords": [],
   "author": "",
@@ -54,7 +57,8 @@
     "ubc-genai-toolkit-document-parsing": "^0.1.0",
     "ubc-genai-toolkit-embeddings": "^0.1.0",
     "ubc-genai-toolkit-rag": "^0.1.2",
-    "xxhashjs": "^0.2.2"
+    "xxhashjs": "^0.2.2",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/archiver": "^6.0.4",

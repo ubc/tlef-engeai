@@ -10,32 +10,124 @@
 // =====================================
 // ========= CHAT DATA TYPE ============
 // =====================================
+//
+// MongoDB layout (conversation / struggle data):
+//
+//   {courseName}_users  →  CourseUser.chats[]     →  Chat  (one thread per element)
+//   {courseName}_memory-agent  →  MemoryAgentEntry  (one row per userId; struggle labels)
+//
+// Struggle topics are NOT stored on Chat. They are written on MemoryAgentEntry and injected
+// at LLM call time for Socratic chats only (see planner/struggle-topics-socratic-only-simplification.md).
 
 
 /**
- * The type of chat message
+ * Selectable teaching mode slug for prompts and student picker choices.
+ *
+ * `undeclared` is not a prompt mode. It is a persisted lifecycle state on
+ * {@link Chat.conversationMode} until the first user message finalizes the chat to a real mode.
+ *
+ * Current product phase: memory-agent struggle detection and per-turn struggle tags apply only
+ * when the resolved mode is `'socratic'`. Explanatory mode does not consume {@link MemoryAgentEntry}.
+ */
+export type ConversationModeId = 'socratic' | 'explanatory';
+
+/**
+ * Persisted chat lifecycle mode. `undeclared` means the chat has not received a user message yet.
+ */
+export type PersistedConversationModeId = ConversationModeId | 'undeclared';
+
+/**
+ * Catalog availability for a {@link ConversationModeId} (GET /api/chat/conversation-modes).
+ * Not stored on MongoDB chat documents.
+ */
+export type ConversationModeStatus = 'active' | 'coming_soon';
+
+/** Request body for changing a welcome-only chat's teaching mode. */
+export interface UpdateChatConversationModeRequest {
+    conversationMode: ConversationModeId;
+}
+
+/** Response from PATCH `/api/chat/:chatId/conversation-mode`. */
+export interface UpdateChatConversationModeResponse {
+    success: boolean;
+    conversationMode?: ConversationModeId;
+    error?: string;
+}
+
+/**
+ * One persisted turn in a chat thread.
+ *
+ * **MongoDB:** embedded in {@link Chat.messages} inside `{courseName}_users.chats[]`.
+ * **Written:** user and assistant turns via chat routes / `updateUserChat`.
+ *
+ * Only student-visible message text is stored. RAG wrappers (`<course_materials>`), struggle
+ * tags (`<struggle_topics>`), and unstruggle tags are assembled in a forked LLM context at
+ * send time and are not written to this field.
  */
 export interface ChatMessage {
+    /** Stable message id (generated server-side). */
     id: string;
     sender: 'user' | 'bot';
+    /** Roster userId (string), not puid. */
     userId: string;
     courseName: string;
+    /** Plain message body as shown in the UI (no ephemeral LLM context). */
     text: string;
+    /** Unix epoch milliseconds. */
     timestamp: number;
 }
 
 /**
- * The type of chat
+ * Persisted chat conversation (one thread).
+ *
+ * **MongoDB path:** `{courseName}_users` document where `userId` matches → `chats[]` element.
+ * **Created:** `ChatMongo.addChatToUser` on `POST /api/chat/newchat`.
+ * **Updated:** `ChatMongo.updateUserChat` after each message, pin, title, or soft-delete.
+ *
+ * {@link MemoryAgentEntry.struggleTopics} is per-user/per-course, not per-chat. Socratic chats
+ * read that collection at runtime; struggle state is never duplicated on this document.
  */
 export interface Chat {
+    /** Deterministic chat id from user, course, and creation date. */
     id: string;
     courseName: string;
+    /** Course content frame label (week/topic); may be empty at creation. */
     topicOrWeekTitle: string;
+    /** Sidebar title; starts as `"New Chat"`, may be auto-updated after first exchange. */
     itemTitle: string;
+    /** Ordered transcript; see {@link ChatMessage}. */
     messages: ChatMessage[];
     isPinned: boolean;
     pinnedMessageId?: string | null;
-    isDeleted?: boolean;  // Soft delete flag (defaults to false/undefined for backward compatibility)
+    /** Soft delete; omitted or false = active. Filtered out by `getUserChats`. */
+    isDeleted?: boolean;
+     /**
+      * Persisted lifecycle state. New welcome-only chats start as `'undeclared'`; first user send
+      * finalizes to a real {@link ConversationModeId}. Legacy rows are lazily restored based on
+      * message history.
+      */
+     conversationMode?: PersistedConversationModeId;
+}
+
+/**
+ * Lightweight chat summary derived from {@link Chat} (no `messages` payload).
+ *
+ * **Produced by:** `ChatMongo.getUserChatsMetadata` → GET `/api/chat/user/chats/metadata`.
+ * Used for sidebar listing and sort-by-last-activity.
+ */
+export interface ChatMetadataSummary {
+    id: string;
+    courseName: string;
+    itemTitle: string;
+    isPinned: boolean;
+    pinnedMessageId?: string | null;
+    messageCount: number;
+    lastMessageTimestamp: number;
+    /**
+     * Persisted mode for picker display. Omitted by metadata query today; load full {@link Chat}
+     * when mode is required (e.g. conversation mode picker lock).
+     */
+    conversationMode?: PersistedConversationModeId;
 }
 
 // ===========================================
@@ -84,7 +176,9 @@ export interface activeCourse {
         scheduledTasks?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
+    /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */
     collectionOfSystemPromptItems?: SystemPromptItem[];
+    systemPromptConfig?: CourseSystemPromptConfig;
 }
 
 /**
@@ -127,6 +221,31 @@ export interface SystemPromptItem {
 export const DEFAULT_BASE_PROMPT_ID = 'default-base-system-prompt';
 export const DEFAULT_LEARNING_OBJECTIVES_ID = 'default-learning-objectives';
 export const DEFAULT_STRUGGLE_TOPICS_ID = 'default-struggle-topics';
+
+/** Single editable module within a course system prompt (instructor-authored). */
+export interface SystemPromptModule {
+    id: string;
+    body: string;
+    sortOrder: number;
+}
+
+/** Per-mode system prompt state stored on activeCourse.systemPromptConfig.modes. */
+export interface ModeSystemPromptState {
+    usePlatformDefault: boolean;
+    modules: SystemPromptModule[];
+    updatedAt: string;
+    platformDefaultVersion?: string;
+}
+
+/** Course-level system prompt configuration (v2). */
+export interface CourseSystemPromptConfig {
+    schemaVersion: 1;
+    defaultConversationMode: ConversationModeId;
+    modes: {
+        socratic: ModeSystemPromptState;
+        explanatory: ModeSystemPromptState;
+    };
+}
 
 /**
  * frameTypes: Course content organization strategy. 
@@ -182,6 +301,7 @@ export interface TopicOrWeekItem {
     itemTitle: string;
     completed?: boolean;
     learningObjectives: LearningObjective[];
+    instructorStruggleTopics?: InstructorStruggleTopic[];
     additionalMaterials?: AdditionalMaterial[];
     createdAt: Date;
     updatedAt: Date;
@@ -203,6 +323,30 @@ export interface LearningObjective {
  */
 export interface LearningObjectiveForDisplay {
     LearningObjective: string;
+    topicOrWeekTitle: string;
+    itemTitle: string;
+}
+
+/**
+ * Instructor-authored struggle topic catalog entry (per section).
+ *
+ * `struggleTopic` is the exact label the memory agent may return and that is stored on the student entry.
+ * Managed via Documents page CRUD (`/struggle-topics` API).
+ */
+export interface InstructorStruggleTopic {
+    id: string;
+    struggleTopic: string;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+/**
+ * Flattened instructor struggle topic with parent hierarchy for memory-agent prompt assembly.
+ *
+ * Produced by `getAllInstructorStruggleTopics`; not used in the main Socratic system prompt.
+ */
+export interface InstructorStruggleTopicForDisplay {
+    struggleTopic: string;
     topicOrWeekTitle: string;
     itemTitle: string;
 }
@@ -254,7 +398,8 @@ export interface CourseUser {
     userOnboarding: boolean;       // Course-specific onboarding status
     affiliation: 'student' | 'faculty';
     status: 'active' | 'inactive';
-    chats: Chat[];                 // Course-specific chat history
+    /** Embedded conversation threads — see {@link Chat}. Collection: `{courseName}_users`. */
+    chats: Chat[];
     createdAt: Date;
     updatedAt: Date;
 }
@@ -309,15 +454,26 @@ export type User = CourseUser;
 // ===========================================
 
 /**
- * Memory Agent Entry
- * Stores struggle words/topics that a student has difficulty with
- * Stored per-user in course-specific collections: {courseName}_memory-agent
+ * Memory-agent row: struggle topic labels for a user in one course.
+ *
+ * **MongoDB collection:** `{courseName}_memory-agent` (one document per `userId`).
+ * **Written:** `MemoryAgentMongo.updateMemoryAgentStruggleWords` after memory-agent analysis;
+ * initialized empty via `initializeMemoryAgentForUser` on course entry.
+ *
+ * Current product phase: struggle topics are consumed only by Socratic chats
+ * (`Chat.conversationMode === 'socratic'` after resolution). They are injected into the
+ * LLM fork on each send — not copied onto {@link Chat} or {@link ChatMessage}.
+ *
+ * Flow: empty at onboarding → memory agent appends labels after repeated difficulty in
+ * Socratic conversations → later turns about those topics use direct explanation (see
+ * system prompt `STRUGGLE_TOPICS_SECTION` in Socratic mode only).
  */
 export interface MemoryAgentEntry {
     name: string;
     userId: string;
     role: 'instructor' | 'TA' | 'Student';
-    struggleTopics: string[]; // Array of strings representing topics/concepts student struggles with
+    /** Topic labels detected by the memory agent; may be empty. Not stored on {@link Chat}. */
+    struggleTopics: string[];
     createdAt: Date;
     updatedAt: Date;
 }

@@ -18,11 +18,15 @@
  */
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { LLMModule } from 'ubc-genai-toolkit-llm';
+import { LLMModule, type Message } from 'ubc-genai-toolkit-llm';
 import { AppConfig, loadConfig } from '../utils/config';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { MemoryAgentEntry } from '../types/shared';
-import { getMemoryAgentPrompt } from './memory-agent-prompt';
+import { buildMemoryAgentSystemPrompt } from './memory-agent-prompt';
+import {
+    filterVerbatimStruggleTopics,
+    struggleAnalysisResponseSchema
+} from './struggle-analysis-schema';
 import { isDeveloperMode, getMockStruggleWords } from '../helpers/developer-mode';
 import { appLogger } from '../utils/logger';
 
@@ -53,13 +57,13 @@ export class MemoryAgent {
             
             if (!entry) {
                 appLogger.log(`[MEMORY-AGENT] ⚠️ No memory agent entry found for userId: ${userId} after ensuring existence`);
-                return ['---THE STRUGGLE WORD IS NOT PROPERLY ATTACHED TO THE USER---'];
+                return [];
             }
             
-            return entry.struggleTopics || ["---THE STRUGGLE WORD IS NOT PROPERLY SETTLED (DEFAULT VALUE)---"];
+            return entry.struggleTopics ?? [];
         } catch (error) {
             appLogger.error(`[MEMORY-AGENT] 🚨 Error getting struggle words:`, error);
-            return ['---THE STRUGGLE WORD IS NOT PROPERLY ATTACHED (ERROR ENCOUNTERED) TO THE USER---'];
+            return [];
         }
     }
 
@@ -125,35 +129,25 @@ export class MemoryAgent {
             const existingEntry = await mongoDB.getMemoryAgentEntry(courseName, userId);
             const existingWords = existingEntry?.struggleTopics || [];
             
-            // Normalize words for comparison
-            const normalizeWord = (word: string): string => {
-                return word.trim().toLowerCase();
-            };
-            
-            const normalizedExisting = existingWords.map(normalizeWord);
-            const normalizedNew = newWords.map(normalizeWord).filter(word => word.length > 0);
-            
-            // Filter out words that already exist (idempotent behavior)
-            const existingSet = new Set(normalizedExisting);
-            const wordsToAdd = normalizedNew.filter(word => !existingSet.has(word));
-            
-            // If no new words to add, skip database update
+            const trimWord = (word: string): string => word.trim();
+
+            const trimmedExisting = existingWords.map(trimWord).filter((word) => word.length > 0);
+            const trimmedNew = newWords.map(trimWord).filter((word) => word.length > 0);
+
+            const existingSet = new Set(trimmedExisting);
+            const wordsToAdd = trimmedNew.filter((word) => !existingSet.has(word));
+
             if (wordsToAdd.length === 0) {
                 appLogger.log(`[MEMORY-AGENT] ℹ️ No new struggle words to add for userId: ${userId}. All words already exist.`);
                 return;
             }
-            
-            // Merge existing words with new words (only new ones)
-            const allWords = [...normalizedExisting, ...wordsToAdd];
-            const uniqueWords = Array.from(new Set(allWords));
-            
-            // Sort for consistency
-            uniqueWords.sort();
+
+            const uniqueWords = [...trimmedExisting, ...wordsToAdd];
             
             // Update in database
             await mongoDB.updateMemoryAgentStruggleWords(courseName, userId, uniqueWords);
             
-            appLogger.log(`[MEMORY-AGENT] ✅ Updated struggle words for userId: ${userId}. Total: ${uniqueWords.length} words (+${wordsToAdd.length} new, ${normalizedExisting.length} existing)`);
+            appLogger.log(`[MEMORY-AGENT] ✅ Updated struggle words for userId: ${userId}. Total: ${uniqueWords.length} words (+${wordsToAdd.length} new, ${trimmedExisting.length} existing)`);
         } catch (error) {
             appLogger.error(`[MEMORY-AGENT] 🚨 Error updating struggle words:`, error);
             throw error;
@@ -185,19 +179,12 @@ export class MemoryAgent {
             const existingEntry = await mongoDB.getMemoryAgentEntry(courseName, userId);
             const existingWords = existingEntry?.struggleTopics || [];
             
-            // Normalize word for comparison
-            const normalizeWord = (word: string): string => {
-                return word.trim().toLowerCase();
-            };
-            
-            const normalizedWordToRemove = normalizeWord(wordToRemove);
-            const normalizedExisting = existingWords.map(normalizeWord);
-            
-            // Filter out the word to remove (case-insensitive)
-            const remainingWords = normalizedExisting.filter(word => word !== normalizedWordToRemove);
-            
-            // If word wasn't found, log and return
-            if (remainingWords.length === normalizedExisting.length) {
+            const trimmedRemove = wordToRemove.trim();
+            const trimmedExisting = existingWords.map((word) => word.trim());
+
+            const remainingWords = trimmedExisting.filter((word) => word !== trimmedRemove);
+
+            if (remainingWords.length === trimmedExisting.length) {
                 appLogger.log(`[MEMORY-AGENT] ℹ️ Struggle word "${wordToRemove}" not found for userId: ${userId}. Nothing to remove.`);
                 return;
             }
@@ -205,7 +192,7 @@ export class MemoryAgent {
             // Update in database with remaining words
             await mongoDB.updateMemoryAgentStruggleWords(courseName, userId, remainingWords);
             
-            appLogger.log(`[MEMORY-AGENT] ✅ Removed struggle word "${wordToRemove}" for userId: ${userId}. Remaining: ${remainingWords.length} words (was ${normalizedExisting.length})`);
+            appLogger.log(`[MEMORY-AGENT] ✅ Removed struggle word "${wordToRemove}" for userId: ${userId}. Remaining: ${remainingWords.length} words (was ${trimmedExisting.length})`);
         } catch (error) {
             appLogger.error(`[MEMORY-AGENT] 🚨 Error removing struggle word:`, error);
             throw error;
@@ -273,15 +260,13 @@ export class MemoryAgent {
             await fs.writeFile(filePath, logContent, 'utf-8');
             appLogger.log(`[MEMORY-AGENT] 📄 LLM invocation logged to: ${filePath}`);
             
-            // Also log to console for immediate visibility (only request details, not response)
+            // DEBUG: full prompts on console (no truncation)
             appLogger.log(`[MEMORY-AGENT] 📤 LLM Invocation Details:`);
-            appLogger.log(`[MEMORY-AGENT]   System Prompt Length: ${systemPrompt.length} chars (~${Math.ceil(systemPrompt.length / 4)} tokens)`);
-            appLogger.log(`[MEMORY-AGENT]   User Message Length: ${userMessage.length} chars (~${Math.ceil(userMessage.length / 4)} tokens)`);
+            appLogger.log(`[MEMORY-AGENT]   System Prompt (${systemPrompt.length} chars):\n${systemPrompt}`);
+            appLogger.log(`[MEMORY-AGENT]   User Message (${userMessage.length} chars):\n${userMessage}`);
             if (response !== undefined) {
-                appLogger.log(`[MEMORY-AGENT]   Response Length: ${response.length} chars (~${Math.ceil(response.length / 4)} tokens)`);
+                appLogger.log(`[MEMORY-AGENT]   LLM Response (${response.length} chars):\n${response}`);
             }
-            appLogger.log(`[MEMORY-AGENT]   System Prompt Preview: ${systemPrompt.substring(0, 100)}...`);
-            appLogger.log(`[MEMORY-AGENT]   User Message Preview: ${userMessage.substring(0, 100)}...`);
         } catch (error) {
             appLogger.error(`[MEMORY-AGENT] 🚨 Error logging LLM invocation:`, error);
             // Don't throw - logging failure shouldn't break the analysis flow
@@ -290,13 +275,18 @@ export class MemoryAgent {
 
 
     /**
-     * Analyze user messages and update struggle words
-     * Creates a conversation on-the-fly with a minimal system prompt and user messages,
-     * sends to LLM for analysis, and updates MongoDB with unique struggle words
-     * 
-     * @param userId - The user ID
-     * @param courseName - The course name
-     * @param userMessages - Formatted conversation messages to analyze (without RAG content)
+     * Analyze the last chat excerpt and append at most one instructor-catalog struggle label for the student.
+     *
+     * V2 flow: resolve course by name → load `getAllInstructorStruggleTopics` → skip if catalog empty →
+     * `buildMemoryAgentSystemPrompt` + `sendStructuredConversation` ({@link struggleAnalysisResponseSchema}) →
+     * {@link filterVerbatimStruggleTopics} → `updateStruggleWords` (case-sensitive, no paraphrase).
+     *
+     * Does not throw; failures are logged so chat is unaffected.
+     *
+     * @param userId - Student user id (`{course}_memory-agent` document key).
+     * @param courseName - Course display name used for collection lookup and catalog resolution.
+     * @param userMessages - Last messages formatted as `Student:` / `AI Tutor:` (RAG stripped from student lines).
+     * @returns Promise<void>
      */
     public async analyzeAndUpdateStruggleWords(
         userId: string,
@@ -311,11 +301,15 @@ export class MemoryAgent {
             }
             
             if (!userMessages || userMessages.length === 0) {
-                //START DEBUG LOG : DEBUG-CODE(ANALYZE-AND-UPDATE-STRUGGLE-WORDS-NO-USER-MESSAGES)
-                appLogger.log(`userMessages: ${userMessages}`);
-                appLogger.log(`[MEMORY-AGENT] ⚠️ No user messages to analyze`);
+                appLogger.log(`[MEMORY-AGENT] ⚠️ No user messages to analyze (empty excerpt)`);
                 return;
             }
+
+            // DEBUG: full untrimmed excerpt from chat-app (before any processing)
+            appLogger.log(
+                `[MEMORY-AGENT] 📨 Conversation excerpt (raw ${userMessages.length} chars, userId=${userId}, course=${courseName}):`
+            );
+            appLogger.log(userMessages);
 
             // Check if developer mode is enabled - use mock struggle words instead of LLM analysis
             if (isDeveloperMode()) {
@@ -330,71 +324,53 @@ export class MemoryAgent {
                 return; // Early return - skip LLM analysis
             }
 
-            // Retrieve existing struggle words to provide feedback to LLM
-            const existingStruggleWords = await this.getStruggleWords(userId, courseName);
-            appLogger.log(`[MEMORY-AGENT] 📋 Existing struggle topics (${existingStruggleWords.length}):`, existingStruggleWords);
-         
-            // Create conversation with system prompt that includes existing topics
-            appLogger.log(`[MEMORY-AGENT] 🔍 Analyzing conversation for struggle topics...`);
-            const conversation = this.llmModule.createConversation();
-            const systemPrompt = getMemoryAgentPrompt(existingStruggleWords);
-            conversation.addMessage('system', systemPrompt);
-            
-            conversation.addMessage('user', userMessages);
-            
-
-            
-            // Get response from LLM
-            const response = await conversation.send();
-            
-            if (!response || !response.content) {
-                appLogger.warn(`[MEMORY-AGENT] ⚠️ Empty response from LLM analysis`);
-                // Log to file even if response is empty
-                // await this.logLLMInvocation(userId, courseName, systemPrompt, userMessages, '');
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const course = await mongoDB.getCourseByName(courseName);
+            if (!course?.id) {
+                appLogger.warn(`[MEMORY-AGENT] ⚠️ Course not found for name: ${courseName}, skipping analysis`);
                 return;
             }
-        
 
-            // Parse the JSON response and extract StruggleTopics array
-            let struggleTopics: string[] = [];
-            let parseSuccess = false;
-            try {
-                // Clean the response content
-                const jsonContent = response.content.trim();
-                
-                // Parse JSON
-                const parsed = JSON.parse(jsonContent);
-                
-                // Extract StruggleTopics array
-                if (parsed && Array.isArray(parsed.StruggleTopics)) {
-                    struggleTopics = parsed.StruggleTopics;
-                    parseSuccess = true;
-                } else if (parsed && parsed.StruggleTopics === undefined) {
-                    appLogger.warn(`[MEMORY-AGENT] ⚠️ Response missing 'StruggleTopics' field`);
-                    struggleTopics = [];
-                } else {
-                    appLogger.warn(`[MEMORY-AGENT] ⚠️ 'StruggleTopics' is not an array in response`);
-                    struggleTopics = [];
-                }
-            } catch (jsonError) {
-                appLogger.error(`[MEMORY-AGENT] 🚨 Error parsing JSON response:`, jsonError);
-                appLogger.error(`[MEMORY-AGENT] Response content:`, response.content);
-                struggleTopics = [];
+            const catalog = await mongoDB.getAllInstructorStruggleTopics(course.id);
+            if (catalog.length === 0) {
+                appLogger.log(`[MEMORY-AGENT] ℹ️ No instructor struggle catalog for course ${courseName}; skipping analysis`);
+                return;
             }
 
-            // Normalize and filter struggle words
-            const normalizedStruggleWords = struggleTopics
-                .map((word: string) => word.trim())
-                .filter((word: string) => word.length > 0)
-                .map((word: string) => word.toLowerCase()); // Normalize to lowercase
+            const allowedLabels = new Set(catalog.map((row) => row.struggleTopic.trim()));
 
-            // Remove exact duplicates
-            const uniqueStruggleWords = Array.from(new Set(normalizedStruggleWords));
+            const existingStruggleWords = await this.getStruggleWords(userId, courseName);
+            appLogger.log(`[MEMORY-AGENT] 📋 Existing struggle topics (${existingStruggleWords.length}):`, existingStruggleWords);
 
+            appLogger.log(`[MEMORY-AGENT] 🔍 Analyzing conversation for struggle topics...`);
+            const systemPrompt = buildMemoryAgentSystemPrompt(catalog, existingStruggleWords);
+            const userTurn = `<conversation_excerpt>\n${userMessages.trim()}\n</conversation_excerpt>`;
+
+            // DEBUG: exact user turn sent to the model (includes wrapper tags)
+            appLogger.log(`[MEMORY-AGENT] 📨 LLM user turn (${userTurn.length} chars, as sent to model):`);
+            appLogger.log(userTurn);
+
+            const messages: Message[] = [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userTurn }
+            ];
+
+            const response = await this.llmModule.sendStructuredConversation(
+                messages,
+                struggleAnalysisResponseSchema,
+                { structuredOutputName: 'struggle_analysis' }
+            );
+
+            const rawTopics = response?.parsed?.struggleTopics ?? [];
+            const uniqueStruggleWords = filterVerbatimStruggleTopics(rawTopics, allowedLabels);
+
+            // DEBUG: LLM structured output before catalog filter
+            appLogger.log(`[MEMORY-AGENT] 📥 LLM raw struggleTopics:`, rawTopics);
             appLogger.log(`[MEMORY-AGENT] ✅ Extracted ${uniqueStruggleWords.length} struggle topics:`, uniqueStruggleWords);
-            
+
+            await this.logLLMInvocation(userId, courseName, systemPrompt, userTurn, JSON.stringify(response?.parsed ?? {}));
+
             if (uniqueStruggleWords.length > 0) {
-                // Update struggle words in database (ensures uniqueness and avoids duplicates via LLM prompt)
                 await this.updateStruggleWords(userId, courseName, uniqueStruggleWords);
             } else {
                 appLogger.log(`[MEMORY-AGENT] ℹ️ No struggle words extracted from conversation`);

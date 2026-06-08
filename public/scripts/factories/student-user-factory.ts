@@ -4,7 +4,6 @@
  * 
  * @author: @gatahcha
  * @date: 2026-03-07
- * @latest app version: 1.2.9.9
  * @description: Validated creation of student CourseUser objects. 
  */
 

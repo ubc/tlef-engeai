@@ -4,7 +4,6 @@
  * enge-ai-mongodb.ts
  * @author: @gatahcha
  * @date: 2025-03-13
- * @latest app version: 1.2.9.9
  * @description: Singleton MongoDB access layer for EngE-AI — façade delegates into `mongo/` (`./mongo/course-mongo`, `./mongo/flag-mongo`, `./mongo/chat-mongo`, …).
  */
 
@@ -15,12 +14,14 @@ import {
     AdditionalMaterial,
     Chat,
     ChatMessage,
+    PersistedConversationModeId,
     CourseUser,
     FlagReport,
     GlobalUser,
     InitialAssistantPrompt,
     MemoryAgentEntry,
-    SystemPromptItem
+    SystemPromptItem,
+    ConversationModeId
 } from '../types/shared';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { appLogger } from '../utils/logger';
@@ -33,6 +34,7 @@ import * as CourseUserMongo from './mongo/course-user-mongo';
 import * as FlagMongo from './mongo/flag-mongo';
 import * as GlobalUserMongo from './mongo/global-user-mongo';
 import * as InstructorPromptMongo from './mongo/instructor-prompt-mongo';
+import * as SystemPromptConfigMongo from './mongo/system-prompt-config-mongo';
 import * as MemoryAgentMongo from './mongo/memory-agent-mongo';
 import * as ScheduledTaskMongo from './mongo/scheduled-task-mongo';
 import * as TopicWeekMongo from './mongo/topic-week-mongo';
@@ -206,6 +208,57 @@ export class EngEAI_MongoDB {
     public getAllLearningObjectives = async (courseId: string) =>
         TopicWeekMongo.getAllLearningObjectives(this.ctx(), courseId);
 
+    /** Instructor struggle catalog CRUD — delegates to topic-week-mongo.ts */
+    public addInstructorStruggleTopic = async (
+        courseId: string,
+        topicOrWeekId: string,
+        contentId: string,
+        struggleTopic: any
+    ) =>
+        TopicWeekMongo.addInstructorStruggleTopic(
+            this.ctx(),
+            courseId,
+            topicOrWeekId,
+            contentId,
+            struggleTopic
+        );
+
+    /** PATCH one `instructorStruggleTopics[]` entry by id. */
+    public updateInstructorStruggleTopic = async (
+        courseId: string,
+        topicOrWeekId: string,
+        contentId: string,
+        struggleTopicId: string,
+        updateData: { struggleTopic: string }
+    ) =>
+        TopicWeekMongo.updateInstructorStruggleTopic(
+            this.ctx(),
+            courseId,
+            topicOrWeekId,
+            contentId,
+            struggleTopicId,
+            updateData
+        );
+
+    /** DELETE one `instructorStruggleTopics[]` entry by id. */
+    public deleteInstructorStruggleTopic = async (
+        courseId: string,
+        topicOrWeekId: string,
+        contentId: string,
+        struggleTopicId: string
+    ) =>
+        TopicWeekMongo.deleteInstructorStruggleTopic(
+            this.ctx(),
+            courseId,
+            topicOrWeekId,
+            contentId,
+            struggleTopicId
+        );
+
+    /** Flatten all instructor struggle labels with topic/week and section titles (memory-agent catalog). */
+    public getAllInstructorStruggleTopics = async (courseId: string) =>
+        TopicWeekMongo.getAllInstructorStruggleTopics(this.ctx(), courseId);
+
     public addContentItem = async (courseId: string, topicOrWeekId: string, contentItem: any) =>
         TopicWeekMongo.addContentItem(this.ctx(), courseId, topicOrWeekId, contentItem);
 
@@ -339,6 +392,13 @@ export class EngEAI_MongoDB {
 
     public addMessageToChat = async (courseName: string, userId: string, chatId: string, message: ChatMessage) =>
         ChatMongo.addMessageToChat(this.ctx(), courseName, userId, chatId, message);
+
+    public ensureChatConversationMode = async (
+        courseName: string,
+        userId: string,
+        chatId: string,
+        mode: PersistedConversationModeId = 'socratic'
+    ) => ChatMongo.ensureChatConversationMode(this.ctx(), courseName, userId, chatId, mode);
 
     public updateChatTitle = async (courseName: string, userId: string, chatId: string, newTitle: string) =>
         ChatMongo.updateChatTitle(this.ctx(), courseName, userId, chatId, newTitle);
@@ -478,4 +538,22 @@ export class EngEAI_MongoDB {
 
     public ensureDefaultSystemPromptComponents = async (courseId: string, courseName?: string) =>
         InstructorPromptMongo.ensureDefaultSystemPromptComponents(this.ctx(), courseId, courseName);
+
+    public getSystemPromptConfig = async (courseId: string) =>
+        SystemPromptConfigMongo.getSystemPromptConfig(this.ctx(), courseId);
+
+    public updateModeSystemPrompt = async (
+        courseId: string,
+        mode: ConversationModeId,
+        input: SystemPromptConfigMongo.UpdateModeSystemPromptInput
+    ) => SystemPromptConfigMongo.updateModeSystemPrompt(this.ctx(), courseId, mode, input);
+
+    public resetModeSystemPrompt = async (courseId: string, mode: ConversationModeId) =>
+        SystemPromptConfigMongo.resetModeSystemPrompt(this.ctx(), courseId, mode);
+
+    public setDefaultConversationMode = async (courseId: string, mode: ConversationModeId) =>
+        SystemPromptConfigMongo.setDefaultConversationMode(this.ctx(), courseId, mode);
+
+    public getDefaultConversationModeForCourse = async (courseId: string) =>
+        SystemPromptConfigMongo.getDefaultConversationModeForCourse(this.ctx(), courseId);
 }

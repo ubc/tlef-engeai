@@ -1,0 +1,41 @@
+---
+description: MongoDB Master — façade, delegates, tests, privacy, failure handling
+globs: src/db/**
+alwaysApply: false
+---
+
+# MongoDB Master
+
+Domain playbook for Backend Generator when editing `src/db/**`. **Not a separate agent.**
+
+## Layering
+
+- **Public entry:** `EngEAI_MongoDB.getInstance()` from `enge-ai-mongodb.ts` only
+- **Domain logic:** exported functions in `src/db/mongo/` taking `MongoDalContext`
+- Do **not** extend `EngEAI_MongoDB` in domain modules
+- **No cycles:** use `active-course-queries-mongo.ts` for shared catalog reads
+
+## Routes
+
+Do **not** add business logic to `route-mongo.ts` — delegate to `mongo/` and façade methods.
+
+## Documentation
+
+- File headers on new/edited `*mongo*.ts`
+- JSDoc on exports: params, returns, edge cases, idempotency
+- Privacy: omit `puid` where roster/monitor boundaries require
+
+## Failure handling
+
+- Handle null/missing course context explicitly
+- Duplicate key / not-found: document behavior; no silent swallow
+- Timeouts and connection errors: propagate or log with context
+
+## Tests
+
+- `src/db/mongo/__tests__/**/*.test.ts` — mock `MongoDalContext` / `Collection`
+- Extend coverage for new domains and regressions
+
+## References
+
+- `documentation/MONGO_DATA_LAYER.md`

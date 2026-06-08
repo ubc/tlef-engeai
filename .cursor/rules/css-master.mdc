@@ -1,0 +1,32 @@
+---
+description: CSS Master — styles in public/styles, suggest-only by default
+globs: public/styles/**
+alwaysApply: false
+---
+
+# CSS Master
+
+Styling playbook for Frontend Generator.
+
+## File layout
+
+- Global: `public/styles/style.css` first
+- Feature CSS: e.g. `chat-components/`, `instructor-components/`
+- Page-specific only when many unique rules
+- **No inline styles or `<style>` blocks** in HTML
+
+## Selectors
+
+- kebab-case: `.chat-message-container`, `.flag-report-row`
+- Optional BEM: `.chat-message__copy-btn`, `.chat-message--pinned`
+- Remove unused rules; avoid generic `.box`, `.item`
+
+## Default policy
+
+Suggest changes inside `<styling_AI_suggest>` only — user applies manually.
+
+Orchestrator may set `css_apply: implement` in handoff for CSS-only tasks — then implement directly in `.css` files.
+
+## Reference
+
+- `documentation/RESPONSIVE_DESIGN.md`

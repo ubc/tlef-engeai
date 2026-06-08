@@ -41,8 +41,12 @@ node_modules/
 # Taskmaster
 .taskmaster/
 
-# Cursor
-.cursor
+# Cursor — track shared rules/modes; ignore personal config
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
+!.cursor/modes/
+!.cursor/modes/**
 
 # Task files
 # tasks.json
@@ -50,6 +54,10 @@ node_modules/
 
 /trial.ts
 src/test-scripts/
+
+# Conversation-mode prompt stress tests (local only — uncommitted)
+src/chat/__tests__/compose-system-prompt-socratic.test.ts
+src/chat/__tests__/compose-system-prompt-explanatory.test.ts
 
 queueTask.md
 ./src/debug/*
@@ -89,3 +97,7 @@ documentation/props
 
 .cursorignore
 planner
+
+.councils/
+.cursor-test/
+

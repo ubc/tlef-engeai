@@ -23,8 +23,31 @@
         <footer id="chat-footer" class="chat-footer">
             <div class="chat-footer-content">
                 <div class="input-area">
-                    <textarea id="chat-input" rows="1" placeholder="Enter your thoughts here!"></textarea>
-                    <button id="send-btn" class="send-btn"><i data-feather="arrow-up"></i></button>
+                    <div class="composer-card">
+                        <div class="composer-input-row">
+                            <textarea id="chat-input" rows="1" placeholder="Enter your thoughts here!"></textarea>
+                        </div>
+                        <div class="composer-toolbar">
+                            <div class="composer-toolbar-actions">
+                                <div id="conversation-mode-wrap" class="conversation-mode-wrap">
+                                    <button
+                                        type="button"
+                                        id="conversation-mode-trigger"
+                                        class="conversation-mode-trigger"
+                                        aria-haspopup="listbox"
+                                        aria-expanded="false"
+                                        aria-disabled="false"
+                                        aria-label="Teaching mode"
+                                    >
+                                        <span class="conversation-mode-label">Socratic</span>
+                                        <i data-feather="lock" class="conversation-mode-lock" aria-hidden="true"></i>
+                                    </button>
+                                    <div id="conversation-mode-popover" class="conversation-mode-popover" role="listbox"></div>
+                                </div>
+                                <button id="send-btn" class="send-btn"><i data-feather="arrow-up"></i></button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div id="disclaimer" class="disclaimer">
                     EngE-AI can make mistakes. See usage <a href="#">information and policies</a>.

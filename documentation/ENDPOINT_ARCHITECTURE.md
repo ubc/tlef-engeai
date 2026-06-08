@@ -28,7 +28,7 @@ All API routes are prefixed with `/api/`. Page routes are served from `/` and `/
 | `/api/course` | courseEntryRoutes | Course entry, enter-by-code, current course |
 | `/api/user` | userManagementRoutes | User profile, onboarding, activity |
 | `/api/health` | healthRoutes | Health check |
-| `/api/version` | versionRoutes | Backend version |
+| `/api/version` | versionRoutes | App version (SemVer) |
 
 ---
 
@@ -133,6 +133,15 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 | PUT | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId` | Yes | Instructor | Update objective |
 | DELETE | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId` | Yes | Instructor | Delete objective |
 
+#### Instructor struggle topics (per content item; memory-agent catalog)
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| GET | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics` | Yes | Any | Get struggle topics for item |
+| POST | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics` | Yes | Instructor | Create struggle topic |
+| PUT | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId` | Yes | Instructor | Update struggle topic |
+| DELETE | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId` | Yes | Instructor | Delete struggle topic |
+
 #### Flags (student creates; instructor manages)
 
 | Method | Path | Auth | Role | Description |
@@ -159,6 +168,20 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 |--------|------|------|------|-------------|
 | DELETE | `/api/courses/:courseId/documents/all` | Yes | Instructor | Delete all RAG documents for course |
 
+#### System prompt config (v2, instructor-only)
+
+Platform defaults ship in `src/chat/system-prompts/shared-default/`, `socratic-default/`, and `explanatory-default/` (flat `.md` + JSON manifests; see [SYSTEM_PROMPT_DEFAULTS.md](SYSTEM_PROMPT_DEFAULTS.md)). Per-course overrides live on `activeCourse.systemPromptConfig`. Routes: `src/routes/mongo/system-prompt-config-routes.ts` (mounted from `route-mongo.ts`).
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| GET | `/api/courses/:courseId/system-prompts/config` | Yes | Instructor | Full config; SP-001 lazy migrate from `collectionOfSystemPromptItems` and `$unset` legacy field ([DATA_MIGRATIONS.md](DATA_MIGRATIONS.md#sp-001-system-prompt-v1--v2), remove by 2026-06-30) |
+| PUT | `/api/courses/:courseId/system-prompts/config/modes/:mode` | Yes | Instructor | Autosave `{ modules?, usePlatformDefault? }` for `socratic` or `explanatory` |
+| POST | `/api/courses/:courseId/system-prompts/config/modes/:mode/reset` | Yes | Instructor | Set `usePlatformDefault: true` for one mode |
+| PUT | `/api/courses/:courseId/system-prompts/config/default-conversation-mode` | Yes | Instructor | `{ mode }` — default teaching mode for new student chats |
+| POST | `/api/courses/:courseId/system-prompts/config/validate-plain` | Yes | Instructor | `{ xml }` → `{ ok, modules?, warnings[] }` |
+| GET | `/api/courses/:courseId/system-prompts/config/platform-modules/:mode` | Yes | Instructor | Shipped instructor modules from JSON (read-only) |
+| POST | `/api/courses/admin/system-prompt-defaults/reload` | Yes | Admin (global) | Reload platform JSON cache from disk |
+
 ### 4.4 RAG (`/api/rag`)
 
 | Method | Path | Auth | Role | Description |
@@ -180,12 +203,14 @@ All chat endpoints require auth. Access is scoped by session `currentCourse` and
 |--------|------|------|------|-------------|
 | GET | `/api/chat/user/chats/metadata` | Yes | Any | List chat metadata |
 | GET | `/api/chat/user/chats` | Yes | Any | List full chats |
-| POST | `/api/chat/newchat` | Yes | Any | Create new chat |
-| POST | `/api/chat/:chatId` | Yes | Any | Send message (streaming) |
+| GET | `/api/chat/conversation-modes` | Yes | Any | List teaching mode catalog (labels only); includes `defaultConversationMode` when session/query course is known |
+| POST | `/api/chat/newchat` | Yes | Any | Create new welcome-only chat with persisted `conversationMode: 'undeclared'` |
+| POST | `/api/chat/restore/:chatId` | Yes | Any | Restore chat into server memory; lazy mode migration uses message history |
+| PATCH | `/api/chat/:chatId/conversation-mode` | Yes | Any | Update teaching mode before the first user message; rejects chats that already contain a user turn |
+| POST | `/api/chat/:chatId` | Yes | Any | Send message; first user message finalizes an undeclared chat to `socratic` or `explanatory` before LLM processing |
 | POST | `/api/chat/:chatId/dismiss-unstruggle` | Yes | Any | Dismiss unstruggle |
 | GET | `/api/chat/:chatId/history` | Yes | Any | Get chat history |
 | GET | `/api/chat/:chatId/message/:messageId` | Yes | Any | Get single message |
-| POST | `/api/chat/restore/:chatId` | Yes | Any | Restore deleted chat |
 | DELETE | `/api/chat/:chatId` | Yes | Any | Delete chat |
 | PUT | `/api/chat/:chatId/pin` | Yes | Any | Pin/unpin chat |
 | GET | `/api/chat/test` | No | — | Test endpoint |
@@ -203,7 +228,7 @@ All chat endpoints require auth. Access is scoped by session `currentCourse` and
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/api/health` | No | Health check (DB ping) |
-| GET | `/api/version` | No | Backend version |
+| GET | `/api/version` | No | App version (SemVer) |
 
 ---
 
@@ -248,7 +273,7 @@ All chat endpoints require auth. Access is scoped by session `currentCourse` and
 | `course-routes.ts` | validateCourseAccess, requireInstructorForCourse, requireStudentForCourse |
 | `mongo-app.ts` | EngEAI_MongoDB |
 | `rag-routes.ts` | RAGApp |
-| `chat-app.ts` | ChatApp, EngEAI_MongoDB |
+| `chat-app.ts` | ChatApp, EngEAI_MongoDB; RAG via `RAGApp` + `ragPrompts` |
 | `course-entry.ts` | EngEAI_MongoDB |
 | `user-management.ts` | EngEAI_MongoDB |
 | `auth.ts` | Passport, EngEAI_MongoDB |
@@ -329,3 +354,21 @@ console.log(res.status, await res.json());
 3. **Shared vs role-specific** — Chat, course entry, and flag creation are shared; course management, RAG upload, flags list/update, and monitor are instructor-only.
 4. **Modular routes** — Each domain (courses, chat, RAG, auth, user) has its own router for maintainability.
 5. **Session-based course context** — `currentCourse` in session drives chat and RAG operations; `courseId` in params/body drives course-scoped APIs.
+
+### Chat RAG flow (`POST /api/chat/:chatId`)
+
+On each student message, `ChatApp` orchestrates retrieval through two RAG classes (shared `RAGModule` from `RAGApp`):
+
+1. **`RAGApp.retrieveForChat`** — vector search with published-item filter (skipped in developer mode)
+2. **`ragPrompts.formatRetrievedContext`** — wraps chunks in `<course_materials>...</course_materials>`
+3. **`ragPrompts.formatRagUserTurn`** — appends mode-specific bridge (Socratic) and the raw student message
+4. Forked LLM conversation receives the assembled user turn; stored chat history keeps the clean student message only
+5. Memory-agent analysis uses **`ragPrompts.stripRagFromUserMessage`** to remove injected context from prior turns
+
+**Conversation mode lifecycle:** `undeclared` is a persisted chat lifecycle state, not an LLM prompt mode. New chats are stored as `conversationMode === 'undeclared'` while they contain only the welcome message. The first `POST /api/chat/:chatId` includes the selected real mode (`socratic` or `explanatory`); the backend persists that mode, rebuilds the LLM conversation, and only then processes the user turn. `PATCH /api/chat/:chatId/conversation-mode` remains available for welcome-only chats, but chats with a user message reject mode changes.
+
+**Lazy restore migration:** if `conversationMode` is already `socratic` or `explanatory`, restore leaves it unchanged. Missing, invalid, or `undeclared` rows with any user message are backfilled to `socratic` to preserve historical default behavior. Missing, invalid, or `undeclared` rows with no user messages are written as `undeclared` so the picker remains editable.
+
+**Struggle topics (current phase):** memory-agent detection and per-turn `<struggle_topics>` injection apply only to finalized Socratic chats (`conversationMode === 'socratic'`). Explanatory chats use the PROSE instructor modules from platform JSON and an Explanatory RAG user-turn bridge in `rag-prompts.ts`; they do not receive struggle-topic injection.
+
+**System prompt assembly (v2):** `assembleCourseSystemPrompt()` builds `<system_prompt mode="…">` XML from platform JSON (`instructorModules` only in v1.3.0+) plus optional per-course overrides in Mongo (`systemPromptConfig`). Learning objectives are injected into the `course main intro` module. See `src/chat/system-prompts/assemble-course-system-prompt.ts`.

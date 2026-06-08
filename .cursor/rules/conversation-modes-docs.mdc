@@ -1,0 +1,59 @@
+---
+description: TSDoc and header standards for conversation-modes
+globs: src/chat/conversation-modes/**,src/chat/compose-system-prompt.ts,src/types/shared.ts
+alwaysApply: false
+---
+
+# Conversation Modes Documentation
+
+Applies when editing `src/chat/conversation-modes/**`, `compose-system-prompt.ts`, and `Chat.conversationMode` in `shared.ts`. Reference implementation: `src/chat/compose-system-prompt.ts`.
+
+## Mode slug resolution (non-negotiable)
+
+Valid slugs: `'socratic' | 'explanatory'` only (`ConversationModeId`).
+
+| Input | Runtime (`resolveModeId`) | Mongo backfill (`ensureChatConversationMode`) |
+|-------|---------------------------|-----------------------------------------------|
+| missing / `null` / `undefined` | `'socratic'` | write `'socratic'` |
+| typo or any other string | `'socratic'` | overwrite with `'socratic'` |
+| `'socratic'` or `'explanatory'` | unchanged | no-op |
+
+Any invalid stored value is treated as default — never propagate typos to prompts or struggle gating.
+
+## Catalog vs prompt bodies
+
+- **Catalog metadata** (`*/mode-description.ts`, `ConversationModeMeta`) — student-facing labels for GET `/api/chat/conversation-modes`. Never include LLM prompt text.
+- **Prompt sections** (`teaching-methodology.ts`, etc.) — system or user-turn LLM instructions. Never exposed via the catalog API.
+
+## File header
+
+2–3 sentences: purpose, when used, cross-ref to related modules. No empty trailing `*` lines.
+
+## Exported types
+
+One-liner above each exported type/interface. Property docs on interfaces shared across modules (e.g. `SystemPromptBuildContext`).
+
+## Exported functions
+
+Summary + behavioral note + `@param` + `@returns`. Add `@throws` when validation throws. Use `{@link TypeName}` for mode IDs and context types.
+
+## Classes
+
+Class block listing responsibilities. JSDoc on public/abstract methods callers override or invoke.
+
+## Prompt constants
+
+File header must state:
+1. LLM prompt body (not API catalog)
+2. Which `ConversationModePromptModule` id injects it (if system prompt)
+3. Which mode class returns it
+
+Do not add JSDoc on the string literal itself.
+
+## Private helpers
+
+Undocumented unless non-obvious (see `00-kernel.mdc`).
+
+## New modes
+
+When adding `explanatory/` or future modes, follow the same pattern as `socratic/`.

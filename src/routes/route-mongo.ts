@@ -63,6 +63,7 @@ import {
     sanitizeZipPathSegment
 } from '../helpers/conversation-export-path';
 import type { ConversationZipExportRow } from '../db/mongo/conversation-export-mongo';
+import { mountSystemPromptConfigRoutes } from './mongo/system-prompt-config-routes';
 
 const router = express.Router();
 export default router;
@@ -291,6 +292,7 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
                     topicOrWeekTitle: `Week ${i + 1}`,
                     itemTitle: `Lecture 1`,
                     learningObjectives: [],
+                    instructorStruggleTopics: [],
                     additionalMaterials: [],
                     createdAt: new Date(),
                     updatedAt: new Date(),
@@ -306,6 +308,7 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
                     topicOrWeekTitle: `Week ${i + 1}`,
                     itemTitle: `Lecture 2`,
                     learningObjectives: [],
+                    instructorStruggleTopics: [],
                     additionalMaterials: [],
                     createdAt: new Date(),
                     updatedAt: new Date(),
@@ -320,6 +323,7 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
                     topicOrWeekTitle: `Week ${i + 1}`,
                     itemTitle: `Lecture 3`,
                     learningObjectives: [],
+                    instructorStruggleTopics: [],
                     additionalMaterials: [],
                     createdAt: new Date(),
                     updatedAt: new Date(),
@@ -365,6 +369,7 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
                     topicOrWeekTitle: `Topic ${i + 1}`,
                     itemTitle: `Topic ${i + 1}`,
                     learningObjectives: [],
+                    instructorStruggleTopics: [],
                     additionalMaterials: [],
                     createdAt: new Date(),
                     updatedAt: new Date(),
@@ -1230,6 +1235,7 @@ router.post('/:courseId/topic-or-week-instances', requireInstructorForCourseAPI(
                     topicOrWeekTitle: resolvedTitle,
                     itemTitle: defaultItemTitle,
                     learningObjectives: [],
+                    instructorStruggleTopics: [],
                     additionalMaterials: [],
                     createdAt: now,
                     updatedAt: now
@@ -1538,6 +1544,183 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/o
             success: false,
             error: 'Failed to delete learning objective'
         });
+    }
+}));
+
+/**
+ * GET /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics
+ * Get instructor struggle topics (memory-agent catalog) for a course content item.
+ *
+ * @route GET /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {string} itemId - Content item ID (path param)
+ * @returns {object} { success: boolean, data?: InstructorStruggleTopic[], message?: string, error?: string }
+ * @response 200 - Struggle topics retrieved successfully
+ * @response 404 - Course, topic/week instance, or content item not found
+ * @response 500 - Failed to get struggle topics
+ */
+router.get('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics', asyncHandler(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, topicOrWeekId, itemId } = req.params;
+
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+
+        const instance_topicOrWeek = course.topicOrWeekInstances?.find((d: any) => d.id === topicOrWeekId);
+        if (!instance_topicOrWeek) {
+            return res.status(404).json({ success: false, error: 'Topic/Week instance not found' });
+        }
+
+        const contentItem = instance_topicOrWeek.items?.find((item: any) => item.id === itemId);
+        if (!contentItem) {
+            return res.status(404).json({ success: false, error: 'Content item not found' });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: contentItem.instructorStruggleTopics || [],
+            message: 'Struggle topics retrieved successfully'
+        });
+    } catch (error) {
+        appLogger.error('Error getting struggle topics:', { error });
+        res.status(500).json({ success: false, error: 'Failed to get struggle topics' });
+    }
+}));
+
+/**
+ * POST /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics
+ * Add an instructor struggle topic to a content item. Instructors only.
+ *
+ * @route POST /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {string} itemId - Content item ID (path param)
+ * @param {object} struggleTopic - Catalog entry with `struggleTopic` text (body)
+ * @returns {object} { success: boolean, data?: object, message?: string, error?: string }
+ * @response 200 - Struggle topic added successfully
+ * @response 400 - Missing or invalid struggleTopic (empty or >300 chars)
+ * @response 403 - Instructor access required for course
+ * @response 500 - Failed to add struggle topic
+ */
+router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, topicOrWeekId, itemId } = req.params;
+        const { struggleTopic } = req.body;
+
+        if (!struggleTopic) {
+            return res.status(400).json({ success: false, error: 'Missing required field: struggleTopic' });
+        }
+
+        const rawText = (struggleTopic?.struggleTopic ?? '').toString();
+        const sanitizedText = rawText.trim();
+        if (!sanitizedText) {
+            return res.status(400).json({ success: false, error: 'Struggle topic cannot be empty' });
+        }
+        if (sanitizedText.length > 300) {
+            return res.status(400).json({ success: false, error: 'Struggle topic too long (max 300 characters)' });
+        }
+
+        struggleTopic.struggleTopic = sanitizedText;
+        struggleTopic.createdAt = struggleTopic.createdAt || new Date();
+        struggleTopic.updatedAt = new Date();
+
+        const result = await instance.addInstructorStruggleTopic(courseId, topicOrWeekId, itemId, struggleTopic);
+
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'Struggle topic added successfully'
+        });
+    } catch (error) {
+        appLogger.error('Error adding struggle topic:', { error });
+        res.status(500).json({ success: false, error: 'Failed to add struggle topic' });
+    }
+}));
+
+/**
+ * PUT /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId
+ * Update an instructor struggle topic label. Instructors only.
+ *
+ * @route PUT /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {string} itemId - Content item ID (path param)
+ * @param {string} struggleTopicId - Catalog entry ID (path param)
+ * @param {object} updateData - `{ struggleTopic: string }` (body)
+ * @returns {object} { success: boolean, data?: object, message?: string, error?: string }
+ * @response 200 - Struggle topic updated successfully
+ * @response 400 - Missing or invalid updateData
+ * @response 403 - Instructor access required for course
+ * @response 500 - Failed to update struggle topic
+ */
+router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, topicOrWeekId, itemId, struggleTopicId } = req.params;
+        const { updateData } = req.body;
+
+        if (!updateData) {
+            return res.status(400).json({ success: false, error: 'Missing required field: updateData' });
+        }
+
+        const rawText = (updateData?.struggleTopic ?? '').toString();
+        const sanitizedText = rawText.trim();
+        if (!sanitizedText) {
+            return res.status(400).json({ success: false, error: 'Struggle topic cannot be empty' });
+        }
+        if (sanitizedText.length > 300) {
+            return res.status(400).json({ success: false, error: 'Struggle topic too long (max 300 characters)' });
+        }
+
+        const result = await instance.updateInstructorStruggleTopic(courseId, topicOrWeekId, itemId, struggleTopicId, {
+            struggleTopic: sanitizedText
+        });
+
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'Struggle topic updated successfully'
+        });
+    } catch (error) {
+        appLogger.error('Error updating struggle topic:', { error });
+        res.status(500).json({ success: false, error: 'Failed to update struggle topic' });
+    }
+}));
+
+/**
+ * DELETE /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId
+ * Delete an instructor struggle topic from a content item. Instructors only.
+ *
+ * @route DELETE /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {string} itemId - Content item ID (path param)
+ * @param {string} struggleTopicId - Catalog entry ID (path param)
+ * @returns {object} { success: boolean, data?: object, message?: string, error?: string }
+ * @response 200 - Struggle topic deleted successfully
+ * @response 403 - Instructor access required for course
+ * @response 500 - Failed to delete struggle topic
+ */
+router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, topicOrWeekId, itemId, struggleTopicId } = req.params;
+
+        const result = await instance.deleteInstructorStruggleTopic(courseId, topicOrWeekId, itemId, struggleTopicId);
+
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'Struggle topic deleted successfully'
+        });
+    } catch (error) {
+        appLogger.error('Error deleting struggle topic:', { error });
+        res.status(500).json({ success: false, error: 'Failed to delete struggle topic' });
     }
 }));
 
@@ -3211,439 +3394,6 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
     }
 }));
 
-// COMMENTED OUT: Privilege action - Download course info (frontend removed)
-/*
-router.get('/export/course-info', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const mongoDB = await EngEAI_MongoDB.getInstance();
-        
-        // Get all active courses
-        const allCourses = await mongoDB.getAllActiveCourses();
-        
-        // Build hierarchical course information export
-        let exportText = '';
-        
-        if (allCourses.length === 0) {
-            exportText = 'No courses found.\n';
-        } else {
-            // Sort courses by courseName for consistent output
-            const sortedCourses = allCourses.sort((a: any, b: any) => {
-                const nameA = a.courseName || '';
-                const nameB = b.courseName || '';
-                return nameA.localeCompare(nameB);
-            });
-            
-            for (const course of sortedCourses) {
-                const courseData = course as any;
-                const courseName = courseData.courseName || 'Unknown Course';
-                
-                // Add course header
-                exportText += `========================================\n`;
-                exportText += `COURSE: ${courseName}\n`;
-                exportText += `Course ID: ${courseData.id || 'N/A'}\n`;
-                exportText += `========================================\n\n`;
-                
-                // Export course information from active-course-list
-                exportText += `--- Course Information (active-course-list) ---\n`;
-                const courseJson = JSON.stringify(courseData, null, 2);
-                exportText += `${courseJson}\n\n`;
-                
-                // Get collection names for this course
-                try {
-                    const collectionNames = await mongoDB.getCollectionNames(courseName);
-                    
-                    // Export course users collection
-                    exportText += `--- Course Users (${collectionNames.users}) ---\n`;
-                    try {
-                        const usersCollection = mongoDB.db.collection(collectionNames.users);
-                        const users = await usersCollection.find({}).toArray();
-                        if (users.length === 0) {
-                            exportText += '[Empty collection]\n';
-                        } else {
-                            for (let i = 0; i < users.length; i++) {
-                                const userJson = JSON.stringify(users[i], null, 2);
-                                exportText += `${userJson}\n`;
-                                if (i < users.length - 1) {
-                                    exportText += '\n';
-                                }
-                            }
-                        }
-                    } catch (usersError) {
-                        exportText += `[Error reading collection: ${usersError instanceof Error ? usersError.message : 'Unknown error'}]\n`;
-                    }
-                    exportText += '\n\n';
-                    
-                    // Export course flags collection
-                    exportText += `--- Course Flags (${collectionNames.flags}) ---\n`;
-                    try {
-                        const flagsCollection = mongoDB.db.collection(collectionNames.flags);
-                        const flags = await flagsCollection.find({}).toArray();
-                        if (flags.length === 0) {
-                            exportText += '[Empty collection]\n';
-                        } else {
-                            for (let i = 0; i < flags.length; i++) {
-                                const flagJson = JSON.stringify(flags[i], null, 2);
-                                exportText += `${flagJson}\n`;
-                                if (i < flags.length - 1) {
-                                    exportText += '\n';
-                                }
-                            }
-                        }
-                    } catch (flagsError) {
-                        exportText += `[Error reading collection: ${flagsError instanceof Error ? flagsError.message : 'Unknown error'}]\n`;
-                    }
-                    exportText += '\n\n';
-                    
-                    // Export course memory-agent collection
-                    exportText += `--- Course Memory Agent (${collectionNames.memoryAgent}) ---\n`;
-                    try {
-                        const memoryAgentCollection = mongoDB.db.collection(collectionNames.memoryAgent);
-                        const memoryAgents = await memoryAgentCollection.find({}).toArray();
-                        if (memoryAgents.length === 0) {
-                            exportText += '[Empty collection]\n';
-                        } else {
-                            for (let i = 0; i < memoryAgents.length; i++) {
-                                const memoryAgentJson = JSON.stringify(memoryAgents[i], null, 2);
-                                exportText += `${memoryAgentJson}\n`;
-                                if (i < memoryAgents.length - 1) {
-                                    exportText += '\n';
-                                }
-                            }
-                        }
-                    } catch (memoryAgentError) {
-                        exportText += `[Error reading collection: ${memoryAgentError instanceof Error ? memoryAgentError.message : 'Unknown error'}]\n`;
-                    }
-                    exportText += '\n\n';
-                    
-                } catch (collectionNamesError) {
-                    exportText += `[Error getting collection names: ${collectionNamesError instanceof Error ? collectionNamesError.message : 'Unknown error'}]\n\n`;
-                }
-                
-                // Add spacing between courses
-                exportText += '\n\n';
-            }
-        }
-        
-        // Set response headers for file download
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-        const filename = `course-info-export-${timestamp}.txt`;
-        
-        res.setHeader('Content-Type', 'text/plain');
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        res.send(exportText);
-        
-    } catch (error) {
-        appLogger.error('Error exporting course information:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to export course information',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
-    }
-}));
-*/
-// END COMMENTED OUT: export/course-info
-
-// ===========================================
-// ADMIN ROUTES (Instructor Only) - COMMENTED OUT: Privilege action (frontend removed)
-// ===========================================
-/*
-router.post('/admin/reset-database', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        appLogger.log('🗑️ [ADMIN] Reset Database request received');
-        
-        const mongoDB = await EngEAI_MongoDB.getInstance();
-        
-        // Step 1: Get all collections
-        const allCollections = await mongoDB.db.listCollections().toArray();
-        const collectionNames = allCollections.map(col => col.name);
-        
-        appLogger.log(`📋 Found ${collectionNames.length} collection(s) in database`);
-        
-        // Collections to preserve initially (will be cleared later)
-        const preservedCollections = ['active-course-list', 'active-users'];
-        
-        // Filter out collections to preserve
-        const collectionsToDrop = collectionNames.filter(
-            name => !preservedCollections.includes(name)
-        );
-        
-        appLogger.log(`🗑️ Dropping ${collectionsToDrop.length} collection(s)`);
-        
-        // Step 2: Drop all collections except preserved ones
-        const droppedCollections: string[] = [];
-        const errors: string[] = [];
-        
-        for (const collectionName of collectionsToDrop) {
-            try {
-                const dropResult = await mongoDB.dropCollection(collectionName);
-                if (dropResult.success) {
-                    droppedCollections.push(collectionName);
-                    appLogger.log(`✅ Dropped collection: ${collectionName}`);
-                } else {
-                    errors.push(`Failed to drop ${collectionName}: ${dropResult.error}`);
-                    appLogger.error(`❌ Failed to drop ${collectionName}:`, { error: dropResult.error });
-                }
-            } catch (error) {
-                const errorMsg = `Error dropping ${collectionName}: ${error instanceof Error ? error.message : 'Unknown error'}`;
-                errors.push(errorMsg);
-                appLogger.error(`❌ ${errorMsg}`);
-            }
-        }
-        
-        // Step 3: Clear active-course-list
-        appLogger.log('🧹 Clearing active-course-list...');
-        try {
-            const activeCourseListCollection = mongoDB.db.collection('active-course-list');
-            const deleteResult = await activeCourseListCollection.deleteMany({});
-            appLogger.log(`✅ Deleted ${deleteResult.deletedCount} course(s) from active-course-list`);
-        } catch (error) {
-            const errorMsg = `Failed to clear active-course-list: ${error instanceof Error ? error.message : 'Unknown error'}`;
-            errors.push(errorMsg);
-            appLogger.error(`❌ ${errorMsg}`);
-        }
-        
-        // Step 4: Clear active-users
-        appLogger.log('🧹 Clearing active-users...');
-        try {
-            const activeUsersCollection = mongoDB.db.collection('active-users');
-            const deleteResult = await activeUsersCollection.deleteMany({});
-            appLogger.log(`✅ Deleted ${deleteResult.deletedCount} user(s) from active-users`);
-        } catch (error) {
-            const errorMsg = `Failed to clear active-users: ${error instanceof Error ? error.message : 'Unknown error'}`;
-            errors.push(errorMsg);
-            appLogger.error(`❌ ${errorMsg}`);
-        }
-        
-        // Step 5: Wipe vector database using NuclearClearRAGDatabase
-        let qdrantDeleted = 0;
-        const qdrantErrors: string[] = [];
-        try {
-            const ragApp = await RAGApp.getInstance();
-            const qdrantResult = await ragApp.NuclearClearRAGDatabase();
-            qdrantDeleted = qdrantResult.deletedCount;
-            if (qdrantResult.errors && qdrantResult.errors.length > 0) {
-                qdrantErrors.push(...qdrantResult.errors);
-            }
-            appLogger.log(`✅ Deleted ${qdrantDeleted} Qdrant document(s) (nuclear clear)`);
-        } catch (error) {
-            const errorMsg = `Failed to clear vector database: ${error instanceof Error ? error.message : 'Unknown error'}`;
-            qdrantErrors.push(errorMsg);
-            appLogger.error(`❌ ${errorMsg}`);
-            // Continue even if Qdrant fails
-        }
-        
-        let message = `Database reset successfully. Dropped ${droppedCollections.length} collection(s), cleared active-course-list and active-users, deleted ${qdrantDeleted} Qdrant document(s).`;
-        if (errors.length > 0 || qdrantErrors.length > 0) {
-            const allErrors = [...errors, ...qdrantErrors];
-            message += ` (${allErrors.length} error(s) occurred)`;
-        }
-        
-        appLogger.log(`✅ ${message}`);
-        
-        res.status(200).json({
-            success: true,
-            message: message,
-            data: {
-                droppedCollections: droppedCollections,
-                qdrantDeleted: qdrantDeleted,
-                errors: [...errors, ...qdrantErrors]
-            }
-        });
-        
-    } catch (error) {
-        appLogger.error('❌ Error resetting database:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to reset database',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
-    }
-}));
-
-// POST /api/courses/admin/reset-mongodb - Reset MongoDB only (commented out)
-router.post('/admin/reset-mongodb', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        appLogger.log('🗑️ [ADMIN] Reset MongoDB request received');
-        
-        const mongoDB = await EngEAI_MongoDB.getInstance();
-        
-        // Step 1: Get all collections
-        const allCollections = await mongoDB.db.listCollections().toArray();
-        const collectionNames = allCollections.map(col => col.name);
-        
-        appLogger.log(`📋 Found ${collectionNames.length} collection(s) in database`);
-        
-        // Collections to preserve initially (will be cleared later)
-        const preservedCollections = ['active-course-list', 'active-users'];
-        
-        // Filter out collections to preserve
-        const collectionsToDrop = collectionNames.filter(
-            name => !preservedCollections.includes(name)
-        );
-        
-        appLogger.log(`🗑️ Dropping ${collectionsToDrop.length} collection(s)`);
-        
-        // Step 2: Drop all collections except preserved ones
-        const droppedCollections: string[] = [];
-        const errors: string[] = [];
-        
-        for (const collectionName of collectionsToDrop) {
-            try {
-                const dropResult = await mongoDB.dropCollection(collectionName);
-                if (dropResult.success) {
-                    droppedCollections.push(collectionName);
-                    appLogger.log(`✅ Dropped collection: ${collectionName}`);
-                } else {
-                    errors.push(`Failed to drop ${collectionName}: ${dropResult.error}`);
-                    appLogger.error(`❌ Failed to drop ${collectionName}:`, { error: dropResult.error });
-                }
-            } catch (error) {
-                const errorMsg = `Error dropping ${collectionName}: ${error instanceof Error ? error.message : 'Unknown error'}`;
-                errors.push(errorMsg);
-                appLogger.error(`❌ ${errorMsg}`);
-            }
-        }
-        
-        // Step 3: Clear active-course-list
-        appLogger.log('🧹 Clearing active-course-list...');
-        try {
-            const activeCourseListCollection = mongoDB.db.collection('active-course-list');
-            const deleteResult = await activeCourseListCollection.deleteMany({});
-            appLogger.log(`✅ Deleted ${deleteResult.deletedCount} course(s) from active-course-list`);
-        } catch (error) {
-            const errorMsg = `Failed to clear active-course-list: ${error instanceof Error ? error.message : 'Unknown error'}`;
-            errors.push(errorMsg);
-            appLogger.error(`❌ ${errorMsg}`);
-        }
-        
-        // Step 4: Clear active-users
-        appLogger.log('🧹 Clearing active-users...');
-        try {
-            const activeUsersCollection = mongoDB.db.collection('active-users');
-            const deleteResult = await activeUsersCollection.deleteMany({});
-            appLogger.log(`✅ Deleted ${deleteResult.deletedCount} user(s) from active-users`);
-        } catch (error) {
-            const errorMsg = `Failed to clear active-users: ${error instanceof Error ? error.message : 'Unknown error'}`;
-            errors.push(errorMsg);
-            appLogger.error(`❌ ${errorMsg}`);
-        }
-        
-        // Step 5: Recreate active-course-list and active-users as empty collections
-        appLogger.log('📝 Ensuring active-course-list and active-users collections exist...');
-        try {
-            // Check if collections exist, create if they don't
-            const collections = await mongoDB.db.listCollections({ name: 'active-course-list' }).toArray();
-            if (collections.length === 0) {
-                await mongoDB.db.createCollection('active-course-list');
-                appLogger.log('✅ Created active-course-list collection');
-            }
-            
-            const usersCollections = await mongoDB.db.listCollections({ name: 'active-users' }).toArray();
-            if (usersCollections.length === 0) {
-                await mongoDB.db.createCollection('active-users');
-                appLogger.log('✅ Created active-users collection');
-            }
-        } catch (error) {
-            const errorMsg = `Error ensuring collections exist: ${error instanceof Error ? error.message : 'Unknown error'}`;
-            errors.push(errorMsg);
-            appLogger.error(`❌ ${errorMsg}`);
-        }
-        
-        let message = `MongoDB reset successfully. Dropped ${droppedCollections.length} collection(s), cleared active-course-list and active-users.`;
-        if (errors.length > 0) {
-            message += ` (${errors.length} error(s) occurred)`;
-        }
-        
-        appLogger.log(`✅ ${message}`);
-        
-        // Log out the user gracefully (logout + destroy session)
-        req.logout((logoutErr) => {
-            if (logoutErr) {
-                appLogger.error('❌ Error during logout after MongoDB reset:', logoutErr);
-                errors.push(`Logout failed: ${logoutErr.message}`);
-            }
-            
-            // Destroy the session after logout
-            (req.session as any).destroy((sessionErr: any) => {
-                if (sessionErr) {
-                    appLogger.error('❌ Error destroying session after MongoDB reset:', sessionErr);
-                    errors.push(`Session destruction failed: ${sessionErr.message}`);
-                } else {
-                    appLogger.log('✅ Session destroyed successfully after MongoDB reset');
-                }
-                
-                res.status(200).json({
-                    success: true,
-                    message: message + ' You have been logged out.',
-                    data: {
-                        droppedCollections: droppedCollections,
-                        errors: errors
-                    }
-                });
-            });
-        });
-        
-    } catch (error) {
-        appLogger.error('❌ Error resetting MongoDB:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to reset MongoDB',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
-    }
-}));
-
-// POST /api/admin/reset-vector-database - Reset vector database only (commented out)
-router.post('/admin/reset-vector-database', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        appLogger.log('🗑️ [ADMIN] Reset Vector Database request received');
-        
-        // Wipe vector database using NuclearClearRAGDatabase
-        let qdrantDeleted = 0;
-        const qdrantErrors: string[] = [];
-        try {
-            const ragApp = await RAGApp.getInstance();
-            const qdrantResult = await ragApp.NuclearClearRAGDatabase();
-            qdrantDeleted = qdrantResult.deletedCount;
-            if (qdrantResult.errors && qdrantResult.errors.length > 0) {
-                qdrantErrors.push(...qdrantResult.errors);
-            }
-            appLogger.log(`✅ Deleted ${qdrantDeleted} Qdrant document(s) (nuclear clear)`);
-        } catch (error) {
-            const errorMsg = `Failed to clear vector database: ${error instanceof Error ? error.message : 'Unknown error'}`;
-            qdrantErrors.push(errorMsg);
-            appLogger.error(`❌ ${errorMsg}`);
-            throw error;
-        }
-        
-        let message = `Vector database reset successfully. Deleted ${qdrantDeleted} Qdrant document(s).`;
-        if (qdrantErrors.length > 0) {
-            message += ` (${qdrantErrors.length} error(s) occurred)`;
-        }
-        
-        appLogger.log(`✅ ${message}`);
-        
-        res.status(200).json({
-            success: true,
-            message: message,
-            data: {
-                qdrantDeleted: qdrantDeleted,
-                errors: qdrantErrors
-            }
-        });
-        
-    } catch (error) {
-        appLogger.error('❌ Error resetting vector database:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to reset vector database',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
-    }
-}));
-*/
-// END COMMENTED OUT: Admin routes
 
 // ===========================================
 // MONITOR ROUTES (Instructor Only)
@@ -4096,118 +3846,7 @@ router.get('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Requ
 // ===========================================
 // ========= MEMORY AGENT (STRUGGLE WORDS) ===
 // ===========================================
-// COMMENTED OUT: Privilege action - List/Remove struggle words (frontend removed)
-/*
-// GET /api/courses/:courseId/memory-agent/struggle-words - Get struggle words for instructor (REQUIRES AUTH)
-router.get('/:courseId/memory-agent/struggle-words', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const globalUser = (req.session as any).globalUser;
-        if (!globalUser || globalUser.affiliation !== 'faculty') {
-            return res.status(403).json({
-                success: false,
-                error: 'Instructor access required'
-            });
-        }
 
-        const { courseId } = req.params;
-        const instance = await EngEAI_MongoDB.getInstance();
-        const course = await instance.getActiveCourse(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                error: 'Course not found'
-            });
-        }
-
-        const courseData = course as unknown as activeCourse;
-        const instructorUserId = globalUser.userId;
-        const isInstructorInArray = (instructors: any[]): boolean => {
-            if (!instructors || instructors.length === 0) return false;
-            return instructors.some(inst => {
-                if (typeof inst === 'string') return inst === instructorUserId;
-                if (inst && inst.userId) return inst.userId === instructorUserId;
-                return false;
-            });
-        };
-
-        if (!isInstructorInArray(courseData.instructors || [])) {
-            return res.status(403).json({
-                success: false,
-                error: 'You do not have permission to access this course'
-            });
-        }
-
-        const struggleWords = await memoryAgent.getStruggleWords(instructorUserId, courseData.courseName);
-        const filtered = struggleWords.filter(w => !w.startsWith('---'));
-        res.json({ success: true, data: filtered });
-    } catch (error) {
-        appLogger.error('Error getting struggle words:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to get struggle words',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
-    }
-}));
-
-// DELETE /api/courses/:courseId/memory-agent/struggle-words - Remove all struggle words for instructor (REQUIRES AUTH)
-router.delete('/:courseId/memory-agent/struggle-words', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const globalUser = (req.session as any).globalUser;
-        if (!globalUser || globalUser.affiliation !== 'faculty') {
-            return res.status(403).json({
-                success: false,
-                error: 'Instructor access required'
-            });
-        }
-
-        const { courseId } = req.params;
-        const instance = await EngEAI_MongoDB.getInstance();
-        const course = await instance.getActiveCourse(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                error: 'Course not found'
-            });
-        }
-
-        const courseData = course as unknown as activeCourse;
-        const instructorUserId = globalUser.userId;
-        const isInstructorInArray = (instructors: any[]): boolean => {
-            if (!instructors || instructors.length === 0) return false;
-            return instructors.some(inst => {
-                if (typeof inst === 'string') return inst === instructorUserId;
-                if (inst && inst.userId) return inst.userId === instructorUserId;
-                return false;
-            });
-        };
-
-        if (!isInstructorInArray(courseData.instructors || [])) {
-            return res.status(403).json({
-                success: false,
-                error: 'You do not have permission to access this course'
-            });
-        }
-
-        const struggleWords = await memoryAgent.getStruggleWords(instructorUserId, courseData.courseName);
-        const filtered = struggleWords.filter(w => !w.startsWith('---'));
-        await instance.updateMemoryAgentStruggleWords(courseData.courseName, instructorUserId, []);
-        res.json({
-            success: true,
-            data: { removed: filtered, count: filtered.length },
-            message: `Removed ${filtered.length} struggle words`
-        });
-    } catch (error) {
-        appLogger.error('Error removing struggle words:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to remove struggle words',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
-    }
-}));
-*/
-// END COMMENTED OUT: Struggle words endpoints
 
 /**
  * POST /:courseId/assistant-prompts
@@ -4553,551 +4192,6 @@ router.post('/:courseId/assistant-prompts/:promptId/select', asyncHandlerWithAut
 }));
 
 // ===========================================
-// ========= SYSTEM PROMPT ITEMS API ========
+// ========= SYSTEM PROMPT CONFIG API (v2) ==
 // ===========================================
-
-/**
- * GET /:courseId/system-prompts
- * Get all system prompt items for a course. Instructors only.
- *
- * @route GET /api/courses/:courseId/system-prompts
- * @param {string} courseId - Course ID (path param)
- * @returns {object} { success: boolean, data?: SystemPromptItem[], error?: string }
- * @response 200 - Success
- * @response 403 - Instructor access required or not in course
- * @response 404 - Course not found
- * @response 500 - Failed to get system prompts
- */
-router.get('/:courseId/system-prompts', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const globalUser = (req.session as any).globalUser;
-        if (!globalUser || globalUser.affiliation !== 'faculty') {
-            return res.status(403).json({
-                success: false,
-                error: 'Instructor access required'
-            });
-        }
-
-        const { courseId } = req.params;
-        const instance = await EngEAI_MongoDB.getInstance();
-        
-        // Verify instructor is in course's instructors array
-        const course = await instance.getActiveCourse(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                error: 'Course not found'
-            });
-        }
-
-        const courseData = course as unknown as activeCourse;
-        const instructorUserId = globalUser.userId;
-        
-        // Helper function to check if instructor is in the array (handles both old and new formats)
-        const isInstructorInArray = (instructors: any[]): boolean => {
-            if (!instructors || instructors.length === 0) return false;
-            return instructors.some(inst => {
-                if (typeof inst === 'string') {
-                    return inst === instructorUserId;
-                } else if (inst && inst.userId) {
-                    return inst.userId === instructorUserId;
-                }
-                return false;
-            });
-        };
-
-        if (!isInstructorInArray(courseData.instructors || [])) {
-            return res.status(403).json({
-                success: false,
-                error: 'You do not have permission to access this course'
-            });
-        }
-
-        // Ensure default components exist before returning items
-        await instance.ensureDefaultSystemPromptComponents(courseId, courseData.courseName);
-
-        const items = await instance.getSystemPromptItems(courseId);
-        
-        res.json({
-            success: true,
-            data: items
-        });
-    } catch (error) {
-        appLogger.error('Error getting system prompt items:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to get system prompt items',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
-    }
-}));
-
-/**
- * POST /:courseId/system-prompts
- * Create a new system prompt item. Instructors only.
- *
- * @route POST /api/courses/:courseId/system-prompts
- * @param {string} courseId - Course ID (path param)
- * @param {object} body - System prompt item data (body)
- * @returns {object} { success: boolean, data?: SystemPromptItem, error?: string }
- * @response 201 - System prompt item created successfully
- * @response 400 - Validation error
- * @response 403 - Instructor access required or not in course
- * @response 404 - Course not found
- * @response 500 - Failed to create system prompt item
- */
-router.post('/:courseId/system-prompts', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const globalUser = (req.session as any).globalUser;
-        if (!globalUser || globalUser.affiliation !== 'faculty') {
-            return res.status(403).json({
-                success: false,
-                error: 'Instructor access required'
-            });
-        }
-
-        const { courseId } = req.params;
-        const { title, content } = req.body;
-
-        if (!title || typeof title !== 'string' || title.trim() === '') {
-            return res.status(400).json({
-                success: false,
-                error: 'Title is required'
-            });
-        }
-        
-        // Content can be empty, so we allow it
-
-        const instance = await EngEAI_MongoDB.getInstance();
-        
-        // Verify instructor is in course's instructors array
-        const course = await instance.getActiveCourse(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                error: 'Course not found'
-            });
-        }
-
-        const courseData = course as unknown as activeCourse;
-        const instructorUserId = globalUser.userId;
-        
-        const isInstructorInArray = (instructors: any[]): boolean => {
-            if (!instructors || instructors.length === 0) return false;
-            return instructors.some(inst => {
-                if (typeof inst === 'string') {
-                    return inst === instructorUserId;
-                } else if (inst && inst.userId) {
-                    return inst.userId === instructorUserId;
-                }
-                return false;
-            });
-        };
-
-        if (!isInstructorInArray(courseData.instructors || [])) {
-            return res.status(403).json({
-                success: false,
-                error: 'You do not have permission to access this course'
-            });
-        }
-
-        // Generate ID for the new item
-        const dateCreated = new Date();
-        const itemId = instance.idGenerator.initialAssistantPromptID(title, courseData.courseName, dateCreated);
-
-        const newItem: SystemPromptItem = {
-            id: itemId,
-            title: title.trim(),
-            content: content ? content.trim() : '',
-            dateCreated: dateCreated,
-            isAppended: false, // Default to not appended
-            componentType: 'custom'
-        };
-
-        await instance.createSystemPromptItem(courseId, newItem);
-        
-        res.status(201).json({
-            success: true,
-            data: newItem,
-            message: 'System prompt item created successfully'
-        });
-    } catch (error) {
-        appLogger.error('Error creating system prompt item:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to create system prompt item',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
-    }
-}));
-
-/**
- * PUT /:courseId/system-prompts/:itemId
- * Update a system prompt item. Instructors only.
- *
- * @route PUT /api/courses/:courseId/system-prompts/:itemId
- * @param {string} courseId - Course ID (path param)
- * @param {string} itemId - System prompt item ID (path param)
- * @param {object} body - Update payload (body)
- * @returns {object} { success: boolean, data?: SystemPromptItem, error?: string }
- * @response 200 - System prompt item updated successfully
- * @response 400 - Validation error
- * @response 403 - Instructor access required or not in course
- * @response 404 - Course or item not found
- * @response 500 - Failed to update system prompt item
- */
-router.put('/:courseId/system-prompts/:itemId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const globalUser = (req.session as any).globalUser;
-        if (!globalUser || globalUser.affiliation !== 'faculty') {
-            return res.status(403).json({
-                success: false,
-                error: 'Instructor access required'
-            });
-        }
-
-        const { courseId, itemId } = req.params;
-        const { title, content } = req.body;
-
-        if (!title && content === undefined) {
-            return res.status(400).json({
-                success: false,
-                error: 'At least one field (title or content) is required'
-            });
-        }
-
-        const instance = await EngEAI_MongoDB.getInstance();
-        
-        // Verify instructor is in course's instructors array
-        const course = await instance.getActiveCourse(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                error: 'Course not found'
-            });
-        }
-
-        const courseData = course as unknown as activeCourse;
-        const instructorUserId = globalUser.userId;
-        
-        const isInstructorInArray = (instructors: any[]): boolean => {
-            if (!instructors || instructors.length === 0) return false;
-            return instructors.some(inst => {
-                if (typeof inst === 'string') {
-                    return inst === instructorUserId;
-                } else if (inst && inst.userId) {
-                    return inst.userId === instructorUserId;
-                }
-                return false;
-            });
-        };
-
-        if (!isInstructorInArray(courseData.instructors || [])) {
-            return res.status(403).json({
-                success: false,
-                error: 'You do not have permission to access this course'
-            });
-        }
-
-        const updates: Partial<SystemPromptItem> = {};
-        if (title !== undefined) updates.title = title.trim();
-        if (content !== undefined) updates.content = content.trim();
-
-        await instance.updateSystemPromptItem(courseId, itemId, updates);
-        
-        // Get updated item
-        const items = await instance.getSystemPromptItems(courseId);
-        const updatedItem = items.find(item => item.id === itemId);
-        
-        res.json({
-            success: true,
-            data: updatedItem,
-            message: 'System prompt item updated successfully'
-        });
-    } catch (error) {
-        appLogger.error('Error updating system prompt item:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-        if (errorMessage.includes('Cannot edit the default base system prompt component')) {
-            return res.status(400).json({
-                success: false,
-                error: errorMessage
-            });
-        }
-
-        res.status(500).json({
-            success: false,
-            error: 'Failed to update system prompt item',
-            details: errorMessage
-        });
-    }
-}));
-
-/**
- * DELETE /:courseId/system-prompts/:itemId
- * Delete a system prompt item. Instructors only.
- *
- * @route DELETE /api/courses/:courseId/system-prompts/:itemId
- * @param {string} courseId - Course ID (path param)
- * @param {string} itemId - System prompt item ID (path param)
- * @returns {object} { success: boolean, message?: string, error?: string }
- * @response 200 - System prompt item deleted successfully
- * @response 403 - Instructor access required or not in course
- * @response 404 - Course or item not found
- * @response 500 - Failed to delete system prompt item
- */
-router.delete('/:courseId/system-prompts/:itemId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const globalUser = (req.session as any).globalUser;
-        if (!globalUser || globalUser.affiliation !== 'faculty') {
-            return res.status(403).json({
-                success: false,
-                error: 'Instructor access required'
-            });
-        }
-
-        const { courseId, itemId } = req.params;
-        const instance = await EngEAI_MongoDB.getInstance();
-        
-        // Verify instructor is in course's instructors array
-        const course = await instance.getActiveCourse(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                error: 'Course not found'
-            });
-        }
-
-        const courseData = course as unknown as activeCourse;
-        const instructorUserId = globalUser.userId;
-        
-        const isInstructorInArray = (instructors: any[]): boolean => {
-            if (!instructors || instructors.length === 0) return false;
-            return instructors.some(inst => {
-                if (typeof inst === 'string') {
-                    return inst === instructorUserId;
-                } else if (inst && inst.userId) {
-                    return inst.userId === instructorUserId;
-                }
-                return false;
-            });
-        };
-
-        if (!isInstructorInArray(courseData.instructors || [])) {
-            return res.status(403).json({
-                success: false,
-                error: 'You do not have permission to access this course'
-            });
-        }
-
-        await instance.deleteSystemPromptItem(courseId, itemId);
-        
-        res.json({
-            success: true,
-            message: 'System prompt item deleted successfully'
-        });
-    } catch (error) {
-        appLogger.error('Error deleting system prompt item:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        
-        // Check if error is about default components
-        if (errorMessage.includes('Cannot delete')) {
-            return res.status(400).json({
-                success: false,
-                error: errorMessage
-            });
-        }
-        
-        res.status(500).json({
-            success: false,
-            error: 'Failed to delete system prompt item',
-            details: errorMessage
-        });
-    }
-}));
-
-/**
- * POST /:courseId/system-prompts/:itemId/append
- * Toggle append status for a system prompt item. Instructors only.
- *
- * @route POST /api/courses/:courseId/system-prompts/:itemId/append
- * @param {string} courseId - Course ID (path param)
- * @param {string} itemId - System prompt item ID (path param)
- * @returns {object} { success: boolean, data?: SystemPromptItem, error?: string }
- * @response 200 - Append status toggled successfully
- * @response 403 - Instructor access required or not in course
- * @response 404 - Course or item not found
- * @response 500 - Failed to toggle append status
- */
-router.post('/:courseId/system-prompts/:itemId/append', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const globalUser = (req.session as any).globalUser;
-        if (!globalUser || globalUser.affiliation !== 'faculty') {
-            return res.status(403).json({
-                success: false,
-                error: 'Instructor access required'
-            });
-        }
-
-        const { courseId, itemId } = req.params;
-        const { append } = req.body;
-
-        if (typeof append !== 'boolean') {
-            return res.status(400).json({
-                success: false,
-                error: 'append field must be a boolean'
-            });
-        }
-
-        const instance = await EngEAI_MongoDB.getInstance();
-        
-        // Verify instructor is in course's instructors array
-        const course = await instance.getActiveCourse(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                error: 'Course not found'
-            });
-        }
-
-        const courseData = course as unknown as activeCourse;
-        const instructorUserId = globalUser.userId;
-        
-        const isInstructorInArray = (instructors: any[]): boolean => {
-            if (!instructors || instructors.length === 0) return false;
-            return instructors.some(inst => {
-                if (typeof inst === 'string') {
-                    return inst === instructorUserId;
-                } else if (inst && inst.userId) {
-                    return inst.userId === instructorUserId;
-                }
-                return false;
-            });
-        };
-
-        if (!isInstructorInArray(courseData.instructors || [])) {
-            return res.status(403).json({
-                success: false,
-                error: 'You do not have permission to access this course'
-            });
-        }
-
-        await instance.toggleSystemPromptItemAppend(courseId, itemId, append);
-        
-        // Get updated item
-        const items = await instance.getSystemPromptItems(courseId);
-        const updatedItem = items.find(item => item.id === itemId);
-        
-        res.json({
-            success: true,
-            data: updatedItem,
-            message: `System prompt item ${append ? 'appended' : 'removed'} successfully`
-        });
-    } catch (error) {
-        appLogger.error('Error toggling system prompt item append status:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to toggle append status',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
-    }
-}));
-
-/**
- * POST /:courseId/system-prompts/save-changes
- * Save multiple append status changes for system prompt items. Instructors only.
- *
- * @route POST /api/courses/:courseId/system-prompts/save-changes
- * @param {string} courseId - Course ID (path param)
- * @param {object} body - Array of items with append status changes (body)
- * @returns {object} { success: boolean, data?: object, error?: string }
- * @response 200 - Changes saved successfully
- * @response 400 - Validation error
- * @response 403 - Instructor access required or not in course
- * @response 404 - Course not found
- * @response 500 - Failed to save changes
- */
-router.post('/:courseId/system-prompts/save-changes', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const globalUser = (req.session as any).globalUser;
-        if (!globalUser || globalUser.affiliation !== 'faculty') {
-            return res.status(403).json({
-                success: false,
-                error: 'Instructor access required'
-            });
-        }
-
-        const { courseId } = req.params;
-        const { changes } = req.body;
-
-        if (!Array.isArray(changes)) {
-            return res.status(400).json({
-                success: false,
-                error: 'changes must be an array'
-            });
-        }
-
-        // Validate changes array
-        for (const change of changes) {
-            if (!change.itemId || typeof change.append !== 'boolean') {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Each change must have itemId (string) and append (boolean)'
-                });
-            }
-        }
-
-        const instance = await EngEAI_MongoDB.getInstance();
-        
-        // Verify instructor is in course's instructors array
-        const course = await instance.getActiveCourse(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                error: 'Course not found'
-            });
-        }
-
-        const courseData = course as unknown as activeCourse;
-        const instructorUserId = globalUser.userId;
-        
-        const isInstructorInArray = (instructors: any[]): boolean => {
-            if (!instructors || instructors.length === 0) return false;
-            return instructors.some(inst => {
-                if (typeof inst === 'string') {
-                    return inst === instructorUserId;
-                } else if (inst && inst.userId) {
-                    return inst.userId === instructorUserId;
-                }
-                return false;
-            });
-        };
-
-        if (!isInstructorInArray(courseData.instructors || [])) {
-            return res.status(403).json({
-                success: false,
-                error: 'You do not have permission to access this course'
-            });
-        }
-
-        await instance.saveSystemPromptAppendChanges(courseId, changes);
-        
-        // Get all updated items
-        const items = await instance.getSystemPromptItems(courseId);
-        
-        res.json({
-            success: true,
-            data: items,
-            message: 'System prompt changes saved successfully'
-        });
-    } catch (error) {
-        appLogger.error('Error saving system prompt changes:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to save system prompt changes',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
-    }
-}));
-
-
+mountSystemPromptConfigRoutes(router);

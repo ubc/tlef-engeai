@@ -7,7 +7,12 @@
  * Uses positional `arrayFilters` for deep updates; `addContentItem` still does read-modify-write for legacy reasons.
  */
 
-import type { activeCourse, AdditionalMaterial, LearningObjectiveForDisplay } from '../../types/shared';
+import type {
+    activeCourse,
+    AdditionalMaterial,
+    InstructorStruggleTopicForDisplay,
+    LearningObjectiveForDisplay
+} from '../../types/shared';
 import type { MongoDalContext } from './mongo-context';
 import { activeCourseListCollection } from './mongo-collections';
 import { getActiveCourse, updateActiveCourse } from './course-mongo';
@@ -185,6 +190,178 @@ export async function getAllLearningObjectives(
             $project: {
                 _id: 0,
                 LearningObjective: '$topicOrWeekInstances.items.learningObjectives.LearningObjective',
+                topicOrWeekTitle: { $ifNull: ['$topicOrWeekInstances.title', ''] },
+                itemTitle: {
+                    $ifNull: [
+                        '$topicOrWeekInstances.items.itemTitle',
+                        { $ifNull: ['$topicOrWeekInstances.items.title', ''] }
+                    ]
+                }
+            }
+        }
+    ]).toArray();
+    return results;
+}
+
+/**
+ * addInstructorStruggleTopic
+ *
+ * `$push` one instructor struggle topic onto a specific content item within a topic/week instance.
+ *
+ * @param ctx - MongoDalContext
+ * @param courseId - string — `activeCourse.id`
+ * @param topicOrWeekId - string — nested `topicOrWeekInstances.id`
+ * @param contentId - string — nested `items.id`
+ * @param struggleTopic - `InstructorStruggleTopic` payload stored in `instructorStruggleTopics[]`
+ *
+ * @returns `findOneAndUpdate` result (post-update document per driver options)
+ *
+ * Actions:
+ * - Match course + topic + item path, push into `instructorStruggleTopics`, set top-level `updatedAt`.
+ */
+export async function addInstructorStruggleTopic(
+    ctx: MongoDalContext,
+    courseId: string,
+    topicOrWeekId: string,
+    contentId: string,
+    struggleTopic: any
+) {
+    const result = await activeCourseListCollection(ctx.db).findOneAndUpdate(
+        {
+            id: courseId,
+            'topicOrWeekInstances.id': topicOrWeekId,
+            'topicOrWeekInstances.items.id': contentId
+        },
+        {
+            $push: {
+                'topicOrWeekInstances.$[instance].items.$[item].instructorStruggleTopics': struggleTopic
+            },
+            $set: { updatedAt: Date.now().toString() }
+        },
+        {
+            arrayFilters: [{ 'instance.id': topicOrWeekId }, { 'item.id': contentId }],
+            returnDocument: 'after'
+        }
+    );
+    return result;
+}
+
+/**
+ * updateInstructorStruggleTopic
+ *
+ * Patches the textual `struggleTopic` field and entry-level `updatedAt` for one catalog id.
+ *
+ * @param ctx - MongoDalContext
+ * @param courseId - string
+ * @param topicOrWeekId - string
+ * @param contentId - string
+ * @param struggleTopicId - string — id inside `instructorStruggleTopics`
+ * @param updateData - `{ struggleTopic }` — sanitized label text from the API layer
+ *
+ * @returns `findOneAndUpdate` post image
+ */
+export async function updateInstructorStruggleTopic(
+    ctx: MongoDalContext,
+    courseId: string,
+    topicOrWeekId: string,
+    contentId: string,
+    struggleTopicId: string,
+    updateData: { struggleTopic: string }
+) {
+    return await activeCourseListCollection(ctx.db).findOneAndUpdate(
+        {
+            id: courseId,
+            'topicOrWeekInstances.id': topicOrWeekId,
+            'topicOrWeekInstances.items.id': contentId,
+            'topicOrWeekInstances.items.instructorStruggleTopics.id': struggleTopicId
+        },
+        {
+            $set: {
+                'topicOrWeekInstances.$[instance].items.$[item].instructorStruggleTopics.$[topic].struggleTopic':
+                    updateData.struggleTopic,
+                'topicOrWeekInstances.$[instance].items.$[item].instructorStruggleTopics.$[topic].updatedAt':
+                    Date.now().toString(),
+                updatedAt: Date.now().toString()
+            }
+        },
+        {
+            arrayFilters: [
+                { 'instance.id': topicOrWeekId },
+                { 'item.id': contentId },
+                { 'topic.id': struggleTopicId }
+            ],
+            returnDocument: 'after'
+        }
+    );
+}
+
+/**
+ * deleteInstructorStruggleTopic
+ *
+ * Removes one instructor struggle topic row via `$pull`.
+ *
+ * @param ctx - MongoDalContext
+ * @param courseId - string
+ * @param topicOrWeekId - string
+ * @param contentId - string
+ * @param struggleTopicId - string — id to pull from `instructorStruggleTopics`
+ *
+ * @returns `findOneAndUpdate` post image
+ */
+export async function deleteInstructorStruggleTopic(
+    ctx: MongoDalContext,
+    courseId: string,
+    topicOrWeekId: string,
+    contentId: string,
+    struggleTopicId: string
+) {
+    const result = await activeCourseListCollection(ctx.db).findOneAndUpdate(
+        {
+            id: courseId,
+            'topicOrWeekInstances.id': topicOrWeekId,
+            'topicOrWeekInstances.items.id': contentId
+        },
+        {
+            $pull: {
+                'topicOrWeekInstances.$[instance].items.$[item].instructorStruggleTopics': { id: struggleTopicId }
+            } as any,
+            $set: { updatedAt: Date.now().toString() }
+        },
+        {
+            arrayFilters: [{ 'instance.id': topicOrWeekId }, { 'item.id': contentId }],
+            returnDocument: 'after'
+        }
+    );
+    return result;
+}
+
+/**
+ * getAllInstructorStruggleTopics
+ *
+ * Aggregation that **flattens** every nested instructor struggle topic with parent titles.
+ *
+ * @param ctx - MongoDalContext
+ * @param courseId - string
+ *
+ * @returns Promise<InstructorStruggleTopicForDisplay[]>
+ *
+ * Actions:
+ * - `$match` → `$unwind` instances/items/topics → `$project` with `topicOrWeekTitle`, `itemTitle`, `struggleTopic` text.
+ * - Used by the memory agent to build the allowed label set and prompt catalog XML (not injected into main chat system prompt).
+ */
+export async function getAllInstructorStruggleTopics(
+    ctx: MongoDalContext,
+    courseId: string
+): Promise<InstructorStruggleTopicForDisplay[]> {
+    const results = await activeCourseListCollection(ctx.db).aggregate<InstructorStruggleTopicForDisplay>([
+        { $match: { id: courseId } },
+        { $unwind: '$topicOrWeekInstances' },
+        { $unwind: '$topicOrWeekInstances.items' },
+        { $unwind: '$topicOrWeekInstances.items.instructorStruggleTopics' },
+        {
+            $project: {
+                _id: 0,
+                struggleTopic: '$topicOrWeekInstances.items.instructorStruggleTopics.struggleTopic',
                 topicOrWeekTitle: { $ifNull: ['$topicOrWeekInstances.title', ''] },
                 itemTitle: {
                     $ifNull: [

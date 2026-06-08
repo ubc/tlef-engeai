@@ -5,7 +5,6 @@
  * 
  * @author: @gatahcha
  * @date: 2026-03-07
- * @latest app version: 1.2.9.9
  * @description: Student entry point. Chat interface, profile, flag history, about. Handles onboarding, sidebar navigation, ChatManager.
  */
 
@@ -664,7 +663,9 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                 
                 const restoreData = await restoreResponse.json();
                 if (restoreData.success) {
-                    // Chat restored, now switch to it
+                    if (restoreData.chat) {
+                        chatManager.ingestChatFromRestore(restoreData.chat);
+                    }
                     await chatManager.setActiveChatId(chatId);
                     chatManager.renderActiveChat();
                     // console.log('[STUDENT-MODE] ✅ Chat restored and loaded:', chatId);

@@ -5,16 +5,84 @@
  * 
  * @author: @gatahcha
  * @date: 2025-01-27
- * @latest app version: 1.2.9.9
  * @description: API helpers for chat CRUD, send message, pin/unpin, dismiss unstruggle block.
  */
 
-import { 
-    Chat, 
-    CreateChatRequest, 
-    CreateChatResponse, 
-    ChatApiResponse 
+import {
+    Chat,
+    ConversationModeCatalogItem,
+    CreateChatRequest,
+    CreateChatResponse,
+    ChatApiResponse,
+    ConversationModeId,
+    UpdateChatConversationModeResponse,
 } from '../types.js';
+
+export interface ConversationModesApiResponse {
+    success: boolean;
+    modes?: ConversationModeCatalogItem[];
+    defaultConversationMode?: ConversationModeId;
+    error?: string;
+}
+
+/**
+ * fetchConversationModes
+ * GET /api/chat/conversation-modes — catalog labels only (no prompts).
+ */
+export async function fetchConversationModes(): Promise<ConversationModesApiResponse> {
+    try {
+        const response = await fetch('/api/chat/conversation-modes');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching conversation modes:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred',
+        };
+    }
+}
+
+/**
+ * updateChatConversationMode
+ *
+ * @param chatId string — ID of the welcome-only chat
+ * @param conversationMode ConversationModeId — requested teaching mode
+ * @returns Promise<UpdateChatConversationModeResponse> — persisted mode or error
+ * PATCH /api/chat/:chatId/conversation-mode. The server rejects chats with user messages.
+ */
+export async function updateChatConversationMode(
+    chatId: string,
+    conversationMode: ConversationModeId
+): Promise<UpdateChatConversationModeResponse> {
+    try {
+        const response = await fetch(`/api/chat/${chatId}/conversation-mode`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ conversationMode }),
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+            return {
+                success: false,
+                error: result.error || `HTTP error! status: ${response.status}`,
+            };
+        }
+
+        return result;
+    } catch (error) {
+        console.error('Error updating chat conversation mode:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred',
+        };
+    }
+}
 
 /**
  * createNewChat

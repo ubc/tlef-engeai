@@ -5,7 +5,7 @@
  * @description User-scoped **chat threads** embedded on each `{courseName}_users` document (`chats[]`) with soft-delete and pin metadata.
  */
 
-import type { Chat, ChatMessage } from '../../types/shared';
+import type { Chat, ChatMessage, PersistedConversationModeId } from '../../types/shared';
 import type { MongoDalContext } from './mongo-context';
 import { getCourseUsersMongoCollection } from './course-user-mongo';
 import { appLogger } from '../../utils/logger';
@@ -215,6 +215,49 @@ export async function addMessageToChat(
         appLogger.log(`[MONGODB] ✅ Message added to chat successfully`);
     } catch (error) {
         appLogger.error(`[MONGODB] 🚨 Error adding message to chat:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Persists `conversationMode` on a chat when the field is missing, invalid, or being finalized.
+ *
+ * Idempotent: callers may write `'undeclared'`, `'socratic'`, or `'explanatory'` based on
+ * lazy-restore or first-send finalization rules.
+ * Uses positional `$` update on `{courseName}_users.chats[]` (same pattern as updateChatTitle).
+ *
+ * @param mode - Persisted lifecycle mode to write; default `'socratic'` for legacy backfill
+ * @returns `true` if MongoDB was updated
+ * @throws When no matching chat id under the user
+ */
+export async function ensureChatConversationMode(
+    ctx: MongoDalContext,
+    courseName: string,
+    userId: string,
+    chatId: string,
+    mode: PersistedConversationModeId = 'socratic'
+): Promise<boolean> {
+    appLogger.log(
+        `[MONGODB] 📝 Ensuring conversationMode=${mode} for chat ${chatId} (user userId: ${userId})`
+    );
+    try {
+        const userCollection = await getCourseUsersMongoCollection(ctx, courseName);
+        const result = await userCollection.updateOne(
+            { userId, 'chats.id': chatId },
+            {
+                $set: {
+                    'chats.$.conversationMode': mode,
+                    updatedAt: new Date(),
+                },
+            }
+        );
+        if (result.matchedCount === 0) {
+            throw new Error(`Chat not found with ID: ${chatId} for user userId: ${userId}`);
+        }
+        appLogger.log(`[MONGODB] ✅ conversationMode set to "${mode}" for chat ${chatId}`);
+        return result.modifiedCount > 0;
+    } catch (error) {
+        appLogger.error(`[MONGODB] 🚨 Error ensuring chat conversationMode:`, error);
         throw error;
     }
 }

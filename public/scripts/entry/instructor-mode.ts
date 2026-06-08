@@ -5,7 +5,6 @@
  * 
  * @author: @gatahcha
  * @date: 2026-03-07
- * @latest app version: 1.2.9.9
  * @description: Instructor entry point. Loads documents, flags, monitor, chat, assistant/system prompts. Handles onboarding, sidebar navigation, ChatManager.
  */
 
@@ -27,7 +26,7 @@ import { initializeCourseInformation } from '../feature/course-information.js';
 import { initializeCourseSummary, summonCourseSummary } from '../feature/course-summary.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
 import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from '../feature/assistant-prompts.js';
-import { initializeSystemPrompts, hasUnsavedSystemPromptChanges, resetUnsavedSystemPromptChanges } from '../feature/system-prompts.js';
+import { initializeSystemPrompts, flushSystemPromptOnLeave } from '../feature/system-prompts.js';
 import { 
     getCourseIdFromURL, 
     getInstructorViewFromURL, 
@@ -592,6 +591,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         try {
+            if (
+                document.getElementById('system-prompt-modules-list') &&
+                componentName !== 'system-prompts-instructor'
+            ) {
+                await flushSystemPromptOnLeave();
+            }
+
             const html = await loadComponentHTML(componentName);
 
             mainContentAreaEl.innerHTML = html;
@@ -1034,7 +1040,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (restoreResponse.ok) {
                     const restoreData = await restoreResponse.json();
                     if (restoreData.success) {
-                        // Chat restored, now switch to it
+                        if (restoreData.chat) {
+                            chatManager.ingestChatFromRestore(restoreData.chat);
+                        }
                         await chatManager.setActiveChatId(chatId);
                         chatManager.renderActiveChat();
                     } else {

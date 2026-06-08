@@ -17,7 +17,6 @@
  * 
  * @author: AI Assistant
  * @date: 2026-03-07
- * @latest app version: 1.2.9.9
  */
 
 import { loadComponentHTML } from "../api/api.js";

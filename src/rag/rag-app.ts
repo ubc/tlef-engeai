@@ -5,18 +5,27 @@
  * Moved from routes to functions for separation of business logic from HTTP layer.
  */
 
-import { RAGModule } from "ubc-genai-toolkit-rag";
+import { RAGModule, RetrievedChunk } from "ubc-genai-toolkit-rag";
 import { AppConfig, loadConfig } from "../utils/config";
 import { appLogger } from "../utils/logger";
 import { LLMModule } from "ubc-genai-toolkit-llm";
 import { DocumentParsingModule } from "ubc-genai-toolkit-document-parsing";
-import { AdditionalMaterial } from "../types/shared";
+import { AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem } from "../types/shared";
 import { EngEAI_MongoDB } from "../db/enge-ai-mongodb";
 import { IDGenerator } from "../utils/unique-id-generator";
+import { isDeveloperMode } from "../helpers/developer-mode";
 import path from "path";
 import fs from "fs";
 
 const config = loadConfig();
+
+export interface RetrieveForChatOptions {
+    limit?: number;
+    scoreThreshold?: number;
+}
+
+const DEFAULT_RETRIEVE_LIMIT = 5;
+const DEFAULT_RETRIEVE_SCORE_THRESHOLD = 0.4;
 
 export class RAGApp {
 
@@ -82,6 +91,101 @@ export class RAGApp {
     }
 
     /**
+     * Returns the initialized toolkit RAG module shared by ingest and chat retrieval.
+     *
+     * @throws Error when called before {@link initialize} completes
+     */
+    public getRagModule(): RAGModule {
+        if (!this.rag || typeof this.rag.retrieveContext !== 'function') {
+            throw new Error('RAGModule not initialized');
+        }
+        return this.rag;
+    }
+
+    /**
+     * Retrieves relevant document chunks for a student chat turn.
+     *
+     * Filters to published course items only. Skips retrieval in developer mode
+     * or when the RAG module is unavailable.
+     */
+    public async retrieveForChat(
+        query: string,
+        courseName: string,
+        options: RetrieveForChatOptions = {}
+    ): Promise<RetrievedChunk[]> {
+        const limit = options.limit ?? DEFAULT_RETRIEVE_LIMIT;
+        const scoreThreshold = options.scoreThreshold ?? DEFAULT_RETRIEVE_SCORE_THRESHOLD;
+
+        if (isDeveloperMode()) {
+            appLogger.log('[DEVELOPER-MODE] 🧪 Skipping RAG document retrieval');
+            return [];
+        }
+
+        if (!this.rag || typeof this.rag.retrieveContext !== 'function') {
+            appLogger.log(`DEBUG #118: RAG Query:`, query);
+            appLogger.warn('RAG module not available, skipping document retrieval');
+            return [];
+        }
+
+        try {
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const course = await mongoDB.getCourseByName(courseName);
+
+            if (!course) {
+                appLogger.warn(`Course not found: ${courseName}, skipping document retrieval`);
+                return [];
+            }
+
+            const publishedItemTitles: string[] = [];
+            if (course.topicOrWeekInstances) {
+                course.topicOrWeekInstances
+                    .filter(
+                        (instanceTopicOrWeek: TopicOrWeekInstance) =>
+                            instanceTopicOrWeek.published === true
+                    )
+                    .forEach((instanceTopicOrWeek: TopicOrWeekInstance) => {
+                        if (instanceTopicOrWeek.items) {
+                            instanceTopicOrWeek.items.forEach((item: TopicOrWeekItem) => {
+                                if (item.itemTitle && !publishedItemTitles.includes(item.itemTitle)) {
+                                    publishedItemTitles.push(item.itemTitle);
+                                }
+                            });
+                        }
+                    });
+            }
+
+            if (publishedItemTitles.length === 0) {
+                appLogger.debug(`No published items found for course: ${courseName}`);
+                return [];
+            }
+
+            const filter: Record<string, unknown> = {
+                must: [
+                    { key: 'courseName', match: { value: courseName } },
+                    { key: 'itemTitle', match: { any: publishedItemTitles } },
+                ],
+            };
+
+            const contextualQuery = ` ${query}`;
+
+            const results = await this.rag.retrieveContext(contextualQuery, {
+                limit,
+                scoreThreshold,
+                filter,
+            });
+
+            appLogger.log(`DEBUG #119: RAG Results:`, results);
+            appLogger.log(`DEBUG #119: RAG Results length:`, results.length);
+
+            return results;
+        } catch (error) {
+            appLogger.debug(`❌ RAG Error:`, error as Error);
+            appLogger.error('Error retrieving documents:', error as Error);
+            return [];
+        }
+    }
+
+    /**
      * Parse a document to extract text without uploading to RAG.
      * Used for preview before final submission.
      *
@@ -89,30 +193,46 @@ export class RAGApp {
      * @returns { extractedText: string; fileName?: string }
      */
     async parseDocument(input: { file?: { buffer: Buffer; originalname?: string }; text?: string }): Promise<{ extractedText: string; fileName?: string }> {
+
         if (input.text !== undefined) {
             return { extractedText: input.text };
         }
+
         if (!input.file) {
             throw new Error('Either file or text is required');
         }
+
+        // Validate the file extension
         const documentFileName = input.file.originalname || '';
         const fileExtension = documentFileName.split('.').pop()?.toLowerCase();
         const supportedExtensions = ['docx', 'md', 'pdf', 'html', 'htm', 'txt'];
+
+        // If the file extension is not supported, throw an error
         if (!fileExtension || !supportedExtensions.includes(fileExtension)) {
             throw new Error(`Unsupported file type: ${fileExtension}. Supported: ${supportedExtensions.join(', ')}`);
         }
+
+        // Create a temporary directory if it doesn't exist
         const tempDir = path.join(__dirname, '..', 'tempfiles');
         if (!fs.existsSync(tempDir)) {
             fs.mkdirSync(tempDir, { recursive: true });
         }
+
+        // Create a temporary file name
         const tempFileName = `${Date.now()}-${documentFileName}`;
         const filePath = path.join(tempDir, tempFileName);
+
+        // Write the file to the temporary directory
         try {
             fs.writeFileSync(filePath, (input.file as any).buffer);
+
+            // If the file extension is txt, read the file and return the extracted text
             if (fileExtension === 'txt') {
                 const extractedText = fs.readFileSync(filePath, 'utf8');
                 return { extractedText, fileName: documentFileName };
             }
+
+            // If the file extension is not txt, parse the file and return the extracted text
             const parseResult = await this.documentParser.parse({ filePath }, 'text');
             return { extractedText: parseResult.content, fileName: documentFileName };
         } finally {
@@ -365,12 +485,21 @@ export class RAGApp {
      * @param scoreThreshold - The score threshold for the search
      * @returns The result of the search
      */
-    async searchDocuments(query: string, courseName?: string, limit: number = 3, scoreThreshold: number = 0.7): Promise<any> {
+    async searchDocuments(
+        query: string,
+        courseName?: string,
+        limit: number = 3,
+        scoreThreshold: number = 0.4
+    ): Promise<RetrievedChunk[]> {
         if (!RAGApp.instance) {
             await this.initialize();
         }
-        const filter = courseName ? { courseName } : undefined;
-        return this.rag.retrieveContext(query, { limit, scoreThreshold, filter });
+
+        if (courseName) {
+            return this.retrieveForChat(query, courseName, { limit, scoreThreshold });
+        }
+
+        return this.rag.retrieveContext(query, { limit, scoreThreshold });
     }
 
     /**

@@ -1,8 +1,8 @@
 /**
- * Single source of truth for app version.
- * Format: Major.Basic.FrontendMinor.BackendMinor
- * - Frontend-only change → bump 3rd segment
- * - Backend-only change → bump 4th segment
+ * Re-export npm package version (SemVer MAJOR.MINOR.PATCH).
+ * Single source of truth: package.json "version" field.
  */
 
-export const appVersion = "1.2.9.10";
+import pkg from '../../package.json';
+
+export const appVersion: string = pkg.version;

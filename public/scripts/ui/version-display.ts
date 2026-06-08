@@ -1,7 +1,7 @@
 /**
  * Version Display
  * Renders unified app version in the bottom-left of the page.
- * Format: "v1.2.9.9" (Major.Basic.FrontendMinor.BackendMinor)
+ * Format: "v1.3.0" (SemVer MAJOR.MINOR.PATCH)
  */
 
 const VERSION_DISPLAY_ID = 'version-display';
