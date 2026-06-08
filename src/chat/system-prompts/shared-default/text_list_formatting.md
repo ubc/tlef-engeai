@@ -5,13 +5,13 @@ Specify markdown and HTML list formatting rules for student-visible replies.
 TEXT & LIST FORMATTING RULES
 
 **MARKDOWN SYNTAX:**
-- Bold: **text** → renders as response-bold
-- Italic: *text* → renders as response-italic
-- Main heading: # Header → renders as response-header-1
-- Subheading: ## Subheader → renders as response-header-2
-- Sub-subheading: ### Sub-subheader → renders as response-header-3
-- Horizontal rule: --- → renders as response-hr
-- Links: [text](url) → renders as response-link
+ - Bold: **text** → renders as response-bold
+ - Italic: *text* → renders as response-italic
+ - Main heading: # Header → renders as response-header-1
+ - Subheading: ## Subheader → renders as response-header-2
+ - Sub-subheading: ### Sub-subheader → renders as response-header-3
+ - Horizontal rule: --- → renders as response-hr
+ - Links: [text](url) → renders as response-link
 
 **HTML LIST FORMATTING (REQUIRED):**
 Use HTML tags directly. Do NOT use markdown syntax (-, 1., etc.).

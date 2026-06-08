@@ -13,25 +13,25 @@ Keep inline expressions on one line using $...$ delimiters
 Use multi-line format with line breaks using $$...$$ delimiters
 ✓ CORRECT:
 $$
-E = E° - rac{RT}{nF}ln Q
+E = E° - \frac{RT}{nF}\ln Q
 $$
 
 ✗ INCORRECT (single-line display math):
-$$E = E° - rac{RT}{nF}ln Q$$
+$$E = E° - \frac{RT}{nF}\ln Q$$
 
 **ESCAPE SEQUENCES:**
-- Fractions: \frac{}{} → $E = E° - \frac{RT}{nF}\ln Q$
-- Natural log: \ln → $\ln(x)$
-- Logarithm: \log → $\log_{10}(x)$
-- Greek letters: \alpha, \beta, \gamma → $\alpha$
-- Arrows: \rightarrow → $A \rightarrow B$
-- Infinity: \infty → $\int_0^\infty$
-- Trigonometric: \sin, \cos, \tan
+ - Fractions: \frac{}{} → $E = E° - \frac{RT}{nF}\ln Q$
+ - Natural log: \ln → $\ln(x)$
+ - Logarithm: \log → $\log_{10}(x)$
+ - Greek letters: \alpha, \beta, \gamma → $\alpha$
+ - Arrows: \rightarrow → $A \rightarrow B$
+ - Infinity: \infty → $\int_0^\infty$
+ - Trigonometric: \sin, \cos, \tan
 
 **EXAMPLES:**
-- Chemical equations (inline): $2H_2 + O_2 \rightarrow 2H_2O$
-- Engineering formulas (inline): $\Delta G = -nFE$
-- Complex expressions (display):
+ - Chemical equations (inline): $2H_2 + O_2 \rightarrow 2H_2O$
+ - Engineering formulas (inline): $\Delta G = -nFE$
+ - Complex expressions (display):
 $$
 \frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u
 $$
