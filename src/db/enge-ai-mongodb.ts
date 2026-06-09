@@ -205,6 +205,21 @@ export class EngEAI_MongoDB {
             objectiveId
         );
 
+    /** Rewrite `learningObjectives[]` order by id permutation (drag-reorder). */
+    public reorderLearningObjectives = async (
+        courseId: string,
+        topicOrWeekId: string,
+        contentId: string,
+        orderedIds: string[]
+    ) =>
+        TopicWeekMongo.reorderLearningObjectives(
+            this.ctx(),
+            courseId,
+            topicOrWeekId,
+            contentId,
+            orderedIds
+        );
+
     public getAllLearningObjectives = async (courseId: string) =>
         TopicWeekMongo.getAllLearningObjectives(this.ctx(), courseId);
 
@@ -253,6 +268,21 @@ export class EngEAI_MongoDB {
             topicOrWeekId,
             contentId,
             struggleTopicId
+        );
+
+    /** Rewrite `instructorStruggleTopics[]` order by id permutation (drag-reorder). */
+    public reorderInstructorStruggleTopics = async (
+        courseId: string,
+        topicOrWeekId: string,
+        contentId: string,
+        orderedIds: string[]
+    ) =>
+        TopicWeekMongo.reorderInstructorStruggleTopics(
+            this.ctx(),
+            courseId,
+            topicOrWeekId,
+            contentId,
+            orderedIds
         );
 
     /** Flatten all instructor struggle labels with topic/week and section titles (memory-agent catalog). */

@@ -486,7 +486,6 @@ body.onboarding-active .upload-modal-overlay {
 .upload-modal-overlay .modal-container {
     width: calc(100vw - 40px);
     max-width: 900px;
-    height: calc(100vh - 40px);
     background: var(--chat-bg);
     border: 1px solid var(--border-color);
     border-radius: 12px;

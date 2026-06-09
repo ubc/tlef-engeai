@@ -324,7 +324,10 @@ export class DocumentUploadModule {
             return {
                 success: true,
                 document: document,
-                chunksGenerated: result.data?.chunksGenerated || 0
+                chunksGenerated: result.data?.chunksGenerated || 0,
+                generatedStruggleTopics: result.data?.generatedStruggleTopics,
+                struggleGenerationSkipped: result.data?.struggleGenerationSkipped,
+                struggleGenerationWarning: result.data?.struggleGenerationWarning,
             };
 
         } catch (error) {
@@ -428,7 +431,10 @@ export class DocumentUploadModule {
             return {
                 success: true,
                 document: document,
-                chunksGenerated: result.data?.chunksGenerated || 0
+                chunksGenerated: result.data?.chunksGenerated || 0,
+                generatedStruggleTopics: result.data?.generatedStruggleTopics,
+                struggleGenerationSkipped: result.data?.struggleGenerationSkipped,
+                struggleGenerationWarning: result.data?.struggleGenerationWarning,
             };
 
         } catch (error) {

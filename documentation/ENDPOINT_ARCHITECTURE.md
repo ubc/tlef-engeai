@@ -130,8 +130,9 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 |--------|------|------|------|-------------|
 | GET | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives` | Yes | Any | Get objectives |
 | POST | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives` | Yes | Instructor | Create objective |
-| PUT | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId` | Yes | Instructor | Update objective |
-| DELETE | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId` | Yes | Instructor | Delete objective |
+| PUT | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/reorder` | Yes | Instructor | Reorder learning objectives (`body: { orderedIds: string[] }` — exact permutation; response includes `changed`) |
+| PUT | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId` | Yes | Instructor | Update objective (response includes `changed`) |
+| DELETE | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId` | Yes | Instructor | Delete objective (response includes `changed`) |
 
 #### Instructor struggle topics (per content item; memory-agent catalog)
 
@@ -139,8 +140,9 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 |--------|------|------|------|-------------|
 | GET | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics` | Yes | Any | Get struggle topics for item |
 | POST | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics` | Yes | Instructor | Create struggle topic |
-| PUT | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId` | Yes | Instructor | Update struggle topic |
-| DELETE | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId` | Yes | Instructor | Delete struggle topic |
+| PUT | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/reorder` | Yes | Instructor | Reorder struggle topics (`body: { orderedIds: string[] }` — exact permutation; response includes `changed`) |
+| PUT | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId` | Yes | Instructor | Update struggle topic (response includes `changed`) |
+| DELETE | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId` | Yes | Instructor | Delete struggle topic (response includes `changed`) |
 
 #### Flags (student creates; instructor manages)
 
@@ -186,8 +188,8 @@ Platform defaults ship in `src/chat/system-prompts/shared-default/`, `socratic-d
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
-| POST | `/api/rag/documents/text` | Yes | Instructor | Upload text document |
-| POST | `/api/rag/documents/file` | Yes | Instructor | Upload file (PDF, DOCX, etc.) |
+| POST | `/api/rag/documents/text` | Yes | Instructor | Upload text document; 201 `data` may include `generatedStruggleTopics`, `struggleGenerationSkipped`, `struggleGenerationWarning` |
+| POST | `/api/rag/documents/file` | Yes | Instructor | Upload file (PDF, DOCX, etc.); 201 `data` may include struggle-generation fields (same as text upload) |
 | GET | `/api/rag/documents/:courseName` | Yes | Any | List documents (by hierarchy) |
 | GET | `/api/rag/documents/:courseName/:contentTitle` | Yes | Any | Documents by content |
 | GET | `/api/rag/documents/:courseName/:contentTitle/:subContentTitle` | Yes | Any | Documents by sub-content |

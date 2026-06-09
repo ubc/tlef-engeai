@@ -462,6 +462,7 @@ export class RAGApp {
             fullDocument.uploaded = true;
             fullDocument.qdrantId = qdrantIds[0]; // Store the first chunk ID as reference
             fullDocument.chunksGenerated = qdrantIds.length; // Add actual chunk count
+            fullDocument.extractedText = documentText;
 
             appLogger.info(`✅ Document uploaded successfully: ${fullDocument.name} (ID: ${fullDocument.id})`);
             appLogger.info(`📊 Generated ${fullDocument.chunksGenerated} chunks in RAG system`);

@@ -963,3 +963,377 @@ button.content-status {
     }
 }
 
+.objective-header.catalog-readonly-row {
+    cursor: default;
+}
+
+.objective-header.catalog-readonly-row:hover {
+    background: var(--chat-bg);
+}
+
+.objectives-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.catalog-edit-btn,
+.struggle-topics-review-btn {
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--hover-bg);
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.catalog-edit-btn:hover,
+.struggle-topics-review-btn:hover {
+    background: var(--gingham-color);
+}
+
+/* ===========================================
+   CATALOG EDIT MODAL (LO + struggle topics)
+   =========================================== */
+
+.catalog-edit-label-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+
+.catalog-edit-label,
+.struggle-review-label {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+    color: var(--text-primary);
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.catalog-edit-pen-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary, #666);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 4px;
+}
+
+.catalog-edit-pen-btn:hover {
+    color: var(--color-chbe-green, #4d7a2f);
+    background: var(--hover-bg);
+}
+
+.catalog-edit-pen-btn .feather {
+    width: 14px;
+    height: 14px;
+}
+
+.catalog-edit-add-btn {
+    margin-top: 12px;
+    border: 1px dashed var(--border-color);
+    border-radius: 6px;
+    background: var(--chat-bg);
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    width: 100%;
+}
+
+.catalog-edit-add-btn:hover {
+    background: var(--hover-bg);
+    border-color: var(--color-chbe-green, #4d7a2f);
+}
+
+.catalog-edit-row-enter {
+    animation: catalog-edit-row-enter 0.22s ease-out;
+}
+
+@keyframes catalog-edit-row-enter {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.catalog-edit-save-btn:disabled,
+.struggle-review-save-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: none;
+}
+
+/* Aliases: catalog-edit-* shares struggle-review modal shell styles below */
+.catalog-edit-modal,
+.catalog-edit-header,
+.catalog-edit-title,
+.catalog-edit-close-btn,
+.catalog-edit-body,
+.catalog-edit-intro,
+.catalog-edit-list,
+.catalog-edit-row,
+.catalog-edit-drag-handle,
+.catalog-edit-input,
+.catalog-edit-input-measure,
+.catalog-edit-remove-btn,
+.catalog-edit-error,
+.catalog-edit-footer,
+.catalog-edit-dismiss-btn,
+.catalog-edit-save-btn {
+    /* inherit struggle-review-* rules via dual class names on elements */
+}
+
+/* ===========================================
+   STRUGGLE TOPICS REVIEW MODAL (post-upload)
+   =========================================== */
+
+.struggle-review-modal {
+    max-width: 640px;
+    width: 100%;
+}
+
+.struggle-review-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.struggle-review-title {
+    margin: 0;
+    flex: 1;
+    min-width: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--color-chbe-green, #4d7a2f);
+}
+
+.struggle-review-close-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    min-height: 28px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.struggle-review-close-btn:hover {
+    color: var(--text-primary);
+    background: var(--hover-bg, rgba(0, 0, 0, 0.06));
+    border-radius: 4px;
+}
+
+.struggle-review-body {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.struggle-review-intro {
+    margin: 0 0 12px;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.struggle-review-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.struggle-review-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--chat-bg);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.struggle-review-row.dragging {
+    opacity: 0.6;
+}
+
+.struggle-review-row.drop-target {
+    border-color: var(--color-chbe-green, #4caf50);
+    box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.25);
+}
+
+.struggle-review-drag-handle {
+    flex: 0 0 auto;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: grab;
+    font-size: 14px;
+    padding: 4px 6px;
+    line-height: 1;
+}
+
+.struggle-review-drag-handle:active {
+    cursor: grabbing;
+}
+
+.struggle-review-input-wrap {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+}
+
+.struggle-review-input {
+    flex: 0 0 auto;
+    width: 50%;
+    max-width: 100%;
+    padding: 0;
+    border: none;
+    background: var(--background-primary, #fff);
+    color: var(--text-primary);
+    font-size: 14px;
+    font-family: inherit;
+}
+
+.struggle-review-input-measure {
+    position: absolute;
+    visibility: hidden;
+    height: 0;
+    overflow: hidden;
+    white-space: pre;
+    pointer-events: none;
+    font-size: 14px;
+    font-family: inherit;
+}
+
+.struggle-review-remove-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: #b71c1c;
+    cursor: pointer;
+    padding: 6px;
+    min-width: 36px;
+    min-height: 36px;
+}
+
+.struggle-review-remove-btn:hover {
+    color: #7f0000;
+    background: rgba(183, 28, 28, 0.08);
+    border-radius: 4px;
+}
+
+.struggle-review-remove-btn .feather {
+    width: 16px;
+    height: 16px;
+}
+
+.struggle-topics-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.struggle-topics-review-btn {
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--hover-bg);
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.struggle-topics-review-btn:hover {
+    background: var(--gingham-color);
+}
+
+.struggle-review-error {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: #ffebee;
+    color: #b71c1c;
+    font-size: 13px;
+}
+
+.struggle-review-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 12px 14px;
+    border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.struggle-review-footer .struggle-review-dismiss-btn,
+.struggle-review-footer .struggle-review-save-btn {
+    padding: 0.6rem 1.1rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    min-width: 100px;
+}
+
+.struggle-review-footer .struggle-review-dismiss-btn {
+    background: var(--color-eng-red, #8b0000);
+    color: #fff;
+}
+
+.struggle-review-footer .struggle-review-dismiss-btn:hover:not(:disabled) {
+    filter: brightness(0.92);
+}
+
+.struggle-review-footer .struggle-review-save-btn {
+    background: var(--color-chbe-green, #4d7a2f);
+    color: #fff;
+}
+
+.struggle-review-footer .struggle-review-save-btn:hover:not(:disabled) {
+    filter: brightness(0.95);
+}
+
+.struggle-review-footer .struggle-review-dismiss-btn:disabled,
+.struggle-review-footer .struggle-review-save-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: none;
+}
+
