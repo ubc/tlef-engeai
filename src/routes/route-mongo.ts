@@ -35,6 +35,12 @@ import archiver from 'archiver';
 import { asyncHandler, asyncHandlerWithAuth } from '../middleware/async-handler';
 import { requireAdminForCourseAPI, requireInstructorForCourseAPI, requireInstructorGlobal } from '../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
+import {
+    InvalidInstructorStruggleTopicReorderError,
+    InvalidLearningObjectiveReorderError,
+    InvalidTopicOrWeekInstanceReorderError
+} from '../db/mongo/topic-week-mongo';
+import { parseOrderedIdsBody } from './topic-week-reorder-body';
 import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt, SystemPromptItem } from '../types/shared';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { memoryAgent } from '../memory-agent/memory-agent';
@@ -1181,6 +1187,47 @@ router.delete('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerW
 }));
 
 /**
+ * PUT /:courseId/topic-or-week-instances/reorder
+ * Reorder topic/week instances for a course. Instructors only.
+ *
+ * @route PUT /api/courses/:courseId/topic-or-week-instances/reorder
+ * @param {string[]} orderedIds - Exact permutation of current instance ids (body)
+ * @returns {object} { success: boolean, data?: TopicOrWeekInstance[], changed?: boolean }
+ */
+router.put('/:courseId/topic-or-week-instances/reorder', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId } = req.params;
+        const orderedIds = parseOrderedIdsBody(req.body);
+
+        if (!orderedIds) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing or invalid field: orderedIds (must be an array of strings)'
+            });
+        }
+
+        const result = await instance.reorderTopicOrWeekInstances(courseId, orderedIds);
+
+        res.status(200).json({
+            success: true,
+            data: result.data,
+            changed: result.changed,
+            message: 'Topic/Week instances reordered successfully'
+        });
+    } catch (error) {
+        if (error instanceof InvalidTopicOrWeekInstanceReorderError) {
+            return res.status(400).json({ success: false, error: error.message });
+        }
+        if (error instanceof Error && error.message.includes('not found')) {
+            return res.status(404).json({ success: false, error: error.message });
+        }
+        appLogger.error('Error reordering topic/week instances:', { error });
+        res.status(500).json({ success: false, error: 'Failed to reorder topic/week instances' });
+    }
+}));
+
+/**
  * POST /:courseId/topic-or-week-instances
  * Add a new topic/week instance to a course. Instructors only.
  *
@@ -1449,6 +1496,49 @@ router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/obj
 }));
 
 /**
+ * PUT /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/reorder
+ * Reorder learning objectives for a content item. Instructors only.
+ *
+ * @route PUT /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/reorder
+ * @param {string[]} orderedIds - Exact permutation of current learning objective ids (body)
+ * @returns {object} { success: boolean, data?: LearningObjective[], changed?: boolean }
+ */
+router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/reorder', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, topicOrWeekId, itemId } = req.params;
+        const { orderedIds } = req.body;
+
+        if (!Array.isArray(orderedIds)) {
+            return res.status(400).json({ success: false, error: 'Missing or invalid field: orderedIds (must be an array)' });
+        }
+
+        const result = await instance.reorderLearningObjectives(
+            courseId,
+            topicOrWeekId,
+            itemId,
+            orderedIds.map((id: unknown) => String(id))
+        );
+
+        res.status(200).json({
+            success: true,
+            data: result.data,
+            changed: result.changed,
+            message: 'Learning objectives reordered successfully'
+        });
+    } catch (error) {
+        if (error instanceof InvalidLearningObjectiveReorderError) {
+            return res.status(400).json({ success: false, error: error.message });
+        }
+        if (error instanceof Error && error.message.includes('not found')) {
+            return res.status(404).json({ success: false, error: error.message });
+        }
+        appLogger.error('Error reordering learning objectives:', { error });
+        res.status(500).json({ success: false, error: 'Failed to reorder learning objectives' });
+    }
+}));
+
+/**
  * PUT /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId
  * Update a learning objective. Instructors only.
  *
@@ -1492,7 +1582,8 @@ router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/obje
         
         res.status(200).json({
             success: true,
-            data: result,
+            data: result.data,
+            changed: result.changed,
             message: 'Learning objective updated successfully'
         });
     } catch (error) {
@@ -1535,7 +1626,8 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/o
         
         res.status(200).json({
             success: true,
-            data: result,
+            data: result.data,
+            changed: result.changed,
             message: 'Learning objective deleted successfully'
         });
     } catch (error) {
@@ -1643,6 +1735,57 @@ router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/str
 }));
 
 /**
+ * PUT /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/reorder
+ * Reorder instructor struggle topics for a content item. Instructors only.
+ *
+ * @route PUT /api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/reorder
+ * @param {string} courseId - Course ID (path param)
+ * @param {string} topicOrWeekId - Topic/week instance ID (path param)
+ * @param {string} itemId - Content item ID (path param)
+ * @param {string[]} orderedIds - Exact permutation of current struggle topic ids (body)
+ * @returns {object} { success: boolean, data?: InstructorStruggleTopic[], message?: string, error?: string }
+ * @response 200 - Struggle topics reordered successfully
+ * @response 400 - Invalid orderedIds permutation
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course, topic/week instance, or content item not found
+ * @response 500 - Failed to reorder struggle topics
+ */
+router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/reorder', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, topicOrWeekId, itemId } = req.params;
+        const { orderedIds } = req.body;
+
+        if (!Array.isArray(orderedIds)) {
+            return res.status(400).json({ success: false, error: 'Missing or invalid field: orderedIds (must be an array)' });
+        }
+
+        const result = await instance.reorderInstructorStruggleTopics(
+            courseId,
+            topicOrWeekId,
+            itemId,
+            orderedIds.map((id: unknown) => String(id))
+        );
+
+        res.status(200).json({
+            success: true,
+            data: result.data,
+            changed: result.changed,
+            message: 'Struggle topics reordered successfully'
+        });
+    } catch (error) {
+        if (error instanceof InvalidInstructorStruggleTopicReorderError) {
+            return res.status(400).json({ success: false, error: error.message });
+        }
+        if (error instanceof Error && error.message.includes('not found')) {
+            return res.status(404).json({ success: false, error: error.message });
+        }
+        appLogger.error('Error reordering struggle topics:', { error });
+        res.status(500).json({ success: false, error: 'Failed to reorder struggle topics' });
+    }
+}));
+
+/**
  * PUT /:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId
  * Update an instructor struggle topic label. Instructors only.
  *
@@ -1683,7 +1826,8 @@ router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/stru
 
         res.status(200).json({
             success: true,
-            data: result,
+            data: result.data,
+            changed: result.changed,
             message: 'Struggle topic updated successfully'
         });
     } catch (error) {
@@ -1715,7 +1859,8 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/s
 
         res.status(200).json({
             success: true,
-            data: result,
+            data: result.data,
+            changed: result.changed,
             message: 'Struggle topic deleted successfully'
         });
     } catch (error) {

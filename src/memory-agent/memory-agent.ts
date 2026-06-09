@@ -337,39 +337,55 @@ export class MemoryAgent {
                 return;
             }
 
+            // Create a set of allowed labels from the catalog
             const allowedLabels = new Set(catalog.map((row) => row.struggleTopic.trim()));
 
+            // Get existing struggle words for the user
             const existingStruggleWords = await this.getStruggleWords(userId, courseName);
+
+            // Log existing struggle words
             appLogger.log(`[MEMORY-AGENT] 📋 Existing struggle topics (${existingStruggleWords.length}):`, existingStruggleWords);
 
+            // Log analyzing conversation for struggle topics
             appLogger.log(`[MEMORY-AGENT] 🔍 Analyzing conversation for struggle topics...`);
+
+            // Build the system prompt
             const systemPrompt = buildMemoryAgentSystemPrompt(catalog, existingStruggleWords);
+
+            // Build the user turn
             const userTurn = `<conversation_excerpt>\n${userMessages.trim()}\n</conversation_excerpt>`;
 
             // DEBUG: exact user turn sent to the model (includes wrapper tags)
             appLogger.log(`[MEMORY-AGENT] 📨 LLM user turn (${userTurn.length} chars, as sent to model):`);
             appLogger.log(userTurn);
 
+            // Build the messages
             const messages: Message[] = [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userTurn }
             ];
 
+            // Send the structured conversation
             const response = await this.llmModule.sendStructuredConversation(
                 messages,
                 struggleAnalysisResponseSchema,
                 { structuredOutputName: 'struggle_analysis' }
             );
 
+            // Get the raw topics
             const rawTopics = response?.parsed?.struggleTopics ?? [];
+
+            // Filter the raw topics
             const uniqueStruggleWords = filterVerbatimStruggleTopics(rawTopics, allowedLabels);
 
             // DEBUG: LLM structured output before catalog filter
             appLogger.log(`[MEMORY-AGENT] 📥 LLM raw struggleTopics:`, rawTopics);
             appLogger.log(`[MEMORY-AGENT] ✅ Extracted ${uniqueStruggleWords.length} struggle topics:`, uniqueStruggleWords);
 
+            // Log the LLM invocation
             await this.logLLMInvocation(userId, courseName, systemPrompt, userTurn, JSON.stringify(response?.parsed ?? {}));
 
+            // Update the struggle words
             if (uniqueStruggleWords.length > 0) {
                 await this.updateStruggleWords(userId, courseName, uniqueStruggleWords);
             } else {

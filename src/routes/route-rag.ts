@@ -12,6 +12,7 @@ import { RAGApp } from '../rag/rag-app';
 import { AdditionalMaterial } from '../types/shared';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { requireInstructorForCourseAPI, requireInstructorGlobal } from '../middleware/require-course-role';
+import { runPostUploadStruggleGeneration } from './struggle-generation-upload';
 
 // Extend Request interface to include file property from multer
 interface MulterRequest extends Request {
@@ -19,6 +20,57 @@ interface MulterRequest extends Request {
 }
 
 const router = express.Router();
+
+/**
+ * Persist upload metadata to Mongo (when ids present) and run struggle-topic generation.
+ * Generation failure never fails the upload response.
+ */
+async function persistMaterialAndGenerateStruggleTopics(
+    ragApp: RAGApp,
+    result: AdditionalMaterial,
+    body: {
+        courseId?: string;
+        topicOrWeekId?: string;
+        itemId?: string;
+        topicOrWeekTitle?: string;
+        itemTitle?: string;
+    },
+    uploadedBy: string
+) {
+    const { courseId, topicOrWeekId, itemId, topicOrWeekTitle, itemTitle } = body;
+    let mongoSaveSucceeded = false;
+
+    if (result.uploaded && result.qdrantId && courseId && topicOrWeekId && itemId) {
+        try {
+            const { extractedText: _omitText, file: _omitFile, ...persistable } = result;
+            const materialWithUser = {
+                ...persistable,
+                uploadedBy,
+            };
+            await ragApp.mongoDBInstance.addAdditionalMaterial(
+                courseId,
+                topicOrWeekId,
+                itemId,
+                materialWithUser
+            );
+            mongoSaveSucceeded = true;
+            appLogger.log('? Document metadata stored in MongoDB');
+        } catch (mongoError) {
+            appLogger.error('Failed to store document metadata in MongoDB:', mongoError);
+        }
+    }
+
+    return runPostUploadStruggleGeneration({
+        courseId,
+        topicOrWeekId,
+        itemId,
+        extractedText: result.extractedText,
+        topicOrWeekTitle: topicOrWeekTitle ?? result.topicOrWeekTitle,
+        itemTitle: itemTitle ?? result.itemTitle,
+        materialName: result.name,
+        mongoMaterialSaved: mongoSaveSucceeded,
+    });
+}
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage();
@@ -226,7 +278,7 @@ router.post('/documents/parse/text', requireInstructorGlobal, asyncHandlerWithAu
  */
 router.post('/documents/text', validateTextDocument, requireInstructorForCourseAPI(['body', 'session']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        appLogger.log('🔍 BACKEND UPLOAD TEXT - Request Details:');
+        appLogger.log('?? BACKEND UPLOAD TEXT - Request Details:');
         appLogger.log('  Headers:', req.headers);
         appLogger.log('  Body:', req.body);
         appLogger.log('  User:', req.user);
@@ -247,25 +299,14 @@ router.post('/documents/text', validateTextDocument, requireInstructorForCourseA
 
         const result = await ragApp.uploadDocument(document);
 
-        appLogger.log('🔍 BACKEND UPLOAD TEXT - RAG Upload Result:', result);
+        appLogger.log('?? BACKEND UPLOAD TEXT - RAG Upload Result:', result);
 
-        if (result.uploaded && result.qdrantId) {
-            try {
-                const { courseId, topicOrWeekId, itemId } = req.body;
-
-                if (courseId && topicOrWeekId && itemId) {
-                    const materialWithUser = {
-                        ...result,
-                        uploadedBy: (req.user as any)?.puid || 'system'
-                    };
-
-                    await ragApp.mongoDBInstance.addAdditionalMaterial(courseId, topicOrWeekId, itemId, materialWithUser);
-                    //console.log('✅ Document metadata stored in MongoDB');
-                }
-            } catch (mongoError) {
-                //console.error('Failed to store document metadata in MongoDB:', mongoError);
-            }
-        }
+        const strugglePayload = await persistMaterialAndGenerateStruggleTopics(
+            ragApp,
+            result,
+            req.body,
+            (req.user as { puid?: string })?.puid || 'system'
+        );
 
         res.status(201).json({
             status: 201,
@@ -275,7 +316,8 @@ router.post('/documents/text', validateTextDocument, requireInstructorForCourseA
                 name: result.name,
                 uploaded: result.uploaded,
                 qdrantId: result.qdrantId,
-                chunksGenerated: result.chunksGenerated || 0
+                chunksGenerated: result.chunksGenerated || 0,
+                ...strugglePayload,
             }
         });
 
@@ -310,7 +352,7 @@ router.post('/documents/text', validateTextDocument, requireInstructorForCourseA
  */
 router.post('/documents/file', upload.single('file'), validateFileDocument, requireInstructorForCourseAPI(['body', 'session']), asyncHandlerWithAuth(async (req: MulterRequest, res: Response) => {
     try {
-        appLogger.log('🔍 BACKEND UPLOAD FILE - Request Details:');
+        appLogger.log('?? BACKEND UPLOAD FILE - Request Details:');
         appLogger.log('  Headers:', req.headers);
         appLogger.log('  Body:', req.body);
         appLogger.log('  File:', req.file);
@@ -340,23 +382,12 @@ router.post('/documents/file', upload.single('file'), validateFileDocument, requ
 
         const result = await ragApp.uploadDocument(document);
 
-        if (result.uploaded && result.qdrantId) {
-            try {
-                const { courseId, topicOrWeekId, itemId } = req.body;
-
-                if (courseId && topicOrWeekId && itemId) {
-                    const materialWithUser = {
-                        ...result,
-                        uploadedBy: (req.user as any)?.puid || 'system'
-                    };
-
-                    await ragApp.mongoDBInstance.addAdditionalMaterial(courseId, topicOrWeekId, itemId, materialWithUser);
-                    appLogger.log('✅ Document metadata stored in MongoDB');
-                }
-            } catch (mongoError) {
-                appLogger.error('Failed to store document metadata in MongoDB:', mongoError);
-            }
-        }
+        const strugglePayload = await persistMaterialAndGenerateStruggleTopics(
+            ragApp,
+            result,
+            req.body,
+            (req.user as { puid?: string })?.puid || 'system'
+        );
 
         res.status(201).json({
             status: 201,
@@ -367,7 +398,8 @@ router.post('/documents/file', upload.single('file'), validateFileDocument, requ
                 fileName: result.fileName,
                 uploaded: result.uploaded,
                 qdrantId: result.qdrantId,
-                chunksGenerated: result.chunksGenerated || 0
+                chunksGenerated: result.chunksGenerated || 0,
+                ...strugglePayload,
             }
         });
 
@@ -453,7 +485,7 @@ router.post('/search', asyncHandlerWithAuth(async (req: Request, res: Response) 
 // // DELETE /api/rag/wipe-all - Wipe all documents from RAG database for a specific course (REQUIRES AUTH - Instructors only)
 // router.delete('/wipe-all', requireInstructorForCourseAPI(['query', 'body', 'session']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
 //     try {
-//         //console.log('🔍 BACKEND WIPE ALL DOCUMENTS - Request Details:');
+//         //console.log('?? BACKEND WIPE ALL DOCUMENTS - Request Details:');
 //         //console.log('  Headers:', req.headers);
 //         //console.log('  Body:', req.body);
 //         //console.log('  Query:', req.query);
@@ -473,7 +505,7 @@ router.post('/search', asyncHandlerWithAuth(async (req: Request, res: Response) 
 //         // Clear MongoDB additional materials
 //         await ragApp.mongoDBInstance.clearAllAdditionalMaterials(courseId);
 
-//         //console.log('🔍 BACKEND WIPE ALL DOCUMENTS - Result:', { courseId, totalChunksDeleted: result.totalChunksDeleted, deletedDocuments: result.deletedDocuments.length, errors: result.errors });
+//         //console.log('?? BACKEND WIPE ALL DOCUMENTS - Result:', { courseId, totalChunksDeleted: result.totalChunksDeleted, deletedDocuments: result.deletedDocuments.length, errors: result.errors });
 
 //         res.status(200).json({
 //             status: 200,
@@ -487,7 +519,7 @@ router.post('/search', asyncHandlerWithAuth(async (req: Request, res: Response) 
 //         });
 
 //     } catch (error) {
-//         //console.error('❌ Failed to wipe RAG database:', error);
+//         //console.error('? Failed to wipe RAG database:', error);
 //         res.status(500).json({
 //             status: 500,
 //             message: 'Failed to wipe RAG database',

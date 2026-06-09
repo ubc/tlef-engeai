@@ -10,10 +10,26 @@
 import type {
     activeCourse,
     AdditionalMaterial,
+    InstructorStruggleTopic,
     InstructorStruggleTopicForDisplay,
-    LearningObjectiveForDisplay
+    LearningObjective,
+    LearningObjectiveForDisplay,
+    TopicOrWeekInstance
 } from '../../types/shared';
 import type { MongoDalContext } from './mongo-context';
+
+/** Result of a catalog mutation that may no-op when nothing changed. */
+export type CatalogWriteResult<T> = {
+    changed: boolean;
+    data: T;
+};
+
+function orderedIdsMatch(currentIds: string[], orderedIds: string[]): boolean {
+    return (
+        currentIds.length === orderedIds.length &&
+        currentIds.every((id, index) => id === orderedIds[index])
+    );
+}
 import { activeCourseListCollection } from './mongo-collections';
 import { getActiveCourse, updateActiveCourse } from './course-mongo';
 import { appLogger } from '../../utils/logger';
@@ -89,8 +105,23 @@ export async function updateLearningObjective(
     contentId: string,
     objectiveId: string,
     updateData: any
-) {
-    return await activeCourseListCollection(ctx.db).findOneAndUpdate(
+): Promise<CatalogWriteResult<LearningObjective | null>> {
+    const course = await getActiveCourse(ctx, courseId);
+    const contentItem = course?.topicOrWeekInstances
+        ?.find((d) => d.id === topicOrWeekId)
+        ?.items?.find((item) => item.id === contentId);
+    const existing = contentItem?.learningObjectives?.find((o) => o.id === objectiveId);
+
+    if (!existing) {
+        return { changed: false, data: null };
+    }
+
+    const nextText = (updateData.LearningObjective ?? '').toString().trim();
+    if (existing.LearningObjective === nextText) {
+        return { changed: false, data: existing };
+    }
+
+    const result = await activeCourseListCollection(ctx.db).findOneAndUpdate(
         {
             id: courseId,
             'topicOrWeekInstances.id': topicOrWeekId,
@@ -100,7 +131,7 @@ export async function updateLearningObjective(
         {
             $set: {
                 'topicOrWeekInstances.$[instance].items.$[item].learningObjectives.$[objective].LearningObjective':
-                    updateData.LearningObjective,
+                    nextText,
                 'topicOrWeekInstances.$[instance].items.$[item].learningObjectives.$[objective].updatedAt':
                     Date.now().toString(),
                 updatedAt: Date.now().toString()
@@ -115,6 +146,15 @@ export async function updateLearningObjective(
             returnDocument: 'after'
         }
     );
+
+    const courseAfter = result as activeCourse | null;
+    const updated =
+        courseAfter?.topicOrWeekInstances
+            ?.find((d) => d.id === topicOrWeekId)
+            ?.items?.find((item) => item.id === contentId)
+            ?.learningObjectives?.find((o) => o.id === objectiveId) ?? null;
+
+    return { changed: true, data: updated };
 }
 
 /**
@@ -136,13 +176,25 @@ export async function deleteLearningObjective(
     topicOrWeekId: string,
     contentId: string,
     objectiveId: string
-) {
+): Promise<CatalogWriteResult<activeCourse | null>> {
     appLogger.log('🗑️ [MONGODB] deleteLearningObjective called with:', {
         courseId,
         topicOrWeekId,
         contentId,
         objectiveId
     });
+
+    const course = await getActiveCourse(ctx, courseId);
+    const contentItem = course?.topicOrWeekInstances
+        ?.find((d) => d.id === topicOrWeekId)
+        ?.items?.find((item) => item.id === contentId);
+    const exists = contentItem?.learningObjectives?.some((o) => o.id === objectiveId) ?? false;
+
+    if (!exists) {
+        appLogger.log('✅ [MONGODB] deleteLearningObjective no-op (id not found)');
+        return { changed: false, data: course ?? null };
+    }
+
     const result = await activeCourseListCollection(ctx.db).findOneAndUpdate(
         {
             id: courseId,
@@ -161,7 +213,159 @@ export async function deleteLearningObjective(
         }
     );
     appLogger.log('✅ [MONGODB] deleteLearningObjective result:', result);
-    return result;
+    return { changed: true, data: (result as activeCourse | null) };
+}
+
+/** Thrown when `orderedIds` is not an exact permutation of current learning objective ids. */
+export class InvalidLearningObjectiveReorderError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'InvalidLearningObjectiveReorderError';
+    }
+}
+
+/**
+ * reorderLearningObjectives
+ *
+ * Rewrites `learningObjectives[]` in the order given by `orderedIds`.
+ */
+export async function reorderLearningObjectives(
+    ctx: MongoDalContext,
+    courseId: string,
+    topicOrWeekId: string,
+    contentId: string,
+    orderedIds: string[]
+): Promise<CatalogWriteResult<LearningObjective[]>> {
+    const course = await getActiveCourse(ctx, courseId);
+    if (!course) {
+        throw new Error(`Course with id ${courseId} not found`);
+    }
+
+    const instance = course.topicOrWeekInstances?.find((d) => d.id === topicOrWeekId);
+    if (!instance) {
+        throw new Error(`Topic/Week instance with id ${topicOrWeekId} not found`);
+    }
+
+    const contentItem = instance.items?.find((item) => item.id === contentId);
+    if (!contentItem) {
+        throw new Error(`Content item with id ${contentId} not found`);
+    }
+
+    const currentObjectives = contentItem.learningObjectives ?? [];
+
+    if (orderedIds.length !== currentObjectives.length) {
+        throw new InvalidLearningObjectiveReorderError(
+            `orderedIds length (${orderedIds.length}) must match current learning objective count (${currentObjectives.length})`
+        );
+    }
+
+    if (orderedIds.length === 0) {
+        return { changed: false, data: [] };
+    }
+
+    const objectiveById = new Map(currentObjectives.map((objective) => [objective.id, objective]));
+    const seen = new Set<string>();
+    const reordered: LearningObjective[] = [];
+
+    for (const id of orderedIds) {
+        if (seen.has(id)) {
+            throw new InvalidLearningObjectiveReorderError(`Duplicate id in orderedIds: ${id}`);
+        }
+        const objective = objectiveById.get(id);
+        if (!objective) {
+            throw new InvalidLearningObjectiveReorderError(`Unknown learning objective id: ${id}`);
+        }
+        seen.add(id);
+        reordered.push(objective);
+    }
+
+    const currentIds = currentObjectives.map((o) => o.id);
+    if (orderedIdsMatch(currentIds, orderedIds)) {
+        return { changed: false, data: currentObjectives };
+    }
+
+    await activeCourseListCollection(ctx.db).findOneAndUpdate(
+        {
+            id: courseId,
+            'topicOrWeekInstances.id': topicOrWeekId,
+            'topicOrWeekInstances.items.id': contentId
+        },
+        {
+            $set: {
+                'topicOrWeekInstances.$[instance].items.$[item].learningObjectives': reordered,
+                updatedAt: Date.now().toString()
+            }
+        },
+        {
+            arrayFilters: [{ 'instance.id': topicOrWeekId }, { 'item.id': contentId }],
+            returnDocument: 'after'
+        }
+    );
+
+    return { changed: true, data: reordered };
+}
+
+/** Thrown when `orderedIds` is not an exact permutation of current topic/week instance ids. */
+export class InvalidTopicOrWeekInstanceReorderError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'InvalidTopicOrWeekInstanceReorderError';
+    }
+}
+
+/**
+ * reorderTopicOrWeekInstances
+ *
+ * Rewrites `topicOrWeekInstances[]` in the order given by `orderedIds`.
+ */
+export async function reorderTopicOrWeekInstances(
+    ctx: MongoDalContext,
+    courseId: string,
+    orderedIds: string[]
+): Promise<CatalogWriteResult<TopicOrWeekInstance[]>> {
+    const course = await getActiveCourse(ctx, courseId);
+    if (!course) {
+        throw new Error(`Course with id ${courseId} not found`);
+    }
+
+    const currentInstances = (course.topicOrWeekInstances ?? []) as TopicOrWeekInstance[];
+
+    if (orderedIds.length !== currentInstances.length) {
+        throw new InvalidTopicOrWeekInstanceReorderError(
+            `orderedIds length (${orderedIds.length}) must match current topic/week instance count (${currentInstances.length})`
+        );
+    }
+
+    if (orderedIds.length === 0) {
+        return { changed: false, data: [] };
+    }
+
+    const instanceById = new Map(currentInstances.map((instance) => [instance.id, instance]));
+    const seen = new Set<string>();
+    const reordered: TopicOrWeekInstance[] = [];
+
+    for (const id of orderedIds) {
+        if (seen.has(id)) {
+            throw new InvalidTopicOrWeekInstanceReorderError(`Duplicate id in orderedIds: ${id}`);
+        }
+        const instance = instanceById.get(id);
+        if (!instance) {
+            throw new InvalidTopicOrWeekInstanceReorderError(`Unknown topic/week instance id: ${id}`);
+        }
+        seen.add(id);
+        reordered.push(instance);
+    }
+
+    const currentIds = currentInstances.map((i) => i.id);
+    if (orderedIdsMatch(currentIds, orderedIds)) {
+        return { changed: false, data: currentInstances };
+    }
+
+    await updateActiveCourse(ctx, courseId, {
+        topicOrWeekInstances: reordered as activeCourse['topicOrWeekInstances']
+    });
+
+    return { changed: true, data: reordered };
 }
 
 /**
@@ -267,8 +471,23 @@ export async function updateInstructorStruggleTopic(
     contentId: string,
     struggleTopicId: string,
     updateData: { struggleTopic: string }
-) {
-    return await activeCourseListCollection(ctx.db).findOneAndUpdate(
+): Promise<CatalogWriteResult<InstructorStruggleTopic | null>> {
+    const course = await getActiveCourse(ctx, courseId);
+    const contentItem = course?.topicOrWeekInstances
+        ?.find((d) => d.id === topicOrWeekId)
+        ?.items?.find((item) => item.id === contentId);
+    const existing = contentItem?.instructorStruggleTopics?.find((t) => t.id === struggleTopicId);
+
+    if (!existing) {
+        return { changed: false, data: null };
+    }
+
+    const nextText = updateData.struggleTopic.trim();
+    if (existing.struggleTopic === nextText) {
+        return { changed: false, data: existing };
+    }
+
+    const result = await activeCourseListCollection(ctx.db).findOneAndUpdate(
         {
             id: courseId,
             'topicOrWeekInstances.id': topicOrWeekId,
@@ -278,7 +497,7 @@ export async function updateInstructorStruggleTopic(
         {
             $set: {
                 'topicOrWeekInstances.$[instance].items.$[item].instructorStruggleTopics.$[topic].struggleTopic':
-                    updateData.struggleTopic,
+                    nextText,
                 'topicOrWeekInstances.$[instance].items.$[item].instructorStruggleTopics.$[topic].updatedAt':
                     Date.now().toString(),
                 updatedAt: Date.now().toString()
@@ -293,6 +512,15 @@ export async function updateInstructorStruggleTopic(
             returnDocument: 'after'
         }
     );
+
+    const courseAfter = result as activeCourse | null;
+    const updated =
+        courseAfter?.topicOrWeekInstances
+            ?.find((d) => d.id === topicOrWeekId)
+            ?.items?.find((item) => item.id === contentId)
+            ?.instructorStruggleTopics?.find((t) => t.id === struggleTopicId) ?? null;
+
+    return { changed: true, data: updated };
 }
 
 /**
@@ -314,7 +542,17 @@ export async function deleteInstructorStruggleTopic(
     topicOrWeekId: string,
     contentId: string,
     struggleTopicId: string
-) {
+): Promise<CatalogWriteResult<activeCourse | null>> {
+    const course = await getActiveCourse(ctx, courseId);
+    const contentItem = course?.topicOrWeekInstances
+        ?.find((d) => d.id === topicOrWeekId)
+        ?.items?.find((item) => item.id === contentId);
+    const exists = contentItem?.instructorStruggleTopics?.some((t) => t.id === struggleTopicId) ?? false;
+
+    if (!exists) {
+        return { changed: false, data: course ?? null };
+    }
+
     const result = await activeCourseListCollection(ctx.db).findOneAndUpdate(
         {
             id: courseId,
@@ -332,7 +570,107 @@ export async function deleteInstructorStruggleTopic(
             returnDocument: 'after'
         }
     );
-    return result;
+    return { changed: true, data: (result as activeCourse | null) };
+}
+
+/** Thrown when `orderedIds` is not an exact permutation of current struggle topic ids. */
+export class InvalidInstructorStruggleTopicReorderError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'InvalidInstructorStruggleTopicReorderError';
+    }
+}
+
+/**
+ * reorderInstructorStruggleTopics
+ *
+ * Rewrites `instructorStruggleTopics[]` in the order given by `orderedIds`, preserving each entry's fields.
+ *
+ * @param ctx - MongoDalContext
+ * @param courseId - string — `activeCourse.id`
+ * @param topicOrWeekId - string — nested `topicOrWeekInstances.id`
+ * @param contentId - string — nested `items.id`
+ * @param orderedIds - string[] — exact permutation of current topic ids (same length, all ids exist, no extras)
+ *
+ * @returns Promise<InstructorStruggleTopic[]> — reordered list after persistence
+ *
+ * @throws InvalidInstructorStruggleTopicReorderError when `orderedIds` is not a valid permutation
+ * @throws Error when course, topic/week instance, or content item is not found
+ */
+export async function reorderInstructorStruggleTopics(
+    ctx: MongoDalContext,
+    courseId: string,
+    topicOrWeekId: string,
+    contentId: string,
+    orderedIds: string[]
+): Promise<CatalogWriteResult<InstructorStruggleTopic[]>> {
+    const course = await getActiveCourse(ctx, courseId);
+    if (!course) {
+        throw new Error(`Course with id ${courseId} not found`);
+    }
+
+    const instance = course.topicOrWeekInstances?.find((d) => d.id === topicOrWeekId);
+    if (!instance) {
+        throw new Error(`Topic/Week instance with id ${topicOrWeekId} not found`);
+    }
+
+    const contentItem = instance.items?.find((item) => item.id === contentId);
+    if (!contentItem) {
+        throw new Error(`Content item with id ${contentId} not found`);
+    }
+
+    const currentTopics = contentItem.instructorStruggleTopics ?? [];
+
+    if (orderedIds.length !== currentTopics.length) {
+        throw new InvalidInstructorStruggleTopicReorderError(
+            `orderedIds length (${orderedIds.length}) must match current struggle topic count (${currentTopics.length})`
+        );
+    }
+
+    if (orderedIds.length === 0) {
+        return { changed: false, data: [] };
+    }
+
+    const topicById = new Map(currentTopics.map((topic) => [topic.id, topic]));
+    const seen = new Set<string>();
+    const reordered: InstructorStruggleTopic[] = [];
+
+    for (const id of orderedIds) {
+        if (seen.has(id)) {
+            throw new InvalidInstructorStruggleTopicReorderError(`Duplicate id in orderedIds: ${id}`);
+        }
+        const topic = topicById.get(id);
+        if (!topic) {
+            throw new InvalidInstructorStruggleTopicReorderError(`Unknown struggle topic id: ${id}`);
+        }
+        seen.add(id);
+        reordered.push(topic);
+    }
+
+    const currentIds = currentTopics.map((t) => t.id);
+    if (orderedIdsMatch(currentIds, orderedIds)) {
+        return { changed: false, data: currentTopics };
+    }
+
+    await activeCourseListCollection(ctx.db).findOneAndUpdate(
+        {
+            id: courseId,
+            'topicOrWeekInstances.id': topicOrWeekId,
+            'topicOrWeekInstances.items.id': contentId
+        },
+        {
+            $set: {
+                'topicOrWeekInstances.$[instance].items.$[item].instructorStruggleTopics': reordered,
+                updatedAt: Date.now().toString()
+            }
+        },
+        {
+            arrayFilters: [{ 'instance.id': topicOrWeekId }, { 'item.id': contentId }],
+            returnDocument: 'after'
+        }
+    );
+
+    return { changed: true, data: reordered };
 }
 
 /**

@@ -74,3 +74,15 @@ export function getMockStruggleWords(): string[] {
     return ["test-concept", "sample-topic"];
 }
 
+/**
+ * Get mock generated instructor struggle-topic labels (upload-time generation).
+ *
+ * @returns string[] - MTRL-style lowercase descriptive phrases for dev mode
+ */
+export function getMockGeneratedStruggleTopics(): string[] {
+    return [
+        'mock nernst equation and cell potential relationships',
+        'mock galvanic cell schematic representation',
+    ];
+}
+

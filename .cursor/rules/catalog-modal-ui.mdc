@@ -1,0 +1,47 @@
+---
+description: Shared catalog modal UI — BEM naming, CSS layout, save/DOM sync contract
+globs: public/scripts/ui/catalog-modal-shell.ts,public/scripts/ui/catalog-edit-modal.ts,public/scripts/ui/division-reorder-modal.ts,public/styles/instructor-components/catalog-modal.css
+alwaysApply: false
+---
+
+# Catalog Modal UI
+
+Shared reorder/edit modal used for learning objectives, struggle topics, and topic/week division reorder.
+
+## Naming
+
+1. **Name by component, not first consumer** — block is `catalog-modal`, not `struggle-review` or feature-specific prefixes.
+2. **One canonical class per element** — no dual-class alias stubs (e.g. do not pair `struggle-review-row` with `catalog-edit-row`).
+3. **BEM block + modifiers for variants:**
+   - Block: `catalog-modal`, elements: `catalog-modal__row`, `catalog-modal__title`, etc.
+   - Modifiers: `catalog-modal__row--division` (`--background-2`), `catalog-modal__title--division` (red), `catalog-modal__row--dragging`, `catalog-modal__row--drop-target`, `catalog-modal__row--enter`.
+4. **Variant differences live in modifiers**, not duplicate selector families.
+
+## CSS layout
+
+- Reusable modal styles live in `public/styles/instructor-components/catalog-modal.css`.
+- Page-specific accordion/button rules stay in `documents.css`.
+- Import `catalog-modal.css` from `instructor-mode.html` before `documents.css`.
+
+## TypeScript modules
+
+| Module | Role |
+|--------|------|
+| `catalog-modal-shell.ts` | Overlay chrome, footer, drag helpers; `variant: 'edit' \| 'division'` |
+| `catalog-edit-modal.ts` | LO + struggle edit (add, pen, remove, batch save) |
+| `division-reorder-modal.ts` | Top-level topic/week reorder only |
+
+## Save completion contract
+
+1. Modal performs API save; on success calls `onSave` with result payload where applicable.
+2. Page layer (`documents.ts`) updates authoritative state:
+   - Division reorder: `applyDivisionOrder(orderedIds)` → sync `courseData` and `currentClass.topicOrWeekInstances` → `renderDocumentsPage()`.
+   - LO / struggle: `loadLearningObjectives` / `loadStruggleTopics` → `refreshContentItem`.
+3. Show `showSuccessToast` only when `changed !== false` (division) or after successful catalog save.
+4. Modal closes after `onSave` completes.
+
+## Do not
+
+- Reintroduce `struggle-review-*` class names on shared modal elements.
+- Use empty CSS alias selectors that claim to "inherit" via dual classes.
+- Update only `currentClass.topicOrWeekInstances` without syncing `courseData` before `renderDocumentsPage()`.

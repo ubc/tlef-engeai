@@ -27,8 +27,9 @@ import {
 } from '../types.js';
 import { uploadRAGContent } from '../services/rag-service.js';
 import { DocumentUploadModule } from '../services/document-upload-module.js';
-import type { UploadResult } from '../types.js';
-import { showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal, showCustomModal } from '../ui/modal-overlay.js';
+import type { InstructorStruggleTopic, UploadResult } from '../types.js';
+import { showConfirmModal, openUploadModal, openStruggleTopicsReviewModal, openLearningObjectivesEditModal, openDivisionReorderModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal, showCustomModal } from '../ui/modal-overlay.js';
+import { buildCatalogSectionForItem } from './catalog-section.js';
 import { showToast, showSuccessToast } from '../ui/toast-notification.js';
 import { renderFeatherIcons } from '../api/api.js';
 
@@ -1008,11 +1009,15 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      */
     function updateDivisionButtonLabels(currentClass: activeCourse): void {
         // Get references to the control panel buttons
+        const arrangeOrderBtn = document.getElementById('arrange-order-btn');
         const addDivisionBtn = document.getElementById('add-division-btn');
         const deleteAllDivisionsBtn = document.getElementById('delete-all-divisions-btn');
         
         // Update button text based on frameType
         if (currentClass.frameType === 'byWeek') {
+            if (arrangeOrderBtn) {
+                arrangeOrderBtn.textContent = 'Arrange Weeks';
+            }
             if (addDivisionBtn) {
                 addDivisionBtn.textContent = 'Add Week';
             }
@@ -1020,6 +1025,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 deleteAllDivisionsBtn.textContent = 'Delete All Weeks';
             }
         } else if (currentClass.frameType === 'byTopic') {
+            if (arrangeOrderBtn) {
+                arrangeOrderBtn.textContent = 'Arrange Topics';
+            }
             if (addDivisionBtn) {
                 addDivisionBtn.textContent = 'Add Topic';
             }
@@ -1027,6 +1035,41 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 deleteAllDivisionsBtn.textContent = 'Delete All Topics';
             }
         }
+    }
+
+    function applyDivisionOrder(orderedIds: string[]): void {
+        const byId = new Map(courseData.map((d) => [d.id, d]));
+        courseData = orderedIds
+            .map((id) => byId.get(id))
+            .filter((instance): instance is TopicOrWeekInstance => instance !== undefined);
+        currentClass.topicOrWeekInstances = courseData;
+    }
+
+    async function openDivisionReorderForPage(): Promise<void> {
+        if (!courseId) {
+            await showErrorModal('Error', 'Course ID is missing. Cannot reorder weeks/topics.');
+            return;
+        }
+
+        const frameType = currentClass.frameType === 'byTopic' ? 'byTopic' : 'byWeek';
+        await openDivisionReorderModal({
+            courseId,
+            frameType,
+            instances: courseData.map((instance) => ({
+                id: instance.id,
+                title: instance.title,
+                sectionCount: instance.items?.length ?? 0,
+            })),
+            onSave: async (result) => {
+                if (result.changed) {
+                    applyDivisionOrder(result.orderedIds);
+                    renderDocumentsPage();
+                    showSuccessToast(
+                        frameType === 'byWeek' ? 'Week order updated.' : 'Topic order updated.'
+                    );
+                }
+            },
+        });
     }
 
     /**
@@ -1152,6 +1195,20 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             // Objectives accordion toggles
             const objectivesHeader = target.closest('.objectives-header') as HTMLElement | null;
             if (objectivesHeader && !objectivesHeader.closest('.struggle-topics')) {
+                const editBtn = target.closest('.catalog-edit-btn') as HTMLButtonElement | null;
+                if (editBtn) {
+                    event.stopPropagation();
+                    const topicOrWeekId =
+                        editBtn.dataset.week ||
+                        objectivesHeader.getAttribute('data-topic-or-week-instance') ||
+                        '0';
+                    const contentId =
+                        editBtn.dataset.content || objectivesHeader.getAttribute('data-content') || '0';
+                    if (!topicOrWeekId || !contentId) return;
+                    void openLearningObjectivesEditForSection(topicOrWeekId, contentId);
+                    return;
+                }
+
                 const topicOrWeekId = objectivesHeader.getAttribute('data-topic-or-week-instance') || '0';
                 const contentId = objectivesHeader.getAttribute('data-content') || '0';
                 if (!topicOrWeekId || !contentId) return;
@@ -1161,6 +1218,20 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
             const struggleHeader = target.closest('.struggle-topics .objectives-header') as HTMLElement | null;
             if (struggleHeader) {
+                const editBtn = target.closest('.catalog-edit-btn') as HTMLButtonElement | null;
+                if (editBtn) {
+                    event.stopPropagation();
+                    const topicOrWeekId =
+                        editBtn.dataset.week ||
+                        struggleHeader.getAttribute('data-topic-or-week-instance') ||
+                        '0';
+                    const contentId =
+                        editBtn.dataset.content || struggleHeader.getAttribute('data-content') || '0';
+                    if (!topicOrWeekId || !contentId) return;
+                    void openStruggleTopicsEditForSection(topicOrWeekId, contentId);
+                    return;
+                }
+
                 const topicOrWeekId = struggleHeader.getAttribute('data-topic-or-week-instance') || '0';
                 const contentId = struggleHeader.getAttribute('data-content') || '0';
                 if (!topicOrWeekId || !contentId) return;
@@ -1290,83 +1361,33 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 const action = button.dataset.action;
                 if (action) {
                     const inStruggleSection = !!button.closest('.struggle-topics');
-                    const objectiveItem = button.closest('.objective-item');
-                    const headerElement = objectiveItem?.querySelector('.objective-header') as HTMLElement | null;
-                    const topicOrWeekId = button.dataset.week || headerElement?.dataset.topicOrWeekInstance || '0';
-                    const contentId = button.dataset.content || headerElement?.dataset.content || '0';
-                    const objectiveIndex = parseInt(headerElement?.dataset.objective || '-1', 10);
+                    const topicOrWeekId = button.dataset.week || '0';
+                    const contentId = button.dataset.content || '0';
 
-                    if (inStruggleSection) {
-                        switch (action) {
-                            case 'add':
-                                addStruggleTopic(topicOrWeekId, contentId);
-                                return;
-                            case 'edit':
-                                event.stopPropagation();
-                                editStruggleTopic(topicOrWeekId, contentId, objectiveIndex);
-                                return;
-                            case 'delete':
-                                event.stopPropagation();
-                                deleteStruggleTopic(topicOrWeekId, contentId, objectiveIndex);
-                                return;
-                            case 'save':
-                                event.stopPropagation();
-                                saveStruggleTopic(topicOrWeekId, contentId, objectiveIndex);
-                                return;
-                            case 'cancel':
-                                event.stopPropagation();
-                                cancelStruggleEdit(topicOrWeekId, contentId);
-                                return;
-                        }
+                    if (inStruggleSection && action === 'add') {
+                        addStruggleTopic(topicOrWeekId, contentId);
+                        return;
                     }
 
-                    switch (action) {
-                        case 'add':
-                            addObjective(topicOrWeekId, contentId);
-                            return; // Prevent further event handling
-                        case 'edit':
-                            event.stopPropagation();
-                            editObjective(topicOrWeekId, contentId, objectiveIndex);
-                            return; // Prevent further event handling
-                        case 'delete':
-                            event.stopPropagation();
-                            deleteObjective(topicOrWeekId, contentId, objectiveIndex);
-                            return; // Prevent further event handling
-                        case 'save':
-                            event.stopPropagation();
-                            saveObjective(topicOrWeekId, contentId, objectiveIndex);
-                            return; // Prevent further event handling
-                        case 'cancel':
-                            event.stopPropagation();
-                            cancelEdit(topicOrWeekId, contentId);
-                            return; // Prevent further event handling
-                        case 'delete-material':
-                            event.stopPropagation();
-                            // For additional materials, get IDs from the content item container
-                            const additionalMaterialRow = button.closest('.additional-material') as HTMLElement | null;
-                            const contentItem = button.closest('.content-item') as HTMLElement | null;
-                            if (!contentItem) return;
-                            
-                            const contentItemId = contentItem.id; // content-item-topicOrWeekId-contentId
-                            const ids = contentItemId.split('-'); // ['content', 'item', 'topicOrWeekId', 'contentId']
-                            const materialTopicOrWeekId = ids[2] || '0';
-                            const materialContentId = ids[3] || '0';
-                            
-                            deleteAdditionalMaterial(materialTopicOrWeekId, materialContentId, button.dataset.materialId || '');
-                            return; // Prevent further event handling
+                    if (!inStruggleSection && action === 'add') {
+                        addObjective(topicOrWeekId, contentId);
+                        return;
+                    }
+
+                    if (action === 'delete-material') {
+                        event.stopPropagation();
+                        const contentItem = button.closest('.content-item') as HTMLElement | null;
+                        if (!contentItem) return;
+
+                        const contentItemId = contentItem.id;
+                        const ids = contentItemId.split('-');
+                        const materialTopicOrWeekId = ids[2] || '0';
+                        const materialContentId = ids[3] || '0';
+
+                        deleteAdditionalMaterial(materialTopicOrWeekId, materialContentId, button.dataset.materialId || '');
+                        return;
                     }
                 }
-            }
-
-            // Individual objective item toggles
-            const objectiveHeader = target.closest('.objective-header') as HTMLElement | null;
-            if (objectiveHeader) {
-                const topicOrWeekId = objectiveHeader.getAttribute('data-topic-or-week-instance') || '0';
-                const contentId = objectiveHeader.getAttribute('data-content') || '0';
-                const objectiveIndex = parseInt(objectiveHeader.getAttribute('data-objective') || '-1', 10);
-                if (!topicOrWeekId || !contentId || objectiveIndex < 0) return;
-                toggleObjectiveItem(topicOrWeekId, contentId, objectiveIndex);
-                return;
             }
             
             // Upload area -> open modal
@@ -1396,6 +1417,39 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // Store the handler reference and add the event listener
         (container as any)._documentsClickHandler = clickHandler;
         container.addEventListener('click', clickHandler);
+
+        const existingDblHandler = (container as any)._documentsDblClickHandler;
+        if (existingDblHandler) {
+            container.removeEventListener('dblclick', existingDblHandler);
+        }
+
+        const dblClickHandler = (event: Event) => {
+            const target = event.target as HTMLElement;
+            if (target.closest('.add-objective, button, input, textarea, select, a')) {
+                return;
+            }
+
+            const panel = target.closest('.objectives-content.expanded') as HTMLElement | null;
+            if (!panel) return;
+
+            const contentItem = panel.closest('.content-item') as HTMLElement | null;
+            if (!contentItem) return;
+
+            const ids = contentItem.id.split('-');
+            const topicOrWeekId = ids[2] || '0';
+            const contentId = ids[3] || '0';
+            if (!topicOrWeekId || !contentId) return;
+
+            const kind = panel.dataset.catalogKind;
+            if (kind === 'struggle-topics') {
+                void openStruggleTopicsEditForSection(topicOrWeekId, contentId);
+            } else {
+                void openLearningObjectivesEditForSection(topicOrWeekId, contentId);
+            }
+        };
+
+        (container as any)._documentsDblClickHandler = dblClickHandler;
+        container.addEventListener('dblclick', dblClickHandler);
     }
 
     // ----- Divisions (Week/Topic) management -----
@@ -1538,6 +1592,22 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
     */
 
+    // Add event listener for arrange order button
+    const arrangeOrderBtn = document.getElementById('arrange-order-btn');
+    if (arrangeOrderBtn) {
+        const existingArrangeHandler = (arrangeOrderBtn as any)._arrangeOrderHandler;
+        if (existingArrangeHandler) {
+            arrangeOrderBtn.removeEventListener('click', existingArrangeHandler);
+        }
+
+        const arrangeOrderHandler = async () => {
+            await openDivisionReorderForPage();
+        };
+
+        (arrangeOrderBtn as any)._arrangeOrderHandler = arrangeOrderHandler;
+        arrangeOrderBtn.addEventListener('click', arrangeOrderHandler);
+    }
+
     // Add event listener for add division (Week/Topic) button
     const addDivisionBtn = document.getElementById('add-division-btn');
     if (addDivisionBtn) {
@@ -1594,7 +1664,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @param material - The material object from the upload modal
      * @returns Promise<void>
      */
-    async function handleUploadMaterial(material: any): Promise<{ success: boolean; chunksGenerated?: number } | void> {
+    async function handleUploadMaterial(material: any): Promise<{
+        success: boolean;
+        chunksGenerated?: number;
+        generatedStruggleTopics?: InstructorStruggleTopic[];
+        afterSuccess?: () => void | Promise<void>;
+    } | void> {
     // console.log('🔍 HANDLE UPLOAD MATERIAL CALLED - FUNCTION STARTED'); // 🟢 MEDIUM: Function start logging
         
         try {
@@ -1677,10 +1752,41 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
             console.log('Material uploaded successfully:', uploadResult.document);
             console.log(`Generated ${uploadResult.chunksGenerated} chunks in Qdrant`);
-            
-            // Return success info instead of showing modal here
-            // The upload modal handler will show the success modal after closing the upload modal
-            return { success: true, chunksGenerated: uploadResult.chunksGenerated };
+
+            const generatedCount = uploadResult.generatedStruggleTopics?.length ?? 0;
+            const sectionTitle = `${instance_topicOrWeek.title} / ${contentItem.title}`;
+            const reviewTopicOrWeekId = topicOrWeekId;
+            const reviewItemId = material.itemId;
+
+            // Return success info; review modal opens after upload success modal when topics were generated
+            return {
+                success: true,
+                chunksGenerated: uploadResult.chunksGenerated,
+                generatedStruggleTopics: uploadResult.generatedStruggleTopics,
+                afterSuccess:
+                    generatedCount > 0 && courseId
+                        ? async () => {
+                              await loadStruggleTopics(reviewTopicOrWeekId, reviewItemId);
+                              const refreshedTopics =
+                                  courseData
+                                      .find((d) => d.id === reviewTopicOrWeekId)
+                                      ?.items.find((c) => c.id === reviewItemId)
+                                      ?.instructorStruggleTopics ?? uploadResult.generatedStruggleTopics ?? [];
+
+                              await openStruggleTopicsReviewModal({
+                                  sectionTitle,
+                                  courseId,
+                                  topicOrWeekId: reviewTopicOrWeekId,
+                                  itemId: reviewItemId,
+                                  topics: refreshedTopics,
+                                  onSave: async () => {
+                                      await loadStruggleTopics(reviewTopicOrWeekId, reviewItemId);
+                                      showSuccessToast('Struggle topics updated.');
+                                  },
+                              });
+                          }
+                        : undefined,
+            };
             
         } catch (error) {
             console.error('Error in upload process:', error);
@@ -1710,28 +1816,16 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @param contentId the id of the content item
      * @returns null
      */
+    function setCatalogExpandIconState(icon: HTMLElement, expanded: boolean): void {
+        icon.classList.toggle('catalog-expand-icon--expanded', expanded);
+    }
+
     function toggleObjectives(topicOrWeekId: string, contentId: string) {
         const content = document.getElementById(`objectives-${topicOrWeekId}-${contentId}`);
         const icon = document.getElementById(`obj-icon-${topicOrWeekId}-${contentId}`);
         if (!content || !icon) return;
-            content.classList.toggle('expanded');
-            icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
-    }
-
-    /**
-     * Toggle the expansion state of an objective item
-     * 
-     * @param topicOrWeekId the id of the topic/week instance
-     * @param contentId the id of the content item
-     * @param index the index of the objective item
-     * @returns null
-     */
-    function toggleObjectiveItem(topicOrWeekId: string, contentId: string, index: number) {
-        const content = document.getElementById(`objective-content-${topicOrWeekId}-${contentId}-${index}`);
-        const icon = document.getElementById(`item-icon-${topicOrWeekId}-${contentId}-${index}`);
-        if (!content || !icon) return;
-            content.classList.toggle('expanded');
-            icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
+        content.classList.toggle('expanded');
+        setCatalogExpandIconState(icon, content.classList.contains('expanded'));
     }
 
     /**
@@ -1906,309 +2000,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     /**
-     * Edit an learning objective
-     * 
-     * @param topicOrWeekId the id of the topic/week instance
-     * @param contentId the id of the content item
-     * @param index the index of the objective item
-     * @returns null
-     */
-    function editObjective(topicOrWeekId: string, contentId: string, index: number) {
-        //START DEBUG LOG : DEBUG-CODE(036)
-        // console.log('✏️ editObjective called with topicOrWeekId:', topicOrWeekId, 'contentId:', contentId, 'index:', index); // 🟡 HIGH: Function parameters exposure
-        //END DEBUG LOG : DEBUG-CODE(036)
-        
-        const objective = courseData.find(d => d.id === topicOrWeekId)
-                                    ?.items.find(c => c.id === contentId)
-                                    ?.learningObjectives[index];
-        if (!objective) {
-            //START DEBUG LOG : DEBUG-CODE(037)
-            console.error('❌ Objective not found for edit - topicOrWeekId:', topicOrWeekId, 'contentId:', contentId, 'index:', index);
-            //END DEBUG LOG : DEBUG-CODE(037)
-            return;
-        }
-
-        //START DEBUG LOG : DEBUG-CODE(038)
-        console.log('✅ Found objective to edit:', objective.LearningObjective);
-        //END DEBUG LOG : DEBUG-CODE(038)
-
-        let contentDiv = document.getElementById(`objective-content-${topicOrWeekId}-${contentId}-${index}`) as HTMLElement | null;
-        if (!contentDiv) {
-            // If the target container doesn't exist (e.g., due to markup changes), create it on demand
-            const headerEl = document.querySelector(
-                `.objective-header[data-topic-or-week-instance="${topicOrWeekId}"][data-content="${contentId}"][data-objective="${index}"]`
-            ) as HTMLElement | null;
-            const itemEl = headerEl?.parentElement as HTMLElement | null; // .objective-item
-            if (!itemEl) {
-                console.error('❌ Could not locate objective item container to create edit region.');
-                return;
-            }
-            contentDiv = document.createElement('div');
-            contentDiv.className = 'objective-content';
-            contentDiv.id = `objective-content-${topicOrWeekId}-${contentId}-${index}`;
-            itemEl.appendChild(contentDiv);
-        }
-
-        //START DEBUG LOG : DEBUG-CODE(040)
-        console.log('✅ Found content div, creating edit form...');
-        //END DEBUG LOG : DEBUG-CODE(040)
-
-        // Clear and build edit form via DOM APIs
-        while (contentDiv.firstChild) contentDiv.removeChild(contentDiv.firstChild);
-
-        const form = document.createElement('div');
-        form.className = 'edit-form';
-
-        const objectiveInput = document.createElement('input');
-        objectiveInput.type = 'text';
-        objectiveInput.className = 'edit-input';
-        objectiveInput.id = `edit-title-${topicOrWeekId}-${contentId}-${index}`;
-        objectiveInput.value = objective.LearningObjective;
-
-        const actions = document.createElement('div');
-        actions.className = 'edit-actions';
-        const saveBtn = document.createElement('button');
-        saveBtn.className = 'save-btn';
-        saveBtn.dataset.action = 'save';
-        saveBtn.dataset.week = String(topicOrWeekId);
-        saveBtn.dataset.content = String(contentId);
-        saveBtn.dataset.objective = String(index);
-        saveBtn.textContent = 'Save';
-        const cancelBtn = document.createElement('button');
-        cancelBtn.className = 'cancel-btn';
-        cancelBtn.dataset.action = 'cancel';
-        cancelBtn.dataset.week = String(topicOrWeekId);
-        cancelBtn.dataset.content = String(contentId);
-        cancelBtn.textContent = 'Cancel';
-        actions.appendChild(saveBtn);
-        actions.appendChild(cancelBtn);
-
-        form.appendChild(objectiveInput);
-        form.appendChild(actions);
-
-        contentDiv.appendChild(form);
-        contentDiv.classList.add('expanded');
-        // Ensure visible during editing
-        contentDiv.style.display = 'block';
-        
-        //START DEBUG LOG : DEBUG-CODE(041)
-        console.log('✅ Edit form created and added to DOM successfully');
-        //END DEBUG LOG : DEBUG-CODE(041)
-    }
-
-    /**
-     * Save the edited objective
-     * 
-     * @param topicOrWeekId the id of the topic/week instance
-     * @param contentId the id of the content item
-     * @param index the index of the objective item
-     * @returns null
-     */
-    async function saveObjective(topicOrWeekId: string, contentId: string, index: number) {
-        //START DEBUG LOG : DEBUG-CODE(026)
-        console.log('💾 saveObjective called with topicOrWeekId:', topicOrWeekId, 'contentId:', contentId, 'index:', index);
-        //END DEBUG LOG : DEBUG-CODE(026)
-        
-        const learningObjective = (document.getElementById(`edit-title-${topicOrWeekId}-${contentId}-${index}`) as HTMLInputElement).value.trim();
-
-        if (!learningObjective) {
-            await showSimpleErrorModal('Learning objective cannot be empty.', 'Validation Error');
-            return;
-        }
-
-        //START DEBUG LOG : DEBUG-CODE(027)
-        console.log('📝 Updated learning objective text:', learningObjective);
-        //END DEBUG LOG : DEBUG-CODE(027)
-
-        const objective = courseData.find(d => d.id === topicOrWeekId)
-                                    ?.items.find(c => c.id === contentId)
-                                    ?.learningObjectives[index];
-        if (!objective || !currentClass) {
-            //START DEBUG LOG : DEBUG-CODE(028)
-            console.error('❌ Objective or currentClass not found - objective:', !!objective, 'currentClass:', !!currentClass);
-            //END DEBUG LOG : DEBUG-CODE(028)
-            return;
-        }
-
-        //START DEBUG LOG : DEBUG-CODE(029)
-        console.log('✅ Found objective to update:', objective.id, 'currentClass:', currentClass.courseName);
-        //END DEBUG LOG : DEBUG-CODE(029)
-
-        const updateData = {
-            LearningObjective: learningObjective
-        };
-
-        try {
-            if (!courseId) {
-                console.error('❌ Cannot update learning objective: courseId is missing');
-                await showSimpleErrorModal('Cannot update learning objective: Course ID is missing.', 'Error');
-                return;
-            }
-            //START DEBUG LOG : DEBUG-CODE(030)
-            console.log('📡 Making API call to update learning objective...');
-            console.log('🌐 API URL:', `/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objective.id}`);
-            console.log('📦 Request body:', { updateData: updateData });
-            //END DEBUG LOG : DEBUG-CODE(030)
-            
-            // Call backend API to update learning objective
-            const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objective.id}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    updateData: updateData
-                })
-            });
-
-            //START DEBUG LOG : DEBUG-CODE(031)
-            console.log('📡 API Response status:', response.status, response.statusText);
-            //END DEBUG LOG : DEBUG-CODE(031)
-
-            const result = await response.json();
-            
-            //START DEBUG LOG : DEBUG-CODE(032)
-            console.log('📡 API Response body:', result);
-            //END DEBUG LOG : DEBUG-CODE(032)
-            
-            if (result.success) {
-                //START DEBUG LOG : DEBUG-CODE(033)
-                console.log('✅ Learning objective updated successfully in database');
-                //END DEBUG LOG : DEBUG-CODE(033)
-                
-                // Reload learning objectives from database to ensure consistency
-                await loadLearningObjectives(topicOrWeekId, contentId);
-                console.log('Learning objective updated successfully');
-            } else {
-                //START DEBUG LOG : DEBUG-CODE(034)
-                console.error('❌ API returned error:', result.error);
-                //END DEBUG LOG : DEBUG-CODE(034)
-                await showSimpleErrorModal('Failed to update learning objective: ' + result.error, 'Update Learning Objective Error');
-            }
-        } catch (error) {
-            //START DEBUG LOG : DEBUG-CODE(035)
-            console.error('❌ Exception caught while updating learning objective:', error);
-            //END DEBUG LOG : DEBUG-CODE(035)
-            console.error('Error updating learning objective:', error);
-            await showSimpleErrorModal('An error occurred while updating the learning objective. Please try again.', 'Update Learning Objective Error');
-        }
-    }
-
-    /**
-     * Cancel the edit of an objective
-     * 
-     * @param topicOrWeekId the id of the topic/week instance
-     * @param contentId the id of the content item
-     * @returns null
-     */
-    function cancelEdit(topicOrWeekId: string, contentId: string) {
-        refreshContentItem(topicOrWeekId, contentId);
-    }
-
-    async function deleteObjective(topicOrWeekId: string, contentId: string, index: number) {
-        //START DEBUG LOG : DEBUG-CODE(042)
-        console.log('🗑️ deleteObjective called with topicOrWeekId:', topicOrWeekId, 'contentId:', contentId, 'index:', index);
-        console.log('🔍 Current class available:', !!currentClass);
-        console.log('🔍 Current class ID:', currentClass?.id);
-        console.log('🔍 Current class name:', currentClass?.courseName);
-        //END DEBUG LOG : DEBUG-CODE(042)
-        
-        // Get the objective to show its name in confirmation
-        const content = courseData.find(d => d.id === topicOrWeekId)
-                                        ?.items.find(c => c.id === contentId);
-        const objective = content?.learningObjectives[index];
-        
-        if (!objective) {
-            //START DEBUG LOG : DEBUG-CODE(043)
-            console.error('❌ Objective not found for deletion - topicOrWeekId:', topicOrWeekId, 'contentId:', contentId, 'index:', index);
-            //END DEBUG LOG : DEBUG-CODE(043)
-            return;
-        }
-        
-        //START DEBUG LOG : DEBUG-CODE(044)
-        console.log('✅ Found objective to delete:', objective.LearningObjective);
-        //END DEBUG LOG : DEBUG-CODE(044)
-        
-        // Show confirmation modal
-        const result = await showDeleteConfirmationModal(
-            'Learning Objective',
-            objective?.LearningObjective
-        );
-        
-        //START DEBUG LOG : DEBUG-CODE(045)
-        console.log('📋 Delete confirmation result:', result);
-        //END DEBUG LOG : DEBUG-CODE(045)
-
-        if (result.action === 'delete') {
-            //START DEBUG LOG : DEBUG-CODE(046)
-            console.log('✅ User confirmed deletion, proceeding with API call...');
-            //END DEBUG LOG : DEBUG-CODE(046)
-            
-            const content = courseData.find(d => d.id === topicOrWeekId)
-                                        ?.items.find(c => c.id === contentId);
-            const objective = content?.learningObjectives[index];
-            
-            if (!content || !objective || !currentClass) {
-                //START DEBUG LOG : DEBUG-CODE(047)
-                console.error('❌ Missing data for deletion - content:', !!content, 'objective:', !!objective, 'currentClass:', !!currentClass);
-                //END DEBUG LOG : DEBUG-CODE(047)
-                return;
-            }
-
-            try {
-                if (!courseId) {
-                    console.error('❌ Cannot delete learning objective: courseId is missing');
-                    await showSimpleErrorModal('Cannot delete learning objective: Course ID is missing.', 'Error');
-                    return;
-                }
-                //START DEBUG LOG : DEBUG-CODE(048)
-                console.log('📡 Making API call to delete learning objective...');
-                console.log('🌐 API URL:', `/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objective.id}`);
-                //END DEBUG LOG : DEBUG-CODE(048)
-                
-                // Call backend API to delete learning objective
-                const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objective.id}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                //START DEBUG LOG : DEBUG-CODE(049)
-                console.log('📡 Delete API Response status:', response.status, response.statusText);
-                //END DEBUG LOG : DEBUG-CODE(049)
-
-                const result = await response.json();
-                
-                //START DEBUG LOG : DEBUG-CODE(050)
-                console.log('📡 Delete API Response body:', result);
-                //END DEBUG LOG : DEBUG-CODE(050)
-                
-                if (result.success) {
-                    //START DEBUG LOG : DEBUG-CODE(051)
-                    console.log('✅ Learning objective deleted successfully from database');
-                    //END DEBUG LOG : DEBUG-CODE(051)
-                    
-                    // Reload learning objectives from database to ensure consistency
-                    await loadLearningObjectives(topicOrWeekId, contentId);
-                    console.log('Learning objective deleted successfully');
-                } else {
-                    //START DEBUG LOG : DEBUG-CODE(052)
-                    console.error('❌ API returned error:', result.error);
-                    //END DEBUG LOG : DEBUG-CODE(052)
-                    await showSimpleErrorModal('Failed to delete learning objective: ' + result.error, 'Delete Learning Objective Error');
-                }
-            } catch (error) {
-                //START DEBUG LOG : DEBUG-CODE(053)
-                console.error('❌ Exception caught while deleting learning objective:', error);
-                //END DEBUG LOG : DEBUG-CODE(053)
-                console.error('Error deleting learning objective:', error);
-                await showSimpleErrorModal('An error occurred while deleting the learning objective. Please try again.', 'Delete Learning Objective Error');
-            }
-        }
-    }
-
-    /**
      * Refresh a single content item instead of the whole page
      * 
      * @param topicOrWeekId the id of the topic/week instance
@@ -2239,7 +2030,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const newIcon = document.getElementById(`obj-icon-${topicOrWeekId}-${contentId}`);
             if (newObjectivesContent && newIcon) {
                 newObjectivesContent.classList.add('expanded');
-                newIcon.style.transform = 'rotate(180deg)';
+                setCatalogExpandIconState(newIcon, true);
             }
         }
         if (struggleWasExpanded) {
@@ -2247,7 +2038,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const newStruggleIcon = document.getElementById(`struggle-icon-${topicOrWeekId}-${contentId}`);
             if (newStruggleContent && newStruggleIcon) {
                 newStruggleContent.classList.add('expanded');
-                newStruggleIcon.style.transform = 'rotate(180deg)';
+                setCatalogExpandIconState(newStruggleIcon, true);
             }
         }
 
@@ -2324,100 +2115,31 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         header.appendChild(title);
         header.appendChild(statusRow);
 
-        // Delete badge will be handled by event delegation in setupEventListeners()
-        // No direct event listener needed - prevents double event listeners
-
-        // Objectives
-        const objectivesContainer = document.createElement('div');
-        objectivesContainer.className = 'learning-objectives';
-
-        // create the accordion for the objectives
-        const accordion = document.createElement('div');
-        accordion.className = 'objectives-accordion';
-
-        // create the header for the objectives
-        const headerRow = document.createElement('div');
-        headerRow.className = 'objectives-header';
-        headerRow.setAttribute('data-topic-or-week-instance', String(topicOrWeekId));
-        headerRow.setAttribute('data-content', String(content.id));
-
-        // create the title for the objectives
-        const headerTitle = document.createElement('div');
-        headerTitle.className = 'objectives-title';
-        headerTitle.textContent = 'Learning Objectives';
-
-        // create the count for the objectives
-        const headerCount = document.createElement('div');
-        headerCount.className = 'objectives-count';
-        const countSpan = document.createElement('span');
-        countSpan.id = `count-${topicOrWeekId}-${content.id}`;
-        countSpan.textContent = String(content.learningObjectives.length);
-
-        // create the expand icon for the objectives
-        const countText = document.createTextNode(' objectives ');
-        const expandSpan = document.createElement('span');
-        expandSpan.className = 'expand-icon';
-        expandSpan.id = `obj-icon-${topicOrWeekId}-${content.id}`;
-        expandSpan.textContent = '▼';
-
-        // append the count, text, and expand icon to the header
-        headerCount.appendChild(countSpan);
-        headerCount.appendChild(countText);
-        headerCount.appendChild(expandSpan);
-
-        // append the title and count to the header
-        headerRow.appendChild(headerTitle);
-        headerRow.appendChild(headerCount);
-
-        // create the content for the objectives
-        const objectivesContent = document.createElement('div');
-        objectivesContent.className = 'objectives-content';
-        objectivesContent.id = `objectives-${topicOrWeekId}-${content.id}`;
-        objectivesContent.appendChild(createObjectivesListElement(topicOrWeekId, content.id));
-
-        // Add event listener for delete badge
         deleteBadge.addEventListener('click', (e) => {
             e.stopPropagation();
             deleteSection(topicOrWeekId, content.id);
         });
-        accordion.appendChild(headerRow);
-        accordion.appendChild(objectivesContent);
-        objectivesContainer.appendChild(accordion);
 
-        const struggleCount = (content.instructorStruggleTopics ?? []).length;
-        const struggleContainer = document.createElement('div');
-        struggleContainer.className = 'struggle-topics';
-        const struggleAccordion = document.createElement('div');
-        struggleAccordion.className = 'objectives-accordion';
-        const struggleHeaderRow = document.createElement('div');
-        struggleHeaderRow.className = 'objectives-header';
-        struggleHeaderRow.setAttribute('data-topic-or-week-instance', String(topicOrWeekId));
-        struggleHeaderRow.setAttribute('data-content', String(content.id));
-        const struggleHeaderTitle = document.createElement('div');
-        struggleHeaderTitle.className = 'objectives-title';
-        struggleHeaderTitle.textContent = 'Struggle Topics';
-        const struggleHeaderCount = document.createElement('div');
-        struggleHeaderCount.className = 'objectives-count';
-        const struggleCountSpan = document.createElement('span');
-        struggleCountSpan.id = `struggle-count-${topicOrWeekId}-${content.id}`;
-        struggleCountSpan.textContent = String(struggleCount);
-        const struggleCountText = document.createTextNode(' struggle topics ');
-        const struggleExpandSpan = document.createElement('span');
-        struggleExpandSpan.className = 'expand-icon';
-        struggleExpandSpan.id = `struggle-icon-${topicOrWeekId}-${content.id}`;
-        struggleExpandSpan.textContent = '▼';
-        struggleHeaderCount.appendChild(struggleCountSpan);
-        struggleHeaderCount.appendChild(struggleCountText);
-        struggleHeaderCount.appendChild(struggleExpandSpan);
-        struggleHeaderRow.appendChild(struggleHeaderTitle);
-        struggleHeaderRow.appendChild(struggleHeaderCount);
-        const struggleContent = document.createElement('div');
-        struggleContent.className = 'objectives-content';
-        struggleContent.id = `struggle-${topicOrWeekId}-${content.id}`;
-        struggleContent.appendChild(createStruggleTopicsListElement(topicOrWeekId, content.id));
-        struggleAccordion.appendChild(struggleHeaderRow);
-        struggleAccordion.appendChild(struggleContent);
-        struggleContainer.appendChild(struggleAccordion);
+        // Objectives + struggle topics (shared catalog sections)
+        const objectivesContainer = buildCatalogSectionForItem(
+            'learning-objectives',
+            topicOrWeekId,
+            content.id,
+            content.learningObjectives.map((obj) => ({
+                id: obj.id,
+                label: obj.LearningObjective,
+            }))
+        );
+
+        const struggleContainer = buildCatalogSectionForItem(
+            'struggle-topics',
+            topicOrWeekId,
+            content.id,
+            (content.instructorStruggleTopics ?? []).map((topic) => ({
+                id: topic.id,
+                label: topic.struggleTopic,
+            }))
+        );
 
         // Upload
         const uploadWrap = document.createElement('div');
@@ -3172,182 +2894,64 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         }
     }
 
-    // Build the Objectives list + Add form via DOM APIs
-    function createObjectivesListElement(topicOrWeekId: string, contentId: string): HTMLElement {
+    async function openLearningObjectivesEditForSection(topicOrWeekId: string, contentId: string): Promise<void> {
+        if (!courseId) {
+            await showSimpleErrorModal('Cannot edit learning objectives: Course ID is missing.', 'Edit Learning Objectives');
+            return;
+        }
 
-        // create the wrapper for the objectives
-        const wrapper = document.createElement('div');
-        const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+        const instance_topicOrWeek = courseData.find((d) => d.id === topicOrWeekId);
         const content = instance_topicOrWeek?.items.find((c: TopicOrWeekItem) => c.id === contentId);
-        if (!content) return wrapper;
+        if (!instance_topicOrWeek || !content) {
+            await showSimpleErrorModal('Could not find this section.', 'Edit Learning Objectives');
+            return;
+        }
 
-        // create the list of objectives
-        content.learningObjectives.forEach((obj, index) => {
-            const item = document.createElement('div');
-            item.className = 'objective-item';
+        await loadLearningObjectives(topicOrWeekId, contentId);
+        const objectives = content.learningObjectives ?? [];
+        const sectionTitle = `${instance_topicOrWeek.title} / ${content.title}`;
 
-            // create the header for the objective
-            const header = document.createElement('div');
-            header.className = 'objective-header';
-            header.setAttribute('data-topic-or-week-instance', String(topicOrWeekId));
-            header.setAttribute('data-content', String(contentId));
-            header.setAttribute('data-objective', String(index));
-
-            // create the title for the objective
-            const title = document.createElement('div');
-            title.className = 'objective-title';
-            title.textContent = obj.LearningObjective;
-
-            const actions = document.createElement('div');
-            actions.className = 'objective-actions';
-
-            const editBtn = document.createElement('button');
-            editBtn.className = 'action-btn edit-btn';
-            editBtn.dataset.action = 'edit';
-            editBtn.textContent = 'Edit';
-
-            const delBtn = document.createElement('button');
-            delBtn.className = 'action-btn delete-btn';
-            delBtn.dataset.action = 'delete';
-            delBtn.textContent = 'Delete';
-
-            const expand = document.createElement('span');
-            expand.className = 'expand-icon';
-            expand.id = `item-icon-${topicOrWeekId}-${contentId}-${index}`;
-            expand.textContent = '▼';
-
-            // append the edit, delete, and expand icon to the actions
-            actions.appendChild(editBtn);
-            actions.appendChild(delBtn);
-            actions.appendChild(expand);
-
-            // append the title and actions to the header
-            header.appendChild(title);
-            header.appendChild(actions);
-
-            // append the header to the item
-            item.appendChild(header);
-            wrapper.appendChild(item);
+        await openLearningObjectivesEditModal({
+            sectionTitle,
+            courseId,
+            topicOrWeekId,
+            itemId: contentId,
+            objectives,
+            onSave: async () => {
+                await loadLearningObjectives(topicOrWeekId, contentId);
+                showSuccessToast('Learning objectives updated.');
+            },
         });
-
-        // create the wrapper for the add objective form
-        const addWrap = document.createElement('div');
-        addWrap.className = 'add-objective';
-
-        // create the form for the add objective
-        const addForm = document.createElement('div');
-        addForm.className = 'add-objective-form';
-
-        // create the objective label for the add objective form
-        const objectiveLabel = document.createElement('div');
-        objectiveLabel.className = 'input-label';
-        objectiveLabel.textContent = 'Learning Objective:';
-
-        // create the objective input for the add objective form
-        const objectiveInput = document.createElement('input');
-        objectiveInput.type = 'text';
-        objectiveInput.className = 'objective-title-input';
-        objectiveInput.id = `new-title-${topicOrWeekId}-${contentId}`;
-        objectiveInput.placeholder = 'Enter the learning objective...';
-
-        // create the add button for the add objective form
-        const addBtn = document.createElement('button');
-        addBtn.className = 'add-btn';
-        addBtn.dataset.action = 'add';
-        addBtn.dataset.week = String(topicOrWeekId);
-        addBtn.dataset.content = String(contentId);
-        addBtn.textContent = 'Add Objective';
-
-        // append the objective input and add button to the form
-        addForm.appendChild(objectiveLabel);
-        addForm.appendChild(objectiveInput);
-        addForm.appendChild(addBtn);
-        addWrap.appendChild(addForm);
-        wrapper.appendChild(addWrap);
-
-        return wrapper;
     }
 
-    /**
-     * Build the struggle-topics list and add form for one content item (mirrors learning objectives UI).
-     *
-     * @param topicOrWeekId - Topic/week instance id
-     * @param contentId - Content item (section) id
-     * @returns Wrapper element inserted into `#struggle-{topicOrWeekId}-{contentId}`
-     */
-    function createStruggleTopicsListElement(topicOrWeekId: string, contentId: string): HTMLElement {
-        const wrapper = document.createElement('div');
-        const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
+    async function openStruggleTopicsEditForSection(topicOrWeekId: string, contentId: string): Promise<void> {
+        if (!courseId) {
+            await showSimpleErrorModal('Cannot edit struggle topics: Course ID is missing.', 'Edit Struggle Topics');
+            return;
+        }
+
+        const instance_topicOrWeek = courseData.find((d) => d.id === topicOrWeekId);
         const content = instance_topicOrWeek?.items.find((c: TopicOrWeekItem) => c.id === contentId);
-        if (!content) return wrapper;
+        if (!instance_topicOrWeek || !content) {
+            await showSimpleErrorModal('Could not find this section.', 'Edit Struggle Topics');
+            return;
+        }
 
+        await loadStruggleTopics(topicOrWeekId, contentId);
         const topics = content.instructorStruggleTopics ?? [];
-        topics.forEach((topic, index) => {
-            const item = document.createElement('div');
-            item.className = 'objective-item';
+        const sectionTitle = `${instance_topicOrWeek.title} / ${content.title}`;
 
-            const header = document.createElement('div');
-            header.className = 'objective-header';
-            header.setAttribute('data-topic-or-week-instance', String(topicOrWeekId));
-            header.setAttribute('data-content', String(contentId));
-            header.setAttribute('data-objective', String(index));
-
-            const title = document.createElement('div');
-            title.className = 'objective-title';
-            title.textContent = topic.struggleTopic;
-
-            const actions = document.createElement('div');
-            actions.className = 'objective-actions';
-
-            const editBtn = document.createElement('button');
-            editBtn.className = 'action-btn edit-btn';
-            editBtn.dataset.action = 'edit';
-            editBtn.textContent = 'Edit';
-
-            const delBtn = document.createElement('button');
-            delBtn.className = 'action-btn delete-btn';
-            delBtn.dataset.action = 'delete';
-            delBtn.textContent = 'Delete';
-
-            const expand = document.createElement('span');
-            expand.className = 'expand-icon';
-            expand.id = `struggle-item-icon-${topicOrWeekId}-${contentId}-${index}`;
-            expand.textContent = '▼';
-
-            actions.appendChild(editBtn);
-            actions.appendChild(delBtn);
-            actions.appendChild(expand);
-            header.appendChild(title);
-            header.appendChild(actions);
-            item.appendChild(header);
-            wrapper.appendChild(item);
+        await openStruggleTopicsReviewModal({
+            sectionTitle,
+            courseId,
+            topicOrWeekId,
+            itemId: contentId,
+            topics,
+            onSave: async () => {
+                await loadStruggleTopics(topicOrWeekId, contentId);
+                showSuccessToast('Struggle topics updated.');
+            },
         });
-
-        const addWrap = document.createElement('div');
-        addWrap.className = 'add-objective';
-        const addForm = document.createElement('div');
-        addForm.className = 'add-objective-form';
-        const label = document.createElement('div');
-        label.className = 'input-label';
-        label.textContent = 'Struggle Topic:';
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'objective-title-input';
-        input.id = `new-struggle-${topicOrWeekId}-${contentId}`;
-        input.placeholder = 'Enter the struggle topic...';
-        const addBtn = document.createElement('button');
-        addBtn.className = 'add-btn';
-        addBtn.dataset.action = 'add';
-        addBtn.dataset.week = String(topicOrWeekId);
-        addBtn.dataset.content = String(contentId);
-        addBtn.textContent = 'Add Struggle Topic';
-        addForm.appendChild(label);
-        addForm.appendChild(input);
-        addForm.appendChild(addBtn);
-        addWrap.appendChild(addForm);
-        wrapper.appendChild(addWrap);
-
-        return wrapper;
     }
 
     /**
@@ -3361,7 +2965,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const icon = document.getElementById(`struggle-icon-${topicOrWeekId}-${contentId}`);
         if (!content || !icon) return;
         content.classList.toggle('expanded');
-        icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
+        setCatalogExpandIconState(icon, content.classList.contains('expanded'));
     }
 
     /**
@@ -3458,147 +3062,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         } catch (error) {
             console.error('Error adding struggle topic:', error);
             await showSimpleErrorModal('An error occurred while adding the struggle topic. Please try again.', 'Add Struggle Topic Error');
-        }
-    }
-
-    /**
-     * Show inline edit form for one struggle topic row.
-     *
-     * @param topicOrWeekId - Topic/week instance id
-     * @param contentId - Content item id
-     * @param index - Index in `instructorStruggleTopics` for this section
-     */
-    function editStruggleTopic(topicOrWeekId: string, contentId: string, index: number) {
-        const topic = courseData.find(d => d.id === topicOrWeekId)
-            ?.items.find(c => c.id === contentId)
-            ?.instructorStruggleTopics?.[index];
-        if (!topic) return;
-
-        let contentDiv = document.getElementById(`struggle-edit-${topicOrWeekId}-${contentId}-${index}`) as HTMLElement | null;
-        const headerEl = document.querySelector(
-            `.struggle-topics .objective-header[data-topic-or-week-instance="${topicOrWeekId}"][data-content="${contentId}"][data-objective="${index}"]`
-        ) as HTMLElement | null;
-        const itemEl = headerEl?.parentElement as HTMLElement | null;
-        if (!itemEl) return;
-
-        if (!contentDiv) {
-            contentDiv = document.createElement('div');
-            contentDiv.className = 'objective-content';
-            contentDiv.id = `struggle-edit-${topicOrWeekId}-${contentId}-${index}`;
-            itemEl.appendChild(contentDiv);
-        }
-
-        while (contentDiv.firstChild) contentDiv.removeChild(contentDiv.firstChild);
-        const form = document.createElement('div');
-        form.className = 'edit-form';
-        const topicInput = document.createElement('input');
-        topicInput.type = 'text';
-        topicInput.className = 'edit-input';
-        topicInput.id = `edit-struggle-${topicOrWeekId}-${contentId}-${index}`;
-        topicInput.value = topic.struggleTopic;
-        const actions = document.createElement('div');
-        actions.className = 'edit-actions';
-        const saveBtn = document.createElement('button');
-        saveBtn.className = 'save-btn';
-        saveBtn.dataset.action = 'save';
-        saveBtn.dataset.week = String(topicOrWeekId);
-        saveBtn.dataset.content = String(contentId);
-        saveBtn.dataset.objective = String(index);
-        saveBtn.textContent = 'Save';
-        const cancelBtn = document.createElement('button');
-        cancelBtn.className = 'cancel-btn';
-        cancelBtn.dataset.action = 'cancel';
-        cancelBtn.dataset.week = String(topicOrWeekId);
-        cancelBtn.dataset.content = String(contentId);
-        cancelBtn.textContent = 'Cancel';
-        actions.appendChild(saveBtn);
-        actions.appendChild(cancelBtn);
-        form.appendChild(topicInput);
-        form.appendChild(actions);
-        contentDiv.appendChild(form);
-        contentDiv.classList.add('expanded');
-        contentDiv.style.display = 'block';
-    }
-
-    /**
-     * PUT updated struggle topic label text to the API and reload the section UI.
-     *
-     * @param topicOrWeekId - Topic/week instance id
-     * @param contentId - Content item id
-     * @param index - Index in `instructorStruggleTopics`
-     */
-    async function saveStruggleTopic(topicOrWeekId: string, contentId: string, index: number) {
-        const text = (document.getElementById(`edit-struggle-${topicOrWeekId}-${contentId}-${index}`) as HTMLInputElement).value.trim();
-        if (!text) {
-            await showSimpleErrorModal('Struggle topic cannot be empty.', 'Validation Error');
-            return;
-        }
-        const topic = courseData.find(d => d.id === topicOrWeekId)
-            ?.items.find(c => c.id === contentId)
-            ?.instructorStruggleTopics?.[index];
-        if (!topic || !courseId) return;
-
-        try {
-            const response = await fetch(
-                `/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/struggle-topics/${topic.id}`,
-                {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ updateData: { struggleTopic: text } })
-                }
-            );
-            const result = await response.json();
-            if (result.success) {
-                await loadStruggleTopics(topicOrWeekId, contentId);
-            } else {
-                await showSimpleErrorModal('Failed to update struggle topic: ' + result.error, 'Update Struggle Topic Error');
-            }
-        } catch (error) {
-            console.error('Error updating struggle topic:', error);
-            await showSimpleErrorModal('An error occurred while updating the struggle topic. Please try again.', 'Update Struggle Topic Error');
-        }
-    }
-
-    /**
-     * Cancel struggle-topic inline edit by rebuilding the content item DOM.
-     *
-     * @param topicOrWeekId - Topic/week instance id
-     * @param contentId - Content item id
-     */
-    function cancelStruggleEdit(topicOrWeekId: string, contentId: string) {
-        refreshContentItem(topicOrWeekId, contentId);
-    }
-
-    /**
-     * DELETE an instructor struggle topic after confirmation modal.
-     *
-     * @param topicOrWeekId - Topic/week instance id
-     * @param contentId - Content item id
-     * @param index - Index in `instructorStruggleTopics`
-     */
-    async function deleteStruggleTopic(topicOrWeekId: string, contentId: string, index: number) {
-        const topic = courseData.find(d => d.id === topicOrWeekId)
-            ?.items.find(c => c.id === contentId)
-            ?.instructorStruggleTopics?.[index];
-        if (!topic) return;
-
-        const result = await showDeleteConfirmationModal('Struggle Topic', topic.struggleTopic);
-        if (result.action !== 'delete' || !courseId) return;
-
-        try {
-            const response = await fetch(
-                `/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/struggle-topics/${topic.id}`,
-                { method: 'DELETE', headers: { 'Content-Type': 'application/json' } }
-            );
-            const deleteResult = await response.json();
-            if (deleteResult.success) {
-                await loadStruggleTopics(topicOrWeekId, contentId);
-            } else {
-                await showSimpleErrorModal('Failed to delete struggle topic: ' + deleteResult.error, 'Delete Struggle Topic Error');
-            }
-        } catch (error) {
-            console.error('Error deleting struggle topic:', error);
-            await showSimpleErrorModal('An error occurred while deleting the struggle topic. Please try again.', 'Delete Struggle Topic Error');
         }
     }
 

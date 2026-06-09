@@ -314,6 +314,8 @@ export interface AdditionalMaterial {
     uploaded?: boolean; // Track if successfully uploaded to Qdrant
     qdrantId?: string; // Store Qdrant document ID
     chunksGenerated?: number; // Number of chunks generated in Qdrant
+    /** Parsed upload text for struggle-topic generation; not persisted on Mongo material records. */
+    extractedText?: string;
     deleted?: boolean; // Soft delete flag (defaults to false/undefined for backward compatibility)
     deletedAt?: Date; // Timestamp when material was deleted
     uploadedBy?: string; // Track who uploaded the material
@@ -482,8 +484,18 @@ export interface StudentUserContext {
 // ========= DOCUMENT UPLOAD =================
 // ===========================================
 
+/**
+ * Must match src/types/shared.ts
+ * Optional fields on RAG upload 201 responses when struggle-topic generation runs post-upload.
+ */
+export interface UploadStruggleGenerationPayload {
+    generatedStruggleTopics?: InstructorStruggleTopic[];
+    struggleGenerationSkipped?: boolean;
+    struggleGenerationWarning?: string;
+}
+
 /** Result of document upload to RAG */
-export interface UploadResult {
+export interface UploadResult extends UploadStruggleGenerationPayload {
     success: boolean;
     document?: AdditionalMaterial;
     chunksGenerated?: number;

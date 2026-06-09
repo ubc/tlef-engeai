@@ -23,6 +23,7 @@ Implements UI and client logic only. Masters (auto via globs) govern styling, a1
 ## Masters that attach
 
 - `css-master.mdc` — when editing `public/styles/**`
+- `catalog-modal-ui.mdc` — when editing catalog modal shell, edit modal, division reorder modal, or `catalog-modal.css`
 - `accessibility-responsive.mdc` — layout/pages/components
 - `api-master.mdc` — when editing `public/scripts/api/**`
 

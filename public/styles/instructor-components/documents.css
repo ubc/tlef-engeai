@@ -495,6 +495,21 @@ button.content-status {
     padding: 5px 10px 0 0;
 }
 
+.status-arrange-order {
+    background: rgba(76, 86, 175, 0.1);
+    color: var(--color-navy-blue);
+    border: 1px solid var(--color-navy-blue);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.status-arrange-order:hover {
+    background: rgba(76, 86, 175, 0.2);
+    border-color: #4c56af;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(76, 86, 175, 0.3);
+}
+
 .status-add-division {
     background: rgba(76, 86, 175, 0.1);
     color: var(--color-navy-blue);
@@ -606,17 +621,36 @@ button.content-status {
 .objectives-count {
     color: var(--text-secondary);
     font-size: 12px;
+    white-space: nowrap;
+}
+
+.objectives-header-actions .catalog-expand-icon {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    cursor: pointer;
+}
+
+.objectives-header-actions .catalog-expand-icon--expanded {
+    transform: rotate(180deg);
 }
 
 .objectives-content {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s ease;
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.3s ease, padding 0.3s ease;
     padding: 0 15px;
 }
 
+.objectives-content-inner {
+    overflow: hidden;
+    min-height: 0;
+}
+
 .objectives-content.expanded {
-    max-height: 1000px;
+    grid-template-rows: 1fr;
     padding: 15px;
 }
 
@@ -961,5 +995,59 @@ button.content-status {
         min-width: 32px;
         min-height: 32px;
     }
+}
+
+.objective-header.catalog-readonly-row {
+    cursor: default;
+}
+
+.objective-header.catalog-readonly-row:hover {
+    background: var(--chat-bg);
+}
+
+.objectives-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.catalog-edit-btn,
+.struggle-topics-review-btn {
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--hover-bg);
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.catalog-edit-btn:hover,
+.struggle-topics-review-btn:hover {
+    background: var(--gingham-color);
+}
+
+.struggle-topics-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.struggle-topics-review-btn {
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--hover-bg);
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.struggle-topics-review-btn:hover {
+    background: var(--gingham-color);
 }
 

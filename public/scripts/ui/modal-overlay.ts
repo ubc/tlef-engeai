@@ -18,7 +18,22 @@
  * @version: 1.0.0
  */
 
-import type { ModalType, ModalButton, ModalConfig, ModalResult } from '../types.js';
+import type {
+    InstructorStruggleTopic,
+    ModalType,
+    ModalButton,
+    ModalConfig,
+    ModalResult,
+} from '../types.js';
+import { renderFeatherIcons } from '../api/api.js';
+import {
+    openCatalogEditModal,
+    type CatalogEditModalOptions,
+} from './catalog-edit-modal.js';
+export {
+    openDivisionReorderModal,
+    type DivisionReorderModalOptions,
+} from './division-reorder-modal.js';
 
 /** Payload passed to {@link openContentInputModal} submit handler */
 export interface ContentInputPayload {
@@ -37,6 +52,8 @@ export interface ContentInputSubmitResult {
     successMessage?: string;
     /** If true, do not show {@link showSuccessModal} after close */
     skipSuccessModal?: boolean;
+    /** Runs after upload success modal closes */
+    afterSuccess?: () => void | Promise<void>;
 }
 
 export interface ContentInputModalStrings {
@@ -1549,6 +1566,9 @@ export async function openContentInputModal(options: ContentInputModalOptions): 
                     if (message) {
                         await showSuccessModal(message, title);
                     }
+                    if (r.afterSuccess) {
+                        await r.afterSuccess();
+                    }
                 }
             } catch (error) {
                 console.error('Content input submit failed:', error);
@@ -1661,10 +1681,89 @@ export function openPromptReviewModal(options: PromptReviewModalOptions): void {
  * @param itemId - The ID of the content item
  * @param onUpload - Callback function called when upload is successful
  */
+/** Options for post-upload struggle topic review modal */
+export interface StruggleTopicsReviewModalOptions {
+    sectionTitle: string;
+    courseId: string;
+    topicOrWeekId: string;
+    itemId: string;
+    topics: InstructorStruggleTopic[];
+    onSave?: (topics: InstructorStruggleTopic[]) => void | Promise<void>;
+    onDismiss?: () => void | Promise<void>;
+}
+
+/** Options for learning objectives edit modal */
+export interface LearningObjectivesEditModalOptions {
+    sectionTitle: string;
+    courseId: string;
+    topicOrWeekId: string;
+    itemId: string;
+    objectives: Array<{ id: string; LearningObjective: string }>;
+    onSave?: () => void | Promise<void>;
+    onDismiss?: () => void | Promise<void>;
+}
+
+export type { CatalogEditModalOptions };
+export { openCatalogEditModal };
+
+/**
+ * Post-upload / manual struggle topics edit modal — delegates to shared catalog edit modal.
+ */
+export async function openStruggleTopicsReviewModal(
+    options: StruggleTopicsReviewModalOptions
+): Promise<void> {
+    await openCatalogEditModal({
+        kind: 'struggle-topics',
+        sectionTitle: options.sectionTitle,
+        courseId: options.courseId,
+        topicOrWeekId: options.topicOrWeekId,
+        itemId: options.itemId,
+        items: options.topics.map((topic) => ({
+            id: topic.id,
+            label: topic.struggleTopic,
+        })),
+        onSave: async () => {
+            if (options.onSave) {
+                await options.onSave(options.topics);
+            }
+        },
+        onDismiss: options.onDismiss,
+    });
+}
+
+/** Opens the learning objectives catalog edit modal for one section. */
+export async function openLearningObjectivesEditModal(
+    options: LearningObjectivesEditModalOptions
+): Promise<void> {
+    await openCatalogEditModal({
+        kind: 'learning-objectives',
+        sectionTitle: options.sectionTitle,
+        courseId: options.courseId,
+        topicOrWeekId: options.topicOrWeekId,
+        itemId: options.itemId,
+        items: options.objectives.map((objective) => ({
+            id: objective.id,
+            label: objective.LearningObjective,
+        })),
+        onSave: options.onSave,
+        onDismiss: options.onDismiss,
+    });
+}
+
 export async function openUploadModal(
     topicOrWeekId: string,
     itemId: string,
-    onUpload?: (material: any) => Promise<{ success: boolean; chunksGenerated?: number } | void>
+    onUpload?: (
+        material: any
+    ) => Promise<
+        | {
+              success: boolean;
+              chunksGenerated?: number;
+              generatedStruggleTopics?: InstructorStruggleTopic[];
+              afterSuccess?: () => void | Promise<void>;
+          }
+        | void
+    >
 ): Promise<void> {
     await openContentInputModal({
         title: 'Document Upload',
@@ -1697,12 +1796,17 @@ export async function openUploadModal(
             };
             const result = await onUpload(material);
             if (result && (result as { success?: boolean }).success) {
-                const chunksGenerated = (result as { chunksGenerated?: number }).chunksGenerated ?? 0;
+                const uploadResult = result as {
+                    chunksGenerated?: number;
+                    afterSuccess?: () => void | Promise<void>;
+                };
+                const chunksGenerated = uploadResult.chunksGenerated ?? 0;
                 return {
                     success: true,
                     chunksGenerated,
                     successTitle: 'Upload Success',
-                    successMessage: `Document uploaded successfully! Generated ${chunksGenerated} searchable chunks.`
+                    successMessage: `Document uploaded successfully! Generated ${chunksGenerated} searchable chunks.`,
+                    afterSuccess: uploadResult.afterSuccess,
                 };
             }
             return { success: false };
@@ -1878,6 +1982,9 @@ export default {
     showChatCreationErrorModal,
     showInactivityWarningModal,
     openUploadModal,
+    openStruggleTopicsReviewModal,
+    openLearningObjectivesEditModal,
+    openCatalogEditModal,
     openContentInputModal,
     openPromptReviewModal,
     closeModal
