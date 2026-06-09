@@ -28,7 +28,7 @@ import {
 import { uploadRAGContent } from '../services/rag-service.js';
 import { DocumentUploadModule } from '../services/document-upload-module.js';
 import type { InstructorStruggleTopic, UploadResult } from '../types.js';
-import { showConfirmModal, openUploadModal, openStruggleTopicsReviewModal, openLearningObjectivesEditModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal, showCustomModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, openUploadModal, openStruggleTopicsReviewModal, openLearningObjectivesEditModal, openDivisionReorderModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal, showCustomModal } from '../ui/modal-overlay.js';
 import { buildCatalogSectionForItem } from './catalog-section.js';
 import { showToast, showSuccessToast } from '../ui/toast-notification.js';
 import { renderFeatherIcons } from '../api/api.js';
@@ -1009,11 +1009,15 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      */
     function updateDivisionButtonLabels(currentClass: activeCourse): void {
         // Get references to the control panel buttons
+        const arrangeOrderBtn = document.getElementById('arrange-order-btn');
         const addDivisionBtn = document.getElementById('add-division-btn');
         const deleteAllDivisionsBtn = document.getElementById('delete-all-divisions-btn');
         
         // Update button text based on frameType
         if (currentClass.frameType === 'byWeek') {
+            if (arrangeOrderBtn) {
+                arrangeOrderBtn.textContent = 'Arrange Weeks';
+            }
             if (addDivisionBtn) {
                 addDivisionBtn.textContent = 'Add Week';
             }
@@ -1021,6 +1025,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 deleteAllDivisionsBtn.textContent = 'Delete All Weeks';
             }
         } else if (currentClass.frameType === 'byTopic') {
+            if (arrangeOrderBtn) {
+                arrangeOrderBtn.textContent = 'Arrange Topics';
+            }
             if (addDivisionBtn) {
                 addDivisionBtn.textContent = 'Add Topic';
             }
@@ -1028,6 +1035,41 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 deleteAllDivisionsBtn.textContent = 'Delete All Topics';
             }
         }
+    }
+
+    function applyDivisionOrder(orderedIds: string[]): void {
+        const byId = new Map(courseData.map((d) => [d.id, d]));
+        courseData = orderedIds
+            .map((id) => byId.get(id))
+            .filter((instance): instance is TopicOrWeekInstance => instance !== undefined);
+        currentClass.topicOrWeekInstances = courseData;
+    }
+
+    async function openDivisionReorderForPage(): Promise<void> {
+        if (!courseId) {
+            await showErrorModal('Error', 'Course ID is missing. Cannot reorder weeks/topics.');
+            return;
+        }
+
+        const frameType = currentClass.frameType === 'byTopic' ? 'byTopic' : 'byWeek';
+        await openDivisionReorderModal({
+            courseId,
+            frameType,
+            instances: courseData.map((instance) => ({
+                id: instance.id,
+                title: instance.title,
+                sectionCount: instance.items?.length ?? 0,
+            })),
+            onSave: async (result) => {
+                if (result.changed) {
+                    applyDivisionOrder(result.orderedIds);
+                    renderDocumentsPage();
+                    showSuccessToast(
+                        frameType === 'byWeek' ? 'Week order updated.' : 'Topic order updated.'
+                    );
+                }
+            },
+        });
     }
 
     /**
@@ -1550,6 +1592,22 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
     */
 
+    // Add event listener for arrange order button
+    const arrangeOrderBtn = document.getElementById('arrange-order-btn');
+    if (arrangeOrderBtn) {
+        const existingArrangeHandler = (arrangeOrderBtn as any)._arrangeOrderHandler;
+        if (existingArrangeHandler) {
+            arrangeOrderBtn.removeEventListener('click', existingArrangeHandler);
+        }
+
+        const arrangeOrderHandler = async () => {
+            await openDivisionReorderForPage();
+        };
+
+        (arrangeOrderBtn as any)._arrangeOrderHandler = arrangeOrderHandler;
+        arrangeOrderBtn.addEventListener('click', arrangeOrderHandler);
+    }
+
     // Add event listener for add division (Week/Topic) button
     const addDivisionBtn = document.getElementById('add-division-btn');
     if (addDivisionBtn) {
@@ -1723,6 +1781,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                                   topics: refreshedTopics,
                                   onSave: async () => {
                                       await loadStruggleTopics(reviewTopicOrWeekId, reviewItemId);
+                                      showSuccessToast('Struggle topics updated.');
                                   },
                               });
                           }
@@ -1757,12 +1816,16 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @param contentId the id of the content item
      * @returns null
      */
+    function setCatalogExpandIconState(icon: HTMLElement, expanded: boolean): void {
+        icon.classList.toggle('catalog-expand-icon--expanded', expanded);
+    }
+
     function toggleObjectives(topicOrWeekId: string, contentId: string) {
         const content = document.getElementById(`objectives-${topicOrWeekId}-${contentId}`);
         const icon = document.getElementById(`obj-icon-${topicOrWeekId}-${contentId}`);
         if (!content || !icon) return;
-            content.classList.toggle('expanded');
-            icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
+        content.classList.toggle('expanded');
+        setCatalogExpandIconState(icon, content.classList.contains('expanded'));
     }
 
     /**
@@ -1967,7 +2030,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const newIcon = document.getElementById(`obj-icon-${topicOrWeekId}-${contentId}`);
             if (newObjectivesContent && newIcon) {
                 newObjectivesContent.classList.add('expanded');
-                newIcon.style.transform = 'rotate(180deg)';
+                setCatalogExpandIconState(newIcon, true);
             }
         }
         if (struggleWasExpanded) {
@@ -1975,7 +2038,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const newStruggleIcon = document.getElementById(`struggle-icon-${topicOrWeekId}-${contentId}`);
             if (newStruggleContent && newStruggleIcon) {
                 newStruggleContent.classList.add('expanded');
-                newStruggleIcon.style.transform = 'rotate(180deg)';
+                setCatalogExpandIconState(newStruggleIcon, true);
             }
         }
 
@@ -2856,6 +2919,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             objectives,
             onSave: async () => {
                 await loadLearningObjectives(topicOrWeekId, contentId);
+                showSuccessToast('Learning objectives updated.');
             },
         });
     }
@@ -2885,6 +2949,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             topics,
             onSave: async () => {
                 await loadStruggleTopics(topicOrWeekId, contentId);
+                showSuccessToast('Struggle topics updated.');
             },
         });
     }
@@ -2900,7 +2965,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const icon = document.getElementById(`struggle-icon-${topicOrWeekId}-${contentId}`);
         if (!content || !icon) return;
         content.classList.toggle('expanded');
-        icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
+        setCatalogExpandIconState(icon, content.classList.contains('expanded'));
     }
 
     /**

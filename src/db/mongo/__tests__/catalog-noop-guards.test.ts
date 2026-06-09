@@ -1,6 +1,7 @@
 import type { Db } from 'mongodb';
 import {
     reorderInstructorStruggleTopics,
+    reorderTopicOrWeekInstances,
     updateInstructorStruggleTopic,
     updateLearningObjective
 } from '../topic-week-mongo';
@@ -38,9 +39,19 @@ function makeDb(getDoc: () => CourseDoc) {
                 const doc = getDoc();
                 return filter.id === doc.id ? doc : null;
             },
-            findOneAndUpdate: async () => {
+            findOneAndUpdate: async (
+                _filter: Record<string, unknown>,
+                update: Record<string, unknown>
+            ) => {
                 updateCount += 1;
-                return getDoc();
+                const doc = getDoc();
+                if (update.$set) {
+                    const sets = update.$set as Record<string, unknown>;
+                    if (sets.topicOrWeekInstances) {
+                        doc.topicOrWeekInstances = sets.topicOrWeekInstances as CourseDoc['topicOrWeekInstances'];
+                    }
+                }
+                return doc;
             }
         }),
         getUpdateCount: () => updateCount
@@ -129,6 +140,13 @@ describe('catalog-noop-guards', () => {
             'item-1',
             ['st-1']
         );
+
+        expect(result.changed).toBe(false);
+        expect(db.getUpdateCount()).toBe(0);
+    });
+
+    it('reorderTopicOrWeekInstances skips write when order unchanged', async () => {
+        const result = await reorderTopicOrWeekInstances(ctx(), 'course-1', ['tw-1']);
 
         expect(result.changed).toBe(false);
         expect(db.getUpdateCount()).toBe(0);

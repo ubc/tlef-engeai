@@ -13,7 +13,8 @@ import type {
     InstructorStruggleTopic,
     InstructorStruggleTopicForDisplay,
     LearningObjective,
-    LearningObjectiveForDisplay
+    LearningObjectiveForDisplay,
+    TopicOrWeekInstance
 } from '../../types/shared';
 import type { MongoDalContext } from './mongo-context';
 
@@ -300,6 +301,69 @@ export async function reorderLearningObjectives(
             returnDocument: 'after'
         }
     );
+
+    return { changed: true, data: reordered };
+}
+
+/** Thrown when `orderedIds` is not an exact permutation of current topic/week instance ids. */
+export class InvalidTopicOrWeekInstanceReorderError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'InvalidTopicOrWeekInstanceReorderError';
+    }
+}
+
+/**
+ * reorderTopicOrWeekInstances
+ *
+ * Rewrites `topicOrWeekInstances[]` in the order given by `orderedIds`.
+ */
+export async function reorderTopicOrWeekInstances(
+    ctx: MongoDalContext,
+    courseId: string,
+    orderedIds: string[]
+): Promise<CatalogWriteResult<TopicOrWeekInstance[]>> {
+    const course = await getActiveCourse(ctx, courseId);
+    if (!course) {
+        throw new Error(`Course with id ${courseId} not found`);
+    }
+
+    const currentInstances = (course.topicOrWeekInstances ?? []) as TopicOrWeekInstance[];
+
+    if (orderedIds.length !== currentInstances.length) {
+        throw new InvalidTopicOrWeekInstanceReorderError(
+            `orderedIds length (${orderedIds.length}) must match current topic/week instance count (${currentInstances.length})`
+        );
+    }
+
+    if (orderedIds.length === 0) {
+        return { changed: false, data: [] };
+    }
+
+    const instanceById = new Map(currentInstances.map((instance) => [instance.id, instance]));
+    const seen = new Set<string>();
+    const reordered: TopicOrWeekInstance[] = [];
+
+    for (const id of orderedIds) {
+        if (seen.has(id)) {
+            throw new InvalidTopicOrWeekInstanceReorderError(`Duplicate id in orderedIds: ${id}`);
+        }
+        const instance = instanceById.get(id);
+        if (!instance) {
+            throw new InvalidTopicOrWeekInstanceReorderError(`Unknown topic/week instance id: ${id}`);
+        }
+        seen.add(id);
+        reordered.push(instance);
+    }
+
+    const currentIds = currentInstances.map((i) => i.id);
+    if (orderedIdsMatch(currentIds, orderedIds)) {
+        return { changed: false, data: currentInstances };
+    }
+
+    await updateActiveCourse(ctx, courseId, {
+        topicOrWeekInstances: reordered as activeCourse['topicOrWeekInstances']
+    });
 
     return { changed: true, data: reordered };
 }

@@ -121,6 +121,7 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
 | POST | `/api/courses/:courseId/topic-or-week-instances` | Yes | Instructor | Create topic/week |
+| PUT | `/api/courses/:courseId/topic-or-week-instances/reorder` | Yes | Instructor | Reorder topic/week instances (`body: { orderedIds: string[] }` — exact permutation; response includes `changed`) |
 | POST | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items` | Yes | Instructor | Create item |
 | DELETE | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/materials/:materialId` | Yes | Instructor | Delete material |
 

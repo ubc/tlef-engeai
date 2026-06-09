@@ -205,6 +205,10 @@ export class EngEAI_MongoDB {
             objectiveId
         );
 
+    /** Rewrite `topicOrWeekInstances[]` order by id permutation (drag-reorder). */
+    public reorderTopicOrWeekInstances = async (courseId: string, orderedIds: string[]) =>
+        TopicWeekMongo.reorderTopicOrWeekInstances(this.ctx(), courseId, orderedIds);
+
     /** Rewrite `learningObjectives[]` order by id permutation (drag-reorder). */
     public reorderLearningObjectives = async (
         courseId: string,

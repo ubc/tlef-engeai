@@ -37,8 +37,10 @@ import { requireAdminForCourseAPI, requireInstructorForCourseAPI, requireInstruc
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import {
     InvalidInstructorStruggleTopicReorderError,
-    InvalidLearningObjectiveReorderError
+    InvalidLearningObjectiveReorderError,
+    InvalidTopicOrWeekInstanceReorderError
 } from '../db/mongo/topic-week-mongo';
+import { parseOrderedIdsBody } from './topic-week-reorder-body';
 import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt, SystemPromptItem } from '../types/shared';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { memoryAgent } from '../memory-agent/memory-agent';
@@ -1182,6 +1184,47 @@ router.delete('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerW
         success: true,
         message: 'Course deleted successfully'
     });
+}));
+
+/**
+ * PUT /:courseId/topic-or-week-instances/reorder
+ * Reorder topic/week instances for a course. Instructors only.
+ *
+ * @route PUT /api/courses/:courseId/topic-or-week-instances/reorder
+ * @param {string[]} orderedIds - Exact permutation of current instance ids (body)
+ * @returns {object} { success: boolean, data?: TopicOrWeekInstance[], changed?: boolean }
+ */
+router.put('/:courseId/topic-or-week-instances/reorder', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId } = req.params;
+        const orderedIds = parseOrderedIdsBody(req.body);
+
+        if (!orderedIds) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing or invalid field: orderedIds (must be an array of strings)'
+            });
+        }
+
+        const result = await instance.reorderTopicOrWeekInstances(courseId, orderedIds);
+
+        res.status(200).json({
+            success: true,
+            data: result.data,
+            changed: result.changed,
+            message: 'Topic/Week instances reordered successfully'
+        });
+    } catch (error) {
+        if (error instanceof InvalidTopicOrWeekInstanceReorderError) {
+            return res.status(400).json({ success: false, error: error.message });
+        }
+        if (error instanceof Error && error.message.includes('not found')) {
+            return res.status(404).json({ success: false, error: error.message });
+        }
+        appLogger.error('Error reordering topic/week instances:', { error });
+        res.status(500).json({ success: false, error: 'Failed to reorder topic/week instances' });
+    }
 }));
 
 /**

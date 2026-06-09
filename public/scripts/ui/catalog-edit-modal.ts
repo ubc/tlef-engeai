@@ -4,8 +4,13 @@
 
 import { renderFeatherIcons } from '../api/api.js';
 import type { CatalogKind } from '../feature/catalog-section.js';
+import {
+    attachRowDragReorder,
+    createCatalogModalChrome,
+    createDragHandle,
+    getCatalogModalMount,
+} from './catalog-modal-shell.js';
 
-const CATALOG_MODAL_MOUNT_ID = 'catalog-edit-modal-mount';
 const MAX_LABEL_LENGTH = 300;
 
 export interface CatalogEditModalOptions {
@@ -25,17 +30,6 @@ interface CatalogEditRow {
     originalLabel: string;
     isNew: boolean;
     removed: boolean;
-}
-
-function getModalMount(): HTMLElement | null {
-    let el = document.getElementById(CATALOG_MODAL_MOUNT_ID);
-    if (!el) {
-        el = document.createElement('div');
-        el.id = CATALOG_MODAL_MOUNT_ID;
-        el.setAttribute('aria-hidden', 'true');
-        document.body.appendChild(el);
-    }
-    return el;
 }
 
 function catalogCopy(kind: CatalogKind): {
@@ -126,8 +120,7 @@ function newServerId(): string {
 }
 
 export async function openCatalogEditModal(options: CatalogEditModalOptions): Promise<void> {
-    const mount = getModalMount();
-    if (!mount) {
+    if (!getCatalogModalMount()) {
         console.error('Catalog edit modal mount could not be created.');
         return;
     }
@@ -148,84 +141,23 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
     let editingRowId: string | null = null;
     let animateRowId: string | null = null;
 
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay upload-modal-overlay catalog-edit-modal-overlay struggle-review-modal-overlay';
-    mount.innerHTML = '';
-    mount.appendChild(overlay);
-    document.body.classList.add('modal-open');
+    const chrome = createCatalogModalChrome({
+        title: copy.title,
+        intro: `${copy.intro} Section: ${options.sectionTitle}.`,
+        onDismiss: options.onDismiss,
+    });
 
-    const modal = document.createElement('div');
-    modal.className = 'modal-container catalog-edit-modal struggle-review-modal';
-    modal.setAttribute('role', 'dialog');
-    modal.setAttribute('aria-modal', 'true');
-    modal.setAttribute('aria-labelledby', 'catalog-edit-title');
-    overlay.appendChild(modal);
-    overlay.offsetHeight;
-    overlay.classList.add('show');
-
-    const header = document.createElement('div');
-    header.className = 'struggle-review-header catalog-edit-header';
-    const titleEl = document.createElement('h2');
-    titleEl.id = 'catalog-edit-title';
-    titleEl.className = 'struggle-review-title catalog-edit-title';
-    titleEl.textContent = copy.title;
-
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.className = 'struggle-review-close-btn catalog-edit-close-btn';
-    closeBtn.setAttribute('aria-label', 'Close');
-    closeBtn.textContent = '×';
-
-    header.appendChild(titleEl);
-    header.appendChild(closeBtn);
-
-    const body = document.createElement('div');
-    body.className = 'modal-body struggle-review-body catalog-edit-body';
-
-    const intro = document.createElement('p');
-    intro.className = 'struggle-review-intro catalog-edit-intro';
-    intro.textContent = `${copy.intro} Section: ${options.sectionTitle}.`;
-    body.appendChild(intro);
-
-    const list = document.createElement('ul');
-    list.className = 'struggle-review-list catalog-edit-list';
-    list.setAttribute('role', 'list');
-    body.appendChild(list);
+    const { modal, body, list, saveBtn, dismissBtn, closeModal, showError, clearError, registerCleanup } =
+        chrome;
 
     const addRowBtn = document.createElement('button');
     addRowBtn.type = 'button';
-    addRowBtn.className = 'catalog-edit-add-btn';
+    addRowBtn.className = 'catalog-modal__add';
     addRowBtn.textContent = `+ ${copy.addButton}`;
-    body.appendChild(addRowBtn);
-
-    const errorBox = document.createElement('div');
-    errorBox.className = 'struggle-review-error catalog-edit-error';
-    errorBox.hidden = true;
-    body.appendChild(errorBox);
-
-    const footer = document.createElement('div');
-    footer.className = 'modal-footer struggle-review-footer catalog-edit-footer';
-
-    const dismissBtn = document.createElement('button');
-    dismissBtn.type = 'button';
-    dismissBtn.className = 'struggle-review-dismiss-btn catalog-edit-dismiss-btn';
-    dismissBtn.textContent = 'Dismiss';
-
-    const saveBtn = document.createElement('button');
-    saveBtn.type = 'button';
-    saveBtn.className = 'struggle-review-save-btn catalog-edit-save-btn';
-    saveBtn.textContent = 'Save';
-    saveBtn.disabled = true;
-
-    footer.appendChild(dismissBtn);
-    footer.appendChild(saveBtn);
-
-    modal.appendChild(header);
-    modal.appendChild(body);
-    modal.appendChild(footer);
+    body.insertBefore(addRowBtn, chrome.errorBox);
 
     const measureEl = document.createElement('span');
-    measureEl.className = 'struggle-review-input-measure catalog-edit-input-measure';
+    measureEl.className = 'catalog-modal__input-measure';
     measureEl.setAttribute('aria-hidden', 'true');
     modal.appendChild(measureEl);
 
@@ -249,8 +181,8 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
     };
 
     const syncAllInputWidths = (): void => {
-        list.querySelectorAll<HTMLInputElement>('.catalog-edit-input').forEach((input) => {
-            const wrap = input.closest('.catalog-edit-input-wrap') as HTMLElement | null;
+        list.querySelectorAll<HTMLInputElement>('.catalog-modal__input').forEach((input) => {
+            const wrap = input.closest('.catalog-modal__input-wrap') as HTMLElement | null;
             if (wrap) syncInputWidth(input, wrap);
         });
     };
@@ -265,16 +197,7 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
 
     const listResizeObserver = new ResizeObserver(() => scheduleWidthSync());
     listResizeObserver.observe(list);
-
-    const showError = (message: string) => {
-        errorBox.textContent = message;
-        errorBox.hidden = false;
-    };
-
-    const clearError = () => {
-        errorBox.textContent = '';
-        errorBox.hidden = true;
-    };
+    registerCleanup(() => listResizeObserver.disconnect());
 
     const syncSaveState = () => {
         saveBtn.disabled = !isCatalogDirty(rows, initialOrder);
@@ -292,7 +215,7 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
     const startEdit = (rowId: string) => {
         editingRowId = rowId;
         renderRows();
-        const input = list.querySelector<HTMLInputElement>(`[data-row-id="${rowId}"] .catalog-edit-input`);
+        const input = list.querySelector<HTMLInputElement>(`[data-row-id="${rowId}"] .catalog-modal__input`);
         input?.focus();
         input?.select();
     };
@@ -315,29 +238,24 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
 
         visible.forEach((row, index) => {
             const li = document.createElement('li');
-            li.className = 'struggle-review-row catalog-edit-row';
+            li.className = 'catalog-modal__row';
             if (animateRowId === row.id) {
-                li.classList.add('catalog-edit-row-enter');
+                li.classList.add('catalog-modal__row--enter');
             }
             li.dataset.rowId = row.id;
             li.draggable = editingRowId === null;
 
-            const handle = document.createElement('button');
-            handle.type = 'button';
-            handle.className = 'struggle-review-drag-handle catalog-edit-drag-handle';
-            handle.setAttribute('aria-label', 'Drag to reorder');
-            handle.setAttribute('aria-grabbed', 'false');
-            handle.textContent = '⋮⋮';
+            const handle = createDragHandle();
 
             const inputWrap = document.createElement('div');
-            inputWrap.className = 'struggle-review-input-wrap catalog-edit-input-wrap';
+            inputWrap.className = 'catalog-modal__input-wrap';
 
             const isEditing = editingRowId === row.id;
 
             if (isEditing) {
                 const input = document.createElement('input');
                 input.type = 'text';
-                input.className = 'struggle-review-input catalog-edit-input';
+                input.className = 'catalog-modal__input';
                 input.value = row.label;
                 input.maxLength = MAX_LABEL_LENGTH;
                 input.setAttribute('aria-label', `Item ${index + 1}`);
@@ -356,10 +274,10 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
                 inputWrap.appendChild(input);
             } else {
                 const labelWrap = document.createElement('div');
-                labelWrap.className = 'catalog-edit-label-wrap';
+                labelWrap.className = 'catalog-modal__label-wrap';
 
                 const labelEl = document.createElement('span');
-                labelEl.className = 'catalog-edit-label';
+                labelEl.className = 'catalog-modal__label';
                 labelEl.textContent = row.label || '(empty)';
                 labelEl.addEventListener('dblclick', (e) => {
                     e.stopPropagation();
@@ -368,7 +286,7 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
 
                 const penBtn = document.createElement('button');
                 penBtn.type = 'button';
-                penBtn.className = 'catalog-edit-pen-btn';
+                penBtn.className = 'catalog-modal__pen';
                 penBtn.setAttribute('aria-label', `Edit item ${index + 1}`);
                 penBtn.innerHTML = '<i data-feather="edit-2"></i>';
                 penBtn.addEventListener('click', (e) => {
@@ -383,7 +301,7 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
 
             const removeBtn = document.createElement('button');
             removeBtn.type = 'button';
-            removeBtn.className = 'struggle-review-remove-btn catalog-edit-remove-btn';
+            removeBtn.className = 'catalog-modal__remove';
             removeBtn.innerHTML = '<i data-feather="trash-2"></i>';
             removeBtn.setAttribute('aria-label', `Remove item ${index + 1}`);
             removeBtn.addEventListener('click', () => {
@@ -393,42 +311,14 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
                 syncSaveState();
             });
 
-            li.addEventListener('dragstart', (event) => {
-                if (editingRowId !== null) {
-                    event.preventDefault();
-                    return;
-                }
-                dragIndex = index;
-                handle.setAttribute('aria-grabbed', 'true');
-                li.classList.add('dragging');
-                if (event.dataTransfer) {
-                    event.dataTransfer.effectAllowed = 'move';
-                    event.dataTransfer.setData('text/plain', row.id);
-                }
-            });
-
-            li.addEventListener('dragend', () => {
-                dragIndex = null;
-                handle.setAttribute('aria-grabbed', 'false');
-                li.classList.remove('dragging');
-                list.querySelectorAll('.drop-target').forEach((el) => el.classList.remove('drop-target'));
-            });
-
-            li.addEventListener('dragover', (event) => {
-                event.preventDefault();
-                if (dragIndex !== null && dragIndex !== index) {
-                    li.classList.add('drop-target');
-                }
-            });
-
-            li.addEventListener('dragleave', () => li.classList.remove('drop-target'));
-
-            li.addEventListener('drop', (event) => {
-                event.preventDefault();
-                li.classList.remove('drop-target');
-                if (dragIndex !== null && dragIndex !== index) {
-                    moveRow(dragIndex, index);
-                }
+            attachRowDragReorder(li, index, row.id, handle, {
+                canDrag: () => editingRowId === null,
+                getDragIndex: () => dragIndex,
+                setDragIndex: (value) => {
+                    dragIndex = value;
+                },
+                onMove: moveRow,
+                list,
             });
 
             li.appendChild(handle);
@@ -448,29 +338,12 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
         syncSaveState();
     };
 
-    const onKeyDown = (event: KeyboardEvent) => {
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            void closeModal(true);
-        }
-    };
-
-    const closeModal = async (dismissed: boolean) => {
-        document.removeEventListener('keydown', onKeyDown);
-        listResizeObserver.disconnect();
+    registerCleanup(() => {
         if (widthSyncRaf !== 0) {
             cancelAnimationFrame(widthSyncRaf);
             widthSyncRaf = 0;
         }
-        overlay.classList.remove('show');
-        document.body.classList.remove('modal-open');
-        setTimeout(() => {
-            mount.innerHTML = '';
-        }, 200);
-        if (dismissed && options.onDismiss) {
-            await options.onDismiss();
-        }
-    };
+    });
 
     addRowBtn.addEventListener('click', () => {
         const id = newTempId();
@@ -592,13 +465,6 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
             saveBtn.textContent = 'Save';
             syncSaveState();
         }
-    });
-
-    dismissBtn.addEventListener('click', () => void closeModal(true));
-    closeBtn.addEventListener('click', () => void closeModal(true));
-    document.addEventListener('keydown', onKeyDown);
-    overlay.addEventListener('click', (event) => {
-        if (event.target === overlay) void closeModal(true);
     });
 
     renderRows();

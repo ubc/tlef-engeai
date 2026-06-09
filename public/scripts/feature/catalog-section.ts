@@ -102,7 +102,7 @@ export function buildCatalogInlineAddForm(
     return addWrap;
 }
 
-/** Full accordion section: header (Edit + count) + read-only rows + inline add. */
+/** Full accordion section: header (count + Edit) + read-only rows + inline add. */
 export function buildCatalogSection(config: CatalogSectionConfig): HTMLElement {
     const container = document.createElement('div');
     container.className = config.containerClass;
@@ -137,17 +137,19 @@ export function buildCatalogSection(config: CatalogSectionConfig): HTMLElement {
     const countSpan = document.createElement('span');
     countSpan.id = `${config.countIdPrefix}-${config.topicOrWeekId}-${config.contentId}`;
     countSpan.textContent = String(config.items.length);
-    const countText = document.createTextNode(` ${config.countLabel} `);
-    const expandSpan = document.createElement('span');
-    expandSpan.className = 'expand-icon';
-    expandSpan.id = `${config.iconIdPrefix}-${config.topicOrWeekId}-${config.contentId}`;
-    expandSpan.textContent = '▼';
-
+    const countText = document.createTextNode(` ${config.countLabel}`);
     headerCount.appendChild(countSpan);
     headerCount.appendChild(countText);
-    headerCount.appendChild(expandSpan);
-    headerActions.appendChild(editBtn);
+
+    const expandSpan = document.createElement('span');
+    expandSpan.className = 'expand-icon catalog-expand-icon';
+    expandSpan.id = `${config.iconIdPrefix}-${config.topicOrWeekId}-${config.contentId}`;
+    expandSpan.setAttribute('aria-hidden', 'true');
+    expandSpan.textContent = '▼';
+
     headerActions.appendChild(headerCount);
+    headerActions.appendChild(editBtn);
+    headerActions.appendChild(expandSpan);
 
     headerRow.appendChild(headerTitle);
     headerRow.appendChild(headerActions);
@@ -157,9 +159,13 @@ export function buildCatalogSection(config: CatalogSectionConfig): HTMLElement {
     content.id = `${config.contentIdPrefix}-${config.topicOrWeekId}-${config.contentId}`;
     content.dataset.catalogKind = config.kind;
 
+    const contentInner = document.createElement('div');
+    contentInner.className = 'objectives-content-inner';
+
     const listWrapper = buildCatalogListRows(config.items.map((i) => ({ label: i.label })));
-    content.appendChild(listWrapper);
-    content.appendChild(buildCatalogInlineAddForm(config.kind, config.topicOrWeekId, config.contentId));
+    contentInner.appendChild(listWrapper);
+    contentInner.appendChild(buildCatalogInlineAddForm(config.kind, config.topicOrWeekId, config.contentId));
+    content.appendChild(contentInner);
 
     accordion.appendChild(headerRow);
     accordion.appendChild(content);

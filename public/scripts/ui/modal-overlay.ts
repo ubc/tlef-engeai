@@ -30,6 +30,10 @@ import {
     openCatalogEditModal,
     type CatalogEditModalOptions,
 } from './catalog-edit-modal.js';
+export {
+    openDivisionReorderModal,
+    type DivisionReorderModalOptions,
+} from './division-reorder-modal.js';
 
 /** Payload passed to {@link openContentInputModal} submit handler */
 export interface ContentInputPayload {
