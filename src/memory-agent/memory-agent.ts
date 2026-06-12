@@ -21,13 +21,13 @@ import * as path from 'path';
 import { LLMModule, type Message } from 'ubc-genai-toolkit-llm';
 import { AppConfig, loadConfig } from '../utils/config';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
-import { MemoryAgentEntry } from '../types/shared';
 import { buildMemoryAgentSystemPrompt } from './memory-agent-prompt';
 import {
     filterVerbatimStruggleTopics,
     struggleAnalysisResponseSchema
 } from './struggle-analysis-schema';
 import { isDeveloperMode, getMockStruggleWords } from '../helpers/developer-mode';
+import { getStruggleLabelsFromEntry, sanitizeStruggleLabels } from '../helpers/struggle-chapter-normalize';
 import { appLogger } from '../utils/logger';
 
 
@@ -49,7 +49,6 @@ export class MemoryAgent {
      */
     public async getStruggleWords(userId: string, courseName: string): Promise<string[]> {
         try {
-            // Ensure memory agent entry exists before retrieving (prevents race conditions)
             await this.ensureMemoryAgentEntryExists(userId, courseName);
             
             const mongoDB = await EngEAI_MongoDB.getInstance();
@@ -60,7 +59,7 @@ export class MemoryAgent {
                 return [];
             }
             
-            return entry.struggleTopics ?? [];
+            return getStruggleLabelsFromEntry(entry);
         } catch (error) {
             appLogger.error(`[MEMORY-AGENT] 🚨 Error getting struggle words:`, error);
             return [];
@@ -77,14 +76,12 @@ export class MemoryAgent {
     private async ensureMemoryAgentEntryExists(userId: string, courseName: string): Promise<void> {
         const mongoDB = await EngEAI_MongoDB.getInstance();
         
-        // Check if entry exists
         const existingEntry = await mongoDB.getMemoryAgentEntry(courseName, userId);
         
         if (existingEntry) {
-            return; // Entry exists, no need to create
+            return;
         }
         
-        // Entry doesn't exist, get user info from MongoDB
         const userInfo = await mongoDB.findUserByUserId(courseName, userId);
         
         if (!userInfo) {
@@ -92,7 +89,6 @@ export class MemoryAgent {
             throw new Error(`User not found for userId: ${userId}`);
         }
         
-        // Create memory agent entry
         await mongoDB.initializeMemoryAgentForUser(
             courseName,
             userId,
@@ -112,9 +108,12 @@ export class MemoryAgent {
      * @param courseName - The course name
      * @param newWords - New struggle words to add (only new words will be added)
      */
-    public async updateStruggleWords(userId: string, courseName: string, newWords: string[]): Promise<void> {
+    public async updateStruggleWords(
+        userId: string,
+        courseName: string,
+        newWords: string[]
+    ): Promise<void> {
         try {
-            // Validate userId
             if (!userId || userId === '') {
                 appLogger.warn(`[MEMORY-AGENT] ⚠️ Invalid userId: ${userId}, skipping struggle words update`);
                 return;
@@ -122,32 +121,27 @@ export class MemoryAgent {
             
             const mongoDB = await EngEAI_MongoDB.getInstance();
             
-            // Ensure memory agent entry exists
             await this.ensureMemoryAgentEntryExists(userId, courseName);
             
-            // Get existing struggle words
             const existingEntry = await mongoDB.getMemoryAgentEntry(courseName, userId);
-            const existingWords = existingEntry?.struggleTopics || [];
-            
+            const existingLabels = new Set(getStruggleLabelsFromEntry(existingEntry!));
+
             const trimWord = (word: string): string => word.trim();
-
-            const trimmedExisting = existingWords.map(trimWord).filter((word) => word.length > 0);
             const trimmedNew = newWords.map(trimWord).filter((word) => word.length > 0);
-
-            const existingSet = new Set(trimmedExisting);
-            const wordsToAdd = trimmedNew.filter((word) => !existingSet.has(word));
+            const wordsToAdd = trimmedNew.filter((word) => !existingLabels.has(word));
 
             if (wordsToAdd.length === 0) {
                 appLogger.log(`[MEMORY-AGENT] ℹ️ No new struggle words to add for userId: ${userId}. All words already exist.`);
                 return;
             }
 
-            const uniqueWords = [...trimmedExisting, ...wordsToAdd];
+            const mergedLabels = sanitizeStruggleLabels([...existingLabels, ...wordsToAdd]);
+            await mongoDB.updateMemoryAgentStruggleWords(courseName, userId, mergedLabels);
             
-            // Update in database
-            await mongoDB.updateMemoryAgentStruggleWords(courseName, userId, uniqueWords);
-            
-            appLogger.log(`[MEMORY-AGENT] ✅ Updated struggle words for userId: ${userId}. Total: ${uniqueWords.length} words (+${wordsToAdd.length} new, ${trimmedExisting.length} existing)`);
+            appLogger.log(
+                `[MEMORY-AGENT] ✅ Updated struggle words for userId: ${userId}. ` +
+                    `Distinct labels: ${mergedLabels.length} (+${wordsToAdd.length} new)`
+            );
         } catch (error) {
             appLogger.error(`[MEMORY-AGENT] 🚨 Error updating struggle words:`, error);
             throw error;
@@ -164,7 +158,6 @@ export class MemoryAgent {
      */
     public async removeStruggleWord(userId: string, courseName: string, wordToRemove: string): Promise<void> {
         try {
-            // Validate userId
             if (!userId || userId === '') {
                 appLogger.warn(`[MEMORY-AGENT] ⚠️ Invalid userId: ${userId}, skipping struggle word removal`);
                 return;
@@ -172,27 +165,22 @@ export class MemoryAgent {
             
             const mongoDB = await EngEAI_MongoDB.getInstance();
             
-            // Ensure memory agent entry exists
             await this.ensureMemoryAgentEntryExists(userId, courseName);
             
-            // Get existing struggle words
             const existingEntry = await mongoDB.getMemoryAgentEntry(courseName, userId);
-            const existingWords = existingEntry?.struggleTopics || [];
-            
+            const beforeCount = getStruggleLabelsFromEntry(existingEntry!).length;
             const trimmedRemove = wordToRemove.trim();
-            const trimmedExisting = existingWords.map((word) => word.trim());
+            const remainingLabels = existingEntry!.struggleTopics.filter((l) => l.trim() !== trimmedRemove);
+            const afterCount = remainingLabels.length;
 
-            const remainingWords = trimmedExisting.filter((word) => word !== trimmedRemove);
-
-            if (remainingWords.length === trimmedExisting.length) {
+            if (afterCount === beforeCount) {
                 appLogger.log(`[MEMORY-AGENT] ℹ️ Struggle word "${wordToRemove}" not found for userId: ${userId}. Nothing to remove.`);
                 return;
             }
             
-            // Update in database with remaining words
-            await mongoDB.updateMemoryAgentStruggleWords(courseName, userId, remainingWords);
+            await mongoDB.updateMemoryAgentStruggleWords(courseName, userId, remainingLabels);
             
-            appLogger.log(`[MEMORY-AGENT] ✅ Removed struggle word "${wordToRemove}" for userId: ${userId}. Remaining: ${remainingWords.length} words (was ${trimmedExisting.length})`);
+            appLogger.log(`[MEMORY-AGENT] ✅ Removed struggle word "${wordToRemove}" for userId: ${userId}. Remaining: ${afterCount} labels (was ${beforeCount})`);
         } catch (error) {
             appLogger.error(`[MEMORY-AGENT] 🚨 Error removing struggle word:`, error);
             throw error;
@@ -221,11 +209,9 @@ export class MemoryAgent {
             const fileName = `memory-agent-invocation-${userId}-${timestamp}.txt`;
             const filePath = path.join(process.cwd(), 'prompt-test', fileName);
             
-            // Ensure prompt-test directory exists
             const promptTestDir = path.join(process.cwd(), 'prompt-test');
             await fs.mkdir(promptTestDir, { recursive: true });
             
-            // Format the log content
             let logContent = `Memory Agent LLM Invocation Log\n`;
             logContent += `${'='.repeat(80)}\n\n`;
             logContent += `Timestamp: ${new Date().toISOString()}\n`;
@@ -233,21 +219,18 @@ export class MemoryAgent {
             logContent += `Course Name: ${courseName}\n`;
             logContent += `\n${'='.repeat(80)}\n\n`;
             
-            // System message
             logContent += `SYSTEM MESSAGE:\n`;
             logContent += `${'-'.repeat(80)}\n`;
             logContent += `Content Length: ${systemPrompt.length} characters (~${Math.ceil(systemPrompt.length / 4)} tokens)\n\n`;
             logContent += `${systemPrompt}\n`;
             logContent += `\n${'='.repeat(80)}\n\n`;
             
-            // User message
             logContent += `USER MESSAGE (Analysis Prompt):\n`;
             logContent += `${'-'.repeat(80)}\n`;
             logContent += `Content Length: ${userMessage.length} characters (~${Math.ceil(userMessage.length / 4)} tokens)\n\n`;
             logContent += `${userMessage}\n`;
             logContent += `\n${'='.repeat(80)}\n\n`;
             
-            // LLM response (if provided)
             if (response !== undefined) {
                 logContent += `LLM RESPONSE:\n`;
                 logContent += `${'-'.repeat(80)}\n`;
@@ -256,11 +239,9 @@ export class MemoryAgent {
                 logContent += `\n${'='.repeat(80)}\n`;
             }
             
-            // Write to file
             await fs.writeFile(filePath, logContent, 'utf-8');
             appLogger.log(`[MEMORY-AGENT] 📄 LLM invocation logged to: ${filePath}`);
             
-            // DEBUG: full prompts on console (no truncation)
             appLogger.log(`[MEMORY-AGENT] 📤 LLM Invocation Details:`);
             appLogger.log(`[MEMORY-AGENT]   System Prompt (${systemPrompt.length} chars):\n${systemPrompt}`);
             appLogger.log(`[MEMORY-AGENT]   User Message (${userMessage.length} chars):\n${userMessage}`);
@@ -269,7 +250,6 @@ export class MemoryAgent {
             }
         } catch (error) {
             appLogger.error(`[MEMORY-AGENT] 🚨 Error logging LLM invocation:`, error);
-            // Don't throw - logging failure shouldn't break the analysis flow
         }
     }
 
@@ -294,7 +274,6 @@ export class MemoryAgent {
         userMessages: string
     ): Promise<void> {
         try {
-            // Validate userId
             if (!userId || userId === '') {
                 appLogger.warn(`[MEMORY-AGENT] ⚠️ Invalid userId: ${userId}, skipping struggle words analysis`);
                 return;
@@ -305,23 +284,20 @@ export class MemoryAgent {
                 return;
             }
 
-            // DEBUG: full untrimmed excerpt from chat-app (before any processing)
             appLogger.log(
                 `[MEMORY-AGENT] 📨 Conversation excerpt (raw ${userMessages.length} chars, userId=${userId}, course=${courseName}):`
             );
             appLogger.log(userMessages);
 
-            // Check if developer mode is enabled - use mock struggle words instead of LLM analysis
             if (isDeveloperMode()) {
                 appLogger.log(`[MEMORY-AGENT] 🧪 Developer mode active - skipping LLM analysis, using mock struggle words`);
                 const mockStruggleWords = getMockStruggleWords();
                 appLogger.log(`[MEMORY-AGENT] ✅ Using mock struggle words:`, mockStruggleWords);
                 
                 if (mockStruggleWords.length > 0) {
-                    // Update struggle words in database (ensures uniqueness)
                     await this.updateStruggleWords(userId, courseName, mockStruggleWords);
                 }
-                return; // Early return - skip LLM analysis
+                return;
             }
 
             const mongoDB = await EngEAI_MongoDB.getInstance();
@@ -337,55 +313,41 @@ export class MemoryAgent {
                 return;
             }
 
-            // Create a set of allowed labels from the catalog
             const allowedLabels = new Set(catalog.map((row) => row.struggleTopic.trim()));
 
-            // Get existing struggle words for the user
             const existingStruggleWords = await this.getStruggleWords(userId, courseName);
 
-            // Log existing struggle words
             appLogger.log(`[MEMORY-AGENT] 📋 Existing struggle topics (${existingStruggleWords.length}):`, existingStruggleWords);
 
-            // Log analyzing conversation for struggle topics
             appLogger.log(`[MEMORY-AGENT] 🔍 Analyzing conversation for struggle topics...`);
 
-            // Build the system prompt
             const systemPrompt = buildMemoryAgentSystemPrompt(catalog, existingStruggleWords);
 
-            // Build the user turn
             const userTurn = `<conversation_excerpt>\n${userMessages.trim()}\n</conversation_excerpt>`;
 
-            // DEBUG: exact user turn sent to the model (includes wrapper tags)
             appLogger.log(`[MEMORY-AGENT] 📨 LLM user turn (${userTurn.length} chars, as sent to model):`);
             appLogger.log(userTurn);
 
-            // Build the messages
             const messages: Message[] = [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userTurn }
             ];
 
-            // Send the structured conversation
             const response = await this.llmModule.sendStructuredConversation(
                 messages,
                 struggleAnalysisResponseSchema,
                 { structuredOutputName: 'struggle_analysis' }
             );
 
-            // Get the raw topics
             const rawTopics = response?.parsed?.struggleTopics ?? [];
 
-            // Filter the raw topics
             const uniqueStruggleWords = filterVerbatimStruggleTopics(rawTopics, allowedLabels);
 
-            // DEBUG: LLM structured output before catalog filter
             appLogger.log(`[MEMORY-AGENT] 📥 LLM raw struggleTopics:`, rawTopics);
             appLogger.log(`[MEMORY-AGENT] ✅ Extracted ${uniqueStruggleWords.length} struggle topics:`, uniqueStruggleWords);
 
-            // Log the LLM invocation
             await this.logLLMInvocation(userId, courseName, systemPrompt, userTurn, JSON.stringify(response?.parsed ?? {}));
 
-            // Update the struggle words
             if (uniqueStruggleWords.length > 0) {
                 await this.updateStruggleWords(userId, courseName, uniqueStruggleWords);
             } else {
@@ -393,12 +355,9 @@ export class MemoryAgent {
             }
         } catch (error) {
             appLogger.error(`[MEMORY-AGENT] 🚨 Error in analyzeAndUpdateStruggleWords:`, error);
-            // Don't throw - this shouldn't break the chat flow
         }
     }
 }
 
-// Create singleton instance
 const appConfig = loadConfig();
 export const memoryAgent = new MemoryAgent(appConfig);
-

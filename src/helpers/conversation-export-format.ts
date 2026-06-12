@@ -3,6 +3,9 @@
  * @description Transcript and struggle-topic text formatting for monitor single-chat download and bulk ZIP export.
  */
 
+import type { MemoryAgentChapterStruggle } from '../types/shared';
+import { flattenChapterStruggles } from './struggle-chapter-normalize';
+
 export function exportRoleLabel(msg: Record<string, unknown> | undefined): string {
     const s = msg?.sender as string | undefined;
     if (s === 'user') return 'Student';
@@ -82,31 +85,62 @@ export interface StruggleTopicsZipExportInput {
     userId: string;
     name: string;
     memoryAgentCreatedAt: Date | null;
-    struggleTopics: readonly string[];
+    struggleTopicsByChapter: readonly MemoryAgentChapterStruggle[];
+    /**
+     * @deprecated Flat fallback when `struggleTopicsByChapter` is empty (legacy rows).
+     */
+    struggleTopics?: readonly string[];
+}
+
+function resolveExportChapters(input: StruggleTopicsZipExportInput): MemoryAgentChapterStruggle[] {
+    return input.struggleTopicsByChapter
+        .filter((c) => c.struggleTopics.length > 0)
+        .map((c) => ({
+            topicOrWeekId: c.topicOrWeekId,
+            topicOrWeekTitle: c.topicOrWeekTitle,
+            struggleTopics: [...c.struggleTopics]
+        }));
 }
 
 /**
- * Human-readable struggle export with roster id, memory-agent `createdAt` (when initialized), and topics.
+ * Human-readable struggle export with roster id, memory-agent `createdAt`, and per-chapter topics.
  */
 export function formatStruggleTopicsExportText(input: StruggleTopicsZipExportInput): string {
     const createdLabel =
         input.memoryAgentCreatedAt != null
             ? input.memoryAgentCreatedAt.toISOString()
             : '(not initialized)';
+    const chapters = resolveExportChapters(input);
     const lines = [
         `Student name: ${input.name}`,
         `Student ID: ${input.userId}`,
         `Memory agent record created: ${createdLabel}`,
-        '',
-        'Struggle topics:'
+        ''
     ];
-    if (input.struggleTopics.length === 0) {
-        lines.push('(none)');
-    } else {
-        for (const topic of input.struggleTopics) {
+
+    const flatLegacy = input.struggleTopics ?? [];
+
+    if (chapters.length > 0) {
+        lines.push('Struggle topics by chapter:', '');
+        for (const chapter of chapters) {
+            lines.push(chapter.topicOrWeekTitle);
+            for (const topic of chapter.struggleTopics) {
+                lines.push(`- ${topic}`);
+            }
+            lines.push('');
+        }
+        while (lines.length > 0 && lines[lines.length - 1] === '') {
+            lines.pop();
+        }
+    } else if (flatLegacy.length > 0) {
+        lines.push('Struggle topics:');
+        for (const topic of flatLegacy) {
             lines.push(`- ${topic}`);
         }
+    } else {
+        lines.push('Struggle topics by chapter:', '(none)');
     }
+
     return `${lines.join('\n')}\n`;
 }
 
@@ -115,13 +149,17 @@ export function struggleTopicsExportToJsonPayload(input: StruggleTopicsZipExport
     userId: string;
     name: string;
     memoryAgentCreatedAt: string | null;
+    struggleTopicsByChapter: MemoryAgentChapterStruggle[];
     struggleTopics: string[];
 } {
+    const chapters = resolveExportChapters(input);
+    const flatFromChapters = flattenChapterStruggles(chapters);
     return {
         userId: input.userId,
         name: input.name,
         memoryAgentCreatedAt:
             input.memoryAgentCreatedAt != null ? input.memoryAgentCreatedAt.toISOString() : null,
-        struggleTopics: [...input.struggleTopics]
+        struggleTopicsByChapter: chapters,
+        struggleTopics: flatFromChapters.length > 0 ? flatFromChapters : [...(input.struggleTopics ?? [])]
     };
 }

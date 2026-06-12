@@ -160,10 +160,41 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
+| GET | `/api/courses/monitor/:courseId/struggle-stats` | Yes | Instructor | Course-wide struggle stacked bar + per-user struggle/conversation rows |
 | GET | `/api/courses/monitor/:courseId/chat-titles` | Yes | Instructor* | Chat titles for all students |
 | GET | `/api/courses/monitor/:courseId/chat/:chatId/download` | Yes | Instructor* | Download full conversation |
 
-*Monitor routes use `asyncHandlerWithAuth` only; instructor access is enforced at page level. Consider adding `requireInstructorForCourseAPI` for defense in depth.
+**`GET …/struggle-stats` success (200):** `{ success: true, data: { struggleTopics: CourseSummaryStruggleTopics, users: MonitorStruggleUserRow[] }, count: number }`. `struggleTopics` includes `stackedBar`, `topTopics`, and `legend` (course-wide unique students per catalog label). `users[]` includes `chats`, flat `struggleTopics`, and derived `struggleTopicsByChapter`. Uses `requireInstructorForCourseAPI`.
+
+**`GET /api/courses/:courseId/course-summary/status`** now populates `summary.struggleTopics` from the same aggregation module (no longer an empty placeholder).
+
+*Legacy `chat-titles` uses `asyncHandlerWithAuth` only; instructor access is enforced at page level.*
+
+#### Report fixture seed (Test 3, instructor-only, destructive)
+
+Local development helper for report/monitor work. **Only** course name `Test 3` is accepted. Fixture JSON may be any `Record<studentName, string[]>` (default local file: `APSC183-struggle-topic-lists.json` — APSC183 **data** imported into the **Test 3** sandbox).
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| POST | `/api/courses/:courseId/report-fixture/seed` | Yes | Instructor | Remove all Test 3 student roster rows, all `{course}_memory-agent` rows, and prior `seed-test3-*` global users; then import synthetic students with struggle topics |
+
+**Request body:**
+
+```json
+{
+  "struggleTopicsByStudent": {
+    "Student Name": ["topic label one", "topic label two"]
+  }
+}
+```
+
+**Success (200):** `{ success: true, data: { courseId, courseName, studentsSeeded, memoryAgentRowsCreated, studentsRemoved, syntheticGlobalUsersRemoved, globalStudentsUnenrolled } }`
+
+**Errors:** `400` invalid body or course is not Test 3; `401` unauthenticated; `403` not instructor/admin for course; `404` course not found; `500` server error.
+
+**Side effects:** Removes all `{course}_users` documents with `affiliation: 'student'`; deletes all `seed-test3-*` rows in `active-users`; unenrolls other global students from Test 3; creates fresh synthetic `active-users` rows for imported students; does not modify `instructorStruggleTopics` catalog or faculty/admin roster rows.
+
+**Local fixture:** `src/test-scripts/APSC183-struggle-topic-lists.json` (gitignored folder). **Smoke script:** `npx ts-node src/test-scripts/verify-test3-report-fixture.ts`.
 
 #### Documents (MongoDB-side delete)
 
@@ -197,6 +228,8 @@ Platform defaults ship in `src/chat/system-prompts/shared-default/`, `socratic-d
 | GET | `/api/rag/documents/:courseName/:contentTitle/:subContentTitle/:chunkNumber` | Yes | Any | Get specific chunk |
 | POST | `/api/rag/search` | Yes | Any | Vector search |
 | DELETE | `/api/rag/wipe-all` | Yes | Instructor | Wipe all RAG data for course |
+
+**Post-upload struggle generation:** After a successful material save, the server may append instructor struggle-topic labels to the section catalog. For course **`Test 3`**, labels are loaded deterministically from `src/fixtures/APSC183-instructor-struggle-topics.json` (matched by `Topic N` in section title or filename; up to 5 labels per upload, FIFO dedup). Other courses use LLM structured generation (or dev-mode mocks when `DEVELOPING_MODE=true`).
 
 ### 4.5 Chat (`/api/chat`)
 

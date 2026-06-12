@@ -280,8 +280,96 @@ export interface InstructorStruggleTopic {
  */
 export interface InstructorStruggleTopicForDisplay {
     struggleTopic: string;
+    topicOrWeekId: string;
     topicOrWeekTitle: string;
     itemTitle: string;
+}
+
+/**
+ * Must match src/types/shared.ts
+ * Struggle labels detected for one course chapter (topic/week instance).
+ */
+export interface MemoryAgentChapterStruggle {
+    topicOrWeekId: string;
+    topicOrWeekTitle: string;
+    struggleTopics: string[];
+}
+
+/**
+ * Must match src/types/shared.ts
+ * Memory-agent row: struggle topic labels per user per course.
+ */
+export interface MemoryAgentEntry {
+    name: string;
+    userId: string;
+    role: 'instructor' | 'TA' | 'Student';
+    struggleTopics: string[];
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+/** Must match src/types/shared.ts */
+export interface CourseSummaryStackedBarValue {
+    categoryId: string;
+    studentCount: number;
+    tooltip: string;
+}
+
+/** Must match src/types/shared.ts */
+export interface CourseSummaryStackedBarSeries {
+    topic: string;
+    color: string;
+    values: CourseSummaryStackedBarValue[];
+}
+
+/** Must match src/types/shared.ts */
+export interface CourseSummaryCategory {
+    id: string;
+    label: string;
+    order: number;
+}
+
+/** Must match src/types/shared.ts */
+export interface CourseSummaryStackedBar {
+    xAxisLabel: string;
+    yAxisLabel: string;
+    categories: CourseSummaryCategory[];
+    series: CourseSummaryStackedBarSeries[];
+}
+
+/** Must match src/types/shared.ts */
+export interface CourseSummaryTopTopic {
+    topic: string;
+    studentCount: number;
+    percentageOfStudents: number;
+}
+
+/** Must match src/types/shared.ts */
+export interface StruggleStatsLegendItem {
+    topic: string;
+    color: string;
+    studentCount: number;
+}
+
+/** Must match src/types/shared.ts */
+export interface CourseSummaryStruggleTopics {
+    source: 'memory-agent-per-user';
+    groupedBy: 'course-topic-or-week';
+    topTopics: CourseSummaryTopTopic[];
+    stackedBar: CourseSummaryStackedBar;
+    legend: StruggleStatsLegendItem[];
+}
+
+/** Must match src/types/shared.ts */
+export interface MonitorStruggleUserRow {
+    userId: string;
+    userName: string;
+    role: 'student' | 'instructor' | 'admin';
+    conversationCount: number;
+    struggleTopicCount: number;
+    struggleTopics: string[];
+    struggleTopicsByChapter: MemoryAgentChapterStruggle[];
+    chats: Array<{ id: string; title: string }>;
 }
 
 /**

@@ -2,15 +2,27 @@ import { renderFeatherIcons } from "../api/api.js";
 import { authService } from "../services/auth-service.js";
 import { fetchCourseMongoBackupZip } from "./course-mongo-backup-download.js";
 import { openConversationExportFormatModal } from "./conversations-export-modal.js";
+import { chartsController, mapCourseSummaryStackedBarToChartSpec } from "../ui/charts.js";
+import type {
+    CourseSummaryStruggleTopics,
+    MemoryAgentChapterStruggle,
+    StruggleStatsLegendItem
+} from "../types.js";
 
 /**
  * Monitor Dashboard Types
  */
+type MonitorActivePanel = 'none' | 'conversations' | 'struggle';
+
 interface UserData {
     id: string;
     name: string;
     role: 'student' | 'instructor' | 'admin';
     conversationCount: number;
+    struggleTopicCount: number;
+    struggleTopics: string[];
+    struggleTopicsByChapter: MemoryAgentChapterStruggle[];
+    activePanel: MonitorActivePanel;
     chatHistory: ChatSession[];
 }
 
@@ -38,14 +50,15 @@ interface DateRange {
  */
 class MonitorDashboard {
     private users: UserData[] = [];
-    private currentSort: 'conversations' | 'name' = 'conversations';
+    private struggleTopics: CourseSummaryStruggleTopics | null = null;
+    private currentSort: 'conversations' | 'name' | 'struggle' = 'conversations';
     private selectedDateRange: DateRange = { start: null, end: null };
     private isCalendarOpen: boolean = false;
     private courseId: string | null = null;
 
     constructor() {
         this.getCourseId();
-        this.loadChatTitles();
+        void this.loadStruggleStats();
         void this.configureMongoBackupButton();
         this.bindEvents();
         this.render();
@@ -65,18 +78,19 @@ class MonitorDashboard {
     }
 
     /**
-     * Load chat titles from API
+     * Load struggle stats and per-user monitor rows from API.
      */
-    private async loadChatTitles(): Promise<void> {
+    private async loadStruggleStats(): Promise<void> {
         if (!this.courseId) {
-            console.error('[MONITOR] ❌ Cannot load chat titles: no course ID');
+            console.error('[MONITOR] ❌ Cannot load struggle stats: no course ID');
             this.users = [];
+            this.struggleTopics = null;
             this.render();
             return;
         }
 
         try {
-            const response = await fetch(`/api/courses/monitor/${this.courseId}/chat-titles`, {
+            const response = await fetch(`/api/courses/monitor/${this.courseId}/struggle-stats`, {
                 method: 'GET',
                 credentials: 'same-origin',
                 headers: {
@@ -89,33 +103,47 @@ class MonitorDashboard {
             }
 
             const result = await response.json();
-            
+
             if (result.success && result.data) {
-                // Transform API data to UserData format (students and instructors)
-                this.users = result.data.map((user: any) => ({
+                this.struggleTopics = result.data.struggleTopics as CourseSummaryStruggleTopics;
+                this.users = (result.data.users || []).map((user: {
+                    userId: string;
+                    userName: string;
+                    role: UserData['role'];
+                    conversationCount: number;
+                    struggleTopicCount: number;
+                    struggleTopics: string[];
+                    struggleTopicsByChapter: MemoryAgentChapterStruggle[];
+                    chats: Array<{ id: string; title: string }>;
+                }) => ({
                     id: user.userId,
                     name: user.userName,
-                    role: user.role || (user.affiliation === 'faculty' ? 'instructor' : 'student'),
-                    conversationCount: (user.chats || []).length,
-                    chatHistory: (user.chats || []).map((chat: any) => ({
+                    role: user.role || 'student',
+                    conversationCount: user.conversationCount ?? (user.chats || []).length,
+                    struggleTopicCount: user.struggleTopicCount ?? 0,
+                    struggleTopics: user.struggleTopics ?? [],
+                    struggleTopicsByChapter: user.struggleTopicsByChapter ?? [],
+                    activePanel: 'none' as MonitorActivePanel,
+                    chatHistory: (user.chats || []).map((chat) => ({
                         id: chat.id,
                         title: chat.title,
-                        date: new Date(), // Date not provided by API, use current date
-                        tokensUsed: 0 // Reserved for future use
+                        date: new Date(),
+                        tokensUsed: 0
                     }))
                 }));
-
-                // console.log('[MONITOR] ✅ Loaded chat titles for', this.users.length, 'users');
             } else {
-                console.error('[MONITOR] ❌ Failed to load chat titles:', result.error);
+                console.error('[MONITOR] ❌ Failed to load struggle stats:', result.error);
                 this.users = [];
+                this.struggleTopics = null;
             }
         } catch (error) {
-            console.error('[MONITOR] ❌ Error loading chat titles:', error);
+            console.error('[MONITOR] ❌ Error loading struggle stats:', error);
             this.users = [];
+            this.struggleTopics = null;
         }
-        
+
         this.render();
+        await this.renderStruggleChart();
     }
 
 
@@ -165,7 +193,7 @@ class MonitorDashboard {
         // Sort dropdown
         const sortSelect = document.getElementById('sort-select') as HTMLSelectElement | null;
         sortSelect?.addEventListener('change', (e) => {
-            const value = (e.target as HTMLSelectElement).value as 'conversations' | 'name';
+            const value = (e.target as HTMLSelectElement).value as 'conversations' | 'name' | 'struggle';
             this.setSort(value);
         });
 
@@ -202,7 +230,18 @@ class MonitorDashboard {
         //     }
         // });
 
-        // Accordion functionality will be handled by global functions
+    }
+
+    private toggleUserPanel(userId: string, panel: 'conversations' | 'struggle'): void {
+        this.users = this.users.map((user) => {
+            if (user.id !== userId) {
+                return { ...user, activePanel: 'none' as MonitorActivePanel };
+            }
+            const nextPanel: MonitorActivePanel = user.activePanel === panel ? 'none' : panel;
+            return { ...user, activePanel: nextPanel };
+        });
+        this.renderUserList();
+        renderFeatherIcons();
     }
 
     /**
@@ -245,34 +284,110 @@ class MonitorDashboard {
         };
     }
 
+    private renderStruggleLegend(legend: StruggleStatsLegendItem[]): void {
+        const legendEl = document.getElementById('monitor-struggle-legend');
+        if (!legendEl) return;
+
+        if (!legend.length) {
+            legendEl.innerHTML = '<p class="monitor-struggle-legend-empty">No struggle topic data yet.</p>';
+            return;
+        }
+
+        legendEl.innerHTML = legend
+            .map(
+                (item) => `
+            <div class="monitor-struggle-legend-item">
+                <span class="monitor-struggle-legend-swatch" style="background-color: ${item.color}"></span>
+                <span class="monitor-struggle-legend-label">${item.topic}</span>
+                <span class="monitor-struggle-legend-count">${item.studentCount}</span>
+            </div>
+        `
+            )
+            .join('');
+    }
+
+    private async renderStruggleChart(): Promise<void> {
+        const canvas = document.getElementById('monitor-struggle-chart') as HTMLCanvasElement | null;
+        const stackedBar = this.struggleTopics?.stackedBar;
+        const legend = this.struggleTopics?.legend ?? [];
+
+        this.renderStruggleLegend(legend);
+
+        if (!stackedBar?.categories?.length || !stackedBar.series?.length) {
+            chartsController.destroyActiveChart();
+            return;
+        }
+
+        const spec = mapCourseSummaryStackedBarToChartSpec(stackedBar);
+        await chartsController.renderStackedBarChart(canvas, spec, { showLegend: false });
+    }
+
+    private renderStrugglePanelContent(user: UserData): string {
+        if (!user.struggleTopicsByChapter.length) {
+            return '<p class="monitor-panel-empty">No struggle topics recorded.</p>';
+        }
+
+        return user.struggleTopicsByChapter
+            .map(
+                (chapter) => `
+            <div class="monitor-struggle-chapter">
+                <h4 class="monitor-struggle-chapter-title">${chapter.topicOrWeekTitle}</h4>
+                <ul class="monitor-struggle-label-list">
+                    ${chapter.struggleTopics.map((label) => `<li>${label}</li>`).join('')}
+                </ul>
+            </div>
+        `
+            )
+            .join('');
+    }
+
     /**
-     * Render user list (students and instructors) with accordion functionality
+     * Render user list with conversation and struggle action buttons.
      */
     private renderUserList(): void {
         const userList = document.getElementById('student-list');
         if (!userList) return;
 
-        // Update dynamic user count in header
         const userCountEl = document.getElementById('user-count');
         if (userCountEl) {
             userCountEl.textContent = `(${this.users.length})`;
         }
 
         const sortedUsers = this.getSortedUsers();
-        
-        userList.innerHTML = sortedUsers.map(user => `
+
+        userList.innerHTML = sortedUsers
+            .map((user) => {
+                const convActive = user.activePanel === 'conversations' ? ' monitor-btn--active' : '';
+                const struggleActive = user.activePanel === 'struggle' ? ' monitor-btn--active' : '';
+                const showConv = user.activePanel === 'conversations';
+                const showStruggle = user.activePanel === 'struggle';
+
+                return `
             <div class="student-item" data-student-id="${user.id}">
-                <div class="student-header" onclick="toggleMonitorStudentAccordion('${user.id}')">
-                <div class="student-name">
-                    <span class="role-badge role-${user.role}">${MonitorDashboard.roleBadgeLabel(user.role)}</span>
-                    ${user.name}
+                <div class="student-header">
+                    <div class="student-name">
+                        <span class="role-badge role-${user.role}">${MonitorDashboard.roleBadgeLabel(user.role)}</span>
+                        ${user.name}
+                    </div>
+                    <div class="monitor-user-actions">
+                        <button type="button" class="monitor-btn-conversations${convActive}" data-action="conversations" data-user-id="${user.id}">
+                            ${user.conversationCount} conversation${user.conversationCount !== 1 ? 's' : ''}
+                        </button>
+                        <button type="button" class="monitor-btn-struggle${struggleActive}" data-action="struggle" data-user-id="${user.id}">
+                            ${user.struggleTopicCount} struggle topic${user.struggleTopicCount !== 1 ? 's' : ''}
+                        </button>
+                    </div>
                 </div>
-                <div class="student-conversation-count">${user.conversationCount} conversation${user.conversationCount !== 1 ? 's' : ''}</div>
-                    <i data-feather="chevron-down" class="expand-arrow"></i>
-                </div>
-                <div class="monitor-student-content">
+                ${
+                    showConv
+                        ? `
+                <div class="monitor-user-panel monitor-user-panel--conversations">
                     <div class="chat-history-list">
-                        ${user.chatHistory.map(chat => `
+                        ${
+                            user.chatHistory.length
+                                ? user.chatHistory
+                                      .map(
+                                          (chat) => `
                             <div class="chat-history-item">
                                 <div class="chat-title">${chat.title}</div>
                                 <button class="download-button" onclick="downloadChatHistory('${chat.id}')">
@@ -280,13 +395,38 @@ class MonitorDashboard {
                                     Download
                                 </button>
                             </div>
-                        `).join('')}
+                        `
+                                      )
+                                      .join('')
+                                : '<p class="monitor-panel-empty">No conversations yet.</p>'
+                        }
                     </div>
-                </div>
+                </div>`
+                        : ''
+                }
+                ${
+                    showStruggle
+                        ? `
+                <div class="monitor-user-panel monitor-user-panel--struggle">
+                    ${this.renderStrugglePanelContent(user)}
+                </div>`
+                        : ''
+                }
             </div>
-        `).join('');
+        `;
+            })
+            .join('');
 
-        // Re-render feather icons for the new content
+        userList.querySelectorAll<HTMLButtonElement>('[data-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const userId = btn.dataset.userId;
+                const action = btn.dataset.action as 'conversations' | 'struggle' | undefined;
+                if (userId && action) {
+                    this.toggleUserPanel(userId, action);
+                }
+            });
+        });
+
         renderFeatherIcons();
     }
 
@@ -298,15 +438,17 @@ class MonitorDashboard {
         
         if (this.currentSort === 'conversations') {
             return users.sort((a, b) => b.conversationCount - a.conversationCount);
-        } else {
-            return users.sort((a, b) => a.name.localeCompare(b.name));
         }
+        if (this.currentSort === 'struggle') {
+            return users.sort((a, b) => b.struggleTopicCount - a.struggleTopicCount);
+        }
+        return users.sort((a, b) => a.name.localeCompare(b.name));
     }
 
     /**
      * Set sort option and update UI
      */
-    private setSort(sort: 'conversations' | 'name'): void {
+    private setSort(sort: 'conversations' | 'name' | 'struggle'): void {
         this.currentSort = sort;
         
         // Update dropdown value
@@ -654,26 +796,9 @@ class MonitorDashboard {
 
 }
 
-/**
- * Global functions for accordion functionality
- */
 declare global {
-    function toggleMonitorStudentAccordion(studentId: string): void;
     function downloadChatHistory(chatId: string): void;
 }
-
-/**
- * Toggle student accordion expand/collapse
- */
-function toggleMonitorStudentAccordion(studentId: string): void {
-    const studentItem = document.querySelector(`[data-student-id="${studentId}"]`);
-    if (studentItem) {
-        studentItem.classList.toggle('expanded');
-    }
-}
-
-// Make functions globally available for inline onclick handlers
-(window as any).toggleMonitorStudentAccordion = toggleMonitorStudentAccordion;
 
 /**
  * Download chat history for a specific chat

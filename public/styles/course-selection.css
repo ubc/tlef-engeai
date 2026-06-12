@@ -1003,3 +1003,50 @@
     box-shadow: none;
     opacity: 0.6;
 }
+
+/* Admin-only Test 3 report fixture seed — fixed red circle, bottom-left */
+.seed-report-fixture-btn {
+    position: fixed;
+    bottom: 1.5rem;
+    left: 1.5rem;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    padding: 0;
+    border: 3px solid #fff;
+    border-radius: 50%;
+    background-color: var(--color-eng-red);
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(139, 0, 0, 0.45);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.seed-report-fixture-btn:hover:not(:disabled) {
+    transform: scale(1.08);
+    background-color: #7a0000;
+    box-shadow: 0 6px 18px rgba(139, 0, 0, 0.55);
+}
+
+.seed-report-fixture-btn:active:not(:disabled) {
+    transform: scale(1.02);
+}
+
+.seed-report-fixture-btn:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
+.seed-report-fixture-btn i,
+.seed-report-fixture-btn svg {
+    width: 24px;
+    height: 24px;
+    stroke: #fff;
+}
+
+.seed-report-fixture-btn.seed-fixture-hidden {
+    display: none;
+}

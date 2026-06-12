@@ -35,7 +35,12 @@
 - **Topic/week embedded content** (`topic-week-mongo.ts` on `active-course-list`):
   - **`learningObjectives[]`** per `items[]` — instructor CRUD; flattened via `getAllLearningObjectives` for system-prompt injection.
   - **`instructorStruggleTopics[]`** per `items[]` — instructor CRUD (`/struggle-topics` API); flattened via `getAllInstructorStruggleTopics` for memory-agent catalog only (not main chat system prompt).
-- **TBD**: Courses, registry / scheduled tasks, flags, users, chats, globals, memory, instructor prompts — main operations per file and noteworthy cross-dependencies (`getFlagReportsWithUserNames`, etc.).
+- **Memory agent** (`memory-agent-mongo.ts` on `{courseName}_memory-agent`):
+  - **`struggleTopics[]`** — canonical flat distinct labels per user (written by memory-agent analyze).
+  - **Legacy `struggleTopicsByChapter[]`** — superseded; lazily removed on read/write (`$unset`) with labels merged into `struggleTopics[]`.
+  - **Per-chapter view** — derived at read time via `struggle-chapter-normalize.ts` (`assignLabelsToChapters` + instructor catalog); not stored on the row.
+  - **Catalog** — `getAllInstructorStruggleTopics` includes `topicOrWeekId` for chapter derivation in exports and report stats.
+- **TBD**: Courses, registry / scheduled tasks, flags, users, chats, globals, instructor prompts — main operations per file and noteworthy cross-dependencies (`getFlagReportsWithUserNames`, etc.).
 - **Course summary (instructor modal)** — live metrics for the instructor course-summary UI:
   - **Catalog** (`active-course-list` / `course-mongo.ts`): `activeCourse.date` → summary **start date**; **end date** is not persisted yet (API placeholder until a catalog field exists).
   - **Roster** (`{courseName}_users` / `course-user-mongo.ts`): **`countCourseStudentsAndActiveChats`** — student row count (`affiliation: 'student'`) and count of **non-deleted** embedded chat threads, aligned with conversation ZIP export filters (`conversation-export-mongo.ts`).

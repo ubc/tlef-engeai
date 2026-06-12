@@ -25,6 +25,13 @@ describe('MemoryAgent.analyzeAndUpdateStruggleWords', () => {
     const mockUpdateMemoryAgentStruggleWords = jest.fn();
     const mockFindUserByUserId = jest.fn();
 
+    const catalogRow = {
+        struggleTopic: 'Phase diagrams',
+        topicOrWeekId: 'tw-1',
+        topicOrWeekTitle: 'Week 1',
+        itemTitle: 'Lecture 1'
+    };
+
     beforeEach(() => {
         jest.clearAllMocks();
         mockSendStructuredConversation.mockReset();
@@ -52,14 +59,8 @@ describe('MemoryAgent.analyzeAndUpdateStruggleWords', () => {
         expect(mockUpdateMemoryAgentStruggleWords).not.toHaveBeenCalled();
     });
 
-    it('persists verbatim catalog label from structured response', async () => {
-        mockGetAllInstructorStruggleTopics.mockResolvedValue([
-            {
-                struggleTopic: 'Phase diagrams',
-                topicOrWeekTitle: 'Week 1',
-                itemTitle: 'Lecture 1'
-            }
-        ]);
+    it('persists verbatim catalog label into flat struggleTopics', async () => {
+        mockGetAllInstructorStruggleTopics.mockResolvedValue([catalogRow]);
 
         mockSendStructuredConversation.mockResolvedValue({
             parsed: { struggleTopics: ['Phase diagrams'] }
@@ -74,21 +75,11 @@ describe('MemoryAgent.analyzeAndUpdateStruggleWords', () => {
         );
 
         expect(mockSendStructuredConversation).toHaveBeenCalled();
-        expect(mockUpdateMemoryAgentStruggleWords).toHaveBeenCalledWith(
-            'TestCourse',
-            'user-1',
-            ['Phase diagrams']
-        );
+        expect(mockUpdateMemoryAgentStruggleWords).toHaveBeenCalledWith('TestCourse', 'user-1', ['Phase diagrams']);
     });
 
     it('does not persist label that is not in catalog', async () => {
-        mockGetAllInstructorStruggleTopics.mockResolvedValue([
-            {
-                struggleTopic: 'Phase diagrams',
-                topicOrWeekTitle: 'Week 1',
-                itemTitle: 'Lecture 1'
-            }
-        ]);
+        mockGetAllInstructorStruggleTopics.mockResolvedValue([catalogRow]);
 
         mockSendStructuredConversation.mockResolvedValue({
             parsed: { struggleTopics: ['Thermodynamics'] }

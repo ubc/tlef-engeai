@@ -8,11 +8,16 @@
  * (same-origin, not a third-party CDN).
  */
 
-import type { activeCourse } from "../types.js";
+import type {
+    activeCourse,
+    CourseSummaryStackedBar,
+    CourseSummaryStruggleTopics,
+    CourseSummaryTopTopic
+} from "../types.js";
 import { authService } from "../services/auth-service.js";
 import { renderFeatherIcons } from "../api/api.js";
 import { openConversationExportFormatModal } from "./conversations-export-modal.js";
-import { chartsController, type StackedBarChartSpec } from "../ui/charts.js";
+import { chartsController, mapCourseSummaryStackedBarToChartSpec } from "../ui/charts.js";
 
 type CourseSummaryStatus = 'locked' | 'available' | 'generated';
 type CourseSummaryFrameType = 'byWeek' | 'byTopic';
@@ -61,44 +66,6 @@ interface CourseSummaryCourseInfo {
 interface CourseSummaryTotals {
     students: number;
     nonDeletedChats: number;
-}
-
-interface CourseSummaryStruggleTopics {
-    source: 'memory-agent-per-user';
-    groupedBy: 'course-topic-or-week';
-    topTopics: CourseSummaryTopTopic[];
-    stackedBar: CourseSummaryStackedBar;
-}
-
-interface CourseSummaryTopTopic {
-    topic: string;
-    studentCount: number;
-    percentageOfStudents: number;
-}
-
-interface CourseSummaryStackedBar {
-    xAxisLabel: string;
-    yAxisLabel: string;
-    categories: CourseSummaryCategory[];
-    series: CourseSummaryStackedBarSeries[];
-}
-
-interface CourseSummaryCategory {
-    id: string;
-    label: string;
-    order: number;
-}
-
-interface CourseSummaryStackedBarSeries {
-    topic: string;
-    color: string;
-    values: CourseSummaryStackedBarValue[];
-}
-
-interface CourseSummaryStackedBarValue {
-    categoryId: string;
-    studentCount: number;
-    tooltip: string;
 }
 
 const COURSE_SUMMARY_TEMPLATE_URL = '/components/course-summary/course-summary.html';
@@ -519,31 +486,6 @@ function renderTopTopicChips(overlay: HTMLElement, topTopics: CourseSummaryTopTo
 }
 
 /**
- * Maps course-summary API shape for struggle topics into {@link StackedBarChartSpec} for {@link chartsController}.
- */
-function mapStackedBarToChartSpec(stackedBar: CourseSummaryStackedBar): StackedBarChartSpec {
-    return {
-        xAxisLabel: stackedBar.xAxisLabel,
-        yAxisLabel: stackedBar.yAxisLabel,
-        stackId: 'struggle-topics',
-        categories: stackedBar.categories.map((c) => ({
-            id: c.id,
-            label: c.label,
-            order: c.order
-        })),
-        series: stackedBar.series.map((series) => ({
-            label: series.topic,
-            color: series.color,
-            data: series.values.map((v) => ({
-                categoryId: v.categoryId,
-                value: v.studentCount,
-                tooltip: v.tooltip || `${series.topic}: 0 students`
-            }))
-        }))
-    };
-}
-
-/**
  * Renders the struggle-topics stacked bar on the modal canvas via {@link chartsController}.
  */
 async function renderStackedBarGraph(overlay: HTMLElement, stackedBar: CourseSummaryStackedBar): Promise<void> {
@@ -552,7 +494,7 @@ async function renderStackedBarGraph(overlay: HTMLElement, stackedBar: CourseSum
         chartsController.destroyActiveChart();
         return;
     }
-    const spec = mapStackedBarToChartSpec(stackedBar);
+    const spec = mapCourseSummaryStackedBarToChartSpec(stackedBar);
     await chartsController.renderStackedBarChart(canvas, spec);
 }
 

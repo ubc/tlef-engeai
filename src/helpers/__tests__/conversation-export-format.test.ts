@@ -51,16 +51,22 @@ Message 2:
     });
 
     describe('formatStruggleTopicsExportText', () => {
-        it('formats header, ISO date, and bullet topics', () => {
+        it('formats per-chapter headings and bullet topics', () => {
             const created = new Date('2026-05-01T12:00:00.000Z');
             const out = formatStruggleTopicsExportText({
                 userId: 'u-1',
                 name: 'Jane Doe',
                 memoryAgentCreatedAt: created,
-                struggleTopics: ['loops', 'pointers']
+                struggleTopicsByChapter: [
+                    {
+                        topicOrWeekId: 'tw-1',
+                        topicOrWeekTitle: 'Week 1',
+                        struggleTopics: ['loops', 'pointers']
+                    }
+                ]
             });
             expect(out).toBe(
-                `Student name: Jane Doe\nStudent ID: u-1\nMemory agent record created: 2026-05-01T12:00:00.000Z\n\nStruggle topics:\n- loops\n- pointers\n`
+                `Student name: Jane Doe\nStudent ID: u-1\nMemory agent record created: 2026-05-01T12:00:00.000Z\n\nStruggle topics by chapter:\n\nWeek 1\n- loops\n- pointers\n`
             );
         });
 
@@ -70,28 +76,52 @@ Message 2:
                     userId: 'u-2',
                     name: 'Alex',
                     memoryAgentCreatedAt: null,
-                    struggleTopics: []
+                    struggleTopicsByChapter: []
                 })
             ).toBe(
-                `Student name: Alex\nStudent ID: u-2\nMemory agent record created: (not initialized)\n\nStruggle topics:\n(none)\n`
+                `Student name: Alex\nStudent ID: u-2\nMemory agent record created: (not initialized)\n\nStruggle topics by chapter:\n(none)\n`
             );
+        });
+
+        it('falls back to flat legacy list when chapters empty', () => {
+            const out = formatStruggleTopicsExportText({
+                userId: 'u-3',
+                name: 'Pat',
+                memoryAgentCreatedAt: new Date('2026-05-01T12:00:00.000Z'),
+                struggleTopicsByChapter: [],
+                struggleTopics: ['legacy-topic']
+            });
+            expect(out).toContain('Struggle topics:\n- legacy-topic');
         });
     });
 
     describe('struggleTopicsExportToJsonPayload', () => {
-        it('maps to JSON shape with ISO string or null', () => {
+        it('maps to JSON shape with per-chapter structure', () => {
             const d = new Date('2026-05-01T12:00:00.000Z');
             expect(
                 struggleTopicsExportToJsonPayload({
                     userId: 'u-1',
                     name: 'Jane',
                     memoryAgentCreatedAt: d,
-                    struggleTopics: ['a']
+                    struggleTopicsByChapter: [
+                        {
+                            topicOrWeekId: 'tw-1',
+                            topicOrWeekTitle: 'Week 1',
+                            struggleTopics: ['a']
+                        }
+                    ]
                 })
             ).toEqual({
                 userId: 'u-1',
                 name: 'Jane',
                 memoryAgentCreatedAt: '2026-05-01T12:00:00.000Z',
+                struggleTopicsByChapter: [
+                    {
+                        topicOrWeekId: 'tw-1',
+                        topicOrWeekTitle: 'Week 1',
+                        struggleTopics: ['a']
+                    }
+                ],
                 struggleTopics: ['a']
             });
             expect(
@@ -99,12 +129,14 @@ Message 2:
                     userId: 'u-2',
                     name: 'Pat',
                     memoryAgentCreatedAt: null,
+                    struggleTopicsByChapter: [],
                     struggleTopics: []
                 })
             ).toEqual({
                 userId: 'u-2',
                 name: 'Pat',
                 memoryAgentCreatedAt: null,
+                struggleTopicsByChapter: [],
                 struggleTopics: []
             });
         });

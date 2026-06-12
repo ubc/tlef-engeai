@@ -41,6 +41,10 @@ import {
     InvalidTopicOrWeekInstanceReorderError
 } from '../db/mongo/topic-week-mongo';
 import { parseOrderedIdsBody } from './topic-week-reorder-body';
+import {
+    parseStruggleTopicsByStudentBody,
+    ReportFixtureSeedError
+} from '../db/mongo/report-fixture-seed-mongo';
 import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt, SystemPromptItem } from '../types/shared';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { memoryAgent } from '../memory-agent/memory-agent';
@@ -2002,6 +2006,8 @@ router.get(
             const startDate = toYyyyMmDd(courseData.date);
             const endDate = toYyyyMmDd(new Date()); // change it later
 
+            const struggleStats = await instance.getCourseStruggleStats(courseId);
+
             const nowIso = new Date().toISOString();
             const summary = {
                 id: `summary_${courseData.id}`,
@@ -2029,21 +2035,7 @@ router.get(
                     students: totals.students,
                     nonDeletedChats: totals.nonDeletedChats
                 },
-                struggleTopics: {
-                    source: 'memory-agent-per-user' as const,
-                    groupedBy: 'course-topic-or-week' as const,
-                    topTopics: [] as { topic: string; studentCount: number; percentageOfStudents: number }[],
-                    stackedBar: {
-                        xAxisLabel: 'Course Topic',
-                        yAxisLabel: 'Students',
-                        categories: [] as { id: string; label: string; order: number }[],
-                        series: [] as {
-                            topic: string;
-                            color: string;
-                            values: { categoryId: string; studentCount: number; tooltip: string }[];
-                        }[]
-                    }
-                },
+                struggleTopics: struggleStats.struggleTopics,
                 downloadConversationAvailable: true,
                 downloadConversationAvailableAt: null as string | null,
                 createdAt: nowIso,
@@ -2061,6 +2053,44 @@ router.get(
                 success: false,
                 error: 'Failed to load course summary'
             });
+        }
+    })
+);
+
+/**
+ * POST /:courseId/report-fixture/seed
+ * Destructive Test 3 fixture seed: removes all student roster rows and memory-agent rows, then imports
+ * synthetic students with struggle topics from `struggleTopicsByStudent` (name → string[]).
+ *
+ * @route POST /api/courses/:courseId/report-fixture/seed
+ * @body { struggleTopicsByStudent: Record<string, string[]> }
+ */
+router.post(
+    '/:courseId/report-fixture/seed',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const { courseId } = req.params;
+        const struggleTopicsByStudent = parseStruggleTopicsByStudentBody(req.body);
+        if (!struggleTopicsByStudent) {
+            return res.status(400).json({
+                success: false,
+                error: 'Request body must include non-empty struggleTopicsByStudent (Record<studentName, string[]>)'
+            });
+        }
+
+        try {
+            const instance = await EngEAI_MongoDB.getInstance();
+            const summary = await instance.seedReportFixture(courseId, struggleTopicsByStudent);
+            res.json({ success: true, data: summary });
+        } catch (error) {
+            if (error instanceof ReportFixtureSeedError) {
+                if (error.code === 'COURSE_NOT_FOUND') {
+                    return res.status(404).json({ success: false, error: error.message });
+                }
+                return res.status(400).json({ success: false, error: error.message });
+            }
+            appLogger.error('Error seeding Test 3 report fixture:', error);
+            res.status(500).json({ success: false, error: 'Failed to seed report fixture' });
         }
     })
 );
@@ -3556,6 +3586,44 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
  * @response 404 - Course not found
  * @response 500 - Failed to get chat titles
  */
+/**
+ * GET /monitor/:courseId/struggle-stats
+ * Course-wide struggle-topic chart data and per-user struggle/conversation rows for the monitor dashboard.
+ *
+ * @route GET /api/courses/monitor/:courseId/struggle-stats
+ */
+router.get(
+    '/monitor/:courseId/struggle-stats',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        try {
+            const { courseId } = req.params;
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const course = await mongoDB.getActiveCourse(courseId);
+            if (!course) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Course not found'
+                });
+            }
+
+            const stats = await mongoDB.getCourseStruggleStats(courseId);
+            res.status(200).json({
+                success: true,
+                data: stats,
+                count: stats.users.length
+            });
+        } catch (error) {
+            appLogger.error('Error getting struggle stats:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to get struggle stats',
+                details: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    })
+);
+
 router.get('/monitor/:courseId/chat-titles', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { courseId } = req.params;
@@ -3812,6 +3880,7 @@ router.get(
                         userId: srow.userId,
                         name: srow.studentName,
                         memoryAgentCreatedAt: srow.memoryAgentCreatedAt,
+                        struggleTopicsByChapter: srow.struggleTopicsByChapter,
                         struggleTopics: srow.struggleTopics
                     };
                     const struggleBody =

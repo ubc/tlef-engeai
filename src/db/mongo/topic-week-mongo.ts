@@ -700,6 +700,7 @@ export async function getAllInstructorStruggleTopics(
             $project: {
                 _id: 0,
                 struggleTopic: '$topicOrWeekInstances.items.instructorStruggleTopics.struggleTopic',
+                topicOrWeekId: '$topicOrWeekInstances.id',
                 topicOrWeekTitle: { $ifNull: ['$topicOrWeekInstances.title', ''] },
                 itemTitle: {
                     $ifNull: [

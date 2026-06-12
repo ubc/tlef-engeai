@@ -28,12 +28,21 @@
         </header>
 
 
+        <section class="monitor-struggle-chart-section">
+            <h3>Struggle Topic Distribution</h3>
+            <div class="monitor-struggle-chart-wrap">
+                <canvas id="monitor-struggle-chart" aria-label="Course-wide struggle topic distribution chart"></canvas>
+            </div>
+            <div class="monitor-struggle-legend" id="monitor-struggle-legend" aria-label="Struggle topic legend"></div>
+        </section>
+
         <!-- User List Section - Students and Instructors -->
         <section class="student-list-section">
             <div class="student-list-header">
                 <h3>User Activity <span class="user-count" id="user-count">(0)</span></h3>
                 <select class="sort-select" id="sort-select" aria-label="Sort by">
                     <option value="conversations">Conversations</option>
+                    <option value="struggle">Struggle topics</option>
                     <option value="name">Alphabetical</option>
                 </select>
             </div>

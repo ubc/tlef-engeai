@@ -347,6 +347,8 @@ export interface InstructorStruggleTopic {
  */
 export interface InstructorStruggleTopicForDisplay {
     struggleTopic: string;
+    /** Parent `topicOrWeekInstances.id` — chapter key for per-chapter struggle storage. */
+    topicOrWeekId: string;
     topicOrWeekTitle: string;
     itemTitle: string;
 }
@@ -479,12 +481,94 @@ export type User = CourseUser;
  * Socratic conversations → later turns about those topics use direct explanation (see
  * system prompt `STRUGGLE_TOPICS_SECTION` in Socratic mode only).
  */
+/** Derived view of struggle labels grouped by course chapter — not persisted on {@link MemoryAgentEntry}. */
+export interface MemoryAgentChapterStruggle {
+    topicOrWeekId: string;
+    topicOrWeekTitle: string;
+    /** Verbatim catalog labels; distinct within chapter. */
+    struggleTopics: string[];
+}
+
 export interface MemoryAgentEntry {
     name: string;
     userId: string;
     role: 'instructor' | 'TA' | 'Student';
-    /** Topic labels detected by the memory agent; may be empty. Not stored on {@link Chat}. */
+    /** Distinct verbatim catalog labels for this user (canonical Mongo field). */
     struggleTopics: string[];
     createdAt: Date;
     updatedAt: Date;
+}
+
+/** One cell in the course-summary / monitor stacked bar chart. */
+export interface CourseSummaryStackedBarValue {
+    categoryId: string;
+    studentCount: number;
+    tooltip: string;
+}
+
+/** One stacked series (catalog struggle label) in the struggle-topics chart. */
+export interface CourseSummaryStackedBarSeries {
+    topic: string;
+    color: string;
+    values: CourseSummaryStackedBarValue[];
+}
+
+/** X-axis bucket (course topic or week). */
+export interface CourseSummaryCategory {
+    id: string;
+    label: string;
+    order: number;
+}
+
+/** Stacked bar chart payload for struggle-topic distribution. */
+export interface CourseSummaryStackedBar {
+    xAxisLabel: string;
+    yAxisLabel: string;
+    categories: CourseSummaryCategory[];
+    series: CourseSummaryStackedBarSeries[];
+}
+
+/** Top struggle labels by course-wide unique student count. */
+export interface CourseSummaryTopTopic {
+    topic: string;
+    studentCount: number;
+    percentageOfStudents: number;
+}
+
+/** Course-wide legend entry for monitor two-column layout. */
+export interface StruggleStatsLegendItem {
+    topic: string;
+    color: string;
+    studentCount: number;
+}
+
+/**
+ * Aggregated struggle-topic statistics — shared by monitor, course-summary, and PDF (D2+).
+ */
+export interface CourseSummaryStruggleTopics {
+    source: 'memory-agent-per-user';
+    groupedBy: 'course-topic-or-week';
+    topTopics: CourseSummaryTopTopic[];
+    stackedBar: CourseSummaryStackedBar;
+    /** Full catalog legend with course-wide unique student counts. */
+    legend: StruggleStatsLegendItem[];
+}
+
+/** Per-user row in GET /api/courses/monitor/:courseId/struggle-stats. */
+export interface MonitorStruggleUserRow {
+    userId: string;
+    userName: string;
+    role: 'student' | 'instructor' | 'admin';
+    conversationCount: number;
+    struggleTopicCount: number;
+    struggleTopics: string[];
+    /** Derived at read time — not persisted. */
+    struggleTopicsByChapter: MemoryAgentChapterStruggle[];
+    chats: Array<{ id: string; title: string }>;
+}
+
+/** Result of {@link buildCourseStruggleStats}. */
+export interface StruggleStatsResult {
+    struggleTopics: CourseSummaryStruggleTopics;
+    users: MonitorStruggleUserRow[];
 }

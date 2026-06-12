@@ -318,6 +318,71 @@
     border-color: var(--pinned-color);
 }
 
+/* Struggle topic distribution chart */
+.monitor-struggle-chart-section {
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.monitor-struggle-chart-section h3 {
+    margin: 0 0 16px;
+    font-size: 18px;
+    color: var(--text-primary);
+}
+
+.monitor-struggle-chart-wrap {
+    position: relative;
+    height: 320px;
+    width: 100%;
+}
+
+.monitor-struggle-legend {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 24px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.monitor-struggle-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.monitor-struggle-legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.monitor-struggle-legend-label {
+    flex: 1;
+    min-width: 0;
+}
+
+.monitor-struggle-legend-count {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.monitor-struggle-legend-empty,
+.monitor-panel-empty {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
 /* Student List - Individual separated cards */
 .student-list {
     display: flex;
@@ -342,7 +407,8 @@
     justify-content: space-between;
     align-items: center;
     border-radius: 9px;
-    cursor: pointer;
+    gap: 12px;
+    flex-wrap: wrap;
 }
 
 .student-name {
@@ -383,41 +449,73 @@
     display: none;
 }
 
-.student-conversation-count {
+.monitor-user-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.monitor-btn-conversations,
+.monitor-btn-struggle {
+    border: none;
+    border-radius: 8px;
+    padding: 8px 12px;
     font-size: 13px;
-    color: var(--text-secondary);
-    font-weight: 500;
-    margin-right: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #ffffff;
+    transition: opacity 0.2s ease, box-shadow 0.2s ease;
 }
 
-.expand-arrow {
-    font-size: 16px;
-    color: var(--text-secondary);
-    transition: transform 0.3s ease;
+.monitor-btn-conversations {
+    background: #1976d2;
 }
 
-.student-item.expanded .expand-arrow {
-    transform: rotate(180deg);
+.monitor-btn-struggle {
+    background: #c62828;
 }
 
-/* Expanded Content - Show when expanded class is present */
-.monitor-student-content {
-    display: none;
+.monitor-btn-conversations:hover,
+.monitor-btn-struggle:hover {
+    opacity: 0.92;
+}
+
+.monitor-btn-conversations.monitor-btn--active,
+.monitor-btn-struggle.monitor-btn--active {
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
+}
+
+.monitor-user-panel {
     border-top: 1px solid var(--border-color);
     padding: 15px 20px;
-}
-
-.student-item.expanded .monitor-student-content {
-    display: block;
     border-radius: 0 0 10px 10px;
 }
 
-.student-item.expanded {
-    border-radius: 10px 10px 0 0;
+.monitor-struggle-chapter {
+    margin-bottom: 12px;
 }
 
-.student-item.expanded .student-header {
-    border-radius: 10px 10px 0 0;
+.monitor-struggle-chapter:last-child {
+    margin-bottom: 0;
+}
+
+.monitor-struggle-chapter-title {
+    margin: 0 0 6px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.monitor-struggle-label-list {
+    margin: 0;
+    padding-left: 20px;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.monitor-struggle-label-list li {
+    margin-bottom: 4px;
 }
 
 .chat-history-list {

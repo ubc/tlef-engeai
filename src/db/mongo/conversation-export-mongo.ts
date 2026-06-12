@@ -6,9 +6,17 @@
  */
 
 import type { AggregationCursor, Document } from 'mongodb';
+import type { MemoryAgentChapterStruggle } from '../../types/shared';
 import type { MongoDalContext } from './mongo-context';
 import { getCollectionNames } from './collection-registry-mongo';
 import { getCourseUsersMongoCollection } from './course-user-mongo';
+import { getCourseByName } from './course-mongo';
+import { getAllInstructorStruggleTopics } from './topic-week-mongo';
+import {
+    deriveStruggleTopicsByChapter,
+    type MemoryAgentRawDoc
+} from '../../helpers/struggle-chapter-normalize';
+import { coerceAndCleanupMemoryAgentRawRow } from './memory-agent-mongo';
 
 /** Projected chat document embedded in each export row. */
 export interface ConversationZipExportChatProjection {
@@ -115,6 +123,8 @@ export interface StudentStruggleZipRow {
     studentName: string;
     /** When no `{course}_memory-agent` document exists for the user. */
     memoryAgentCreatedAt: Date | null;
+    struggleTopicsByChapter: MemoryAgentChapterStruggle[];
+    /** Flat distinct labels derived from chapters or legacy flat storage. */
     struggleTopics: string[];
 }
 
@@ -130,7 +140,7 @@ function parseMemoryAgentCreatedAt(value: unknown): Date | null {
 }
 
 /**
- * List all course students sorted by display name then `userId`, with `struggleTopics` and memory-agent `createdAt` when a row exists.
+ * List all course students sorted by display name then `userId`, with per-chapter struggle topics when a row exists.
  *
  * Used by instructor conversations ZIP exports (`Struggle topics/` folder).
  *
@@ -142,13 +152,11 @@ export async function listStudentStruggleRowsForZipExport(
     courseName: string
 ): Promise<StudentStruggleZipRow[]> {
 
-    // Get all students in the course
     const usersColl = await getCourseUsersMongoCollection(ctx, courseName);
     const docs = await usersColl
         .find({ affiliation: 'student' }, { projection: { userId: 1, name: 1 } })
         .toArray();
 
-    // Sort students by name and userId
     const sorted = docs
         .map((d) => ({
             userId: d.userId as string,
@@ -160,37 +168,45 @@ export async function listStudentStruggleRowsForZipExport(
             return a.userId.localeCompare(b.userId);
         });
 
-    // Get all user ids
     const userIds = sorted.map((s) => s.userId);
     if (userIds.length === 0) {
         return [];
     }
 
-    // Get all memory agent entries for the course
-    const names = await getCollectionNames(ctx, courseName);
-    const memColl = ctx.db.collection(names.memoryAgent); // Get the memory agent collection for the course
-    const entries = await memColl
-        .find({ userId: { $in: userIds } }, { projection: { userId: 1, struggleTopics: 1, createdAt: 1 } })
-        .toArray();
-    const byUser = new Map<string, { struggleTopics: string[]; memoryAgentCreatedAt: Date | null }>(); // Map memory agent entries to user ids
+    const course = await getCourseByName(ctx, courseName);
+    const catalog = course?.id ? await getAllInstructorStruggleTopics(ctx, course.id) : [];
 
-    // Map memory agent entries to user ids
+    const names = await getCollectionNames(ctx, courseName);
+    const memColl = ctx.db.collection(names.memoryAgent);
+    const entries = await memColl
+        .find(
+            { userId: { $in: userIds } },
+            { projection: { userId: 1, struggleTopics: 1, struggleTopicsByChapter: 1, createdAt: 1, name: 1, role: 1, updatedAt: 1 } }
+        )
+        .toArray();
+    const byUser = new Map<
+        string,
+        { struggleTopicsByChapter: MemoryAgentChapterStruggle[]; struggleTopics: string[]; memoryAgentCreatedAt: Date | null }
+    >();
+
     for (const e of entries) {
-        const row = e as { userId?: string; struggleTopics?: unknown; createdAt?: unknown };
+        const row = e as unknown as MemoryAgentRawDoc;
         if (typeof row.userId !== 'string') continue;
+        const flatLabels = await coerceAndCleanupMemoryAgentRawRow(ctx, courseName, row);
         byUser.set(row.userId, {
-            struggleTopics: Array.isArray(row.struggleTopics) ? (row.struggleTopics as string[]) : [],
+            struggleTopicsByChapter: deriveStruggleTopicsByChapter(flatLabels, catalog),
+            struggleTopics: flatLabels,
             memoryAgentCreatedAt: parseMemoryAgentCreatedAt(row.createdAt)
         });
     }
 
-    // Map sorted students to student struggle zip rows
     return sorted.map((s) => {
         const mem = byUser.get(s.userId);
         return {
             userId: s.userId,
             studentName: s.studentName,
             memoryAgentCreatedAt: mem?.memoryAgentCreatedAt ?? null,
+            struggleTopicsByChapter: mem?.struggleTopicsByChapter ?? [],
             struggleTopics: mem?.struggleTopics ?? []
         };
     });

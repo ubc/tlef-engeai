@@ -76,6 +76,23 @@
         </div>
     </div>
 
+    <!-- Admin-only: Test 3 report fixture seed (bottom-left red circle) -->
+    <button
+        type="button"
+        id="seed-report-fixture-btn"
+        class="seed-report-fixture-btn seed-fixture-hidden"
+        aria-label="Seed Test 3 report fixture"
+        title="Seed Test 3 report fixture (destructive)"
+    >
+        <i data-feather="database"></i>
+    </button>
+    <input
+        type="file"
+        id="seed-report-fixture-file"
+        accept=".json,application/json"
+        hidden
+    />
+
     <script>
         feather.replace();
     </script>
