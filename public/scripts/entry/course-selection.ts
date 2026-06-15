@@ -25,6 +25,7 @@ import { authService } from '../services/auth-service.js';
 let currentUserAffiliation: 'student' | 'faculty' | null = null;
 // Store globalUser for enrollment modal
 let currentGlobalUser: GlobalUser | null = null;
+let currentIsAdmin = false;
 
 /**
  * initializeCourseSelection
@@ -61,6 +62,7 @@ async function initializeCourseSelection(): Promise<void> {
         currentUserAffiliation = globalUser.affiliation;
         // Store globalUser for enrollment modal
         currentGlobalUser = globalUser;
+        currentIsAdmin = globalUser.isAdmin === true;
         
         // Update welcome message with first name only
         const userName = globalUser.name.split(' ')[0]; // Get first name
@@ -72,6 +74,7 @@ async function initializeCourseSelection(): Promise<void> {
 
         // Setup buttons based on affiliation
         setupCourseButtons();
+        configureSeedReportFixtureButton();
         
         // Fetch course data
         await loadCourses();
@@ -392,96 +395,6 @@ async function restartOnboarding(courseId: string, courseName: string): Promise<
         }
     }
 }
-
-/**
- * Remove a course completely (instructor only)
- * REMOVED: Course deletion is now only available from within the course (instructor sidebar)
- */
-/*
-async function removeCourse(courseId: string, courseName: string): Promise<void> {
-    try {
-        // Show confirmation modal
-        const confirmationMessage = `Are you sure you want to remove the course "${courseName}"?\n\n` +
-            `This will permanently delete:\n` +
-            `• All enrolled users from this course\n` +
-            `• All course data (users, flags, memory-agent collections)\n` +
-            `• All documents from the vector database for this course\n` +
-            `• The course instance itself\n\n` +
-            `This action cannot be undone!`;
-        
-        const result = await showConfirmModal(
-            'Remove Course',
-            confirmationMessage,
-            'Remove Course',
-            'Cancel'
-        );
-        
-        // Check if user confirmed
-        if (result.action !== 'Confirm' && result.action !== 'confirm') {
-            // console.log('[COURSE-SELECTION] ❌ Course removal cancelled by user');
-            return;
-        }
-        
-        // Disable the button during request
-        const removeButton = document.querySelector(`button.remove-course-btn[data-course-id="${courseId}"]`) as HTMLButtonElement;
-        if (removeButton) {
-            removeButton.disabled = true;
-            const icon = removeButton.querySelector('i');
-            if (icon) {
-                icon.setAttribute('data-feather', 'loader');
-                if (typeof (window as any).feather !== 'undefined') {
-                    (window as any).feather.replace();
-                }
-            }
-        }
-        
-        // Call the API endpoint
-        const response = await fetch(`/api/courses/${courseId}/remove`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            credentials: 'same-origin'
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Failed to remove course' }));
-            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        // Success - show message and reload page
-        await showSuccessModal(
-            'Success',
-            data.message || 'Course removed successfully. The page will reload.'
-        );
-        
-        // Reload to refresh course list
-        window.location.reload();
-        
-    } catch (error) {
-        console.error('[COURSE-SELECTION] ❌ Error removing course:', error);
-        await showErrorModal(
-            'Error',
-            `Failed to remove course: ${error instanceof Error ? error.message : 'Unknown error'}`
-        );
-        
-        // Re-enable the button
-        const removeButton = document.querySelector(`button.remove-course-btn[data-course-id="${courseId}"]`) as HTMLButtonElement;
-        if (removeButton) {
-            removeButton.disabled = false;
-            const icon = removeButton.querySelector('i');
-            if (icon) {
-                icon.setAttribute('data-feather', 'trash-2');
-                if (typeof (window as any).feather !== 'undefined') {
-                    (window as any).feather.replace();
-                }
-            }
-        }
-    }
-}
-*/
 
 /**
  * Initialize inactivity tracking for course selection page
@@ -1065,6 +978,172 @@ function hideCodeError(): void {
     if (errorMessage) {
         errorMessage.style.display = 'none';
     }
+}
+
+const REPORT_FIXTURE_TARGET_COURSE_NAME = 'Test 3';
+
+/**
+ * Show the Test 3 fixture seed button only for platform admins.
+ */
+function configureSeedReportFixtureButton(): void {
+    const seedBtn = document.getElementById('seed-report-fixture-btn');
+    const fileInput = document.getElementById('seed-report-fixture-file') as HTMLInputElement | null;
+    if (!seedBtn || !fileInput) return;
+
+    if (currentIsAdmin) {
+        seedBtn.classList.remove('seed-fixture-hidden');
+    } else {
+        seedBtn.classList.add('seed-fixture-hidden');
+        return;
+    }
+
+    seedBtn.addEventListener('click', () => {
+        void handleSeedReportFixtureClick(seedBtn as HTMLButtonElement, fileInput);
+    });
+
+    fileInput.addEventListener('change', () => {
+        void handleSeedReportFixtureFileSelected(seedBtn as HTMLButtonElement, fileInput);
+    });
+}
+
+async function handleSeedReportFixtureClick(
+    seedBtn: HTMLButtonElement,
+    fileInput: HTMLInputElement
+): Promise<void> {
+    const confirmed = await showConfirmModal(
+        'Seed Test 3 Report Fixture',
+        'This will remove all Test 3 student roster rows and memory-agent data, then import students from a JSON file.\n\n' +
+            'Default local fixture: src/test-scripts/APSC183-struggle-topic-lists.json (name → struggle topics[]).\n\n' +
+            'This action cannot be undone.',
+        'Choose JSON File',
+        'Cancel'
+    );
+
+    if (confirmed.action !== 'Choose JSON File') {
+        return;
+    }
+
+    fileInput.value = '';
+    fileInput.click();
+}
+
+async function handleSeedReportFixtureFileSelected(
+    seedBtn: HTMLButtonElement,
+    fileInput: HTMLInputElement
+): Promise<void> {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+
+    seedBtn.disabled = true;
+
+    try {
+        const rawText = await file.text();
+        const parsed = JSON.parse(rawText) as unknown;
+        const struggleTopicsByStudent = normalizeStruggleTopicsByStudentPayload(parsed);
+        if (!struggleTopicsByStudent) {
+            await showErrorModal(
+                'Invalid JSON',
+                'Expected a non-empty map of student names to string arrays, or { struggleTopicsByStudent: { ... } }.'
+            );
+            return;
+        }
+
+        const courseId = await resolveReportFixtureCourseId();
+        if (!courseId) {
+            await showErrorModal(
+                'Course Not Found',
+                `Could not find an active course named "${REPORT_FIXTURE_TARGET_COURSE_NAME}".`
+            );
+            return;
+        }
+
+        const response = await fetch(`/api/courses/${courseId}/report-fixture/seed`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ struggleTopicsByStudent })
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok || !data.success) {
+            await showErrorModal(
+                'Seed Failed',
+                data.error || `Request failed with status ${response.status}.`
+            );
+            return;
+        }
+
+        const summary = data.data as {
+            studentsSeeded?: number;
+            memoryAgentRowsCreated?: number;
+            studentsRemoved?: number;
+        };
+
+        await showSuccessModal(
+            'Fixture Seeded',
+            `Test 3 report fixture seeded successfully.\n\n` +
+                `Students imported: ${summary.studentsSeeded ?? '—'}\n` +
+                `Memory-agent rows: ${summary.memoryAgentRowsCreated ?? '—'}\n` +
+                `Prior students removed: ${summary.studentsRemoved ?? '—'}`
+        );
+    } catch (error) {
+        await showErrorModal(
+            'Seed Failed',
+            error instanceof Error ? error.message : 'Unknown error while seeding fixture.'
+        );
+    } finally {
+        seedBtn.disabled = false;
+        fileInput.value = '';
+        if (typeof (window as any).feather !== 'undefined') {
+            (window as any).feather.replace();
+        }
+    }
+}
+
+function normalizeStruggleTopicsByStudentPayload(
+    parsed: unknown
+): Record<string, string[]> | null {
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return null;
+    }
+
+    const maybeWrapped = (parsed as { struggleTopicsByStudent?: unknown }).struggleTopicsByStudent;
+    const raw = maybeWrapped !== undefined ? maybeWrapped : parsed;
+
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return null;
+    }
+
+    const result: Record<string, string[]> = {};
+    for (const [name, topics] of Object.entries(raw as Record<string, unknown>)) {
+        const trimmedName = name.trim();
+        if (!trimmedName || !Array.isArray(topics) || !topics.every((t) => typeof t === 'string')) {
+            return null;
+        }
+        result[trimmedName] = topics;
+    }
+
+    return Object.keys(result).length > 0 ? result : null;
+}
+
+async function resolveReportFixtureCourseId(): Promise<string | null> {
+    const response = await fetch(
+        `/api/courses?name=${encodeURIComponent(REPORT_FIXTURE_TARGET_COURSE_NAME)}`,
+        { credentials: 'same-origin', headers: { Accept: 'application/json' } }
+    );
+
+    if (!response.ok) {
+        return null;
+    }
+
+    const data = await response.json();
+    const course = data?.data;
+    if (!course || typeof course.id !== 'string') {
+        return null;
+    }
+
+    return course.id;
 }
 
 // Initialize on page load

@@ -2,15 +2,28 @@ import { renderFeatherIcons } from "../api/api.js";
 import { authService } from "../services/auth-service.js";
 import { fetchCourseMongoBackupZip } from "./course-mongo-backup-download.js";
 import { openConversationExportFormatModal } from "./conversations-export-modal.js";
+import { fetchCourseReportPdf } from "./report-pdf-download.js";
+import { chartsController, mapCourseSummaryStackedBarToChartSpec } from "../ui/charts.js";
+import type {
+    CourseSummaryStruggleTopics,
+    MemoryAgentChapterStruggle,
+    StruggleStatsLegendItem
+} from "../types.js";
 
 /**
  * Monitor Dashboard Types
  */
+type MonitorActivePanel = 'none' | 'conversations' | 'struggle';
+
 interface UserData {
     id: string;
     name: string;
     role: 'student' | 'instructor' | 'admin';
     conversationCount: number;
+    struggleTopicCount: number;
+    struggleTopics: string[];
+    struggleTopicsByChapter: MemoryAgentChapterStruggle[];
+    activePanel: MonitorActivePanel;
     chatHistory: ChatSession[];
 }
 
@@ -38,16 +51,30 @@ interface DateRange {
  */
 class MonitorDashboard {
     private users: UserData[] = [];
-    private currentSort: 'conversations' | 'name' = 'conversations';
+    private struggleTopics: CourseSummaryStruggleTopics | null = null;
+    private currentSort: 'conversations' | 'name' | 'struggle' = 'conversations';
     private selectedDateRange: DateRange = { start: null, end: null };
     private isCalendarOpen: boolean = false;
     private courseId: string | null = null;
+    private isPlatformAdmin: boolean = false;
 
     constructor() {
         this.getCourseId();
-        this.loadChatTitles();
-        void this.configureMongoBackupButton();
+        void this.initialize();
         this.bindEvents();
+    }
+
+    private async initialize(): Promise<void> {
+        try {
+            await authService.checkAuthStatus();
+            this.isPlatformAdmin = authService.getUser()?.isAdmin === true;
+        } catch {
+            this.isPlatformAdmin = false;
+        }
+
+        this.configureAdminOnlyUI();
+        await this.loadMonitorData();
+        void this.configureMongoBackupButton();
         this.render();
     }
 
@@ -65,18 +92,23 @@ class MonitorDashboard {
     }
 
     /**
-     * Load chat titles from API
+     * Load monitor rows: struggle-stats for admins, conversations-only for instructors.
      */
-    private async loadChatTitles(): Promise<void> {
+    private async loadMonitorData(): Promise<void> {
         if (!this.courseId) {
-            console.error('[MONITOR] ❌ Cannot load chat titles: no course ID');
+            console.error('[MONITOR] ❌ Cannot load monitor data: no course ID');
             this.users = [];
+            this.struggleTopics = null;
             this.render();
             return;
         }
 
+        const endpoint = this.isPlatformAdmin
+            ? `/api/courses/monitor/${this.courseId}/struggle-stats`
+            : `/api/courses/monitor/${this.courseId}/conversations`;
+
         try {
-            const response = await fetch(`/api/courses/monitor/${this.courseId}/chat-titles`, {
+            const response = await fetch(endpoint, {
                 method: 'GET',
                 credentials: 'same-origin',
                 headers: {
@@ -89,33 +121,125 @@ class MonitorDashboard {
             }
 
             const result = await response.json();
-            
-            if (result.success && result.data) {
-                // Transform API data to UserData format (students and instructors)
-                this.users = result.data.map((user: any) => ({
-                    id: user.userId,
-                    name: user.userName,
-                    role: user.role || (user.affiliation === 'faculty' ? 'instructor' : 'student'),
-                    conversationCount: (user.chats || []).length,
-                    chatHistory: (user.chats || []).map((chat: any) => ({
-                        id: chat.id,
-                        title: chat.title,
-                        date: new Date(), // Date not provided by API, use current date
-                        tokensUsed: 0 // Reserved for future use
-                    }))
-                }));
 
-                // console.log('[MONITOR] ✅ Loaded chat titles for', this.users.length, 'users');
+            if (result.success && result.data) {
+                if (this.isPlatformAdmin) {
+                    this.struggleTopics = result.data.struggleTopics as CourseSummaryStruggleTopics;
+                    this.users = (result.data.users || []).map((user: {
+                        userId: string;
+                        userName: string;
+                        role: UserData['role'];
+                        conversationCount: number;
+                        struggleTopicCount: number;
+                        struggleTopics: string[];
+                        struggleTopicsByChapter: MemoryAgentChapterStruggle[];
+                        chats: Array<{ id: string; title: string }>;
+                    }) => this.mapStruggleUserRow(user));
+                } else {
+                    this.struggleTopics = null;
+                    this.users = (result.data as Array<{
+                        userId: string;
+                        userName: string;
+                        role: UserData['role'];
+                        conversationCount: number;
+                        chats: Array<{ id: string; title: string }>;
+                    }>).map((user) => this.mapConversationUserRow(user));
+                }
             } else {
-                console.error('[MONITOR] ❌ Failed to load chat titles:', result.error);
+                console.error('[MONITOR] ❌ Failed to load monitor data:', result.error);
                 this.users = [];
+                this.struggleTopics = null;
             }
         } catch (error) {
-            console.error('[MONITOR] ❌ Error loading chat titles:', error);
+            console.error('[MONITOR] ❌ Error loading monitor data:', error);
             this.users = [];
+            this.struggleTopics = null;
         }
-        
+
         this.render();
+        if (this.isPlatformAdmin) {
+            await this.renderStruggleChart();
+        }
+    }
+
+    private mapStruggleUserRow(user: {
+        userId: string;
+        userName: string;
+        role: UserData['role'];
+        conversationCount: number;
+        struggleTopicCount: number;
+        struggleTopics: string[];
+        struggleTopicsByChapter: MemoryAgentChapterStruggle[];
+        chats: Array<{ id: string; title: string }>;
+    }): UserData {
+        return {
+            id: user.userId,
+            name: user.userName,
+            role: user.role || 'student',
+            conversationCount: user.conversationCount ?? (user.chats || []).length,
+            struggleTopicCount: user.struggleTopicCount ?? 0,
+            struggleTopics: user.struggleTopics ?? [],
+            struggleTopicsByChapter: user.struggleTopicsByChapter ?? [],
+            activePanel: 'none' as MonitorActivePanel,
+            chatHistory: (user.chats || []).map((chat) => ({
+                id: chat.id,
+                title: chat.title,
+                date: new Date(),
+                tokensUsed: 0
+            }))
+        };
+    }
+
+    private mapConversationUserRow(user: {
+        userId: string;
+        userName: string;
+        role: UserData['role'];
+        conversationCount: number;
+        chats: Array<{ id: string; title: string }>;
+    }): UserData {
+        return {
+            id: user.userId,
+            name: user.userName,
+            role: user.role || 'student',
+            conversationCount: user.conversationCount ?? (user.chats || []).length,
+            struggleTopicCount: 0,
+            struggleTopics: [],
+            struggleTopicsByChapter: [],
+            activePanel: 'none' as MonitorActivePanel,
+            chatHistory: (user.chats || []).map((chat) => ({
+                id: chat.id,
+                title: chat.title,
+                date: new Date(),
+                tokensUsed: 0
+            }))
+        };
+    }
+
+    /**
+     * Hide struggle chart, bulk export, report, and struggle sort for non-admin instructors.
+     */
+    private configureAdminOnlyUI(): void {
+        const struggleChartSection = document.querySelector('.monitor-struggle-chart-section');
+        struggleChartSection?.classList.toggle('monitor-admin-only-hidden', !this.isPlatformAdmin);
+
+        const downloadConversationsBtn = document.getElementById('monitor-download-conversations-btn');
+        downloadConversationsBtn?.classList.toggle('monitor-admin-only-hidden', !this.isPlatformAdmin);
+
+        const downloadReportBtn = document.getElementById('monitor-download-report-btn');
+        downloadReportBtn?.classList.toggle('monitor-admin-only-hidden', !this.isPlatformAdmin);
+
+        const sortSelect = document.getElementById('sort-select') as HTMLSelectElement | null;
+        const struggleOption = sortSelect?.querySelector('option[value="struggle"]') as HTMLOptionElement | null;
+        if (struggleOption) {
+            struggleOption.hidden = !this.isPlatformAdmin;
+            struggleOption.disabled = !this.isPlatformAdmin;
+        }
+        if (!this.isPlatformAdmin && this.currentSort === 'struggle') {
+            this.currentSort = 'conversations';
+            if (sortSelect) {
+                sortSelect.value = 'conversations';
+            }
+        }
     }
 
 
@@ -165,7 +289,7 @@ class MonitorDashboard {
         // Sort dropdown
         const sortSelect = document.getElementById('sort-select') as HTMLSelectElement | null;
         sortSelect?.addEventListener('change', (e) => {
-            const value = (e.target as HTMLSelectElement).value as 'conversations' | 'name';
+            const value = (e.target as HTMLSelectElement).value as 'conversations' | 'name' | 'struggle';
             this.setSort(value);
         });
 
@@ -176,6 +300,21 @@ class MonitorDashboard {
                 return;
             }
             openConversationExportFormatModal(this.courseId);
+        });
+
+        const downloadReportBtn = document.getElementById('monitor-download-report-btn');
+        downloadReportBtn?.addEventListener('click', () => {
+            if (!this.courseId) {
+                alert('Error: Course ID not found. Please refresh the page.');
+                return;
+            }
+            const btn = downloadReportBtn as HTMLButtonElement;
+            btn.disabled = true;
+            void fetchCourseReportPdf(this.courseId).catch((err) => {
+                alert(`Report download failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }).finally(() => {
+                btn.disabled = false;
+            });
         });
 
         const mongoBackupBtn = document.getElementById('monitor-course-mongo-backup-btn');
@@ -202,7 +341,66 @@ class MonitorDashboard {
         //     }
         // });
 
-        // Accordion functionality will be handled by global functions
+    }
+
+    private toggleUserPanel(userId: string, panel: 'conversations' | 'struggle'): void {
+        if (panel === 'struggle' && !this.isPlatformAdmin) {
+            return;
+        }
+
+        this.users = this.users.map((user) => {
+            if (user.id !== userId) {
+                return { ...user, activePanel: 'none' as MonitorActivePanel };
+            }
+            const nextPanel: MonitorActivePanel = user.activePanel === panel ? 'none' : panel;
+            return { ...user, activePanel: nextPanel };
+        });
+        this.syncUserPanelExpansion(true);
+        renderFeatherIcons();
+    }
+
+    /**
+     * Apply expanded/collapsed panel state in the DOM (optionally animated).
+     */
+    private syncUserPanelExpansion(animate: boolean): void {
+        const userList = document.getElementById('student-list');
+        if (!userList) return;
+
+        const applyState = (item: HTMLElement, user: UserData): void => {
+            const convBtn = item.querySelector('.monitor-btn-conversations');
+            const struggleBtn = item.querySelector('.monitor-btn-struggle');
+            const convWrap = item.querySelector('.monitor-user-panel-wrap--conversations');
+            const struggleWrap = item.querySelector('.monitor-user-panel-wrap--struggle');
+
+            convBtn?.classList.toggle('monitor-btn--active', user.activePanel === 'conversations');
+            struggleBtn?.classList.toggle('monitor-btn--active', user.activePanel === 'struggle');
+
+            convBtn?.setAttribute('aria-expanded', user.activePanel === 'conversations' ? 'true' : 'false');
+            struggleBtn?.setAttribute('aria-expanded', user.activePanel === 'struggle' ? 'true' : 'false');
+
+            convWrap?.classList.toggle('is-expanded', user.activePanel === 'conversations');
+            struggleWrap?.classList.toggle('is-expanded', user.activePanel === 'struggle');
+        };
+
+        this.users.forEach((user) => {
+            const item = userList.querySelector<HTMLElement>(
+                `.student-item[data-student-id="${CSS.escape(user.id)}"]`
+            );
+            if (!item) return;
+
+            if (!animate) {
+                applyState(item, user);
+                return;
+            }
+
+            item.querySelector('.monitor-user-panel-wrap--conversations')?.classList.remove('is-expanded');
+            item.querySelector('.monitor-user-panel-wrap--struggle')?.classList.remove('is-expanded');
+            void item.offsetHeight;
+
+            requestAnimationFrame(() => {
+                applyState(item, user);
+            });
+        });
     }
 
     /**
@@ -245,48 +443,166 @@ class MonitorDashboard {
         };
     }
 
+    private renderStruggleLegend(legend: StruggleStatsLegendItem[]): void {
+        const legendEl = document.getElementById('monitor-struggle-legend');
+        if (!legendEl) return;
+
+        const visibleLegend = legend.filter((item) => item.studentCount > 0);
+
+        if (!visibleLegend.length) {
+            legendEl.innerHTML = '<p class="monitor-struggle-legend-empty">No struggle topic data yet.</p>';
+            return;
+        }
+
+        legendEl.innerHTML = visibleLegend
+            .map(
+                (item) => `
+            <div class="monitor-struggle-legend-item">
+                <span class="monitor-struggle-legend-swatch" style="background-color: ${item.color}"></span>
+                <span class="monitor-struggle-legend-label">${item.topic}</span>
+                <span class="monitor-struggle-legend-count">${item.studentCount}</span>
+            </div>
+        `
+            )
+            .join('');
+    }
+
+    private async renderStruggleChart(): Promise<void> {
+        const canvas = document.getElementById('monitor-struggle-chart') as HTMLCanvasElement | null;
+        const stackedBar = this.struggleTopics?.stackedBar;
+        const legend = this.struggleTopics?.legend ?? [];
+
+        this.renderStruggleLegend(legend);
+
+        if (!stackedBar?.categories?.length || !stackedBar.series?.length) {
+            chartsController.destroyActiveChart();
+            return;
+        }
+
+        const spec = mapCourseSummaryStackedBarToChartSpec(stackedBar);
+        await chartsController.renderStackedBarChart(canvas, spec, { showLegend: false });
+    }
+
+    private renderStrugglePanelContent(user: UserData): string {
+        if (!user.struggleTopicsByChapter.length) {
+            return '<p class="monitor-panel-empty">No struggle topics recorded.</p>';
+        }
+
+        return user.struggleTopicsByChapter
+            .map(
+                (chapter) => `
+            <div class="monitor-struggle-chapter">
+                <h4 class="monitor-struggle-chapter-title">${chapter.topicOrWeekTitle}</h4>
+                <ul class="monitor-struggle-label-list">
+                    ${chapter.struggleTopics.map((label) => `<li>${label}</li>`).join('')}
+                </ul>
+            </div>
+        `
+            )
+            .join('');
+    }
+
     /**
-     * Render user list (students and instructors) with accordion functionality
+     * Render user list with conversation and struggle action buttons.
      */
     private renderUserList(): void {
         const userList = document.getElementById('student-list');
         if (!userList) return;
 
-        // Update dynamic user count in header
         const userCountEl = document.getElementById('user-count');
         if (userCountEl) {
             userCountEl.textContent = `(${this.users.length})`;
         }
 
         const sortedUsers = this.getSortedUsers();
-        
-        userList.innerHTML = sortedUsers.map(user => `
+
+        userList.innerHTML = sortedUsers
+            .map((user) => {
+                const convExpanded = user.activePanel === 'conversations';
+                const struggleExpanded = user.activePanel === 'struggle';
+                const convActive = convExpanded ? ' monitor-btn--active' : '';
+                const struggleActive = struggleExpanded ? ' monitor-btn--active' : '';
+
+                const struggleButton = this.isPlatformAdmin
+                    ? `
+                        <button type="button" class="monitor-btn-struggle${struggleActive}" data-action="struggle" data-user-id="${user.id}" aria-expanded="${struggleExpanded ? 'true' : 'false'}">
+                            <span class="monitor-btn-label">${user.struggleTopicCount} struggle topic${user.struggleTopicCount !== 1 ? 's' : ''}</span>
+                            <i data-feather="chevron-down" class="monitor-btn-chevron" aria-hidden="true"></i>
+                        </button>`
+                    : '';
+
+                return `
             <div class="student-item" data-student-id="${user.id}">
-                <div class="student-header" onclick="toggleMonitorStudentAccordion('${user.id}')">
-                <div class="student-name">
-                    <span class="role-badge role-${user.role}">${MonitorDashboard.roleBadgeLabel(user.role)}</span>
-                    ${user.name}
-                </div>
-                <div class="student-conversation-count">${user.conversationCount} conversation${user.conversationCount !== 1 ? 's' : ''}</div>
-                    <i data-feather="chevron-down" class="expand-arrow"></i>
-                </div>
-                <div class="monitor-student-content">
-                    <div class="chat-history-list">
-                        ${user.chatHistory.map(chat => `
-                            <div class="chat-history-item">
-                                <div class="chat-title">${chat.title}</div>
-                                <button class="download-button" onclick="downloadChatHistory('${chat.id}')">
-                                    <i data-feather="download"></i>
-                                    Download
-                                </button>
-                            </div>
-                        `).join('')}
+                <div class="student-header">
+                    <div class="student-name">
+                        <span class="role-badge role-${user.role}">${MonitorDashboard.roleBadgeLabel(user.role)}</span>
+                        ${user.name}
+                    </div>
+                    <div class="monitor-user-actions">
+                        <button type="button" class="monitor-btn-conversations${convActive}" data-action="conversations" data-user-id="${user.id}" aria-expanded="${convExpanded ? 'true' : 'false'}">
+                            <span class="monitor-btn-label">${user.conversationCount} conversation${user.conversationCount !== 1 ? 's' : ''}</span>
+                            <i data-feather="chevron-down" class="monitor-btn-chevron" aria-hidden="true"></i>
+                        </button>
+                        ${struggleButton}
                     </div>
                 </div>
+                <div class="monitor-user-panel-wrap monitor-user-panel-wrap--conversations${
+                    convExpanded ? ' is-expanded' : ''
+                }">
+                    <div class="monitor-user-panel-inner">
+                        <div class="monitor-user-panel monitor-user-panel--conversations">
+                            <div class="chat-history-list">
+                                ${
+                                    user.chatHistory.length
+                                        ? user.chatHistory
+                                              .map(
+                                                  (chat) => `
+                                <div class="chat-history-item">
+                                    <div class="chat-title">${chat.title}</div>
+                                    <button class="download-button" onclick="downloadChatHistory('${chat.id}')">
+                                        <i data-feather="download"></i>
+                                        Download
+                                    </button>
+                                </div>
+                            `
+                                              )
+                                              .join('')
+                                        : '<p class="monitor-panel-empty">No conversations yet.</p>'
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                ${
+                    this.isPlatformAdmin
+                        ? `
+                <div class="monitor-user-panel-wrap monitor-user-panel-wrap--struggle${
+                    struggleExpanded ? ' is-expanded' : ''
+                }">
+                    <div class="monitor-user-panel-inner">
+                        <div class="monitor-user-panel monitor-user-panel--struggle">
+                            ${this.renderStrugglePanelContent(user)}
+                        </div>
+                    </div>
+                </div>`
+                        : ''
+                }
             </div>
-        `).join('');
+        `;
+            })
+            .join('');
 
-        // Re-render feather icons for the new content
+        userList.querySelectorAll<HTMLButtonElement>('[data-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const userId = btn.dataset.userId;
+                const action = btn.dataset.action as 'conversations' | 'struggle' | undefined;
+                if (userId && action) {
+                    this.toggleUserPanel(userId, action);
+                }
+            });
+        });
+
+        this.syncUserPanelExpansion(false);
         renderFeatherIcons();
     }
 
@@ -298,15 +614,17 @@ class MonitorDashboard {
         
         if (this.currentSort === 'conversations') {
             return users.sort((a, b) => b.conversationCount - a.conversationCount);
-        } else {
-            return users.sort((a, b) => a.name.localeCompare(b.name));
         }
+        if (this.currentSort === 'struggle' && this.isPlatformAdmin) {
+            return users.sort((a, b) => b.struggleTopicCount - a.struggleTopicCount);
+        }
+        return users.sort((a, b) => a.name.localeCompare(b.name));
     }
 
     /**
      * Set sort option and update UI
      */
-    private setSort(sort: 'conversations' | 'name'): void {
+    private setSort(sort: 'conversations' | 'name' | 'struggle'): void {
         this.currentSort = sort;
         
         // Update dropdown value
@@ -654,26 +972,9 @@ class MonitorDashboard {
 
 }
 
-/**
- * Global functions for accordion functionality
- */
 declare global {
-    function toggleMonitorStudentAccordion(studentId: string): void;
     function downloadChatHistory(chatId: string): void;
 }
-
-/**
- * Toggle student accordion expand/collapse
- */
-function toggleMonitorStudentAccordion(studentId: string): void {
-    const studentItem = document.querySelector(`[data-student-id="${studentId}"]`);
-    if (studentItem) {
-        studentItem.classList.toggle('expanded');
-    }
-}
-
-// Make functions globally available for inline onclick handlers
-(window as any).toggleMonitorStudentAccordion = toggleMonitorStudentAccordion;
 
 /**
  * Download chat history for a specific chat

@@ -41,6 +41,10 @@ import {
     InvalidTopicOrWeekInstanceReorderError
 } from '../db/mongo/topic-week-mongo';
 import { parseOrderedIdsBody } from './topic-week-reorder-body';
+import {
+    parseStruggleTopicsByStudentBody,
+    ReportFixtureSeedError
+} from '../db/mongo/report-fixture-seed-mongo';
 import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt, SystemPromptItem } from '../types/shared';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { memoryAgent } from '../memory-agent/memory-agent';
@@ -48,6 +52,7 @@ import dotenv from 'dotenv';
 import { RAGApp } from '../rag/rag-app';
 import { addCharismaAndRichToCourse } from '../helpers/instructor-helpers';
 import { appLogger } from '../utils/logger';
+import { isAdminUser } from '../utils/admin';
 import { scheduledPublishAudit } from '../jobs/scheduled-publish-audit';
 import {
     formatSingleChatExportText,
@@ -68,6 +73,7 @@ import {
     resolveChatExportDate,
     sanitizeZipPathSegment
 } from '../helpers/conversation-export-path';
+import { contentDispositionAttachmentPdf } from '../report-generation';
 import type { ConversationZipExportRow } from '../db/mongo/conversation-export-mongo';
 import { mountSystemPromptConfigRoutes } from './mongo/system-prompt-config-routes';
 
@@ -2002,6 +2008,18 @@ router.get(
             const startDate = toYyyyMmDd(courseData.date);
             const endDate = toYyyyMmDd(new Date()); // change it later
 
+            const sessionUser = (req as { user?: { puid?: string } }).user;
+            const globalUser = sessionUser?.puid
+                ? await instance.findGlobalUserByPUID(sessionUser.puid)
+                : null;
+            const viewerIsAdmin = isAdminUser(globalUser);
+
+            let struggleTopics: Awaited<ReturnType<typeof instance.getCourseStruggleStats>>['struggleTopics'] | undefined;
+            if (viewerIsAdmin) {
+                const struggleStats = await instance.getCourseStruggleStats(courseId);
+                struggleTopics = struggleStats.struggleTopics;
+            }
+
             const nowIso = new Date().toISOString();
             const summary = {
                 id: `summary_${courseData.id}`,
@@ -2029,22 +2047,8 @@ router.get(
                     students: totals.students,
                     nonDeletedChats: totals.nonDeletedChats
                 },
-                struggleTopics: {
-                    source: 'memory-agent-per-user' as const,
-                    groupedBy: 'course-topic-or-week' as const,
-                    topTopics: [] as { topic: string; studentCount: number; percentageOfStudents: number }[],
-                    stackedBar: {
-                        xAxisLabel: 'Course Topic',
-                        yAxisLabel: 'Students',
-                        categories: [] as { id: string; label: string; order: number }[],
-                        series: [] as {
-                            topic: string;
-                            color: string;
-                            values: { categoryId: string; studentCount: number; tooltip: string }[];
-                        }[]
-                    }
-                },
-                downloadConversationAvailable: true,
+                ...(struggleTopics !== undefined ? { struggleTopics } : {}),
+                downloadConversationAvailable: viewerIsAdmin,
                 downloadConversationAvailableAt: null as string | null,
                 createdAt: nowIso,
                 updatedAt: nowIso
@@ -2061,6 +2065,82 @@ router.get(
                 success: false,
                 error: 'Failed to load course summary'
             });
+        }
+    })
+);
+
+/**
+ * GET /:courseId/report.pdf
+ * Struggle-topic PDF report (D3 prototype: title, outline, course-wide distribution chart).
+ *
+ * @route GET /api/courses/:courseId/report.pdf
+ * @query phase - `prototype` (default) or `full` (D4 extends document)
+ */
+router.get(
+    '/:courseId/report.pdf',
+    requireAdminForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        try {
+            const { courseId } = req.params;
+            const phase = typeof req.query.phase === 'string' ? req.query.phase : undefined;
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+
+            const { buffer, filename } = await mongoDB.buildCourseReportPdf(courseId, phase);
+
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', contentDispositionAttachmentPdf(filename));
+            res.send(buffer);
+        } catch (error) {
+            if (error instanceof Error && error.message === 'Course not found') {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Course not found'
+                });
+            }
+            appLogger.error('Error generating struggle-topic report PDF:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to generate report PDF',
+                details: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    })
+);
+
+/**
+ * POST /:courseId/report-fixture/seed
+ * Destructive Test 3 fixture seed: removes all student roster rows and memory-agent rows, then imports
+ * synthetic students with struggle topics from `struggleTopicsByStudent` (name → string[]).
+ *
+ * @route POST /api/courses/:courseId/report-fixture/seed
+ * @body { struggleTopicsByStudent: Record<string, string[]> }
+ */
+router.post(
+    '/:courseId/report-fixture/seed',
+    requireAdminForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const { courseId } = req.params;
+        const struggleTopicsByStudent = parseStruggleTopicsByStudentBody(req.body);
+        if (!struggleTopicsByStudent) {
+            return res.status(400).json({
+                success: false,
+                error: 'Request body must include non-empty struggleTopicsByStudent (Record<studentName, string[]>)'
+            });
+        }
+
+        try {
+            const instance = await EngEAI_MongoDB.getInstance();
+            const summary = await instance.seedReportFixture(courseId, struggleTopicsByStudent);
+            res.json({ success: true, data: summary });
+        } catch (error) {
+            if (error instanceof ReportFixtureSeedError) {
+                if (error.code === 'COURSE_NOT_FOUND') {
+                    return res.status(404).json({ success: false, error: error.message });
+                }
+                return res.status(400).json({ success: false, error: error.message });
+            }
+            appLogger.error('Error seeding Test 3 report fixture:', error);
+            res.status(500).json({ success: false, error: 'Failed to seed report fixture' });
         }
     })
 );
@@ -3556,7 +3636,86 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
  * @response 404 - Course not found
  * @response 500 - Failed to get chat titles
  */
-router.get('/monitor/:courseId/chat-titles', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+/**
+ * GET /monitor/:courseId/struggle-stats
+ * Course-wide struggle-topic chart data and per-user struggle/conversation rows for the monitor dashboard.
+ *
+ * @route GET /api/courses/monitor/:courseId/struggle-stats
+ */
+router.get(
+    '/monitor/:courseId/struggle-stats',
+    requireAdminForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        try {
+            const { courseId } = req.params;
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const course = await mongoDB.getActiveCourse(courseId);
+            if (!course) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Course not found'
+                });
+            }
+
+            const stats = await mongoDB.getCourseStruggleStats(courseId);
+            res.status(200).json({
+                success: true,
+                data: stats,
+                count: stats.users.length
+            });
+        } catch (error) {
+            appLogger.error('Error getting struggle stats:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to get struggle stats',
+                details: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    })
+);
+
+/**
+ * GET /monitor/:courseId/conversations
+ * Roster-only per-user conversation rows (no struggle fields) for course instructors.
+ *
+ * @route GET /api/courses/monitor/:courseId/conversations
+ */
+router.get(
+    '/monitor/:courseId/conversations',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        try {
+            const { courseId } = req.params;
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const course = await mongoDB.getActiveCourse(courseId);
+            if (!course) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Course not found'
+                });
+            }
+
+            const users = await mongoDB.getMonitorConversationUsers(courseId);
+            res.status(200).json({
+                success: true,
+                data: users,
+                count: users.length
+            });
+        } catch (error) {
+            appLogger.error('Error getting monitor conversations:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to get monitor conversations',
+                details: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    })
+);
+
+router.get(
+    '/monitor/:courseId/chat-titles',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { courseId } = req.params;
         const mongoDB = await EngEAI_MongoDB.getInstance();
@@ -3636,7 +3795,8 @@ router.get('/monitor/:courseId/chat-titles', asyncHandlerWithAuth(async (req: Re
             details: error instanceof Error ? error.message : 'Unknown error'
         });
     }
-}));
+    })
+);
 
 /**
  * GET /monitor/:courseId/chat/:chatId/download
@@ -3651,7 +3811,10 @@ router.get('/monitor/:courseId/chat-titles', asyncHandlerWithAuth(async (req: Re
  * @response 404 - Course or chat not found
  * @response 500 - Failed to download chat
  */
-router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.get(
+    '/monitor/:courseId/chat/:chatId/download',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { courseId, chatId } = req.params;
         const mongoDB = await EngEAI_MongoDB.getInstance();
@@ -3717,7 +3880,8 @@ router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(asyn
             details: error instanceof Error ? error.message : 'Unknown error'
         });
     }
-}));
+    })
+);
 
 /**
  * GET /monitor/:courseId/conversations-export.zip
@@ -3728,7 +3892,7 @@ router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(asyn
  */
 router.get(
     '/monitor/:courseId/conversations-export.zip',
-    requireInstructorForCourseAPI(['params']),
+    requireAdminForCourseAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
             const { courseId } = req.params;
@@ -3812,6 +3976,7 @@ router.get(
                         userId: srow.userId,
                         name: srow.studentName,
                         memoryAgentCreatedAt: srow.memoryAgentCreatedAt,
+                        struggleTopicsByChapter: srow.struggleTopicsByChapter,
                         struggleTopics: srow.struggleTopics
                     };
                     const struggleBody =

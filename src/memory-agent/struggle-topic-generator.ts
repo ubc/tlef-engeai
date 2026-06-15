@@ -23,6 +23,11 @@ import {
     struggleGenerationResponseSchema,
 } from './struggle-generation-schema';
 import { isDeveloperMode, getMockGeneratedStruggleTopics } from '../helpers/developer-mode';
+import {
+    getPredeterminedLabels,
+    resolveTopicNumber,
+    usesPredeterminedStruggleCatalog,
+} from './predetermined-struggle-catalog';
 
 /** Max characters of uploaded material text sent to the LLM (token safety). */
 export const MAX_EXTRACTED_TEXT_CHARS = 14000;
@@ -156,28 +161,51 @@ export class StruggleTopicGenerator {
         );
 
         // Send the structured conversation
-        let rawTopics: string[];
-        if (isDeveloperMode()) {
-            appLogger.log('[STRUGGLE-GEN] Developer mode — using mock generated struggle topics');
-            rawTopics = getMockGeneratedStruggleTopics();
-        } else {
-            const systemPrompt = buildStruggleGenerationSystemPrompt();
-
-            // Build the messages
-            const messages: Message[] = [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userTurn },
-            ];
-
-            // Send the structured conversation
-            const response = await this.llmModule.sendStructuredConversation(
-                messages,
-                struggleGenerationResponseSchema,
-                { structuredOutputName: 'struggle_generation' }
+        let rawTopics: string[] | undefined;
+        if (usesPredeterminedStruggleCatalog(course.courseName)) {
+            const topicNumber = resolveTopicNumber(
+                input.sectionTitles.topicOrWeekTitle,
+                input.materialName
             );
+            if (topicNumber !== null) {
+                const predetermined = getPredeterminedLabels(topicNumber, excludedSet);
+                if (predetermined.length > 0) {
+                    appLogger.log(
+                        `[STRUGGLE-GEN] Using predetermined APSC183 catalog for Topic ${topicNumber}`
+                    );
+                    rawTopics = predetermined;
+                }
+            } else {
+                appLogger.warn(
+                    `[STRUGGLE-GEN] Test 3 upload could not resolve topic number from ` +
+                        `"${input.sectionTitles.topicOrWeekTitle}" / "${input.materialName}"`
+                );
+            }
+        }
 
-            // Get the raw topics
-            rawTopics = response?.parsed?.struggleTopics ?? [];
+        if (rawTopics === undefined) {
+            if (isDeveloperMode()) {
+                appLogger.log('[STRUGGLE-GEN] Developer mode — using mock generated struggle topics');
+                rawTopics = getMockGeneratedStruggleTopics();
+            } else {
+                const systemPrompt = buildStruggleGenerationSystemPrompt();
+
+                // Build the messages
+                const messages: Message[] = [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userTurn },
+                ];
+
+                // Send the structured conversation
+                const response = await this.llmModule.sendStructuredConversation(
+                    messages,
+                    struggleGenerationResponseSchema,
+                    { structuredOutputName: 'struggle_generation' }
+                );
+
+                // Get the raw topics
+                rawTopics = response?.parsed?.struggleTopics ?? [];
+            }
         }
 
         // Filter the raw topics

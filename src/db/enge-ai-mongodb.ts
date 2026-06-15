@@ -40,6 +40,10 @@ import * as ScheduledTaskMongo from './mongo/scheduled-task-mongo';
 import * as TopicWeekMongo from './mongo/topic-week-mongo';
 import * as ConversationExportMongo from './mongo/conversation-export-mongo';
 import * as CourseBackupMongo from './mongo/course-backup-mongo';
+import * as ReportFixtureSeedMongo from './mongo/report-fixture-seed-mongo';
+import * as StruggleStatsMongo from './mongo/struggle-stats-mongo';
+import * as MonitorConversationsMongo from './mongo/monitor-conversations-mongo';
+import * as ReportPdfMongo from './mongo/report-pdf-mongo';
 
 dotenv.config();
 
@@ -513,6 +517,27 @@ export class EngEAI_MongoDB {
         name: string,
         affiliation: 'student' | 'faculty'
     ) => MemoryAgentMongo.initializeMemoryAgentForUser(this.ctx(), courseName, userId, name, affiliation);
+
+    /** Destructive Test 3 struggle-topic fixture seed for local report development. */
+    public seedReportFixture = async (
+        courseId: string,
+        struggleTopicsByStudent: Record<string, string[]>
+    ) => ReportFixtureSeedMongo.seedReportFixture(this.ctx(), courseId, struggleTopicsByStudent);
+
+    /** @deprecated Use {@link seedReportFixture} */
+    public seedTest3ReportFixture = this.seedReportFixture;
+
+    /** Course-wide struggle-topic stats for monitor and course-summary (D2). */
+    public getCourseStruggleStats = async (courseId: string) =>
+        StruggleStatsMongo.getCourseStruggleStats(this.ctx(), courseId);
+
+    /** Roster-only monitor rows without struggle fields (instructor-safe). */
+    public getMonitorConversationUsers = async (courseId: string) =>
+        MonitorConversationsMongo.getMonitorConversationUsers(this.ctx(), courseId);
+
+    /** Struggle-topic PDF report (D3 prototype: title, outline, distribution chart). */
+    public buildCourseReportPdf = async (courseId: string, phase?: string) =>
+        ReportPdfMongo.buildCourseReportPdf(this.ctx(), courseId, phase);
 
     /**
      * Instructor prompts embedded on active course docs — instructor-prompt-mongo.ts

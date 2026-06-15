@@ -39,6 +39,7 @@ describe('StruggleTopicGenerator', () => {
 
     const baseCourse = {
         id: 'course-1',
+        courseName: 'MTRL 251',
         topicOrWeekInstances: [
             {
                 id: 'tw-1',
@@ -168,5 +169,107 @@ describe('StruggleTopicGenerator', () => {
 
         expect(turn).toContain('truncated="true"');
         expect(turn.length).toBeLessThan(longText.length);
+    });
+
+    it('Test 3 Topic 7 upload uses predetermined catalog without LLM', async () => {
+        const test3Course = {
+            id: 'test3-id',
+            courseName: 'Test 3',
+            topicOrWeekInstances: [
+                {
+                    id: 'tw-7',
+                    title: 'Topic 7 (Electrochemistry)',
+                    items: [
+                        {
+                            id: 'item-7',
+                            itemTitle: 'Lecture notes',
+                            instructorStruggleTopics: [],
+                        },
+                    ],
+                },
+            ],
+        };
+        mockGetActiveCourse.mockResolvedValue(test3Course);
+
+        const generator = new StruggleTopicGenerator({
+            llmConfig: { provider: 'openai', defaultModel: 'gpt-4' },
+        } as never);
+
+        const result = await generator.generateAndAppend({
+            courseId: 'test3-id',
+            topicOrWeekId: 'tw-7',
+            itemId: 'item-7',
+            extractedText: 'Electrochemistry content from APSC 183 Topic 7.',
+            sectionTitles: {
+                topicOrWeekTitle: 'Topic 7 (Electrochemistry)',
+                itemTitle: 'Lecture notes',
+            },
+            materialName: 'APSC 183 Topic 7.md',
+        });
+
+        expect(mockSendStructuredConversation).not.toHaveBeenCalled();
+        expect(mockAddInstructorStruggleTopic).toHaveBeenCalledTimes(5);
+        expect(result.generatedStruggleTopics).toHaveLength(5);
+        expect(result.generatedStruggleTopics?.[0].struggleTopic).toBe(
+            'assigning oxidation states using oxidation number rules'
+        );
+    });
+
+    it('Test 3 skips predetermined labels already assigned in FIFO order', async () => {
+        const test3Course = {
+            id: 'test3-id',
+            courseName: 'Test 3',
+            topicOrWeekInstances: [
+                {
+                    id: 'tw-7',
+                    title: 'Topic 7 (Electrochemistry)',
+                    items: [
+                        {
+                            id: 'item-7',
+                            itemTitle: 'Lecture notes',
+                            instructorStruggleTopics: [
+                                {
+                                    id: 'st-1',
+                                    struggleTopic:
+                                        'assigning oxidation states using oxidation number rules',
+                                    createdAt: new Date(),
+                                    updatedAt: new Date(),
+                                },
+                                {
+                                    id: 'st-2',
+                                    struggleTopic:
+                                        'balancing redox reactions using the half-equation method',
+                                    createdAt: new Date(),
+                                    updatedAt: new Date(),
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        };
+        mockGetActiveCourse.mockResolvedValue(test3Course);
+
+        const generator = new StruggleTopicGenerator({
+            llmConfig: { provider: 'openai', defaultModel: 'gpt-4' },
+        } as never);
+
+        const result = await generator.generateAndAppend({
+            courseId: 'test3-id',
+            topicOrWeekId: 'tw-7',
+            itemId: 'item-7',
+            extractedText: 'More Topic 7 material.',
+            sectionTitles: {
+                topicOrWeekTitle: 'Topic 7 (Electrochemistry)',
+                itemTitle: 'Lecture notes',
+            },
+            materialName: 'APSC 183 Topic 7.md',
+        });
+
+        expect(mockSendStructuredConversation).not.toHaveBeenCalled();
+        expect(result.generatedStruggleTopics).toHaveLength(4);
+        expect(result.generatedStruggleTopics?.[0].struggleTopic).toBe(
+            'standard cell potential from standard reduction potentials'
+        );
     });
 });

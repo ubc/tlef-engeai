@@ -1,0 +1,90 @@
+{
+  "courseName": "Test 3",
+  "source": "EngE-AI-RAG-Document-examples/APSC 183/",
+  "topics": [
+    {
+      "topicNumber": 1,
+      "topicTitle": "Topic 1 (Atomic Structure)",
+      "struggleTopics": [
+        "rutherford gold foil experiment and nuclear model of the atom",
+        "periodic trends in atomic radius and ionization energy",
+        "bohr atomic model and hydrogen emission spectrum",
+        "de broglie wavelength and electron wave-particle duality",
+        "electron configuration and quantum mechanical orbitals",
+        "isotopes isotopic mass and average atomic mass"
+      ]
+    },
+    {
+      "topicNumber": 2,
+      "topicTitle": "Topic 2 (Molecular and Intermolecular Bonds)",
+      "struggleTopics": [
+        "drawing lewis structures for covalent and ionic compounds",
+        "formal charge and exceptions to the octet rule",
+        "vsepr theory and molecular geometry prediction",
+        "hydrogen bonding dipole-dipole and london dispersion forces",
+        "polarizability and intermolecular force strength",
+        "relationship between intermolecular forces and boiling point"
+      ]
+    },
+    {
+      "topicNumber": 3,
+      "topicTitle": "Topic 3 (Stoichiometry and Chemical Equilibrium)",
+      "struggleTopics": [
+        "balancing chemical equations and reaction stoichiometry",
+        "limiting reactant and theoretical yield calculations",
+        "molarity dilution and solution concentration units",
+        "equilibrium constant kc and kp expressions",
+        "reaction quotient qc and predicting equilibrium direction",
+        "le chatelier's principle and shifting chemical equilibrium"
+      ]
+    },
+    {
+      "topicNumber": 4,
+      "topicTitle": "Topic 4 (Aqueous Reactions)",
+      "struggleTopics": [
+        "arrhenius and bronsted-lowry acid-base definitions",
+        "strong versus weak acid and base dissociation",
+        "ph poh and logarithmic concentration calculations",
+        "polyprotic acids and stepwise ionization",
+        "common-ion effect and buffer solution composition",
+        "acid-base titration curves and equivalence point"
+      ]
+    },
+    {
+      "topicNumber": 5,
+      "topicTitle": "Topic 5 (Solids)",
+      "struggleTopics": [
+        "types of crystalline solids metallic ionic covalent molecular",
+        "closest-packed structures and coordination number",
+        "unit cell geometry in cubic crystal lattices",
+        "born-haber cycle and lattice energy calculation",
+        "ionic crystal structures for mx and mx2 stoichiometries",
+        "bond energy and lattice energy trends"
+      ]
+    },
+    {
+      "topicNumber": 6,
+      "topicTitle": "Topic 6 (Chemical Kinetics)",
+      "struggleTopics": [
+        "reaction rate definition and experimental rate measurement",
+        "rate law determination and reaction order",
+        "integrated rate laws for zero first and second order reactions",
+        "half-life calculations from rate constants",
+        "arrhenius equation activation energy and temperature dependence",
+        "homogeneous and heterogeneous catalysis mechanisms"
+      ]
+    },
+    {
+      "topicNumber": 7,
+      "topicTitle": "Topic 7 (Electrochemistry)",
+      "struggleTopics": [
+        "assigning oxidation states using oxidation number rules",
+        "balancing redox reactions using the half-equation method",
+        "standard cell potential from standard reduction potentials",
+        "nernst equation and concentration effects on cell potential",
+        "relationship between standard cell potential and equilibrium constant",
+        "galvanic cell diagrams anode cathode and electron flow"
+      ]
+    }
+  ]
+}

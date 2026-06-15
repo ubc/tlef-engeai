@@ -61,14 +61,68 @@ export interface StackedBarChartSpec {
     stackId?: string;
 }
 
+/** Optional render flags for {@link ChartsController.renderStackedBarChart}. */
+export interface RenderStackedBarChartOptions {
+    /** When false, hides the Chart.js plugin legend (caller may render legend separately). Default true. */
+    showLegend?: boolean;
+}
+
+/** Keep in sync with src/helpers/struggle-chart-palette.ts STRUGGLE_CHART_PALETTE. */
 const PALETTE_FALLBACK = [
-    '#4D7A2F',
-    '#2F5F8F',
-    '#C9822B',
-    '#8B0000',
-    '#6F5AA7',
-    '#2F7D7E'
+    '#E87B35',
+    '#5B8DEF',
+    '#7B5EA7',
+    '#3D9970',
+    '#D4536E',
+    '#4A9EAE',
+    '#C9A227',
+    '#6B8E23',
+    '#9B59B6',
+    '#2ECC71',
+    '#E84393',
+    '#3498DB',
+    '#F39C12',
+    '#1ABC9C',
+    '#8E44AD',
+    '#D35400'
 ] as const;
+
+/** Minimal stacked-bar shape from course-summary / struggle-stats API (feature-agnostic). */
+export interface CourseSummaryStackedBarInput {
+    xAxisLabel: string;
+    yAxisLabel: string;
+    categories: Array<{ id: string; label: string; order: number }>;
+    series: Array<{
+        topic: string;
+        color: string;
+        values: Array<{ categoryId: string; studentCount: number; tooltip: string }>;
+    }>;
+}
+
+/**
+ * Maps API struggle-topics stacked bar into {@link StackedBarChartSpec} for {@link chartsController}.
+ */
+export function mapCourseSummaryStackedBarToChartSpec(stackedBar: CourseSummaryStackedBarInput): StackedBarChartSpec {
+    return {
+        xAxisLabel: stackedBar.xAxisLabel,
+        yAxisLabel: stackedBar.yAxisLabel,
+        stackId: 'struggle-topics',
+        categories: stackedBar.categories.map((c) => ({
+            id: c.id,
+            label: c.label,
+            order: c.order
+        })),
+        series: stackedBar.series.map((series) => ({
+            label: series.topic,
+            color: series.color,
+            data: series.values.map((v) => ({
+                categoryId: v.categoryId,
+                value: v.studentCount,
+                tooltip: v.tooltip || `${series.topic}: 0 students`
+            }))
+        }))
+    };
+}
 
 /**
  * Singleton controller for loading Chart.js and rendering chart instances.
@@ -143,7 +197,12 @@ export class ChartsController {
      * Renders a stacked bar chart on `canvas` from `spec`, replacing any previous active chart.
      * Calls {@link ChartsController.ensureLibraryLoaded} first. No-op if `canvas` is null or Chart.js failed to load.
      */
-    async renderStackedBarChart(canvas: HTMLCanvasElement | null, spec: StackedBarChartSpec): Promise<void> {
+    async renderStackedBarChart(
+        canvas: HTMLCanvasElement | null,
+        spec: StackedBarChartSpec,
+        options: RenderStackedBarChartOptions = {}
+    ): Promise<void> {
+        const showLegend = options.showLegend !== false;
         await this.ensureLibraryLoaded();
 
         if (!canvas || !window.Chart) {
@@ -192,6 +251,7 @@ export class ChartsController {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
+                        display: showLegend,
                         position: 'bottom',
                         labels: {
                             boxWidth: 14,

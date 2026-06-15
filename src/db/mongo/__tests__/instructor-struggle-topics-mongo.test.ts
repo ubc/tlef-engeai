@@ -30,6 +30,10 @@ type CourseDoc = {
 function makeDb(getDoc: () => CourseDoc) {
     return {
         collection: (_name: string) => ({
+            findOne: async (filter: { id?: string }) => {
+                const doc = getDoc();
+                return filter.id === doc.id ? doc : null;
+            },
             findOneAndUpdate: async (
                 filter: Record<string, unknown>,
                 update: Record<string, unknown>,
@@ -87,6 +91,7 @@ function makeDb(getDoc: () => CourseDoc) {
                     const doc = getDoc();
                     const rows: Array<{
                         struggleTopic: string;
+                        topicOrWeekId: string;
                         topicOrWeekTitle: string;
                         itemTitle: string;
                     }> = [];
@@ -95,6 +100,7 @@ function makeDb(getDoc: () => CourseDoc) {
                             for (const topic of item.instructorStruggleTopics ?? []) {
                                 rows.push({
                                     struggleTopic: topic.struggleTopic,
+                                    topicOrWeekId: instance.id,
                                     topicOrWeekTitle: instance.title,
                                     itemTitle: item.itemTitle ?? item.title ?? ''
                                 });
@@ -147,6 +153,7 @@ describe('instructor-struggle-topics-mongo', () => {
         expect(all).toEqual([
             {
                 struggleTopic: 'Phase diagrams',
+                topicOrWeekId: 'tw-1',
                 topicOrWeekTitle: 'Week 1',
                 itemTitle: 'Lecture 1'
             }
