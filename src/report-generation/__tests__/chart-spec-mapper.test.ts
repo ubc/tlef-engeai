@@ -1,4 +1,4 @@
-import { mapCourseSummaryStackedBarToChartSpec } from '../chart/chart-spec-mapper';
+import { mapCourseSummaryStackedBarToChartSpec } from '../report-chart';
 import type { CourseSummaryStackedBar } from '../../types/shared';
 
 describe('mapCourseSummaryStackedBarToChartSpec', () => {

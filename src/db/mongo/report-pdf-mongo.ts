@@ -3,8 +3,13 @@
  * @description Loads course + struggle stats and delegates PDF assembly to report-generation module.
  */
 
-import { buildReportPdf, parseReportPdfPhase } from '../../report-generation';
-import type { ReportPdfOutput, ReportPdfPhase } from '../../report-generation/types';
+import {
+    buildReportPdf,
+    buildStudentAppendixPdfRows,
+    parseReportPdfPhase,
+    type ReportPdfOutput,
+    type ReportPdfPhase
+} from '../../report-generation';
 import type { activeCourse } from '../../types/shared';
 import { getActiveCourse } from './course-mongo';
 import type { MongoDalContext } from './mongo-context';
@@ -28,11 +33,16 @@ export async function buildCourseReportPdf(
     const courseData = course as activeCourse;
     const phase: ReportPdfPhase = parseReportPdfPhase(phaseRaw);
     const stats = await getCourseStruggleStats(ctx, courseId);
+    const studentAppendix = buildStudentAppendixPdfRows(
+        stats.users,
+        stats.struggleTopics.stackedBar
+    );
 
     return buildReportPdf({
         course: courseData,
         stats,
         generatedAt: new Date(),
-        phase
+        phase,
+        studentAppendix
     });
 }

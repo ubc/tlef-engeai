@@ -72,7 +72,7 @@ import {
     resolveChatExportDate,
     sanitizeZipPathSegment
 } from '../helpers/conversation-export-path';
-import { contentDispositionAttachmentPdf } from '../report-generation/report-filename';
+import { contentDispositionAttachmentPdf } from '../report-generation';
 import type { ConversationZipExportRow } from '../db/mongo/conversation-export-mongo';
 import { mountSystemPromptConfigRoutes } from './mongo/system-prompt-config-routes';
 

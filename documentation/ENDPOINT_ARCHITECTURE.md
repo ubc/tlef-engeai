@@ -172,11 +172,11 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
-| GET | `/api/courses/:courseId/report.pdf` | Yes | Instructor | Server-side PDF: title, outline, distribution chart, per-student appendix (students only) |
+| GET | `/api/courses/:courseId/report.pdf` | Yes | Instructor | Server-side PDF: CHBE-branded title, outline, distribution chart, zebra-striped student appendix (all students) |
 
-**Query:** `?phase=prototype` (pages 1–3 only) or `?phase=full` (default from UI — adds one page per student with chapter-grouped struggle labels).
+**Query:** `?phase=prototype` (pages 1–3 only) or `?phase=full` (default from UI — adds a paginated table: student name | struggle topics binned by chapter with bold headers, no course-wide counts).
 
-**Success (200):** `Content-Type: application/pdf`; `Content-Disposition` attachment filename `EngE-AI-{courseName}-{academicYear}-{term}-report.pdf`. Uses `requireInstructorForCourseAPI`. Reuses D2 `getCourseStruggleStats` aggregation — chart data matches monitor stacked bar.
+**Success (200):** `Content-Type: application/pdf`; `Content-Disposition` attachment filename `EngE-AI-{courseName}-{academicYear}-{term}-report.pdf`. Uses `requireInstructorForCourseAPI`. Reuses D2 `getCourseStruggleStats` aggregation — chart data matches monitor stacked bar. Title page uses CHBE green (`#4d7a2f`) with white text. Appendix rows are built from per-user memory-agent topics only (counts not exposed in student table).
 
 **Errors:** 404 course not found; 403 student/non-instructor; 500 render failure.
 

@@ -746,22 +746,6 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         return;
     }
 
-    // Scroll to bottom is now handled by ChatManager
-
-    // Artefact functionality moved to chat.ts
-
-    // Chat list rendering is now handled by ChatManager
-
-    // All chat operations are now handled by ChatManager
-
-    // Chat list item creation is now handled by ChatManager
-
-    // Active chat rendering is now handled by ChatManager
-
-    // Chat header structure and pinned message handling is now handled by ChatManager
-
-    // Pinned banner rendering is now handled by ChatManager
-
     // --- LOGOUT FUNCTIONALITY ---
     const handleLogout = async (): Promise<void> => {
         try {
@@ -948,14 +932,6 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         renderFeatherIcons();
     };
     ensureSidebarCollapseButton();
-
-    // Message element creation is now handled by ChatManager
-
-    // Artefact functionality disabled for now
-
-    // Flagging support is now handled by ChatManager
-
-    // Message context menu is now handled by ChatManager
 
     const attachProfileButtonListener = () => {
         const profileBtn = document.getElementById('profile-btn');

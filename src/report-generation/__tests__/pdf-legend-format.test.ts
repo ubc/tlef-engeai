@@ -1,8 +1,10 @@
 import {
     buildLabelChapterNumberMap,
     filterPdfLegendItems,
-    formatPdfStruggleLine
-} from '../pdf-legend-format';
+    formatChapterTopicsList,
+    formatPdfStruggleLine,
+    formatPdfStudentStruggleLine
+} from '../report-data';
 import type { CourseSummaryStackedBar, StruggleStatsLegendItem } from '../../types/shared';
 
 const stackedBar: CourseSummaryStackedBar = {
@@ -52,5 +54,15 @@ describe('pdf-legend-format', () => {
     it('formats lines as chapter N : topic – count', () => {
         expect(formatPdfStruggleLine('entropy', 3, 2)).toBe('chapter 2 : entropy – 3');
         expect(formatPdfStruggleLine('entropy', 3, undefined)).toBe('entropy – 3');
+    });
+
+    it('formats per-student appendix lines without counts', () => {
+        expect(formatPdfStudentStruggleLine('enthalpy', 2)).toBe('chapter 2 : enthalpy');
+        expect(formatPdfStudentStruggleLine('entropy', undefined)).toBe('entropy');
+    });
+
+    it('formats comma-separated topic lists for chapter groups', () => {
+        expect(formatChapterTopicsList(['enthalpy', 'entropy'])).toBe('enthalpy, entropy');
+        expect(formatChapterTopicsList([])).toBe('');
     });
 });

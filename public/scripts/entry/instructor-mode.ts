@@ -1539,10 +1539,6 @@ function initializeInactivityTracking(): void {
         // Logout user
         authService.logout();
     });
-    
-    // inactivityTracker.on('activity-reset', (data: any) => {
-    //     // console.log('[INSTRUCTOR-MODE] 🔄 Activity detected - inactivity timer reset'); // 🟢 MEDIUM: Activity reset logging
-    // });
 
     // Start tracking
     inactivityTracker.start();

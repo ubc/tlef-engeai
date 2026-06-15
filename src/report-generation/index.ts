@@ -1,16 +1,19 @@
 /**
  * index.ts
- * @description Public exports for struggle-topic PDF report generation (D3+).
+ * @author: @gatahcha
+ * @date: 2026-06-15
+ * @description: Public barrel exports for struggle-topic PDF report generation.
  */
 
-export { buildReportPdf, parseReportPdfPhase } from './report-pdf-orchestrator';
-export { deriveAcademicPeriod, formatReportGeneratedAt } from './report-academic-period';
-export { buildReportPdfFilename, contentDispositionAttachmentPdf } from './report-filename';
+export { ReportDocumentService, buildReportPdf, parseReportPdfPhase } from './report-document';
+export { ReportDataService, buildStudentAppendixPdfRows } from './report-data';
+export { ChartJsStackedBarRenderer } from './report-chart';
+export { contentDispositionAttachmentPdf } from './report-contracts';
 export type {
-    AcademicPeriod,
-    ReportBuildInput,
     ReportPdfOutput,
     ReportPdfPhase,
-    ReportRenderContext
-} from './types';
-export type { IReportPdfBuilder, IReportSection, IStackedBarChartRenderer } from './interfaces';
+    ReportBuildInput,
+    IStackedBarChartRenderer,
+    IReportDataService,
+    IReportSection
+} from './report-contracts';

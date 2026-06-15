@@ -1,4 +1,4 @@
-import { buildReportPdfFilename, contentDispositionAttachmentPdf } from '../report-filename';
+import { buildReportPdfFilename, contentDispositionAttachmentPdf } from '../report-contracts';
 
 describe('buildReportPdfFilename', () => {
     it('follows EngE-AI naming pattern', () => {

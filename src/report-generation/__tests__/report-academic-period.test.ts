@@ -1,4 +1,4 @@
-import { deriveAcademicPeriod, formatReportGeneratedAt } from '../report-academic-period';
+import { deriveAcademicPeriod, formatReportGeneratedAt } from '../report-contracts';
 
 describe('deriveAcademicPeriod', () => {
     it('maps September to Winter T1 of current academic year', () => {

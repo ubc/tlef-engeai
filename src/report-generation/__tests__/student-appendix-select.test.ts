@@ -1,4 +1,4 @@
-import { selectStudentsForAppendix } from '../student-appendix-select';
+import { selectAllStudentsForAppendix } from '../report-data';
 import type { MonitorStruggleUserRow } from '../../types/shared';
 
 function makeUser(
@@ -14,8 +14,8 @@ function makeUser(
     };
 }
 
-describe('selectStudentsForAppendix', () => {
-    it('includes only students with struggle data, sorted by name', () => {
+describe('selectAllStudentsForAppendix', () => {
+    it('includes all enrolled students sorted by name', () => {
         const users: MonitorStruggleUserRow[] = [
             makeUser({
                 userId: '1',
@@ -65,8 +65,8 @@ describe('selectStudentsForAppendix', () => {
             })
         ];
 
-        const selected = selectStudentsForAppendix(users);
+        const selected = selectAllStudentsForAppendix(users);
 
-        expect(selected.map((user) => user.userName)).toEqual(['Alex', 'Zara']);
+        expect(selected.map((user) => user.userName)).toEqual(['Alex', 'Empty Student', 'Zara']);
     });
 });
