@@ -52,6 +52,7 @@ import dotenv from 'dotenv';
 import { RAGApp } from '../rag/rag-app';
 import { addCharismaAndRichToCourse } from '../helpers/instructor-helpers';
 import { appLogger } from '../utils/logger';
+import { isAdminUser } from '../utils/admin';
 import { scheduledPublishAudit } from '../jobs/scheduled-publish-audit';
 import {
     formatSingleChatExportText,
@@ -2007,7 +2008,17 @@ router.get(
             const startDate = toYyyyMmDd(courseData.date);
             const endDate = toYyyyMmDd(new Date()); // change it later
 
-            const struggleStats = await instance.getCourseStruggleStats(courseId);
+            const sessionUser = (req as { user?: { puid?: string } }).user;
+            const globalUser = sessionUser?.puid
+                ? await instance.findGlobalUserByPUID(sessionUser.puid)
+                : null;
+            const viewerIsAdmin = isAdminUser(globalUser);
+
+            let struggleTopics: Awaited<ReturnType<typeof instance.getCourseStruggleStats>>['struggleTopics'] | undefined;
+            if (viewerIsAdmin) {
+                const struggleStats = await instance.getCourseStruggleStats(courseId);
+                struggleTopics = struggleStats.struggleTopics;
+            }
 
             const nowIso = new Date().toISOString();
             const summary = {
@@ -2036,8 +2047,8 @@ router.get(
                     students: totals.students,
                     nonDeletedChats: totals.nonDeletedChats
                 },
-                struggleTopics: struggleStats.struggleTopics,
-                downloadConversationAvailable: true,
+                ...(struggleTopics !== undefined ? { struggleTopics } : {}),
+                downloadConversationAvailable: viewerIsAdmin,
                 downloadConversationAvailableAt: null as string | null,
                 createdAt: nowIso,
                 updatedAt: nowIso
@@ -2067,7 +2078,7 @@ router.get(
  */
 router.get(
     '/:courseId/report.pdf',
-    requireInstructorForCourseAPI(['params']),
+    requireAdminForCourseAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
             const { courseId } = req.params;
@@ -2106,7 +2117,7 @@ router.get(
  */
 router.post(
     '/:courseId/report-fixture/seed',
-    requireInstructorForCourseAPI(['params']),
+    requireAdminForCourseAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         const { courseId } = req.params;
         const struggleTopicsByStudent = parseStruggleTopicsByStudentBody(req.body);
@@ -3633,7 +3644,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
  */
 router.get(
     '/monitor/:courseId/struggle-stats',
-    requireInstructorForCourseAPI(['params']),
+    requireAdminForCourseAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
             const { courseId } = req.params;
@@ -3663,7 +3674,48 @@ router.get(
     })
 );
 
-router.get('/monitor/:courseId/chat-titles', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+/**
+ * GET /monitor/:courseId/conversations
+ * Roster-only per-user conversation rows (no struggle fields) for course instructors.
+ *
+ * @route GET /api/courses/monitor/:courseId/conversations
+ */
+router.get(
+    '/monitor/:courseId/conversations',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        try {
+            const { courseId } = req.params;
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const course = await mongoDB.getActiveCourse(courseId);
+            if (!course) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Course not found'
+                });
+            }
+
+            const users = await mongoDB.getMonitorConversationUsers(courseId);
+            res.status(200).json({
+                success: true,
+                data: users,
+                count: users.length
+            });
+        } catch (error) {
+            appLogger.error('Error getting monitor conversations:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to get monitor conversations',
+                details: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    })
+);
+
+router.get(
+    '/monitor/:courseId/chat-titles',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { courseId } = req.params;
         const mongoDB = await EngEAI_MongoDB.getInstance();
@@ -3743,7 +3795,8 @@ router.get('/monitor/:courseId/chat-titles', asyncHandlerWithAuth(async (req: Re
             details: error instanceof Error ? error.message : 'Unknown error'
         });
     }
-}));
+    })
+);
 
 /**
  * GET /monitor/:courseId/chat/:chatId/download
@@ -3758,7 +3811,10 @@ router.get('/monitor/:courseId/chat-titles', asyncHandlerWithAuth(async (req: Re
  * @response 404 - Course or chat not found
  * @response 500 - Failed to download chat
  */
-router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.get(
+    '/monitor/:courseId/chat/:chatId/download',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { courseId, chatId } = req.params;
         const mongoDB = await EngEAI_MongoDB.getInstance();
@@ -3824,7 +3880,8 @@ router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(asyn
             details: error instanceof Error ? error.message : 'Unknown error'
         });
     }
-}));
+    })
+);
 
 /**
  * GET /monitor/:courseId/conversations-export.zip
@@ -3835,7 +3892,7 @@ router.get('/monitor/:courseId/chat/:chatId/download', asyncHandlerWithAuth(asyn
  */
 router.get(
     '/monitor/:courseId/conversations-export.zip',
-    requireInstructorForCourseAPI(['params']),
+    requireAdminForCourseAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
             const { courseId } = req.params;

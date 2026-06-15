@@ -361,6 +361,15 @@ export interface CourseSummaryStruggleTopics {
 }
 
 /** Must match src/types/shared.ts */
+export interface MonitorConversationUserRow {
+    userId: string;
+    userName: string;
+    role: 'student' | 'instructor' | 'admin';
+    conversationCount: number;
+    chats: Array<{ id: string; title: string }>;
+}
+
+/** Must match src/types/shared.ts */
 export interface MonitorStruggleUserRow {
     userId: string;
     userName: string;

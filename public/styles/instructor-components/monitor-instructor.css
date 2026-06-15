@@ -464,6 +464,9 @@
 
 .monitor-btn-conversations,
 .monitor-btn-struggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     border: none;
     border-radius: 8px;
     padding: 8px 12px;
@@ -472,6 +475,21 @@
     cursor: pointer;
     color: #ffffff;
     transition: opacity 0.2s ease, box-shadow 0.2s ease;
+}
+
+.monitor-btn-chevron {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    transition: transform 0.25s ease;
+}
+
+.monitor-btn--active .monitor-btn-chevron {
+    transform: rotate(180deg);
+}
+
+.monitor-admin-only-hidden {
+    display: none !important;
 }
 
 .monitor-btn-conversations {

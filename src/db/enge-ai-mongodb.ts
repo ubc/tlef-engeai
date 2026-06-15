@@ -42,6 +42,7 @@ import * as ConversationExportMongo from './mongo/conversation-export-mongo';
 import * as CourseBackupMongo from './mongo/course-backup-mongo';
 import * as ReportFixtureSeedMongo from './mongo/report-fixture-seed-mongo';
 import * as StruggleStatsMongo from './mongo/struggle-stats-mongo';
+import * as MonitorConversationsMongo from './mongo/monitor-conversations-mongo';
 import * as ReportPdfMongo from './mongo/report-pdf-mongo';
 
 dotenv.config();
@@ -529,6 +530,10 @@ export class EngEAI_MongoDB {
     /** Course-wide struggle-topic stats for monitor and course-summary (D2). */
     public getCourseStruggleStats = async (courseId: string) =>
         StruggleStatsMongo.getCourseStruggleStats(this.ctx(), courseId);
+
+    /** Roster-only monitor rows without struggle fields (instructor-safe). */
+    public getMonitorConversationUsers = async (courseId: string) =>
+        MonitorConversationsMongo.getMonitorConversationUsers(this.ctx(), courseId);
 
     /** Struggle-topic PDF report (D3 prototype: title, outline, distribution chart). */
     public buildCourseReportPdf = async (courseId: string, phase?: string) =>

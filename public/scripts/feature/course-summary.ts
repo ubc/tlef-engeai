@@ -40,7 +40,7 @@ interface CourseSummaryRecord {
     instructorDisplayStates: CourseSummaryInstructorDisplayState[];
     course: CourseSummaryCourseInfo;
     totals: CourseSummaryTotals;
-    struggleTopics: CourseSummaryStruggleTopics;
+    struggleTopics?: CourseSummaryStruggleTopics;
     downloadConversationAvailable: boolean;
     downloadConversationAvailableAt: string | null;
     createdAt: string;
@@ -73,9 +73,14 @@ const COURSE_SUMMARY_TEMPLATE_URL = '/components/course-summary/course-summary.h
 const COURSE_SUMMARY_CSS_ID = 'course-summary-stylesheet';
 const COURSE_SUMMARY_CSS_HREF = '/styles/instructor-components/course-summary.css';
 
-const STEP_ORDER = ['completion', 'overview', 'metrics', 'download', 'struggle-topics'] as const;
-type CourseSummaryStep = typeof STEP_ORDER[number];
+const ADMIN_STEP_ORDER = ['completion', 'overview', 'metrics', 'download', 'struggle-topics'] as const;
+const INSTRUCTOR_STEP_ORDER = ['completion', 'overview', 'metrics'] as const;
+type CourseSummaryStep = typeof ADMIN_STEP_ORDER[number];
 type CourseSummaryRevealStep = Extract<CourseSummaryStep, 'overview' | 'metrics' | 'download'>;
+
+function getStepOrder(isPlatformAdmin: boolean): readonly CourseSummaryStep[] {
+    return isPlatformAdmin ? ADMIN_STEP_ORDER : INSTRUCTOR_STEP_ORDER;
+}
 
 const metricCountAnimGeneration = new WeakMap<HTMLElement, number>();
 
@@ -278,6 +283,10 @@ function shouldOpenCourseSummaryModal(response: CourseSummaryStatusResponse, cur
  * and runs the step machine (completion → summary reveals → struggle chart).
  */
 async function renderCourseSummaryModal(summary: CourseSummaryRecord, currentClass: activeCourse): Promise<void> {
+    await authService.checkAuthStatus();
+    const isPlatformAdmin = authService.getUser()?.isAdmin === true;
+    const stepOrder = getStepOrder(isPlatformAdmin);
+
     const template = await fetchCourseSummaryTemplate();
     const overlay = document.createElement('div');
     overlay.className = 'course-summary-overlay';
@@ -288,16 +297,23 @@ async function renderCourseSummaryModal(summary: CourseSummaryRecord, currentCla
 
     document.body.appendChild(overlay);
     document.body.classList.add('modal-open');
-    hydrateSummaryContent(overlay, summary);
+    configureCourseSummaryAdminOnlySections(overlay, isPlatformAdmin);
+    hydrateSummaryContent(overlay, summary, isPlatformAdmin);
     renderFeatherIcons();
 
     const downloadConversationsBtn = overlay.querySelector('#course-summary-download-conversations-btn') as HTMLButtonElement | null;
     downloadConversationsBtn?.addEventListener('click', () => {
+        if (!isPlatformAdmin) {
+            return;
+        }
         openConversationExportFormatModal(currentClass.id);
     });
 
     const downloadReportBtn = overlay.querySelector('#course-summary-download-report-btn') as HTMLButtonElement | null;
     downloadReportBtn?.addEventListener('click', () => {
+        if (!isPlatformAdmin) {
+            return;
+        }
         downloadReportBtn.disabled = true;
         void fetchCourseReportPdf(currentClass.id).catch((err) => {
             alert(`Report download failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -325,13 +341,13 @@ async function renderCourseSummaryModal(summary: CourseSummaryRecord, currentCla
     };
 
     const renderStep = async (): Promise<void> => {
-        const activeStep = STEP_ORDER[currentStepIndex];
+        const activeStep = stepOrder[currentStepIndex];
         setActiveStep(overlay, activeStep);
-        setSummaryRevealState(overlay, activeStep);
-        renderProgress(overlay, activeStep);
+        setSummaryRevealState(overlay, activeStep, isPlatformAdmin);
+        renderProgress(overlay, activeStep, isPlatformAdmin);
 
         if (nextBtn) {
-            const isLast = currentStepIndex === STEP_ORDER.length - 1;
+            const isLast = currentStepIndex === stepOrder.length - 1;
             if (isLast) {
                 nextBtn.innerHTML = '<i data-feather="x" aria-hidden="true"></i>';
                 nextBtn.setAttribute('aria-label', 'Quit');
@@ -343,17 +359,17 @@ async function renderCourseSummaryModal(summary: CourseSummaryRecord, currentCla
             }
         }
 
-        if (STEP_ORDER[currentStepIndex] === 'struggle-topics') {
+        if (stepOrder[currentStepIndex] === 'struggle-topics' && isPlatformAdmin && summary.struggleTopics) {
             await renderStackedBarGraph(overlay, summary.struggleTopics.stackedBar);
         }
 
-        if (STEP_ORDER[currentStepIndex] === 'metrics') {
+        if (stepOrder[currentStepIndex] === 'metrics') {
             triggerMetricCountUpIfNeeded(overlay);
         }
     };
 
     const goNext = async (): Promise<void> => {
-        if (currentStepIndex >= STEP_ORDER.length - 1) {
+        if (currentStepIndex >= stepOrder.length - 1) {
             await closeModal();
             return;
         }
@@ -405,8 +421,22 @@ async function fetchCourseSummaryTemplate(): Promise<string> {
     return response.text();
 }
 
+/** Hides admin-only sections in the template for course instructors. */
+function configureCourseSummaryAdminOnlySections(overlay: HTMLElement, isPlatformAdmin: boolean): void {
+    if (isPlatformAdmin) {
+        return;
+    }
+
+    overlay.querySelector('[data-course-summary-step="struggle-topics"]')?.setAttribute('hidden', '');
+    overlay.querySelector('[data-course-summary-reveal="download"]')?.setAttribute('hidden', '');
+}
+
 /** Writes welcome text, dates, metric targets (starting at 0), and topic chips into the overlay. */
-function hydrateSummaryContent(overlay: HTMLElement, summary: CourseSummaryRecord): void {
+function hydrateSummaryContent(
+    overlay: HTMLElement,
+    summary: CourseSummaryRecord,
+    isPlatformAdmin: boolean
+): void {
     const instructorName = getCurrentInstructorName(summary);
     const rawCourseName = summary.course.name || summary.courseName;
     const courseName = getShortCourseName(rawCourseName);
@@ -428,7 +458,9 @@ function hydrateSummaryContent(overlay: HTMLElement, summary: CourseSummaryRecor
     setText(overlay, '#course-summary-students-count', '0');
     setText(overlay, '#course-summary-chats-count', '0');
 
-    renderTopTopicChips(overlay, summary.struggleTopics.topTopics);
+    if (isPlatformAdmin && summary.struggleTopics?.topTopics) {
+        renderTopTopicChips(overlay, summary.struggleTopics.topTopics);
+    }
 }
 
 /** Toggles which full-screen step (`completion` | `summary` | `struggle-topics`) is active. */
@@ -449,9 +481,15 @@ function getVisibleStep(activeStep: CourseSummaryStep): 'completion' | 'summary'
     return activeStep;
 }
 
-/** Progressive disclosure within the summary step: dates, then metrics, then download row. */
-function setSummaryRevealState(overlay: HTMLElement, activeStep: CourseSummaryStep): void {
-    const revealOrder: CourseSummaryRevealStep[] = ['overview', 'metrics', 'download'];
+/** Progressive disclosure within the summary step: dates, then metrics, then download row (admin only). */
+function setSummaryRevealState(
+    overlay: HTMLElement,
+    activeStep: CourseSummaryStep,
+    isPlatformAdmin: boolean
+): void {
+    const revealOrder: CourseSummaryRevealStep[] = isPlatformAdmin
+        ? ['overview', 'metrics', 'download']
+        : ['overview', 'metrics'];
     const activeRevealIndex = revealOrder.indexOf(activeStep as CourseSummaryRevealStep);
     const revealBlocks = overlay.querySelectorAll<HTMLElement>('[data-course-summary-reveal]');
 
@@ -463,13 +501,19 @@ function setSummaryRevealState(overlay: HTMLElement, activeStep: CourseSummarySt
     });
 }
 
-/** Renders the three-dot progress indicator for completion / summary / struggle-topics. */
-function renderProgress(overlay: HTMLElement, activeStep: CourseSummaryStep): void {
+/** Renders progress dots: completion / summary / struggle-topics (admin) or completion / summary (instructor). */
+function renderProgress(
+    overlay: HTMLElement,
+    activeStep: CourseSummaryStep,
+    isPlatformAdmin: boolean
+): void {
     const progress = overlay.querySelector('#course-summary-progress');
     if (!progress) return;
 
     progress.innerHTML = '';
-    const progressSteps = ['completion', 'summary', 'struggle-topics'] as const;
+    const progressSteps = isPlatformAdmin
+        ? (['completion', 'summary', 'struggle-topics'] as const)
+        : (['completion', 'summary'] as const);
     const activeVisibleStep = getVisibleStep(activeStep);
 
     progressSteps.forEach((step) => {

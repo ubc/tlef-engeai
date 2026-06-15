@@ -156,39 +156,41 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 | PUT | `/api/courses/:courseId/flags/:flagId` | Yes | Instructor | Update flag |
 | PATCH | `/api/courses/:courseId/flags/:flagId/response` | Yes | Instructor | Update response |
 
-#### Monitor (instructor-only)
+#### Monitor (instructor roster; struggle data admin-only)
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
-| GET | `/api/courses/monitor/:courseId/struggle-stats` | Yes | Instructor | Course-wide struggle stacked bar + per-user struggle/conversation rows |
-| GET | `/api/courses/monitor/:courseId/chat-titles` | Yes | Instructor* | Chat titles for all students |
-| GET | `/api/courses/monitor/:courseId/chat/:chatId/download` | Yes | Instructor* | Download full conversation |
+| GET | `/api/courses/monitor/:courseId/conversations` | Yes | Instructor | Per-user conversation rows (no struggle fields) |
+| GET | `/api/courses/monitor/:courseId/struggle-stats` | Yes | **Admin** | Course-wide struggle stacked bar + per-user struggle/conversation rows |
+| GET | `/api/courses/monitor/:courseId/chat-titles` | Yes | Instructor | Chat titles for all students |
+| GET | `/api/courses/monitor/:courseId/chat/:chatId/download` | Yes | Instructor | Download full conversation |
+| GET | `/api/courses/monitor/:courseId/conversations-export.zip` | Yes | **Admin** | ZIP of all student conversations + struggle topics folder |
 
-**`GET …/struggle-stats` success (200):** `{ success: true, data: { struggleTopics: CourseSummaryStruggleTopics, users: MonitorStruggleUserRow[] }, count: number }`. `struggleTopics` includes `stackedBar`, `topTopics`, and `legend` (course-wide unique students per catalog label). `users[]` includes `chats`, flat `struggleTopics`, and derived `struggleTopicsByChapter`. Uses `requireInstructorForCourseAPI`.
+**`GET …/conversations` success (200):** `{ success: true, data: MonitorConversationUserRow[], count: number }`. Each row: `userId`, `userName`, `role`, `conversationCount`, `chats` — roster projection only (no memory-agent / struggle fields). Uses `requireInstructorForCourseAPI`.
 
-**`GET /api/courses/:courseId/course-summary/status`** now populates `summary.struggleTopics` from the same aggregation module (no longer an empty placeholder).
+**`GET …/struggle-stats` success (200):** `{ success: true, data: { struggleTopics: CourseSummaryStruggleTopics, users: MonitorStruggleUserRow[] }, count: number }`. `struggleTopics` includes `stackedBar`, `topTopics`, and `legend` (course-wide unique students per catalog label). `users[]` includes `chats`, flat `struggleTopics`, and derived `struggleTopicsByChapter`. Uses `requireAdminForCourseAPI`.
 
-#### Struggle-topic PDF report (instructor-only)
+**`GET /api/courses/:courseId/course-summary/status`** populates `summary.struggleTopics` from the same aggregation module **for platform admins only**; non-admin instructors receive the summary without `struggleTopics` and with `downloadConversationAvailable: false`.
+
+#### Struggle-topic PDF report (admin-only)
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
-| GET | `/api/courses/:courseId/report.pdf` | Yes | Instructor | Server-side PDF: CHBE-branded title, outline, distribution chart, zebra-striped student appendix (all students) |
+| GET | `/api/courses/:courseId/report.pdf` | Yes | **Admin** | Server-side PDF: CHBE-branded title, outline, distribution chart, zebra-striped student appendix (all students) |
 
 **Query:** `?phase=prototype` (pages 1–3 only) or `?phase=full` (default from UI — adds a paginated table: student name | struggle topics binned by chapter with bold headers, no course-wide counts).
 
-**Success (200):** `Content-Type: application/pdf`; `Content-Disposition` attachment filename `EngE-AI-{courseName}-{academicYear}-{term}-report.pdf`. Uses `requireInstructorForCourseAPI`. Reuses D2 `getCourseStruggleStats` aggregation — chart data matches monitor stacked bar. Title page uses CHBE green (`#4d7a2f`) with white text. Appendix rows are built from per-user memory-agent topics only (counts not exposed in student table).
+**Success (200):** `Content-Type: application/pdf`; `Content-Disposition` attachment filename `EngE-AI-{courseName}-{academicYear}-{term}-report.pdf`. Uses `requireAdminForCourseAPI`. Reuses D2 `getCourseStruggleStats` aggregation — chart data matches monitor stacked bar. Title page uses CHBE green (`#4d7a2f`) with white text. Appendix rows are built from per-user memory-agent topics only (counts not exposed in student table).
 
-**Errors:** 404 course not found; 403 student/non-instructor; 500 render failure.
+**Errors:** 404 course not found; 403 non-admin; 500 render failure.
 
-*Legacy `chat-titles` uses `asyncHandlerWithAuth` only; instructor access is enforced at page level.*
-
-#### Report fixture seed (Test 3, instructor-only, destructive)
+#### Report fixture seed (Test 3, admin-only, destructive)
 
 Local development helper for report/monitor work. **Only** course name `Test 3` is accepted. Fixture JSON may be any `Record<studentName, string[]>` (default local file: `APSC183-struggle-topic-lists.json` — APSC183 **data** imported into the **Test 3** sandbox).
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
-| POST | `/api/courses/:courseId/report-fixture/seed` | Yes | Instructor | Remove all Test 3 student roster rows, all `{course}_memory-agent` rows, and prior `seed-test3-*` global users; then import synthetic students with struggle topics |
+| POST | `/api/courses/:courseId/report-fixture/seed` | Yes | **Admin** | Remove all Test 3 student roster rows, all `{course}_memory-agent` rows, and prior `seed-test3-*` global users; then import synthetic students with struggle topics |
 
 **Request body:**
 
@@ -202,7 +204,7 @@ Local development helper for report/monitor work. **Only** course name `Test 3` 
 
 **Success (200):** `{ success: true, data: { courseId, courseName, studentsSeeded, memoryAgentRowsCreated, studentsRemoved, syntheticGlobalUsersRemoved, globalStudentsUnenrolled } }`
 
-**Errors:** `400` invalid body or course is not Test 3; `401` unauthenticated; `403` not instructor/admin for course; `404` course not found; `500` server error.
+**Errors:** `400` invalid body or course is not Test 3; `401` unauthenticated; `403` not admin for course; `404` course not found; `500` server error.
 
 **Side effects:** Removes all `{course}_users` documents with `affiliation: 'student'`; deletes all `seed-test3-*` rows in `active-users`; unenrolls other global students from Test 3; creates fresh synthetic `active-users` rows for imported students; does not modify `instructorStruggleTopics` catalog or faculty/admin roster rows.
 

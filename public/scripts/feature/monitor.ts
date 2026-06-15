@@ -56,12 +56,25 @@ class MonitorDashboard {
     private selectedDateRange: DateRange = { start: null, end: null };
     private isCalendarOpen: boolean = false;
     private courseId: string | null = null;
+    private isPlatformAdmin: boolean = false;
 
     constructor() {
         this.getCourseId();
-        void this.loadStruggleStats();
-        void this.configureMongoBackupButton();
+        void this.initialize();
         this.bindEvents();
+    }
+
+    private async initialize(): Promise<void> {
+        try {
+            await authService.checkAuthStatus();
+            this.isPlatformAdmin = authService.getUser()?.isAdmin === true;
+        } catch {
+            this.isPlatformAdmin = false;
+        }
+
+        this.configureAdminOnlyUI();
+        await this.loadMonitorData();
+        void this.configureMongoBackupButton();
         this.render();
     }
 
@@ -79,19 +92,23 @@ class MonitorDashboard {
     }
 
     /**
-     * Load struggle stats and per-user monitor rows from API.
+     * Load monitor rows: struggle-stats for admins, conversations-only for instructors.
      */
-    private async loadStruggleStats(): Promise<void> {
+    private async loadMonitorData(): Promise<void> {
         if (!this.courseId) {
-            console.error('[MONITOR] ❌ Cannot load struggle stats: no course ID');
+            console.error('[MONITOR] ❌ Cannot load monitor data: no course ID');
             this.users = [];
             this.struggleTopics = null;
             this.render();
             return;
         }
 
+        const endpoint = this.isPlatformAdmin
+            ? `/api/courses/monitor/${this.courseId}/struggle-stats`
+            : `/api/courses/monitor/${this.courseId}/conversations`;
+
         try {
-            const response = await fetch(`/api/courses/monitor/${this.courseId}/struggle-stats`, {
+            const response = await fetch(endpoint, {
                 method: 'GET',
                 credentials: 'same-origin',
                 headers: {
@@ -106,45 +123,123 @@ class MonitorDashboard {
             const result = await response.json();
 
             if (result.success && result.data) {
-                this.struggleTopics = result.data.struggleTopics as CourseSummaryStruggleTopics;
-                this.users = (result.data.users || []).map((user: {
-                    userId: string;
-                    userName: string;
-                    role: UserData['role'];
-                    conversationCount: number;
-                    struggleTopicCount: number;
-                    struggleTopics: string[];
-                    struggleTopicsByChapter: MemoryAgentChapterStruggle[];
-                    chats: Array<{ id: string; title: string }>;
-                }) => ({
-                    id: user.userId,
-                    name: user.userName,
-                    role: user.role || 'student',
-                    conversationCount: user.conversationCount ?? (user.chats || []).length,
-                    struggleTopicCount: user.struggleTopicCount ?? 0,
-                    struggleTopics: user.struggleTopics ?? [],
-                    struggleTopicsByChapter: user.struggleTopicsByChapter ?? [],
-                    activePanel: 'none' as MonitorActivePanel,
-                    chatHistory: (user.chats || []).map((chat) => ({
-                        id: chat.id,
-                        title: chat.title,
-                        date: new Date(),
-                        tokensUsed: 0
-                    }))
-                }));
+                if (this.isPlatformAdmin) {
+                    this.struggleTopics = result.data.struggleTopics as CourseSummaryStruggleTopics;
+                    this.users = (result.data.users || []).map((user: {
+                        userId: string;
+                        userName: string;
+                        role: UserData['role'];
+                        conversationCount: number;
+                        struggleTopicCount: number;
+                        struggleTopics: string[];
+                        struggleTopicsByChapter: MemoryAgentChapterStruggle[];
+                        chats: Array<{ id: string; title: string }>;
+                    }) => this.mapStruggleUserRow(user));
+                } else {
+                    this.struggleTopics = null;
+                    this.users = (result.data as Array<{
+                        userId: string;
+                        userName: string;
+                        role: UserData['role'];
+                        conversationCount: number;
+                        chats: Array<{ id: string; title: string }>;
+                    }>).map((user) => this.mapConversationUserRow(user));
+                }
             } else {
-                console.error('[MONITOR] ❌ Failed to load struggle stats:', result.error);
+                console.error('[MONITOR] ❌ Failed to load monitor data:', result.error);
                 this.users = [];
                 this.struggleTopics = null;
             }
         } catch (error) {
-            console.error('[MONITOR] ❌ Error loading struggle stats:', error);
+            console.error('[MONITOR] ❌ Error loading monitor data:', error);
             this.users = [];
             this.struggleTopics = null;
         }
 
         this.render();
-        await this.renderStruggleChart();
+        if (this.isPlatformAdmin) {
+            await this.renderStruggleChart();
+        }
+    }
+
+    private mapStruggleUserRow(user: {
+        userId: string;
+        userName: string;
+        role: UserData['role'];
+        conversationCount: number;
+        struggleTopicCount: number;
+        struggleTopics: string[];
+        struggleTopicsByChapter: MemoryAgentChapterStruggle[];
+        chats: Array<{ id: string; title: string }>;
+    }): UserData {
+        return {
+            id: user.userId,
+            name: user.userName,
+            role: user.role || 'student',
+            conversationCount: user.conversationCount ?? (user.chats || []).length,
+            struggleTopicCount: user.struggleTopicCount ?? 0,
+            struggleTopics: user.struggleTopics ?? [],
+            struggleTopicsByChapter: user.struggleTopicsByChapter ?? [],
+            activePanel: 'none' as MonitorActivePanel,
+            chatHistory: (user.chats || []).map((chat) => ({
+                id: chat.id,
+                title: chat.title,
+                date: new Date(),
+                tokensUsed: 0
+            }))
+        };
+    }
+
+    private mapConversationUserRow(user: {
+        userId: string;
+        userName: string;
+        role: UserData['role'];
+        conversationCount: number;
+        chats: Array<{ id: string; title: string }>;
+    }): UserData {
+        return {
+            id: user.userId,
+            name: user.userName,
+            role: user.role || 'student',
+            conversationCount: user.conversationCount ?? (user.chats || []).length,
+            struggleTopicCount: 0,
+            struggleTopics: [],
+            struggleTopicsByChapter: [],
+            activePanel: 'none' as MonitorActivePanel,
+            chatHistory: (user.chats || []).map((chat) => ({
+                id: chat.id,
+                title: chat.title,
+                date: new Date(),
+                tokensUsed: 0
+            }))
+        };
+    }
+
+    /**
+     * Hide struggle chart, bulk export, report, and struggle sort for non-admin instructors.
+     */
+    private configureAdminOnlyUI(): void {
+        const struggleChartSection = document.querySelector('.monitor-struggle-chart-section');
+        struggleChartSection?.classList.toggle('monitor-admin-only-hidden', !this.isPlatformAdmin);
+
+        const downloadConversationsBtn = document.getElementById('monitor-download-conversations-btn');
+        downloadConversationsBtn?.classList.toggle('monitor-admin-only-hidden', !this.isPlatformAdmin);
+
+        const downloadReportBtn = document.getElementById('monitor-download-report-btn');
+        downloadReportBtn?.classList.toggle('monitor-admin-only-hidden', !this.isPlatformAdmin);
+
+        const sortSelect = document.getElementById('sort-select') as HTMLSelectElement | null;
+        const struggleOption = sortSelect?.querySelector('option[value="struggle"]') as HTMLOptionElement | null;
+        if (struggleOption) {
+            struggleOption.hidden = !this.isPlatformAdmin;
+            struggleOption.disabled = !this.isPlatformAdmin;
+        }
+        if (!this.isPlatformAdmin && this.currentSort === 'struggle') {
+            this.currentSort = 'conversations';
+            if (sortSelect) {
+                sortSelect.value = 'conversations';
+            }
+        }
     }
 
 
@@ -249,6 +344,10 @@ class MonitorDashboard {
     }
 
     private toggleUserPanel(userId: string, panel: 'conversations' | 'struggle'): void {
+        if (panel === 'struggle' && !this.isPlatformAdmin) {
+            return;
+        }
+
         this.users = this.users.map((user) => {
             if (user.id !== userId) {
                 return { ...user, activePanel: 'none' as MonitorActivePanel };
@@ -275,6 +374,9 @@ class MonitorDashboard {
 
             convBtn?.classList.toggle('monitor-btn--active', user.activePanel === 'conversations');
             struggleBtn?.classList.toggle('monitor-btn--active', user.activePanel === 'struggle');
+
+            convBtn?.setAttribute('aria-expanded', user.activePanel === 'conversations' ? 'true' : 'false');
+            struggleBtn?.setAttribute('aria-expanded', user.activePanel === 'struggle' ? 'true' : 'false');
 
             convWrap?.classList.toggle('is-expanded', user.activePanel === 'conversations');
             struggleWrap?.classList.toggle('is-expanded', user.activePanel === 'struggle');
@@ -416,8 +518,18 @@ class MonitorDashboard {
 
         userList.innerHTML = sortedUsers
             .map((user) => {
-                const convActive = user.activePanel === 'conversations' ? ' monitor-btn--active' : '';
-                const struggleActive = user.activePanel === 'struggle' ? ' monitor-btn--active' : '';
+                const convExpanded = user.activePanel === 'conversations';
+                const struggleExpanded = user.activePanel === 'struggle';
+                const convActive = convExpanded ? ' monitor-btn--active' : '';
+                const struggleActive = struggleExpanded ? ' monitor-btn--active' : '';
+
+                const struggleButton = this.isPlatformAdmin
+                    ? `
+                        <button type="button" class="monitor-btn-struggle${struggleActive}" data-action="struggle" data-user-id="${user.id}" aria-expanded="${struggleExpanded ? 'true' : 'false'}">
+                            <span class="monitor-btn-label">${user.struggleTopicCount} struggle topic${user.struggleTopicCount !== 1 ? 's' : ''}</span>
+                            <i data-feather="chevron-down" class="monitor-btn-chevron" aria-hidden="true"></i>
+                        </button>`
+                    : '';
 
                 return `
             <div class="student-item" data-student-id="${user.id}">
@@ -427,16 +539,15 @@ class MonitorDashboard {
                         ${user.name}
                     </div>
                     <div class="monitor-user-actions">
-                        <button type="button" class="monitor-btn-conversations${convActive}" data-action="conversations" data-user-id="${user.id}">
-                            ${user.conversationCount} conversation${user.conversationCount !== 1 ? 's' : ''}
+                        <button type="button" class="monitor-btn-conversations${convActive}" data-action="conversations" data-user-id="${user.id}" aria-expanded="${convExpanded ? 'true' : 'false'}">
+                            <span class="monitor-btn-label">${user.conversationCount} conversation${user.conversationCount !== 1 ? 's' : ''}</span>
+                            <i data-feather="chevron-down" class="monitor-btn-chevron" aria-hidden="true"></i>
                         </button>
-                        <button type="button" class="monitor-btn-struggle${struggleActive}" data-action="struggle" data-user-id="${user.id}">
-                            ${user.struggleTopicCount} struggle topic${user.struggleTopicCount !== 1 ? 's' : ''}
-                        </button>
+                        ${struggleButton}
                     </div>
                 </div>
                 <div class="monitor-user-panel-wrap monitor-user-panel-wrap--conversations${
-                    user.activePanel === 'conversations' ? ' is-expanded' : ''
+                    convExpanded ? ' is-expanded' : ''
                 }">
                     <div class="monitor-user-panel-inner">
                         <div class="monitor-user-panel monitor-user-panel--conversations">
@@ -462,15 +573,20 @@ class MonitorDashboard {
                         </div>
                     </div>
                 </div>
+                ${
+                    this.isPlatformAdmin
+                        ? `
                 <div class="monitor-user-panel-wrap monitor-user-panel-wrap--struggle${
-                    user.activePanel === 'struggle' ? ' is-expanded' : ''
+                    struggleExpanded ? ' is-expanded' : ''
                 }">
                     <div class="monitor-user-panel-inner">
                         <div class="monitor-user-panel monitor-user-panel--struggle">
                             ${this.renderStrugglePanelContent(user)}
                         </div>
                     </div>
-                </div>
+                </div>`
+                        : ''
+                }
             </div>
         `;
             })
@@ -499,7 +615,7 @@ class MonitorDashboard {
         if (this.currentSort === 'conversations') {
             return users.sort((a, b) => b.conversationCount - a.conversationCount);
         }
-        if (this.currentSort === 'struggle') {
+        if (this.currentSort === 'struggle' && this.isPlatformAdmin) {
             return users.sort((a, b) => b.struggleTopicCount - a.struggleTopicCount);
         }
         return users.sort((a, b) => a.name.localeCompare(b.name));

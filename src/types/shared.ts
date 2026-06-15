@@ -554,6 +554,15 @@ export interface CourseSummaryStruggleTopics {
     legend: StruggleStatsLegendItem[];
 }
 
+/** Per-user row in GET /api/courses/monitor/:courseId/conversations (no struggle fields). */
+export interface MonitorConversationUserRow {
+    userId: string;
+    userName: string;
+    role: 'student' | 'instructor' | 'admin';
+    conversationCount: number;
+    chats: Array<{ id: string; title: string }>;
+}
+
 /** Per-user row in GET /api/courses/monitor/:courseId/struggle-stats. */
 export interface MonitorStruggleUserRow {
     userId: string;
