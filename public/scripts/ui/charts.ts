@@ -67,13 +67,24 @@ export interface RenderStackedBarChartOptions {
     showLegend?: boolean;
 }
 
+/** Keep in sync with src/helpers/struggle-chart-palette.ts STRUGGLE_CHART_PALETTE. */
 const PALETTE_FALLBACK = [
-    '#4D7A2F',
-    '#2F5F8F',
-    '#C9822B',
-    '#8B0000',
-    '#6F5AA7',
-    '#2F7D7E'
+    '#E87B35',
+    '#5B8DEF',
+    '#7B5EA7',
+    '#3D9970',
+    '#D4536E',
+    '#4A9EAE',
+    '#C9A227',
+    '#6B8E23',
+    '#9B59B6',
+    '#2ECC71',
+    '#E84393',
+    '#3498DB',
+    '#F39C12',
+    '#1ABC9C',
+    '#8E44AD',
+    '#D35400'
 ] as const;
 
 /** Minimal stacked-bar shape from course-summary / struggle-stats API (feature-agnostic). */

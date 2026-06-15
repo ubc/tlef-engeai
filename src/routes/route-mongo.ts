@@ -72,6 +72,7 @@ import {
     resolveChatExportDate,
     sanitizeZipPathSegment
 } from '../helpers/conversation-export-path';
+import { contentDispositionAttachmentPdf } from '../report-generation/report-filename';
 import type { ConversationZipExportRow } from '../db/mongo/conversation-export-mongo';
 import { mountSystemPromptConfigRoutes } from './mongo/system-prompt-config-routes';
 
@@ -2052,6 +2053,44 @@ router.get(
             res.status(500).json({
                 success: false,
                 error: 'Failed to load course summary'
+            });
+        }
+    })
+);
+
+/**
+ * GET /:courseId/report.pdf
+ * Struggle-topic PDF report (D3 prototype: title, outline, course-wide distribution chart).
+ *
+ * @route GET /api/courses/:courseId/report.pdf
+ * @query phase - `prototype` (default) or `full` (D4 extends document)
+ */
+router.get(
+    '/:courseId/report.pdf',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        try {
+            const { courseId } = req.params;
+            const phase = typeof req.query.phase === 'string' ? req.query.phase : undefined;
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+
+            const { buffer, filename } = await mongoDB.buildCourseReportPdf(courseId, phase);
+
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', contentDispositionAttachmentPdf(filename));
+            res.send(buffer);
+        } catch (error) {
+            if (error instanceof Error && error.message === 'Course not found') {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Course not found'
+                });
+            }
+            appLogger.error('Error generating struggle-topic report PDF:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to generate report PDF',
+                details: error instanceof Error ? error.message : 'Unknown error'
             });
         }
     })

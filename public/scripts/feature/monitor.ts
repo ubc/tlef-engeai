@@ -2,6 +2,7 @@ import { renderFeatherIcons } from "../api/api.js";
 import { authService } from "../services/auth-service.js";
 import { fetchCourseMongoBackupZip } from "./course-mongo-backup-download.js";
 import { openConversationExportFormatModal } from "./conversations-export-modal.js";
+import { fetchCourseReportPdf } from "./report-pdf-download.js";
 import { chartsController, mapCourseSummaryStackedBarToChartSpec } from "../ui/charts.js";
 import type {
     CourseSummaryStruggleTopics,
@@ -206,6 +207,21 @@ class MonitorDashboard {
             openConversationExportFormatModal(this.courseId);
         });
 
+        const downloadReportBtn = document.getElementById('monitor-download-report-btn');
+        downloadReportBtn?.addEventListener('click', () => {
+            if (!this.courseId) {
+                alert('Error: Course ID not found. Please refresh the page.');
+                return;
+            }
+            const btn = downloadReportBtn as HTMLButtonElement;
+            btn.disabled = true;
+            void fetchCourseReportPdf(this.courseId).catch((err) => {
+                alert(`Report download failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }).finally(() => {
+                btn.disabled = false;
+            });
+        });
+
         const mongoBackupBtn = document.getElementById('monitor-course-mongo-backup-btn');
         mongoBackupBtn?.addEventListener('click', () => {
             if (!this.courseId) {
@@ -240,8 +256,49 @@ class MonitorDashboard {
             const nextPanel: MonitorActivePanel = user.activePanel === panel ? 'none' : panel;
             return { ...user, activePanel: nextPanel };
         });
-        this.renderUserList();
+        this.syncUserPanelExpansion(true);
         renderFeatherIcons();
+    }
+
+    /**
+     * Apply expanded/collapsed panel state in the DOM (optionally animated).
+     */
+    private syncUserPanelExpansion(animate: boolean): void {
+        const userList = document.getElementById('student-list');
+        if (!userList) return;
+
+        const applyState = (item: HTMLElement, user: UserData): void => {
+            const convBtn = item.querySelector('.monitor-btn-conversations');
+            const struggleBtn = item.querySelector('.monitor-btn-struggle');
+            const convWrap = item.querySelector('.monitor-user-panel-wrap--conversations');
+            const struggleWrap = item.querySelector('.monitor-user-panel-wrap--struggle');
+
+            convBtn?.classList.toggle('monitor-btn--active', user.activePanel === 'conversations');
+            struggleBtn?.classList.toggle('monitor-btn--active', user.activePanel === 'struggle');
+
+            convWrap?.classList.toggle('is-expanded', user.activePanel === 'conversations');
+            struggleWrap?.classList.toggle('is-expanded', user.activePanel === 'struggle');
+        };
+
+        this.users.forEach((user) => {
+            const item = userList.querySelector<HTMLElement>(
+                `.student-item[data-student-id="${CSS.escape(user.id)}"]`
+            );
+            if (!item) return;
+
+            if (!animate) {
+                applyState(item, user);
+                return;
+            }
+
+            item.querySelector('.monitor-user-panel-wrap--conversations')?.classList.remove('is-expanded');
+            item.querySelector('.monitor-user-panel-wrap--struggle')?.classList.remove('is-expanded');
+            void item.offsetHeight;
+
+            requestAnimationFrame(() => {
+                applyState(item, user);
+            });
+        });
     }
 
     /**
@@ -288,12 +345,14 @@ class MonitorDashboard {
         const legendEl = document.getElementById('monitor-struggle-legend');
         if (!legendEl) return;
 
-        if (!legend.length) {
+        const visibleLegend = legend.filter((item) => item.studentCount > 0);
+
+        if (!visibleLegend.length) {
             legendEl.innerHTML = '<p class="monitor-struggle-legend-empty">No struggle topic data yet.</p>';
             return;
         }
 
-        legendEl.innerHTML = legend
+        legendEl.innerHTML = visibleLegend
             .map(
                 (item) => `
             <div class="monitor-struggle-legend-item">
@@ -359,8 +418,6 @@ class MonitorDashboard {
             .map((user) => {
                 const convActive = user.activePanel === 'conversations' ? ' monitor-btn--active' : '';
                 const struggleActive = user.activePanel === 'struggle' ? ' monitor-btn--active' : '';
-                const showConv = user.activePanel === 'conversations';
-                const showStruggle = user.activePanel === 'struggle';
 
                 return `
             <div class="student-item" data-student-id="${user.id}">
@@ -378,40 +435,42 @@ class MonitorDashboard {
                         </button>
                     </div>
                 </div>
-                ${
-                    showConv
-                        ? `
-                <div class="monitor-user-panel monitor-user-panel--conversations">
-                    <div class="chat-history-list">
-                        ${
-                            user.chatHistory.length
-                                ? user.chatHistory
-                                      .map(
-                                          (chat) => `
-                            <div class="chat-history-item">
-                                <div class="chat-title">${chat.title}</div>
-                                <button class="download-button" onclick="downloadChatHistory('${chat.id}')">
-                                    <i data-feather="download"></i>
-                                    Download
-                                </button>
+                <div class="monitor-user-panel-wrap monitor-user-panel-wrap--conversations${
+                    user.activePanel === 'conversations' ? ' is-expanded' : ''
+                }">
+                    <div class="monitor-user-panel-inner">
+                        <div class="monitor-user-panel monitor-user-panel--conversations">
+                            <div class="chat-history-list">
+                                ${
+                                    user.chatHistory.length
+                                        ? user.chatHistory
+                                              .map(
+                                                  (chat) => `
+                                <div class="chat-history-item">
+                                    <div class="chat-title">${chat.title}</div>
+                                    <button class="download-button" onclick="downloadChatHistory('${chat.id}')">
+                                        <i data-feather="download"></i>
+                                        Download
+                                    </button>
+                                </div>
+                            `
+                                              )
+                                              .join('')
+                                        : '<p class="monitor-panel-empty">No conversations yet.</p>'
+                                }
                             </div>
-                        `
-                                      )
-                                      .join('')
-                                : '<p class="monitor-panel-empty">No conversations yet.</p>'
-                        }
+                        </div>
                     </div>
-                </div>`
-                        : ''
-                }
-                ${
-                    showStruggle
-                        ? `
-                <div class="monitor-user-panel monitor-user-panel--struggle">
-                    ${this.renderStrugglePanelContent(user)}
-                </div>`
-                        : ''
-                }
+                </div>
+                <div class="monitor-user-panel-wrap monitor-user-panel-wrap--struggle${
+                    user.activePanel === 'struggle' ? ' is-expanded' : ''
+                }">
+                    <div class="monitor-user-panel-inner">
+                        <div class="monitor-user-panel monitor-user-panel--struggle">
+                            ${this.renderStrugglePanelContent(user)}
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
             })
@@ -427,6 +486,7 @@ class MonitorDashboard {
             });
         });
 
+        this.syncUserPanelExpansion(false);
         renderFeatherIcons();
     }
 

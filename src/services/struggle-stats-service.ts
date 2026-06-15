@@ -8,6 +8,12 @@ import {
     deriveStruggleTopicsByChapter,
     sanitizeStruggleLabels
 } from '../helpers/struggle-chapter-normalize';
+import {
+    assignStruggleLabelColors,
+    STRUGGLE_CHAPTER_SERIES_CAP,
+    STRUGGLE_OTHER_COLOR,
+    STRUGGLE_OTHER_LABEL
+} from '../helpers/struggle-chart-palette';
 import type { MonitorRosterUser } from '../db/mongo/monitor-roster-mongo';
 import type {
     activeCourse,
@@ -22,18 +28,12 @@ import type {
     StruggleStatsResult
 } from '../types/shared';
 
-/** Matches frontend {@link public/scripts/ui/charts.ts} PALETTE_FALLBACK. */
-export const STRUGGLE_CHART_PALETTE = [
-    '#4D7A2F',
-    '#2F5F8F',
-    '#C9822B',
-    '#8B0000',
-    '#6F5AA7',
-    '#2F7D7E'
-] as const;
-
-export const STRUGGLE_OTHER_LABEL = 'Other';
-export const STRUGGLE_OTHER_COLOR = '#9CA3AF';
+export {
+    STRUGGLE_CHART_PALETTE,
+    STRUGGLE_CHAPTER_SERIES_CAP,
+    STRUGGLE_OTHER_COLOR,
+    STRUGGLE_OTHER_LABEL
+} from '../helpers/struggle-chart-palette';
 
 export interface StruggleStatsBuildInput {
     course: activeCourse;
@@ -149,7 +149,17 @@ export function buildCourseStruggleStats(input: StruggleStatsBuildInput): Strugg
     const chapterCatalogLabels = groupCatalogLabelsByChapter(catalog);
     const labelToChapter = buildLabelToChapterMap(catalog);
 
-    const labelColors = new Map<string, string>();
+    const catalogLabelOrder = catalog.map((row) => row.struggleTopic);
+    const uniqueCatalogLabels: string[] = [];
+    for (const label of catalogLabelOrder) {
+        if (!uniqueCatalogLabels.includes(label)) {
+            uniqueCatalogLabels.push(label);
+        }
+    }
+
+    const seriesLabels = uniqueCatalogLabels.filter((label) => (courseWideLabelUsers.get(label)?.size ?? 0) > 0);
+    const labelColors = assignStruggleLabelColors(seriesLabels);
+
     const chapterOtherUsers = new Map<string, Set<string>>();
     const overflowLabelsByChapter = new Map<string, string[]>();
 
@@ -163,20 +173,19 @@ export function buildCourseStruggleStats(input: StruggleStatsBuildInput): Strugg
 
         for (let i = 0; i < labelsWithData.length; i++) {
             const label = labelsWithData[i];
-            if (i < STRUGGLE_CHART_PALETTE.length) {
-                labelColors.set(label, STRUGGLE_CHART_PALETTE[i]);
-            } else {
-                overflow.push(label);
-                let otherSet = chapterOtherUsers.get(chapterId);
-                if (!otherSet) {
-                    otherSet = new Set();
-                    chapterOtherUsers.set(chapterId, otherSet);
-                }
-                const users = chapterCounts.get(chapterId)?.get(label);
-                if (users) {
-                    for (const uid of users) {
-                        otherSet.add(uid);
-                    }
+            if (i < STRUGGLE_CHAPTER_SERIES_CAP) {
+                continue;
+            }
+            overflow.push(label);
+            let otherSet = chapterOtherUsers.get(chapterId);
+            if (!otherSet) {
+                otherSet = new Set();
+                chapterOtherUsers.set(chapterId, otherSet);
+            }
+            const users = chapterCounts.get(chapterId)?.get(label);
+            if (users) {
+                for (const uid of users) {
+                    otherSet.add(uid);
                 }
             }
         }
@@ -199,22 +208,13 @@ export function buildCourseStruggleStats(input: StruggleStatsBuildInput): Strugg
         });
     });
 
-    const catalogLabelOrder = catalog.map((row) => row.struggleTopic);
-    const uniqueCatalogLabels: string[] = [];
-    for (const label of catalogLabelOrder) {
-        if (!uniqueCatalogLabels.includes(label)) {
-            uniqueCatalogLabels.push(label);
-        }
-    }
-
-    const seriesLabels = uniqueCatalogLabels.filter((label) => (courseWideLabelUsers.get(label)?.size ?? 0) > 0);
     const hasOther = chapterOtherUsers.size > 0;
 
     const series: CourseSummaryStackedBarSeries[] = [];
 
     for (const label of seriesLabels) {
         const chapterRef = labelToChapter.get(label);
-        const color = labelColors.get(label) ?? STRUGGLE_CHART_PALETTE[0];
+        const color = labelColors.get(label)!;
         const overflowInChapter = chapterRef
             ? (overflowLabelsByChapter.get(chapterRef.topicOrWeekId) ?? []).includes(label)
             : false;
@@ -255,11 +255,18 @@ export function buildCourseStruggleStats(input: StruggleStatsBuildInput): Strugg
         });
     }
 
-    const legend: StruggleStatsLegendItem[] = uniqueCatalogLabels.map((label) => ({
-        topic: label,
-        color: labelColors.get(label) ?? STRUGGLE_CHART_PALETTE[0],
-        studentCount: courseWideLabelUsers.get(label)?.size ?? 0
-    }));
+    const legend: StruggleStatsLegendItem[] = seriesLabels
+        .filter((label) => {
+            const overflowInChapter = labelToChapter.get(label)
+                ? (overflowLabelsByChapter.get(labelToChapter.get(label)!.topicOrWeekId) ?? []).includes(label)
+                : false;
+            return !overflowInChapter;
+        })
+        .map((label) => ({
+            topic: label,
+            color: labelColors.get(label)!,
+            studentCount: courseWideLabelUsers.get(label)?.size ?? 0
+        }));
 
     if (hasOther) {
         const otherUserIds = new Set<string>();

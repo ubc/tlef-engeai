@@ -70,6 +70,7 @@
 
 /* Matches Initial Assistant Prompts .assistant-add-prompt-btn (avoid loading assistant-prompts.css here) */
 .monitor-download-conversations-btn,
+.monitor-download-report-btn,
 .monitor-course-mongo-backup-btn {
     display: flex;
     align-items: center;
@@ -88,6 +89,8 @@
 
 .monitor-download-conversations-btn i,
 .monitor-download-conversations-btn svg,
+.monitor-download-report-btn i,
+.monitor-download-report-btn svg,
 .monitor-course-mongo-backup-btn i,
 .monitor-course-mongo-backup-btn svg {
     width: 18px;
@@ -96,17 +99,20 @@
 }
 
 .monitor-download-conversations-btn:hover,
+.monitor-download-report-btn:hover,
 .monitor-course-mongo-backup-btn:hover {
     transform: scale(1.1);
 }
 
 .monitor-download-conversations-btn:active,
+.monitor-download-report-btn:active,
 .monitor-course-mongo-backup-btn:active {
     transform: scale(1.06);
     transition-duration: 0.12s;
 }
 
 .monitor-download-conversations-btn .btn-text,
+.monitor-download-report-btn .btn-text,
 .monitor-course-mongo-backup-btn .btn-text {
     display: inline;
 }
@@ -486,6 +492,27 @@
     box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
 }
 
+.monitor-user-panel-wrap {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.3s ease;
+}
+
+.monitor-user-panel-wrap.is-expanded {
+    grid-template-rows: 1fr;
+}
+
+.monitor-user-panel-inner {
+    overflow: hidden;
+    min-height: 0;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+}
+
+.monitor-user-panel-wrap.is-expanded .monitor-user-panel-inner {
+    opacity: 1;
+}
+
 .monitor-user-panel {
     border-top: 1px solid var(--border-color);
     padding: 15px 20px;
@@ -822,6 +849,7 @@
     }
 
     .monitor-header.mobile-header-bar .monitor-download-conversations-btn,
+    .monitor-header.mobile-header-bar .monitor-download-report-btn,
     .monitor-header.mobile-header-bar .monitor-course-mongo-backup-btn {
         min-width: 44px;
         min-height: 44px;
@@ -833,12 +861,15 @@
 
     .monitor-header.mobile-header-bar .monitor-download-conversations-btn i,
     .monitor-header.mobile-header-bar .monitor-download-conversations-btn svg,
+    .monitor-header.mobile-header-bar .monitor-download-report-btn i,
+    .monitor-header.mobile-header-bar .monitor-download-report-btn svg,
     .monitor-header.mobile-header-bar .monitor-course-mongo-backup-btn i,
     .monitor-header.mobile-header-bar .monitor-course-mongo-backup-btn svg {
         color: white;
     }
 
     .monitor-header.mobile-header-bar .monitor-download-conversations-btn .btn-text,
+    .monitor-header.mobile-header-bar .monitor-download-report-btn .btn-text,
     .monitor-header.mobile-header-bar .monitor-course-mongo-backup-btn .btn-text {
         display: none;
     }

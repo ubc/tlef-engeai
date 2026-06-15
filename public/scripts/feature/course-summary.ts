@@ -17,6 +17,7 @@ import type {
 import { authService } from "../services/auth-service.js";
 import { renderFeatherIcons } from "../api/api.js";
 import { openConversationExportFormatModal } from "./conversations-export-modal.js";
+import { fetchCourseReportPdf } from "./report-pdf-download.js";
 import { chartsController, mapCourseSummaryStackedBarToChartSpec } from "../ui/charts.js";
 
 type CourseSummaryStatus = 'locked' | 'available' | 'generated';
@@ -293,6 +294,16 @@ async function renderCourseSummaryModal(summary: CourseSummaryRecord, currentCla
     const downloadConversationsBtn = overlay.querySelector('#course-summary-download-conversations-btn') as HTMLButtonElement | null;
     downloadConversationsBtn?.addEventListener('click', () => {
         openConversationExportFormatModal(currentClass.id);
+    });
+
+    const downloadReportBtn = overlay.querySelector('#course-summary-download-report-btn') as HTMLButtonElement | null;
+    downloadReportBtn?.addEventListener('click', () => {
+        downloadReportBtn.disabled = true;
+        void fetchCourseReportPdf(currentClass.id).catch((err) => {
+            alert(`Report download failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }).finally(() => {
+            downloadReportBtn.disabled = false;
+        });
     });
 
     let currentStepIndex = 0;

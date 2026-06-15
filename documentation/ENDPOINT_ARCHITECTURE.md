@@ -168,6 +168,18 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 
 **`GET /api/courses/:courseId/course-summary/status`** now populates `summary.struggleTopics` from the same aggregation module (no longer an empty placeholder).
 
+#### Struggle-topic PDF report (instructor-only)
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| GET | `/api/courses/:courseId/report.pdf` | Yes | Instructor | Server-side PDF: title, outline, distribution chart, per-student appendix (students only) |
+
+**Query:** `?phase=prototype` (pages 1–3 only) or `?phase=full` (default from UI — adds one page per student with chapter-grouped struggle labels).
+
+**Success (200):** `Content-Type: application/pdf`; `Content-Disposition` attachment filename `EngE-AI-{courseName}-{academicYear}-{term}-report.pdf`. Uses `requireInstructorForCourseAPI`. Reuses D2 `getCourseStruggleStats` aggregation — chart data matches monitor stacked bar.
+
+**Errors:** 404 course not found; 403 student/non-instructor; 500 render failure.
+
 *Legacy `chat-titles` uses `asyncHandlerWithAuth` only; instructor access is enforced at page level.*
 
 #### Report fixture seed (Test 3, instructor-only, destructive)
