@@ -883,7 +883,7 @@ function renderReportPdfDocument(
 ): Promise<Buffer> {
     return new Promise((resolve, reject) => {
         const doc = new PDFDocument({ size: 'LETTER', margin: 54, autoFirstPage: true });
-        const academicPeriod = deriveAcademicPeriod(input.course.date);
+        const academicPeriod = input.academicPeriod ?? deriveAcademicPeriod(input.course.date);
         const context: ReportRenderContext = { doc, input, academicPeriod };
         const chunks: Buffer[] = [];
 
@@ -948,7 +948,8 @@ export class ReportDocumentService {
         const phase: ReportPdfPhase = input.phase === 'full' ? 'full' : 'prototype';
         const normalizedInput = { ...input, phase };
         const renderer = chartRenderer ?? this.chartRenderer;
-        const academicPeriod = deriveAcademicPeriod(normalizedInput.course.date);
+        const academicPeriod =
+            input.academicPeriod ?? deriveAcademicPeriod(normalizedInput.course.date);
         const filename = buildReportPdfFilename(normalizedInput.course.courseName, academicPeriod);
         const sections = resolveSections(normalizedInput, renderer);
         const buffer = await renderReportPdfDocument(sections, normalizedInput);

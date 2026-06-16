@@ -108,7 +108,28 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 | POST | `/api/courses` | Yes | Instructor (global) | Create new course |
 | GET | `/api/courses` | Yes | Any | List courses (filtered by role) |
 | GET | `/api/courses/check-exists` | No | — | Check if course exists (query: id) |
-| GET | `/api/courses/allowed-for-instructor` | Yes | Instructor (global) | Courses instructor can manage |
+| GET | `/api/courses/allowed-for-instructor` | Yes | Instructor (global) | Allowed course **names** for current academic period (`instructor-period-allowances`) |
+
+#### Admin — academic periods & course provisioning (`/api/admin`, `/api/academic-periods`)
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| GET | `/admin/course-selection` | Yes | Admin | Admin course selection HTML |
+| GET | `/api/admin/course-selection` | Yes | Admin | BFF: periods + all courses grouped |
+| POST | `/api/admin/courses` | Yes | Admin | Create course in period; enroll admin + instructors |
+| PUT | `/api/admin/courses/:id` | Yes | Admin | Edit course name, period, instructors |
+| POST | `/api/admin/courses/:id/ensure-enrollment` | Yes | Admin | Idempotent admin roster enroll on enter |
+| GET | `/api/admin/users/search?q=` | Yes | Admin | Faculty search for instructor picker |
+| PUT | `/api/admin/instructor-allowances` | Yes | Admin | Set allowed course names per puid + period |
+| GET | `/api/academic-periods` | Yes | Admin | List periods |
+| POST | `/api/academic-periods` | Yes | Admin | Create period |
+| GET | `/api/academic-periods/:id` | Yes | Admin | Get period |
+| PUT | `/api/academic-periods/:id` | Yes | Admin | Update period title/dates |
+
+#### Course CRUD (continued)
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
 | GET | `/api/courses/:id` | Yes | Any | Get course by ID |
 | PUT | `/api/courses/:id` | Yes | Instructor | Update course |
 | DELETE | `/api/courses/:id` | Yes | Instructor | Delete course |

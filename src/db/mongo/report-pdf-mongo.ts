@@ -7,11 +7,13 @@ import {
     buildReportPdf,
     buildStudentAppendixPdfRows,
     parseReportPdfPhase,
+    academicPeriodFromDocument,
     type ReportPdfOutput,
     type ReportPdfPhase
 } from '../../report-generation';
 import type { activeCourse } from '../../types/shared';
 import { getActiveCourse } from './course-mongo';
+import { getAcademicPeriodById } from './academic-period-mongo';
 import type { MongoDalContext } from './mongo-context';
 import { getCourseStruggleStats } from './struggle-stats-mongo';
 
@@ -38,11 +40,24 @@ export async function buildCourseReportPdf(
         stats.struggleTopics.stackedBar
     );
 
+    let academicPeriod;
+    if (courseData.academicPeriodId) {
+        const periodDoc = await getAcademicPeriodById(ctx, courseData.academicPeriodId);
+        if (periodDoc) {
+            academicPeriod = academicPeriodFromDocument(
+                periodDoc.title,
+                periodDoc.startDate,
+                periodDoc.endDate
+            );
+        }
+    }
+
     return buildReportPdf({
         course: courseData,
         stats,
         generatedAt: new Date(),
         phase,
-        studentAppendix
+        studentAppendix,
+        academicPeriod
     });
 }

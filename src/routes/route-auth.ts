@@ -14,6 +14,7 @@ import { passport, ubcShibStrategy, isSamlAvailable } from '../middleware/passpo
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { sanitizeGlobalUserForFrontend } from '../utils/user-utils';
 import { resolveAffiliation, isFacultyOverridePuid } from '../utils/affiliation';
+import { getCourseSelectionRedirectPath } from '../helpers/course-selection-redirect';
 
 const router = express.Router();
 
@@ -122,7 +123,7 @@ const samlCallbackHandler = [
 
             const redirectPath = (affiliation === 'staff' || affiliation === 'empty')
                 ? '/role-restricted'
-                : '/course-selection';
+                : getCourseSelectionRedirectPath(globalUser);
             appLogger.log('[AUTH] 🚀 Session saved, redirecting to', redirectPath);
             appLogger.log('[AUTH] 📋 Session ID:', (req as any).sessionID);
             res.redirect(redirectPath);
@@ -244,7 +245,7 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
 
                         const redirectPath = (affiliation === 'staff' || affiliation === 'empty')
                             ? '/role-restricted'
-                            : '/course-selection';
+                            : getCourseSelectionRedirectPath(globalUser);
                         appLogger.log('[AUTH-LOCAL] 🚀 Redirecting to', redirectPath);
                         res.redirect(redirectPath);
                     });

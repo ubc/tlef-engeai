@@ -101,3 +101,5 @@ planner
 .councils/
 .cursor-test/
 
+*.code-workspace
+

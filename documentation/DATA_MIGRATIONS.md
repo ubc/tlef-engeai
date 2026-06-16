@@ -22,6 +22,8 @@ Operational startup migrations (OB-001) are documented here but are **not** tied
 | **SP-001** | System prompt v1 → v2 | Lazy (request) | `ensureSystemPromptConfig` in `src/db/mongo/system-prompt-config-mongo.ts` | `collectionOfSystemPromptItems` → `systemPromptConfig`; then `$unset` legacy field | **Remove by 2026-06-30** — see [SP-001](#sp-001-system-prompt-v1--v2) |
 | **CM-001** | Chat `conversationMode` backfill | Lazy (restore) | `ChatApp.ensureLegacyChatModePersisted` in `src/chat/chat-app.ts` | missing/invalid → `socratic` or `undeclared` | Optional later; audit before removal |
 | **OB-001** | Onboarding flags backfill | Startup | `migrateOnboardingFlags` in `src/helpers/migrate-onboarding-flags.ts` | GlobalUser flags from course/CourseUser data | Operational — keep unless product changes |
+| **AP-001** | Course `academicPeriodId` backfill | Lazy (request) | `lazyMigrateCourseAcademicPeriod` in `src/db/mongo/academic-period-mongo.ts` via `getActiveCourse` / `getAllActiveCourses` | missing `academicPeriodId` → default `2025W2` period; `$addToSet` on period `courseIds` | **Remove by 2026-06-30** — see [AP-001](#ap-001-academic-period-lazy-link) |
+| **IPA-001** | Instructor allow-list period scope | Startup (once) | `migrateInstructorAllowances` in `src/helpers/migrate-instructor-allowances.ts` | `instructor-allowed-courses` → `instructor-period-allowances` for `2025W2` | Operational after first successful run |
 
 ---
 
@@ -78,6 +80,35 @@ Target before **2026-06-30:** `0` in each environment (or documented exceptions)
 ### Post-sunset engineering checklist (after 2026-06-30)
 
 - [ ] Remove `migrateFromLegacyItems` and legacy reads in `system-prompt-config-mongo.ts`
+
+---
+
+## AP-001: Academic period lazy link
+
+**Status:** Active (lazy migrate on course read)
+
+**Collections:** `active-course-list`, `academic-periods`
+
+### Behavior
+
+When `activeCourse.academicPeriodId` is missing on `getActiveCourse` / `getAllActiveCourses`:
+
+1. Resolve default period document by title `2025W2` (seeded at startup via `initAcademicPeriods`).
+2. `$set` `academicPeriodId` on the course.
+3. `$addToSet` course id on the period's `courseIds` via `linkCourseToPeriod` (single dual-write owner).
+
+### Triggers
+
+- `getActiveCourse`, `getAllActiveCourses` in `course-mongo.ts`
+- Admin BFF `GET /api/admin/course-selection` (via `getAllActiveCourses`)
+
+### Idempotency
+
+Safe to re-run; courses with `academicPeriodId` set are unchanged.
+
+### Rollback
+
+Remove `academicPeriodId` from course documents and pull ids from period `courseIds` manually or from backup.
 - [ ] Remove `collectionOfSystemPromptItems` from `src/types/shared.ts` and `public/scripts/types.ts`
 - [ ] Remove dead v1 CRUD in `src/db/mongo/instructor-prompt-mongo.ts` and façade methods in `src/db/enge-ai-mongodb.ts`
 - [ ] Mark SP-001 **Retired** in this file

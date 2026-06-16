@@ -44,6 +44,9 @@ import * as ReportFixtureSeedMongo from './mongo/report-fixture-seed-mongo';
 import * as StruggleStatsMongo from './mongo/struggle-stats-mongo';
 import * as MonitorConversationsMongo from './mongo/monitor-conversations-mongo';
 import * as ReportPdfMongo from './mongo/report-pdf-mongo';
+import * as AcademicPeriodMongo from './mongo/academic-period-mongo';
+import * as CourseEnrollmentMongo from './mongo/course-enrollment-mongo';
+import * as InstructorPeriodAllowanceMongo from './mongo/instructor-period-allowance-mongo';
 
 dotenv.config();
 
@@ -615,4 +618,71 @@ export class EngEAI_MongoDB {
 
     public getDefaultConversationModeForCourse = async (courseId: string) =>
         SystemPromptConfigMongo.getDefaultConversationModeForCourse(this.ctx(), courseId);
+
+    /**
+     * Academic periods — academic-period-mongo.ts
+     */
+    public ensureDefaultAcademicPeriod = async () =>
+        AcademicPeriodMongo.ensureDefaultAcademicPeriod(this.ctx());
+
+    public listAcademicPeriods = async () => AcademicPeriodMongo.listAcademicPeriods(this.ctx());
+
+    public getAcademicPeriodById = async (id: string) =>
+        AcademicPeriodMongo.getAcademicPeriodById(this.ctx(), id);
+
+    public createAcademicPeriod = async (input: {
+        title: string;
+        startDate: Date | string;
+        endDate: Date | string;
+    }) => AcademicPeriodMongo.createAcademicPeriod(this.ctx(), input);
+
+    public updateAcademicPeriod = async (
+        id: string,
+        input: { title?: string; startDate?: Date | string; endDate?: Date | string }
+    ) => AcademicPeriodMongo.updateAcademicPeriod(this.ctx(), id, input);
+
+    public linkCourseToPeriod = async (courseId: string, periodId: string) =>
+        AcademicPeriodMongo.linkCourseToPeriod(this.ctx(), courseId, periodId);
+
+    public getDefaultAcademicPeriodId = async () =>
+        AcademicPeriodMongo.getDefaultAcademicPeriodId(this.ctx());
+
+    /**
+     * Enrollment helpers — course-enrollment-mongo.ts
+     */
+    public enrollUserInCourse = async (
+        globalUser: GlobalUser,
+        courseId: string,
+        affiliation: 'faculty' | 'student' = 'faculty'
+    ) => CourseEnrollmentMongo.enrollUserInCourse(this.ctx(), globalUser, courseId, affiliation);
+
+    public ensureAdminCourseEnrollment = async (adminUser: GlobalUser, courseId: string) =>
+        CourseEnrollmentMongo.ensureAdminCourseEnrollment(this.ctx(), adminUser, courseId);
+
+    public enrollInstructorsOnCourse = async (course: activeCourse, instructorUserIds: string[]) =>
+        CourseEnrollmentMongo.enrollInstructorsOnCourse(this.ctx(), course, instructorUserIds);
+
+    /**
+     * Instructor period allowances — instructor-period-allowance-mongo.ts
+     */
+    public getAllowedCourseNamesForInstructor = async (puid: string, academicPeriodId: string) =>
+        InstructorPeriodAllowanceMongo.getAllowedCourseNamesForInstructor(this.ctx(), puid, academicPeriodId);
+
+    public setInstructorPeriodAllowance = async (
+        puid: string,
+        academicPeriodId: string,
+        allowedCourseNames: string[]
+    ) =>
+        InstructorPeriodAllowanceMongo.setInstructorPeriodAllowance(
+            this.ctx(),
+            puid,
+            academicPeriodId,
+            allowedCourseNames
+        );
+
+    public listAllowancesForPeriod = async (academicPeriodId: string) =>
+        InstructorPeriodAllowanceMongo.listAllowancesForPeriod(this.ctx(), academicPeriodId);
+
+    public searchFacultyUsersByName = async (query: string, limit = 20) =>
+        GlobalUserMongo.searchFacultyUsersByName(this.ctx(), query, limit);
 }

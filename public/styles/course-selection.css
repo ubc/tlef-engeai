@@ -126,8 +126,8 @@
 }
 
 .course-selection-title {
-    font-size: 1.5rem;
-    font-weight: 700;
+    font-size: 1.3rem;
+    font-weight: 650;
     color: #212529;
     margin: 0 0 0 0;
     text-align:left;
@@ -1049,4 +1049,233 @@
 
 .seed-report-fixture-btn.seed-fixture-hidden {
     display: none;
+}
+
+/* --- Admin course selection (academic periods) --- */
+.admin-course-selection-wrapper .admin-page-toolbar,
+.admin-course-selection-wrapper .period-sections {
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.admin-course-selection-wrapper .admin-page-toolbar {
+    margin-bottom: 1rem;
+    display: flex;
+    justify-content: flex-end;
+    margin-right:10%;
+}
+
+.admin-course-selection-wrapper .period-sections {
+    padding-bottom: 2rem;
+}
+
+.admin-course-selection-wrapper .period-section {
+    margin-bottom: 2rem;
+}
+
+.admin-course-selection-wrapper .period-section-header {
+    text-align: left;
+    justify-content: space-between;
+}
+
+.period-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.period-section-header .period-title {
+    text-align: left;
+    margin: 0;
+}
+
+.create-academic-period-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background-color: #1a3d5c;
+    color: #fff;
+    border: none;
+    padding: 0.65rem 1.25rem;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.create-academic-period-btn:hover {
+    background-color: #142f47;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(26, 61, 92, 0.4);
+}
+
+.period-collapse-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.25rem;
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.period-chevron {
+    transition: transform 0.3s ease;
+}
+
+.period-collapse-btn[aria-expanded="false"] .period-chevron {
+    transform: rotate(-90deg);
+}
+
+.period-course-list-wrap {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.35s ease;
+}
+
+.period-course-list-wrap.is-collapsed {
+    grid-template-rows: 0fr;
+}
+
+.period-course-list-inner {
+    overflow: hidden;
+}
+
+.period-count-pill {
+    background: #eef2f6;
+    color: #334155;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    flex-shrink: 0;
+}
+
+.period-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.admin-course-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.admin-row-menu-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.admin-row-menu-btn i,
+.admin-row-menu-btn .feather {
+    width: 18px;
+    height: 18px;
+}
+
+.admin-modal-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-bottom: 1rem;
+}
+
+.admin-modal-field span {
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.admin-modal-input {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 1rem;
+}
+
+.admin-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: stretch;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.admin-modal-actions .retry-btn,
+.admin-modal-actions .create-new-course-btn {
+    margin-top: 0;
+    min-height: 2.75rem;
+    padding: 0.75rem 1.5rem;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.user-search-input {
+    width: 100%;
+}
+
+.user-search-multi-select {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.user-search-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.user-search-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    background: #e8f0f8;
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+}
+
+.user-search-chip-remove {
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.user-search-results {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    max-height: 160px;
+    overflow-y: auto;
+}
+
+.user-search-result-item {
+    width: 100%;
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border: none;
+    background: #fff;
+    cursor: pointer;
+}
+
+.user-search-result-item:hover {
+    background: #f3f4f6;
+}
+
+.period-empty {
+    color: #6b7280;
+    padding: 0 0 0 1rem;
 }

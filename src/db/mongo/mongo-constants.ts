@@ -12,3 +12,9 @@ export const ACTIVE_COURSE_LIST_COLLECTION = 'active-course-list';
 
 /** MongoDB collection name for cross-course user profiles (`active-users`), including `puid`. */
 export const ACTIVE_USERS_COLLECTION = 'active-users';
+
+/** MongoDB collection name for academic period catalog (`academic-periods`). */
+export const ACADEMIC_PERIODS_COLLECTION = 'academic-periods';
+
+/** MongoDB collection name for period-scoped instructor course allow-lists. */
+export const INSTRUCTOR_PERIOD_ALLOWANCES_COLLECTION = 'instructor-period-allowances';

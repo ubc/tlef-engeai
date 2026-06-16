@@ -596,14 +596,16 @@ router.get('/allowed-for-instructor', requireInstructorGlobal, asyncHandlerWithA
     if (!globalUser) {
         return res.status(401).json({ success: false, error: 'Not authenticated' });
     }
-    if (globalUser.affiliation !== 'faculty') {
+    if (globalUser.affiliation !== 'faculty' && !isAdminUser(globalUser)) {
         return res.status(403).json({ success: false, error: 'Instructors only' });
     }
     const instance = await EngEAI_MongoDB.getInstance();
-    const coll = instance.db.collection<{ puid: string; allowed_courses: string[] }>('instructor-allowed-courses');
-    const docs = await coll.find({}).toArray();
-    const match = docs.find((d) => d.puid === globalUser.puid);
-    const allowedCourses = match ? (match.allowed_courses || []) : [];
+    const periods = await instance.listAcademicPeriods();
+    const periodId =
+        periods.length > 0
+            ? periods[0].id
+            : await instance.getDefaultAcademicPeriodId();
+    const allowedCourses = await instance.getAllowedCourseNamesForInstructor(globalUser.puid, periodId);
     return res.status(200).json({ success: true, allowedCourses });
 }));
 
@@ -740,37 +742,44 @@ router.delete('/clear-active-users', requireInstructorGlobal, asyncHandlerWithAu
  * @response 200 - Success (data: single course if name provided, array if not; count when listing all)
  * @response 404 - Course not found (when name provided)
  */
-router.get('/', asyncHandler(async (req: Request, res: Response) => {
+router.get('/', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
-    
-    // Check if name query parameter is provided
+    const globalUser = (req.session as any).globalUser;
+    if (!globalUser) {
+        return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
     const courseName = req.query.name as string;
-    
+
     if (courseName) {
-        // Get course by name
         const course = await instance.getCourseByName(courseName);
-        
+
         if (!course) {
             return res.status(404).json({
                 success: false,
                 error: 'Course not found'
             });
         }
-        
+
         return res.status(200).json({
             success: true,
             data: course
         });
-    } else {
-        // Get all courses
-        const courses = await instance.getAllActiveCourses();
-        
-        res.status(200).json({
-            success: true,
-            data: courses,
-            count: courses.length
-        });
     }
+
+    const allCourses = await instance.getAllActiveCourses();
+    let courses = allCourses;
+
+    if (!isAdminUser(globalUser)) {
+        const enrolled = new Set(globalUser.coursesEnrolled ?? []);
+        courses = allCourses.filter((c: activeCourse) => enrolled.has(c.id));
+    }
+
+    res.status(200).json({
+        success: true,
+        data: courses,
+        count: courses.length
+    });
 }));
 
 /**

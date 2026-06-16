@@ -179,6 +179,31 @@ export interface activeCourse {
     /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */
     collectionOfSystemPromptItems?: SystemPromptItem[];
     systemPromptConfig?: CourseSystemPromptConfig;
+    /** FK to `academic-periods.id`; lazy-migrated via AP-001 when missing */
+    academicPeriodId?: string;
+}
+
+/**
+ * Academic period catalog document (`academic-periods` collection).
+ */
+export interface AcademicPeriodDocument {
+    id: string;
+    title: string;
+    startDate: Date;
+    endDate: Date;
+    courseIds: string[];
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+/**
+ * Period-scoped instructor allow-list (`instructor-period-allowances` collection).
+ */
+export interface InstructorPeriodAllowance {
+    puid: string;
+    academicPeriodId: string;
+    allowedCourseNames: string[];
+    updatedAt: Date;
 }
 
 /**

@@ -52,6 +52,11 @@ async function initializeCourseSelection(): Promise<void> {
             return;
         }
         
+        if (authData.globalUser.isAdmin === true) {
+            window.location.href = '/admin/course-selection';
+            return;
+        }
+        
         const { globalUser } = authData;
         
         if (!globalUser) {
@@ -580,7 +585,7 @@ function setupCourseButtons(): void {
         // Setup "Create New Course" button - creates new course
         if (createNewCourseBtn) {
             createNewCourseBtn.addEventListener('click', async () => {
-                await createNewCourseForInstructor();
+                await showFacultyCreateCourseModal();
             });
         }
     } else if (currentUserAffiliation === 'student') {
@@ -607,52 +612,134 @@ function setupCourseButtons(): void {
 }
 
 /**
- * createNewCourseForInstructor
+ * showFacultyCreateCourseModal
  *
- * @returns Promise<void>
- * Goes directly to course setup. Skip modal is shown after course-setup completes (in instructor-mode).
+ * Lists admin-assigned course names for the current academic period; redirects to onboarding on pick.
  */
-async function createNewCourseForInstructor(): Promise<void> {
+async function showFacultyCreateCourseModal(): Promise<void> {
     try {
-        // Get current user info to include as instructor
-        const userResponse = await fetch('/auth/current-user');
-        if (!userResponse.ok) {
-            throw new Error('Failed to fetch user data');
+        const response = await fetch('/api/courses/allowed-for-instructor', {
+            credentials: 'same-origin'
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.error ?? 'Failed to load allowed courses');
         }
 
-        const authData = await userResponse.json();
-        if (!authData.authenticated || !authData.globalUser) {
-            throw new Error('User not authenticated');
+        const allowedCourses: string[] = data.allowedCourses ?? [];
+        if (allowedCourses.length === 0) {
+            await showErrorModal(
+                'No courses available',
+                'No courses have been assigned to you for this academic period. Contact a platform admin.'
+            );
+            return;
         }
 
-        const currentUser = authData.globalUser;
+        const modal = new ModalOverlay();
+        const content = document.createElement('div');
+        content.className = 'faculty-create-course-modal';
 
-        // Go directly to course setup - skip modal appears after course-setup completes
-        const tempCourse: any = {
-            id: '',
-            date: new Date().toISOString(),
-            courseSetup: false,
-            contentSetup: false,
-            flagSetup: false,
-            monitorSetup: false,
-            courseName: '',
-            instructors: [{ userId: currentUser.userId, name: currentUser.name }],
-            teachingAssistants: [],
-            frameType: 'byWeek',
-            tilesNumber: 12,
-            topicOrWeekInstances: []
-        };
-        
-        sessionStorage.setItem('debugCourse', JSON.stringify(tempCourse));
-        window.location.href = '/instructor/onboarding/new-course';
-        
+        const instructions = document.createElement('p');
+        instructions.textContent = 'Select a course you are permitted to create for this academic period:';
+        instructions.style.marginBottom = '1rem';
+
+        const select = document.createElement('select');
+        select.className = 'admin-modal-input';
+        select.style.width = '100%';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Choose a course…';
+        select.appendChild(placeholder);
+        for (const name of allowedCourses) {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            select.appendChild(opt);
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'admin-modal-actions';
+        actions.style.marginTop = '1.25rem';
+
+        const continueBtn = document.createElement('button');
+        continueBtn.type = 'button';
+        continueBtn.className = 'create-new-course-btn';
+        continueBtn.textContent = 'Continue';
+        continueBtn.disabled = true;
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'retry-btn';
+        cancelBtn.textContent = 'Cancel';
+
+        select.addEventListener('change', () => {
+            continueBtn.disabled = !select.value;
+        });
+
+        cancelBtn.addEventListener('click', () => modal.close('cancel'));
+        continueBtn.addEventListener('click', async () => {
+            const courseName = select.value;
+            if (!courseName) {
+                return;
+            }
+            modal.close('success');
+            await redirectToInstructorOnboarding(courseName);
+        });
+
+        actions.append(cancelBtn, continueBtn);
+        content.append(instructions, select, actions);
+
+        await modal.show({
+            type: 'custom',
+            title: 'Create New Course',
+            content,
+            showCloseButton: true,
+            closeOnOverlayClick: true,
+            maxWidth: '480px'
+        });
     } catch (error) {
-        console.error('[COURSE-SELECTION] ❌ Error preparing new course:', error);
         await showErrorModal(
             'Error',
-            `Failed to start course creation: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`
+            error instanceof Error ? error.message : 'Failed to open create course modal.'
         );
     }
+}
+
+async function redirectToInstructorOnboarding(courseName: string): Promise<void> {
+    const userResponse = await fetch('/auth/current-user');
+    if (!userResponse.ok) {
+        throw new Error('Failed to fetch user data');
+    }
+    const authData = await userResponse.json();
+    if (!authData.authenticated || !authData.globalUser) {
+        throw new Error('User not authenticated');
+    }
+    const currentUser = authData.globalUser;
+    const tempCourse: any = {
+        id: '',
+        date: new Date().toISOString(),
+        courseSetup: false,
+        contentSetup: false,
+        flagSetup: false,
+        monitorSetup: false,
+        courseName,
+        instructors: [{ userId: currentUser.userId, name: currentUser.name }],
+        teachingAssistants: [],
+        frameType: 'byWeek',
+        tilesNumber: 12,
+        topicOrWeekInstances: []
+    };
+    sessionStorage.setItem('debugCourse', JSON.stringify(tempCourse));
+    window.location.href = '/instructor/onboarding/new-course';
+}
+
+/**
+ * createNewCourseForInstructor
+ *
+ * @deprecated Use showFacultyCreateCourseModal — kept for reference; redirects via allowed-course picker.
+ */
+async function createNewCourseForInstructor(): Promise<void> {
+    await showFacultyCreateCourseModal();
 }
 
 /**

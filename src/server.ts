@@ -14,14 +14,19 @@ import authRoutes from './routes/route-auth';  // Import authentication routes
 import courseEntryRoutes from './routes/route-course-entry';  // Import course entry routes
 import userManagementRoutes from './routes/route-user-management';  // Import user management routes
 import courseRoutes from './routes/route-course';  // Import course routes
+import academicPeriodRoutes from './routes/mongo/academic-period-routes';
+import adminCourseRoutes from './routes/mongo/admin-course-routes';
 
 // Import SAML authentication middleware
 import sessionMiddleware from './middleware/session';
 import { passport } from './middleware/passport';
 import { EngEAI_MongoDB } from './db/enge-ai-mongodb';
-import { initInstructorAllowedCourses } from './helpers/init-instructor-allowed-courses';
+import { initAcademicPeriods } from './helpers/init-academic-periods';
+import { migrateInstructorAllowances } from './helpers/migrate-instructor-allowances';
 import { migrateOnboardingFlags } from './helpers/migrate-onboarding-flags';
+import { getCourseSelectionRedirectPath } from './helpers/course-selection-redirect';
 import { resolveAffiliation, isFacultyOverridePuid } from './utils/affiliation';
+import { isAdminUser } from './utils/admin';
 
 dotenv.config();
 
@@ -64,7 +69,7 @@ app.get('/', (req: any, res: any) => {
         const affiliation = (req.session as any)?.globalUser?.affiliation;
         const redirectPath = (affiliation === 'staff' || affiliation === 'empty')
             ? '/role-restricted'
-            : '/course-selection';
+            : getCourseSelectionRedirectPath((req.session as any).globalUser);
         logger.info(`[ROUTING] Authenticated user accessed root, redirecting to ${redirectPath}`);
         return res.redirect(redirectPath);
     }
@@ -158,7 +163,7 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
 
             const redirectPath = (affiliation === 'staff' || affiliation === 'empty')
                 ? '/role-restricted'
-                : '/course-selection';
+                : getCourseSelectionRedirectPath(globalUser);
             logger.info(`[AUTH] 🚀 Session saved, redirecting to ${redirectPath}`);
             logger.info(`[AUTH] 📋 Session ID: ${(req as any).sessionID}`);
             res.redirect(redirectPath);
@@ -187,7 +192,26 @@ app.get('/course-selection', (req: any, res: any) => {
     if (affiliation === 'staff' || affiliation === 'empty') {
         return res.redirect('/role-restricted');
     }
+    const globalUser = (req.session as any)?.globalUser;
+    if (isAdminUser(globalUser)) {
+        return res.redirect('/admin/course-selection');
+    }
     res.sendFile(path.join(publicPath, 'pages/course-selection.html'));
+});
+
+app.get('/admin/course-selection', (req: any, res: any) => {
+    if (!req.session?.passport?.user) {
+        return res.redirect('/');
+    }
+    const affiliation = (req.session as any)?.globalUser?.affiliation;
+    if (affiliation === 'staff' || affiliation === 'empty') {
+        return res.redirect('/role-restricted');
+    }
+    const globalUser = (req.session as any)?.globalUser;
+    if (!isAdminUser(globalUser)) {
+        return res.redirect('/course-selection');
+    }
+    res.sendFile(path.join(publicPath, 'pages/admin-course-selection.html'));
 });
 
 app.get('/settings', (req: any, res: any) => {
@@ -202,6 +226,8 @@ app.get('/settings', (req: any, res: any) => {
 app.use('/api/chat', chatAppRoutes);
 app.use('/api/rag', ragAppRoutes);
 app.use('/api/courses', mongodbRoutes);  // Course management routes
+app.use('/api/academic-periods', academicPeriodRoutes);
+app.use('/api/admin', adminCourseRoutes);
 app.use('/api/course', courseEntryRoutes);  // Course entry routes
 app.use('/api/user', userManagementRoutes);  // User management routes
 app.use('/api/health', healthRoutes);    // Health check routes
@@ -226,9 +252,15 @@ app.listen(port, async () => {
     logger.info('--------------------------------');
 
     try {
-        await initInstructorAllowedCourses();
+        await initAcademicPeriods();
     } catch (err) {
-        logger.error('Failed to initialize instructor-allowed-courses:', err as any);
+        logger.error('Failed to initialize academic periods:', err as any);
+    }
+
+    try {
+        await migrateInstructorAllowances();
+    } catch (err) {
+        logger.error('Failed to migrate instructor allowances:', err as any);
     }
 
     try {

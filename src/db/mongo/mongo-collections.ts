@@ -8,7 +8,12 @@
  */
 
 import type { Db, Collection } from 'mongodb';
-import { ACTIVE_COURSE_LIST_COLLECTION, ACTIVE_USERS_COLLECTION } from './mongo-constants';
+import {
+    ACADEMIC_PERIODS_COLLECTION,
+    ACTIVE_COURSE_LIST_COLLECTION,
+    ACTIVE_USERS_COLLECTION,
+    INSTRUCTOR_PERIOD_ALLOWANCES_COLLECTION
+} from './mongo-constants';
 
 /**
  * activeCourseListCollection
@@ -34,4 +39,22 @@ export function activeCourseListCollection(db: Db): Collection {
  */
 export function activeUsersMongoCollection(db: Db): Collection {
     return db.collection(ACTIVE_USERS_COLLECTION);
+}
+
+/**
+ * academicPeriodsCollection
+ *
+ * @returns `Collection` — `academic-periods`
+ */
+export function academicPeriodsCollection(db: Db): Collection {
+    return db.collection(ACADEMIC_PERIODS_COLLECTION);
+}
+
+/**
+ * instructorPeriodAllowancesCollection
+ *
+ * @returns `Collection` — `instructor-period-allowances`
+ */
+export function instructorPeriodAllowancesCollection(db: Db): Collection {
+    return db.collection(INSTRUCTOR_PERIOD_ALLOWANCES_COLLECTION);
 }

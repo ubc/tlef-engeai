@@ -8,7 +8,7 @@
 export { ReportDocumentService, buildReportPdf, parseReportPdfPhase } from './report-document';
 export { ReportDataService, buildStudentAppendixPdfRows } from './report-data';
 export { ChartJsStackedBarRenderer } from './report-chart';
-export { contentDispositionAttachmentPdf } from './report-contracts';
+export { contentDispositionAttachmentPdf, deriveAcademicPeriod, academicPeriodFromDocument } from './report-contracts';
 export type {
     ReportPdfOutput,
     ReportPdfPhase,

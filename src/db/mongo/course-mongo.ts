@@ -9,6 +9,7 @@
 
 import type { activeCourse } from '../../types/shared';
 import { fetchActiveCourseDocByCourseName, fetchActiveCourseDocById } from './active-course-queries-mongo';
+import { lazyMigrateCourseAcademicPeriod } from './academic-period-mongo';
 import { createFlagIndexes } from './flag-mongo';
 import type { MongoDalContext } from './mongo-context';
 import { activeCourseListCollection, activeUsersMongoCollection } from './mongo-collections';
@@ -124,7 +125,11 @@ export async function postActiveCourse(ctx: MongoDalContext, course: activeCours
  * - Delegates to `fetchActiveCourseDocById`.
  */
 export async function getActiveCourse(ctx: MongoDalContext, id: string) {
-    return await fetchActiveCourseDocById(ctx.db, id);
+    const course = await fetchActiveCourseDocById(ctx.db, id);
+    if (!course) {
+        return null;
+    }
+    return lazyMigrateCourseAcademicPeriod(ctx, course);
 }
 
 /**
@@ -171,7 +176,12 @@ export async function getCourseByName(ctx: MongoDalContext, name: string) {
  * - `find({})` + `toArray()` on `active-course-list`.
  */
 export async function getAllActiveCourses(ctx: MongoDalContext) {
-    return await activeCourseListCollection(ctx.db).find({}).toArray();
+    const courses = (await activeCourseListCollection(ctx.db).find({}).toArray()) as unknown as activeCourse[];
+    const migrated: activeCourse[] = [];
+    for (const course of courses) {
+        migrated.push(await lazyMigrateCourseAcademicPeriod(ctx, course));
+    }
+    return migrated;
 }
 
 /**
