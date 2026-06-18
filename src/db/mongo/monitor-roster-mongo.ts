@@ -1,15 +1,17 @@
 /**
  * monitor-roster-mongo.ts
- * @description Roster projection for the instructor monitor dashboard (students, faculty, platform admins).
+ * @description Roster projection for the instructor monitor dashboard (students, faculty, TAs, platform admins).
  */
 
 import { getCollectionNames } from './collection-registry-mongo';
 import type { MongoDalContext } from './mongo-context';
+import type { activeCourse, MonitorRosterRole } from '../../types/shared';
+import { isInCourseInstructors, isInCourseTAs } from '../../utils/course-staff';
 
 export interface MonitorRosterUser {
     userId: string;
     userName: string;
-    role: 'student' | 'instructor' | 'admin';
+    role: MonitorRosterRole;
     chats: Array<{ id: string; title: string }>;
 }
 
@@ -18,9 +20,10 @@ export interface MonitorRosterUser {
  */
 export async function getMonitorRosterUsers(
     ctx: MongoDalContext,
-    courseName: string,
-    _courseId: string
+    course: activeCourse
 ): Promise<MonitorRosterUser[]> {
+    const courseName = course.courseName;
+    const courseId = course.id;
     const collectionNames = await getCollectionNames(ctx, courseName);
     const usersCollection = ctx.db.collection(collectionNames.users);
     const allUsers = await usersCollection
@@ -55,10 +58,15 @@ export async function getMonitorRosterUsers(
             title: chat.itemTitle || chat.title || 'Untitled Chat'
         }));
 
-        let role: 'student' | 'instructor' | 'admin' =
-            userData.affiliation === 'faculty' ? 'instructor' : 'student';
+        let role: MonitorRosterRole = 'student';
         if (adminUserIds.has(userData.userId)) {
             role = 'admin';
+        } else if (isInCourseInstructors(course, userData.userId)) {
+            role = 'instructor';
+        } else if (isInCourseTAs(course, userData.userId)) {
+            role = 'ta';
+        } else if (userData.affiliation === 'faculty') {
+            role = 'instructor';
         }
 
         usersData.push({

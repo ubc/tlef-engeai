@@ -30,7 +30,7 @@ export async function getCourseStruggleStats(
     const [catalog, memoryAgentEntries, rosterUsers, totals] = await Promise.all([
         getAllInstructorStruggleTopics(ctx, courseId),
         getAllMemoryAgentEntries(ctx, courseData.courseName),
-        getMonitorRosterUsers(ctx, courseData.courseName, courseId),
+        getMonitorRosterUsers(ctx, courseData),
         countCourseStudentsAndActiveChats(ctx, courseData.courseName)
     ]);
 

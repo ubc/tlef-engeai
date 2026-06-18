@@ -520,6 +520,10 @@ body {
     height: 1.35rem;
 }
 
+.course-summary-summon-fab.course-summary-fab-hidden {
+    display: none;
+}
+
 /* Hide instructor sidebar during onboarding */
 .onboarding-active .instructor-sidebar {
     display: none;

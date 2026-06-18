@@ -46,6 +46,7 @@ import * as MonitorConversationsMongo from './mongo/monitor-conversations-mongo'
 import * as ReportPdfMongo from './mongo/report-pdf-mongo';
 import * as AcademicPeriodMongo from './mongo/academic-period-mongo';
 import * as CourseEnrollmentMongo from './mongo/course-enrollment-mongo';
+import * as CourseRosterMongo from './mongo/course-roster-mongo';
 import * as InstructorPeriodAllowanceMongo from './mongo/instructor-period-allowance-mongo';
 
 dotenv.config();
@@ -685,4 +686,13 @@ export class EngEAI_MongoDB {
 
     public searchFacultyUsersByName = async (query: string, limit = 20) =>
         GlobalUserMongo.searchFacultyUsersByName(this.ctx(), query, limit);
+
+    /**
+     * Course roster role mutations — course-roster-mongo.ts
+     */
+    public promoteStudentToTA = async (course: activeCourse, targetUserId: string, targetName: string) =>
+        CourseRosterMongo.promoteStudentToTA(this.ctx(), course, targetUserId, targetName);
+
+    public demoteTAToStudent = async (course: activeCourse, targetUserId: string) =>
+        CourseRosterMongo.demoteTAToStudent(this.ctx(), course, targetUserId);
 }

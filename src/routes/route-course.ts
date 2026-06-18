@@ -10,6 +10,7 @@ import path from 'path';
 import { appLogger } from '../utils/logger';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
+import { isCourseStaff } from '../utils/course-staff';
 
 const router = express.Router();
 
@@ -46,12 +47,8 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
             return res.status(401).redirect('/');
         }
         
-        // Verify user is enrolled or is instructor (admins count as instructors for page access)
-        const isCourseInstructor = globalUser.affiliation === 'faculty' &&
-                            course.instructors?.some((inst: any) =>
-                                (typeof inst === 'string' ? inst : inst.userId) === globalUser.userId
-                            );
-        const isInstructor = isCourseInstructor || globalUser.isAdmin === true;
+        // Verify user is enrolled or is course staff (faculty instructor, TA, or platform admin)
+        const isInstructor = isCourseStaff(course as import('../types/shared').activeCourse, globalUser);
         const isEnrolled = globalUser.coursesEnrolled.includes(courseId);
         
         if (!isInstructor && !isEnrolled) {

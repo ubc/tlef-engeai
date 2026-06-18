@@ -579,11 +579,13 @@ export interface CourseSummaryStruggleTopics {
     legend: StruggleStatsLegendItem[];
 }
 
+export type MonitorRosterRole = 'student' | 'instructor' | 'admin' | 'ta';
+
 /** Per-user row in GET /api/courses/monitor/:courseId/conversations (no struggle fields). */
 export interface MonitorConversationUserRow {
     userId: string;
     userName: string;
-    role: 'student' | 'instructor' | 'admin';
+    role: MonitorRosterRole;
     conversationCount: number;
     chats: Array<{ id: string; title: string }>;
 }
@@ -592,7 +594,7 @@ export interface MonitorConversationUserRow {
 export interface MonitorStruggleUserRow {
     userId: string;
     userName: string;
-    role: 'student' | 'instructor' | 'admin';
+    role: MonitorRosterRole;
     conversationCount: number;
     struggleTopicCount: number;
     struggleTopics: string[];
@@ -605,4 +607,14 @@ export interface MonitorStruggleUserRow {
 export interface StruggleStatsResult {
     struggleTopics: CourseSummaryStruggleTopics;
     users: MonitorStruggleUserRow[];
+}
+
+/** GET /api/courses/:courseId/analytics-access response flags. */
+export interface CourseAnalyticsAccessFlags {
+    canAccessPostPeriodAnalytics: boolean;
+    canViewCourseSummary: boolean;
+    canManageRoster: boolean;
+    periodEndDate: string | null;
+    isAdminEarlyAccess: boolean;
+    isAcademicPeriodEnded: boolean;
 }

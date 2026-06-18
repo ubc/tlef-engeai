@@ -177,33 +177,35 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 | PUT | `/api/courses/:courseId/flags/:flagId` | Yes | Instructor | Update flag |
 | PATCH | `/api/courses/:courseId/flags/:flagId/response` | Yes | Instructor | Update response |
 
-#### Monitor (instructor roster; struggle data admin-only)
+#### Monitor (instructor roster; post-period analytics)
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
-| GET | `/api/courses/monitor/:courseId/conversations` | Yes | Instructor | Per-user conversation rows (no struggle fields) |
-| GET | `/api/courses/monitor/:courseId/struggle-stats` | Yes | **Admin** | Course-wide struggle stacked bar + per-user struggle/conversation rows |
-| GET | `/api/courses/monitor/:courseId/chat-titles` | Yes | Instructor | Chat titles for all students |
-| GET | `/api/courses/monitor/:courseId/chat/:chatId/download` | Yes | Instructor | Download full conversation |
-| GET | `/api/courses/monitor/:courseId/conversations-export.zip` | Yes | **Admin** | ZIP of all student conversations + struggle topics folder |
+| GET | `/api/courses/:courseId/analytics-access` | Yes | Instructor (staff) | Flags: `canAccessPostPeriodAnalytics`, `canViewCourseSummary`, `canManageRoster`, `periodEndDate`, `isAdminEarlyAccess`, `isAcademicPeriodEnded` |
+| PATCH | `/api/courses/:courseId/roster/:userId/role` | Yes | Faculty instructor or **Admin** | Body `{ role: 'student' \| 'ta' }` — promote/demote TA (TAs cannot call) |
+| GET | `/api/courses/monitor/:courseId/conversations` | Yes | Instructor (staff) | Per-user conversation rows (no struggle fields) |
+| GET | `/api/courses/monitor/:courseId/struggle-stats` | Yes | Staff + **post-period** (admin always) | Course-wide struggle stacked bar + per-user struggle/conversation rows |
+| GET | `/api/courses/monitor/:courseId/chat-titles` | Yes | Instructor (staff) | Chat titles for all students |
+| GET | `/api/courses/monitor/:courseId/chat/:chatId/download` | Yes | Instructor (staff) | Download full conversation |
+| GET | `/api/courses/monitor/:courseId/conversations-export.zip` | Yes | Staff + **post-period** (admin always) | ZIP of all student conversations + struggle topics folder |
 
-**`GET …/conversations` success (200):** `{ success: true, data: MonitorConversationUserRow[], count: number }`. Each row: `userId`, `userName`, `role`, `conversationCount`, `chats` — roster projection only (no memory-agent / struggle fields). Uses `requireInstructorForCourseAPI`.
+**`GET …/conversations` success (200):** `{ success: true, data: MonitorConversationUserRow[], count: number }`. Each row: `userId`, `userName`, `role` (`student` \| `instructor` \| `admin` \| `ta`), `conversationCount`, `chats`. Uses `requireInstructorForCourseAPI`.
 
-**`GET …/struggle-stats` success (200):** `{ success: true, data: { struggleTopics: CourseSummaryStruggleTopics, users: MonitorStruggleUserRow[] }, count: number }`. `struggleTopics` includes `stackedBar`, `topTopics`, and `legend` (course-wide unique students per catalog label). `users[]` includes `chats`, flat `struggleTopics`, and derived `struggleTopicsByChapter`. Uses `requireAdminForCourseAPI`.
+**`GET …/struggle-stats` success (200):** Same shape as before. Uses `requireInstructorForCourseAPI` + `requirePostPeriodAnalyticsAPI` (platform admin bypasses period end).
 
-**`GET /api/courses/:courseId/course-summary/status`** populates `summary.struggleTopics` from the same aggregation module **for platform admins only**; non-admin instructors receive the summary without `struggleTopics` and with `downloadConversationAvailable: false`.
+**`GET /api/courses/:courseId/course-summary/status`:** `summary.endDate` from linked academic period. `shouldDisplayModal` is `false` during the active period for all roles; `true` for staff after period ends. `canViewCourseSummary`: admin always; other staff after period. `struggleTopics` and `downloadConversationAvailable` follow `canAccessPostPeriodAnalytics`.
 
-#### Struggle-topic PDF report (admin-only)
+#### Struggle-topic PDF report (post-period; admin early access)
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
-| GET | `/api/courses/:courseId/report.pdf` | Yes | **Admin** | Server-side PDF: CHBE-branded title, outline, distribution chart, zebra-striped student appendix (all students) |
+| GET | `/api/courses/:courseId/report.pdf` | Yes | Staff + **post-period** (admin always) | Server-side PDF: CHBE-branded title, outline, distribution chart, zebra-striped student appendix (all students) |
 
 **Query:** `?phase=prototype` (pages 1–3 only) or `?phase=full` (default from UI — adds a paginated table: student name | struggle topics binned by chapter with bold headers, no course-wide counts).
 
-**Success (200):** `Content-Type: application/pdf`; `Content-Disposition` attachment filename `EngE-AI-{courseName}-{academicYear}-{term}-report.pdf`. Uses `requireAdminForCourseAPI`. Reuses D2 `getCourseStruggleStats` aggregation — chart data matches monitor stacked bar. Title page uses CHBE green (`#4d7a2f`) with white text. Appendix rows are built from per-user memory-agent topics only (counts not exposed in student table).
+**Success (200):** `Content-Type: application/pdf`; `Content-Disposition` attachment filename `EngE-AI-{courseName}-{academicYear}-{term}-report.pdf`. Uses `requireInstructorForCourseAPI` + `requirePostPeriodAnalyticsAPI`. Reuses D2 `getCourseStruggleStats` aggregation — chart data matches monitor stacked bar. Title page uses CHBE green (`#4d7a2f`) with white text. Appendix rows are built from per-user memory-agent topics only (counts not exposed in student table).
 
-**Errors:** 404 course not found; 403 non-admin; 500 render failure.
+**Errors:** 404 course not found; 403 until period ends (non-admin) or non-staff; 500 render failure.
 
 #### Report fixture seed (Test 3, admin-only, destructive)
 

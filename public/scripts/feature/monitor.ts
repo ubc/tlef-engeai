@@ -3,11 +3,15 @@ import { authService } from "../services/auth-service.js";
 import { fetchCourseMongoBackupZip } from "./course-mongo-backup-download.js";
 import { openConversationExportFormatModal } from "./conversations-export-modal.js";
 import { fetchCourseReportPdf } from "./report-pdf-download.js";
+import { summonCourseSummary } from "./course-summary.js";
 import { chartsController, mapCourseSummaryStackedBarToChartSpec } from "../ui/charts.js";
 import type {
+    CourseAnalyticsAccessFlags,
     CourseSummaryStruggleTopics,
     MemoryAgentChapterStruggle,
-    StruggleStatsLegendItem
+    MonitorRosterRole,
+    StruggleStatsLegendItem,
+    activeCourse
 } from "../types.js";
 
 /**
@@ -18,7 +22,7 @@ type MonitorActivePanel = 'none' | 'conversations' | 'struggle';
 interface UserData {
     id: string;
     name: string;
-    role: 'student' | 'instructor' | 'admin';
+    role: MonitorRosterRole;
     conversationCount: number;
     struggleTopicCount: number;
     struggleTopics: string[];
@@ -57,6 +61,10 @@ class MonitorDashboard {
     private isCalendarOpen: boolean = false;
     private courseId: string | null = null;
     private isPlatformAdmin: boolean = false;
+    private canAccessPostPeriodAnalytics: boolean = false;
+    private canManageRoster: boolean = false;
+    private isAdminEarlyAccess: boolean = false;
+    private openRosterMenuUserId: string | null = null;
 
     constructor() {
         this.getCourseId();
@@ -72,10 +80,35 @@ class MonitorDashboard {
             this.isPlatformAdmin = false;
         }
 
-        this.configureAdminOnlyUI();
+        await this.loadAnalyticsAccess();
+        this.configurePostPeriodUI();
         await this.loadMonitorData();
         void this.configureMongoBackupButton();
         this.render();
+    }
+
+    private async loadAnalyticsAccess(): Promise<void> {
+        if (!this.courseId) {
+            return;
+        }
+        try {
+            const response = await fetch(`/api/courses/${encodeURIComponent(this.courseId)}/analytics-access`, {
+                method: 'GET',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (!response.ok) {
+                return;
+            }
+            const payload = (await response.json()) as { success: boolean; data?: CourseAnalyticsAccessFlags };
+            if (payload.success && payload.data) {
+                this.canAccessPostPeriodAnalytics = payload.data.canAccessPostPeriodAnalytics;
+                this.canManageRoster = payload.data.canManageRoster;
+                this.isAdminEarlyAccess = payload.data.isAdminEarlyAccess;
+            }
+        } catch {
+            // Keep defaults (deny post-period features)
+        }
     }
 
     /**
@@ -103,7 +136,7 @@ class MonitorDashboard {
             return;
         }
 
-        const endpoint = this.isPlatformAdmin
+        const endpoint = this.canAccessPostPeriodAnalytics
             ? `/api/courses/monitor/${this.courseId}/struggle-stats`
             : `/api/courses/monitor/${this.courseId}/conversations`;
 
@@ -123,7 +156,7 @@ class MonitorDashboard {
             const result = await response.json();
 
             if (result.success && result.data) {
-                if (this.isPlatformAdmin) {
+                if (this.canAccessPostPeriodAnalytics) {
                     this.struggleTopics = result.data.struggleTopics as CourseSummaryStruggleTopics;
                     this.users = (result.data.users || []).map((user: {
                         userId: string;
@@ -157,7 +190,7 @@ class MonitorDashboard {
         }
 
         this.render();
-        if (this.isPlatformAdmin) {
+        if (this.canAccessPostPeriodAnalytics) {
             await this.renderStruggleChart();
         }
     }
@@ -216,25 +249,29 @@ class MonitorDashboard {
     }
 
     /**
-     * Hide struggle chart, bulk export, report, and struggle sort for non-admin instructors.
+     * Hide struggle chart, bulk export, report, and struggle sort until post-period analytics unlock.
      */
-    private configureAdminOnlyUI(): void {
+    private configurePostPeriodUI(): void {
+        const showAnalytics = this.canAccessPostPeriodAnalytics;
         const struggleChartSection = document.querySelector('.monitor-struggle-chart-section');
-        struggleChartSection?.classList.toggle('monitor-admin-only-hidden', !this.isPlatformAdmin);
+        struggleChartSection?.classList.toggle('monitor-admin-only-hidden', !showAnalytics);
 
         const downloadConversationsBtn = document.getElementById('monitor-download-conversations-btn');
-        downloadConversationsBtn?.classList.toggle('monitor-admin-only-hidden', !this.isPlatformAdmin);
+        downloadConversationsBtn?.classList.toggle('monitor-admin-only-hidden', !showAnalytics);
 
         const downloadReportBtn = document.getElementById('monitor-download-report-btn');
-        downloadReportBtn?.classList.toggle('monitor-admin-only-hidden', !this.isPlatformAdmin);
+        downloadReportBtn?.classList.toggle('monitor-admin-only-hidden', !showAnalytics);
+
+        const courseSummaryBtn = document.getElementById('monitor-open-course-summary-btn');
+        courseSummaryBtn?.classList.toggle('monitor-admin-only-hidden', !this.isAdminEarlyAccess);
 
         const sortSelect = document.getElementById('sort-select') as HTMLSelectElement | null;
         const struggleOption = sortSelect?.querySelector('option[value="struggle"]') as HTMLOptionElement | null;
         if (struggleOption) {
-            struggleOption.hidden = !this.isPlatformAdmin;
-            struggleOption.disabled = !this.isPlatformAdmin;
+            struggleOption.hidden = !showAnalytics;
+            struggleOption.disabled = !showAnalytics;
         }
-        if (!this.isPlatformAdmin && this.currentSort === 'struggle') {
+        if (!showAnalytics && this.currentSort === 'struggle') {
             this.currentSort = 'conversations';
             if (sortSelect) {
                 sortSelect.value = 'conversations';
@@ -266,6 +303,7 @@ class MonitorDashboard {
     private static roleBadgeLabel(role: UserData['role']): string {
         if (role === 'admin') return 'Admin';
         if (role === 'instructor') return 'Instructor';
+        if (role === 'ta') return 'TA';
         return 'Student';
     }
 
@@ -317,6 +355,16 @@ class MonitorDashboard {
             });
         });
 
+        const courseSummaryBtn = document.getElementById('monitor-open-course-summary-btn');
+        courseSummaryBtn?.addEventListener('click', () => {
+            const cc = (window as unknown as { currentClass?: activeCourse }).currentClass;
+            if (!cc) {
+                alert('Error: Course context not found. Please refresh the page.');
+                return;
+            }
+            void summonCourseSummary(cc, { manual: true });
+        });
+
         const mongoBackupBtn = document.getElementById('monitor-course-mongo-backup-btn');
         mongoBackupBtn?.addEventListener('click', () => {
             if (!this.courseId) {
@@ -344,7 +392,7 @@ class MonitorDashboard {
     }
 
     private toggleUserPanel(userId: string, panel: 'conversations' | 'struggle'): void {
-        if (panel === 'struggle' && !this.isPlatformAdmin) {
+        if (panel === 'struggle' && !this.canAccessPostPeriodAnalytics) {
             return;
         }
 
@@ -502,6 +550,51 @@ class MonitorDashboard {
             .join('');
     }
 
+    private renderRosterMenuHtml(user: UserData): string {
+        if (!this.canManageRoster || (user.role !== 'student' && user.role !== 'ta')) {
+            return '';
+        }
+        const isOpen = this.openRosterMenuUserId === user.id;
+        const promoteLabel = user.role === 'ta' ? 'Demote to Student' : 'Promote to TA';
+        const targetRole = user.role === 'ta' ? 'student' : 'ta';
+        return `
+            <div class="monitor-roster-menu-wrap">
+                <button type="button" class="monitor-roster-menu-btn" data-roster-menu-toggle="${user.id}" aria-label="Roster actions for ${user.name}" aria-expanded="${isOpen ? 'true' : 'false'}">
+                    <i data-feather="more-vertical"></i>
+                </button>
+                ${isOpen ? `
+                <div class="monitor-roster-dropdown" role="menu">
+                    <button type="button" data-roster-role="${targetRole}" data-user-id="${user.id}" role="menuitem">${promoteLabel}</button>
+                </div>` : ''}
+            </div>`;
+    }
+
+    private async updateRosterRole(userId: string, role: 'student' | 'ta'): Promise<void> {
+        if (!this.courseId) {
+            return;
+        }
+        try {
+            const response = await fetch(
+                `/api/courses/${encodeURIComponent(this.courseId)}/roster/${encodeURIComponent(userId)}/role`,
+                {
+                    method: 'PATCH',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ role })
+                }
+            );
+            const result = await response.json() as { success?: boolean; error?: string };
+            if (!response.ok || !result.success) {
+                alert(result.error || 'Failed to update roster role');
+                return;
+            }
+            this.openRosterMenuUserId = null;
+            await this.loadMonitorData();
+        } catch {
+            alert('Failed to update roster role');
+        }
+    }
+
     /**
      * Render user list with conversation and struggle action buttons.
      */
@@ -523,7 +616,7 @@ class MonitorDashboard {
                 const convActive = convExpanded ? ' monitor-btn--active' : '';
                 const struggleActive = struggleExpanded ? ' monitor-btn--active' : '';
 
-                const struggleButton = this.isPlatformAdmin
+                const struggleButton = this.canAccessPostPeriodAnalytics
                     ? `
                         <button type="button" class="monitor-btn-struggle${struggleActive}" data-action="struggle" data-user-id="${user.id}" aria-expanded="${struggleExpanded ? 'true' : 'false'}">
                             <span class="monitor-btn-label">${user.struggleTopicCount} struggle topic${user.struggleTopicCount !== 1 ? 's' : ''}</span>
@@ -535,6 +628,7 @@ class MonitorDashboard {
             <div class="student-item" data-student-id="${user.id}">
                 <div class="student-header">
                     <div class="student-name">
+                        ${this.renderRosterMenuHtml(user)}
                         <span class="role-badge role-${user.role}">${MonitorDashboard.roleBadgeLabel(user.role)}</span>
                         ${user.name}
                     </div>
@@ -574,7 +668,7 @@ class MonitorDashboard {
                     </div>
                 </div>
                 ${
-                    this.isPlatformAdmin
+                    this.canAccessPostPeriodAnalytics
                         ? `
                 <div class="monitor-user-panel-wrap monitor-user-panel-wrap--struggle${
                     struggleExpanded ? ' is-expanded' : ''
@@ -602,6 +696,27 @@ class MonitorDashboard {
             });
         });
 
+        userList.querySelectorAll<HTMLButtonElement>('[data-roster-menu-toggle]').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const userId = btn.getAttribute('data-roster-menu-toggle');
+                if (!userId) return;
+                this.openRosterMenuUserId = this.openRosterMenuUserId === userId ? null : userId;
+                this.renderUserList();
+            });
+        });
+
+        userList.querySelectorAll<HTMLButtonElement>('[data-roster-role]').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const userId = btn.dataset.userId;
+                const role = btn.dataset.rosterRole as 'student' | 'ta' | undefined;
+                if (userId && role) {
+                    void this.updateRosterRole(userId, role);
+                }
+            });
+        });
+
         this.syncUserPanelExpansion(false);
         renderFeatherIcons();
     }
@@ -615,7 +730,7 @@ class MonitorDashboard {
         if (this.currentSort === 'conversations') {
             return users.sort((a, b) => b.conversationCount - a.conversationCount);
         }
-        if (this.currentSort === 'struggle' && this.isPlatformAdmin) {
+        if (this.currentSort === 'struggle' && this.canAccessPostPeriodAnalytics) {
             return users.sort((a, b) => b.struggleTopicCount - a.struggleTopicCount);
         }
         return users.sort((a, b) => a.name.localeCompare(b.name));
