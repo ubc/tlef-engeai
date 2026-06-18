@@ -1,5 +1,6 @@
 import { renderFeatherIcons } from "../api/api.js";
 import { authService } from "../services/auth-service.js";
+import { showConfirmModal } from "../ui/modal-overlay.js";
 import { fetchCourseMongoBackupZip } from "./course-mongo-backup-download.js";
 import { openConversationExportFormatModal } from "./conversations-export-modal.js";
 import { fetchCourseReportPdf } from "./report-pdf-download.js";
@@ -569,6 +570,32 @@ class MonitorDashboard {
             </div>`;
     }
 
+    private async confirmAndUpdateRosterRole(
+        userId: string,
+        role: 'student' | 'ta',
+        userName: string
+    ): Promise<void> {
+        const isDemote = role === 'student';
+        const title = isDemote ? 'Demote to Student' : 'Promote to TA';
+        const message = isDemote
+            ? `Remove TA role from ${userName}? They will return to student access.`
+            : `Make ${userName} a Teaching Assistant? They will get instructor-mode access for this course.`;
+        const result = await showConfirmModal(
+            title,
+            message,
+            isDemote ? 'Demote' : 'Promote',
+            'Cancel',
+            isDemote ? 'danger' : 'primary'
+        );
+        const confirmed = result.action === 'promote' || result.action === 'demote';
+        if (!confirmed) {
+            this.openRosterMenuUserId = null;
+            this.renderUserList();
+            return;
+        }
+        await this.updateRosterRole(userId, role);
+    }
+
     private async updateRosterRole(userId: string, role: 'student' | 'ta'): Promise<void> {
         if (!this.courseId) {
             return;
@@ -628,9 +655,9 @@ class MonitorDashboard {
             <div class="student-item" data-student-id="${user.id}">
                 <div class="student-header">
                     <div class="student-name">
-                        ${this.renderRosterMenuHtml(user)}
                         <span class="role-badge role-${user.role}">${MonitorDashboard.roleBadgeLabel(user.role)}</span>
                         ${user.name}
+                        ${this.renderRosterMenuHtml(user)}
                     </div>
                     <div class="monitor-user-actions">
                         <button type="button" class="monitor-btn-conversations${convActive}" data-action="conversations" data-user-id="${user.id}" aria-expanded="${convExpanded ? 'true' : 'false'}">
@@ -711,9 +738,10 @@ class MonitorDashboard {
                 e.stopPropagation();
                 const userId = btn.dataset.userId;
                 const role = btn.dataset.rosterRole as 'student' | 'ta' | undefined;
-                if (userId && role) {
-                    void this.updateRosterRole(userId, role);
-                }
+                if (!userId || !role) return;
+                const user = this.users.find((u) => u.id === userId);
+                const userName = user?.name ?? 'this student';
+                void this.confirmAndUpdateRosterRole(userId, role, userName);
             });
         });
 

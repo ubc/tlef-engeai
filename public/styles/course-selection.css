@@ -1051,11 +1051,39 @@
     display: none;
 }
 
-/* --- Admin course selection (academic periods) --- */
+/* --- Academic period sections (admin + student/instructor course selection) --- */
 .admin-course-selection-wrapper .admin-page-toolbar,
-.admin-course-selection-wrapper .period-sections {
+.admin-course-selection-wrapper .period-sections,
+.course-selection-wrapper .period-sections {
     margin-left: auto;
     margin-right: auto;
+}
+
+.admin-course-selection-wrapper .period-sections,
+.course-selection-wrapper .period-sections {
+    padding-bottom: 2rem;
+}
+
+.admin-course-selection-wrapper .period-section,
+.course-selection-wrapper .period-section {
+    margin-bottom: 2rem;
+}
+
+/* Wrapper-level states (no outer white page card) */
+.course-selection-wrapper > .empty-state,
+.course-selection-wrapper > .loading-message,
+.course-selection-wrapper > .error-message {
+    width: 80%;
+    margin: 1.5rem auto;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.admin-course-selection-wrapper .period-section-header,
+.course-selection-wrapper .period-section-header {
+    text-align: left;
+    justify-content: space-between;
 }
 
 .admin-course-selection-wrapper .admin-page-toolbar {
@@ -1063,19 +1091,6 @@
     display: flex;
     justify-content: flex-end;
     margin-right:10%;
-}
-
-.admin-course-selection-wrapper .period-sections {
-    padding-bottom: 2rem;
-}
-
-.admin-course-selection-wrapper .period-section {
-    margin-bottom: 2rem;
-}
-
-.admin-course-selection-wrapper .period-section-header {
-    text-align: left;
-    justify-content: space-between;
 }
 
 .period-header-left {
@@ -1157,6 +1172,13 @@
     align-items: center;
     gap: 0.5rem;
     flex-shrink: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.period-header-actions .add-new-course-btn,
+.period-header-actions .create-new-course-btn {
+    display: inline-flex;
 }
 
 .admin-course-actions {

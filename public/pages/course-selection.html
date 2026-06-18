@@ -10,7 +10,6 @@
     <script src="https://unpkg.com/feather-icons"></script>
 </head>
 <body>
-    <!-- Top Branding Bar (outside main content) -->
     <div class="top-branding">
         <div class="branding-content">
             <div class="brand-logo">
@@ -27,56 +26,28 @@
         </div>
     </div>
 
-    <!-- Main Container with Dark Background -->
     <div class="course-selection-wrapper">
-        <!-- White Content Area -->
-        <div class="course-selection-container">
-            <!-- Header Section with Welcome Message -->
-            <header class="course-selection-header">
-                <h1 class="course-selection-title">
-                    Course selection
-                </h1>
-                <div class="course-action-buttons">
-                    <button id="add-new-course-btn" class="add-new-course-btn" aria-label="Add New Course" title="Add New Course">
-                        <i data-feather="plus"></i>
-                        <span class="btn-text">Add New Course</span>
-                    </button>
-                    <button id="create-new-course-btn" class="create-new-course-btn" aria-label="Create New Course" title="Create New Course" style="display: none;">
-                        <i data-feather="file-plus"></i>
-                        <span class="btn-text">Create New Course</span>
-                    </button>
-                </div>
-            </header>
+        <div id="period-sections" class="period-sections" aria-live="polite"></div>
 
-            <!-- Workspace/Course List -->
-            <div class="course-workspace-list" id="course-cards">
-                <!-- Course rows will be dynamically loaded here -->
+        <div class="empty-state" id="empty-state" style="display: none;">
+            <div class="empty-state-content">
+                <i data-feather="book-open"></i>
+                <h2>No academic periods</h2>
+                <p id="empty-state-message">No academic periods are configured yet. Please contact your instructor or administrator.</p>
             </div>
+        </div>
 
-            <!-- Empty State -->
-            <div class="empty-state" id="empty-state" style="display: none;">
-                <div class="empty-state-content">
-                    <i data-feather="book-open"></i>
-                    <h2>No Courses Enrolled</h2>
-                    <p id="empty-state-message"></p>
-                </div>
-            </div>
+        <div class="loading-message" id="loading-message">
+            <div class="spinner"></div>
+            <p>Loading available courses...</p>
+        </div>
 
-            <!-- Loading State -->
-            <div class="loading-message" id="loading-message">
-                <div class="spinner"></div>
-                <p>Loading available courses...</p>
-            </div>
-
-            <!-- Error State -->
-            <div class="error-message" id="error-message" style="display: none;">
-                <p>Unable to load courses. Please try again.</p>
-                <button id="retry-btn" class="retry-btn">Retry</button>
-            </div>
+        <div class="error-message" id="error-message" style="display: none;">
+            <p>Unable to load courses. Please try again.</p>
+            <button id="retry-btn" class="retry-btn">Retry</button>
         </div>
     </div>
 
-    <!-- Admin-only: Test 3 report fixture seed (bottom-left red circle) -->
     <button
         type="button"
         id="seed-report-fixture-btn"
@@ -99,4 +70,3 @@
     <script type="module" src="/dist/public/scripts/entry/course-selection.js"></script>
 </body>
 </html>
-

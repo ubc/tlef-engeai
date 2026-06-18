@@ -470,7 +470,7 @@
     width: 28px;
     height: 28px;
     padding: 0;
-    margin-right: 4px;
+    margin-left: 4px;
     border: none;
     background: transparent;
     color: inherit;
@@ -495,7 +495,8 @@
 
 .monitor-roster-dropdown {
     position: absolute;
-    left: 0;
+    right: 0;
+    left: auto;
     top: 100%;
     z-index: 20;
     min-width: 160px;

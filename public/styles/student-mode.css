@@ -168,13 +168,21 @@ body {
     gap: 0; /* Remove gap when collapsed */
 }
 
-.sidebar-header .collapse-sidebar-btn {
-    padding: 0px 0px 0px 5px;
+.sidebar .sidebar-collapse-icon {
+    background-color: transparent;
+    margin: 10px 0 0 0;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border: none;
+    display: flex;
+    justify-content: left;
+    padding: 0 0 0 5px;
     transition: all 0.3s ease;
 }
 
-.sidebar.collapsed .collapse-sidebar-btn {
-    padding: 0px 0px 0px 10px;
+.sidebar.collapsed .sidebar-collapse-icon {
+    margin: 10px 0 0 5px;
+    padding: 0 0 0 10px;
 }
 
 /* Hide chat list action buttons when collapsed, EXCEPT show the pinned star */
@@ -529,25 +537,10 @@ body.modal-open {
 /* duplicate remove-pin-btn cleaned; single definition kept above */
 
 
-/* Collapse button styling */
-.collapse-sidebar-btn {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    padding: 8px;
-    background: rgba(255, 255, 255, 0.2);
-    border: none;
-    border-radius: 6px;
-    color: white;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-
-
-.collapse-sidebar-btn .feather {
+.sidebar-collapse-icon .feather {
     width: 16px;
     height: 16px;
+    margin: 0;
 }
 
 /* ===========================================
@@ -633,6 +626,7 @@ body.modal-open {
     }
 
     /* Hide collapse button on mobile (we use hamburger instead) */
+    .sidebar .sidebar-collapse-icon,
     .sidebar .collapse-sidebar-btn {
         display: none !important;
     }

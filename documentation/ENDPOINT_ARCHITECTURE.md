@@ -95,8 +95,8 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
-| POST | `/api/course/enter` | Yes | Any | Enter course by ID |
-| POST | `/api/course/enter-by-code` | Yes | Any | Enter course by code |
+| POST | `/api/course/enter` | Yes | Any | Enter course by ID; syncs session `globalUser.coursesEnrolled` from DB after enroll |
+| POST | `/api/course/enter-by-code` | Yes | Any | Enter course by code; syncs session `globalUser.coursesEnrolled` from DB after enroll |
 | GET | `/api/course/current` | Yes | Any | Get current course from session |
 
 ### 4.3 Courses & Content (`/api/courses`)
@@ -106,7 +106,8 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
 | POST | `/api/courses` | Yes | Instructor (global) | Create new course |
-| GET | `/api/courses` | Yes | Any | List courses (filtered by role) |
+| GET | `/api/courses` | Yes | Any | List accessible courses (DB `coursesEnrolled` + course staff roles; admin sees all) |
+| GET | `/api/courses/course-selection` | Yes | Student/Instructor | BFF: all academic periods with user's accessible courses grouped; `defaultPeriodId` for UI expand |
 | GET | `/api/courses/check-exists` | No | — | Check if course exists (query: id) |
 | GET | `/api/courses/allowed-for-instructor` | Yes | Instructor (global) | Allowed course **names** for current academic period (`instructor-period-allowances`) |
 

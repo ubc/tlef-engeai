@@ -9,6 +9,7 @@ import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { GlobalUser, CourseUser, User, activeCourse } from '../types/shared';
 import { appLogger } from '../utils/logger';
+import { refreshSessionGlobalUser } from '../helpers/session-global-user';
 import { isInCourseTAs } from '../utils/course-staff';
 
 const router = express.Router();
@@ -220,8 +221,8 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
             appLogger.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
         }
         
-        // Fetch fresh GlobalUser for skip-onboarding feature (student + instructor)
-        const freshGlobalUser = await mongoDB.findGlobalUserByUserId(globalUser.userId);
+        // Sync session globalUser after enrollment mutations (coursesEnrolled drift fix)
+        const freshGlobalUser = await refreshSessionGlobalUser(req, mongoDB);
         
         return res.json({
             redirect,
@@ -441,8 +442,8 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
             appLogger.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
         }
         
-        // Fetch fresh GlobalUser for skip-onboarding feature (student + instructor)
-        const freshGlobalUser = await mongoDB.findGlobalUserByUserId(globalUser.userId);
+        // Sync session globalUser after enrollment mutations (coursesEnrolled drift fix)
+        const freshGlobalUser = await refreshSessionGlobalUser(req, mongoDB);
         
         return res.json({
             redirect,

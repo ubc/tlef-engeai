@@ -53,6 +53,7 @@ import { RAGApp } from '../rag/rag-app';
 import { addCharismaAndRichToCourse } from '../helpers/instructor-helpers';
 import { appLogger } from '../utils/logger';
 import { isAdminUser } from '../utils/admin';
+import { filterAccessibleCourses, buildCourseSelectionByPeriod } from '../helpers/course-access';
 import {
     buildCourseAnalyticsAccessFlags,
     canAccessPostPeriodAnalytics,
@@ -752,7 +753,12 @@ router.delete('/clear-active-users', requireInstructorGlobal, asyncHandlerWithAu
  */
 router.get('/', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
-    const globalUser = (req.session as any).globalUser;
+    const sessionUser = (req as { user?: { puid?: string } }).user;
+    if (!sessionUser?.puid) {
+        return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    const globalUser = await instance.findGlobalUserByPUID(sessionUser.puid);
     if (!globalUser) {
         return res.status(401).json({ success: false, error: 'Not authenticated' });
     }
@@ -776,17 +782,46 @@ router.get('/', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     }
 
     const allCourses = await instance.getAllActiveCourses();
-    let courses = allCourses;
-
-    if (!isAdminUser(globalUser)) {
-        const enrolled = new Set(globalUser.coursesEnrolled ?? []);
-        courses = allCourses.filter((c: activeCourse) => enrolled.has(c.id));
-    }
+    const courses = filterAccessibleCourses(allCourses as activeCourse[], globalUser);
 
     res.status(200).json({
         success: true,
         data: courses,
         count: courses.length
+    });
+}));
+
+/**
+ * GET /course-selection
+ * BFF: academic periods with user's accessible courses grouped (student/instructor course selection).
+ *
+ * @route GET /api/courses/course-selection
+ */
+router.get('/course-selection', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    const instance = await EngEAI_MongoDB.getInstance();
+    const sessionUser = (req as { user?: { puid?: string } }).user;
+    if (!sessionUser?.puid) {
+        return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    const globalUser = await instance.findGlobalUserByPUID(sessionUser.puid);
+    if (!globalUser) {
+        return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    const defaultPeriodId = await instance.getDefaultAcademicPeriodId();
+    const periods = await instance.listAcademicPeriods();
+    const allCourses = await instance.getAllActiveCourses();
+    const data = buildCourseSelectionByPeriod(
+        periods,
+        allCourses as activeCourse[],
+        globalUser,
+        defaultPeriodId
+    );
+
+    res.status(200).json({
+        success: true,
+        data
     });
 }));
 
