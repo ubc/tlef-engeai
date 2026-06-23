@@ -24,6 +24,7 @@ Operational startup migrations (OB-001) are documented here but are **not** tied
 | **OB-001** | Onboarding flags backfill | Startup | `migrateOnboardingFlags` in `src/helpers/migrate-onboarding-flags.ts` | GlobalUser flags from course/CourseUser data | Operational — keep unless product changes |
 | **AP-001** | Course `academicPeriodId` backfill | Lazy (request) | `lazyMigrateCourseAcademicPeriod` in `src/db/mongo/academic-period-mongo.ts` via `getActiveCourse` / `getAllActiveCourses` | missing `academicPeriodId` → default `2025W2` period; `$addToSet` on period `courseIds` | **Remove by 2026-06-30** — see [AP-001](#ap-001-academic-period-lazy-link) |
 | **IPA-001** | Instructor allow-list period scope | Startup (once) | `migrateInstructorAllowances` in `src/helpers/migrate-instructor-allowances.ts` | `instructor-allowed-courses` → `instructor-period-allowances` for `2025W2` | Operational after first successful run |
+| **ADM-001** | Platform admin `isAdmin` backfill | Startup | `migratePlatformAdmins` in `src/helpers/migrate-platform-admins.ts` | GlobalUsers matching `CHARISMA_RUSDIYANTO_PUID` / `RICHARD_TAPE_PUID` → `isAdmin: true` | Operational — keep unless product changes |
 
 ---
 

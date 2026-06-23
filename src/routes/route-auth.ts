@@ -14,6 +14,8 @@ import { passport, ubcShibStrategy, isSamlAvailable } from '../middleware/passpo
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { sanitizeGlobalUserForFrontend } from '../utils/user-utils';
 import { resolveAffiliation, isFacultyOverridePuid } from '../utils/affiliation';
+import { isPlatformAdminPuid } from '../utils/admin';
+import { finalizeGlobalUserAfterAuth } from '../helpers/auth-global-user';
 import { getCourseSelectionRedirectPath } from '../helpers/course-selection-redirect';
 
 const router = express.Router();
@@ -93,7 +95,8 @@ const samlCallbackHandler = [
                 userId: mongoDB.idGenerator.globalUserID(puid, name, affiliation),
                 coursesEnrolled: [],
                 affiliation: affiliation as 'student' | 'faculty' | 'staff' | 'empty',
-                status: 'active'
+                status: 'active',
+                ...(isPlatformAdminPuid(puid) ? { isAdmin: true as const } : {})
             });
 
             appLogger.log('[AUTH] ✅ GlobalUser created:', globalUser.userId);
@@ -108,6 +111,8 @@ const samlCallbackHandler = [
                 appLogger.log('[AUTH] ✅ GlobalUser affiliation updated:', globalUser.userId);
             }
         }
+
+        globalUser = await finalizeGlobalUserAfterAuth(mongoDB, globalUser, puid);
         
         // Store GlobalUser in session (backend only - PUID is safe here)
         // NOTE: PUID is stored in session for backend use only
@@ -216,7 +221,8 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                             userId: mongoDB.idGenerator.globalUserID(puid, name, affiliation),
                             coursesEnrolled: [],
                             affiliation: affiliation as 'student' | 'faculty' | 'staff' | 'empty',
-                            status: 'active'
+                            status: 'active',
+                            ...(isPlatformAdminPuid(puid) ? { isAdmin: true as const } : {})
                         });
                         appLogger.log('[AUTH-LOCAL] ✅ GlobalUser created:', globalUser.userId);
                     } else {
@@ -230,6 +236,8 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                             appLogger.log('[AUTH-LOCAL] ✅ GlobalUser affiliation updated:', globalUser.userId);
                         }
                     }
+
+                    globalUser = await finalizeGlobalUserAfterAuth(mongoDB, globalUser, puid);
 
                     // Store GlobalUser in session (backend only - PUID is safe here)
                     // NOTE: PUID is stored in session for backend use only

@@ -24,9 +24,11 @@ import { EngEAI_MongoDB } from './db/enge-ai-mongodb';
 import { initAcademicPeriods } from './helpers/init-academic-periods';
 import { migrateInstructorAllowances } from './helpers/migrate-instructor-allowances';
 import { migrateOnboardingFlags } from './helpers/migrate-onboarding-flags';
+import { migratePlatformAdmins } from './helpers/migrate-platform-admins';
+import { finalizeGlobalUserAfterAuth } from './helpers/auth-global-user';
 import { getCourseSelectionRedirectPath } from './helpers/course-selection-redirect';
 import { resolveAffiliation, isFacultyOverridePuid } from './utils/affiliation';
-import { isAdminUser } from './utils/admin';
+import { isAdminUser, isPlatformAdminPuid } from './utils/admin';
 
 dotenv.config();
 
@@ -135,7 +137,8 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
                 userId: mongoDB.idGenerator.globalUserID(puid, name, affiliation),
                 coursesEnrolled: [],
                 affiliation: affiliation as 'student' | 'faculty' | 'staff' | 'empty',
-                status: 'active'
+                status: 'active',
+                ...(isPlatformAdminPuid(puid) ? { isAdmin: true as const } : {})
             });
 
             logger.info(`[AUTH] ✅ GlobalUser created: ${globalUser.userId}`);
@@ -150,6 +153,8 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
                 logger.info(`[AUTH] ✅ GlobalUser affiliation updated: ${globalUser.userId}`);
             }
         }
+
+        globalUser = await finalizeGlobalUserAfterAuth(mongoDB, globalUser, puid);
 
         // Store GlobalUser in session
         (req.session as any).globalUser = globalUser;
@@ -267,6 +272,12 @@ app.listen(port, async () => {
         await migrateOnboardingFlags();
     } catch (err) {
         logger.error('Onboarding migration failed:', err as any);
+    }
+
+    try {
+        await migratePlatformAdmins();
+    } catch (err) {
+        logger.error('Platform admin migration failed:', err as any);
     }
 
 });

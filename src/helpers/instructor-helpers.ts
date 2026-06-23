@@ -10,6 +10,7 @@
 
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { GlobalUser, InstructorInfo, User } from '../types/shared';
+import { ensurePlatformAdminGlobalUser } from '../utils/admin';
 import { appLogger } from '../utils/logger';
 
 /**
@@ -61,6 +62,7 @@ export async function getOrCreateCharismaAndRich(mongoDB: EngEAI_MongoDB): Promi
             });
             appLogger.log(`[INSTRUCTOR-HELPERS] Created GlobalUser for ${name} (${user.userId})`);
         }
+        user = await ensurePlatformAdminGlobalUser(mongoDB, user, puid);
         results.push(user);
     }
     return results;
