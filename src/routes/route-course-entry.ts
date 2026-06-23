@@ -11,25 +11,9 @@ import { GlobalUser, CourseUser, User, activeCourse } from '../types/shared';
 import { appLogger } from '../utils/logger';
 import { refreshSessionGlobalUser } from '../helpers/session-global-user';
 import { isInCourseTAs } from '../utils/course-staff';
+import { resolveInstructorModeRedirect } from '../helpers/instructor-onboarding-redirect';
 
 const router = express.Router();
-
-/** Instructor-mode redirect based on course onboarding flags. */
-function resolveInstructorModeRedirect(courseId: string, courseData: activeCourse): { redirect: string; requiresOnboarding: boolean } {
-    if (!courseData.courseSetup) {
-        return { redirect: `/course/${courseId}/instructor/onboarding/course-setup`, requiresOnboarding: true };
-    }
-    if (!courseData.contentSetup) {
-        return { redirect: `/course/${courseId}/instructor/onboarding/document-setup`, requiresOnboarding: true };
-    }
-    if (!courseData.flagSetup) {
-        return { redirect: `/course/${courseId}/instructor/onboarding/flag-setup`, requiresOnboarding: true };
-    }
-    if (!courseData.monitorSetup) {
-        return { redirect: `/course/${courseId}/instructor/onboarding/monitor-setup`, requiresOnboarding: true };
-    }
-    return { redirect: `/course/${courseId}/instructor/documents`, requiresOnboarding: false };
-}
 
 /**
  * POST /enter

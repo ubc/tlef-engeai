@@ -132,6 +132,7 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
 | GET | `/api/courses/:id` | Yes | Any | Get course by ID |
+| POST | `/api/courses/:id/complete-course-setup` | Yes | Instructor | Finish course-setup on existing shell (`frameType`, `tilesNumber`); sets `courseSetup: true` |
 | PUT | `/api/courses/:id` | Yes | Instructor | Update course |
 | DELETE | `/api/courses/:id` | Yes | Instructor | Delete course |
 | DELETE | `/api/courses/:id/restart-onboarding` | Yes | Instructor | Restart onboarding |

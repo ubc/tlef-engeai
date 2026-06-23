@@ -144,4 +144,4 @@ Sets `instructorOnboardingCompleted` and `studentOnboardingCompleted` on `active
 - Mongo layer: [MONGO_DATA_LAYER.md](MONGO_DATA_LAYER.md)
 - System prompt API: [ENDPOINT_ARCHITECTURE.md](ENDPOINT_ARCHITECTURE.md)
 - Platform defaults: [SYSTEM_PROMPT_DEFAULTS.md](SYSTEM_PROMPT_DEFAULTS.md)
-- Cursor rule: `.cursor/rules/migration-analyst.mdc`
+- Cursor rule: `.cursor/rules/software-architect/01-migration-analyst.mdc`

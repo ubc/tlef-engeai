@@ -54,6 +54,8 @@ import { addCharismaAndRichToCourse } from '../helpers/instructor-helpers';
 import { appLogger } from '../utils/logger';
 import { isAdminUser } from '../utils/admin';
 import { filterAccessibleCourses, buildCourseSelectionByPeriod } from '../helpers/course-access';
+import { validateCourseSetupFields } from '../helpers/instructor-onboarding-redirect';
+import { buildTopicOrWeekInstances } from '../helpers/build-default-course-content';
 import {
     buildCourseAnalyticsAccessFlags,
     canAccessPostPeriodAnalytics,
@@ -292,137 +294,29 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
     try {
         const instance = await EngEAI_MongoDB.getInstance();
 
+        const courseName = (req.body.courseName as string).trim();
+        const existingByName = await instance.getCourseByName(courseName);
+        if (existingByName) {
+            return res.status(409).json({
+                success: false,
+                error: 'A course with this name already exists'
+            });
+        }
+
         //creating id - ensure date is a Date object for ID generation
         const tempActiveClass = {
             ...req.body,
+            courseName,
             date: new Date()
         } as activeCourse;
         const id = instance.idGenerator.courseID(tempActiveClass);
 
-        //create  coursecontent based on the frametype and tilesNumber
-        const courseContent : TopicOrWeekInstance[] = [];
-        if (req.body.frameType === 'byWeek') {
-            for (let i = 0; i < req.body.tilesNumber; i++) {
-
-                //mock lecture 1
-                const courseContentLecture1: TopicOrWeekItem = {
-                    id: '',
-                    date: new Date(),
-                    title: `Lecture 1`,
-                    courseName: req.body.name,
-                    topicOrWeekTitle: `Week ${i + 1}`,
-                    itemTitle: `Lecture 1`,
-                    learningObjectives: [],
-                    instructorStruggleTopics: [],
-                    additionalMaterials: [],
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                }
-
-
-                //mock lecture 2
-                const courseContentLecture2: TopicOrWeekItem = {
-                    id: '',
-                    date: new Date(),
-                    title: `Lecture 2`,
-                    courseName: req.body.name,
-                    topicOrWeekTitle: `Week ${i + 1}`,
-                    itemTitle: `Lecture 2`,
-                    learningObjectives: [],
-                    instructorStruggleTopics: [],
-                    additionalMaterials: [],
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                }
-
-                //mock lecture 3
-                const courseContentLecture3: TopicOrWeekItem = {
-                    id: '',
-                    date: new Date(),
-                    title: `Lecture 3`,
-                    courseName: req.body.name,
-                    topicOrWeekTitle: `Week ${i + 1}`,
-                    itemTitle: `Lecture 3`,
-                    learningObjectives: [],
-                    instructorStruggleTopics: [],
-                    additionalMaterials: [],
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                }
-
-                //mock content
-                const contentMock: TopicOrWeekInstance = {
-                    id: '',
-                    date: new Date(),
-                    title: `Week ${i + 1}`,
-                    courseName: req.body.name,
-                    published: true,
-                    items: [courseContentLecture1, courseContentLecture2, courseContentLecture3],
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                }
-
-                //initiate id for each lecture
-                courseContentLecture1.id = instance.idGenerator.itemID(courseContentLecture1, contentMock.title, req.body.name);
-                courseContentLecture2.id = instance.idGenerator.itemID(courseContentLecture2, contentMock.title, req.body.name);
-                courseContentLecture3.id = instance.idGenerator.itemID(courseContentLecture3, contentMock.title, req.body.name);
-
-                courseContent.push({
-                    id: instance.idGenerator.topicOrWeekID(contentMock, req.body.name),
-                    date: new Date(),
-                    title: `Week ${i + 1}`,
-                    courseName: req.body.name,
-                    published: false,
-                    items: [courseContentLecture1, courseContentLecture2, courseContentLecture3],
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                });
-            }
-        } else if (req.body.frameType === 'byTopic') {
-            for (let i = 0; i < req.body.tilesNumber; i++) {
-
-                //mock topic 1
-                const courseContentTopic1: TopicOrWeekItem = {
-                    id: '',
-                    date: new Date(),
-                    title: `Topic ${i + 1}`,
-                    courseName: req.body.name,
-                    topicOrWeekTitle: `Topic ${i + 1}`,
-                    itemTitle: `Topic ${i + 1}`,
-                    learningObjectives: [],
-                    instructorStruggleTopics: [],
-                    additionalMaterials: [],
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                }
-
-                //mock course topic/week instance
-                const contentMock: TopicOrWeekInstance = {
-                    id: '',
-                    date: new Date(),
-                    title: `Topic ${i + 1}`,
-                    courseName: req.body.name,
-                    published: false,
-                    items: [courseContentTopic1],
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                }
-
-                //initiate id for each lecture
-                courseContentTopic1.id = instance.idGenerator.itemID(courseContentTopic1, contentMock.title, req.body.name);
-
-                courseContent.push({
-                    id: instance.idGenerator.topicOrWeekID(contentMock, req.body.name),
-                    date: new Date(),
-                    title: `Topic ${i + 1}`,
-                    courseName: req.body.name,
-                    published: false,
-                    items: [courseContentTopic1],
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                });
-            }
-        }
+        const courseContent = buildTopicOrWeekInstances(
+            req.body.frameType,
+            req.body.tilesNumber,
+            courseName,
+            instance.idGenerator
+        );
 
         //add the coursecontent to the body
         req.body.topicOrWeekInstances = courseContent;
@@ -475,11 +369,13 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
         let courseData: activeCourse = {
             ...req.body, //spread the properties of the body first
             id: id, // use the generated id
+            courseName,
             date: new Date(),
             onBoarded: true, // default to false for new courses
             instructors: updatedInstructors,
             teachingAssistants: req.body.teachingAssistants || [],
-            tilesNumber: req.body.tilesNumber || 0
+            tilesNumber: req.body.tilesNumber || 0,
+            courseSetup: req.body.courseSetup ?? true
         };
         
         
@@ -851,6 +747,149 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
         data: course
     });
 }));
+
+/**
+ * POST /:id/complete-course-setup
+ * Finish course-setup onboarding on an existing course shell. Instructors only.
+ *
+ * @route POST /api/courses/:id/complete-course-setup
+ * @param {string} id - Course ID (path param)
+ * @param {string} frameType - byWeek or byTopic (body)
+ * @param {number} tilesNumber - Number of sections (body)
+ * @returns {object} { success: boolean, data?: activeCourse, message?: string, error?: string }
+ * @response 200 - Course setup completed
+ * @response 400 - Validation error
+ * @response 403 - Not allowed or not instructor
+ * @response 404 - Course not found
+ * @response 409 - Course setup already complete
+ */
+router.post(
+    '/:id/complete-course-setup',
+    requireInstructorForCourseAPI(['paramsId']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const courseId = req.params.id;
+        const globalUser = (req.session as any).globalUser;
+
+        const existingCourse = await instance.getActiveCourse(courseId);
+        if (!existingCourse) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+
+        const courseData = existingCourse as unknown as activeCourse;
+
+        if (courseData.courseSetup) {
+            return res.status(409).json({
+                success: false,
+                error: 'Course setup is already complete'
+            });
+        }
+
+        const { frameType, tilesNumber } = req.body ?? {};
+        const validationError = validateCourseSetupFields(frameType, tilesNumber);
+        if (validationError) {
+            return res.status(400).json({ success: false, error: validationError });
+        }
+
+        const courseName = courseData.courseName;
+        const topicOrWeekInstances = buildTopicOrWeekInstances(
+            frameType,
+            tilesNumber,
+            courseName,
+            instance.idGenerator
+        );
+
+        const creatorUserId = globalUser.userId;
+        const creatorName = globalUser.name;
+
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some((inst) => {
+                if (typeof inst === 'string') {
+                    return inst === creatorUserId;
+                }
+                if (inst && inst.userId) {
+                    return inst.userId === creatorUserId;
+                }
+                return false;
+            });
+        };
+
+        const existingInstructors = courseData.instructors || [];
+        let updatedInstructors = existingInstructors.map((inst: any) => {
+            if (typeof inst === 'string') {
+                return { userId: inst, name: 'Unknown' };
+            }
+            return inst;
+        });
+
+        if (!isInstructorInArray(updatedInstructors)) {
+            updatedInstructors.push({ userId: creatorUserId, name: creatorName });
+        }
+
+        await instance.updateActiveCourse(courseId, {
+            courseSetup: true,
+            frameType,
+            tilesNumber,
+            topicOrWeekInstances,
+            instructors: updatedInstructors
+        } as Partial<activeCourse>);
+
+        let updatedCourse = (await instance.getActiveCourse(courseId)) as unknown as activeCourse;
+
+        try {
+            const courseUser = await instance.findStudentByUserId(courseName, creatorUserId);
+            if (!courseUser) {
+                const newCourseUserData: Partial<User> = {
+                    name: creatorName,
+                    userId: creatorUserId,
+                    courseName,
+                    courseId,
+                    userOnboarding: false,
+                    affiliation: 'faculty',
+                    status: 'active',
+                    chats: []
+                };
+                await instance.createStudent(courseName, newCourseUserData);
+            }
+        } catch (courseUserError) {
+            appLogger.error(`[COMPLETE-COURSE-SETUP] Error ensuring CourseUser:`, {
+                error: courseUserError
+            });
+        }
+
+        try {
+            if (!globalUser.coursesEnrolled.includes(courseId)) {
+                await instance.addCourseToGlobalUser(globalUser.puid, courseId);
+            }
+        } catch (enrollmentError) {
+            appLogger.error(`[COMPLETE-COURSE-SETUP] Error enrolling creator:`, {
+                error: enrollmentError
+            });
+        }
+
+        try {
+            const instructorsWithCR = await addCharismaAndRichToCourse(
+                instance,
+                courseId,
+                courseName,
+                updatedCourse.instructors
+            );
+            await instance.updateActiveCourse(courseId, { instructors: instructorsWithCR });
+            updatedCourse = { ...updatedCourse, instructors: instructorsWithCR };
+        } catch (crError) {
+            appLogger.error(`[COMPLETE-COURSE-SETUP] Error adding Charisma and Rich:`, {
+                error: crError
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: updatedCourse,
+            message: 'Course setup completed successfully'
+        });
+    })
+);
 
 /**
  * PUT /:id

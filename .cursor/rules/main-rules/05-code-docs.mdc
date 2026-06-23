@@ -1,0 +1,221 @@
+---
+description: In-code file headers and TSDoc — src/ and public/scripts/
+globs: src/**/*.ts, public/scripts/**/*.ts
+alwaysApply: false
+---
+
+# Code Documentation
+
+
+## When to update
+
+- New file → full file header
+- Changed behavior on **exported** class, function, type, or interface → update its JSDoc
+- New or changed **multi-step** logic inside a function → add or refresh **inline step comments**
+- Major rewrite of file purpose → refresh prose + `@date`
+- Do **not** add JSDoc on every private helper — use inline step comments inside the body instead (see below)
+
+## Path comment (line 1)
+
+| Location | Required |
+|----------|----------|
+| `public/scripts/**` | Yes — `// public/scripts/.../filename.ts` |
+| `src/**` | Optional — `// src/.../filename.ts` when helpful |
+
+Imports follow immediately after the header block.
+
+## File header block
+
+Every `.ts` source file opens with:
+
+```typescript
+/**
+ * ClassOrTopic — one-line title
+ *
+ * 2–3 sentences: responsibilities, key dependencies, layer boundary
+ * (e.g. business logic vs HTTP, façade vs delegate).
+ *
+ * @author: @gatahcha
+ * @date: YYYY-MM-DD
+ * @version: 1.0.0
+ * @description: Short index line — what this file owns.
+ */
+```
+
+| Tag | Rule |
+|-----|------|
+| `@author` | `@gatahcha` or `EngE-AI Team` — match nearby files in the same area |
+| `@date` | Creation date; update on major rewrite only |
+| `@version` | Version number; update on major rewrite only |
+| `@description` | One concise line; may wrap — not a duplicate of the title |
+
+**Prefer** title + prose body (as in `rag-app.ts`). Filename-only first line (as in `enge-ai-mongodb.ts`) is acceptable for thin modules.
+
+## Class JSDoc
+
+After exports, document the class when it is the file’s main export:
+
+```typescript
+/**
+ * EngEAI_MongoDB
+ *
+ * Thin singleton connecting to MongoDB and delegating to domain modules.
+ * Public method names preserved for callers.
+ */
+```
+
+List responsibilities in prose — do not enumerate every method in the class block unless the class is a façade catalog.
+
+## Function and method JSDoc
+
+**Exported and public methods** — required. **Private** — only when non-obvious.
+
+### Preferred shape (behavior first)
+
+Use for anything with side effects, filters, or domain rules — see `retrieveForChat` in `rag-app.ts`:
+
+```typescript
+/**
+ * {functionName} - {description}
+ *
+ * @param query - Student message text used for vector search
+ * @param courseName - Course display name for Qdrant filter
+ * @param options - Optional limit and score threshold overrides
+ * @returns Retrieved chunks; empty array when skipped or unavailable
+ * @throws Error when RAGApp failed to initialize (hard failures only)
+ */
+```
+
+### Minimal shape (simple accessors)
+
+Acceptable for thin getters/singleton accessors — see `getInstance`, `getRagModule`:
+
+```typescript
+/**
+ * getInstance — returns the singleton RAGApp instance
+ *
+ * @returns Initialized RAGApp
+ * @throws Error if initialization fails
+ */
+```
+
+### Avoid
+
+- Restating the obvious from the signature (`@param config - The configuration`)
+- `@returns void` on constructors
+- `{name} - Constructor for the X class` with no behavioral note
+- JSDoc on string-literal prompt constants (see `prompt-engineer/01-conversation-modes-docs.mdc`)
+
+## Inline step comments (logical pipeline)
+
+**Required** inside functions that have a sequence of non-obvious steps — upload/parse flows, I/O, branching pipelines, multi-phase business logic. This is how the next developer reads the *story* of the method without spelunking every line.
+
+Reference: `parseDocument` and `uploadDocument` in `src/rag/rag-app.ts`.
+
+### Pattern
+
+One `//` comment **immediately before** each logical step — validate, prepare, branch, act, cleanup:
+
+```typescript
+// Validate the file extension
+const documentFileName = input.file.originalname || '';
+const fileExtension = documentFileName.split('.').pop()?.toLowerCase();
+
+// If the file extension is not supported, throw an error
+if (!fileExtension || !supportedExtensions.includes(fileExtension)) {
+    throw new Error(`Unsupported file type: ...`);
+}
+
+// Create a temporary directory if it doesn't exist
+const tempDir = path.join(__dirname, '..', 'tempfiles');
+if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+}
+
+// Create a temporary file name
+const tempFileName = `${Date.now()}-${documentFileName}`;
+
+// Write the file to the temporary directory
+try {
+    fs.writeFileSync(filePath, buffer);
+
+    // If the file extension is txt, read the file and return the extracted text
+    if (fileExtension === 'txt') { ... }
+
+    // If the file extension is not txt, parse the file and return the extracted text
+    const parseResult = await this.documentParser.parse({ filePath }, 'text');
+} finally { ... }
+```
+
+### Rules
+
+| Do | Don't |
+|----|-------|
+| Comment each **logical step** (validate → prepare → branch → act → cleanup) | Comment every single line |
+| Use a full sentence: what this step accomplishes in the pipeline | Repeat the code (`// increment i`) |
+| Comment **branch intent**: why this path vs the other | Leave long `try`/`finally` or I/O blocks uncommented |
+| Keep step comments when you change the flow | Use `// DEBUG:` / `// TEMP:` as permanent docs |
+
+**JSDoc** = what the function promises (contract). **Step comments** = how the body achieves it (procedure). Both belong on non-trivial methods.
+
+### When step comments are optional
+
+- One-liner delegates and trivial getters
+- Self-explanatory glue already named by extracted helpers (`const published = filterPublished(items)`)
+
+## Interfaces and types
+
+Reference: `src/types/shared.ts` — synced manually with `public/scripts/types.ts` (no cross-import).
+
+### Interface / type block (when and why)
+
+Every **exported** interface or type gets a JSDoc block **above** the declaration explaining:
+
+- **When** it is used — persistence, API response, monitor UI, chat pipeline, etc.
+- **Why** it exists — domain role, boundary (e.g. not persisted vs Mongo canonical), link to related types
+
+```typescript
+/** One cell in the course-summary / monitor stacked bar chart. */
+export interface CourseSummaryStackedBarValue { ... }
+
+/**
+ * Per-user memory-agent record stored in Mongo.
+ *
+ * Used when loading struggle labels for Socratic chat injection. Updated by the
+ * memory agent after repeated difficulty — not copied onto {@link Chat}.
+ */
+export interface MemoryAgentEntry { ... }
+```
+
+For complex domains, a short prose block before the interface (see struggle-topic types above `MemoryAgentChapterStruggle` in `shared.ts`) is encouraged.
+
+### Property justification (same line)
+
+On shared cross-module interfaces (`shared.ts`, FE mirror types), each property gets a **trailing `//` comment on the same line** — the justification for that field:
+
+```typescript
+export interface CourseSummaryStackedBarValue {
+    categoryId: string; // stacked-bar segment id for chart legend lookup
+    studentCount: number; // headcount in this segment for the bar height
+    tooltip: string; // hover text in monitor course-summary chart
+}
+```
+
+| Do | Don't |
+|----|-------|
+| Explain **why the field exists** or **how it is consumed** | Restate the property name only (`// the user id`) |
+| Keep trailing comments when adding or changing a property | Leave shared interface properties bare |
+| Use `/** */` on a property only when justification needs 2+ lines | Duplicate the same text in both `/** */` and `//` |
+
+Type aliases and unions: one-line JSDoc above with when/why. Enums: comment non-obvious members inline.
+
+## Domain overrides
+
+| Area | Also follow |
+|------|-------------|
+| `src/chat/conversation-modes/**` | `prompt-engineer/01-conversation-modes-docs.mdc` |
+| `src/db/mongo/**` | File header + JSDoc on exports; idempotency in `@description` or prose |
+
+## Check-in
+
+Developer confirms documentation before considering the **Document** phase complete.

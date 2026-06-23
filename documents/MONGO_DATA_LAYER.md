@@ -72,5 +72,5 @@
 
 ## References
 
-- Cursor rule: `.cursor/rules/db-mongodb-layer.mdc`
+- Cursor rule: `.cursor/rules/backend/03-mongodb-master.mdc`
 - Shared document types: `src/types/shared` (imports differ by file path)

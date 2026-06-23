@@ -31,9 +31,9 @@ Document upload → parse → chunk → embed → retrieve pipeline.
 
 ## Qdrant
 
-- Vector ops follow `qdrant-master.mdc`
+- Vector ops follow `04-qdrant-master.mdc`
 
 ## Do not
 
 - Add RAG retrieval, context formatting, or user-turn assembly under `src/chat/system-prompts/`
-- Change pedagogical system-prompt sections (`prompt-engineer.mdc`) unless the retrieval tag contract requires it — coordinate when `<course_materials>` shape changes
+- Change pedagogical system-prompt sections (`00-system-prompt-engineer.mdc`) unless the retrieval tag contract requires it — coordinate when `<course_materials>` shape changes

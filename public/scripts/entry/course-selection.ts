@@ -726,6 +726,44 @@ async function showFacultyCreateCourseModal(): Promise<void> {
 }
 
 async function redirectToInstructorOnboarding(courseName: string): Promise<void> {
+    const trimmedName = courseName.trim();
+    if (!trimmedName) {
+        throw new Error('Course name is required');
+    }
+
+    try {
+        const courseRes = await fetch(`/api/courses?name=${encodeURIComponent(trimmedName)}`, {
+            method: 'GET',
+            credentials: 'same-origin'
+        });
+
+        if (courseRes.ok) {
+            const courseJson = await courseRes.json();
+            const existing = courseJson?.success ? courseJson.data : null;
+            if (existing?.id) {
+                const enterRes = await fetch('/api/course/enter', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ courseId: existing.id })
+                });
+                const enterData = await enterRes.json();
+                if (enterData.error) {
+                    throw new Error(enterData.error);
+                }
+                window.location.href = enterData.redirect ||
+                    `/course/${existing.id}/instructor/onboarding/course-setup`;
+                return;
+            }
+        }
+    } catch (error) {
+        await showErrorModal(
+            'Error',
+            error instanceof Error ? error.message : 'Failed to enter course.'
+        );
+        return;
+    }
+
     const userResponse = await fetch('/auth/current-user');
     if (!userResponse.ok) {
         throw new Error('Failed to fetch user data');
@@ -742,7 +780,7 @@ async function redirectToInstructorOnboarding(courseName: string): Promise<void>
         contentSetup: false,
         flagSetup: false,
         monitorSetup: false,
-        courseName,
+        courseName: trimmedName,
         instructors: [{ userId: currentUser.userId, name: currentUser.name }],
         teachingAssistants: [],
         frameType: 'byWeek',

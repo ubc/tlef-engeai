@@ -29,5 +29,5 @@ Safe data and schema migrations.
 
 ## Coordination
 
-- `mongodb-master.mdc` for delegate changes
+- `03-mongodb-master.mdc` for delegate changes
 - Admin reset endpoints — never invoke in migration without explicit approval

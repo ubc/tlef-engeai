@@ -515,20 +515,20 @@ export interface MemoryAgentChapterStruggle {
 }
 
 export interface MemoryAgentEntry {
-    name: string;
-    userId: string;
-    role: 'instructor' | 'TA' | 'Student';
+    name: string; // the name of the user
+    userId: string; // the user id of the user
+    role: 'instructor' | 'TA' | 'Student'; // the role of the user
     /** Distinct verbatim catalog labels for this user (canonical Mongo field). */
-    struggleTopics: string[];
-    createdAt: Date;
-    updatedAt: Date;
+    struggleTopics: string[]; // the struggle topics of the user
+    createdAt: Date; // the date the user was created
+    updatedAt: Date; // the date the user was updated
 }
 
 /** One cell in the course-summary / monitor stacked bar chart. */
 export interface CourseSummaryStackedBarValue {
-    categoryId: string;
-    studentCount: number;
-    tooltip: string;
+    categoryId: string; // used to identify the category of the student
+    studentCount: number; // the number of students in the category
+    tooltip: string; // the tooltip for the student
 }
 
 /** One stacked series (catalog struggle label) in the struggle-topics chart. */

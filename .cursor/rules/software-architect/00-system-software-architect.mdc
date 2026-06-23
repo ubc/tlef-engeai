@@ -31,6 +31,6 @@ Write `planner/<slug>-architecture.md` containing:
 
 - `documentation/ENDPOINT_ARCHITECTURE.md`
 - `documentation/MONGO_DATA_LAYER.md`
-- `feature-catalog.mdc`
+- `02-feature-catalog.mdc`
 
 Human approval required before handoff to Generator.

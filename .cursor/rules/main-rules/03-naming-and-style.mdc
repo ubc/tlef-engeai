@@ -1,6 +1,6 @@
 ---
 description: File naming, coding style, and TypeScript conventions
-globs: "**/*.{ts,tsx,html,css}"
+globs: "**/*.{ts,tsx,html,css, md, mdc}"
 alwaysApply: false
 ---
 
@@ -9,7 +9,7 @@ alwaysApply: false
 ## File names
 
 - Lowercase only; multi-word with `-`: `student-flag-history.ts`, `chat-api.ts`
-- Avoid capitals in filenames: not `ChatApp.ts`, `TryHard.ts`
+- **Avoid** capitals in filenames: not `ChatApp.ts`, `TryHard.ts`
 
 ## Variables & types
 

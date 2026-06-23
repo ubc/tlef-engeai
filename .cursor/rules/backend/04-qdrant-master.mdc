@@ -26,7 +26,7 @@ Domain playbook for vector storage via `RAGApp` and UBC GenAI Toolkit.
 
 ## Coordination
 
-- Document pipeline rules: `rag-vector-engineer.mdc`
+- Document pipeline rules: `05-rag-vector-engineer.mdc`
 - Mongo material records must stay consistent with Qdrant state
 
 ## References

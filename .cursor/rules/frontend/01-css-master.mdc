@@ -20,7 +20,7 @@ Styling playbook for Frontend Generator.
 - kebab-case: `.chat-message-container`, `.flag-report-row`
 - Optional BEM: `.chat-message__copy-btn`, `.chat-message--pinned`
 - Remove unused rules; avoid generic `.box`, `.item`
-- Shared modal components: see `catalog-modal-ui.mdc` — one canonical BEM block per component, modifiers for variants, no dual-class alias stubs
+- Shared modal components: see `03-catalog-modal-ui.mdc` — one canonical BEM block per component, modifiers for variants, no dual-class alias stubs
 
 ## Default policy
 

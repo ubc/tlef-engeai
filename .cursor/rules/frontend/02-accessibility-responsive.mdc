@@ -24,4 +24,4 @@ Mobile-first and breakpoint discipline for UI work.
 - Long content scroll regions; modals keyboard-dismiss where feasible
 - Do not break existing responsive sidebar collapse behavior without Architect note
 
-Coordinate with `css-master.mdc` for visual changes.
+Coordinate with `01-css-master.mdc` for visual changes.

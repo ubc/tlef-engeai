@@ -14,11 +14,11 @@ Focus: **critical thinking, completeness, correctness** of EngE-AI chat/agent pr
 - `src/chat/compose-system-prompt.ts` — mode catalog and system-prompt composition only
 - `src/chat/chat-prompts.ts`, chat orchestration in `chat-app.ts`
 - `src/memory-agent/` — struggle detection, injection, unstruggle
-- Instructor-facing prompt config behavior (coordinate with `feature-catalog.mdc`)
+- Instructor-facing prompt config behavior (coordinate with `02-feature-catalog.mdc`)
 
 ## RAG boundary
 
-- RAG retrieval, `<course_materials>` XML formatting, user-turn bridge prompts, and strip helpers belong in `src/rag/` (`rag-vector-engineer.mdc`)
+- RAG retrieval, `<course_materials>` XML formatting, user-turn bridge prompts, and strip helpers belong in `src/rag/` (`05-rag-vector-engineer.mdc`)
 - System-prompt sections may reference tag names imported from `src/rag/rag-prompts.ts` — do not duplicate tag strings
 
 ## Quality bar

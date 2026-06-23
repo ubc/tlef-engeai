@@ -3,6 +3,11 @@
  *
  * Handles document upload to Qdrant, chunking, embeddings, and RAG operations.
  * Moved from routes to functions for separation of business logic from HTTP layer.
+ * 
+ * @author: @gatahcha
+ * @date: 2026-06-18
+ * @description: RAGApp class for managing RAG operations,
+ * document retrieval, and document parsing.
  */
 
 import { RAGModule, RetrievedChunk } from "ubc-genai-toolkit-rag";
@@ -37,6 +42,12 @@ export class RAGApp {
     private idGenerator: IDGenerator;
     private documentParser: DocumentParsingModule;
 
+    /**
+     * constructor - Constructor for the RAGApp class
+     * 
+     * @param config - The configuration for the RAGApp
+     * @returns The RAGApp instance
+     */
     private constructor(config: AppConfig) {
         this.config = config;
         this.llm = new LLMModule(config.llmConfig);
@@ -46,7 +57,13 @@ export class RAGApp {
         this.documentParser = new DocumentParsingModule();
     }
 
-    async initialize() {
+    /**
+     * initialize - initializes the RAGApp instance
+     * 
+     * @returns void
+     * @throws Error if the RAGApp instance cannot be initialized
+     */
+    private async initialize() {
         // Check if this instance is already initialized (not just if an instance exists)
         if (this.rag && typeof this.rag.addDocument === 'function') {
             appLogger.info('✅ RAGApp already initialized');
@@ -82,6 +99,12 @@ export class RAGApp {
         }
     }
 
+    /**
+     * getInstance - returns the singleton instance of the RAGApp class
+     * 
+     * @returns The RAGApp instance
+     * @throws Error if the RAGApp instance cannot be initialized
+     */
     public static async getInstance(): Promise<RAGApp> {
         if (!this.instance) {
             this.instance = new RAGApp(config);
@@ -91,9 +114,10 @@ export class RAGApp {
     }
 
     /**
-     * Returns the initialized toolkit RAG module shared by ingest and chat retrieval.
-     *
-     * @throws Error when called before {@link initialize} completes
+     * getRagModule - returns the initialized toolkit RAG module shared by ingest and chat retrieval.
+     * 
+     * @returns The RAGModule instance
+     * @throws Error if the RAGModule instance is not initialized
      */
     public getRagModule(): RAGModule {
         if (!this.rag || typeof this.rag.retrieveContext !== 'function') {
@@ -107,6 +131,12 @@ export class RAGApp {
      *
      * Filters to published course items only. Skips retrieval in developer mode
      * or when the RAG module is unavailable.
+     * 
+     * @param query - The query to search for
+     * @param courseName - The name of the course
+     * @param options - The options for the retrieval
+     * @returns The retrieved chunks
+     * @throws Error if the RAGApp instance cannot be initialized
      */
     public async retrieveForChat(
         query: string,
