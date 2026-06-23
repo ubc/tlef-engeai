@@ -1,12 +1,6 @@
 /**
- * Instructor Allowed Courses Initialization
- *
- * Seeds the instructor-allowed-courses collection with PUID-based instructor-to-course mappings
- * on server startup. Drops and re-seeds the collection to ensure PUID schema.
- * Also ensures Charisma and Rich are in all initiated courses.
- *
- * @author: EngE-AI Team
- * @since: 2026-02-18
+ * @deprecated Replaced by `migrate-instructor-allowances.ts` and `instructor-period-allowances`.
+ * Do not call from server startup.
  */
 
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';

@@ -1,0 +1,174 @@
+---
+description: Plan → Implement → Test → Document — agentic engineering, execution modes, handoffs
+alwaysApply: true
+---
+
+# Development Workflow
+
+## Principle
+
+Only change code when you and the human have agreed. Check in before every edit.
+
+## Agentic engineering (how this system works)
+
+**Agentic engineering** here means the **developer steers** and the **AI executes** within explicit rules — not autonomous mode-switching or self-directed scope.
+
+| Actor | Responsibility |
+|-------|----------------|
+| **Developer** | Chooses chat, `@` role/skill rules, execution mode, when to plan, when to spawn subagents, approval at each gate |
+| **AI agent** | Reads attached rules, reasons with evidence, proposes plans, implements **after approval**, runs tests when agreed, documents last |
+| **Rules (`.mdc`)** | Contract — kernel always on; roles/skills attach when developer adds them or globs match open files |
+| **`planner/` artifacts** | Shared memory between steps — plans, architecture, handoffs across chats or subagent runs |
+
+**Relation to EngE-AI rules:**
+
+```text
+Developer picks chat + @rules
+        ↓
+Kernel (always) + Workflow (always) + optional Role + Skills (globs)
+        ↓
+P → I → T → D on approved scope
+        ↓
+Advisory (tester / red-teams) when developer requests
+```
+
+The AI **does not** open a new Cursor mode, switch chats, or attach rules on its own. It may **recommend** (“attach architect role”, “run mode 4”, “spawn a backend subagent”) — the developer decides.
+
+## Developer vs agent
+
+| Developer does | Agent does |
+|----------------|------------|
+| Select execution mode (below) by how they prompt and which `@` rules they attach | Recognize mode from developer setup; ask if unclear |
+| Open `@orchestrator`, `@backend/00-*`, `@software-architect/00-*`, etc. | Behave per attached role; do not impersonate a role not attached |
+| Approve plans before implement | Write plans/handoffs when asked; wait at gates |
+| Start Task subagents (or ask parent agent to) | Subagents implement assigned slice only; parent integrates when directed |
+| Name specific `documentation/` files to read | Read code + named paths only (context discipline) |
+| Waive test or document steps | Follow P → I → T → D unless developer skips a phase |
+
+## Precedence
+
+When instructions conflict:
+
+1. **Explicit developer message** — named files, “do not implement”, “read only X”, chosen mode
+2. **Kernel** (`00-kernel`) + this workflow (always on)
+3. **Policies** (`02`–`06` in `main-rules/`) when loaded
+4. **Skills** (`01+` in role folders) — narrower `globs`
+5. **Roles** (`00-*` in role folders) — broader ownership
+
+Skills constrain *how*; roles constrain *who* and *what*. Do not duplicate skill text in chat.
+
+## Context discipline
+
+- Read **code** paths implied by the task, open files, and developer-named paths.
+- Do **not** open `documents/**` unless the developer names a specific file.
+- Do **not** load `02-feature-catalog.mdc` unless the developer attaches it or asks for feature discovery.
+
+## Core sequence
+
+| Phase | Output |
+|-------|--------|
+| **Plan** | Scope, risks, files — chat and/or `planner/` artifact |
+| **Implement** | Minimal diff; skills attach via `globs` |
+| **Test** | Opt-in — ask per `tester/00-testing-policy.mdc`; run or verify before documenting |
+| **Document** | TSDoc + docs per `05-code-docs.mdc` — after test pass or developer waives testing |
+
+**Advisory** (non-blocking): `tester/01-backend-qa-docs-only`, `red-teams/00-red-team` — when developer attaches or requests.
+
+Not every task runs all four phases. **Execution mode** (developer-selected) decides depth.
+
+---
+
+## Execution modes (developer-selected)
+
+The **developer** chooses the mode by prompt style and attached `@` rules. The agent recognizes it and follows — **if ambiguous, ask; do not assume**.
+
+### 1. Single agent, single prompt
+
+**Developer setup:** One chat, no plan file requested, no subagents — often no extra `@` role or one role matching the layer.
+
+| Step | Agent does |
+|------|------------|
+| Open | Restate task and files; confirm before edits |
+| Implement | Work within attached role/skills; globs auto-attach skills |
+| Close | Ask about tests; run if developer agrees; then version bump, TSDoc, docs if needed |
+
+**No** `planner/` file unless developer asks.
+
+**Recommend mode 2 or 4** (do not switch) if: multiple layers, ambiguous requirements, or risk above low.
+
+---
+
+### 2. Single agent with plan
+
+**Developer setup:** Same chat; says “plan first” or waits for approval before code. (the plan can be written through the `/planner` or the cursor's plan feature)
+
+| Step | Agent does |
+|------|------------|
+| Plan | Short plan in chat, or `planner/<slug>-plan.md` when touch surface is large |
+| Gate | Wait for developer approval |
+| Implement | Follow approved plan only |
+| Test / Document | Test before document — same as mode 1 |
+
+Same agent owns plan through verify. No redesign mid-implement without check-in.
+
+---
+
+### 3. Multi-agent (implement only)
+
+**Developer setup:** Handoff or slice exists; developer asks parent agent to spawn **Task subagents**, or runs subagents themselves in the same chat.
+
+**Parent agent (when developer directs coordination):**
+
+1. Use `planner/<slug>-handoff.md` or developer slice — do not re-scope
+2. Spawn subagents **one role per task** — pass only that slice’s files and constraints
+3. **Sequential** when layers depend; parallel only for non-overlapping files
+4. **Never** assign the same files to concurrent subagents
+5. After subagents return: integrate → **test** (if developer agrees) → **document** / advisory
+
+**Subagent:** Implement assigned files only; return summary; no further subagents unless parent/directed.
+
+**Developer** may instead run each subagent manually — same slice rules apply.
+
+---
+
+### 4. Plan with multi-agent
+
+**Developer setup:** Non-trivial / multi-layer / high risk — attaches `@software-architect/00-*` (and optionally `@orchestrator/00-*`) before implement.
+
+| Step | Who | Output |
+|------|-----|--------|
+| Clarify | Orchestrator role (if attached) | Questions; reframe task |
+| Architect | Developer attached architect role | `planner/<slug>-architecture.md` |
+| Approve | **Developer** | Sign-off |
+| Handoff | Architect (default) or orchestrator if attached | `planner/<slug>-handoff.md` or delegation in architecture doc |
+| Implement | Developer directs parent + subagents | Mode 3 |
+| Integrate | Parent agent | Types/routes/contracts across layers |
+| Test | Per handoff / developer | `tester/00-testing-policy.mdc` |
+| Document / Advisory | Per handoff / developer | `05-code-docs`; red team if requested |
+
+Architect does **not** write production code. Subagents do **not** redesign.
+
+---
+
+## Task → role (developer attaches for implement)
+
+| Task | Attach role | Typical skills (globs) |
+|------|-------------|------------------------|
+| `public/` UI, Designer | `frontend/00-*` | `01-css`, `02-accessibility`, `03-catalog-modal`, `backend/01-api` |
+| `src/` server | `backend/00-*` | `01-api`, `02-auth`, `03-mongodb`, `04-qdrant`, `05-rag`, `01-migration-analyst` |
+| Prompts / chat | `prompt-engineer/00-*` | `01-conversation-modes-docs` |
+| Software Architecture and Design | `software-architect/00-*` | — |
+| Clarify / delegate | `orchestrator/00-*` | — |
+
+---
+
+## Handoff artifacts
+
+| File | Written by |
+|------|------------|
+| `planner/<slug>-plan.md` | Agent — mode 2 |
+| `planner/<slug>-handoff.md` | Architect or orchestrator role — modes 3–4 |
+| `planner/<slug>-architecture.md` | Architect role — mode 4 |
+| `planner/red-team-<slug>-<date>.md` | Red team — advisory |
+
+Create `planner/` if missing.

@@ -179,6 +179,31 @@ export interface activeCourse {
     /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */
     collectionOfSystemPromptItems?: SystemPromptItem[];
     systemPromptConfig?: CourseSystemPromptConfig;
+    /** FK to `academic-periods.id`; lazy-migrated via AP-001 when missing */
+    academicPeriodId?: string;
+}
+
+/**
+ * Academic period catalog document (`academic-periods` collection).
+ */
+export interface AcademicPeriodDocument {
+    id: string;
+    title: string;
+    startDate: Date;
+    endDate: Date;
+    courseIds: string[];
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+/**
+ * Period-scoped instructor allow-list (`instructor-period-allowances` collection).
+ */
+export interface InstructorPeriodAllowance {
+    puid: string;
+    academicPeriodId: string;
+    allowedCourseNames: string[];
+    updatedAt: Date;
 }
 
 /**
@@ -490,20 +515,20 @@ export interface MemoryAgentChapterStruggle {
 }
 
 export interface MemoryAgentEntry {
-    name: string;
-    userId: string;
-    role: 'instructor' | 'TA' | 'Student';
+    name: string; // the name of the user
+    userId: string; // the user id of the user
+    role: 'instructor' | 'TA' | 'Student'; // the role of the user
     /** Distinct verbatim catalog labels for this user (canonical Mongo field). */
-    struggleTopics: string[];
-    createdAt: Date;
-    updatedAt: Date;
+    struggleTopics: string[]; // the struggle topics of the user
+    createdAt: Date; // the date the user was created
+    updatedAt: Date; // the date the user was updated
 }
 
 /** One cell in the course-summary / monitor stacked bar chart. */
 export interface CourseSummaryStackedBarValue {
-    categoryId: string;
-    studentCount: number;
-    tooltip: string;
+    categoryId: string; // used to identify the category of the student
+    studentCount: number; // the number of students in the category
+    tooltip: string; // the tooltip for the student
 }
 
 /** One stacked series (catalog struggle label) in the struggle-topics chart. */
@@ -554,11 +579,13 @@ export interface CourseSummaryStruggleTopics {
     legend: StruggleStatsLegendItem[];
 }
 
+export type MonitorRosterRole = 'student' | 'instructor' | 'admin' | 'ta';
+
 /** Per-user row in GET /api/courses/monitor/:courseId/conversations (no struggle fields). */
 export interface MonitorConversationUserRow {
     userId: string;
     userName: string;
-    role: 'student' | 'instructor' | 'admin';
+    role: MonitorRosterRole;
     conversationCount: number;
     chats: Array<{ id: string; title: string }>;
 }
@@ -567,7 +594,7 @@ export interface MonitorConversationUserRow {
 export interface MonitorStruggleUserRow {
     userId: string;
     userName: string;
-    role: 'student' | 'instructor' | 'admin';
+    role: MonitorRosterRole;
     conversationCount: number;
     struggleTopicCount: number;
     struggleTopics: string[];
@@ -580,4 +607,14 @@ export interface MonitorStruggleUserRow {
 export interface StruggleStatsResult {
     struggleTopics: CourseSummaryStruggleTopics;
     users: MonitorStruggleUserRow[];
+}
+
+/** GET /api/courses/:courseId/analytics-access response flags. */
+export interface CourseAnalyticsAccessFlags {
+    canAccessPostPeriodAnalytics: boolean;
+    canViewCourseSummary: boolean;
+    canManageRoster: boolean;
+    periodEndDate: string | null;
+    isAdminEarlyAccess: boolean;
+    isAcademicPeriodEnded: boolean;
 }

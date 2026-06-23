@@ -23,7 +23,7 @@ import { authService } from '../services/auth-service.js';
 import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
 import { renderAbout } from '../about/about.js';
 import { initializeCourseInformation } from '../feature/course-information.js';
-import { initializeCourseSummary, summonCourseSummary } from '../feature/course-summary.js';
+import { initializeCourseSummary, summonCourseSummary, configureCourseSummaryFabVisibility } from '../feature/course-summary.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
 import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from '../feature/assistant-prompts.js';
 import { initializeSystemPrompts, flushSystemPromptOnLeave } from '../feature/system-prompts.js';
@@ -210,6 +210,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (currentClass.courseSetup && currentClass.contentSetup && currentClass.flagSetup && currentClass.monitorSetup) {
         void initializeCourseSummary(currentClass);
+        void configureCourseSummaryFabVisibility(currentClass.id);
     }
     
     // Remove onboarding-active class if all setup is complete

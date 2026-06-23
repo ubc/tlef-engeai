@@ -47,6 +47,8 @@ export interface ReportBuildInput {
     phase: ReportPdfPhase;
     /** Pre-built appendix rows; full report only. */
     studentAppendix?: StudentAppendixPdfRow[];
+    /** When set, overrides {@link deriveAcademicPeriod} from course.date (AP-001 period document). */
+    academicPeriod?: AcademicPeriod;
 }
 
 /** Mutable PDFKit document context passed to each section renderer. */
@@ -172,6 +174,26 @@ export function deriveAcademicPeriod(courseDate: Date | string): AcademicPeriod 
     }
 
     return { academicYear, termLabel, displayLabel };
+}
+
+/**
+ * Maps a persisted academic-period document to report title-page labels.
+ */
+export function academicPeriodFromDocument(
+    title: string,
+    startDate: Date | string,
+    endDate: Date | string
+): AcademicPeriod {
+    const start = startDate instanceof Date ? startDate : new Date(startDate);
+    const end = endDate instanceof Date ? endDate : new Date(endDate);
+    const derived = deriveAcademicPeriod(start);
+    const fmt = (d: Date) =>
+        d.toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' });
+    return {
+        academicYear: derived.academicYear,
+        termLabel: derived.termLabel,
+        displayLabel: `${title} (${fmt(start)} – ${fmt(end)})`
+    };
 }
 
 /**

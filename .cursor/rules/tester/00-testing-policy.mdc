@@ -1,0 +1,26 @@
+---
+description: Testing policy — opt-in only
+alwaysApply: false
+---
+
+# Testing Policy
+
+**Do not provide tests by default.** After changes, ask:
+
+- Backend: "Would you like testing for the backend implementation?"
+- Frontend: "Would you like blackbox validation for the frontend changes?"
+- Both: "Would you like integrated testing for frontend and backend?"
+
+## If user says yes
+
+- **Backend:** Jest in `src/**/__tests__/**/*.test.ts` (preferred for db/mongo). Legacy `/test` + `npx ts-node` only if user requests — do not change `package.json` / `nodemon.json`.
+- **Frontend:** MD checklist (manual blackbox).
+- **Both:** MD integrated checklist.
+
+## Backend QA (docs-only pass)
+
+After non-trivial BE work, Orchestrator may invoke `01-backend-qa-docs-only.mdc` — tests derived from `documentation/` only, no source reads.
+
+## Tooling priority (future)
+
+Route integration tests → ESLint/Prettier → CI → Playwright.

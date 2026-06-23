@@ -8,7 +8,7 @@
  * @description: Displays available courses, handles course entry by ID or code, new course creation for instructors, enrollment modals.
  */
 
-import { GlobalUser } from '../types.js';
+import { GlobalUser, activeCourse, AcademicPeriodDocument } from '../types.js';
 import { showConfirmModal,
     showSkipOnboardingModal,
     showSimpleErrorModal,
@@ -26,6 +26,18 @@ let currentUserAffiliation: 'student' | 'faculty' | null = null;
 // Store globalUser for enrollment modal
 let currentGlobalUser: GlobalUser | null = null;
 let currentIsAdmin = false;
+
+interface CourseSelectionPeriodSection extends AcademicPeriodDocument {
+    courseCount: number;
+    courses: (activeCourse & { instructorDisplay?: string })[];
+}
+
+interface CourseSelectionPayload {
+    periods: CourseSelectionPeriodSection[];
+    defaultPeriodId: string;
+}
+
+let courseSelectionData: CourseSelectionPayload | null = null;
 
 /**
  * initializeCourseSelection
@@ -52,6 +64,11 @@ async function initializeCourseSelection(): Promise<void> {
             return;
         }
         
+        if (authData.globalUser.isAdmin === true) {
+            window.location.href = '/admin/course-selection';
+            return;
+        }
+        
         const { globalUser } = authData;
         
         if (!globalUser) {
@@ -72,8 +89,8 @@ async function initializeCourseSelection(): Promise<void> {
         }
 
 
-        // Setup buttons based on affiliation
-        setupCourseButtons();
+        // Setup period action buttons (delegated) and seed fixture
+        setupPeriodActionDelegation();
         configureSeedReportFixtureButton();
         
         // Fetch course data
@@ -87,66 +104,136 @@ async function initializeCourseSelection(): Promise<void> {
 
 /**
  * loadCourses
- * 
+ *
  * @returns Promise<void>
- * GET /api/courses. Filters to enrolled courses only, renders course cards, attaches listeners. Shows empty state if none.
+ * GET /api/courses/course-selection. Renders period-grouped course cards.
  */
 async function loadCourses(): Promise<void> {
     try {
-        // console.log('[COURSE-SELECTION] 📚 Loading courses...');
-
-        const container = document.getElementById('course-cards');
+        const container = document.getElementById('period-sections');
         if (!container) return;
-        
-        // Fetch all courses
-        const response = await fetch('/api/courses');
+
+        const response = await fetch('/api/courses/course-selection', {
+            credentials: 'same-origin'
+        });
         if (!response.ok) {
             throw new Error('Failed to fetch courses');
         }
-        
-        const { data: courses } = await response.json();
-        // console.log('[COURSE-SELECTION] 📋 Courses fetched:', courses.length);
 
-        // Filter to only show enrolled courses (fixed bug: courses should only show if enrolled)
-        const enrolledCourseIds = currentGlobalUser?.coursesEnrolled || [];
-        const enrolledCourses = courses.filter((course: any) => {
-            return enrolledCourseIds.includes(course.id);
-        });
+        const json = await response.json();
+        courseSelectionData = json.data as CourseSelectionPayload;
 
-        // console.log('[COURSE-SELECTION] 📋 Enrolled courses:', enrolledCourses.length);
-
-        // Hide loading message
         hideLoadingMessage();
-        
-        // Hide empty state initially (will show if needed)
         hideEmptyState();
-        
-        // Handle empty enrolled courses (valid state, not an error)
-        if (enrolledCourses.length === 0) {
+
+        if (courseSelectionData.periods.length === 0) {
             showEmptyState();
-            return; // Don't throw error, this is a valid state
+            return;
         }
-        
-        // Render workspace rows for enrolled courses only
-        container.innerHTML = enrolledCourses.map((course: any) => 
-            createCourseCard(course)
-        ).join('');
-        
-        // Re-initialize Feather icons for any new icons in the content
+
+        container.innerHTML = courseSelectionData.periods
+            .map((period) => renderPeriodSection(period, courseSelectionData!.defaultPeriodId))
+            .join('');
+
         if (typeof (window as any).feather !== 'undefined') {
             (window as any).feather.replace();
         }
-        
-        // Attach event listeners
+
+        attachPeriodListeners();
         attachCourseCardListeners();
-
-        // console.log('[COURSE-SELECTION] ✅ Course cards rendered');
-
     } catch (error) {
         console.error('[COURSE-SELECTION] ❌ Error loading courses:', error);
         hideLoadingMessage();
         showErrorMessage();
     }
+}
+
+function renderPeriodSection(period: CourseSelectionPeriodSection, defaultPeriodId: string): string {
+    const isDefault = period.id === defaultPeriodId;
+    const collapsed = !isDefault;
+    const courseRows = period.courses.map((course) => createCourseCard(course)).join('');
+    const isFaculty = currentUserAffiliation === 'faculty';
+    const createCourseBtn = isFaculty
+        ? `
+                    <button type="button" class="create-new-course-btn period-create-course-btn" data-period-id="${period.id}">
+                        <i data-feather="file-plus"></i>
+                        <span class="btn-text">Create New Course</span>
+                    </button>`
+        : '';
+
+    return `
+        <section class="course-selection-container period-section" data-period-id="${period.id}">
+            <header class="course-selection-header period-section-header">
+                <div class="period-header-left">
+                    <button type="button" class="period-collapse-btn" aria-expanded="${isDefault ? 'true' : 'false'}" data-period-id="${period.id}">
+                        <i data-feather="chevron-down" class="period-chevron"></i>
+                    </button>
+                    <h2 class="course-selection-title period-title">${escapeHtml(period.title)}</h2>
+                    <span class="period-count-pill">${period.courseCount} course${period.courseCount !== 1 ? 's' : ''}</span>
+                </div>
+                <div class="period-header-actions">
+                    <button type="button" class="add-new-course-btn period-join-course-btn" data-period-id="${period.id}" aria-label="Add New Course" title="Add New Course">
+                        <i data-feather="plus"></i>
+                        <span class="btn-text">Add New Course</span>
+                    </button>
+                    ${createCourseBtn}
+                </div>
+            </header>
+            <div class="period-course-list-wrap${collapsed ? ' is-collapsed' : ''}" data-period-id="${period.id}">
+                <div class="period-course-list-inner">
+                    <div class="course-workspace-list period-course-list" data-period-id="${period.id}">
+                        ${courseRows || '<p class="period-empty">No courses in this period.</p>'}
+                    </div>
+                </div>
+            </div>
+        </section>
+    `;
+}
+
+let periodActionsBound = false;
+
+/** Delegated click handlers for per-period Add New Course / Create New Course buttons. */
+function setupPeriodActionDelegation(): void {
+    if (periodActionsBound) {
+        return;
+    }
+    const container = document.getElementById('period-sections');
+    if (!container) {
+        return;
+    }
+    periodActionsBound = true;
+
+    container.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('.period-join-course-btn')) {
+            void (currentUserAffiliation === 'faculty'
+                ? showInstructorEnrollmentModal()
+                : showEnrollmentModal());
+            return;
+        }
+        if (target.closest('.period-create-course-btn')) {
+            void showFacultyCreateCourseModal();
+        }
+    });
+}
+
+function attachPeriodListeners(): void {
+    document.querySelectorAll('.period-collapse-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const periodId = btn.getAttribute('data-period-id');
+            const wrap = document.querySelector(`.period-course-list-wrap[data-period-id="${periodId}"]`);
+            const expanded = btn.getAttribute('aria-expanded') === 'true';
+            const nextExpanded = !expanded;
+            btn.setAttribute('aria-expanded', String(nextExpanded));
+            wrap?.classList.toggle('is-collapsed', !nextExpanded);
+        });
+    });
+}
+
+function escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 /** Instructor names to exclude from display (e.g. dev team members) */
@@ -158,24 +245,28 @@ const EXCLUDED_INSTRUCTOR_NAMES = ['Charisma Rusdiyanto', 'Richard Tape'];
  * @param course any — Course object (id, courseName, instructors, etc.)
  * @returns string — HTML for workspace row with course name, instructors, enter/restart buttons
  */
-function createCourseCard(course: any): string {
-    // Display instructor names - handles both old format (string[]) and new format (InstructorInfo[])
-    const instructorNames = course.instructors?.map((inst: any) => {
-        // Handle both old format (string userId) and new format (object with userId and name)
-        if (typeof inst === 'string') {
-            return inst; // Old format - just show userId for now (can be improved with lookup later)
-        } else if (inst && inst.name) {
-            return inst.name; // New format - show name
-        }
-        return inst.userId || 'Unknown';
-    }).filter((name: string) => !EXCLUDED_INSTRUCTOR_NAMES.includes(name)).join(', ') || 'No instructors';
+function createCourseCard(course: activeCourse & { instructorDisplay?: string }): string {
+    const instructorNames =
+        course.instructorDisplay ??
+        (course.instructors
+            ?.map((inst: { name?: string; userId?: string } | string) => {
+                if (typeof inst === 'string') {
+                    return inst;
+                }
+                if (inst && inst.name) {
+                    return inst.name;
+                }
+                return inst.userId || 'Unknown';
+            })
+            .filter((name: string) => !EXCLUDED_INSTRUCTOR_NAMES.includes(name))
+            .join(', ') || 'No instructors');
     
     return `
         <div class="workspace-row" data-course-id="${course.id}">
             <div class="workspace-info">
-                <div class="workspace-name">${course.courseName}</div>
+                <div class="workspace-name">${escapeHtml(course.courseName)}</div>
                 <div class="workspace-members">
-                    <span class="member-count">${instructorNames}</span>
+                    <span class="member-count">${escapeHtml(instructorNames)}</span>
                 </div>
             </div>
             <div class="workspace-action">
@@ -499,30 +590,20 @@ function showErrorMessage(): void {
 }
 
 /**
- * Show empty state when user has no enrolled courses
+ * Show empty state when no academic periods exist in the catalog.
  */
 function showEmptyState(): void {
     const emptyStateElement = document.getElementById('empty-state');
-    const emptyStateMessage = document.getElementById('empty-state-message');
-    const container = document.getElementById('course-cards');
-    
-    if (emptyStateElement && emptyStateMessage) {
-        // Set appropriate message based on user affiliation
-        if (currentUserAffiliation === 'faculty') {
-            emptyStateMessage.textContent = "You're not enrolled in any courses. Create a new course or join an existing one.";
-        } else {
-            emptyStateMessage.textContent = "You're not enrolled in any courses. Click 'Add New Course' to join a course.";
-        }
-        
+    const container = document.getElementById('period-sections');
+
+    if (emptyStateElement) {
         emptyStateElement.style.display = 'block';
-        
-        // Re-initialize Feather icons for the empty state icon
+
         if (typeof (window as any).feather !== 'undefined') {
             (window as any).feather.replace();
         }
     }
-    
-    // Clear course cards container
+
     if (container) {
         container.innerHTML = '';
     }
@@ -551,108 +632,172 @@ function setupRetryButton(): void {
 }
 
 /**
- * setupCourseButtons
- * 
- * @returns void
- * Shows add-new-course and create-new-course buttons by affiliation. Faculty: both; student: add-new only.
+ * showFacultyCreateCourseModal
+ *
+ * Lists admin-assigned course names for the current academic period; redirects to onboarding on pick.
  */
-function setupCourseButtons(): void {
-    const addNewCourseBtn = document.getElementById('add-new-course-btn');
-    const createNewCourseBtn = document.getElementById('create-new-course-btn');
-    
-    // Show/hide buttons based on affiliation
-    if (currentUserAffiliation === 'faculty') {
-        // For instructors: show both buttons
-        if (addNewCourseBtn) {
-            addNewCourseBtn.style.display = 'flex';
-        }
-        if (createNewCourseBtn) {
-            createNewCourseBtn.style.display = 'flex';
-        }
-        
-        // Setup "Add New Course" button - shows enrollment modal
-        if (addNewCourseBtn) {
-            addNewCourseBtn.addEventListener('click', async () => {
-                await showInstructorEnrollmentModal();
-            });
-        }
-        
-        // Setup "Create New Course" button - creates new course
-        if (createNewCourseBtn) {
-            createNewCourseBtn.addEventListener('click', async () => {
-                await createNewCourseForInstructor();
-            });
-        }
-    } else if (currentUserAffiliation === 'student') {
-        // For students: only show "Add New Course" button
-        if (addNewCourseBtn) {
-            addNewCourseBtn.style.display = 'flex';
-        }
-        if (createNewCourseBtn) {
-            createNewCourseBtn.style.display = 'none';
+async function showFacultyCreateCourseModal(): Promise<void> {
+    try {
+        const response = await fetch('/api/courses/allowed-for-instructor', {
+            credentials: 'same-origin'
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.error ?? 'Failed to load allowed courses');
         }
 
-        // Setup "Add New Course" button - shows enrollment modal
-        if (addNewCourseBtn) {
-            addNewCourseBtn.addEventListener('click', async () => {
-                await showEnrollmentModal();
-            });
+        const allowedCourses: string[] = data.allowedCourses ?? [];
+        if (allowedCourses.length === 0) {
+            await showErrorModal(
+                'No courses available',
+                'No courses have been assigned to you for this academic period. Contact a platform admin.'
+            );
+            return;
         }
+
+        const modal = new ModalOverlay();
+        const content = document.createElement('div');
+        content.className = 'faculty-create-course-modal';
+
+        const instructions = document.createElement('p');
+        instructions.textContent = 'Select a course you are permitted to create for this academic period:';
+        instructions.style.marginBottom = '1rem';
+
+        const select = document.createElement('select');
+        select.className = 'admin-modal-input';
+        select.style.width = '100%';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Choose a course…';
+        select.appendChild(placeholder);
+        for (const name of allowedCourses) {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            select.appendChild(opt);
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'admin-modal-actions';
+        actions.style.marginTop = '1.25rem';
+
+        const continueBtn = document.createElement('button');
+        continueBtn.type = 'button';
+        continueBtn.className = 'create-new-course-btn';
+        continueBtn.textContent = 'Continue';
+        continueBtn.disabled = true;
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'retry-btn';
+        cancelBtn.textContent = 'Cancel';
+
+        select.addEventListener('change', () => {
+            continueBtn.disabled = !select.value;
+        });
+
+        cancelBtn.addEventListener('click', () => modal.close('cancel'));
+        continueBtn.addEventListener('click', async () => {
+            const courseName = select.value;
+            if (!courseName) {
+                return;
+            }
+            modal.close('success');
+            await redirectToInstructorOnboarding(courseName);
+        });
+
+        actions.append(cancelBtn, continueBtn);
+        content.append(instructions, select, actions);
+
+        await modal.show({
+            type: 'custom',
+            title: 'Create New Course',
+            content,
+            showCloseButton: true,
+            closeOnOverlayClick: true,
+            maxWidth: '480px'
+        });
+    } catch (error) {
+        await showErrorModal(
+            'Error',
+            error instanceof Error ? error.message : 'Failed to open create course modal.'
+        );
     }
-    
-    // Re-render feather icons for the buttons
-    if (typeof (window as any).feather !== 'undefined') {
-        (window as any).feather.replace();
+}
+
+async function redirectToInstructorOnboarding(courseName: string): Promise<void> {
+    const trimmedName = courseName.trim();
+    if (!trimmedName) {
+        throw new Error('Course name is required');
     }
+
+    try {
+        const courseRes = await fetch(`/api/courses?name=${encodeURIComponent(trimmedName)}`, {
+            method: 'GET',
+            credentials: 'same-origin'
+        });
+
+        if (courseRes.ok) {
+            const courseJson = await courseRes.json();
+            const existing = courseJson?.success ? courseJson.data : null;
+            if (existing?.id) {
+                const enterRes = await fetch('/api/course/enter', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ courseId: existing.id })
+                });
+                const enterData = await enterRes.json();
+                if (enterData.error) {
+                    throw new Error(enterData.error);
+                }
+                window.location.href = enterData.redirect ||
+                    `/course/${existing.id}/instructor/onboarding/course-setup`;
+                return;
+            }
+        }
+    } catch (error) {
+        await showErrorModal(
+            'Error',
+            error instanceof Error ? error.message : 'Failed to enter course.'
+        );
+        return;
+    }
+
+    const userResponse = await fetch('/auth/current-user');
+    if (!userResponse.ok) {
+        throw new Error('Failed to fetch user data');
+    }
+    const authData = await userResponse.json();
+    if (!authData.authenticated || !authData.globalUser) {
+        throw new Error('User not authenticated');
+    }
+    const currentUser = authData.globalUser;
+    const tempCourse: any = {
+        id: '',
+        date: new Date().toISOString(),
+        courseSetup: false,
+        contentSetup: false,
+        flagSetup: false,
+        monitorSetup: false,
+        courseName: trimmedName,
+        instructors: [{ userId: currentUser.userId, name: currentUser.name }],
+        teachingAssistants: [],
+        frameType: 'byWeek',
+        tilesNumber: 12,
+        topicOrWeekInstances: []
+    };
+    sessionStorage.setItem('debugCourse', JSON.stringify(tempCourse));
+    window.location.href = '/instructor/onboarding/new-course';
 }
 
 /**
  * createNewCourseForInstructor
  *
- * @returns Promise<void>
- * Goes directly to course setup. Skip modal is shown after course-setup completes (in instructor-mode).
+ * @deprecated Use showFacultyCreateCourseModal — kept for reference; redirects via allowed-course picker.
  */
 async function createNewCourseForInstructor(): Promise<void> {
-    try {
-        // Get current user info to include as instructor
-        const userResponse = await fetch('/auth/current-user');
-        if (!userResponse.ok) {
-            throw new Error('Failed to fetch user data');
-        }
-
-        const authData = await userResponse.json();
-        if (!authData.authenticated || !authData.globalUser) {
-            throw new Error('User not authenticated');
-        }
-
-        const currentUser = authData.globalUser;
-
-        // Go directly to course setup - skip modal appears after course-setup completes
-        const tempCourse: any = {
-            id: '',
-            date: new Date().toISOString(),
-            courseSetup: false,
-            contentSetup: false,
-            flagSetup: false,
-            monitorSetup: false,
-            courseName: '',
-            instructors: [{ userId: currentUser.userId, name: currentUser.name }],
-            teachingAssistants: [],
-            frameType: 'byWeek',
-            tilesNumber: 12,
-            topicOrWeekInstances: []
-        };
-        
-        sessionStorage.setItem('debugCourse', JSON.stringify(tempCourse));
-        window.location.href = '/instructor/onboarding/new-course';
-        
-    } catch (error) {
-        console.error('[COURSE-SELECTION] ❌ Error preparing new course:', error);
-        await showErrorModal(
-            'Error',
-            `Failed to start course creation: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`
-        );
-    }
+    await showFacultyCreateCourseModal();
 }
 
 /**

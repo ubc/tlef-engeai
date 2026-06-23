@@ -123,6 +123,31 @@ export interface activeCourse {
     /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */
     collectionOfSystemPromptItems?: SystemPromptItem[];
     systemPromptConfig?: CourseSystemPromptConfig;
+    /** FK to `academic-periods.id`; lazy-migrated via AP-001 when missing */
+    academicPeriodId?: string;
+}
+
+/**
+ * Academic period catalog document (`academic-periods` collection).
+ */
+export interface AcademicPeriodDocument {
+    id: string;
+    title: string;
+    startDate: Date;
+    endDate: Date;
+    courseIds: string[];
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+/**
+ * Period-scoped instructor allow-list (`instructor-period-allowances` collection).
+ */
+export interface InstructorPeriodAllowance {
+    puid: string;
+    academicPeriodId: string;
+    allowedCourseNames: string[];
+    updatedAt: Date;
 }
 
 /**
@@ -361,10 +386,13 @@ export interface CourseSummaryStruggleTopics {
 }
 
 /** Must match src/types/shared.ts */
+export type MonitorRosterRole = 'student' | 'instructor' | 'admin' | 'ta';
+
+/** Must match src/types/shared.ts */
 export interface MonitorConversationUserRow {
     userId: string;
     userName: string;
-    role: 'student' | 'instructor' | 'admin';
+    role: MonitorRosterRole;
     conversationCount: number;
     chats: Array<{ id: string; title: string }>;
 }
@@ -373,12 +401,22 @@ export interface MonitorConversationUserRow {
 export interface MonitorStruggleUserRow {
     userId: string;
     userName: string;
-    role: 'student' | 'instructor' | 'admin';
+    role: MonitorRosterRole;
     conversationCount: number;
     struggleTopicCount: number;
     struggleTopics: string[];
     struggleTopicsByChapter: MemoryAgentChapterStruggle[];
     chats: Array<{ id: string; title: string }>;
+}
+
+/** Must match src/types/shared.ts */
+export interface CourseAnalyticsAccessFlags {
+    canAccessPostPeriodAnalytics: boolean;
+    canViewCourseSummary: boolean;
+    canManageRoster: boolean;
+    periodEndDate: string | null;
+    isAdminEarlyAccess: boolean;
+    isAcademicPeriodEnded: boolean;
 }
 
 /**

@@ -1,0 +1,37 @@
+---
+description: Backend Generator — implements src/ server code
+globs: src/**
+alwaysApply: false
+---
+
+# Backend Generator
+
+Implements server logic. Masters auto-attach when editing their domains.
+
+## Scope
+
+- `src/routes/`, `src/chat/`, `src/rag/`, `src/db/`, `src/middleware/`, `src/helpers/`, `src/memory-agent/`
+
+## Rules
+
+- **New domain logic → `src/db/mongo/` delegates**, not new bulk in `route-mongo.ts`
+- **New API routes → RBAC middleware** per `02-auth-rbac-privacy.mdc` and `01-api-master.mdc`
+- Prefer existing singletons: `EngEAI_MongoDB.getInstance()`, `RAGApp`
+- Check in before merge-worthy changes
+
+## Masters that attach (by glob)
+
+- `03-mongodb-master.mdc` — `src/db/**`
+- `04-qdrant-master.mdc`, `05-rag-vector-engineer.mdc` — `src/rag/**`
+- `02-auth-rbac-privacy.mdc` — middleware, auth routes
+- `01-api-master.mdc` — routes, API docs
+- `01-migration-analyst.mdc` — `src/helpers/migrate*.ts`
+
+## After implement
+
+Orchestrator schedules `01-backend-qa-docs-only.mdc` for non-trivial BE work, then `05-code-docs.mdc`, then Red Team (advisory).
+
+## Do not
+
+- Edit `public/scripts/` except when explicitly dual-stack task with Architect approval
+- Skip version bump or TSDoc on behavior changes

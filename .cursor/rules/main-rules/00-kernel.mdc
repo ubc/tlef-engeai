@@ -1,0 +1,67 @@
+---
+description: EngE-AI universal kernel — critical thinking, rule hierarchy, conduct
+alwaysApply: true
+---
+
+# EngE-AI Kernel
+
+EngE-AI: UBC engineering study assistant — guided critical thinking, instructor RAG, on-prem deploy.
+
+## Critical thinking
+
+Mindset for every task — full agentic-engineering model (developer steers, agent executes) is in `01-workflow-plan-implement.mdc`.
+
+- **Understand before changing** — state what you believe the problem is; confirm scope with the human before edits.
+- **Evidence over assumption** — read code, grep, and run commands; do not invent APIs, paths, or behavior.
+- **Smallest correct change** — fix the stated problem; resist refactors, “while I’m here”, and speculative hardening.
+- **Separate layers** — name whether you are addressing symptom, root cause, or scope creep.
+- **Tradeoffs aloud** — when two approaches are valid, compare them briefly and recommend one.
+- **Know when to stop** — ambiguous requirements or conflicting instructions → ask; do not guess.
+- **Verify** — after non-trivial work, run what you can and report what you could not.
+
+## Code organization standard
+
+Developer and agent **agree on module boundaries and conventions before** refactors or new work in shared layers (auth, RBAC, helpers, middleware, utils).
+
+- **Co-locate by responsibility** — keep tightly coupled logic in one module (e.g. platform admin + course-scoped role checks), not many tiny files linked only by imports.
+- **One source of truth** — duplicated logic across routes, middleware, and helpers is debt; unify behind shared pure functions or one context loader, then thin wrappers for page vs API response shape.
+- **Reuse over repeat** — extract when the same rule appears twice; do not copy-paste validation or RBAC into handlers.
+- **Honest assessment** — name inconsistency when you see it; do not defend “it works” or “it was documented” if it violates the agreed standard. Propose alignment; implement only after developer approval.
+- **Middleware vs helpers** — middleware for cross-cutting gates (auth, RBAC, shared request context); pure helpers or handlers for route-specific or branching domain rules.
+
+When the developer runs a **standards cleanup**, that scope overrides “minimal diff” for the agreed touch surface — still no unrelated drive-by changes.
+
+## Rule hierarchy
+
+Rules live in `.cursor/rules/`. Only this file is always on.
+
+| Layer | Folder | What it is |
+|-------|--------|------------|
+| **Kernel** | `main-rules/00-kernel` | Universal conduct (this file) |
+| **Policies** | `main-rules/01`–`06` | Workflow, naming, versioning, docs — load when relevant |
+| **Roles** | `orchestrator/`, `software-architect/`, `backend/00-*`, `frontend/00-*`, `prompt-engineer/00-*` | Who owns a kind of work |
+| **Skills** | `01+` inside each role folder | Domain playbooks — auto-attached by `globs` while editing matching files |
+| **Advisory** | `tester/`, `red-teams/` | Testing, QA, and security review — on human or role request |
+
+## Do
+
+- **Check in** before code changes; agree on scope first.
+- **Minimal diff** — touch only what the task requires.
+- **State assumptions and risks** before implementing.
+- **Explain tradeoffs** — senior-engineer bar, not vibe coding.
+- **Run commands yourself** when the environment allows.
+- **Bump version** on merge-worthy changes (`04-versioning.mdc`).
+- **Remove debug `console.log`** before finalizing (`// DEBUG:` / `// TEMP:` during work only).
+- **Follow workflow** for non-trivial work (`01-workflow-plan-implement.mdc`).
+- **Align** new and touched shared code with the code organization standard above.
+
+## Don't
+
+- **Edit** `public/dist/` or `dist/` — compiled output only.
+- **Commit or push** unless the human explicitly asks.
+- **Implement** when the task is question-only or review-only.
+- **Drive-by refactors** or unrelated edits.
+- **Load optional rules** (e.g. `02-feature-catalog.mdc`) unless the task needs them.
+- **Duplicate** policy or skill text in chat — point to the rule file instead.
+- **Switch chat, mode, or `@` rules** — the developer chooses; recommend only, never assume.
+- **Rationalize** inconsistent structure — prefer naming the gap and aligning to the agreed standard.

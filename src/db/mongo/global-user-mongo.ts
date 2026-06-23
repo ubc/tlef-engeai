@@ -156,3 +156,28 @@ export async function updateGlobalUserAffiliation(
     }
     return result as unknown as GlobalUser;
 }
+
+/**
+ * searchFacultyUsersByName
+ *
+ * Admin instructor picker: faculty affiliation only, case-insensitive name match.
+ */
+export async function searchFacultyUsersByName(
+    ctx: MongoDalContext,
+    query: string,
+    limit = 20
+): Promise<GlobalUser[]> {
+    const q = query.trim();
+    if (!q) {
+        return [];
+    }
+    const collection = activeUsersMongoCollection(ctx.db);
+    const docs = await collection
+        .find({
+            affiliation: 'faculty',
+            name: { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' }
+        })
+        .limit(limit)
+        .toArray();
+    return docs as unknown as GlobalUser[];
+}

@@ -177,6 +177,37 @@ function triggerMetricCountUpIfNeeded(overlay: HTMLElement): void {
 }
 
 /**
+ * Shows the course-summary FAB only after the academic period ends (admins use monitor button earlier).
+ */
+export async function configureCourseSummaryFabVisibility(courseId: string): Promise<void> {
+    const fab = document.getElementById('course-summary-summon-fab');
+    if (!fab) {
+        return;
+    }
+    try {
+        const response = await fetch(`/api/courses/${encodeURIComponent(courseId)}/analytics-access`, {
+            credentials: 'include',
+            headers: { Accept: 'application/json' }
+        });
+        if (!response.ok) {
+            fab.classList.add('course-summary-fab-hidden');
+            return;
+        }
+        const payload = (await response.json()) as {
+            success: boolean;
+            data?: { canViewCourseSummary?: boolean; isAcademicPeriodEnded?: boolean };
+        };
+        const show =
+            payload.success &&
+            payload.data?.canViewCourseSummary === true &&
+            payload.data?.isAcademicPeriodEnded === true;
+        fab.classList.toggle('course-summary-fab-hidden', !show);
+    } catch {
+        fab.classList.add('course-summary-fab-hidden');
+    }
+}
+
+/**
  * Initializes the course summary modal once onboarding is complete.
  * Fetches mock data, applies auto-open rules ({@link shouldOpenCourseSummaryModal}), and may show the modal.
  */
@@ -196,10 +227,13 @@ export async function initializeCourseSummary(currentClass: activeCourse): Promi
 }
 
 /**
- * Opens the course summary modal on demand (e.g. FAB). Skips one-time auto-display gates
- * (localStorage and instructor hasBeenDisplayed); still requires a loadable, unlocked summary.
+ * Opens the course summary modal on demand (e.g. FAB or admin monitor button).
+ * When `manual` is true, skips one-time auto-display gates but still requires a loadable summary.
  */
-export async function summonCourseSummary(currentClass: activeCourse): Promise<void> {
+export async function summonCourseSummary(
+    currentClass: activeCourse,
+    options?: { manual?: boolean }
+): Promise<void> {
     try {
         if (document.querySelector('.course-summary-overlay')) {
             return;
@@ -208,7 +242,7 @@ export async function summonCourseSummary(currentClass: activeCourse): Promise<v
         ensureCourseSummaryStylesheet();
 
         const response = await fetchCourseSummaryStatus(currentClass);
-        if (!summaryPayloadAllowsSummon(response) || !response.summary) {
+        if (!summaryPayloadAllowsSummon(response, options?.manual) || !response.summary) {
             console.warn('[COURSE-SUMMARY] Cannot summon: summary not available');
             return;
         }
@@ -241,17 +275,21 @@ async function fetchCourseSummaryStatus(currentClass: activeCourse): Promise<Cou
  * Returns whether the summary is technically eligible to show (unlocked, available, not before `availableAt`).
  * Does **not** include `shouldDisplayModal` or “already displayed” checks — see {@link shouldOpenCourseSummaryModal}.
  */
-function summaryPayloadAllowsSummon(response: CourseSummaryStatusResponse): boolean {
+function summaryPayloadAllowsSummon(response: CourseSummaryStatusResponse, manual = false): boolean {
     if (!response.success || !response.summary) {
         return false;
     }
 
     const summary = response.summary;
-    if (!summary.isAvailable || summary.status === 'locked') {
+    if (!manual && (!summary.isAvailable || summary.status === 'locked')) {
         return false;
     }
 
-    if (summary.availableAt && new Date(summary.availableAt).getTime() > Date.now()) {
+    if (!manual && summary.availableAt && new Date(summary.availableAt).getTime() > Date.now()) {
+        return false;
+    }
+
+    if (manual && summary.status === 'locked' && !summary.isAvailable) {
         return false;
     }
 
@@ -284,8 +322,9 @@ function shouldOpenCourseSummaryModal(response: CourseSummaryStatusResponse, cur
  */
 async function renderCourseSummaryModal(summary: CourseSummaryRecord, currentClass: activeCourse): Promise<void> {
     await authService.checkAuthStatus();
-    const isPlatformAdmin = authService.getUser()?.isAdmin === true;
-    const stepOrder = getStepOrder(isPlatformAdmin);
+    const hasAnalyticsSections =
+        summary.downloadConversationAvailable || Boolean(summary.struggleTopics);
+    const stepOrder = getStepOrder(hasAnalyticsSections);
 
     const template = await fetchCourseSummaryTemplate();
     const overlay = document.createElement('div');
@@ -297,13 +336,13 @@ async function renderCourseSummaryModal(summary: CourseSummaryRecord, currentCla
 
     document.body.appendChild(overlay);
     document.body.classList.add('modal-open');
-    configureCourseSummaryAdminOnlySections(overlay, isPlatformAdmin);
-    hydrateSummaryContent(overlay, summary, isPlatformAdmin);
+    configureCourseSummaryAdminOnlySections(overlay, hasAnalyticsSections);
+    hydrateSummaryContent(overlay, summary, hasAnalyticsSections);
     renderFeatherIcons();
 
     const downloadConversationsBtn = overlay.querySelector('#course-summary-download-conversations-btn') as HTMLButtonElement | null;
     downloadConversationsBtn?.addEventListener('click', () => {
-        if (!isPlatformAdmin) {
+        if (!summary.downloadConversationAvailable) {
             return;
         }
         openConversationExportFormatModal(currentClass.id);
@@ -311,7 +350,7 @@ async function renderCourseSummaryModal(summary: CourseSummaryRecord, currentCla
 
     const downloadReportBtn = overlay.querySelector('#course-summary-download-report-btn') as HTMLButtonElement | null;
     downloadReportBtn?.addEventListener('click', () => {
-        if (!isPlatformAdmin) {
+        if (!summary.downloadConversationAvailable) {
             return;
         }
         downloadReportBtn.disabled = true;
@@ -343,8 +382,8 @@ async function renderCourseSummaryModal(summary: CourseSummaryRecord, currentCla
     const renderStep = async (): Promise<void> => {
         const activeStep = stepOrder[currentStepIndex];
         setActiveStep(overlay, activeStep);
-        setSummaryRevealState(overlay, activeStep, isPlatformAdmin);
-        renderProgress(overlay, activeStep, isPlatformAdmin);
+        setSummaryRevealState(overlay, activeStep, hasAnalyticsSections);
+        renderProgress(overlay, activeStep, hasAnalyticsSections);
 
         if (nextBtn) {
             const isLast = currentStepIndex === stepOrder.length - 1;
@@ -359,7 +398,7 @@ async function renderCourseSummaryModal(summary: CourseSummaryRecord, currentCla
             }
         }
 
-        if (stepOrder[currentStepIndex] === 'struggle-topics' && isPlatformAdmin && summary.struggleTopics) {
+        if (stepOrder[currentStepIndex] === 'struggle-topics' && hasAnalyticsSections && summary.struggleTopics) {
             await renderStackedBarGraph(overlay, summary.struggleTopics.stackedBar);
         }
 
@@ -421,9 +460,9 @@ async function fetchCourseSummaryTemplate(): Promise<string> {
     return response.text();
 }
 
-/** Hides admin-only sections in the template for course instructors. */
-function configureCourseSummaryAdminOnlySections(overlay: HTMLElement, isPlatformAdmin: boolean): void {
-    if (isPlatformAdmin) {
+/** Hides analytics sections in the template when not available from API. */
+function configureCourseSummaryAdminOnlySections(overlay: HTMLElement, showAnalyticsSections: boolean): void {
+    if (showAnalyticsSections) {
         return;
     }
 
@@ -435,7 +474,7 @@ function configureCourseSummaryAdminOnlySections(overlay: HTMLElement, isPlatfor
 function hydrateSummaryContent(
     overlay: HTMLElement,
     summary: CourseSummaryRecord,
-    isPlatformAdmin: boolean
+    showAnalyticsSections: boolean
 ): void {
     const instructorName = getCurrentInstructorName(summary);
     const rawCourseName = summary.course.name || summary.courseName;
@@ -458,7 +497,7 @@ function hydrateSummaryContent(
     setText(overlay, '#course-summary-students-count', '0');
     setText(overlay, '#course-summary-chats-count', '0');
 
-    if (isPlatformAdmin && summary.struggleTopics?.topTopics) {
+    if (showAnalyticsSections && summary.struggleTopics?.topTopics) {
         renderTopTopicChips(overlay, summary.struggleTopics.topTopics);
     }
 }

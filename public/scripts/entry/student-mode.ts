@@ -310,7 +310,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
     // --- DOM ELEMENT SELECTORS ---
     const mainContentArea = document.getElementById('main-content-area');
     const sidebarEl = document.querySelector('.sidebar') as HTMLElement | null;
-    const sidebarHeaderEl = document.querySelector('.sidebar-header') as HTMLElement | null;
+    const sidebarCollapseButton = document.querySelector('.sidebar-collapse-icon');
     const sidebarOverlayEl = document.getElementById('sidebar-overlay');
     const artefactCloseBtn = document.getElementById('close-artefact-btn');
 
@@ -911,27 +911,15 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
 
     // Chat list and add chat button events are now handled by ChatManager
 
-    // Sidebar collapse toggle button
-    const ensureSidebarCollapseButton = () => {
-        if (!sidebarHeaderEl) return;
-        if (sidebarHeaderEl.querySelector('.collapse-sidebar-btn')) return;
-
-        const btn = document.createElement('button');
-        btn.className = 'icon-btn collapse-sidebar-btn';
-        btn.title = 'Collapse sidebar';
-        const icon = document.createElement('i');
-        icon.setAttribute('data-feather', 'menu');
-        btn.appendChild(icon);
-        btn.addEventListener('click', (e) => {
+    const sidebarCollapseToggle = () => {
+        if (!sidebarCollapseButton) return;
+        sidebarCollapseButton.addEventListener('click', (e) => {
             e.stopPropagation();
             if (!sidebarEl) return;
             sidebarEl.classList.toggle('collapsed');
         });
-
-        sidebarHeaderEl.appendChild(btn);
-        renderFeatherIcons();
     };
-    ensureSidebarCollapseButton();
+    sidebarCollapseToggle();
 
     const attachProfileButtonListener = () => {
         const profileBtn = document.getElementById('profile-btn');

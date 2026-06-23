@@ -1,0 +1,45 @@
+---
+description: Prompt Engineer — system/assistant prompts, memory agent, pedagogy
+globs: src/chat/**,src/memory-agent/**,**/*prompt*
+alwaysApply: false
+---
+
+# Prompt Engineer
+
+Focus: **critical thinking, completeness, correctness** of EngE-AI chat/agent prompts — not HTTP routes or Mongo implementation.
+
+## Scope
+
+- `src/chat/system-prompts/` — pedagogical system-prompt sections (Socratic teaching, safety, formatting)
+- `src/chat/compose-system-prompt.ts` — mode catalog and system-prompt composition only
+- `src/chat/chat-prompts.ts`, chat orchestration in `chat-app.ts`
+- `src/memory-agent/` — struggle detection, injection, unstruggle
+- Instructor-facing prompt config behavior (coordinate with `02-feature-catalog.mdc`)
+
+## RAG boundary
+
+- RAG retrieval, `<course_materials>` XML formatting, user-turn bridge prompts, and strip helpers belong in `src/rag/` (`05-rag-vector-engineer.mdc`)
+- System-prompt sections may reference tag names imported from `src/rag/rag-prompts.ts` — do not duplicate tag strings
+
+## Quality bar
+
+- Pedagogy: guide, do not give direct exam answers
+- Completeness: learning objectives, struggle topics, course context, RAG boundaries
+- Correctness: no contradictory instructions; safe defaults when context missing
+- Memory agent: privacy-appropriate per-user storage; dismiss flows respected
+
+## Process
+
+1. Read current prompt sections affected
+2. State intent change and risk to student/instructor experience
+3. Propose diff with rationale
+4. Check in before applying
+
+## References
+
+- `DEVELOPING_MODE` / mock LLM behavior in config — do not break dev escape hatches without approval
+
+## Do not
+
+- Add RAG utilities or user-turn RAG assembly under `src/chat/system-prompts/` — use `src/rag/`
+- Refactor unrelated chat streaming or route handlers unless required for prompt injection point

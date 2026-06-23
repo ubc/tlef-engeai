@@ -32,25 +32,11 @@
                 </div>
             </div>
 
-            <!-- Step 2: Course Name -->
+            <!-- Step 2: Course Division -->
             <div class="step-item" data-step="2">
                 <div class="step-indicator">
                     <div class="step-circle completed">
                         <span class="step-number">2</span>
-                    </div>
-                    <div class="step-line"></div>
-                </div>
-                <div class="step-content">
-                    <h3>Course Name</h3>
-                    <p>Enter your course</p>
-                </div>
-            </div>
-
-            <!-- Step 3: Course Division -->
-            <div class="step-item" data-step="3">
-                <div class="step-indicator">
-                    <div class="step-circle completed">
-                        <span class="step-number">3</span>
                     </div>
                     <div class="step-line"></div>
                 </div>
@@ -60,11 +46,11 @@
                 </div>
             </div>
 
-            <!-- Step 4: Content Count -->
-            <div class="step-item" data-step="4">
+            <!-- Step 3: Content Count -->
+            <div class="step-item" data-step="3">
                 <div class="step-indicator">
                     <div class="step-circle completed">
-                        <span class="step-number">4</span>
+                        <span class="step-number">3</span>
                     </div>
                     <div class="step-line"></div>
                 </div>
@@ -74,11 +60,11 @@
                 </div>
             </div>
 
-            <!-- Step 5: Finalization -->
-            <div class="step-item" data-step="5">
+            <!-- Step 4: Finalization -->
+            <div class="step-item" data-step="4">
                 <div class="step-indicator">
                     <div class="step-circle completed">
-                        <span class="step-number">5</span>
+                        <span class="step-number">4</span>
                     </div>
                     <div class="step-line"></div>
                 </div>
@@ -88,11 +74,11 @@
                 </div>
             </div>
 
-            <!-- Step 6: Congratulations -->
-            <div class="step-item" data-step="6">
+            <!-- Step 5: Complete -->
+            <div class="step-item" data-step="5">
                 <div class="step-indicator">
                     <div class="step-circle current">
-                        <span class="step-number">6</span>
+                        <span class="step-number">5</span>
                     </div>
                 </div>
                 <div class="step-content">
@@ -124,36 +110,22 @@
                 <div class="welcome-content">
                     <div class="welcome-message">
                         <h3>Ready to get started?</h3>
-                        <p>This onboarding process will help you set up your course with all the necessary information. We'll guide you through each step to ensure everything is configured correctly.</p>
+                        <p>This onboarding process will help you set up your course with all the necessary information. Your course was selected before this wizard — we'll guide you through organization and structure next.</p>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Step 2: Course Name -->
+        <!-- Step 2: Course Division -->
         <div class="content-step" id="content-step-2">
-            <div class="content-step-inner">
-                <div class="step-header">
-                    <h1>Select Your Course</h1>
-                    <p>Choose the course you're setting up from your allowed courses</p>
-                </div>
-                
-                <div class="form-group">
-                    <label for="courseInput">Course Name</label>
-                    <select id="courseInput" class="form-input" aria-describedby="courseValidationMessage">
-                        <option value="" disabled selected>Select your course...</option>
-                        <!-- Options populated dynamically from allowed-for-instructor API -->
-                    </select>
-                    <p id="courseValidationMessage" class="validation-message" aria-live="polite"></p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Step 3: Course Division -->
-        <div class="content-step" id="content-step-3">
             <div class="step-header">
                 <h1>Course Organization</h1>
                 <p>How would you like to organize your course content?</p>
+            </div>
+
+            <div class="form-group selected-course-banner-wrap">
+                <p class="form-help">Setting up course:</p>
+                <p id="selectedCourseBanner" class="review-readonly selected-course-banner" aria-live="polite"></p>
             </div>
             
             <div class="form-group">
@@ -176,8 +148,8 @@
             </div>
         </div>
 
-        <!-- Step 4: Content Count -->
-        <div class="content-step" id="content-step-4">
+        <!-- Step 3: Content Count -->
+        <div class="content-step" id="content-step-3">
             <div class="step-header">
                 <h1>Number of Sections</h1>
                 <p id="countDescription">How many weeks are in your course?</p>
@@ -190,8 +162,8 @@
             </div>
         </div>
 
-        <!-- Step 5: Finalization -->
-        <div class="content-step" id="content-step-5">
+        <!-- Step 4: Finalization -->
+        <div class="content-step" id="content-step-4">
             <div class="content-step-inner">
                 <div class="step-header">
                     <h1>Review Your Setup</h1>
@@ -233,8 +205,8 @@
             </div>
         </div>
 
-        <!-- Step 6: Congratulations -->
-        <div class="content-step" id="content-step-6">
+        <!-- Step 5: Congratulations -->
+        <div class="content-step" id="content-step-5">
             <div class="content-step-inner">
                 <div class="step-header">
                     <h1>Course Setup Complete!</h1>
@@ -290,44 +262,33 @@
         <!-- Step 1 Help -->
         <div id="help-step-1">
             <p><strong>Welcome to EngE-AI!</strong></p>
-            <p>This onboarding process will guide you through setting up your course. Each step is designed to be simple and straightforward.</p>
+            <p>This onboarding process will guide you through setting up your course. Your course name was chosen on the course selection screen before this wizard.</p>
             <p><strong>What you'll need:</strong></p>
             <ul>
-                <li>Your course information</li>
-                <li>Course organization preferences</li>
+                <li>Course organization preferences (by week or by topic)</li>
+                <li>Number of sections for your course</li>
             </ul>
             <p>Take your time with each step - you can always go back to make changes.</p>
         </div>
 
         <!-- Step 2 Help -->
         <div id="help-step-2">
-            <p><strong>Select your course from the dropdown.</strong></p>
-            <p>Choose from the list of courses you are allowed to set up. The system will check if the selected course has already been initiated. If it has, you'll need to choose a different course.</p>
-            <p><strong>Tips:</strong></p>
-            <ul>
-                <li>Use the exact course name as it appears in your syllabus</li>
-                <li>Each course can only be initiated once in the system</li>
-            </ul>
-        </div>
-
-        <!-- Step 3 Help -->
-        <div id="help-step-3">
             <p><strong>Choose how to organize your course content.</strong></p>
             <p><strong>By Week:</strong> Organize content chronologically by weeks (recommended for semester courses)</p>
             <p><strong>By Topic:</strong> Organize content by subject matter (recommended for modular courses)</p>
             <p>This choice affects how content is presented to students and how you'll manage the course structure.</p>
         </div>
 
-        <!-- Step 4 Help -->
-        <div id="help-step-4">
+        <!-- Step 3 Help -->
+        <div id="help-step-3">
             <p><strong>Specify the number of sections for your course.</strong></p>
             <p><strong>For weekly organization:</strong> Enter the number of weeks (1-14)</p>
             <p><strong>For topic organization:</strong> Enter the number of topics (1-52)</p>
             <p>This determines how many content sections you'll have to manage. You can always adjust this later.</p>
         </div>
 
-        <!-- Step 5 Help -->
-        <div id="help-step-5">
+        <!-- Step 4 Help -->
+        <div id="help-step-4">
             <p><strong>Review all your selections before completing setup.</strong></p>
             <p>This final step shows a summary of all your choices. Please verify:</p>
             <ul>
@@ -337,8 +298,8 @@
             <p>Click "Complete Setup" to finish the onboarding process.</p>
         </div>
 
-        <!-- Step 6 Help -->
-        <div id="help-step-6">
+        <!-- Step 5 Help -->
+        <div id="help-step-5">
             <p><strong>Course Setup Complete!</strong></p>
             <p>Congratulations! You have successfully completed the course setup process.</p>
             <p><strong>What you've accomplished:</strong></p>

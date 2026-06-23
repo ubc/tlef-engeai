@@ -23,7 +23,7 @@ export async function getMonitorConversationUsers(
     }
 
     const courseData = course as activeCourse;
-    const rosterUsers = await getMonitorRosterUsers(ctx, courseData.courseName, courseId);
+    const rosterUsers = await getMonitorRosterUsers(ctx, courseData);
 
     return rosterUsers.map((user) => ({
         userId: user.userId,

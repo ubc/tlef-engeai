@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EngE-AI - Admin Course Selection</title>
+    <link rel="stylesheet" href="/styles/style.css">
+    <link rel="stylesheet" href="/styles/course-selection.css">
+    <link rel="stylesheet" href="/styles/modal-overlay.css">
+    <script src="https://unpkg.com/feather-icons"></script>
+</head>
+<body>
+    <div class="top-branding">
+        <div class="branding-content">
+            <div class="brand-logo">
+                <i data-feather="box"></i>
+                <span>TLEF EngE-AI</span>
+            </div>
+            <div class="top-branding-right">
+                <span class="welcome-text">Welcome, <span id="user-name"></span></span>
+                <button class="logout-btn" id="logout-btn" aria-label="Logout" title="Logout">
+                    <i data-feather="log-out"></i>
+                    <span class="btn-text">Logout</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="course-selection-wrapper admin-course-selection-wrapper">
+        <div class="admin-page-toolbar">
+            <button type="button" id="create-academic-period-btn" class="create-academic-period-btn">
+                <i data-feather="calendar"></i>
+                <span class="btn-text">Create Academic Period</span>
+            </button>
+        </div>
+
+        <div id="period-sections" class="period-sections" aria-live="polite"></div>
+
+        <div class="loading-message" id="loading-message">
+            <div class="spinner"></div>
+            <p>Loading academic periods and courses…</p>
+        </div>
+
+        <div class="error-message" id="error-message" style="display: none;">
+            <p>Unable to load admin course selection. Please try again.</p>
+            <button id="retry-btn" class="retry-btn">Retry</button>
+        </div>
+    </div>
+
+    <script>
+        feather.replace();
+    </script>
+    <script type="module" src="/dist/public/scripts/entry/admin-course-selection.js"></script>
+</body>
+</html>

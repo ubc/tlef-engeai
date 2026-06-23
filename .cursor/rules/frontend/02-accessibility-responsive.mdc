@@ -1,0 +1,27 @@
+---
+description: Accessibility and responsive layout
+globs: public/styles/**,public/pages/**,public/components/**
+alwaysApply: false
+---
+
+# Accessibility & Responsive
+
+Mobile-first and breakpoint discipline for UI work.
+
+## Reference
+
+- `documentation/RESPONSIVE_DESIGN.md` — breakpoints, patterns
+
+## Rules
+
+- Test layout at mobile + desktop breakpoints when changing shells or sidebars
+- Instructor/student mode shells: hamburger, chat list, feature sidebar interactions
+- Touch targets and readable contrast for primary actions
+- Prefer semantic HTML in `public/pages/` and `public/components/`
+
+## Chat / monitor / documents
+
+- Long content scroll regions; modals keyboard-dismiss where feasible
+- Do not break existing responsive sidebar collapse behavior without Architect note
+
+Coordinate with `01-css-master.mdc` for visual changes.

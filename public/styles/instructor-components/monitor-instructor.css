@@ -70,6 +70,7 @@
 
 /* Matches Initial Assistant Prompts .assistant-add-prompt-btn (avoid loading assistant-prompts.css here) */
 .monitor-download-conversations-btn,
+.monitor-open-course-summary-btn,
 .monitor-download-report-btn,
 .monitor-course-mongo-backup-btn {
     display: flex;
@@ -89,6 +90,8 @@
 
 .monitor-download-conversations-btn i,
 .monitor-download-conversations-btn svg,
+.monitor-open-course-summary-btn i,
+.monitor-open-course-summary-btn svg,
 .monitor-download-report-btn i,
 .monitor-download-report-btn svg,
 .monitor-course-mongo-backup-btn i,
@@ -99,12 +102,14 @@
 }
 
 .monitor-download-conversations-btn:hover,
+.monitor-open-course-summary-btn:hover,
 .monitor-download-report-btn:hover,
 .monitor-course-mongo-backup-btn:hover {
     transform: scale(1.1);
 }
 
 .monitor-download-conversations-btn:active,
+.monitor-open-course-summary-btn:active,
 .monitor-download-report-btn:active,
 .monitor-course-mongo-backup-btn:active {
     transform: scale(1.06);
@@ -112,6 +117,7 @@
 }
 
 .monitor-download-conversations-btn .btn-text,
+.monitor-open-course-summary-btn .btn-text,
 .monitor-download-report-btn .btn-text,
 .monitor-course-mongo-backup-btn .btn-text {
     display: inline;
@@ -449,6 +455,78 @@
 .role-badge.role-admin {
     background: rgba(211, 47, 47, 0.2);
     color: #d32f2f;
+}
+
+.role-badge.role-ta {
+    background: rgba(156, 39, 176, 0.15);
+    color: #7b1fa2;
+}
+
+.monitor-roster-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    margin-left: 4px;
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.monitor-roster-menu-btn:hover {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+.monitor-roster-menu-btn .feather {
+    width: 16px;
+    height: 16px;
+}
+
+.monitor-roster-menu-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.monitor-roster-dropdown {
+    position: absolute;
+    right: 0;
+    left: auto;
+    top: 100%;
+    z-index: 20;
+    min-width: 160px;
+    margin-top: 4px;
+    padding: 4px 0;
+    background: var(--background-2, #fff);
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.monitor-roster-dropdown button {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: none;
+    background: transparent;
+    text-align: left;
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+
+.monitor-roster-dropdown button:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.student-name {
+    display: flex;
+    align-items: center;
+    min-width: 0;
 }
 
 .monitor-course-mongo-backup-btn.monitor-backup-hidden {

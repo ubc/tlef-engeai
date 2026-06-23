@@ -7,8 +7,11 @@
 import express, { Request, Response } from 'express';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
-import { GlobalUser, CourseUser, User } from '../types/shared';
+import { GlobalUser, CourseUser, User, activeCourse } from '../types/shared';
 import { appLogger } from '../utils/logger';
+import { refreshSessionGlobalUser } from '../helpers/session-global-user';
+import { isInCourseTAs } from '../utils/course-staff';
+import { resolveInstructorModeRedirect } from '../helpers/instructor-onboarding-redirect';
 
 const router = express.Router();
 
@@ -179,41 +182,31 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
         // 6. Determine redirect based on affiliation + onboarding
         let redirect: string;
         let requiresOnboarding = false;
-        
-        if (globalUser.affiliation === 'student' && !(courseUser as any).userOnboarding) {
+
+        const courseData = course as unknown as activeCourse;
+        const isTA = isInCourseTAs(courseData, globalUser.userId);
+
+        if (isTA && !globalUser.coursesEnrolled.includes(courseId)) {
+            await mongoDB.addCourseToGlobalUser(globalUser.puid, courseId);
+            appLogger.log(`[COURSE-ENTRY] Added course ${courseId} to TA enrolled list`);
+        }
+
+        if (globalUser.affiliation === 'student' && !isTA && !(courseUser as any).userOnboarding) {
             redirect = `/course/${courseId}/student/onboarding/student`;
             requiresOnboarding = true;
             appLogger.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
-        } else if (globalUser.affiliation === 'faculty') {
-            // Check which onboarding stage is incomplete for instructors
-            const courseData = course as any;
-            if (!courseData.courseSetup) {
-                redirect = `/course/${courseId}/instructor/onboarding/course-setup`;
-                requiresOnboarding = true;
-                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to course-setup onboarding`);
-            } else if (!courseData.contentSetup) {
-                redirect = `/course/${courseId}/instructor/onboarding/document-setup`;
-                requiresOnboarding = true;
-                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to document-setup onboarding`);
-            } else if (!courseData.flagSetup) {
-                redirect = `/course/${courseId}/instructor/onboarding/flag-setup`;
-                requiresOnboarding = true;
-                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to flag-setup onboarding`);
-            } else if (!courseData.monitorSetup) {
-                redirect = `/course/${courseId}/instructor/onboarding/monitor-setup`;
-                requiresOnboarding = true;
-                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to monitor-setup onboarding`);
-            } else {
-                redirect = `/course/${courseId}/instructor/documents`;
-                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to instructor documents`);
-            }
+        } else if (globalUser.affiliation === 'faculty' || isTA) {
+            const instructorRedirect = resolveInstructorModeRedirect(courseId, courseData);
+            redirect = instructorRedirect.redirect;
+            requiresOnboarding = instructorRedirect.requiresOnboarding;
+            appLogger.log(`[COURSE-ENTRY] Redirecting ${isTA ? 'TA' : 'faculty'} to instructor mode`);
         } else {
             redirect = `/course/${courseId}/student`;
             appLogger.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
         }
         
-        // Fetch fresh GlobalUser for skip-onboarding feature (student + instructor)
-        const freshGlobalUser = await mongoDB.findGlobalUserByUserId(globalUser.userId);
+        // Sync session globalUser after enrollment mutations (coursesEnrolled drift fix)
+        const freshGlobalUser = await refreshSessionGlobalUser(req, mongoDB);
         
         return res.json({
             redirect,
@@ -410,41 +403,31 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
         // 7. Determine redirect based on affiliation + onboarding
         let redirect: string;
         let requiresOnboarding = false;
-        
-        if (globalUser.affiliation === 'student' && !(courseUser as any).userOnboarding) {
+
+        const courseData = course as unknown as activeCourse;
+        const isTA = isInCourseTAs(courseData, globalUser.userId);
+
+        if (isTA && !globalUser.coursesEnrolled.includes(courseId)) {
+            await mongoDB.addCourseToGlobalUser(globalUser.puid, courseId);
+            appLogger.log(`[COURSE-ENTRY] Added course ${courseId} to TA enrolled list`);
+        }
+
+        if (globalUser.affiliation === 'student' && !isTA && !(courseUser as any).userOnboarding) {
             redirect = `/course/${courseId}/student/onboarding/student`;
             requiresOnboarding = true;
             appLogger.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
-        } else if (globalUser.affiliation === 'faculty') {
-            // Check which onboarding stage is incomplete for instructors
-            const courseData = course as any;
-            if (!courseData.courseSetup) {
-                redirect = `/course/${courseId}/instructor/onboarding/course-setup`;
-                requiresOnboarding = true;
-                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to course-setup onboarding`);
-            } else if (!courseData.contentSetup) {
-                redirect = `/course/${courseId}/instructor/onboarding/document-setup`;
-                requiresOnboarding = true;
-                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to document-setup onboarding`);
-            } else if (!courseData.flagSetup) {
-                redirect = `/course/${courseId}/instructor/onboarding/flag-setup`;
-                requiresOnboarding = true;
-                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to flag-setup onboarding`);
-            } else if (!courseData.monitorSetup) {
-                redirect = `/course/${courseId}/instructor/onboarding/monitor-setup`;
-                requiresOnboarding = true;
-                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to monitor-setup onboarding`);
-            } else {
-                redirect = `/course/${courseId}/instructor/documents`;
-                appLogger.log(`[COURSE-ENTRY] Redirecting faculty to instructor documents`);
-            }
+        } else if (globalUser.affiliation === 'faculty' || isTA) {
+            const instructorRedirect = resolveInstructorModeRedirect(courseId, courseData);
+            redirect = instructorRedirect.redirect;
+            requiresOnboarding = instructorRedirect.requiresOnboarding;
+            appLogger.log(`[COURSE-ENTRY] Redirecting ${isTA ? 'TA' : 'faculty'} to instructor mode`);
         } else {
             redirect = `/course/${courseId}/student`;
             appLogger.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
         }
         
-        // Fetch fresh GlobalUser for skip-onboarding feature (student + instructor)
-        const freshGlobalUser = await mongoDB.findGlobalUserByUserId(globalUser.userId);
+        // Sync session globalUser after enrollment mutations (coursesEnrolled drift fix)
+        const freshGlobalUser = await refreshSessionGlobalUser(req, mongoDB);
         
         return res.json({
             redirect,

@@ -1,41 +1,64 @@
-import { isAdminUser } from '../../utils/admin';
-import type { GlobalUser } from '../../types/shared';
+import {
+    canAccessPostPeriodAnalytics,
+    canViewCourseSummary,
+    shouldAutoDisplayCourseSummaryModal
+} from '../../helpers/academic-period-access';
+import type { AcademicPeriodDocument, activeCourse, GlobalUser } from '../../types/shared';
 
-describe('course-summary struggleTopics RBAC gate', () => {
-    const baseUser = {
-        userId: 'faculty-1',
-        name: 'Instructor',
+describe('course-summary period gating', () => {
+    const futurePeriod = {
+        endDate: new Date('2099-04-30')
+    } as AcademicPeriodDocument;
+
+    const pastPeriod = {
+        endDate: new Date('2020-04-30')
+    } as AcademicPeriodDocument;
+
+    const course = { id: 'c1', instructors: [{ userId: 'fac-1', name: 'F' }] } as activeCourse;
+
+    const instructor = {
+        userId: 'fac-1',
         affiliation: 'faculty',
-        coursesEnrolled: ['course-1']
+        coursesEnrolled: ['c1']
     } as GlobalUser;
 
-    it('includes struggleTopics only for platform admins', () => {
-        const instructorSummary = buildSummaryPayload(baseUser, { stackedBar: {} } as never);
+  const admin = { ...instructor, isAdmin: true } as GlobalUser;
+
+    it('includes struggleTopics only when post-period analytics allowed', () => {
+        const instructorSummary = buildSummaryPayload(instructor, futurePeriod, { stackedBar: {} } as never);
         expect(instructorSummary).not.toHaveProperty('struggleTopics');
         expect(instructorSummary.downloadConversationAvailable).toBe(false);
 
-        const adminSummary = buildSummaryPayload(
-            { ...baseUser, isAdmin: true },
-            { stackedBar: {} } as never
-        );
+        const instructorAfter = buildSummaryPayload(instructor, pastPeriod, { stackedBar: {} } as never);
+        expect(instructorAfter.struggleTopics).toEqual({ stackedBar: {} });
+        expect(instructorAfter.downloadConversationAvailable).toBe(true);
+
+        const adminSummary = buildSummaryPayload(admin, futurePeriod, { stackedBar: {} } as never);
         expect(adminSummary.struggleTopics).toEqual({ stackedBar: {} });
         expect(adminSummary.downloadConversationAvailable).toBe(true);
     });
+
+    it('auto modal only after period; admin can view summary early', () => {
+        expect(shouldAutoDisplayCourseSummaryModal(course, admin, futurePeriod)).toBe(false);
+        expect(canViewCourseSummary(course, admin, futurePeriod)).toBe(true);
+        expect(shouldAutoDisplayCourseSummaryModal(course, instructor, pastPeriod)).toBe(true);
+    });
 });
 
-/** Mirrors route-mongo course-summary/status struggle field gating. */
 function buildSummaryPayload(
     globalUser: GlobalUser,
+    period: AcademicPeriodDocument,
     struggleTopics: { stackedBar: Record<string, never> }
 ): {
     struggleTopics?: { stackedBar: Record<string, never> };
     downloadConversationAvailable: boolean;
 } {
-    const viewerIsAdmin = isAdminUser(globalUser);
-    const resolvedStruggle = viewerIsAdmin ? struggleTopics : undefined;
+    const course = { id: 'c1', instructors: [{ userId: 'fac-1', name: 'F' }] } as activeCourse;
+    const canAccess = canAccessPostPeriodAnalytics(course, globalUser, period);
+    const resolvedStruggle = canAccess ? struggleTopics : undefined;
 
     return {
         ...(resolvedStruggle !== undefined ? { struggleTopics: resolvedStruggle } : {}),
-        downloadConversationAvailable: viewerIsAdmin
+        downloadConversationAvailable: canAccess
     };
 }

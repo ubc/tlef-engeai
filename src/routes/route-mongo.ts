@@ -33,7 +33,7 @@
 import express, { Request, Response } from 'express';
 import archiver from 'archiver';
 import { asyncHandler, asyncHandlerWithAuth } from '../middleware/async-handler';
-import { requireAdminForCourseAPI, requireInstructorForCourseAPI, requireInstructorGlobal } from '../middleware/require-course-role';
+import { requireAdminForCourseAPI, requireInstructorForCourseAPI, requireInstructorGlobal, requirePostPeriodAnalyticsAPI, requireRosterManageAPI } from '../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import {
     InvalidInstructorStruggleTopicReorderError,
@@ -53,6 +53,17 @@ import { RAGApp } from '../rag/rag-app';
 import { addCharismaAndRichToCourse } from '../helpers/instructor-helpers';
 import { appLogger } from '../utils/logger';
 import { isAdminUser } from '../utils/admin';
+import { filterAccessibleCourses, buildCourseSelectionByPeriod } from '../helpers/course-access';
+import { validateCourseSetupFields } from '../helpers/instructor-onboarding-redirect';
+import { buildTopicOrWeekInstances } from '../helpers/build-default-course-content';
+import {
+    buildCourseAnalyticsAccessFlags,
+    canAccessPostPeriodAnalytics,
+    canViewCourseSummary,
+    resolveCourseAcademicPeriod,
+    shouldAutoDisplayCourseSummaryModal
+} from '../helpers/academic-period-access';
+import { CourseRosterError } from '../db/mongo/course-roster-mongo';
 import { scheduledPublishAudit } from '../jobs/scheduled-publish-audit';
 import {
     formatSingleChatExportText,
@@ -283,137 +294,29 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
     try {
         const instance = await EngEAI_MongoDB.getInstance();
 
+        const courseName = (req.body.courseName as string).trim();
+        const existingByName = await instance.getCourseByName(courseName);
+        if (existingByName) {
+            return res.status(409).json({
+                success: false,
+                error: 'A course with this name already exists'
+            });
+        }
+
         //creating id - ensure date is a Date object for ID generation
         const tempActiveClass = {
             ...req.body,
+            courseName,
             date: new Date()
         } as activeCourse;
         const id = instance.idGenerator.courseID(tempActiveClass);
 
-        //create  coursecontent based on the frametype and tilesNumber
-        const courseContent : TopicOrWeekInstance[] = [];
-        if (req.body.frameType === 'byWeek') {
-            for (let i = 0; i < req.body.tilesNumber; i++) {
-
-                //mock lecture 1
-                const courseContentLecture1: TopicOrWeekItem = {
-                    id: '',
-                    date: new Date(),
-                    title: `Lecture 1`,
-                    courseName: req.body.name,
-                    topicOrWeekTitle: `Week ${i + 1}`,
-                    itemTitle: `Lecture 1`,
-                    learningObjectives: [],
-                    instructorStruggleTopics: [],
-                    additionalMaterials: [],
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                }
-
-
-                //mock lecture 2
-                const courseContentLecture2: TopicOrWeekItem = {
-                    id: '',
-                    date: new Date(),
-                    title: `Lecture 2`,
-                    courseName: req.body.name,
-                    topicOrWeekTitle: `Week ${i + 1}`,
-                    itemTitle: `Lecture 2`,
-                    learningObjectives: [],
-                    instructorStruggleTopics: [],
-                    additionalMaterials: [],
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                }
-
-                //mock lecture 3
-                const courseContentLecture3: TopicOrWeekItem = {
-                    id: '',
-                    date: new Date(),
-                    title: `Lecture 3`,
-                    courseName: req.body.name,
-                    topicOrWeekTitle: `Week ${i + 1}`,
-                    itemTitle: `Lecture 3`,
-                    learningObjectives: [],
-                    instructorStruggleTopics: [],
-                    additionalMaterials: [],
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                }
-
-                //mock content
-                const contentMock: TopicOrWeekInstance = {
-                    id: '',
-                    date: new Date(),
-                    title: `Week ${i + 1}`,
-                    courseName: req.body.name,
-                    published: true,
-                    items: [courseContentLecture1, courseContentLecture2, courseContentLecture3],
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                }
-
-                //initiate id for each lecture
-                courseContentLecture1.id = instance.idGenerator.itemID(courseContentLecture1, contentMock.title, req.body.name);
-                courseContentLecture2.id = instance.idGenerator.itemID(courseContentLecture2, contentMock.title, req.body.name);
-                courseContentLecture3.id = instance.idGenerator.itemID(courseContentLecture3, contentMock.title, req.body.name);
-
-                courseContent.push({
-                    id: instance.idGenerator.topicOrWeekID(contentMock, req.body.name),
-                    date: new Date(),
-                    title: `Week ${i + 1}`,
-                    courseName: req.body.name,
-                    published: false,
-                    items: [courseContentLecture1, courseContentLecture2, courseContentLecture3],
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                });
-            }
-        } else if (req.body.frameType === 'byTopic') {
-            for (let i = 0; i < req.body.tilesNumber; i++) {
-
-                //mock topic 1
-                const courseContentTopic1: TopicOrWeekItem = {
-                    id: '',
-                    date: new Date(),
-                    title: `Topic ${i + 1}`,
-                    courseName: req.body.name,
-                    topicOrWeekTitle: `Topic ${i + 1}`,
-                    itemTitle: `Topic ${i + 1}`,
-                    learningObjectives: [],
-                    instructorStruggleTopics: [],
-                    additionalMaterials: [],
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                }
-
-                //mock course topic/week instance
-                const contentMock: TopicOrWeekInstance = {
-                    id: '',
-                    date: new Date(),
-                    title: `Topic ${i + 1}`,
-                    courseName: req.body.name,
-                    published: false,
-                    items: [courseContentTopic1],
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                }
-
-                //initiate id for each lecture
-                courseContentTopic1.id = instance.idGenerator.itemID(courseContentTopic1, contentMock.title, req.body.name);
-
-                courseContent.push({
-                    id: instance.idGenerator.topicOrWeekID(contentMock, req.body.name),
-                    date: new Date(),
-                    title: `Topic ${i + 1}`,
-                    courseName: req.body.name,
-                    published: false,
-                    items: [courseContentTopic1],
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                });
-            }
-        }
+        const courseContent = buildTopicOrWeekInstances(
+            req.body.frameType,
+            req.body.tilesNumber,
+            courseName,
+            instance.idGenerator
+        );
 
         //add the coursecontent to the body
         req.body.topicOrWeekInstances = courseContent;
@@ -466,11 +369,13 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
         let courseData: activeCourse = {
             ...req.body, //spread the properties of the body first
             id: id, // use the generated id
+            courseName,
             date: new Date(),
             onBoarded: true, // default to false for new courses
             instructors: updatedInstructors,
             teachingAssistants: req.body.teachingAssistants || [],
-            tilesNumber: req.body.tilesNumber || 0
+            tilesNumber: req.body.tilesNumber || 0,
+            courseSetup: req.body.courseSetup ?? true
         };
         
         
@@ -596,14 +501,16 @@ router.get('/allowed-for-instructor', requireInstructorGlobal, asyncHandlerWithA
     if (!globalUser) {
         return res.status(401).json({ success: false, error: 'Not authenticated' });
     }
-    if (globalUser.affiliation !== 'faculty') {
+    if (globalUser.affiliation !== 'faculty' && !isAdminUser(globalUser)) {
         return res.status(403).json({ success: false, error: 'Instructors only' });
     }
     const instance = await EngEAI_MongoDB.getInstance();
-    const coll = instance.db.collection<{ puid: string; allowed_courses: string[] }>('instructor-allowed-courses');
-    const docs = await coll.find({}).toArray();
-    const match = docs.find((d) => d.puid === globalUser.puid);
-    const allowedCourses = match ? (match.allowed_courses || []) : [];
+    const periods = await instance.listAcademicPeriods();
+    const periodId =
+        periods.length > 0
+            ? periods[0].id
+            : await instance.getDefaultAcademicPeriodId();
+    const allowedCourses = await instance.getAllowedCourseNamesForInstructor(globalUser.puid, periodId);
     return res.status(200).json({ success: true, allowedCourses });
 }));
 
@@ -740,37 +647,78 @@ router.delete('/clear-active-users', requireInstructorGlobal, asyncHandlerWithAu
  * @response 200 - Success (data: single course if name provided, array if not; count when listing all)
  * @response 404 - Course not found (when name provided)
  */
-router.get('/', asyncHandler(async (req: Request, res: Response) => {
+router.get('/', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
-    
-    // Check if name query parameter is provided
+    const sessionUser = (req as { user?: { puid?: string } }).user;
+    if (!sessionUser?.puid) {
+        return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    const globalUser = await instance.findGlobalUserByPUID(sessionUser.puid);
+    if (!globalUser) {
+        return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
     const courseName = req.query.name as string;
-    
+
     if (courseName) {
-        // Get course by name
         const course = await instance.getCourseByName(courseName);
-        
+
         if (!course) {
             return res.status(404).json({
                 success: false,
                 error: 'Course not found'
             });
         }
-        
+
         return res.status(200).json({
             success: true,
             data: course
         });
-    } else {
-        // Get all courses
-        const courses = await instance.getAllActiveCourses();
-        
-        res.status(200).json({
-            success: true,
-            data: courses,
-            count: courses.length
-        });
     }
+
+    const allCourses = await instance.getAllActiveCourses();
+    const courses = filterAccessibleCourses(allCourses as activeCourse[], globalUser);
+
+    res.status(200).json({
+        success: true,
+        data: courses,
+        count: courses.length
+    });
+}));
+
+/**
+ * GET /course-selection
+ * BFF: academic periods with user's accessible courses grouped (student/instructor course selection).
+ *
+ * @route GET /api/courses/course-selection
+ */
+router.get('/course-selection', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    const instance = await EngEAI_MongoDB.getInstance();
+    const sessionUser = (req as { user?: { puid?: string } }).user;
+    if (!sessionUser?.puid) {
+        return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    const globalUser = await instance.findGlobalUserByPUID(sessionUser.puid);
+    if (!globalUser) {
+        return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    const defaultPeriodId = await instance.getDefaultAcademicPeriodId();
+    const periods = await instance.listAcademicPeriods();
+    const allCourses = await instance.getAllActiveCourses();
+    const data = buildCourseSelectionByPeriod(
+        periods,
+        allCourses as activeCourse[],
+        globalUser,
+        defaultPeriodId
+    );
+
+    res.status(200).json({
+        success: true,
+        data
+    });
 }));
 
 /**
@@ -799,6 +747,149 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
         data: course
     });
 }));
+
+/**
+ * POST /:id/complete-course-setup
+ * Finish course-setup onboarding on an existing course shell. Instructors only.
+ *
+ * @route POST /api/courses/:id/complete-course-setup
+ * @param {string} id - Course ID (path param)
+ * @param {string} frameType - byWeek or byTopic (body)
+ * @param {number} tilesNumber - Number of sections (body)
+ * @returns {object} { success: boolean, data?: activeCourse, message?: string, error?: string }
+ * @response 200 - Course setup completed
+ * @response 400 - Validation error
+ * @response 403 - Not allowed or not instructor
+ * @response 404 - Course not found
+ * @response 409 - Course setup already complete
+ */
+router.post(
+    '/:id/complete-course-setup',
+    requireInstructorForCourseAPI(['paramsId']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const courseId = req.params.id;
+        const globalUser = (req.session as any).globalUser;
+
+        const existingCourse = await instance.getActiveCourse(courseId);
+        if (!existingCourse) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+
+        const courseData = existingCourse as unknown as activeCourse;
+
+        if (courseData.courseSetup) {
+            return res.status(409).json({
+                success: false,
+                error: 'Course setup is already complete'
+            });
+        }
+
+        const { frameType, tilesNumber } = req.body ?? {};
+        const validationError = validateCourseSetupFields(frameType, tilesNumber);
+        if (validationError) {
+            return res.status(400).json({ success: false, error: validationError });
+        }
+
+        const courseName = courseData.courseName;
+        const topicOrWeekInstances = buildTopicOrWeekInstances(
+            frameType,
+            tilesNumber,
+            courseName,
+            instance.idGenerator
+        );
+
+        const creatorUserId = globalUser.userId;
+        const creatorName = globalUser.name;
+
+        const isInstructorInArray = (instructors: any[]): boolean => {
+            if (!instructors || instructors.length === 0) return false;
+            return instructors.some((inst) => {
+                if (typeof inst === 'string') {
+                    return inst === creatorUserId;
+                }
+                if (inst && inst.userId) {
+                    return inst.userId === creatorUserId;
+                }
+                return false;
+            });
+        };
+
+        const existingInstructors = courseData.instructors || [];
+        let updatedInstructors = existingInstructors.map((inst: any) => {
+            if (typeof inst === 'string') {
+                return { userId: inst, name: 'Unknown' };
+            }
+            return inst;
+        });
+
+        if (!isInstructorInArray(updatedInstructors)) {
+            updatedInstructors.push({ userId: creatorUserId, name: creatorName });
+        }
+
+        await instance.updateActiveCourse(courseId, {
+            courseSetup: true,
+            frameType,
+            tilesNumber,
+            topicOrWeekInstances,
+            instructors: updatedInstructors
+        } as Partial<activeCourse>);
+
+        let updatedCourse = (await instance.getActiveCourse(courseId)) as unknown as activeCourse;
+
+        try {
+            const courseUser = await instance.findStudentByUserId(courseName, creatorUserId);
+            if (!courseUser) {
+                const newCourseUserData: Partial<User> = {
+                    name: creatorName,
+                    userId: creatorUserId,
+                    courseName,
+                    courseId,
+                    userOnboarding: false,
+                    affiliation: 'faculty',
+                    status: 'active',
+                    chats: []
+                };
+                await instance.createStudent(courseName, newCourseUserData);
+            }
+        } catch (courseUserError) {
+            appLogger.error(`[COMPLETE-COURSE-SETUP] Error ensuring CourseUser:`, {
+                error: courseUserError
+            });
+        }
+
+        try {
+            if (!globalUser.coursesEnrolled.includes(courseId)) {
+                await instance.addCourseToGlobalUser(globalUser.puid, courseId);
+            }
+        } catch (enrollmentError) {
+            appLogger.error(`[COMPLETE-COURSE-SETUP] Error enrolling creator:`, {
+                error: enrollmentError
+            });
+        }
+
+        try {
+            const instructorsWithCR = await addCharismaAndRichToCourse(
+                instance,
+                courseId,
+                courseName,
+                updatedCourse.instructors
+            );
+            await instance.updateActiveCourse(courseId, { instructors: instructorsWithCR });
+            updatedCourse = { ...updatedCourse, instructors: instructorsWithCR };
+        } catch (crError) {
+            appLogger.error(`[COMPLETE-COURSE-SETUP] Error adding Charisma and Rich:`, {
+                error: crError
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: updatedCourse,
+            message: 'Course setup completed successfully'
+        });
+    })
+);
 
 /**
  * PUT /:id
@@ -1974,6 +2065,102 @@ router.post('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: R
 }));
 
 /**
+ * GET /:courseId/analytics-access
+ * Course analytics and roster permission flags for monitor / course-summary UI.
+ *
+ * @route GET /api/courses/:courseId/analytics-access
+ */
+router.get(
+    '/:courseId/analytics-access',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        try {
+            const { courseId } = req.params;
+            const instance = await EngEAI_MongoDB.getInstance();
+            const course = await instance.getActiveCourse(courseId);
+            if (!course) {
+                return res.status(404).json({ success: false, error: 'Course not found' });
+            }
+
+            const sessionUser = (req as { user?: { puid?: string } }).user;
+            const globalUser = sessionUser?.puid
+                ? await instance.findGlobalUserByPUID(sessionUser.puid)
+                : null;
+
+            const flags = await buildCourseAnalyticsAccessFlags(course as activeCourse, globalUser);
+            res.json({ success: true, data: flags });
+        } catch (error) {
+            appLogger.error('Error building analytics access flags:', error);
+            res.status(500).json({ success: false, error: 'Failed to load analytics access' });
+        }
+    })
+);
+
+/**
+ * PATCH /:courseId/roster/:userId/role
+ * Promote student to TA or demote TA to student.
+ *
+ * @route PATCH /api/courses/:courseId/roster/:userId/role
+ */
+router.patch(
+    '/:courseId/roster/:userId/role',
+    requireRosterManageAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        try {
+            const { courseId, userId: targetUserId } = req.params;
+            const role = req.body?.role as string | undefined;
+            if (role !== 'student' && role !== 'ta') {
+                return res.status(400).json({ success: false, error: 'role must be student or ta' });
+            }
+
+            const instance = await EngEAI_MongoDB.getInstance();
+            const course = await instance.getActiveCourse(courseId);
+            if (!course) {
+                return res.status(404).json({ success: false, error: 'Course not found' });
+            }
+
+            const courseData = course as activeCourse;
+            const courseUser = await instance.findStudentByUserId(courseData.courseName, targetUserId);
+            if (!courseUser) {
+                return res.status(404).json({ success: false, error: 'User not found in course roster' });
+            }
+
+            const targetName = (courseUser as { name?: string }).name || 'Unknown';
+
+            if (role === 'ta') {
+                await instance.promoteStudentToTA(courseData, targetUserId, targetName);
+                const targetGlobal = await instance.findGlobalUserByUserId(targetUserId);
+                if (targetGlobal?.puid) {
+                    await instance.updateGlobalUser(targetGlobal.puid, {
+                        instructorOnboardingCompleted: true
+                    });
+                }
+                appLogger.log(`[ROSTER] Promoted ${targetUserId} to TA in course ${courseId}`);
+            } else {
+                await instance.demoteTAToStudent(courseData, targetUserId);
+                appLogger.log(`[ROSTER] Demoted ${targetUserId} from TA in course ${courseId}`);
+            }
+
+            const updated = await instance.getActiveCourse(courseId);
+            res.json({
+                success: true,
+                data: {
+                    userId: targetUserId,
+                    role: role === 'ta' ? 'ta' : 'student'
+                },
+                course: updated
+            });
+        } catch (error) {
+            if (error instanceof CourseRosterError) {
+                return res.status(400).json({ success: false, error: error.message });
+            }
+            appLogger.error('Error updating roster role:', error);
+            res.status(500).json({ success: false, error: 'Failed to update roster role' });
+        }
+    })
+);
+
+/**
  * GET /:courseId/course-summary/status
  * Course summary modal payload for instructors: live roster/chat counts, catalog dates, empty struggle placeholder.
  *
@@ -1997,6 +2184,7 @@ router.get(
 
             const courseData = course as activeCourse;
             const totals = await instance.countCourseStudentsAndActiveChats(courseData.courseName);
+            const period = await resolveCourseAcademicPeriod(courseData);
 
             const toYyyyMmDd = (d: Date | string | undefined): string => {
                 if (d == null) return '';
@@ -2006,28 +2194,35 @@ router.get(
             };
 
             const startDate = toYyyyMmDd(courseData.date);
-            const endDate = toYyyyMmDd(new Date()); // change it later
+            const endDate = period?.endDate ? toYyyyMmDd(period.endDate) : '';
 
             const sessionUser = (req as { user?: { puid?: string } }).user;
             const globalUser = sessionUser?.puid
                 ? await instance.findGlobalUserByPUID(sessionUser.puid)
                 : null;
-            const viewerIsAdmin = isAdminUser(globalUser);
+
+            const viewerCanView = canViewCourseSummary(courseData, globalUser, period);
+            const viewerCanAccessAnalytics = canAccessPostPeriodAnalytics(courseData, globalUser, period);
+            const autoDisplayModal = shouldAutoDisplayCourseSummaryModal(courseData, globalUser, period);
+            const periodEndIso = period?.endDate
+                ? (period.endDate instanceof Date ? period.endDate : new Date(period.endDate)).toISOString()
+                : null;
 
             let struggleTopics: Awaited<ReturnType<typeof instance.getCourseStruggleStats>>['struggleTopics'] | undefined;
-            if (viewerIsAdmin) {
+            if (viewerCanAccessAnalytics) {
                 const struggleStats = await instance.getCourseStruggleStats(courseId);
                 struggleTopics = struggleStats.struggleTopics;
             }
 
             const nowIso = new Date().toISOString();
+            const summaryLocked = !viewerCanView;
             const summary = {
                 id: `summary_${courseData.id}`,
                 courseId: courseData.id,
                 courseName: courseData.courseName,
-                status: 'generated' as const,
-                isAvailable: true,
-                availableAt: null as string | null,
+                status: (summaryLocked ? 'locked' : 'generated') as 'locked' | 'generated',
+                isAvailable: viewerCanView,
+                availableAt: summaryLocked ? periodEndIso : null as string | null,
                 instructorDisplayStates: [] as {
                     instructorUserId: string;
                     instructorName?: string;
@@ -2048,15 +2243,15 @@ router.get(
                     nonDeletedChats: totals.nonDeletedChats
                 },
                 ...(struggleTopics !== undefined ? { struggleTopics } : {}),
-                downloadConversationAvailable: viewerIsAdmin,
-                downloadConversationAvailableAt: null as string | null,
+                downloadConversationAvailable: viewerCanAccessAnalytics,
+                downloadConversationAvailableAt: viewerCanAccessAnalytics ? null : periodEndIso,
                 createdAt: nowIso,
                 updatedAt: nowIso
             };
 
             res.json({
                 success: true,
-                shouldDisplayModal: true,
+                shouldDisplayModal: autoDisplayModal,
                 summary
             });
         } catch (error) {
@@ -2078,7 +2273,8 @@ router.get(
  */
 router.get(
     '/:courseId/report.pdf',
-    requireAdminForCourseAPI(['params']),
+    requireInstructorForCourseAPI(['params']),
+    requirePostPeriodAnalyticsAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
             const { courseId } = req.params;
@@ -3644,7 +3840,8 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
  */
 router.get(
     '/monitor/:courseId/struggle-stats',
-    requireAdminForCourseAPI(['params']),
+    requireInstructorForCourseAPI(['params']),
+    requirePostPeriodAnalyticsAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
             const { courseId } = req.params;
@@ -3892,7 +4089,8 @@ router.get(
  */
 router.get(
     '/monitor/:courseId/conversations-export.zip',
-    requireAdminForCourseAPI(['params']),
+    requireInstructorForCourseAPI(['params']),
+    requirePostPeriodAnalyticsAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
             const { courseId } = req.params;
