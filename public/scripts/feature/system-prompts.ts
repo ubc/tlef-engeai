@@ -6,6 +6,7 @@
 
 import {
     activeCourse,
+    CONVERSATION_MODE_IDS,
     ConversationModeId,
     CourseSystemPromptConfig,
     SystemPromptModule,
@@ -30,6 +31,7 @@ interface ConfigApiResponse {
         modes: {
             socratic: ModeStateWithDisplay;
             explanatory: ModeStateWithDisplay;
+            'scenario-generation': ModeStateWithDisplay;
         };
     };
     error?: string;
@@ -112,8 +114,14 @@ function getDisplayModules(mode: ConversationModeId): SystemPromptModule[] {
     return [...modeState.modules].sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
+const MODE_MENU_LABELS: Record<ConversationModeId, string> = {
+    socratic: 'Socratic',
+    explanatory: 'Explanatory',
+    'scenario-generation': 'Scenario Generation',
+};
+
 function getModeMenuLabel(mode: ConversationModeId): string {
-    const base = mode === 'socratic' ? 'Socratic' : 'Explanatory';
+    const base = MODE_MENU_LABELS[mode] ?? mode;
     return config?.defaultConversationMode === mode ? `${base} (default)` : base;
 }
 
@@ -261,15 +269,7 @@ async function fetchConfig(): Promise<void> {
 }
 
 function resolveInitialActiveMode(data: NonNullable<ConfigApiResponse['data']>): ConversationModeId {
-    const socraticDefault = data.modes.socratic.usePlatformDefault;
-    const explanatoryDefault = data.modes.explanatory.usePlatformDefault;
-    if (socraticDefault && !explanatoryDefault) {
-        return 'socratic';
-    }
-    if (explanatoryDefault && !socraticDefault) {
-        return 'explanatory';
-    }
-    return data.defaultConversationMode === 'explanatory' ? 'explanatory' : 'socratic';
+    return data.defaultConversationMode ?? 'socratic';
 }
 
 async function restoreFromServer(): Promise<void> {
@@ -428,7 +428,7 @@ function updateModeDropdownLabels(): void {
     document.querySelectorAll('.system-prompt-menu-item[data-mode]').forEach((item) => {
         const el = item as HTMLButtonElement;
         const mode = el.dataset.mode as ConversationModeId;
-        if (mode !== 'socratic' && mode !== 'explanatory') {
+        if (!(CONVERSATION_MODE_IDS as readonly string[]).includes(mode)) {
             return;
         }
         const itemLabel = getModeMenuLabel(mode);
@@ -880,7 +880,7 @@ function setupEventListeners(): void {
             (e) => {
                 e.stopPropagation();
                 const mode = (item as HTMLButtonElement).dataset.mode as ConversationModeId;
-                if (mode === 'socratic' || mode === 'explanatory') {
+                if ((CONVERSATION_MODE_IDS as readonly string[]).includes(mode)) {
                     void requestModeSwitch(mode);
                 }
             },

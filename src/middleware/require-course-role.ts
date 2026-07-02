@@ -15,6 +15,7 @@ import {
 import { isAdminUser } from '../utils/admin';
 import { canManageCourseRoster, isCourseStaff } from '../utils/course-staff';
 import { appLogger } from '../utils/logger';
+import { asRouteParam } from '../helpers/route-params';
 import type { activeCourse, GlobalUser } from '../types/shared';
 
 type CourseIdSource = 'params' | 'paramsId' | 'body' | 'query' | 'session';
@@ -26,10 +27,10 @@ function resolveCourseId(req: Request, sources: CourseIdSource[]): string | null
     for (const source of sources) {
         switch (source) {
             case 'params':
-                if (req.params.courseId) return req.params.courseId;
+                if (req.params.courseId) return asRouteParam(req.params.courseId);
                 break;
             case 'paramsId':
-                if (req.params.id) return req.params.id;
+                if (req.params.id) return asRouteParam(req.params.id);
                 break;
             case 'body':
                 if (req.body?.courseId) return req.body.courseId;

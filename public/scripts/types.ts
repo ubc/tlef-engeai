@@ -18,7 +18,9 @@
  * Must match src/types/shared.ts.
  * Selectable teaching mode; struggle overlay applies to Socratic only (current phase).
  */
-export type ConversationModeId = 'socratic' | 'explanatory';
+export const CONVERSATION_MODE_IDS = ['socratic', 'explanatory', 'scenario-generation'] as const;
+
+export type ConversationModeId = (typeof CONVERSATION_MODE_IDS)[number];
 
 /** Must match src/types/shared.ts. Persisted lifecycle state on Chat. */
 export type PersistedConversationModeId = ConversationModeId | 'undeclared';
@@ -217,6 +219,7 @@ export interface CourseSystemPromptConfig {
     modes: {
         socratic: ModeSystemPromptState;
         explanatory: ModeSystemPromptState;
+        'scenario-generation': ModeSystemPromptState;
     };
 }
 

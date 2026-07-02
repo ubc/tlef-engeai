@@ -20,6 +20,7 @@ Operational startup migrations (OB-001) are documented here but are **not** tied
 | ID | Name | Type | Trigger | Source → target | Sunset / removal |
 |----|------|------|---------|-----------------|----------------|
 | **SP-001** | System prompt v1 → v2 | Lazy (request) | `ensureSystemPromptConfig` in `src/db/mongo/system-prompt-config-mongo.ts` | `collectionOfSystemPromptItems` → `systemPromptConfig`; then `$unset` legacy field | **Remove by 2026-06-30** — see [SP-001](#sp-001-system-prompt-v1--v2) |
+| **SP-002** | System prompt mode backfill | Lazy (request) | `ensureAllModeStates` in `system-prompt-config-mongo.ts` | missing `systemPromptConfig.modes[mode]` → `seedModeState(mode)` for each `CONVERSATION_MODE_IDS` entry | Keep while new modes ship; audit when mode list stabilizes |
 | **CM-001** | Chat `conversationMode` backfill | Lazy (restore) | `ChatApp.ensureLegacyChatModePersisted` in `src/chat/chat-app.ts` | missing/invalid → `socratic` or `undeclared` | Optional later; audit before removal |
 | **OB-001** | Onboarding flags backfill | Startup | `migrateOnboardingFlags` in `src/helpers/migrate-onboarding-flags.ts` | GlobalUser flags from course/CourseUser data | Operational — keep unless product changes |
 | **AP-001** | Course `academicPeriodId` backfill | Lazy (request) | `lazyMigrateCourseAcademicPeriod` in `src/db/mongo/academic-period-mongo.ts` via `getActiveCourse` / `getAllActiveCourses` | missing `academicPeriodId` → default `2025W2` period; `$addToSet` on period `courseIds` | **Remove by 2026-06-30** — see [AP-001](#ap-001-academic-period-lazy-link) |
@@ -81,6 +82,32 @@ Target before **2026-06-30:** `0` in each environment (or documented exceptions)
 ### Post-sunset engineering checklist (after 2026-06-30)
 
 - [ ] Remove `migrateFromLegacyItems` and legacy reads in `system-prompt-config-mongo.ts`
+
+---
+
+## SP-002: System prompt mode backfill
+
+**Status:** Active (lazy migrate)
+
+**Collection:** `active-course-list` (`systemPromptConfig.modes`)
+
+### Behavior
+
+When `systemPromptConfig.schemaVersion === 1` but a key from `CONVERSATION_MODE_IDS` is missing under `modes`, `ensureAllModeStates` adds `seedModeState(mode)` for each missing slug and persists with `$set: { systemPromptConfig }`.
+
+Introduced for **scenario-generation** (third conversation mode).
+
+### Triggers
+
+Same as SP-001 (`ensureSystemPromptConfig`).
+
+### Idempotency
+
+Once all catalog modes exist on the document, no further writes.
+
+### Rollback
+
+Remove the added mode key from Mongo manually if needed; chat runtime falls back to platform defaults when `usePlatformDefault: true`.
 
 ---
 

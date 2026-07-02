@@ -374,8 +374,7 @@ export class ChatApp {
         
         if (documentsLength > 0) {
             const persistedMode = this.chatConversationModes.get(chatId);
-            const ragMode: ConversationModeId =
-                persistedMode === 'explanatory' ? 'explanatory' : 'socratic';
+            const ragMode = conversationModePrompts.resolveModeId(persistedMode);
             additionalContext = ragPrompts.formatRagUserTurn(ragMode, ragContext, message);
         }
         else if (ragRetrievalFailed) {
@@ -612,7 +611,7 @@ export class ChatApp {
         const persistedMode = this.toPersistedConversationMode(conversationMode);
         this.chatConversationModes.set(chatId, persistedMode);
 
-        if (persistedMode === 'socratic' || persistedMode === 'explanatory') {
+        if (conversationModePrompts.isValidConversationMode(persistedMode)) {
             await this.addDefaultSystemMessage(chatId, courseName);
         }
         
@@ -673,7 +672,7 @@ export class ChatApp {
         }
 
         const persistedMode = this.chatConversationModes.get(chatId);
-        if (persistedMode !== 'socratic' && persistedMode !== 'explanatory') {
+        if (!persistedMode || !conversationModePrompts.isValidConversationMode(persistedMode)) {
             return;
         }
 
@@ -1195,7 +1194,12 @@ export class ChatApp {
         const hasUserMessage = (chat.messages ?? []).some((message) => message.sender === 'user');
         const raw = chat.conversationMode;
 
-        if (raw === 'socratic' || raw === 'explanatory' || raw === 'undeclared') {
+        if (
+            raw === 'socratic' ||
+            raw === 'explanatory' ||
+            raw === 'scenario-generation' ||
+            raw === 'undeclared'
+        ) {
             return raw;
         }
 
@@ -1273,7 +1277,7 @@ export class ChatApp {
                 appLogger.error('❌ Error retrieving learning objectives during restore:', error);
             }
 
-            if (restoredMode === 'socratic' || restoredMode === 'explanatory') {
+            if (conversationModePrompts.isValidConversationMode(restoredMode)) {
                 const defaultSystemMessage = await this.buildCourseSystemPromptXml(
                     courseName,
                     restoredMode,
