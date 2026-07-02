@@ -27,9 +27,12 @@
  * {@link Chat.conversationMode} until the first user message finalizes the chat to a real mode.
  *
  * Current product phase: memory-agent struggle detection and per-turn struggle tags apply only
- * when the resolved mode is `'socratic'`. Explanatory mode does not consume {@link MemoryAgentEntry}.
+ * when the resolved mode is `'socratic'`. Explanatory and scenario-generation do not consume
+ * {@link MemoryAgentEntry}.
  */
-export type ConversationModeId = 'socratic' | 'explanatory';
+export const CONVERSATION_MODE_IDS = ['socratic', 'explanatory', 'scenario-generation'] as const;
+
+export type ConversationModeId = (typeof CONVERSATION_MODE_IDS)[number];
 
 /**
  * Persisted chat lifecycle mode. `undeclared` means the chat has not received a user message yet.
@@ -269,6 +272,7 @@ export interface CourseSystemPromptConfig {
     modes: {
         socratic: ModeSystemPromptState;
         explanatory: ModeSystemPromptState;
+        'scenario-generation': ModeSystemPromptState; // using string as key to avoid type error
     };
 }
 

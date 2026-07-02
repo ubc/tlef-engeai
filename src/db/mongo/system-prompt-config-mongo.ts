@@ -15,12 +15,14 @@ import type {
     SystemPromptItem,
 } from '../../types/shared';
 import {
+    CONVERSATION_MODE_IDS,
     DEFAULT_BASE_PROMPT_ID,
 } from '../../types/shared';
 import {
     getPlatformDefaultVersion,
     getPlatformInstructorModules,
 } from '../../chat/system-prompts/system-prompt-defaults-loader';
+import { conversationModePrompts } from '../../chat/compose-system-prompt';
 import { activeCourseListCollection } from './mongo-collections';
 import { getActiveCourse } from './course-mongo';
 import type { MongoDalContext } from './mongo-context';
@@ -40,14 +42,34 @@ function seedModeState(mode: ConversationModeId): ModeSystemPromptState {
 }
 
 function seedFreshConfig(): CourseSystemPromptConfig {
+    const modes = {} as CourseSystemPromptConfig['modes'];
+    for (const mode of CONVERSATION_MODE_IDS) {
+        modes[mode] = seedModeState(mode);
+    }
     return {
         schemaVersion: 1,
         defaultConversationMode: 'socratic',
-        modes: {
-            socratic: seedModeState('socratic'),
-            explanatory: seedModeState('explanatory'),
-        },
+        modes,
     };
+}
+
+/**
+ * SP-002 lazy migration: add missing mode states when new conversation modes ship.
+ */
+function ensureAllModeStates(config: CourseSystemPromptConfig): CourseSystemPromptConfig {
+    let patched = false;
+    const modes = { ...config.modes };
+    for (const mode of CONVERSATION_MODE_IDS) {
+        if (!modes[mode]) {
+            modes[mode] = seedModeState(mode);
+            patched = true;
+        }
+    }
+    if (!patched) {
+        return config;
+    }
+    appLogger.log('[system-prompt-config] SP-002 lazy migration: backfilled missing conversation mode states');
+    return { ...config, modes };
 }
 
 function legacyDefaultBaseContent(): string {
@@ -111,6 +133,7 @@ function migrateFromLegacyItems(items: SystemPromptItem[]): CourseSystemPromptCo
                 platformDefaultVersion: getPlatformDefaultVersion('socratic'),
             },
             explanatory: seedModeState('explanatory'),
+            'scenario-generation': seedModeState('scenario-generation'),
         },
     };
 }
@@ -155,7 +178,17 @@ export async function ensureSystemPromptConfig(
         if (hasLegacySystemPromptItemsField(courseData)) {
             await unsetLegacySystemPromptItems(ctx, courseId, 'cleanup-only');
         }
-        return courseData.systemPromptConfig;
+        const patched = ensureAllModeStates(courseData.systemPromptConfig);
+        if (patched !== courseData.systemPromptConfig) {
+            await activeCourseListCollection(ctx.db).updateOne(
+                { id: courseId },
+                { $set: { systemPromptConfig: patched } }
+            );
+            appLogger.log(
+                `[system-prompt-config] SP-002 lazy migration: $set systemPromptConfig (courseId=${courseId})`
+            );
+        }
+        return patched;
     }
 
     let config: CourseSystemPromptConfig;
@@ -165,6 +198,8 @@ export async function ensureSystemPromptConfig(
     } else {
         config = seedFreshConfig();
     }
+
+    config = ensureAllModeStates(config);
 
     // SP-001 lazy migration: persist v2 config and drop legacy field in one write (DATA_MIGRATIONS.md).
     await activeCourseListCollection(ctx.db).updateOne(
@@ -307,5 +342,5 @@ export async function getDefaultConversationModeForCourse(
     courseId: string
 ): Promise<ConversationModeId> {
     const config = await ensureSystemPromptConfig(ctx, courseId);
-    return config.defaultConversationMode === 'explanatory' ? 'explanatory' : 'socratic';
+    return conversationModePrompts.resolveModeId(config.defaultConversationMode);
 }

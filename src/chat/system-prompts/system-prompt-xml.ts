@@ -6,7 +6,11 @@
 
 import { ConversationModeId, SystemPromptModule } from '../../types/shared';
 
-const SYSTEM_PROMPT_OPEN_RE = /^<system_prompt\s+mode="(socratic|explanatory)">\s*/i;
+const VALID_SYSTEM_PROMPT_MODES = 'socratic|explanatory|scenario-generation';
+const SYSTEM_PROMPT_OPEN_RE = new RegExp(
+    `^<system_prompt\\s+mode="(${VALID_SYSTEM_PROMPT_MODES})">\\s*`,
+    'i'
+);
 const SYSTEM_PROMPT_CLOSE = '</system_prompt>';
 const MODULE_RE = /<module\s+id="([^"]+)"(?:\s+visibility="[^"]*")?>([\s\S]*?)<\/module>/gi;
 
@@ -47,7 +51,9 @@ export function parseSystemPromptXml(xml: string): ParsedSystemPromptXml {
     const warnings: string[] = [];
     const trimmed = xml.trim();
 
-    const openMatch = trimmed.match(/^<system_prompt\s+mode="(socratic|explanatory)">/i);
+    const openMatch = trimmed.match(
+        new RegExp(`^<system_prompt\\s+mode="(${VALID_SYSTEM_PROMPT_MODES})">`, 'i')
+    );
     if (!openMatch) {
         throw new Error('Missing or invalid <system_prompt mode="…"> root element');
     }

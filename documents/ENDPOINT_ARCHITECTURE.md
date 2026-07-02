@@ -243,7 +243,7 @@ Local development helper for report/monitor work. **Only** course name `Test 3` 
 
 #### System prompt config (v2, instructor-only)
 
-Platform defaults ship in `src/chat/system-prompts/shared-default/`, `socratic-default/`, and `explanatory-default/` (flat `.md` + JSON manifests; see [SYSTEM_PROMPT_DEFAULTS.md](SYSTEM_PROMPT_DEFAULTS.md)). Per-course overrides live on `activeCourse.systemPromptConfig`. Routes: `src/routes/mongo/system-prompt-config-routes.ts` (mounted from `route-mongo.ts`).
+Platform defaults ship in `src/chat/system-prompts/shared-default/`, `socratic-default/`, `explanatory-default/`, and `scenario-generation-default/` (flat `.md` + JSON manifests; see [SYSTEM_PROMPT_DEFAULTS.md](SYSTEM_PROMPT_DEFAULTS.md)). Per-course overrides live on `activeCourse.systemPromptConfig`. Routes: `src/routes/mongo/system-prompt-config-routes.ts` (mounted from `route-mongo.ts`).
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|

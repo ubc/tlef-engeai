@@ -7,6 +7,7 @@
 
 import { resolveInstructorModulesForDisplay } from '../chat/system-prompts/assemble-course-system-prompt';
 import { isReservedModuleId, parseSystemPromptXml } from '../chat/system-prompts/system-prompt-xml';
+import { CONVERSATION_MODE_IDS } from '../types/shared';
 import type { CourseSystemPromptConfig, SystemPromptModule } from '../types/shared';
 
 const MAX_MODULES = 50;
@@ -62,18 +63,20 @@ export class SystemPromptConfigApi {
      * Adds `displayModules` per mode for instructor UI (platform or stored overrides).
      */
     public enrichForInstructorApi(config: CourseSystemPromptConfig) {
+        const modes = {} as CourseSystemPromptConfig['modes'] & {
+            [K in keyof CourseSystemPromptConfig['modes']]: CourseSystemPromptConfig['modes'][K] & {
+                displayModules: SystemPromptModule[];
+            };
+        };
+        for (const mode of CONVERSATION_MODE_IDS) {
+            modes[mode] = {
+                ...config.modes[mode],
+                displayModules: resolveInstructorModulesForDisplay(mode, config.modes[mode]),
+            };
+        }
         return {
             ...config,
-            modes: {
-                socratic: {
-                    ...config.modes.socratic,
-                    displayModules: resolveInstructorModulesForDisplay('socratic', config.modes.socratic),
-                },
-                explanatory: {
-                    ...config.modes.explanatory,
-                    displayModules: resolveInstructorModulesForDisplay('explanatory', config.modes.explanatory),
-                },
-            },
+            modes,
         };
     }
 

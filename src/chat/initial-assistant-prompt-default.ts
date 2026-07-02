@@ -31,6 +31,7 @@ Before your first message, choose a conversation mode beside the send button:
 <ul>
 <li><strong>Socratic</strong> — guided questions to help you discover answers step by step</li>
 <li><strong>Explanatory</strong> — clear explanations from course materials, with optional check-ins</li>
+<li><strong>Scenario Generation</strong> — turn calculation problems into troubleshooting exam scenarios</li>
 </ul>
 
 I can help you with:

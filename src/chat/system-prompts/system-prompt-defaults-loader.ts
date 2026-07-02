@@ -2,7 +2,7 @@
  * Loads platform default system prompts from JSON on disk with in-memory cache.
  *
  * Layout under `system-prompts/`:
- * - `socratic-default/`, `explanatory-default/` — `{mode}.json` + mode-only `.md` files (flat)
+ * - `socratic-default/`, `explanatory-default/`, `scenario-generation-default/` — `{mode}.json` + mode-only `.md` files (flat)
  * - `shared-default/` — shared `.md` modules referenced as `shared-default/<file>.md`
  *
  * Admin POST reload clears and re-reads files without restart.
@@ -55,6 +55,7 @@ interface PlatformModeDefaultsRaw {
 const MODE_DEFAULT_FOLDER: Record<ConversationModeId, string> = {
     socratic: 'socratic-default',
     explanatory: 'explanatory-default',
+    'scenario-generation': 'scenario-generation-default',
 };
 
 const SHARED_BODY_FILE_PREFIX = 'shared-default/';
@@ -64,7 +65,7 @@ let cache: Partial<Record<ConversationModeId, PlatformModeDefaults>> = {};
 let resolvedSystemPromptsBaseDir: string | null = null;
 
 /**
- * Parent directory containing `shared-default/`, `socratic-default/`, and `explanatory-default/`.
+ * Parent directory containing `shared-default/` and each `*-default/` mode folder.
  */
 export function getSystemPromptsBaseDir(): string {
     if (resolvedSystemPromptsBaseDir) {
@@ -225,8 +226,9 @@ export function getPlatformDefaultVersion(mode: ConversationModeId): string {
 export function reloadPlatformDefaultsCache(): void {
     cache = {};
     resolvedSystemPromptsBaseDir = null;
-    getPlatformModeDefaults('socratic');
-    getPlatformModeDefaults('explanatory');
+    for (const mode of ['socratic', 'explanatory', 'scenario-generation'] as ConversationModeId[]) {
+        getPlatformModeDefaults(mode);
+    }
 }
 
 /**
