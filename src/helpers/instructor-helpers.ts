@@ -1,70 +1,16 @@
 /**
  * Instructor Helpers
  *
- * Shared utilities for instructor-allowed-courses and auto-adding Charisma/Rich to courses.
- * Used by initInstructorAllowedCourses and mongo-routes course creation.
+ * Shared utilities for auto-adding platform admins to courses.
+ * Used by mongo-routes course creation.
  *
  * @author: EngE-AI Team
  * @since: 2025-02-23
  */
 
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
-import { GlobalUser, InstructorInfo, User } from '../types/shared';
+import { InstructorInfo, User } from '../types/shared';
 import { appLogger } from '../utils/logger';
-
-/**
- * Returns PUIDs that should auto-add Charisma and Rich when they create a course (Alireza, Amir).
- */
-function getTeamInstructorPuids(): string[] {
-    return [
-        process.env.ALIREZA_BAGHERZADEH_PUID?.trim(),
-        process.env.AMIR_DEHKHODA_PUID?.trim()
-    ].filter(Boolean) as string[];
-}
-
-/**
- * Returns true if the given PUID is Alireza or Amir (team members who trigger auto-add of Charisma/Rich).
- */
-export function isTeamInstructorPuid(puid: string | undefined): boolean {
-    if (!puid || typeof puid !== 'string') return false;
-    return getTeamInstructorPuids().includes(puid.trim());
-}
-
-/**
- * Gets or creates GlobalUser records for Charisma and Richard Tape.
- * Used when adding them to courses - they must exist in active-users.
- *
- * @returns Array of GlobalUser (may be empty if env vars not set)
- */
-export async function getOrCreateCharismaAndRich(mongoDB: EngEAI_MongoDB): Promise<GlobalUser[]> {
-    const results: GlobalUser[] = [];
-    const configs = [
-        { puid: process.env.CHARISMA_RUSDIYANTO_PUID?.trim(), name: 'Charisma Rusdiyanto' },
-        { puid: process.env.RICHARD_TAPE_PUID?.trim(), name: 'Richard Tape' }
-    ];
-
-    for (const { puid, name } of configs) {
-        if (!puid) {
-            appLogger.warn(`[INSTRUCTOR-HELPERS] Skipping ${name}: PUID env var not set`);
-            continue;
-        }
-        let user = await mongoDB.findGlobalUserByPUID(puid);
-        if (!user) {
-            user = await mongoDB.createGlobalUser({
-                puid,
-                name,
-                userId: mongoDB.idGenerator.globalUserID(puid, name, 'faculty'),
-                coursesEnrolled: [],
-                affiliation: 'faculty',
-                status: 'active',
-                isAdmin: true
-            });
-            appLogger.log(`[INSTRUCTOR-HELPERS] Created GlobalUser for ${name} (${user.userId})`);
-        }
-        results.push(user);
-    }
-    return results;
-}
 
 /**
  * Checks if an instructor (by userId) is already in the instructors array.
@@ -80,23 +26,24 @@ export function isInstructorInArray(instructors: any[], userId: string): boolean
 }
 
 /**
- * Adds Charisma and Rich to a course: instructors array, CourseUser entries, and coursesEnrolled.
+ * Adds all current platform admins (GlobalUser.isAdmin === true) to a course:
+ * instructors array, CourseUser entries, and coursesEnrolled.
  * Idempotent: skips if already present.
  *
  * @param mongoDB - MongoDB instance
  * @param courseId - Course ID
  * @param courseName - Course name (for users collection)
  * @param existingInstructors - Current instructors array (will be mutated and returned)
- * @returns Updated instructors array with Charisma and Rich added
+ * @returns Updated instructors array with admins added
  */
-export async function addCharismaAndRichToCourse(
+export async function addAdminsToCourse(
     mongoDB: EngEAI_MongoDB,
     courseId: string,
     courseName: string,
     existingInstructors: InstructorInfo[] | string[]
 ): Promise<InstructorInfo[]> {
-    const charismaAndRich = await getOrCreateCharismaAndRich(mongoDB);
-    if (charismaAndRich.length === 0) return existingInstructors as InstructorInfo[];
+    const admins = await mongoDB.findAdminGlobalUsers();
+    if (admins.length === 0) return existingInstructors as InstructorInfo[];
 
     // Normalize to InstructorInfo[]
     let instructors: InstructorInfo[] = existingInstructors.map((inst: any) => {
@@ -104,11 +51,11 @@ export async function addCharismaAndRichToCourse(
         return inst as InstructorInfo;
     });
 
-    for (const user of charismaAndRich) {
+    for (const user of admins) {
         // 1. Add to instructors if not present
         if (!isInstructorInArray(instructors, user.userId)) {
             instructors.push({ userId: user.userId, name: user.name });
-            appLogger.log(`[INSTRUCTOR-HELPERS] Added ${user.name} (${user.userId}) to course ${courseId}`);
+            appLogger.log(`[INSTRUCTOR-HELPERS] Added admin ${user.name} (${user.userId}) to course ${courseId}`);
         }
 
         // 2. Always ensure CourseUser exists in {courseName}_users

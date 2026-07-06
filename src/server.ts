@@ -25,8 +25,8 @@ import { initAcademicPeriods } from './helpers/init-academic-periods';
 import { migrateInstructorAllowances } from './helpers/migrate-instructor-allowances';
 import { migrateOnboardingFlags } from './helpers/migrate-onboarding-flags';
 import { getCourseSelectionRedirectPath } from './helpers/course-selection-redirect';
-import { resolveAffiliation, isFacultyOverridePuid } from './utils/affiliation';
-import { isAdminUser } from './utils/admin';
+import { resolveAffiliation, isFacultyOverrideName } from './utils/affiliation';
+import { isAdminUser, isAdminName } from './utils/admin';
 
 dotenv.config();
 
@@ -113,12 +113,12 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
         // Check if GlobalUser exists in active-users collection
         let globalUser = await mongoDB.findGlobalUserByPUID(puid);
 
-        // Resolve affiliation: CWL takes precedence over DB when they differ (except PUID overrides)
-        const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, puid);
+        // Resolve affiliation: CWL takes precedence over DB when they differ (except admin overrides)
+        const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, name);
         const affiliation = resolution.affiliation;
 
-        if (isFacultyOverridePuid(puid) && cwlAffiliation !== affiliation) {
-            logger.info(`[AUTH] 🔄 Affiliation override: PUID ${puid} set to faculty`);
+        if (isFacultyOverrideName(name) && cwlAffiliation !== affiliation) {
+            logger.info(`[AUTH] 🔄 Affiliation override: ${name} set to faculty`);
         }
 
         logger.info('[AUTH] ✅ SAML authentication successful');
@@ -135,7 +135,8 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
                 userId: mongoDB.idGenerator.globalUserID(puid, name, affiliation),
                 coursesEnrolled: [],
                 affiliation: affiliation as 'student' | 'faculty' | 'staff' | 'empty',
-                status: 'active'
+                status: 'active',
+                isAdmin: isAdminName(name)
             });
 
             logger.info(`[AUTH] ✅ GlobalUser created: ${globalUser.userId}`);
@@ -148,6 +149,13 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
                 globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty');
                 (req.user as any).affiliation = affiliation;
                 logger.info(`[AUTH] ✅ GlobalUser affiliation updated: ${globalUser.userId}`);
+            }
+
+            // Reconcile admin status against the ADMINS allowlist
+            const shouldBeAdmin = isAdminName(name);
+            if (globalUser.isAdmin !== shouldBeAdmin) {
+                logger.info(`[AUTH] 🔄 Updating GlobalUser isAdmin: was ${globalUser.isAdmin}, now ${shouldBeAdmin}`);
+                globalUser = await mongoDB.updateGlobalUser(globalUser.puid, { isAdmin: shouldBeAdmin });
             }
         }
 

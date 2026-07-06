@@ -4,7 +4,6 @@
  */
 
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
-import { addCharismaAndRichToCourse } from './instructor-helpers';
 import { activeCourse } from '../types/shared';
 import { appLogger } from '../utils/logger';
 
