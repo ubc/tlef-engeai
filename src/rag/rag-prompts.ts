@@ -70,23 +70,15 @@ Remember: Your primary job is to help the student understand the concept from co
 
 Student's question:`;
 
-const SCENARIO_GENERATION_RAG_BRIDGE_PROMPT = `Based on the course materials and context provided above, help using Scenario Generation mode.
+/**
+ * Generation-only RAG bridge for Practice Scenarios AI authoring (`scenario-generator.ts`).
+ * Not a chat conversation-mode bridge — the retired `scenario-generation` chat bridge was removed
+ * in P0; this is the standalone replacement for single-shot question generation (P3).
+ */
+export const SCENARIO_GENERATION_RAG_BRIDGE_PROMPT = `Use the course materials above as grounding context for this scenario question. Ground technical details (equations, typical values, terminology, process context) in the retrieved materials when they are relevant to the instructor's request below. If the materials don't cover the topic, rely on sound general engineering knowledge instead, but keep the scenario technically accurate and realistic.
 
-When responding:
-
-1. **TRANSFORM THE PROBLEM** - Use the student's message as the original calculation problem. When course materials contain similar problems, use them only to preserve fidelity to course conventions—not to copy solutions.
-
-2. **OUTPUT A QUESTION ONLY** - Deliver the troubleshooting scenario incrementally: setup + crisis + part (a) first, then one sub-question per later turn. Do not include solutions, worked calculations, or correct troubleshooting reasons/actions.
-
-3. **PRESERVE FIDELITY** - Keep the baseline calculation in part (a) mathematically equivalent in difficulty and concept to the original problem. Do not change underlying chemistry, stoichiometry, or physics.
-
-4. **STRUCTURE** - Include role + setup + crisis with part (a) in the first reply; reveal parts (b)–(d) one at a time with point allocations totaling ~100 pts across the full scenario. End with course code + "Troubleshooting version" on the final sub-question when known from context.
-
-5. **COURSE MATERIALS** - When retrieved materials lack a usable problem, rely on the student's pasted question as the source.
-
-Remember: Your primary job is to generate an assessment-ready troubleshooting scenario question, not to tutor or solve it.
-
-Student's question:`;
+Instructor request:
+`;
 
 const DEFAULT_MODE_ID: ConversationModeId = 'socratic';
 
@@ -111,11 +103,6 @@ export class RAGPrompts {
 
     private static readonly explanatoryBridgePattern = new RegExp(
         `${EXPLANATORY_RAG_BRIDGE_PROMPT.split('\n')[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?Student's question:`,
-        'g'
-    );
-
-    private static readonly scenarioGenerationBridgePattern = new RegExp(
-        `${SCENARIO_GENERATION_RAG_BRIDGE_PROMPT.split('\n')[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?Student's question:`,
         'g'
     );
 
@@ -207,10 +194,22 @@ export class RAGPrompts {
         if (resolved === 'explanatory') {
             return `${context}${RAG_CONTEXT_SEPARATOR}${EXPLANATORY_RAG_BRIDGE_PROMPT}${userMessage}`;
         }
-        if (resolved === 'scenario-generation') {
-            return `${context}${RAG_CONTEXT_SEPARATOR}${SCENARIO_GENERATION_RAG_BRIDGE_PROMPT}${userMessage}`;
-        }
         return `${context}${RAG_CONTEXT_SEPARATOR}${userMessage}`;
+    }
+
+    /**
+     * Formats the user turn sent to the LLM for Practice Scenarios AI generation (single or batch).
+     * Unlike `formatRagUserTurn`, this is not keyed by conversation mode — generation is a
+     * standalone instructor-triggered action, not a chat turn.
+     *
+     * @param context - Retrieved document text (already formatted via `formatRetrievedContext`)
+     * @param sourcePrompt - Instructor's seed problem (single mode) or topic prompt (batch mode)
+     */
+    public formatScenarioGenerationUserTurn(context: string, sourcePrompt: string): string {
+        if (!context) {
+            return `Instructor request:\n${sourcePrompt}`;
+        }
+        return `${context}${RAG_CONTEXT_SEPARATOR}${SCENARIO_GENERATION_RAG_BRIDGE_PROMPT}${sourcePrompt}`;
     }
 
     /**
@@ -228,7 +227,6 @@ export class RAGPrompts {
         stripped = stripped.replace(RAGPrompts.separatorPattern, '');
         stripped = stripped.replace(RAGPrompts.socraticBridgePattern, '');
         stripped = stripped.replace(RAGPrompts.explanatoryBridgePattern, '');
-        stripped = stripped.replace(RAGPrompts.scenarioGenerationBridgePattern, '');
 
         const questionIndex = stripped.indexOf(STUDENT_QUESTION_MARKER);
         if (questionIndex !== -1) {

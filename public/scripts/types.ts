@@ -18,12 +18,21 @@
  * Must match src/types/shared.ts.
  * Selectable teaching mode; struggle overlay applies to Socratic only (current phase).
  */
-export const CONVERSATION_MODE_IDS = ['socratic', 'explanatory', 'scenario-generation'] as const;
+export const CONVERSATION_MODE_IDS = ['socratic', 'explanatory'] as const;
 
 export type ConversationModeId = (typeof CONVERSATION_MODE_IDS)[number];
 
+/**
+ * Must match src/types/shared.ts.
+ * Retired chat mode kept only so legacy chat documents (already persisted before this mode was
+ * removed) continue to type-check and render history; never selectable for new chats or sends.
+ */
+export const RETIRED_CONVERSATION_MODE_IDS = ['scenario-generation'] as const;
+
+export type RetiredConversationModeId = (typeof RETIRED_CONVERSATION_MODE_IDS)[number];
+
 /** Must match src/types/shared.ts. Persisted lifecycle state on Chat. */
-export type PersistedConversationModeId = ConversationModeId | 'undeclared';
+export type PersistedConversationModeId = ConversationModeId | RetiredConversationModeId | 'undeclared';
 
 /** Must match src/types/shared.ts */
 export type ConversationModeStatus = 'active' | 'coming_soon';
@@ -120,6 +129,8 @@ export interface activeCourse {
         flags: string;
         memoryAgent: string;
         scheduledTasks?: string;
+        /** Per-course Practice Scenarios question bank; SQ-001 lazy-provisions on existing courses */
+        scenarioQuestions?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
     /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */
@@ -219,7 +230,6 @@ export interface CourseSystemPromptConfig {
     modes: {
         socratic: ModeSystemPromptState;
         explanatory: ModeSystemPromptState;
-        'scenario-generation': ModeSystemPromptState;
     };
 }
 
@@ -477,6 +487,8 @@ export interface CourseUser {
     affiliation: 'student' | 'faculty';
     status: 'active' | 'inactive';
     chats: Chat[];                 // Course-specific chat history
+    /** Per-question check-answer progress powering the Practice Scenarios solution gate */
+    scenarioProgress?: ScenarioPracticeProgress[];
     createdAt: Date;
     updatedAt: Date;
 }
@@ -742,3 +754,140 @@ export interface ActivityData {
 
 /** Inactivity tracker event types */
 export type InactivityEvent = 'warning' | 'logout' | 'activity-reset';
+
+// =====================================================
+// ===== SCENARIO QUESTIONS (Practice Scenarios) ======
+// =====================================================
+//
+// Must match src/types/shared.ts. Standalone practice bank replacing the retired
+// `scenario-generation` chat mode. Chapter grouping uses TopicOrWeekInstance.id (D1).
+
+/** Must match src/types/shared.ts. Drafts are invisible to students (404, not 403). */
+export type ScenarioQuestionStatus = 'draft' | 'published' | 'rejected';
+
+/** Must match src/types/shared.ts. (a)-(c) required for publish; (d) optional. */
+export type ScenarioPartId = 'a' | 'b' | 'c' | 'd';
+
+/** Must match src/types/shared.ts. Parts required to publish and to unlock the solution reveal. */
+export const REQUIRED_SCENARIO_PART_IDS: readonly ScenarioPartId[] = ['a', 'b', 'c'] as const;
+
+/** Must match src/types/shared.ts (minus server-only trust boundary notes). */
+export interface ScenarioSubQuestion {
+    partId: ScenarioPartId;
+    prompt: string;
+    points?: number;
+    /** Only present on instructor-facing responses; never sent to students until solution reveal. */
+    modelAnswer: string;
+}
+
+/** Must match src/types/shared.ts. Full document — instructor views only. */
+export interface ScenarioQuestion {
+    id: string;
+    courseId: string;
+    courseName: string;
+    topicOrWeekId: string;
+    title: string;
+    status: ScenarioQuestionStatus;
+    sourcePrompt: string;
+    questionBody: string;
+    solutionBody: string;
+    subQuestions: ScenarioSubQuestion[];
+    generatedBy: 'instructor' | 'ai';
+    aiGenerationJobId?: string;
+    sortOrder: number;
+    createdAt: string | Date;
+    updatedAt: string | Date;
+    publishedAt?: string | Date | null;
+    createdByUserId: string;
+    lastEditedByUserId?: string;
+}
+
+/** Must match src/types/shared.ts (`ScenarioQuestionForStudent`). Student-safe projection — no model answers/solution. */
+export type ScenarioQuestionForStudent = Omit<ScenarioQuestion, 'solutionBody' | 'subQuestions'> & {
+    subQuestions: Array<Omit<ScenarioSubQuestion, 'modelAnswer'>>;
+};
+
+/** Must match src/types/shared.ts. */
+export type ScenarioAnswerVerdict = 'correct' | 'needs_improvement';
+
+/** Must match src/types/shared.ts. Request body for POST .../check-answer. */
+export interface ScenarioCheckAnswerRequest {
+    partId: ScenarioPartId;
+    studentAnswer: string;
+}
+
+/** Must match src/types/shared.ts. Response for POST .../check-answer. */
+export interface ScenarioPartFeedbackResponse {
+    success: boolean;
+    partId: ScenarioPartId;
+    verdict: ScenarioAnswerVerdict;
+    guidance?: string;
+    error?: string;
+}
+
+/** Must match src/types/shared.ts. Tracks which required parts a student has checked (solution gate). */
+export interface ScenarioPracticeProgress {
+    questionId: string;
+    checkedPartIds: ScenarioPartId[];
+    lastVerdictByPart: Partial<Record<ScenarioPartId, ScenarioAnswerVerdict>>;
+    solutionViewedAt?: string | Date | null;
+}
+
+/** Must match src/types/shared.ts. Request body for POST .../generate. */
+export interface ScenarioGenerateRequest {
+    mode: 'single' | 'batch';
+    sourcePrompt: string;
+    topicOrWeekId: string;
+    count?: number;
+}
+
+/** Must match src/types/shared.ts. Hard cap on batch generation size. */
+export const SCENARIO_BATCH_MAX_COUNT = 10;
+
+/** Must match src/types/shared.ts. Response for POST .../generate. */
+export interface ScenarioGenerateResponse {
+    success: boolean;
+    data?: ScenarioQuestion[];
+    aiGenerationJobId?: string;
+    error?: string;
+}
+
+/** Must match src/types/shared.ts. Response for the gated GET .../solution. */
+export interface ScenarioSolutionResponse {
+    success: boolean;
+    solutionBody?: string;
+    subQuestions?: ScenarioSubQuestion[];
+    error?: string;
+}
+
+// =====================================================
+// ===== SCENARIO QUESTIONS — MOCK PHASE EXTENSIONS ====
+// =====================================================
+// MOCK PHASE — sync to shared.ts when backend lands (planner/improved-scenario-generation.md).
+
+/** Instructor-selected subquestion type; maps to flexible parts a–d in selection order. */
+export type ScenarioSubQuestionType = 'calculation' | 'troubleshoot' | 'action' | 'corrective';
+
+/** Difficulty set at generation; instructor-editable in mock UI. */
+export type ScenarioDifficulty = 'easy' | 'medium' | 'hard';
+
+/** Subquestion with type label for instructor editor. */
+export interface ScenarioSubQuestionExtended extends ScenarioSubQuestion {
+    subQuestionType: ScenarioSubQuestionType;
+}
+
+/** Extended question shape used by mock store and instructor editor until backend catches up. */
+export interface ScenarioQuestionExtended extends ScenarioQuestion {
+    difficulty: ScenarioDifficulty;
+    expectedTimeMinutes: number;
+    learningObjectives: string[];
+    subQuestions: ScenarioSubQuestionExtended[];
+}
+
+/** Request for mock-only generation (flexible parts). */
+export interface ScenarioMockGenerateRequest {
+    topicOrWeekId: string;
+    sourcePrompt: string;
+    selectedTypes: ScenarioSubQuestionType[];
+    difficulty: ScenarioDifficulty;
+}

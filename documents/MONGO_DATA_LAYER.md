@@ -47,6 +47,11 @@
   - **Per-chapter view** — derived at read time via `struggle-chapter-normalize.ts` (`assignLabelsToChapters` + instructor catalog); not stored on the row.
   - **Catalog** — `getAllInstructorStruggleTopics` includes `topicOrWeekId` for chapter derivation in exports and report stats.
 - **TBD**: Courses, registry / scheduled tasks, flags, users, chats, globals, instructor prompts — main operations per file and noteworthy cross-dependencies (`getFlagReportsWithUserNames`, etc.).
+- **Scenario Questions (Practice Scenarios)** — `scenario-questions-mongo.ts` on a dedicated per-course `{courseName}_scenario_questions` collection (not embedded on `activeCourse`):
+  - **`ScenarioQuestion`** — one doc per question; `status: 'draft' | 'published' | 'rejected'`, `topicOrWeekId` FK to chapter, `subQuestions[]` (parts a-d, a-c required for publish), `solutionBody` + `modelAnswer` stripped for students via `toStudentProjection`.
+  - **Lazy migration (SQ-001)** — `ensureScenarioQuestionsCollection` provisions the collection + `activeCourse.collections.scenarioQuestions` on first scenario-questions API call for courses that predate the feature; new courses get it eagerly in `postActiveCourse` (`course-mongo.ts`). Registry: [DATA_MIGRATIONS.md](DATA_MIGRATIONS.md#sq-001-scenario-questions-collection-backfill).
+  - **Practice progress gate** — `CourseUser.scenarioProgress[]` on `{courseName}_users` (`course-user-mongo.ts` collection) tracks `checkedPartIds` per question per student; `recordScenarioPartCheck` upserts after each check-answer call (flexible order, latest verdict wins); `hasCheckedAllRequiredParts` powers the gated `/solution` endpoint.
+  - **AI generation** — `src/scenario-generation/scenario-generator.ts` (`POST .../generate`) and `scenario-feedback.ts` (`POST .../check-answer`) call the LLM directly; routes/business-logic split documented in `src/routes/mongo/scenario-questions-routes.ts`.
 - **Course summary (instructor modal)** — live metrics for the instructor course-summary UI:
   - **Catalog** (`active-course-list` / `course-mongo.ts`): `activeCourse.date` → summary **start date**; **end date** is not persisted yet (API placeholder until a catalog field exists).
   - **Roster** (`{courseName}_users` / `course-user-mongo.ts`): **`countCourseStudentsAndActiveChats`** — student row count (`affiliation: 'student'`) and count of **non-deleted** embedded chat threads, aligned with conversation ZIP export filters (`conversation-export-mongo.ts`).
@@ -67,7 +72,7 @@
 
 ## Changelog / migration notes
 
-- **Data migrations registry:** [DATA_MIGRATIONS.md](DATA_MIGRATIONS.md) — SP-001 (system prompts), CM-001 (chat mode), OB-001 (startup backfill).
+- **Data migrations registry:** [DATA_MIGRATIONS.md](DATA_MIGRATIONS.md) — SP-001 (system prompts), CM-001 (chat mode), OB-001 (startup backfill), SQ-001 (scenario questions collection).
 - Façade delegates live under `src/db/mongo/` (split from monolithic `enge-ai-mongodb.ts`).
 
 ## References

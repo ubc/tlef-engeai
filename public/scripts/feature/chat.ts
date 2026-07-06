@@ -144,6 +144,10 @@ export function renderLatexInHtmlContent(element: HTMLElement): void {
  */
 export class ChatManager {
     private static instance: ChatManager | null = null;
+
+    /** Shown in place of an LLM reply when a user sends on a retired scenario-generation chat. */
+    private static readonly RETIRED_SCENARIO_GENERATION_NOTICE =
+        'Scenario Generation is no longer available in chat. Please use Practice Scenarios from the sidebar to work on troubleshooting cases.';
     
     private chats: Chat[] = [];
     private activeChatId: string | null = null;
@@ -670,6 +674,14 @@ export class ChatManager {
         // Add messages to DOM incrementally
         this.addMessageToDOM(userMessage, activeChat);
         this.addMessageToDOM(botMessage, activeChat);
+
+        // Legacy scenario-generation chats keep their history but can no longer send new
+        // messages — show the retirement notice locally instead of calling the LLM.
+        if (activeChat.conversationMode === 'scenario-generation') {
+            botMessage.text = ChatManager.RETIRED_SCENARIO_GENERATION_NOTICE;
+            onComplete?.(botMessage);
+            return;
+        }
 
         // Show loading state immediately
         onChunk?.('Thinking...', false);

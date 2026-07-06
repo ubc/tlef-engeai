@@ -2,8 +2,12 @@
  * Loads platform default system prompts from JSON on disk with in-memory cache.
  *
  * Layout under `system-prompts/`:
- * - `socratic-default/`, `explanatory-default/`, `scenario-generation-default/` — `{mode}.json` + mode-only `.md` files (flat)
+ * - `socratic-default/`, `explanatory-default/` — `{mode}.json` + mode-only `.md` files (flat)
  * - `shared-default/` — shared `.md` modules referenced as `shared-default/<file>.md`
+ *
+ * Note: `scenario-generation-default/` is retained on disk but is no longer a chat conversation
+ * mode — it is repurposed by the standalone scenario generation feature (see
+ * `src/scenario-generation/`) and is not loaded through this module.
  *
  * Admin POST reload clears and re-reads files without restart.
  */
@@ -55,7 +59,6 @@ interface PlatformModeDefaultsRaw {
 const MODE_DEFAULT_FOLDER: Record<ConversationModeId, string> = {
     socratic: 'socratic-default',
     explanatory: 'explanatory-default',
-    'scenario-generation': 'scenario-generation-default',
 };
 
 const SHARED_BODY_FILE_PREFIX = 'shared-default/';
@@ -226,7 +229,7 @@ export function getPlatformDefaultVersion(mode: ConversationModeId): string {
 export function reloadPlatformDefaultsCache(): void {
     cache = {};
     resolvedSystemPromptsBaseDir = null;
-    for (const mode of ['socratic', 'explanatory', 'scenario-generation'] as ConversationModeId[]) {
+    for (const mode of ['socratic', 'explanatory'] as ConversationModeId[]) {
         getPlatformModeDefaults(mode);
     }
 }

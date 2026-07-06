@@ -86,3 +86,38 @@ export function getMockGeneratedStruggleTopics(): string[] {
     ];
 }
 
+/**
+ * Get one mock generated scenario question for Practice Scenarios developer-mode generation.
+ * Shape matches `scenario-generation-schema.ts`'s `singleScenarioSchema`.
+ */
+export function getMockGeneratedScenario(): {
+    title: string;
+    questionBody: string;
+    solutionBody: string;
+    subQuestions: Array<{ partId: 'a' | 'b' | 'c' | 'd'; prompt: string; modelAnswer: string }>;
+} {
+    return {
+        title: '[DEV MODE] Mock generated scenario',
+        questionBody:
+            'You are a process engineer at a pilot plant. During the morning shift, the reactor ' +
+            'is running 15% below the design conversion rate and the operator has flagged an ' +
+            'unexpected temperature drift on the jacket cooling loop.',
+        solutionBody:
+            '[DEV MODE] The baseline conversion is calculated from the design rate law. The deviation ' +
+            'is consistent with catalyst deactivation and reduced heat transfer efficiency.',
+        subQuestions: [
+            { partId: 'a', prompt: '[DEV MODE] Calculate the design conversion rate given the feed conditions.', modelAnswer: '[DEV MODE] Baseline conversion model answer.' },
+            { partId: 'b', prompt: '[DEV MODE] List plausible reasons for the observed 15% deviation.', modelAnswer: '[DEV MODE] Reasons model answer.' },
+            { partId: 'c', prompt: '[DEV MODE] Recommend corrective actions.', modelAnswer: '[DEV MODE] Actions model answer.' },
+        ],
+    };
+}
+
+/** Get a mock check-answer verdict/guidance pair for developer-mode scenario feedback. */
+export function getMockScenarioFeedback(): { verdict: 'correct' | 'needs_improvement'; guidance?: string } {
+    return {
+        verdict: 'needs_improvement',
+        guidance: '[DEV MODE] What governing equation applies here? What assumption might not hold?',
+    };
+}
+

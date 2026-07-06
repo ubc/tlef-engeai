@@ -195,7 +195,8 @@ function makeCtx(state: {
                     users: usersCollectionName,
                     flags: `${REPORT_FIXTURE_TARGET_COURSE_NAME}_flags`,
                     memoryAgent: memoryCollectionName,
-                    scheduledTasks: `${REPORT_FIXTURE_TARGET_COURSE_NAME}_scheduled-tasks`
+                    scheduledTasks: `${REPORT_FIXTURE_TARGET_COURSE_NAME}_scheduled-tasks`,
+                    scenarioQuestions: `${REPORT_FIXTURE_TARGET_COURSE_NAME}_scenario_questions`
                 }
             ]
         ]),

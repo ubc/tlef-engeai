@@ -53,6 +53,7 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 | `GET /course/:courseId/instructor/chat` | Instructor chat |
 | `GET /course/:courseId/instructor/assistant-prompts` | Assistant prompts |
 | `GET /course/:courseId/instructor/system-prompts` | System prompts |
+| `GET /course/:courseId/instructor/scenario-questions` | Scenario Questions (Practice Scenarios authoring) |
 | `GET /course/:courseId/instructor/course-information` | Course info |
 | `GET /course/:courseId/instructor/about` | About page |
 | `GET /course/:courseId/instructor/onboarding/course-setup` | Onboarding |
@@ -67,6 +68,7 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 |------|-------------|
 | `GET /course/:courseId/student` | Student home |
 | `GET /course/:courseId/student/chat` | Chat interface |
+| `GET /course/:courseId/student/scenarios` | Practice Scenarios |
 | `GET /course/:courseId/student/profile` | Profile |
 | `GET /course/:courseId/student/flag-history` | Flag history |
 | `GET /course/:courseId/student/about` | About page |
@@ -243,7 +245,7 @@ Local development helper for report/monitor work. **Only** course name `Test 3` 
 
 #### System prompt config (v2, instructor-only)
 
-Platform defaults ship in `src/chat/system-prompts/shared-default/`, `socratic-default/`, `explanatory-default/`, and `scenario-generation-default/` (flat `.md` + JSON manifests; see [SYSTEM_PROMPT_DEFAULTS.md](SYSTEM_PROMPT_DEFAULTS.md)). Per-course overrides live on `activeCourse.systemPromptConfig`. Routes: `src/routes/mongo/system-prompt-config-routes.ts` (mounted from `route-mongo.ts`).
+Platform defaults ship in `src/chat/system-prompts/shared-default/`, `socratic-default/`, and `explanatory-default/` (flat `.md` + JSON manifests; see [SYSTEM_PROMPT_DEFAULTS.md](SYSTEM_PROMPT_DEFAULTS.md)). `scenario-generation` was retired as a chat mode — `scenario-generation-default/` is repurposed for the Practice Scenarios feature's generation prompts (§ Scenario Questions below). Per-course overrides live on `activeCourse.systemPromptConfig`. Routes: `src/routes/mongo/system-prompt-config-routes.ts` (mounted from `route-mongo.ts`).
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
@@ -254,6 +256,26 @@ Platform defaults ship in `src/chat/system-prompts/shared-default/`, `socratic-d
 | POST | `/api/courses/:courseId/system-prompts/config/validate-plain` | Yes | Instructor | `{ xml }` → `{ ok, modules?, warnings[] }` |
 | GET | `/api/courses/:courseId/system-prompts/config/platform-modules/:mode` | Yes | Instructor | Shipped instructor modules from JSON (read-only) |
 | POST | `/api/courses/admin/system-prompt-defaults/reload` | Yes | Admin (global) | Reload platform JSON cache from disk |
+
+#### Scenario Questions (Practice Scenarios / Scenario Questions)
+
+Standalone practice bank replacing the retired `scenario-generation` chat mode (`planner/improved-scenario-generation-deliverables.md`). Documents live one-per-question in `{courseName}_scenario_questions` — lazy-provisioned on first request via SQ-001 ([DATA_MIGRATIONS.md](DATA_MIGRATIONS.md#sq-001-scenario-questions-collection-backfill)), never embedded on `activeCourse`. Chapter grouping uses `TopicOrWeekInstance.id`. Mounted from `src/routes/mongo/scenario-questions-routes.ts`; business logic lives in `src/db/mongo/scenario-questions-mongo.ts` and `src/scenario-generation/{scenario-generator,scenario-feedback}.ts`.
+
+Two auth tiers: `requireCourseMemberForScenarioAPI` (enrolled student **or** staff — list/get/check-answer/solution) and `requireInstructorForCourseAPI` (create/edit/status/delete/generate). Drafts are **404**, not 403, for students (D5/E-01 — no draft-existence leakage).
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| GET | `/api/courses/:courseId/scenario-questions` | Yes | Member | Instructor: all statuses, `?status=`/`?topicOrWeekId=` filters. Student: published only, `?topicOrWeekId=` filter |
+| GET | `/api/courses/:courseId/scenario-questions/:questionId` | Yes | Member | Instructor: full document any status. Student: 404 unless published |
+| POST | `/api/courses/:courseId/scenario-questions` | Yes | Instructor | Manual create (draft); `{ title, topicOrWeekId, sourcePrompt?, questionBody, solutionBody?, subQuestions? }` |
+| PUT | `/api/courses/:courseId/scenario-questions/:questionId` | Yes | Instructor | Edit title/chapter/narrative/parts (does not change `status`) |
+| PATCH | `/api/courses/:courseId/scenario-questions/:questionId/status` | Yes | Instructor | `{ status: 'draft' \| 'published' \| 'rejected' }` — publish re-validates parts (a)(b)(c) server-side |
+| DELETE | `/api/courses/:courseId/scenario-questions/:questionId` | Yes | Instructor | Hard delete |
+| POST | `/api/courses/:courseId/scenario-questions/generate` | Yes | Instructor | `{ mode: 'single' \| 'batch', sourcePrompt, topicOrWeekId, count? }` — RAG-grounded AI generation of draft(s); `count` capped at `SCENARIO_BATCH_MAX_COUNT` (10) |
+| POST | `/api/courses/:courseId/scenario-questions/:questionId/check-answer` | Yes | Member | `{ partId, studentAnswer }` → `ScenarioPartFeedbackResponse` (verdict + Socratic guidance, never the model answer); flexible part order, any number of re-checks |
+| GET | `/api/courses/:courseId/scenario-questions/:questionId/solution` | Yes | Member | Gated reveal — 403 for students until parts (a)(b)(c) each checked at least once; 200 with `{ questionBody, solutionBody, subQuestions }` (includes `modelAnswer`) once unlocked |
+
+**Errors:** `400` invalid body/status/partId; `401` unauthenticated; `403` non-member (list/check-answer/solution) or unmet solution gate; `404` course/question not found (including drafts for students); `422` generation failed (parse/validation failure — no orphan drafts persisted); `500` server error.
 
 ### 4.4 RAG (`/api/rag`)
 

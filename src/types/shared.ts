@@ -27,17 +27,28 @@
  * {@link Chat.conversationMode} until the first user message finalizes the chat to a real mode.
  *
  * Current product phase: memory-agent struggle detection and per-turn struggle tags apply only
- * when the resolved mode is `'socratic'`. Explanatory and scenario-generation do not consume
- * {@link MemoryAgentEntry}.
+ * when the resolved mode is `'socratic'`. Explanatory does not consume {@link MemoryAgentEntry}.
  */
-export const CONVERSATION_MODE_IDS = ['socratic', 'explanatory', 'scenario-generation'] as const;
+export const CONVERSATION_MODE_IDS = ['socratic', 'explanatory'] as const;
 
 export type ConversationModeId = (typeof CONVERSATION_MODE_IDS)[number];
 
 /**
- * Persisted chat lifecycle mode. `undeclared` means the chat has not received a user message yet.
+ * Retired chat mode slugs. `scenario-generation` was removed from the chat mode picker and
+ * replaced by the standalone Practice Scenarios / Scenario Questions feature (see
+ * `planner/improved-scenario-generation-deliverables.md`). Kept only so legacy chat documents
+ * that already persisted this value continue to type-check and render history; never selectable
+ * for new chats or sends.
  */
-export type PersistedConversationModeId = ConversationModeId | 'undeclared';
+export const RETIRED_CONVERSATION_MODE_IDS = ['scenario-generation'] as const;
+
+export type RetiredConversationModeId = (typeof RETIRED_CONVERSATION_MODE_IDS)[number];
+
+/**
+ * Persisted chat lifecycle mode. `undeclared` means the chat has not received a user message yet.
+ * Includes {@link RetiredConversationModeId} so legacy chat documents remain type-safe.
+ */
+export type PersistedConversationModeId = ConversationModeId | RetiredConversationModeId | 'undeclared';
 
 /**
  * Catalog availability for a {@link ConversationModeId} (GET /api/chat/conversation-modes).
@@ -177,6 +188,8 @@ export interface activeCourse {
         memoryAgent: string;
         /** Per-course scheduled publish jobs (e.g. `${courseName}_scheduled_tasks`) */
         scheduledTasks?: string;
+        /** Per-course Practice Scenarios question bank (e.g. `${courseName}_scenario_questions`); SQ-001 lazy-provisions on existing courses */
+        scenarioQuestions?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
     /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */
@@ -272,7 +285,6 @@ export interface CourseSystemPromptConfig {
     modes: {
         socratic: ModeSystemPromptState;
         explanatory: ModeSystemPromptState;
-        'scenario-generation': ModeSystemPromptState; // using string as key to avoid type error
     };
 }
 
@@ -442,6 +454,8 @@ export interface CourseUser {
     status: 'active' | 'inactive';
     /** Embedded conversation threads — see {@link Chat}. Collection: `{courseName}_users`. */
     chats: Chat[];
+    /** Per-question check-answer progress powering the Practice Scenarios solution gate — see {@link ScenarioPracticeProgress}. */
+    scenarioProgress?: ScenarioPracticeProgress[];
     createdAt: Date;
     updatedAt: Date;
 }
@@ -621,4 +635,125 @@ export interface CourseAnalyticsAccessFlags {
     periodEndDate: string | null;
     isAdminEarlyAccess: boolean;
     isAcademicPeriodEnded: boolean;
+}
+
+// =====================================================
+// ===== SCENARIO QUESTIONS (Practice Scenarios) ======
+// =====================================================
+//
+// Standalone practice bank replacing the retired `scenario-generation` chat mode — see
+// `planner/improved-scenario-generation-deliverables.md`. Persisted one document per question in
+// `{courseName}_scenario_questions` (collection name on `activeCourse.collections.scenarioQuestions`,
+// lazy-provisioned by SQ-001). Not embedded on the `activeCourse` document.
+
+/** Lifecycle of a scenario question. Drafts are invisible to students (404, not 403). */
+export type ScenarioQuestionStatus = 'draft' | 'published' | 'rejected';
+
+/** Sub-question slot in the (a)-(d) troubleshooting framework. (a)-(c) required for publish; (d) optional. */
+export type ScenarioPartId = 'a' | 'b' | 'c' | 'd';
+
+/** Parts required to publish a question and to unlock the gated solution reveal. */
+export const REQUIRED_SCENARIO_PART_IDS: readonly ScenarioPartId[] = ['a', 'b', 'c'] as const;
+
+/**
+ * One sub-question (a)-(d) embedded on a {@link ScenarioQuestion}. Stored inline (not a separate
+ * collection) so publish validation and check-answer stay simple.
+ */
+export interface ScenarioSubQuestion {
+    partId: ScenarioPartId; // which slot in the (a)-(d) framework this fills
+    prompt: string; // student-facing sub-question text (no "Part (a)" title in prose — UI shows the label)
+    points?: number; // optional instructor-assigned weight for this part
+    /** Instructor-approved model answer — never sent to students except via the gated solution endpoint. */
+    modelAnswer: string;
+}
+
+/**
+ * A single practice scenario question. Chapter grouping uses {@link TopicOrWeekInstance.id} (D1).
+ * Full document lives in `{courseName}_scenario_questions`; never embedded on `activeCourse`.
+ */
+export interface ScenarioQuestion {
+    id: string; // business id from IDGenerator.scenarioQuestionID
+    courseId: string; // activeCourse.id — cross-check FK
+    courseName: string; // denormalized, matches the flags/scheduled-tasks pattern for queries/logging
+    topicOrWeekId: string; // FK -> TopicOrWeekInstance.id (chapter); orphaned ids show as "Uncategorized" in instructor UI
+    title: string;
+    status: ScenarioQuestionStatus;
+    sourcePrompt: string; // instructor seed (single mode) or batch prompt text used to generate this question
+    questionBody: string; // Role + Setup + Crisis narrative (markdown + optional mermaid) — no sub-part titles in prose
+    solutionBody: string; // full model solution for instructor review / gated student reveal — stripped on student list/detail APIs
+    subQuestions: ScenarioSubQuestion[]; // required: a, b, c non-empty prompt+modelAnswer; d optional
+    generatedBy: 'instructor' | 'ai';
+    aiGenerationJobId?: string; // groups sibling drafts created by the same batch generation request
+    sortOrder: number; // instructor ordering within a chapter
+    createdAt: Date;
+    updatedAt: Date;
+    publishedAt?: Date | null;
+    createdByUserId: string;
+    lastEditedByUserId?: string;
+}
+
+/** Student-safe projection of {@link ScenarioQuestion} — omits `modelAnswer` and `solutionBody`. */
+export type ScenarioQuestionForStudent = Omit<ScenarioQuestion, 'solutionBody' | 'subQuestions'> & {
+    subQuestions: Array<Omit<ScenarioSubQuestion, 'modelAnswer'>>;
+};
+
+/** Verdict returned by the per-part check-answer endpoint. */
+export type ScenarioAnswerVerdict = 'correct' | 'needs_improvement';
+
+/** Request body for `POST /api/courses/:courseId/scenario-questions/:questionId/check-answer`. */
+export interface ScenarioCheckAnswerRequest {
+    partId: ScenarioPartId;
+    studentAnswer: string;
+}
+
+/**
+ * Response for the per-part check-answer endpoint. `guidance` is Socratic-only (2-4 hints/questions)
+ * and never includes the full `modelAnswer` text — see `scenario-feedback-default/` prompts.
+ */
+export interface ScenarioPartFeedbackResponse {
+    success: boolean;
+    partId: ScenarioPartId;
+    verdict: ScenarioAnswerVerdict;
+    /** Present when verdict === 'needs_improvement' — Socratic guidance only, never the worked solution. */
+    guidance?: string;
+    error?: string;
+}
+
+/** Per-user record of which required parts have been checked at least once — powers the solution gate. */
+export interface ScenarioPracticeProgress {
+    questionId: string;
+    checkedPartIds: ScenarioPartId[]; // union of parts checked at least once, any order (flexible check order)
+    lastVerdictByPart: Partial<Record<ScenarioPartId, ScenarioAnswerVerdict>>;
+    solutionViewedAt?: Date | null;
+}
+
+/** Request body for `POST /api/courses/:courseId/scenario-questions/generate`. */
+export interface ScenarioGenerateRequest {
+    mode: 'single' | 'batch';
+    sourcePrompt: string;
+    topicOrWeekId: string;
+    /** Batch mode only — number of drafts to generate; server caps at {@link SCENARIO_BATCH_MAX_COUNT}. */
+    count?: number;
+}
+
+/** Hard cap on batch generation size (D — deliverables §2 default). */
+export const SCENARIO_BATCH_MAX_COUNT = 10;
+
+/** Response for `POST /api/courses/:courseId/scenario-questions/generate`. */
+export interface ScenarioGenerateResponse {
+    success: boolean;
+    data?: ScenarioQuestion[]; // newly created draft(s); empty/omitted on parse failure (no orphan drafts persisted)
+    aiGenerationJobId?: string;
+    error?: string;
+}
+
+/**
+ * Response for the gated `GET /api/courses/:courseId/scenario-questions/:questionId/solution`.
+ * Only returned once the student has checked all {@link REQUIRED_SCENARIO_PART_IDS} at least once.
+ */
+export interface ScenarioSolutionResponse {
+    success: boolean;
+    solutionBody?: string;
+    subQuestions?: ScenarioSubQuestion[]; // includes modelAnswer — gated release only
+    error?: string;
 }

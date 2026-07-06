@@ -45,16 +45,6 @@ const MODE_CATALOG: ApiConversationModeListItem[] = [
         isDefault: false,
         sortOrder: 1,
     },
-    {
-        id: 'scenario-generation',
-        displayName: 'Scenario Generation',
-        shortDescription: 'Create exam-like troubleshooting scenario generation problems',
-        longDescription:
-            'Create exam-like troubleshooting scenario generation problems that are applicable to the discussed topics.',
-        status: 'active',
-        isDefault: false,
-        sortOrder: 2,
-    },
 ];
 
 /**

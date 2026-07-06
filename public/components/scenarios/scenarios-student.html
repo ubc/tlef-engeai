@@ -1,0 +1,51 @@
+<div class="scenarios-container">
+    <link rel="stylesheet" href="/styles/student-components/scenarios.css">
+
+    <div id="scenarios-list-view" class="scenarios-view">
+        <div class="scenarios-header mobile-header-bar">
+            <button id="hamburger-btn" class="mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
+                <i data-feather="menu"></i>
+            </button>
+            <h1 class="mobile-header-title">Practice Scenarios</h1>
+        </div>
+        <div id="scenarios-chapter-list" class="scenarios-chapter-list">
+            <!-- Chapter accordion rendered by scenarios-student.ts -->
+        </div>
+    </div>
+
+    <div id="scenarios-practice-view" class="scenarios-view scenarios-practice-view" style="display: none;">
+        <div class="practice-header">
+            <button id="scenarios-back-btn" class="scenarios-back-btn">
+                <i data-feather="arrow-left"></i>
+                <span>Back to list</span>
+            </button>
+            <h2 id="practice-question-title" class="practice-question-title"></h2>
+        </div>
+
+        <div class="practice-body">
+            <div class="practice-narrative-block">
+                <div id="practice-narrative" class="practice-narrative response-text"></div>
+            </div>
+
+            <div id="practice-progress" class="practice-progress" role="list" aria-label="Question parts progress"></div>
+
+            <div id="practice-part-card" class="practice-part-card">
+                <h3 id="practice-part-label" class="practice-part-label"></h3>
+                <p id="practice-part-prompt" class="practice-part-prompt"></p>
+                <textarea id="practice-answer-input" class="practice-answer-input" rows="6" placeholder="Type your answer here..."></textarea>
+                <div class="practice-part-actions">
+                    <button id="practice-check-btn" class="btn-primary practice-check-btn">Check answer</button>
+                </div>
+            </div>
+
+            <div id="practice-feedback-panel" class="practice-feedback-panel" style="display: none;"></div>
+
+            <div class="practice-continue-row">
+                <button id="practice-continue-btn" class="btn-secondary practice-continue-btn" disabled>Continue →</button>
+                <button id="practice-solution-btn" class="btn-outline practice-solution-btn" style="display: none;">View model solution</button>
+            </div>
+
+            <div id="practice-solution-panel" class="practice-solution-panel response-text" style="display: none;"></div>
+        </div>
+    </div>
+</div>

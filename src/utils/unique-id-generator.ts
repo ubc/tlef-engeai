@@ -300,6 +300,22 @@ export class IDGenerator {
     }
 
     /**
+     * Generates a unique Scenario Question ID using the formula:
+     * title + "-" + topicOrWeekId + "-" + courseName + "-" + date.toISOString() -> uniqueIDGenerator
+     *
+     * @param title - The scenario question title (instructor-entered or AI-generated)
+     * @param topicOrWeekId - The parent TopicOrWeekInstance.id (chapter)
+     * @param courseName - The name of the course for hierarchical uniqueness
+     * @param date - The creation date of the question (full ISO string with milliseconds)
+     * @returns A 12-character hexadecimal string representing the unique scenario question ID
+     */
+    scenarioQuestionID(title: string, topicOrWeekId: string, courseName: string, date: Date): string {
+        const dateString = date.toISOString();
+        const hashInput = title + "-" + topicOrWeekId + "-" + courseName + "-" + dateString;
+        return this.uniqueIDGenerator(hashInput);
+    }
+
+    /**
      * Generates a unique 6-character uppercase alphanumeric course code using the formula:
      * courseName + "-" + date.toISOString() -> uniqueIDGenerator -> convert to 6-char uppercase alphanumeric
      * 

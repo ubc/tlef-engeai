@@ -1,0 +1,138 @@
+<div class="sq-container">
+    <link rel="stylesheet" href="/styles/instructor-components/scenario-questions-instructor.css">
+
+    <div id="sq-grid-view" class="sq-grid-view">
+        <header class="sq-page-header">
+            <div class="sq-header mobile-header-bar">
+                <button id="instructor-hamburger-btn" class="instructor-mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
+                    <i data-feather="menu"></i>
+                </button>
+                <h1 class="mobile-header-title">Scenario Generation</h1>
+            </div>
+            <div class="sq-page-header-row">
+                <h1 class="sq-page-title">Scenario Generation</h1>
+            </div>
+        </header>
+
+        <div id="sq-list" class="sq-topic-grid" role="list" aria-label="Topics and weeks">
+            <!-- Topic/week project cards rendered by scenario-questions-instructor.ts -->
+        </div>
+    </div>
+
+    <div id="sq-topic-detail-view" class="sq-topic-detail-view" style="display: none;">
+        <button id="sq-topic-detail-back-btn" class="sq-topic-detail-back-btn" type="button">
+            <i data-feather="arrow-left"></i>
+            <span>All topics</span>
+        </button>
+        <header class="sq-topic-detail-page-header">
+            <div class="sq-topic-detail-page-titles">
+                <h1 class="sq-page-title">Scenario Generation</h1>
+                <p id="sq-topic-detail-subtitle" class="sq-topic-detail-subtitle"></p>
+            </div>
+            <button id="sq-topic-detail-generate-btn" class="sq-new-question-btn" type="button">New question</button>
+        </header>
+        <div id="sq-topic-detail-list" class="sq-question-row-list" role="list" aria-label="Scenario questions in this topic">
+            <!-- Question rows for the selected topic/week -->
+        </div>
+    </div>
+
+    <!-- Interface 2: Generate view (full page) -->
+    <div id="sq-generate-view" class="sq-generate-view" style="display: none;">
+        <button id="sq-generate-back-btn" class="sq-topic-detail-back-btn" type="button">
+            <i data-feather="arrow-left"></i>
+            <span>Back to questions</span>
+        </button>
+        <header class="sq-generate-page-header">
+            <h1 class="sq-page-title">Scenario Generation</h1>
+            <p id="sq-generate-subtitle" class="sq-topic-detail-subtitle"></p>
+        </header>
+
+        <div class="sq-generate-card">
+            <label class="sq-sr-only" for="sq-generate-prompt">Base question</label>
+            <textarea id="sq-generate-prompt" class="sq-generate-prompt" rows="8" placeholder="Write your base question here."></textarea>
+
+            <div class="sq-generate-controls">
+                <div class="sq-type-pills-row">
+                    <div id="sq-type-pills" class="sq-type-pills" role="group" aria-label="Subquestion types"></div>
+                    <div class="sq-type-add-wrap">
+                        <button id="sq-type-add-btn" type="button" class="sq-type-add-btn" aria-label="Add subquestion type" aria-expanded="false" aria-haspopup="true">+</button>
+                        <div id="sq-type-popover" class="sq-type-popover" style="display: none;" role="menu"></div>
+                    </div>
+                </div>
+
+                <div class="sq-generate-controls-right">
+                    <div class="sq-difficulty-wrap">
+                        <button id="sq-difficulty-btn" type="button" class="sq-difficulty-btn" aria-haspopup="listbox" aria-expanded="false">
+                            <i data-feather="chevron-right"></i>
+                            <span id="sq-difficulty-label">Medium</span>
+                        </button>
+                        <div id="sq-difficulty-menu" class="sq-difficulty-menu" style="display: none;" role="listbox">
+                            <button type="button" class="sq-difficulty-option" data-difficulty="hard">Hard</button>
+                            <button type="button" class="sq-difficulty-option sq-difficulty-option--active" data-difficulty="medium">Medium</button>
+                            <button type="button" class="sq-difficulty-option" data-difficulty="easy">Easy</button>
+                        </div>
+                    </div>
+                    <button id="sq-generate-submit-btn" type="button" class="sq-generate-submit-btn">Generate</button>
+                </div>
+            </div>
+
+            <p id="sq-generate-error" class="sq-form-error" style="display: none;"></p>
+        </div>
+    </div>
+
+    <!-- Interface 3: Editor view (full page) -->
+    <div id="sq-editor-view" class="sq-editor-view" style="display: none;">
+        <button id="sq-editor-back-btn" class="sq-topic-detail-back-btn" type="button">
+            <i data-feather="arrow-left"></i>
+            <span>Back to questions</span>
+        </button>
+
+        <div class="sq-editor-layout">
+            <main class="sq-editor-main">
+                <p id="sq-editor-breadcrumb" class="sq-editor-breadcrumb"></p>
+
+                <div class="sq-editor-section">
+                    <label class="sq-editor-section-label" for="sq-editor-question-body">Base question</label>
+                    <textarea id="sq-editor-question-body" class="sq-editor-textarea sq-editor-textarea--large" rows="6"></textarea>
+                </div>
+
+                <div id="sq-editor-parts" class="sq-editor-parts">
+                    <!-- Subquestion cards rendered by TS -->
+                </div>
+
+                <div class="sq-editor-actions-row">
+                    <button id="sq-editor-reject-btn" type="button" class="btn-outline sq-danger">Reject</button>
+                    <button id="sq-editor-publish-btn" type="button" class="btn-primary">Publish</button>
+                </div>
+
+                <p id="sq-editor-error" class="sq-form-error" style="display: none;"></p>
+            </main>
+
+            <aside class="sq-editor-meta">
+                <div class="sq-editor-meta-header">
+                    <button id="sq-editor-save-btn" type="button" class="sq-save-btn" disabled>Save</button>
+                </div>
+
+                <div class="sq-meta-field">
+                    <span class="sq-meta-label">Topic</span>
+                    <p id="sq-editor-topic-label" class="sq-meta-value"></p>
+                </div>
+
+                <div class="sq-meta-field">
+                    <span class="sq-meta-label">Learning objectives</span>
+                    <div id="sq-editor-lo-list" class="sq-lo-list"></div>
+                    <button id="sq-editor-lo-add-btn" type="button" class="sq-lo-add-btn" aria-label="Add learning objective">+</button>
+                </div>
+
+                <div class="sq-meta-field sq-meta-field--time">
+                    <span class="sq-meta-label">Expected Time</span>
+                    <div class="sq-expected-time-row">
+                        <button id="sq-time-decrease-btn" type="button" class="sq-time-step-btn" aria-label="Decrease time">−</button>
+                        <span id="sq-editor-expected-time" class="sq-expected-time">25:00</span>
+                        <button id="sq-time-increase-btn" type="button" class="sq-time-step-btn" aria-label="Increase time">+</button>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+</div>

@@ -14,6 +14,7 @@ import { authService } from '../services/auth-service.js';
 import { studentUserFactory } from '../factories/student-user-factory.js';
 import { renderStudentOnboarding } from '../onboarding/student-onboarding.js';
 import { initializeStudentFlagHistory } from '../feature/student-flag-history.js';
+import { initializeScenariosStudent } from '../feature/scenarios-student.js';
 import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
 import { renderAbout } from '../about/about.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
@@ -40,8 +41,8 @@ async function checkAuthentication(): Promise<boolean> {
 }
 
 // State tracking for navigation
-let currentComponent: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history' = 'welcome-screen';
-let previousComponent: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history' = 'welcome-screen';
+let currentComponent: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history' | 'scenarios' = 'welcome-screen';
+let previousComponent: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history' | 'scenarios' = 'welcome-screen';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // Check authentication first
@@ -453,8 +454,26 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         document.addEventListener('keydown', escHandler);
     };
 
+    const attachScenariosListeners = async () => {
+        try {
+            const response = await fetch(`/api/courses?name=${encodeURIComponent(user.courseName)}`, {
+                method: 'GET',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const result = await response.json();
+            if (result.success && result.data) {
+                await initializeScenariosStudent(result.data);
+            } else {
+                console.error('[STUDENT-MODE] ❌ Failed to load course for Practice Scenarios:', result.error);
+            }
+        } catch (error) {
+            console.error('[STUDENT-MODE] ❌ Error loading course for Practice Scenarios:', error);
+        }
+    };
+
     // --- COMPONENT LOADING ---
-    const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history') => {
+    const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history' | 'scenarios') => {
         if (!mainContentArea) return;
 
         // Close mobile sidebar when navigating to new view
@@ -471,6 +490,8 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                 const response = await fetch('/components/student/flag-history.html');
                 if (!response.ok) throw new Error(`Failed to load flag-history component: ${response.statusText}`);
                 html = await response.text();
+            } else if (componentName === 'scenarios') {
+                html = await loadComponentHTML('scenarios-student');
             } else {
                 html = await loadComponentHTML(componentName);
             }
@@ -499,6 +520,8 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                 attachProfileListeners();
             } else if (componentName === 'flag-history') {
                 attachFlagHistoryListeners();
+            } else if (componentName === 'scenarios') {
+                await attachScenariosListeners();
             }
         } catch (error) {
             console.error(`Error loading component ${componentName}:`, error);
@@ -517,9 +540,14 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             return;
         }
 
-        // Respect URL state: do not overwrite about/flag-history when triggered by ui-update-needed
+        // Respect URL state: do not overwrite standalone views when triggered by ui-update-needed
         const viewFromURL = getStudentViewFromURL();
-        if (viewFromURL === 'about' || viewFromURL === 'flag-history') {
+        if (
+            viewFromURL === 'about' ||
+            viewFromURL === 'flag-history' ||
+            viewFromURL === 'scenarios' ||
+            viewFromURL === 'profile'
+        ) {
             return;
         }
 
@@ -560,6 +588,8 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             await loadComponent('profile');
         } else if (view === 'flag-history') {
             await loadComponent('flag-history');
+        } else if (view === 'scenarios') {
+            await loadComponent('scenarios');
         } else if (view === 'about') {
             await renderAbout({ component: currentComponent, mode: 'student' });
         } else if (view === 'welcoming-message') {
@@ -712,7 +742,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         
         // URL state takes priority for about, flag-history, welcoming-message, profile
         // Prevents refresh bug where updateUI's async loadComponent overwrites handleURLState
-        const urlStateViews = ['about', 'flag-history', 'welcoming-message', 'profile'];
+        const urlStateViews = ['about', 'flag-history', 'welcoming-message', 'profile', 'scenarios'];
         const hasUrlStateView = urlState?.view && urlStateViews.includes(urlState.view);
         
         if (hasUrlStateView) {
@@ -891,6 +921,8 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             await loadComponent('profile');
         } else if (view === 'flag-history') {
             await loadComponent('flag-history');
+        } else if (view === 'scenarios') {
+            await loadComponent('scenarios');
         } else if (view === 'about') {
             await renderAbout({ component: currentComponent, mode: 'student' });
         }
@@ -935,6 +967,18 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         // console.log('[STUDENT-MODE] ✅ Flag history button listener attached');
     };
 
+    const attachPracticeScenariosButtonListener = () => {
+        const practiceScenariosBtn = document.getElementById('practice-scenarios-btn');
+        if (!practiceScenariosBtn) {
+            console.warn('[STUDENT-MODE] ⚠️ Practice Scenarios button not found');
+            return;
+        }
+
+        practiceScenariosBtn.addEventListener('click', () => {
+            navigateToStudentView('scenarios');
+        });
+    };
+
     const attachCourseSelectionListener = () => {
         const courseSelectionBtn = document.getElementById('course-selection-btn');
         if (!courseSelectionBtn) {
@@ -971,12 +1015,12 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
     // --- INITIALIZATION ---
     attachLogoutListener(); // Attach logout button listener
     attachProfileButtonListener(); // Attach profile button listener
+    attachPracticeScenariosButtonListener(); // Attach Practice Scenarios button listener
     attachCourseSelectionListener(); // Attach course selection button listener
     
     // Update companion text with current course
     updateCompanionText(user);
-    
-    updateUI();
+    // Initial view is set in the ChatManager init block above (handleURLState or updateUI).
 }
 
 /**
