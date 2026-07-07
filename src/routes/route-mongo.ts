@@ -50,7 +50,7 @@ import { IDGenerator } from '../utils/unique-id-generator';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import dotenv from 'dotenv';
 import { RAGApp } from '../rag/rag-app';
-import { addCharismaAndRichToCourse } from '../helpers/instructor-helpers';
+import { addAdminsToCourse } from '../helpers/instructor-helpers';
 import { appLogger } from '../utils/logger';
 import { isAdminUser } from '../utils/admin';
 import { filterAccessibleCourses, buildCourseSelectionByPeriod } from '../helpers/course-access';
@@ -430,20 +430,20 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
             // Continue even if enrollment fails - course is already created
         }
 
-        // Always add Charisma and Rich when a course is initiated (any creator)
+        // Always add current platform admins when a course is initiated (any creator)
         try {
             const courseName = courseData.courseName;
-            const instructorsWithCR = await addCharismaAndRichToCourse(
+            const instructorsWithAdmins = await addAdminsToCourse(
                 instance,
                 id,
                 courseName,
                 courseData.instructors
             );
-            await instance.updateActiveCourse(id, { instructors: instructorsWithCR });
-            courseData = { ...courseData, instructors: instructorsWithCR };
-            appLogger.log(`[CREATE-COURSE] Added Charisma and Rich to course ${id} (creator: ${creatorName})`);
-        } catch (crError) {
-            appLogger.error(`[CREATE-COURSE] Error adding Charisma and Rich to course:`, { error: crError });
+            await instance.updateActiveCourse(id, { instructors: instructorsWithAdmins });
+            courseData = { ...courseData, instructors: instructorsWithAdmins };
+            appLogger.log(`[CREATE-COURSE] Added admins to course ${id} (creator: ${creatorName})`);
+        } catch (adminError) {
+            appLogger.error(`[CREATE-COURSE] Error adding admins to course:`, { error: adminError });
         }
 
         // Since activeCourse is the correct type, we can return it directly
@@ -870,17 +870,17 @@ router.post(
         }
 
         try {
-            const instructorsWithCR = await addCharismaAndRichToCourse(
+            const instructorsWithAdmins = await addAdminsToCourse(
                 instance,
                 courseId,
                 courseName,
                 updatedCourse.instructors
             );
-            await instance.updateActiveCourse(courseId, { instructors: instructorsWithCR });
-            updatedCourse = { ...updatedCourse, instructors: instructorsWithCR };
-        } catch (crError) {
-            appLogger.error(`[COMPLETE-COURSE-SETUP] Error adding Charisma and Rich:`, {
-                error: crError
+            await instance.updateActiveCourse(courseId, { instructors: instructorsWithAdmins });
+            updatedCourse = { ...updatedCourse, instructors: instructorsWithAdmins };
+        } catch (adminError) {
+            appLogger.error(`[COMPLETE-COURSE-SETUP] Error adding admins:`, {
+                error: adminError
             });
         }
 

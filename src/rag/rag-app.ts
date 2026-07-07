@@ -107,8 +107,9 @@ export class RAGApp {
      */
     public static async getInstance(): Promise<RAGApp> {
         if (!this.instance) {
-            this.instance = new RAGApp(config);
-            await this.instance.initialize();
+            const instance = new RAGApp(config);
+            await instance.initialize(); // only assign after successful init so a failed init is retried
+            this.instance = instance;
         }
         return this.instance;
     }
