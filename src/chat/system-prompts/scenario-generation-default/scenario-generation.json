@@ -1,6 +1,6 @@
 {
   "version": "1.4.0",
-  "conversationMode": "socratic",
+  "conversationMode": "scenario-generation",
   "systemModules": [],
   "instructorModules": [
     {
@@ -8,8 +8,16 @@
       "bodyFile": "shared-default/system_prompt_guidance.md"
     },
     {
-      "id": "struggle topics",
-      "bodyFile": "struggle_topics.md"
+      "id": "scenario generation purpose and goals",
+      "bodyFile": "scenario_generation_purpose_and_goals.md"
+    },
+    {
+      "id": "engineering context and role selection",
+      "bodyFile": "engineering_context_and_role_selection.md"
+    },
+    {
+      "id": "generating plausible reasons and corrective actions",
+      "bodyFile": "generating_plausible_reasons_and_corrective_actions.md"
     },
     {
       "id": "text list formatting",
@@ -24,28 +32,12 @@
       "bodyFile": "shared-default/diagram_and_mermaid.md"
     },
     {
-      "id": "socratic diagram followup",
-      "bodyFile": "socratic_diagram_followup.md"
-    },
-    {
       "id": "correctness restrictions",
       "bodyFile": "shared-default/correctness_restrictions.md"
     },
     {
-      "id": "teaching methodology",
-      "bodyFile": "teaching_methodology.md"
-    },
-    {
-      "id": "practice questions",
-      "bodyFile": "practice_questions.md"
-    },
-    {
-      "id": "conversation management",
-      "bodyFile": "conversation_management.md"
-    },
-    {
-      "id": "socratic correctness restrictions",
-      "bodyFile": "socratic_correctness_restrictions.md"
+      "id": "scenario correctness restrictions",
+      "bodyFile": "scenario_correctness_restrictions.md"
     },
     {
       "id": "course main intro",

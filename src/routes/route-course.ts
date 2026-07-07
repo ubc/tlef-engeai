@@ -11,6 +11,7 @@ import { appLogger } from '../utils/logger';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { isCourseStaff } from '../utils/course-staff';
+import { normalizeRouteParams } from '../helpers/route-params';
 
 const router = express.Router();
 
@@ -24,7 +25,7 @@ const router = express.Router();
  */
 async function validateCourseAccess(req: Request, res: Response, next: express.NextFunction) {
     try {
-        const { courseId } = req.params;
+        const { courseId } = normalizeRouteParams(req.params);
         const user = (req as any).user;
         
         if (!user) {
@@ -479,7 +480,7 @@ router.get('/course/:courseId/student/onboarding/student', validateCourseAccess,
  * @response 404 - Course not found
  */
 router.get('/course/:courseId/instructor', validateCourseAccess, requireInstructorForCourse, (req: Request, res: Response) => {
-    const { courseId } = req.params;
+    const { courseId } = normalizeRouteParams(req.params);
     res.redirect(`/course/${courseId}/instructor/documents`);
 });
 

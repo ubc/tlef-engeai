@@ -6,7 +6,7 @@
  */
 
 import { RetrievedChunk } from 'ubc-genai-toolkit-rag';
-import { ConversationModeId } from '../types/shared';
+import { CONVERSATION_MODE_IDS, ConversationModeId } from '../types/shared';
 import { appLogger } from '../utils/logger';
 
 export const COURSE_MATERIALS_OPEN = '<course_materials>';
@@ -70,6 +70,24 @@ Remember: Your primary job is to help the student understand the concept from co
 
 Student's question:`;
 
+const SCENARIO_GENERATION_RAG_BRIDGE_PROMPT = `Based on the course materials and context provided above, help using Scenario Generation mode.
+
+When responding:
+
+1. **TRANSFORM THE PROBLEM** - Use the student's message as the original calculation problem. When course materials contain similar problems, use them only to preserve fidelity to course conventions—not to copy solutions.
+
+2. **OUTPUT A QUESTION ONLY** - Deliver the troubleshooting scenario incrementally: setup + crisis + part (a) first, then one sub-question per later turn. Do not include solutions, worked calculations, or correct troubleshooting reasons/actions.
+
+3. **PRESERVE FIDELITY** - Keep the baseline calculation in part (a) mathematically equivalent in difficulty and concept to the original problem. Do not change underlying chemistry, stoichiometry, or physics.
+
+4. **STRUCTURE** - Include role + setup + crisis with part (a) in the first reply; reveal parts (b)–(d) one at a time with point allocations totaling ~100 pts across the full scenario. End with course code + "Troubleshooting version" on the final sub-question when known from context.
+
+5. **COURSE MATERIALS** - When retrieved materials lack a usable problem, rely on the student's pasted question as the source.
+
+Remember: Your primary job is to generate an assessment-ready troubleshooting scenario question, not to tutor or solve it.
+
+Student's question:`;
+
 const DEFAULT_MODE_ID: ConversationModeId = 'socratic';
 
 const STUDENT_QUESTION_MARKER = "Student's question:";
@@ -96,6 +114,11 @@ export class RAGPrompts {
         'g'
     );
 
+    private static readonly scenarioGenerationBridgePattern = new RegExp(
+        `${SCENARIO_GENERATION_RAG_BRIDGE_PROMPT.split('\n')[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?Student's question:`,
+        'g'
+    );
+
     private constructor() {}
 
     /**
@@ -109,8 +132,8 @@ export class RAGPrompts {
     }
 
     private resolveModeId(input?: string | null): ConversationModeId {
-        if (input === 'socratic' || input === 'explanatory') {
-            return input;
+        if (input !== undefined && input !== null && (CONVERSATION_MODE_IDS as readonly string[]).includes(input)) {
+            return input as ConversationModeId;
         }
         return DEFAULT_MODE_ID;
     }
@@ -184,6 +207,9 @@ export class RAGPrompts {
         if (resolved === 'explanatory') {
             return `${context}${RAG_CONTEXT_SEPARATOR}${EXPLANATORY_RAG_BRIDGE_PROMPT}${userMessage}`;
         }
+        if (resolved === 'scenario-generation') {
+            return `${context}${RAG_CONTEXT_SEPARATOR}${SCENARIO_GENERATION_RAG_BRIDGE_PROMPT}${userMessage}`;
+        }
         return `${context}${RAG_CONTEXT_SEPARATOR}${userMessage}`;
     }
 
@@ -202,6 +228,7 @@ export class RAGPrompts {
         stripped = stripped.replace(RAGPrompts.separatorPattern, '');
         stripped = stripped.replace(RAGPrompts.socraticBridgePattern, '');
         stripped = stripped.replace(RAGPrompts.explanatoryBridgePattern, '');
+        stripped = stripped.replace(RAGPrompts.scenarioGenerationBridgePattern, '');
 
         const questionIndex = stripped.indexOf(STUDENT_QUESTION_MARKER);
         if (questionIndex !== -1) {

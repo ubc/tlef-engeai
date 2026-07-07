@@ -2,7 +2,7 @@
  * Platform admin utilities.
  *
  * Admins are identified by full name (not PUID) via the ADMINS env var, a
- * comma-separated list, e.g. ADMINS=Richard Tape,Charisma Rusdiyanto
+ * comma-separated list, e.g. ADMINS=Kathleen Tom,Example Admin
  * Matching is fuzzy (handles middle initials/suffix variation) via namesMatch.
  */
 

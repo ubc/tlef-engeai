@@ -9,6 +9,7 @@ import { asyncHandlerWithAuth } from '../../middleware/async-handler';
 import { requireAdminGlobal } from '../../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../../db/enge-ai-mongodb';
 import { AcademicPeriodValidationError } from '../../db/mongo/academic-period-mongo';
+import { routeParam } from '../../helpers/route-params';
 
 const router = Router();
 
@@ -53,7 +54,7 @@ router.get(
     requireAdminGlobal,
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         const mongo = await EngEAI_MongoDB.getInstance();
-        const data = await mongo.getAcademicPeriodById(req.params.id);
+        const data = await mongo.getAcademicPeriodById(routeParam(req.params, 'id'));
         if (!data) {
             return res.status(404).json({ success: false, error: 'Academic period not found' });
         }
@@ -68,7 +69,7 @@ router.put(
         try {
             const { title, startDate, endDate } = req.body ?? {};
             const mongo = await EngEAI_MongoDB.getInstance();
-            const data = await mongo.updateAcademicPeriod(req.params.id, { title, startDate, endDate });
+            const data = await mongo.updateAcademicPeriod(routeParam(req.params, 'id'), { title, startDate, endDate });
             if (!data) {
                 return res.status(404).json({ success: false, error: 'Academic period not found' });
             }

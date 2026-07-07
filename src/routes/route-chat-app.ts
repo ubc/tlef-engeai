@@ -21,6 +21,7 @@ import { getRandomYesResponse, getRandomNoResponse } from '../memory-agent/unstr
 import { memoryAgent } from '../memory-agent/memory-agent';
 import { stripQuestionUnstruggleTag } from '../utils/message-utils';
 import { appLogger } from '../utils/logger';
+import { normalizeRouteParams } from '../helpers/route-params';
 
 // Load environment variables
 dotenv.config();
@@ -399,7 +400,7 @@ router.patch('/:chatId/conversation-mode', asyncHandlerWithAuth(async (
     res: Response<UpdateChatConversationModeResponse>
 ) => {
     try {
-        const { chatId } = req.params;
+        const { chatId } = normalizeRouteParams(req.params);
         const { conversationMode } = req.body;
         const user = (req as any).user;
         const puid = user?.puid;
@@ -420,7 +421,7 @@ router.patch('/:chatId/conversation-mode', asyncHandlerWithAuth(async (
             });
         }
 
-        if (conversationMode !== 'socratic' && conversationMode !== 'explanatory') {
+        if (!conversationModePrompts.isValidConversationMode(conversationMode)) {
             return res.status(400).json({
                 success: false,
                 error: 'Invalid conversation mode',
@@ -500,7 +501,7 @@ router.patch('/:chatId/conversation-mode', asyncHandlerWithAuth(async (
  */
 router.post('/:chatId/dismiss-unstruggle', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const { chatId } = req.params;
+        const { chatId } = normalizeRouteParams(req.params);
         const { messageId, topic } = req.body;
 
         const user = (req as any).user;
@@ -564,7 +565,7 @@ router.post('/:chatId/dismiss-unstruggle', asyncHandlerWithAuth(async (req: Requ
  */
 router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const { chatId } = req.params;
+        const { chatId } = normalizeRouteParams(req.params);
         const { message, userId: userIdFromBody, conversationMode } = req.body; // Rename to avoid conflict
         
         // Get user from session
@@ -625,13 +626,26 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
 
         if (
             conversationMode !== undefined &&
-            conversationMode !== 'socratic' &&
-            conversationMode !== 'explanatory'
+            !conversationModePrompts.isValidConversationMode(conversationMode)
         ) {
             return res.status(400).json({
                 success: false,
                 error: 'Invalid conversation mode'
             });
+        }
+
+        
+        if (conversationMode !== undefined) {
+            try {
+                conversationModePrompts.assertModeActiveForNewChat(
+                    conversationModePrompts.resolveModeId(conversationMode)
+                );
+            } catch (modeError) {
+                return res.status(400).json({
+                    success: false,
+                    error: modeError instanceof Error ? modeError.message : 'Invalid conversation mode',
+                });
+            }
         }
 
         // Validate chat exists (or restore from database if evicted from memory)
@@ -904,7 +918,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
  */
 router.get('/:chatId/history', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const { chatId } = req.params;
+        const { chatId } = normalizeRouteParams(req.params);
         
         // Validate chat exists
         if (!chatApp.validateChatExists(chatId)) {
@@ -948,7 +962,7 @@ router.get('/:chatId/history', asyncHandlerWithAuth(async (req: Request, res: Re
  */
 router.get('/:chatId/message/:messageId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const { chatId, messageId } = req.params;
+        const { chatId, messageId } = normalizeRouteParams(req.params);
         
         // Validate chat exists
         if (!chatApp.validateChatExists(chatId)) {
@@ -998,7 +1012,7 @@ router.get('/:chatId/message/:messageId', asyncHandlerWithAuth(async (req: Reque
  */
 router.post('/restore/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const { chatId } = req.params;
+        const { chatId } = normalizeRouteParams(req.params);
         
         // Get user from session
         const user = (req as any).user;
@@ -1100,7 +1114,7 @@ router.post('/restore/:chatId', asyncHandlerWithAuth(async (req: Request, res: R
  */
 router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const { chatId } = req.params;
+        const { chatId } = normalizeRouteParams(req.params);
         
         // Get user from session
         const user = (req as any).user;
@@ -1222,7 +1236,7 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
  */
 router.put('/:chatId/pin', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const { chatId } = req.params;
+        const { chatId } = normalizeRouteParams(req.params);
         const { isPinned } = req.body;
 
         //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-001)

@@ -38,6 +38,11 @@ const existingConfig: CourseSystemPromptConfig = {
             modules: [],
             updatedAt: '2026-06-01T00:00:00.000Z',
         },
+        'scenario-generation': {
+            usePlatformDefault: true,
+            modules: [],
+            updatedAt: '2026-06-01T00:00:00.000Z',
+        },
     },
 };
 

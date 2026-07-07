@@ -5,7 +5,7 @@
  * assemble-course-system-prompt.ts and platform JSON defaults.
  */
 
-import { ConversationModeId } from '../types/shared';
+import { CONVERSATION_MODE_IDS, ConversationModeId } from '../types/shared';
 
 export type { ConversationModeId };
 
@@ -45,6 +45,16 @@ const MODE_CATALOG: ApiConversationModeListItem[] = [
         isDefault: false,
         sortOrder: 1,
     },
+    {
+        id: 'scenario-generation',
+        displayName: 'Scenario Generation',
+        shortDescription: 'Create exam-like troubleshooting scenario generation problems',
+        longDescription:
+            'Create exam-like troubleshooting scenario generation problems that are applicable to the discussed topics.',
+        status: 'active',
+        isDefault: false,
+        sortOrder: 2,
+    },
 ];
 
 /**
@@ -64,7 +74,7 @@ export class ConversationModePrompts {
 
     /** True when the string is an active catalog mode slug (does not coerce invalid values). */
     public isValidConversationMode(mode: string): mode is ConversationModeId {
-        return mode === 'socratic' || mode === 'explanatory';
+        return (CONVERSATION_MODE_IDS as readonly string[]).includes(mode);
     }
 
     public resolveModeId(input?: string | null): ConversationModeId {

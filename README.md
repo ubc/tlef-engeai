@@ -1,6 +1,6 @@
 # TLEF ENGE AI
 
-![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-24.1.0-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-5.1-000000?logo=express&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/MongoDB-6.3-47A248?logo=mongodb&logoColor=white)
@@ -29,7 +29,6 @@ EngE-AI is an AI-powered learning assistant for UBC Engineering courses which em
 - Course-aware AI chat
 - Flag creation ("I'm struggling")
 - Flag history
-- Access to course materials and objectives
 
 ### Technical
 - Vector search (Qdrant)
@@ -50,11 +49,11 @@ EngE-AI is an AI-powered learning assistant for UBC Engineering courses which em
 
 ### Prerequisites
 
-- **Node.js** (v18+)
-- **MongoDB** (running and accessible)
-- **Qdrant** (vector database)
+- **Node.js** (v24.1.0)
+- **MongoDB** (see [setup instructions](https://github.com/ubc/tlef-mongodb-docker))
+- **Qdrant** (see [setup instructions](https://github.com/ubc/tlef-qdrant))
+- **SAML** (see [setup instructions](https://github.com/ubc/docker-simple-saml))
 - **LLM endpoint** (e.g. Ollama or other provider)
-- **SAML** (optional): IdP metadata, issuer, callback URL for CWL auth. For local development, use [docker-simple-saml](https://github.com/ubc/docker-simple-saml) as a containerized IdP.
 
 ### Setup Steps
 
@@ -71,29 +70,15 @@ EngE-AI is an AI-powered learning assistant for UBC Engineering courses which em
    npm install
    ```
 
-3. Create a `.env` file in the project root (see Environment Variables below).
+3. Create a `.env` file in the project root (use `.env.example` and update the variables as needed).
 
 4. Run the application:
    - **Development:** `npm run dev` (nodemon + BrowserSync)
    - **Production:** `npm start`
 
-### Environment Variables
-
-| Group | Variables |
-|-------|-----------|
-| **Server** | `TLEF_ENGE_AI_PORT` (default 8020) |
-| **MongoDB** | `MONGO_HOST`, `MONGO_PORT`, `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_AUTH_SOURCE`, `MONGO_DB_NAME` |
-| **Qdrant** | `QDRANT_URL`, `QDRANT_COLLECTION_NAME`, `QDRANT_VECTOR_SIZE`, `QDRANT_DISTANCE_METRIC`, `QDRANT_API_KEY` (optional) |
-| **LLM** | `LLM_PROVIDER`, `LLM_ENDPOINT`, `LLM_DEFAULT_MODEL`, `LLM_API_KEY` |
-| **Embeddings** | `EMBEDDING_PROVIDER`, `EMBEDDINGS_ENDPOINT`, `EMBEDDINGS_MODEL` |
-| **RAG** | `RAG_CHUNK_SIZE`, `RAG_OVERLAP_SIZE`, `RAG_CHUNKING_STRATEGY`, `RAG_MIN_CHUNK_SIZE` |
-| **SAML** | `SAML_AVAILABLE`, `SAML_ISSUER`, `SAML_CALLBACK_URL`, `SAML_ENTRY_POINT`, `SAML_LOGOUT_URL`, `SAML_METADATA_URL`, `SAML_ENVIRONMENT` |
-| **Session** | `SESSION_SECRET`, `SESSION_TIMEOUT_MS` |
-| **Optional** | `DEBUG`, `DEVELOPING_MODE` (mock LLM), instructor PUID overrides |
-
 ---
 
-## Teams
+## Team
 
 | Role | Name |
 |------|------|
@@ -101,15 +86,16 @@ EngE-AI is an AI-powered learning assistant for UBC Engineering courses which em
 | Co-Investigator | [Amir M. Dehkhoda](https://mtrl.ubc.ca/amir-m-dehkhoda/) — Assistant Professor of Teaching, Materials Engineering |
 | Software Developer | [Richard Tape](https://ctlt.ubc.ca/2022/11/15/richard-tape/) |
 | Software Developer | Charisma Rusdiyanto |
+| Software Developer | Kathleen Tom |
+| Software Developer | Christopher Rodas |
 
 ---
 
 ## How to Contribute
 
-1. Fork the repo
-2. Create a feature branch
-3. Follow existing code style (TypeScript, Express patterns)
-4. Submit a pull request
+1. Create a feature branch
+2. Follow existing code style (TypeScript, Express patterns)
+3. Submit a pull request
 
 For API reference, see [documentation/ENDPOINT_ARCHITECTURE.md](documentation/ENDPOINT_ARCHITECTURE.md).
 

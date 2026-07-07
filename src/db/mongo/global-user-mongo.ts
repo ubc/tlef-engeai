@@ -73,6 +73,9 @@ export async function createGlobalUser(
         createdAt: new Date(),
         updatedAt: new Date()
     };
+    if (userData.isAdmin === true) {
+        newUser.isAdmin = true;
+    }
     await collection.insertOne(newUser as any);
     return newUser;
 }

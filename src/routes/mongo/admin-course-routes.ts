@@ -12,6 +12,7 @@ import { DEFAULT_ACADEMIC_PERIOD_TITLE } from '../../db/mongo/academic-period-mo
 import type { activeCourse, GlobalUser, InstructorInfo } from '../../types/shared';
 import { buildDefaultByWeekCourseContent } from '../../helpers/build-default-course-content';
 import { isAdminUser } from '../../utils/admin';
+import { routeParam } from '../../helpers/route-params';
 
 const router = Router();
 
@@ -199,7 +200,7 @@ router.put(
     '/courses/:id',
     requireAdminGlobal,
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
-        const courseId = req.params.id;
+        const courseId = routeParam(req.params, 'id');
         const { courseName, academicPeriodId, instructorUserIds } = req.body ?? {};
         const mongo = await EngEAI_MongoDB.getInstance();
 
@@ -254,11 +255,12 @@ router.post(
             return res.status(403).json({ success: false, error: 'Admin access required' });
         }
         const mongo = await EngEAI_MongoDB.getInstance();
-        const course = await mongo.getActiveCourse(req.params.id);
+        const courseId = routeParam(req.params, 'id');
+        const course = await mongo.getActiveCourse(courseId);
         if (!course) {
             return res.status(404).json({ success: false, error: 'Course not found' });
         }
-        await mongo.ensureAdminCourseEnrollment(globalUser, req.params.id);
+        await mongo.ensureAdminCourseEnrollment(globalUser, courseId);
         res.json({ success: true });
     })
 );

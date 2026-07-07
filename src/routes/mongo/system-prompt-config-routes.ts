@@ -13,6 +13,7 @@ import { conversationModePrompts } from '../../chat/compose-system-prompt';
 import { appLogger } from '../../utils/logger';
 import { systemPromptConfigApi } from '../../utils/system-prompt-config-api';
 import { getPlatformInstructorModules, reloadPlatformDefaultsCache } from '../../chat/system-prompts/system-prompt-defaults-loader';
+import { normalizeRouteParams } from '../../helpers/route-params';
 
 function invalidModeResponse(res: Response): Response {
     return res.status(400).json({ success: false, error: 'Invalid conversation mode' });
@@ -30,7 +31,7 @@ export function mountSystemPromptConfigRoutes(router: Router): void {
         '/:courseId/system-prompts/config',
         requireInstructorForCourseAPI(['params']),
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
-            const { courseId } = req.params;
+            const { courseId } = normalizeRouteParams(req.params);
             const instance = await EngEAI_MongoDB.getInstance();
             const config = await instance.getSystemPromptConfig(courseId);
             res.json({ success: true, data: systemPromptConfigApi.enrichForInstructorApi(config) });
@@ -45,7 +46,7 @@ export function mountSystemPromptConfigRoutes(router: Router): void {
         '/:courseId/system-prompts/config/modes/:mode',
         requireInstructorForCourseAPI(['params']),
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
-            const { courseId, mode } = req.params;
+            const { courseId, mode } = normalizeRouteParams(req.params);
             if (!conversationModePrompts.isValidConversationMode(mode)) {
                 return invalidModeResponse(res);
             }
@@ -73,7 +74,7 @@ export function mountSystemPromptConfigRoutes(router: Router): void {
         '/:courseId/system-prompts/config/modes/:mode/reset',
         requireInstructorForCourseAPI(['params']),
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
-            const { courseId, mode } = req.params;
+            const { courseId, mode } = normalizeRouteParams(req.params);
             if (!conversationModePrompts.isValidConversationMode(mode)) {
                 return invalidModeResponse(res);
             }
@@ -91,7 +92,7 @@ export function mountSystemPromptConfigRoutes(router: Router): void {
         '/:courseId/system-prompts/config/default-conversation-mode',
         requireInstructorForCourseAPI(['params']),
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
-            const { courseId } = req.params;
+            const { courseId } = normalizeRouteParams(req.params);
             const { mode } = req.body ?? {};
             if (!conversationModePrompts.isValidConversationMode(mode)) {
                 return invalidModeResponse(res);
@@ -110,7 +111,7 @@ export function mountSystemPromptConfigRoutes(router: Router): void {
         '/:courseId/system-prompts/config/platform-modules/:mode',
         requireInstructorForCourseAPI(['params']),
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
-            const { mode } = req.params;
+            const { mode } = normalizeRouteParams(req.params);
             if (!conversationModePrompts.isValidConversationMode(mode)) {
                 return invalidModeResponse(res);
             }

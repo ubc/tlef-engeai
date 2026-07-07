@@ -84,6 +84,7 @@ import {
     resolveChatExportDate,
     sanitizeZipPathSegment
 } from '../helpers/conversation-export-path';
+import { normalizeRouteParams, routeParam } from '../helpers/route-params';
 import { contentDispositionAttachmentPdf } from '../report-generation';
 import type { ConversationZipExportRow } from '../db/mongo/conversation-export-mongo';
 import { mountSystemPromptConfigRoutes } from './mongo/system-prompt-config-routes';
@@ -733,7 +734,7 @@ router.get('/course-selection', asyncHandlerWithAuth(async (req: Request, res: R
  */
 router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
-    const course = await instance.getActiveCourse(req.params.id);
+    const course = await instance.getActiveCourse(routeParam(req.params, 'id'));
 
     if (!course) {
         return res.status(404).json({
@@ -768,7 +769,7 @@ router.post(
     requireInstructorForCourseAPI(['paramsId']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         const instance = await EngEAI_MongoDB.getInstance();
-        const courseId = req.params.id;
+        const courseId = routeParam(req.params, 'id');
         const globalUser = (req.session as any).globalUser;
 
         const existingCourse = await instance.getActiveCourse(courseId);
@@ -908,7 +909,7 @@ router.put('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWith
     const instance = await EngEAI_MongoDB.getInstance();
     
     // First check if course exists
-    const existingCourse = await instance.getActiveCourse(req.params.id);
+    const existingCourse = await instance.getActiveCourse(routeParam(req.params, 'id'));
     if (!existingCourse) {
         return res.status(404).json({
             success: false,
@@ -918,7 +919,7 @@ router.put('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWith
     
     // Update the course
     const updateData = req.body;
-    const updatedCourse = await instance.updateActiveCourse(req.params.id, updateData);
+    const updatedCourse = await instance.updateActiveCourse(routeParam(req.params, 'id'), updateData);
     
     res.status(200).json({
         success: true,
@@ -944,7 +945,7 @@ router.put('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWith
  */
 router.post('/:courseId/instructors', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const { courseId } = req.params;
+        const { courseId } = normalizeRouteParams(req.params);
         const globalUser = (req.session as any).globalUser;
         
         if (!globalUser) {
@@ -1053,7 +1054,7 @@ router.delete('/:id/restart-onboarding', requireInstructorForCourseAPI(['paramsI
     
     try {
         // First check if course exists and save the courseName
-        const existingCourse = await instance.getActiveCourse(req.params.id);
+        const existingCourse = await instance.getActiveCourse(routeParam(req.params, 'id'));
         if (!existingCourse) {
             return res.status(404).json({
                 success: false,
@@ -1137,7 +1138,7 @@ router.delete('/:id/restart-onboarding', requireInstructorForCourseAPI(['paramsI
 /*
 router.delete('/:id/remove', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const courseId = req.params.id;
+        const courseId = routeParam(req.params, 'id');
         const mongoDB = await EngEAI_MongoDB.getInstance();
         
         // Step 1: Get course from active-course-list
@@ -1266,7 +1267,7 @@ router.delete('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerW
     const instance = await EngEAI_MongoDB.getInstance();
     
     // First check if course exists
-    const existingCourse = await instance.getActiveCourse(req.params.id);
+    const existingCourse = await instance.getActiveCourse(routeParam(req.params, 'id'));
     if (!existingCourse) {
         return res.status(404).json({
             success: false,
@@ -1294,7 +1295,7 @@ router.delete('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerW
 router.put('/:courseId/topic-or-week-instances/reorder', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId } = req.params;
+        const { courseId } = normalizeRouteParams(req.params);
         const orderedIds = parseOrderedIdsBody(req.body);
 
         if (!orderedIds) {
@@ -1341,7 +1342,7 @@ router.put('/:courseId/topic-or-week-instances/reorder', requireInstructorForCou
 router.post('/:courseId/topic-or-week-instances', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId } = req.params;
+        const { courseId } = normalizeRouteParams(req.params);
         const { title } = req.body || {};
 
         const course = await instance.getActiveCourse(courseId);
@@ -1418,7 +1419,7 @@ router.post('/:courseId/topic-or-week-instances', requireInstructorForCourseAPI(
 router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, topicOrWeekId } = req.params;
+        const { courseId, topicOrWeekId } = normalizeRouteParams(req.params);
         const { contentItem } = req.body || {};
 
         if (!contentItem || typeof contentItem.title !== 'string' || !contentItem.title.trim()) {
@@ -1484,7 +1485,7 @@ router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items', requireIn
 router.get('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives', asyncHandler(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, topicOrWeekId, itemId } = req.params;
+        const { courseId, topicOrWeekId, itemId } = normalizeRouteParams(req.params);
         
         const course = await instance.getActiveCourse(courseId);
         
@@ -1549,7 +1550,7 @@ router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/obj
         appLogger.log('🔍 [BACKEND] Request body:', req.body);
         
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, topicOrWeekId, itemId } = req.params;
+        const { courseId, topicOrWeekId, itemId } = normalizeRouteParams(req.params);
         const { learningObjective } = req.body;
         
         if (!learningObjective) {
@@ -1603,7 +1604,7 @@ router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/obj
 router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/reorder', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, topicOrWeekId, itemId } = req.params;
+        const { courseId, topicOrWeekId, itemId } = normalizeRouteParams(req.params);
         const { orderedIds } = req.body;
 
         if (!Array.isArray(orderedIds)) {
@@ -1655,7 +1656,7 @@ router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/obje
 router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/objectives/:objectiveId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, topicOrWeekId, itemId, objectiveId } = req.params;
+        const { courseId, topicOrWeekId, itemId, objectiveId } = normalizeRouteParams(req.params);
         const { updateData } = req.body;
         
         if (!updateData) {
@@ -1713,7 +1714,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/o
         appLogger.log('🔍 [BACKEND] Request params:', req.params);
         
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, topicOrWeekId, itemId, objectiveId } = req.params;
+        const { courseId, topicOrWeekId, itemId, objectiveId } = normalizeRouteParams(req.params);
         
         appLogger.log('📡 [BACKEND] Calling deleteLearningObjective with:', { courseId, topicOrWeekId, itemId, objectiveId });
         
@@ -1752,7 +1753,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/o
 router.get('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics', asyncHandler(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, topicOrWeekId, itemId } = req.params;
+        const { courseId, topicOrWeekId, itemId } = normalizeRouteParams(req.params);
 
         const course = await instance.getActiveCourse(courseId);
         if (!course) {
@@ -1798,7 +1799,7 @@ router.get('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/stru
 router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, topicOrWeekId, itemId } = req.params;
+        const { courseId, topicOrWeekId, itemId } = normalizeRouteParams(req.params);
         const { struggleTopic } = req.body;
 
         if (!struggleTopic) {
@@ -1850,7 +1851,7 @@ router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/str
 router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/reorder', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, topicOrWeekId, itemId } = req.params;
+        const { courseId, topicOrWeekId, itemId } = normalizeRouteParams(req.params);
         const { orderedIds } = req.body;
 
         if (!Array.isArray(orderedIds)) {
@@ -1901,7 +1902,7 @@ router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/stru
 router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, topicOrWeekId, itemId, struggleTopicId } = req.params;
+        const { courseId, topicOrWeekId, itemId, struggleTopicId } = normalizeRouteParams(req.params);
         const { updateData } = req.body;
 
         if (!updateData) {
@@ -1950,7 +1951,7 @@ router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/stru
 router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, topicOrWeekId, itemId, struggleTopicId } = req.params;
+        const { courseId, topicOrWeekId, itemId, struggleTopicId } = normalizeRouteParams(req.params);
 
         const result = await instance.deleteInstructorStruggleTopic(courseId, topicOrWeekId, itemId, struggleTopicId);
 
@@ -1993,7 +1994,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/s
 router.post('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId } = req.params;
+        const { courseId } = normalizeRouteParams(req.params);
         const { flagType, reportType, chatContent, userId } = req.body;
         
         // Validate required fields
@@ -2075,7 +2076,7 @@ router.get(
     requireInstructorForCourseAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
-            const { courseId } = req.params;
+            const { courseId } = normalizeRouteParams(req.params);
             const instance = await EngEAI_MongoDB.getInstance();
             const course = await instance.getActiveCourse(courseId);
             if (!course) {
@@ -2107,7 +2108,7 @@ router.patch(
     requireRosterManageAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
-            const { courseId, userId: targetUserId } = req.params;
+            const { courseId, userId: targetUserId } = normalizeRouteParams(req.params);
             const role = req.body?.role as string | undefined;
             if (role !== 'student' && role !== 'ta') {
                 return res.status(400).json({ success: false, error: 'role must be student or ta' });
@@ -2172,7 +2173,7 @@ router.get(
     requireInstructorForCourseAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
-            const { courseId } = req.params;
+            const { courseId } = normalizeRouteParams(req.params);
             const instance = await EngEAI_MongoDB.getInstance();
             const course = await instance.getActiveCourse(courseId);
             if (!course) {
@@ -2277,7 +2278,7 @@ router.get(
     requirePostPeriodAnalyticsAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
-            const { courseId } = req.params;
+            const { courseId } = normalizeRouteParams(req.params);
             const phase = typeof req.query.phase === 'string' ? req.query.phase : undefined;
             const mongoDB = await EngEAI_MongoDB.getInstance();
 
@@ -2315,7 +2316,7 @@ router.post(
     '/:courseId/report-fixture/seed',
     requireAdminForCourseAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
-        const { courseId } = req.params;
+        const { courseId } = normalizeRouteParams(req.params);
         const struggleTopicsByStudent = parseStruggleTopicsByStudentBody(req.body);
         if (!struggleTopicsByStudent) {
             return res.status(400).json({
@@ -2357,7 +2358,7 @@ router.post(
 router.get('/:courseId/flags', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId } = req.params;
+        const { courseId } = normalizeRouteParams(req.params);
         
         // Get course to get course name
         const course = await instance.getActiveCourse(courseId);
@@ -2400,7 +2401,7 @@ router.get('/:courseId/flags', requireInstructorForCourseAPI(['params']), asyncH
 router.get('/:courseId/flags/with-names', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId } = req.params;
+        const { courseId } = normalizeRouteParams(req.params);
         
         // Get course to get course name
         const course = await instance.getActiveCourse(courseId);
@@ -2447,7 +2448,7 @@ router.get('/:courseId/flags/with-names', requireInstructorForCourseAPI(['params
 router.get('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, flagId } = req.params;
+        const { courseId, flagId } = normalizeRouteParams(req.params);
         
         // Get course to get course name
         const course = await instance.getActiveCourse(courseId);
@@ -2500,7 +2501,7 @@ router.get('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params'])
 router.put('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, flagId } = req.params;
+        const { courseId, flagId } = normalizeRouteParams(req.params);
         const { status, response } = req.body;
         
         // Get course to get course name
@@ -2582,7 +2583,7 @@ router.put('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params'])
 router.patch('/:courseId/flags/:flagId/response', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, flagId } = req.params;
+        const { courseId, flagId } = normalizeRouteParams(req.params);
         const { response } = req.body;
 
         // Get course to get course name
@@ -2664,7 +2665,7 @@ router.patch('/:courseId/flags/:flagId/response', requireInstructorForCourseAPI(
 router.delete('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, flagId } = req.params;
+        const { courseId, flagId } = normalizeRouteParams(req.params);
         
         // Get course to get course name
         const course = await instance.getActiveCourse(courseId);
@@ -2718,7 +2719,7 @@ router.delete('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params
 router.delete('/:courseId/flags', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId } = req.params;
+        const { courseId } = normalizeRouteParams(req.params);
         
         // Get course to get course name
         const course = await instance.getActiveCourse(courseId);
@@ -2769,7 +2770,7 @@ router.delete('/:courseId/flags', requireInstructorForCourseAPI(['params']), asy
 router.post('/:courseId/flags/create-indexes', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId } = req.params;
+        const { courseId } = normalizeRouteParams(req.params);
         
         // Get course to get course name
         const course = await instance.getActiveCourse(courseId);
@@ -2819,7 +2820,7 @@ router.post('/:courseId/flags/create-indexes', requireInstructorForCourseAPI(['p
 router.get('/:courseId/flags/validate', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId } = req.params;
+        const { courseId } = normalizeRouteParams(req.params);
         
         // Get course to get course name
         const course = await instance.getActiveCourse(courseId);
@@ -2864,7 +2865,7 @@ router.get('/:courseId/flags/validate', requireInstructorForCourseAPI(['params']
 router.get('/:courseId/flags/statistics', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId } = req.params;
+        const { courseId } = normalizeRouteParams(req.params);
         
         // Get course to get course name
         const course = await instance.getActiveCourse(courseId);
@@ -2910,7 +2911,7 @@ router.get('/:courseId/flags/statistics', asyncHandlerWithAuth(async (req: Reque
 router.get('/:courseId/flags/student/:userId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, userId } = req.params;
+        const { courseId, userId } = normalizeRouteParams(req.params);
         
         // Get course to get course name
         const course = await instance.getActiveCourse(courseId);
@@ -2966,7 +2967,7 @@ router.get('/:courseId/flags/student/:userId', asyncHandlerWithAuth(async (req: 
  */
 router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/materials/:materialId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const { courseId, topicOrWeekId, itemId, materialId } = req.params;
+        const { courseId, topicOrWeekId, itemId, materialId } = normalizeRouteParams(req.params);
         
         appLogger.log(`🗑️ Deleting material ${materialId} from course ${courseId}, topic/week instance ${topicOrWeekId}, item ${itemId}`);
         
@@ -3077,7 +3078,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
  */
 router.delete('/:courseId/documents/all', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const { courseId } = req.params;
+        const { courseId } = normalizeRouteParams(req.params);
         
         appLogger.log('🔍 BACKEND DELETE ALL DOCUMENTS - Request Details:');
         appLogger.log('  Headers:', req.headers);
@@ -3171,7 +3172,7 @@ router.delete('/:courseId/documents/all', requireInstructorForCourseAPI(['params
 router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, topicOrWeekId } = req.params;
+        const { courseId, topicOrWeekId } = normalizeRouteParams(req.params);
         const { title } = req.body;
         
         // Validate input
@@ -3275,7 +3276,7 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', asyncHan
 router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/published', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, topicOrWeekId } = req.params;
+        const { courseId, topicOrWeekId } = normalizeRouteParams(req.params);
         const { published } = req.body;
         
         // Validate input
@@ -3357,7 +3358,7 @@ const MIN_SCHEDULE_LEAD_MS = 60_000;
 router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/publish-schedule', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
-        const { courseId, topicOrWeekId } = req.params;
+        const { courseId, topicOrWeekId } = normalizeRouteParams(req.params);
         const { scheduledPublishAt } = req.body as { scheduledPublishAt?: string | null };
 
         if (!('scheduledPublishAt' in req.body)) {
@@ -3484,7 +3485,7 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/publish-schedule
 router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, topicOrWeekId } = req.params;
+        const { courseId, topicOrWeekId } = normalizeRouteParams(req.params);
 
         if (!courseId || !topicOrWeekId) {
             return res.status(400).json({
@@ -3598,7 +3599,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId', requireInstru
 router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, topicOrWeekId, itemId } = req.params;
+        const { courseId, topicOrWeekId, itemId } = normalizeRouteParams(req.params);
         const { title } = req.body;
         
         // Validate input
@@ -3722,7 +3723,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
         appLogger.log('🔍 [BACKEND] Request params:', req.params);
         
         const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId, topicOrWeekId, itemId } = req.params;
+        const { courseId, topicOrWeekId, itemId } = normalizeRouteParams(req.params);
         
         // Validate input
         if (!courseId || !topicOrWeekId || !itemId) {
@@ -3844,7 +3845,7 @@ router.get(
     requirePostPeriodAnalyticsAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
-            const { courseId } = req.params;
+            const { courseId } = normalizeRouteParams(req.params);
             const mongoDB = await EngEAI_MongoDB.getInstance();
             const course = await mongoDB.getActiveCourse(courseId);
             if (!course) {
@@ -3882,7 +3883,7 @@ router.get(
     requireInstructorForCourseAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
-            const { courseId } = req.params;
+            const { courseId } = normalizeRouteParams(req.params);
             const mongoDB = await EngEAI_MongoDB.getInstance();
             const course = await mongoDB.getActiveCourse(courseId);
             if (!course) {
@@ -3914,7 +3915,7 @@ router.get(
     requireInstructorForCourseAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const { courseId } = req.params;
+        const { courseId } = normalizeRouteParams(req.params);
         const mongoDB = await EngEAI_MongoDB.getInstance();
         
         // Get course to get courseName
@@ -4013,7 +4014,7 @@ router.get(
     requireInstructorForCourseAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const { courseId, chatId } = req.params;
+        const { courseId, chatId } = normalizeRouteParams(req.params);
         const mongoDB = await EngEAI_MongoDB.getInstance();
         
         // Get course to get courseName
@@ -4093,7 +4094,7 @@ router.get(
     requirePostPeriodAnalyticsAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
-            const { courseId } = req.params;
+            const { courseId } = normalizeRouteParams(req.params);
             const rawFormat = typeof req.query.format === 'string' ? req.query.format : 'txt';
             const archiveKind = rawFormat === 'json' ? 'json' : rawFormat === 'txt' ? 'txt' : null;
             if (!archiveKind) {
@@ -4213,7 +4214,7 @@ router.get(
     requireAdminForCourseAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
-            const { courseId } = req.params;
+            const { courseId } = normalizeRouteParams(req.params);
             const mongoDB = await EngEAI_MongoDB.getInstance();
             const course = await mongoDB.getActiveCourse(courseId);
             if (!course) {
@@ -4296,7 +4297,7 @@ router.get('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Requ
             });
         }
 
-        const { courseId } = req.params;
+        const { courseId } = normalizeRouteParams(req.params);
         const instance = await EngEAI_MongoDB.getInstance();
         
         // Verify instructor is in course's instructors array
@@ -4380,7 +4381,7 @@ router.post('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Req
             });
         }
 
-        const { courseId } = req.params;
+        const { courseId } = normalizeRouteParams(req.params);
         const { title, content } = req.body;
 
         if (!title || typeof title !== 'string' || title.trim() === '') {
@@ -4479,7 +4480,7 @@ router.put('/:courseId/assistant-prompts/:promptId', asyncHandlerWithAuth(async 
             });
         }
 
-        const { courseId, promptId } = req.params;
+        const { courseId, promptId } = normalizeRouteParams(req.params);
         const { title, content } = req.body;
 
         if (!title && !content) {
@@ -4571,7 +4572,7 @@ router.delete('/:courseId/assistant-prompts/:promptId', asyncHandlerWithAuth(asy
             });
         }
 
-        const { courseId, promptId } = req.params;
+        const { courseId, promptId } = normalizeRouteParams(req.params);
         const instance = await EngEAI_MongoDB.getInstance();
         
         // Verify instructor is in course's instructors array
@@ -4644,7 +4645,7 @@ router.post('/:courseId/assistant-prompts/:promptId/select', asyncHandlerWithAut
             });
         }
 
-        const { courseId, promptId } = req.params;
+        const { courseId, promptId } = normalizeRouteParams(req.params);
         const instance = await EngEAI_MongoDB.getInstance();
         
         // Verify instructor is in course's instructors array

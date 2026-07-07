@@ -12,6 +12,7 @@ import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, dism
 import {
     Chat,
     ChatMessage,
+    CONVERSATION_MODE_IDS,
     ConversationModeId,
     PersistedConversationModeId,
     CourseUser,
@@ -378,7 +379,7 @@ export class ChatManager {
     }
 
     private isRealConversationMode(modeId: PersistedConversationModeId | undefined): modeId is ConversationModeId {
-        return modeId === 'socratic' || modeId === 'explanatory';
+        return modeId !== undefined && (CONVERSATION_MODE_IDS as readonly string[]).includes(modeId as string);
     }
 
     private getActiveChatConversationMode(): PersistedConversationModeId | undefined {
