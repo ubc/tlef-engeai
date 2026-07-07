@@ -890,4 +890,5 @@ export interface ScenarioMockGenerateRequest {
     sourcePrompt: string;
     selectedTypes: ScenarioSubQuestionType[];
     difficulty: ScenarioDifficulty;
+    title?: string;
 }

@@ -22,11 +22,11 @@
     <div id="sq-topic-detail-view" class="sq-topic-detail-view" style="display: none;">
         <button id="sq-topic-detail-back-btn" class="sq-topic-detail-back-btn" type="button">
             <i data-feather="arrow-left"></i>
-            <span>All topics</span>
+            <span>Scenario Generation</span>
         </button>
         <header class="sq-topic-detail-page-header">
             <div class="sq-topic-detail-page-titles">
-                <h1 class="sq-page-title">Scenario Generation</h1>
+                <h1 id="sq-topic-detail-title" class="sq-page-title"></h1>
                 <p id="sq-topic-detail-subtitle" class="sq-topic-detail-subtitle"></p>
             </div>
             <button id="sq-topic-detail-generate-btn" class="sq-new-question-btn" type="button">New question</button>
@@ -40,11 +40,16 @@
     <div id="sq-generate-view" class="sq-generate-view" style="display: none;">
         <button id="sq-generate-back-btn" class="sq-topic-detail-back-btn" type="button">
             <i data-feather="arrow-left"></i>
-            <span>Back to questions</span>
+            <span id="sq-generate-back-label"></span>
         </button>
-        <header class="sq-generate-page-header">
-            <h1 class="sq-page-title">Scenario Generation</h1>
-            <p id="sq-generate-subtitle" class="sq-topic-detail-subtitle"></p>
+        <header class="sq-generate-page-header sq-editor-page-header">
+            <div class="sq-editor-title-row">
+                <h1 id="sq-generate-title-display" class="sq-page-title sq-editor-title" tabindex="0" role="button" aria-label="Edit question title">Untitled</h1>
+                <input id="sq-generate-title-input" class="sq-editor-title-input sq-page-title sq-editor-title" type="text" aria-label="Question title" style="display: none;" />
+                <button id="sq-generate-title-edit-btn" type="button" class="sq-editor-title-edit-btn" aria-label="Edit question title">
+                    <i data-feather="edit-2"></i>
+                </button>
+            </div>
         </header>
 
         <div class="sq-generate-card">
@@ -62,14 +67,14 @@
 
                 <div class="sq-generate-controls-right">
                     <div class="sq-difficulty-wrap">
-                        <button id="sq-difficulty-btn" type="button" class="sq-difficulty-btn" aria-haspopup="listbox" aria-expanded="false">
+                        <button id="sq-difficulty-btn" type="button" class="sq-difficulty-btn sq-difficulty-btn-medium" aria-haspopup="listbox" aria-expanded="false">
                             <i data-feather="chevron-right"></i>
                             <span id="sq-difficulty-label">Medium</span>
                         </button>
                         <div id="sq-difficulty-menu" class="sq-difficulty-menu" style="display: none;" role="listbox">
-                            <button type="button" class="sq-difficulty-option" data-difficulty="hard">Hard</button>
-                            <button type="button" class="sq-difficulty-option sq-difficulty-option--active" data-difficulty="medium">Medium</button>
-                            <button type="button" class="sq-difficulty-option" data-difficulty="easy">Easy</button>
+                            <button type="button" class="sq-difficulty-option sq-difficulty-option-hard" data-difficulty="hard">Hard</button>
+                            <button type="button" class="sq-difficulty-option sq-difficulty-option-medium sq-difficulty-option--active" data-difficulty="medium">Medium</button>
+                            <button type="button" class="sq-difficulty-option sq-difficulty-option-easy" data-difficulty="easy">Easy</button>
                         </div>
                     </div>
                     <button id="sq-generate-submit-btn" type="button" class="sq-generate-submit-btn">Generate</button>
@@ -84,16 +89,34 @@
     <div id="sq-editor-view" class="sq-editor-view" style="display: none;">
         <button id="sq-editor-back-btn" class="sq-topic-detail-back-btn" type="button">
             <i data-feather="arrow-left"></i>
-            <span>Back to questions</span>
+            <span id="sq-editor-back-label"></span>
         </button>
 
         <div class="sq-editor-layout">
             <main class="sq-editor-main">
-                <p id="sq-editor-breadcrumb" class="sq-editor-breadcrumb"></p>
+                <header class="sq-editor-page-header">
+                    <div class="sq-editor-title-row">
+                        <h1 id="sq-editor-title-display" class="sq-page-title sq-editor-title" tabindex="0" role="button" aria-label="Edit question title"></h1>
+                        <input id="sq-editor-title-input" class="sq-editor-title-input sq-page-title sq-editor-title" type="text" aria-label="Question title" style="display: none;" />
+                        <button id="sq-editor-title-edit-btn" type="button" class="sq-editor-title-edit-btn" aria-label="Edit question title">
+                            <i data-feather="edit-2"></i>
+                        </button>
+                    </div>
+                </header>
 
-                <div class="sq-editor-section">
-                    <label class="sq-editor-section-label" for="sq-editor-question-body">Base question</label>
-                    <textarea id="sq-editor-question-body" class="sq-editor-textarea sq-editor-textarea--large" rows="6"></textarea>
+                <div class="sq-editor-section sq-base-question-panel">
+                    <div class="sq-section-header-row">
+                        <span class="sq-editor-section-label">Base question</span>
+                        <div class="sq-view-toggle sq-base-question-toggle" role="group" aria-label="Base question view mode">
+                            <button type="button" class="sq-view-toggle-btn sq-base-question-toggle-btn sq-view-toggle-btn--active" data-mode="edit">Edit</button>
+                            <button type="button" class="sq-view-toggle-btn sq-base-question-toggle-btn" data-mode="preview">Preview</button>
+                        </div>
+                    </div>
+                    <div class="sq-base-question-body">
+                        <label class="sq-sr-only" for="sq-editor-question-body">Base question</label>
+                        <textarea id="sq-editor-question-body" class="sq-editor-textarea sq-editor-textarea--large" rows="6"></textarea>
+                        <div id="sq-editor-question-rendered" class="sq-markdown-preview message-content" hidden></div>
+                    </div>
                 </div>
 
                 <div id="sq-editor-parts" class="sq-editor-parts">
@@ -120,8 +143,8 @@
 
                 <div class="sq-meta-field">
                     <span class="sq-meta-label">Learning objectives</span>
-                    <div id="sq-editor-lo-list" class="sq-lo-list"></div>
-                    <button id="sq-editor-lo-add-btn" type="button" class="sq-lo-add-btn" aria-label="Add learning objective">+</button>
+                    <div id="sq-editor-lo-list" class="sq-lo-list" aria-live="polite"></div>
+                    <button id="sq-editor-lo-manage-btn" type="button" class="sq-lo-manage-btn">Manage objectives</button>
                 </div>
 
                 <div class="sq-meta-field sq-meta-field--time">
@@ -133,6 +156,23 @@
                     </div>
                 </div>
             </aside>
+        </div>
+    </div>
+
+    <div id="sq-lo-modal-overlay" class="sq-modal-overlay" style="display: none;" aria-hidden="true">
+        <div class="sq-modal sq-lo-modal" role="dialog" aria-labelledby="sq-lo-modal-title" aria-modal="true">
+            <div class="sq-modal-header">
+                <h2 id="sq-lo-modal-title">Learning objectives</h2>
+                <button id="sq-lo-modal-close-btn" type="button" class="sq-modal-close-btn" aria-label="Close">×</button>
+            </div>
+            <div class="sq-modal-body">
+                <p class="sq-lo-modal-hint">Select learning objectives from the course document.</p>
+                <div id="sq-lo-modal-catalog" class="sq-lo-modal-catalog" role="group" aria-label="Course learning objectives"></div>
+            </div>
+            <div class="sq-modal-footer">
+                <button id="sq-lo-modal-cancel-btn" type="button" class="btn-outline">Cancel</button>
+                <button id="sq-lo-modal-save-btn" type="button" class="btn-primary">Done</button>
+            </div>
         </div>
     </div>
 </div>

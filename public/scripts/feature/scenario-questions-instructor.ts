@@ -29,13 +29,20 @@ import { RenderChat } from './render-chat.js';
 import { renderLatexInHtmlContent } from './chat.js';
 import {
     parseAnswerKeyToFlashcards,
-    formatPartHeader,
     SUB_QUESTION_TYPE_LABELS
 } from './scenario-answer-flashcard.js';
 
 const ALL_TYPES: ScenarioSubQuestionType[] = ['calculation', 'troubleshoot', 'action', 'corrective'];
 const DEFAULT_SELECTED_TYPES: ScenarioSubQuestionType[] = ['calculation', 'troubleshoot', 'action'];
 const AUTO_SAVE_MS = 5000;
+
+const lastEditedDateFmt = new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+});
 
 const renderChat = new RenderChat();
 
@@ -47,6 +54,9 @@ let editorQuestion: ScenarioQuestionExtended | null = null;
 let isDirty = false;
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
+/** Draft title while composing a new question in the generate view. */
+let generateDraftTitle = 'Untitled';
+
 /** Selected types in order for generate view. */
 let selectedTypes: ScenarioSubQuestionType[] = [...DEFAULT_SELECTED_TYPES];
 let selectedDifficulty: ScenarioDifficulty = 'medium';
@@ -56,12 +66,34 @@ const partAnswerModes = new Map<string, 'text' | 'flashcard'>();
 /** Per-part flashcard step index. */
 const partFlashcardIndex = new Map<string, number>();
 
+/** Base question pane: raw markdown editor vs rendered preview (mutually exclusive). */
+let questionBodyViewMode: 'edit' | 'preview' = 'edit';
+
+/** Draft LO selection while the manage modal is open. */
+let loModalDraftSelection: string[] = [];
+
+/** ponytail: mock catalog until course-document LO API exists. */
+const MOCK_DOCUMENT_LEARNING_OBJECTIVES: { code: string; description: string }[] = [
+    { code: 'LO-10-1', description: 'Apply steady-state mass balances to process units.' },
+    { code: 'LO-10-2', description: 'Interpret P&ID symbols for valve and pump failures.' },
+    { code: 'LO-10-3', description: 'Troubleshoot deviations using first-principles reasoning.' },
+    { code: 'LO-11-1', description: 'Select appropriate corrective actions under operational constraints.' },
+    { code: 'LO-11-2', description: 'Communicate engineering recommendations with units and assumptions.' },
+    { code: 'LO-12-1', description: 'Evaluate safety and environmental impacts of process changes.' },
+];
+
 let uiAbort: AbortController | null = null;
 
 function escapeHtml(text: string): string {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+/** Render markdown + LaTeX into a preview container (matches student practice / chat). */
+function renderMarkdownInto(element: HTMLElement, markdown: string, idPrefix: string): void {
+    element.innerHTML = renderChat.render(markdown, idPrefix);
+    renderLatexInHtmlContent(element);
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -146,6 +178,13 @@ function attachStaticListeners(): void {
         renderTopicDetail();
     }, { signal });
 
+    document.getElementById('sq-generate-title-edit-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        beginInlineTitleEdit('generate');
+    }, { signal });
+    document.getElementById('sq-generate-title-display')?.addEventListener('click', () => beginInlineTitleEdit('generate'), { signal });
+    wireInlineTitleInput('generate', signal);
+
     document.getElementById('sq-generate-submit-btn')?.addEventListener('click', handleGenerateSubmit, { signal });
     document.getElementById('sq-type-add-btn')?.addEventListener('click', toggleTypePopover, { signal });
     document.getElementById('sq-difficulty-btn')?.addEventListener('click', toggleDifficultyMenu, { signal });
@@ -166,10 +205,31 @@ function attachStaticListeners(): void {
         renderTopicDetail();
     }, { signal });
 
+    document.getElementById('sq-editor-title-edit-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        beginInlineTitleEdit('editor');
+    }, { signal });
+    document.getElementById('sq-editor-title-display')?.addEventListener('click', () => beginInlineTitleEdit('editor'), { signal });
+    wireInlineTitleInput('editor', signal);
+
     document.getElementById('sq-editor-save-btn')?.addEventListener('click', () => persistEditor(true), { signal });
     document.getElementById('sq-editor-publish-btn')?.addEventListener('click', handlePublish, { signal });
     document.getElementById('sq-editor-reject-btn')?.addEventListener('click', handleReject, { signal });
-    document.getElementById('sq-editor-lo-add-btn')?.addEventListener('click', handleAddLearningObjective, { signal });
+    document.getElementById('sq-editor-lo-manage-btn')?.addEventListener('click', openLearningObjectivesModal, { signal });
+    document.getElementById('sq-lo-modal-close-btn')?.addEventListener('click', closeLearningObjectivesModal, { signal });
+    document.getElementById('sq-lo-modal-cancel-btn')?.addEventListener('click', closeLearningObjectivesModal, { signal });
+    document.getElementById('sq-lo-modal-save-btn')?.addEventListener('click', saveLearningObjectivesModal, { signal });
+    document.getElementById('sq-lo-modal-overlay')?.addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeLearningObjectivesModal();
+    }, { signal });
+
+    document.querySelectorAll<HTMLButtonElement>('.sq-base-question-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const mode = btn.dataset.mode as 'edit' | 'preview' | undefined;
+            if (mode) setQuestionBodyViewMode(mode);
+        }, { signal });
+    });
+
     document.getElementById('sq-time-decrease-btn')?.addEventListener('click', () => adjustExpectedTime(-5), { signal });
     document.getElementById('sq-time-increase-btn')?.addEventListener('click', () => adjustExpectedTime(5), { signal });
 
@@ -220,11 +280,16 @@ function topicStats(topicOrWeekId: string): { count: number; lastUpdatedAt: stri
     return statsFromQuestions(questionsForTopic(topicOrWeekId));
 }
 
-function formatUpdatedLabel(isoDate: string | null): string {
-    if (!isoDate) return 'Not updated yet';
+function formatLastEditedLabel(isoDate: string | null): string {
+    if (!isoDate) return 'Last edited: Not updated yet';
     const date = new Date(isoDate);
-    if (Number.isNaN(date.getTime())) return 'Not updated yet';
-    return `Updated ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    if (Number.isNaN(date.getTime())) return 'Last edited: Not updated yet';
+    return `Last edited: ${lastEditedDateFmt.format(date)}`;
+}
+
+function getTopicTitle(topicOrWeekId: string): string {
+    if (topicOrWeekId === '__uncategorized__') return 'Uncategorized';
+    return currentCourse?.topicOrWeekInstances?.find(c => c.id === topicOrWeekId)?.title ?? 'Topic';
 }
 
 async function renderTopicGrid(): Promise<void> {
@@ -266,7 +331,7 @@ function renderTopicProjectCard(topicOrWeekId: string, title: string, count: num
         <button type="button" class="sq-project-card" data-topic-id="${escapeHtml(topicOrWeekId)}" data-topic-title="${escapeHtml(title)}">
             <span class="sq-project-card-title">${escapeHtml(title)}</span>
             <span class="sq-project-card-footer">
-                <span class="sq-project-card-updated">${escapeHtml(formatUpdatedLabel(lastUpdatedAt))}</span>
+                <span class="sq-project-card-updated">${escapeHtml(formatLastEditedLabel(lastUpdatedAt))}</span>
                 <span class="sq-project-card-count">${escapeHtml(questionLabel)}</span>
             </span>
         </button>
@@ -286,21 +351,21 @@ function attachTopicCardListeners(): void {
 function renderTopicDetail(): void {
     if (!currentCourse || !activeTopicId) return;
 
+    const titleEl = document.getElementById('sq-topic-detail-title');
     const subtitleEl = document.getElementById('sq-topic-detail-subtitle');
     const listEl = document.getElementById('sq-topic-detail-list');
-    if (!subtitleEl || !listEl) return;
+    if (!titleEl || !subtitleEl || !listEl) return;
 
     const chapters = currentCourse.topicOrWeekInstances || [];
     const knownIds = new Set(chapters.map(c => c.id));
-    const title = activeTopicId === '__uncategorized__'
-        ? 'Uncategorized'
-        : chapters.find(c => c.id === activeTopicId)?.title || 'Topic';
+    const title = getTopicTitle(activeTopicId);
 
     const topicQuestions = activeTopicId === '__uncategorized__'
         ? cachedQuestions.filter(q => !knownIds.has(q.topicOrWeekId)).sort((a, b) => a.sortOrder - b.sortOrder)
         : questionsForTopic(activeTopicId);
 
-    subtitleEl.textContent = formatTopicSubtitle(activeTopicId, title);
+    titleEl.textContent = title;
+    subtitleEl.textContent = formatLastEditedLabel(statsFromQuestions(topicQuestions).lastUpdatedAt);
 
     if (!topicQuestions.length) {
         listEl.innerHTML = `<p class="sq-empty-state">No scenario questions in this topic yet. Use New question to create one.</p>`;
@@ -316,6 +381,7 @@ function renderQuestionRow(question: ScenarioQuestionExtended): string {
     const partCount = question.subQuestions.length;
     const difficulty = capitalize(question.difficulty);
     const statusLabel = capitalize(question.status);
+    const lastEdited = formatLastEditedLabel(question.updatedAt ? String(question.updatedAt) : null);
 
     return `
         <button type="button" class="sq-question-row" data-question-id="${escapeHtml(question.id)}">
@@ -325,6 +391,7 @@ function renderQuestionRow(question: ScenarioQuestionExtended): string {
                     <span class="sq-question-row-title">${escapeHtml(question.title)}</span>
                 </p>
                 <p class="sq-question-row-sub">Sub questions: ${partCount}</p>
+                <p class="sq-question-row-updated">${escapeHtml(lastEdited)}</p>
             </div>
             <div class="sq-question-row-badges">
                 <span class="sq-difficulty-badge sq-difficulty-${question.difficulty}">${difficulty}</span>
@@ -356,6 +423,7 @@ function openGenerateView(): void {
 
     selectedTypes = [...DEFAULT_SELECTED_TYPES];
     selectedDifficulty = 'medium';
+    generateDraftTitle = 'Untitled';
 
     const promptEl = document.getElementById('sq-generate-prompt') as HTMLTextAreaElement | null;
     if (promptEl) promptEl.value = '';
@@ -363,10 +431,11 @@ function openGenerateView(): void {
     const errorEl = document.getElementById('sq-generate-error');
     if (errorEl) errorEl.style.display = 'none';
 
-    const chapters = currentCourse?.topicOrWeekInstances || [];
-    const title = chapters.find(c => c.id === activeTopicId)?.title || 'Topic';
-    const subtitleEl = document.getElementById('sq-generate-subtitle');
-    if (subtitleEl) subtitleEl.textContent = formatTopicSubtitle(activeTopicId, title);
+    const backLabel = document.getElementById('sq-generate-back-label');
+    if (backLabel && activeTopicId) backLabel.textContent = getTopicTitle(activeTopicId);
+
+    const titleDisplay = document.getElementById('sq-generate-title-display');
+    if (titleDisplay) titleDisplay.textContent = generateDraftTitle;
 
     renderTypePills();
     renderTypePopover();
@@ -461,8 +530,15 @@ function setDifficulty(d: ScenarioDifficulty): void {
     if (label) label.textContent = capitalize(d);
 
     document.querySelectorAll<HTMLButtonElement>('.sq-difficulty-option').forEach(btn => {
-        btn.classList.toggle('sq-difficulty-option--active', btn.dataset.difficulty === d);
+        const isActive = btn.dataset.difficulty === d;
+        btn.classList.toggle('sq-difficulty-option--active', isActive);
     });
+
+    const diffBtn = document.getElementById('sq-difficulty-btn');
+    if (diffBtn) {
+        diffBtn.classList.remove('sq-difficulty-btn-easy', 'sq-difficulty-btn-medium', 'sq-difficulty-btn-hard');
+        diffBtn.classList.add(`sq-difficulty-btn-${d}`);
+    }
 }
 
 function toggleDifficultyMenu(): void {
@@ -479,6 +555,109 @@ function closeDifficultyMenu(): void {
     const btn = document.getElementById('sq-difficulty-btn');
     if (menu) menu.style.display = 'none';
     if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+type InlineTitleContext = 'editor' | 'generate';
+
+function titleElements(context: InlineTitleContext): {
+    display: HTMLElement | null;
+    input: HTMLInputElement | null;
+    editBtn: HTMLElement | null;
+} {
+    const prefix = context === 'editor' ? 'sq-editor' : 'sq-generate';
+    return {
+        display: document.getElementById(`${prefix}-title-display`),
+        input: document.getElementById(`${prefix}-title-input`) as HTMLInputElement | null,
+        editBtn: document.getElementById(`${prefix}-title-edit-btn`),
+    };
+}
+
+function getInlineTitleValue(context: InlineTitleContext): string {
+    if (context === 'generate') return generateDraftTitle;
+    const display = document.getElementById('sq-editor-title-display');
+    return display?.textContent?.trim() || editorQuestion?.title || 'Untitled';
+}
+
+function setInlineTitleValue(context: InlineTitleContext, value: string): void {
+    const trimmed = value.trim() || 'Untitled';
+    if (context === 'generate') {
+        generateDraftTitle = trimmed;
+        return;
+    }
+    if (editorQuestion) editorQuestion = { ...editorQuestion, title: trimmed };
+}
+
+function beginInlineTitleEdit(context: InlineTitleContext): void {
+    const { display, input, editBtn } = titleElements(context);
+    if (!display || !input) return;
+
+    input.value = getInlineTitleValue(context);
+    display.style.display = 'none';
+    if (editBtn) editBtn.style.display = 'none';
+    input.style.display = '';
+    input.focus();
+    input.select();
+}
+
+function commitInlineTitleEdit(context: InlineTitleContext): void {
+    const { display, input, editBtn } = titleElements(context);
+    if (!display || !input) return;
+
+    const next = input.value.trim();
+    if (next) setInlineTitleValue(context, next);
+    display.textContent = getInlineTitleValue(context);
+    display.style.display = '';
+    if (editBtn) editBtn.style.display = '';
+    input.style.display = 'none';
+    if (context === 'editor') markDirty();
+}
+
+function cancelInlineTitleEdit(context: InlineTitleContext): void {
+    const { display, input, editBtn } = titleElements(context);
+    if (!display || !input) return;
+
+    display.style.display = '';
+    if (editBtn) editBtn.style.display = '';
+    input.style.display = 'none';
+}
+
+function wireInlineTitleInput(context: InlineTitleContext, signal?: AbortSignal): void {
+    const input = titleElements(context).input;
+    if (!input) return;
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            commitInlineTitleEdit(context);
+        }
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            cancelInlineTitleEdit(context);
+        }
+    }, { signal });
+
+    input.addEventListener('blur', () => commitInlineTitleEdit(context), { signal });
+}
+
+function setQuestionBodyViewMode(mode: 'edit' | 'preview'): void {
+    questionBodyViewMode = mode;
+    const textarea = document.getElementById('sq-editor-question-body') as HTMLTextAreaElement | null;
+    const rendered = document.getElementById('sq-editor-question-rendered');
+
+    document.querySelectorAll<HTMLButtonElement>('.sq-base-question-toggle-btn').forEach(btn => {
+        btn.classList.toggle('sq-view-toggle-btn--active', btn.dataset.mode === mode);
+    });
+
+    if (!textarea || !rendered) return;
+
+    if (mode === 'edit') {
+        textarea.hidden = false;
+        rendered.hidden = true;
+    } else {
+        textarea.hidden = true;
+        rendered.hidden = false;
+        renderMarkdownInto(rendered, textarea.value, 'sq-question-body');
+    }
 }
 
 async function handleGenerateSubmit(): Promise<void> {
@@ -504,7 +683,8 @@ async function handleGenerateSubmit(): Promise<void> {
             topicOrWeekId: activeTopicId,
             sourcePrompt,
             selectedTypes: [...selectedTypes],
-            difficulty: selectedDifficulty
+            difficulty: selectedDifficulty,
+            title: generateDraftTitle.trim() || 'Untitled'
         });
         showSuccessToast('Generated draft — review and edit before publishing.');
         await refreshQuestions();
@@ -538,8 +718,11 @@ async function openEditorView(questionId: string): Promise<void> {
     clearAutoSaveTimer();
     updateSaveButton();
 
-    const breadcrumb = document.getElementById('sq-editor-breadcrumb');
-    if (breadcrumb) breadcrumb.textContent = `Scenario Generation / ${question.title}`;
+    const backLabel = document.getElementById('sq-editor-back-label');
+    if (backLabel) backLabel.textContent = getTopicTitle(question.topicOrWeekId);
+
+    const titleDisplay = document.getElementById('sq-editor-title-display');
+    if (titleDisplay) titleDisplay.textContent = question.title;
 
     const bodyEl = document.getElementById('sq-editor-question-body') as HTMLTextAreaElement | null;
     if (bodyEl) bodyEl.value = question.questionBody;
@@ -550,6 +733,7 @@ async function openEditorView(questionId: string): Promise<void> {
     updateExpectedTimeDisplay(question.expectedTimeMinutes);
     renderLearningObjectives(question.learningObjectives);
     renderEditorParts(question);
+    setQuestionBodyViewMode('edit');
 
     const errorEl = document.getElementById('sq-editor-error');
     if (errorEl) errorEl.style.display = 'none';
@@ -568,9 +752,14 @@ function renderEditorParts(question: ScenarioQuestionExtended): void {
         if (!partAnswerModes.has(partKey)) partAnswerModes.set(partKey, 'text');
         const mode = partAnswerModes.get(partKey) ?? 'text';
 
+        const typeLabel = SUB_QUESTION_TYPE_LABELS[sq.subQuestionType] ?? sq.subQuestionType;
+
         return `
             <div class="sq-editor-part-card" data-part-id="${sq.partId}">
-                <h3 class="sq-editor-part-title">${escapeHtml(formatPartHeader(sq.partId, sq.subQuestionType))}</h3>
+                <div class="sq-editor-part-header">
+                    <h3 class="sq-editor-part-title">Part (${sq.partId})</h3>
+                    <span class="sq-part-type-badge sq-part-type-${sq.subQuestionType}">${escapeHtml(typeLabel)}</span>
+                </div>
                 <label class="sq-editor-section-label">Student prompt</label>
                 <textarea class="sq-editor-textarea sq-part-prompt" data-part-id="${sq.partId}" rows="3">${escapeHtml(sq.prompt)}</textarea>
                 <div class="sq-answer-key-header">
@@ -581,7 +770,7 @@ function renderEditorParts(question: ScenarioQuestionExtended): void {
                     </div>
                 </div>
                 <textarea class="sq-editor-textarea sq-part-answer sq-part-answer-edit" data-part-id="${sq.partId}" rows="6">${escapeHtml(sq.modelAnswer)}</textarea>
-                <div class="sq-part-answer-preview" data-part-id="${sq.partId}" style="display: none;"></div>
+                <div class="sq-part-answer-preview sq-markdown-preview message-content" data-part-id="${sq.partId}"></div>
                 <div class="sq-flashcard-panel" data-part-id="${sq.partId}" style="display: none;"></div>
             </div>
         `;
@@ -593,7 +782,14 @@ function renderEditorParts(question: ScenarioQuestionExtended): void {
 function attachEditorInputListeners(): void {
     const signal = uiAbort?.signal;
 
-    document.getElementById('sq-editor-question-body')?.addEventListener('input', markDirty, { signal });
+    document.getElementById('sq-editor-question-body')?.addEventListener('input', () => {
+        markDirty();
+        if (questionBodyViewMode === 'preview') {
+            const rendered = document.getElementById('sq-editor-question-rendered');
+            const body = (document.getElementById('sq-editor-question-body') as HTMLTextAreaElement | null)?.value ?? '';
+            if (rendered) renderMarkdownInto(rendered, body, 'sq-question-body');
+        }
+    }, { signal });
 
     document.querySelectorAll<HTMLTextAreaElement>('.sq-part-prompt, .sq-part-answer').forEach(el => {
         el.addEventListener('input', () => {
@@ -646,9 +842,7 @@ function updatePartAnswerDisplay(partId: string): void {
         previewEl.style.display = '';
         flashcardEl.style.display = 'none';
         answerEl.classList.remove('sq-part-answer--hidden');
-        previewEl.innerHTML = renderChat.render(markdown, `sq-part-${partId}`);
-        previewEl.classList.add('sq-part-answer-rendered');
-        renderLatexInHtmlContent(previewEl);
+        renderMarkdownInto(previewEl, markdown, `sq-part-${partId}`);
     } else {
         answerEl.style.display = 'none';
         previewEl.style.display = 'none';
@@ -669,14 +863,15 @@ function renderFlashcardPanel(partId: string, markdown: string, container: HTMLE
     partFlashcardIndex.set(partId, idx);
 
     const step = steps[idx];
-    const bodyHtml = renderChat.render(step.bodyMarkdown, `sq-fc-${partId}-${idx}`);
+    const bodyHost = document.createElement('div');
+    bodyHost.className = 'sq-flashcard-body sq-markdown-preview message-content';
+    renderMarkdownInto(bodyHost, step.bodyMarkdown, `sq-fc-${partId}-${idx}`);
     container.innerHTML = `
         <div class="sq-flashcard">
             <div class="sq-flashcard-header">
                 <span class="sq-flashcard-step-label">Step ${idx + 1} of ${steps.length}</span>
                 <span class="sq-flashcard-title">${escapeHtml(step.title)}</span>
             </div>
-            <div class="sq-flashcard-body message-content">${bodyHtml}</div>
             <div class="sq-flashcard-nav">
                 <button type="button" class="sq-flashcard-nav-btn" data-action="prev" data-part-id="${partId}" ${idx === 0 ? 'disabled' : ''} aria-label="Previous step">
                     <i data-feather="chevron-left"></i>
@@ -687,7 +882,9 @@ function renderFlashcardPanel(partId: string, markdown: string, container: HTMLE
             </div>
         </div>
     `;
-    renderLatexInHtmlContent(container.querySelector('.sq-flashcard-body') as HTMLElement);
+    const flashcardEl = container.querySelector('.sq-flashcard');
+    const navEl = container.querySelector('.sq-flashcard-nav');
+    if (flashcardEl && navEl) flashcardEl.insertBefore(bodyHost, navEl);
     renderFeatherIcons();
 
     container.querySelectorAll<HTMLButtonElement>('.sq-flashcard-nav-btn').forEach(btn => {
@@ -711,37 +908,67 @@ function renderLearningObjectives(objectives: string[]): void {
     const list = document.getElementById('sq-editor-lo-list');
     if (!list) return;
 
-    list.innerHTML = objectives.map((lo, i) => `
-        <span class="sq-lo-pill">
-            ${escapeHtml(lo)}
-            <button type="button" class="sq-lo-remove" data-lo-index="${i}" aria-label="Remove ${escapeHtml(lo)}">×</button>
-        </span>
-    `).join('');
+    if (!objectives.length) {
+        list.innerHTML = `<span class="sq-lo-empty">No objectives selected</span>`;
+        return;
+    }
 
-    list.querySelectorAll<HTMLButtonElement>('.sq-lo-remove').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const index = parseInt(btn.dataset.loIndex ?? '-1', 10);
-            if (index < 0 || !editorQuestion) return;
-            const next = editorQuestion.learningObjectives.filter((_, j) => j !== index);
-            editorQuestion = { ...editorQuestion, learningObjectives: next };
-            renderLearningObjectives(next);
-            markDirty();
-        }, { signal: uiAbort?.signal });
-    });
+    list.innerHTML = objectives.map(lo => `
+        <span class="sq-lo-pill">${escapeHtml(lo)}</span>
+    `).join('');
 }
 
-function handleAddLearningObjective(): void {
-    const value = window.prompt('Learning objective label (e.g. LO-10-1):');
-    if (!value?.trim()) return;
+function openLearningObjectivesModal(): void {
+    const overlay = document.getElementById('sq-lo-modal-overlay');
+    if (!overlay) return;
 
-    const list = document.getElementById('sq-editor-lo-list');
-    if (!list) return;
+    loModalDraftSelection = [...(editorQuestion?.learningObjectives ?? [])];
+    renderLearningObjectivesCatalog();
+    overlay.style.display = '';
+    overlay.setAttribute('aria-hidden', 'false');
+}
 
-    const existing = editorQuestion?.learningObjectives ?? [];
-    const next = [...existing, value.trim()];
-    if (editorQuestion) editorQuestion = { ...editorQuestion, learningObjectives: next };
-    renderLearningObjectives(next);
-    markDirty();
+function closeLearningObjectivesModal(): void {
+    const overlay = document.getElementById('sq-lo-modal-overlay');
+    if (!overlay) return;
+    overlay.style.display = 'none';
+    overlay.setAttribute('aria-hidden', 'true');
+}
+
+function saveLearningObjectivesModal(): void {
+    if (editorQuestion) {
+        editorQuestion = { ...editorQuestion, learningObjectives: [...loModalDraftSelection] };
+        renderLearningObjectives(loModalDraftSelection);
+        markDirty();
+    }
+    closeLearningObjectivesModal();
+}
+
+function renderLearningObjectivesCatalog(): void {
+    const catalog = document.getElementById('sq-lo-modal-catalog');
+    if (!catalog) return;
+
+    catalog.innerHTML = MOCK_DOCUMENT_LEARNING_OBJECTIVES.map(lo => {
+        const checked = loModalDraftSelection.includes(lo.code);
+        return `
+            <label class="sq-lo-catalog-item">
+                <input type="checkbox" class="sq-lo-catalog-checkbox" value="${escapeHtml(lo.code)}" ${checked ? 'checked' : ''} />
+                <span class="sq-lo-catalog-code">${escapeHtml(lo.code)}</span>
+                <span class="sq-lo-catalog-text">${escapeHtml(lo.description)}</span>
+            </label>
+        `;
+    }).join('');
+
+    catalog.querySelectorAll<HTMLInputElement>('.sq-lo-catalog-checkbox').forEach(box => {
+        box.addEventListener('change', () => {
+            const code = box.value;
+            if (box.checked) {
+                if (!loModalDraftSelection.includes(code)) loModalDraftSelection.push(code);
+            } else {
+                loModalDraftSelection = loModalDraftSelection.filter(c => c !== code);
+            }
+        }, { signal: uiAbort?.signal });
+    });
 }
 
 function updateExpectedTimeDisplay(minutes: number): void {
@@ -787,14 +1014,7 @@ function collectEditorPatch(): Partial<ScenarioQuestionExtended> {
     const questionBody = (document.getElementById('sq-editor-question-body') as HTMLTextAreaElement | null)?.value ?? '';
     const minutes = parseInt(document.getElementById('sq-editor-expected-time')?.getAttribute('data-minutes') ?? '25', 10);
 
-    const loList = document.getElementById('sq-editor-lo-list');
-    const learningObjectives = loList
-        ? Array.from(loList.querySelectorAll('.sq-lo-pill')).map(p => {
-            const clone = p.cloneNode(true) as HTMLElement;
-            clone.querySelector('.sq-lo-remove')?.remove();
-            return clone.textContent?.trim() ?? '';
-        }).filter(Boolean)
-        : [];
+    const learningObjectives = editorQuestion?.learningObjectives ?? [];
 
     const subQuestions = (editorQuestion?.subQuestions ?? []).map(sq => {
         const partId = sq.partId;
@@ -803,8 +1023,11 @@ function collectEditorPatch(): Partial<ScenarioQuestionExtended> {
         return { partId, subQuestionType: sq.subQuestionType, prompt, modelAnswer };
     });
 
+    const titleDisplay = document.getElementById('sq-editor-title-display');
+    const title = titleDisplay?.textContent?.trim() || editorQuestion?.title || 'Untitled';
+
     return {
-        title: editorQuestion?.title ?? 'Untitled',
+        title,
         questionBody,
         learningObjectives,
         expectedTimeMinutes: minutes,

@@ -307,7 +307,7 @@ export async function generateQuestion(
     const id = `sq-mock-gen-${++nextId}`;
     const now = new Date().toISOString();
     const subQuestions = buildGeneratedSubQuestions(request.selectedTypes, request.sourcePrompt);
-    const title = sourcePromptTitle(request.sourcePrompt);
+    const title = request.title?.trim() || sourcePromptTitle(request.sourcePrompt);
 
     const question: ScenarioQuestionExtended = {
         id,

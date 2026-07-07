@@ -10,7 +10,7 @@ import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { GlobalUser, CourseUser, User, activeCourse } from '../types/shared';
 import { appLogger } from '../utils/logger';
 import { refreshSessionGlobalUser } from '../helpers/session-global-user';
-import { isInCourseTAs } from '../utils/course-staff';
+import { isCourseStaff, isInCourseTAs } from '../utils/course-staff';
 import { resolveInstructorModeRedirect } from '../helpers/instructor-onboarding-redirect';
 
 const router = express.Router();
@@ -191,15 +191,18 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
             appLogger.log(`[COURSE-ENTRY] Added course ${courseId} to TA enrolled list`);
         }
 
-        if (globalUser.affiliation === 'student' && !isTA && !(courseUser as any).userOnboarding) {
+        const isStaff =
+            isCourseStaff(courseData, globalUser) || globalUser.affiliation === 'faculty';
+
+        if (globalUser.affiliation === 'student' && !isStaff && !(courseUser as any).userOnboarding) {
             redirect = `/course/${courseId}/student/onboarding/student`;
             requiresOnboarding = true;
             appLogger.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
-        } else if (globalUser.affiliation === 'faculty' || isTA) {
+        } else if (isStaff) {
             const instructorRedirect = resolveInstructorModeRedirect(courseId, courseData);
             redirect = instructorRedirect.redirect;
             requiresOnboarding = instructorRedirect.requiresOnboarding;
-            appLogger.log(`[COURSE-ENTRY] Redirecting ${isTA ? 'TA' : 'faculty'} to instructor mode`);
+            appLogger.log(`[COURSE-ENTRY] Redirecting course staff to instructor mode`);
         } else {
             redirect = `/course/${courseId}/student`;
             appLogger.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
@@ -412,15 +415,18 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
             appLogger.log(`[COURSE-ENTRY] Added course ${courseId} to TA enrolled list`);
         }
 
-        if (globalUser.affiliation === 'student' && !isTA && !(courseUser as any).userOnboarding) {
+        const isStaff =
+            isCourseStaff(courseData, globalUser) || globalUser.affiliation === 'faculty';
+
+        if (globalUser.affiliation === 'student' && !isStaff && !(courseUser as any).userOnboarding) {
             redirect = `/course/${courseId}/student/onboarding/student`;
             requiresOnboarding = true;
             appLogger.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
-        } else if (globalUser.affiliation === 'faculty' || isTA) {
+        } else if (isStaff) {
             const instructorRedirect = resolveInstructorModeRedirect(courseId, courseData);
             redirect = instructorRedirect.redirect;
             requiresOnboarding = instructorRedirect.requiresOnboarding;
-            appLogger.log(`[COURSE-ENTRY] Redirecting ${isTA ? 'TA' : 'faculty'} to instructor mode`);
+            appLogger.log(`[COURSE-ENTRY] Redirecting course staff to instructor mode`);
         } else {
             redirect = `/course/${courseId}/student`;
             appLogger.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
