@@ -52,6 +52,8 @@
             </div>
         </header>
 
+        <p class="sq-generate-hint"><em>*Describe the scenario in the base question field below, then choose subquestion types and difficulty before generating.</em></p>
+
         <div class="sq-generate-card">
             <label class="sq-sr-only" for="sq-generate-prompt">Base question</label>
             <textarea id="sq-generate-prompt" class="sq-generate-prompt" rows="8" placeholder="Write your base question here."></textarea>
@@ -72,9 +74,9 @@
                             <span id="sq-difficulty-label">Medium</span>
                         </button>
                         <div id="sq-difficulty-menu" class="sq-difficulty-menu" style="display: none;" role="listbox">
-                            <button type="button" class="sq-difficulty-option sq-difficulty-option-hard" data-difficulty="hard">Hard</button>
-                            <button type="button" class="sq-difficulty-option sq-difficulty-option-medium sq-difficulty-option--active" data-difficulty="medium">Medium</button>
-                            <button type="button" class="sq-difficulty-option sq-difficulty-option-easy" data-difficulty="easy">Easy</button>
+                            <button type="button" class="sq-difficulty-option" data-difficulty="hard">Hard</button>
+                            <button type="button" class="sq-difficulty-option sq-difficulty-option--active" data-difficulty="medium">Medium</button>
+                            <button type="button" class="sq-difficulty-option" data-difficulty="easy">Easy</button>
                         </div>
                     </div>
                     <button id="sq-generate-submit-btn" type="button" class="sq-generate-submit-btn">Generate</button>
@@ -123,11 +125,6 @@
                     <!-- Subquestion cards rendered by TS -->
                 </div>
 
-                <div class="sq-editor-actions-row">
-                    <button id="sq-editor-reject-btn" type="button" class="btn-outline sq-danger">Reject</button>
-                    <button id="sq-editor-publish-btn" type="button" class="btn-primary">Publish</button>
-                </div>
-
                 <p id="sq-editor-error" class="sq-form-error" style="display: none;"></p>
             </main>
 
@@ -149,17 +146,54 @@
 
                 <div class="sq-meta-field sq-meta-field--time">
                     <span class="sq-meta-label">Expected Time</span>
-                    <div class="sq-expected-time-row">
-                        <button id="sq-time-decrease-btn" type="button" class="sq-time-step-btn" aria-label="Decrease time">−</button>
-                        <span id="sq-editor-expected-time" class="sq-expected-time">25:00</span>
-                        <button id="sq-time-increase-btn" type="button" class="sq-time-step-btn" aria-label="Increase time">+</button>
+                    <button id="sq-editor-expected-time-btn" type="button" class="sq-expected-time-btn" aria-haspopup="dialog" aria-controls="sq-time-modal-overlay">
+                        <span id="sq-editor-expected-time" class="sq-expected-time" data-minutes="25">25:00</span>
+                        <span class="sq-expected-time-edit-label">Edit</span>
+                    </button>
+                </div>
+
+                <div class="sq-editor-meta-actions">
+                    <div class="sq-status-wrap sq-editor-status-wrap">
+                        <button id="sq-editor-status-btn" type="button" class="sq-status-pill sq-status-pill-draft sq-status-menu-btn" aria-haspopup="listbox" aria-expanded="false">
+                            <i data-feather="chevron-right"></i>
+                            <span id="sq-editor-status-label">Draft</span>
+                        </button>
+                        <div id="sq-editor-status-menu" class="sq-status-menu" style="display: none;" role="listbox" aria-label="Question status">
+                            <button type="button" class="sq-status-menu-option sq-status-menu-option-draft" data-status="draft">Draft</button>
+                            <button type="button" class="sq-status-menu-option sq-status-menu-option-published" data-status="published">Published</button>
+                        </div>
                     </div>
+                    <button id="sq-editor-delete-btn" type="button" class="sq-status-pill sq-delete-pill sq-status-menu-btn" aria-label="Delete question">
+                        <i data-feather="trash-2"></i>
+                        <span>Delete question</span>
+                    </button>
                 </div>
             </aside>
         </div>
     </div>
 
-    <div id="sq-lo-modal-overlay" class="sq-modal-overlay" style="display: none;" aria-hidden="true">
+    <div id="sq-time-modal-overlay" class="sq-modal-overlay" aria-hidden="true">
+        <div class="sq-modal sq-time-modal" role="dialog" aria-labelledby="sq-time-modal-title" aria-modal="true">
+            <div class="sq-modal-header">
+                <h2 id="sq-time-modal-title">Expected time</h2>
+                <button id="sq-time-modal-close-btn" type="button" class="sq-modal-close-btn" aria-label="Close">×</button>
+            </div>
+            <div class="sq-modal-body">
+                <p class="sq-time-modal-hint">Set how long students should need for this question (in minutes).</p>
+                <div class="sq-expected-time-row sq-expected-time-row--modal">
+                    <button id="sq-time-modal-decrease-btn" type="button" class="sq-time-step-btn" aria-label="Decrease time by 5 minutes">−</button>
+                    <input id="sq-time-modal-input" type="text" class="sq-time-modal-input" inputmode="numeric" autocomplete="off" aria-label="Expected time in minutes" placeholder="25:00" />
+                    <button id="sq-time-modal-increase-btn" type="button" class="sq-time-step-btn" aria-label="Increase time by 5 minutes">+</button>
+                </div>
+            </div>
+            <div class="sq-modal-footer">
+                <button id="sq-time-modal-cancel-btn" type="button" class="btn-outline">Cancel</button>
+                <button id="sq-time-modal-save-btn" type="button" class="btn-primary">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="sq-lo-modal-overlay" class="sq-modal-overlay" aria-hidden="true">
         <div class="sq-modal sq-lo-modal" role="dialog" aria-labelledby="sq-lo-modal-title" aria-modal="true">
             <div class="sq-modal-header">
                 <h2 id="sq-lo-modal-title">Learning objectives</h2>

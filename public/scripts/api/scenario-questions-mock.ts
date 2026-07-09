@@ -31,11 +31,11 @@ const E401_QUESTION_BODY = `You are the shift engineer at a chemical plant. Heat
 | Water (tube side) | 120 t/h | 25 °C | 85 °C |
 | Steam (shell side) | condensate | 150 °C | 150 °C (saturated) |
 
-Design duty: **2.5 MW**. Assume constant $c_{p,\\text{water}} = 4.18\\ \\text{kJ·kg}^{-1}\\text{·K}^{-1}$ and $c_{p,\\text{condensate}} = 4.2\\ \\text{kJ·kg}^{-1}\\text{·K}^{-1}$. Condensate flow is set by the 2.5 MW duty.
+Design duty: **2.5 MW**. Assume constant $c_{p,\\text{water}} = 4.18\\ \\mathrm{kJ\\,kg^{-1}\\,K^{-1}}$ and $c_{p,\\text{condensate}} = 4.2\\ \\mathrm{kJ\\,kg^{-1}\\,K^{-1}}$. Condensate flow is set by the 2.5 MW duty.
 
 Using the design data above, estimate the required heat-transfer area and the design log mean temperature difference (LMTD) for E-401 at clean conditions. Show your energy balance and area equation clearly.`;
 
-const E401_PART_A_PROMPT = `Using the design data above, estimate the required heat-transfer area and the design log mean temperature difference (LMTD) for E-401 at clean conditions. Show your energy balance and area equation clearly. Assume constant specific heat capacities: $c_{p,\\text{water}} = 4.18\\ \\text{kJ·kg}^{-1}\\text{·K}^{-1}$, $c_{p,\\text{condensate}} = 4.2\\ \\text{kJ·kg}^{-1}\\text{·K}^{-1}$, and condensate flow is set by the 2.5 MW duty.`;
+const E401_PART_A_PROMPT = `Using the design data above, estimate the required heat-transfer area and the design log mean temperature difference (LMTD) for E-401 at clean conditions. Show your energy balance and area equation clearly. Assume constant specific heat capacities: $c_{p,\\text{water}} = 4.18\\ \\mathrm{kJ\\,kg^{-1}\\,K^{-1}}$, $c_{p,\\text{condensate}} = 4.2\\ \\mathrm{kJ\\,kg^{-1}\\,K^{-1}}$, and condensate flow is set by the 2.5 MW duty.`;
 
 const E401_PART_A_ANSWER = `## Step 1: Energy balance on water side
 
@@ -53,7 +53,7 @@ $$\\Delta T_1 = 150 - 85 = 65\\ \\text{K},\\quad \\Delta T_2 = 150 - 25 = 125\\ 
 
 $$\\text{LMTD} = \\frac{65 - 125}{\\ln(65/125)} \\approx 91.8\\ \\text{K}$$
 
-## Step 4: Area with assumed $U_{clean} = 850\\ \\text{W·m}^{-2}\\text{·K}^{-1}$
+## Step 4: Area with assumed $U_{clean} = 850\\ \\mathrm{W\\,m^{-2}\\,K^{-1}}$
 
 $$A = \\frac{Q}{U \\cdot \\text{LMTD}} = \\frac{2.5 \\times 10^6}{850 \\times 91.8} \\approx 32\\ \\text{m}^2$$`;
 
@@ -69,7 +69,7 @@ Relative to design 2.5 MW target on same flows — effective duty fraction $\\ap
 
 Hold $A$ and LMTD at design; solve $U_{eff} = Q_{actual}/(A \\cdot \\text{LMTD}) \\approx 0.94\\, U_{design}$.
 
-Fouling: $\\frac{1}{U_{eff}} = \\frac{1}{U_{clean}} + R_f$ → estimate $R_f \\approx 0.00007\\ \\text{m}^2\\text{·K/W}$.
+Fouling: $\\frac{1}{U_{eff}} = \\frac{1}{U_{clean}} + R_f$ → estimate $R_f \\approx 0.00007\\ \\mathrm{m^2\\,K/W}$.
 
 ## Step 3: Ranked root causes (gradual 10-day decline, low outlet T)
 
@@ -86,7 +86,7 @@ const E401_PART_C_ANSWER = `1. **Verify readings** — cross-check outlet RTD wi
 3. **Schedule cleaning** — chemical or mechanical tube cleaning if fouling confirmed by $U_{eff}$ trend.
 4. **Monitor** — log $T_{out}$, steam pressure, and calculated duty every 4 h for 48 h; plot $U_{eff}$ to confirm recovery after intervention.`;
 
-const FREEZER_QUESTION_BODY = `You are a **freezer engineer** at a food-processing facility. A new blast-freezer tunnel must bring packaged product from +5 °C to −18 °C within 25 minutes. The conveyor carries 2,400 kg/h of product with $c_p = 3.2\\ \\text{kJ·kg}^{-1}\\text{·K}^{-1}$. Ammonia refrigeration provides evaporation at −35 °C.
+const FREEZER_QUESTION_BODY = `You are a **freezer engineer** at a food-processing facility. A new blast-freezer tunnel must bring packaged product from +5 °C to −18 °C within 25 minutes. The conveyor carries 2,400 kg/h of product with $c_p = 3.2\\ \\mathrm{kJ\\,kg^{-1}\\,K^{-1}}$. Ammonia refrigeration provides evaporation at −35 °C.
 
 The plant manager reports uneven freezing in the center lanes and rising compressor discharge pressure over the past week.`;
 
@@ -271,20 +271,183 @@ export async function patchStatus(
     return updateQuestion(courseId, questionId, { status, publishedAt: publishedAt ?? null });
 }
 
-function buildGeneratedSubQuestions(
+/** Removes a scenario question from the in-memory store (mock delete). */
+export async function deleteQuestion(courseId: string, questionId: string): Promise<void> {
+    await delay(50);
+    const store = getStore(courseId);
+    const idx = store.findIndex(x => x.id === questionId);
+    if (idx < 0) throw new Error('Question not found.');
+    store.splice(idx, 1);
+}
+
+function buildSubsFromTypeMap(
     types: ScenarioSubQuestionType[],
-    sourcePrompt: string
+    templates: Partial<Record<ScenarioSubQuestionType, { prompt: string; modelAnswer: string }>>,
+    fallbackPrompt: string
 ): ScenarioSubQuestionExtended[] {
     return types.map((subQuestionType, i) => {
-        const partId = partIdFromIndex(i) as ScenarioPartId;
-        const label = SUB_QUESTION_TYPE_LABELS[subQuestionType] ?? subQuestionType;
+        const tpl = templates[subQuestionType] ?? genericSubTemplate(subQuestionType, fallbackPrompt);
         return {
-            partId,
+            partId: partIdFromIndex(i) as ScenarioPartId,
             subQuestionType,
-            prompt: `[${label}] Based on your base question: ${sourcePrompt.slice(0, 200)}${sourcePrompt.length > 200 ? '…' : ''}`,
-            modelAnswer: `## Step 1: Setup\n\nDefine knowns and assumptions for the ${label.toLowerCase()} part.\n\n## Step 2: Analysis\n\nApply the appropriate engineering model.\n\n## Step 3: Conclusion\n\nState numerical result with units and brief check.`
+            prompt: tpl.prompt,
+            modelAnswer: tpl.modelAnswer
         };
     });
+}
+
+const E401_DEMO_SUBS: Partial<Record<ScenarioSubQuestionType, { prompt: string; modelAnswer: string }>> = {
+    calculation: { prompt: E401_PART_A_PROMPT, modelAnswer: E401_PART_A_ANSWER },
+    troubleshoot: { prompt: E401_PART_B_PROMPT, modelAnswer: E401_PART_B_ANSWER },
+    action: { prompt: E401_PART_C_PROMPT, modelAnswer: E401_PART_C_ANSWER }
+};
+
+const FREEZER_DEMO_SUBS: Partial<Record<ScenarioSubQuestionType, { prompt: string; modelAnswer: string }>> = {
+    calculation: {
+        prompt: 'Calculate the required refrigeration duty (kW) to achieve the freezing target, assuming sensible cooling only for this estimate.',
+        modelAnswer: `$$Q = \\dot{m} c_p \\Delta T = \\frac{2400}{3600} \\times 3200 \\times 23 \\approx 49.1\\ \\text{kW}$$\n\nAdd latent heat of freezing in a full design; this is a baseline sensible-load estimate.`
+    },
+    troubleshoot: {
+        prompt: 'Center lanes freeze slower than edge lanes. List four plausible causes and rank by likelihood.',
+        modelAnswer: `1. **Airflow maldistribution** — most likely in tunnel freezers.\n2. **Overloaded center conveyor spacing** — higher thermal load.\n3. **Frosted evaporator coils (center section)** — reduces heat transfer.\n4. **Refrigerant feed imbalance** across coil circuits.`
+    },
+    action: {
+        prompt: 'Recommend immediate operational changes (no shutdown) to improve uniformity.',
+        modelAnswer: `Reduce belt loading in center lanes, verify fan speeds and defrost schedule, check coil frost balance, adjust product spacing SOP.`
+    },
+    corrective: {
+        prompt: 'If discharge pressure continues rising, what maintenance actions should be planned?',
+        modelAnswer: `Inspect condenser fouling, check refrigerant charge and non-condensables, verify compressor oil and suction superheat, schedule coil defrost performance audit.`
+    }
+};
+
+function matchesHeatExchangerPrompt(prompt: string): boolean {
+    return /\b(E-401|heat exchanger|shell-and-tube|LMTD)\b/i.test(prompt);
+}
+
+function matchesFreezerPrompt(prompt: string): boolean {
+    return /\b(freezer|blast[- ]?freez|refrigeration)\b/i.test(prompt) || /−18|−?\s*18\s*°C|-18\s*°C/i.test(prompt);
+}
+
+function extractEquipmentLabel(prompt: string): string {
+    const tagged = prompt.match(/\b([A-Z]-\d{2,4})\b/);
+    if (tagged) return tagged[1];
+    const named = prompt.match(/\b(heat exchanger|reactor|compressor|pump|column|freezer tunnel)\b/i);
+    return named ? named[0] : 'the affected unit';
+}
+
+function summarizeSetupLines(prompt: string): string {
+    const lines = prompt
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 0 && !/^\(?[a-d]\)/i.test(l) && !/^tasks?\s*for/i.test(l));
+    const body = lines.slice(0, 6).join(' ').replace(/\s+/g, ' ').trim();
+    return body || prompt.trim().replace(/\s+/g, ' ').slice(0, 400);
+}
+
+function extractCrisisSentence(prompt: string): string | null {
+    const crisisPatterns = [
+        /(?:recently|over the past|this week|operators report|manager reports)[^.!?]*[.!?]/i,
+        /(?:instead of|rather than|dropped to|fallen to|only \d)[^.!?]*[.!?]/i,
+        /(?:deviation|underperform|malfunction|uneven|rising|declining)[^.!?]*[.!?]/i
+    ];
+    for (const re of crisisPatterns) {
+        const m = prompt.match(re);
+        if (m) return m[0].trim();
+    }
+    return null;
+}
+
+function genericSubTemplate(
+    subQuestionType: ScenarioSubQuestionType,
+    sourcePrompt: string
+): { prompt: string; modelAnswer: string } {
+    const equipment = extractEquipmentLabel(sourcePrompt);
+    const label = SUB_QUESTION_TYPE_LABELS[subQuestionType] ?? subQuestionType;
+
+    switch (subQuestionType) {
+        case 'calculation':
+            return {
+                prompt: `Using the design data in the scenario above, establish the baseline design calculation for ${equipment}. Show your governing equations, state assumptions clearly, and report a numerical result with units.`,
+                modelAnswer: `## Step 1: Identify knowns and assumptions\n\nList flows, temperatures, pressures, and physical properties from the scenario.\n\n## Step 2: Governing equation\n\nWrite the energy/material balance or rate equation appropriate to ${equipment}.\n\n## Step 3: Numerical result\n\nSubstitute values, solve, and sanity-check units and magnitude.\n\n## Step 4: Design check\n\nCompare to the stated design target and note whether baseline performance is consistent.`
+            };
+        case 'troubleshoot':
+            return {
+                prompt: `Field data show a measurable deviation from design for ${equipment}. Quantify actual vs expected performance, then list at least **four physically plausible root causes**. Rank them by likelihood given a gradual onset and partially normal control-room indications.`,
+                modelAnswer: `## Step 1: Actual vs design\n\nCalculate or estimate the actual duty/conversion/flow and compare to design.\n\n## Step 2: Effective parameter\n\nSolve for an effective $U$, efficiency, or similar if applicable.\n\n## Step 3: Ranked root causes\n\n1. **Fouling / degradation** — common for gradual decline.\n2. **Flow maldistribution or partial blockage** — reduces effective performance.\n3. **Control/instrument drift** — verify before major maintenance.\n4. **Upstream utility deviation** — steam pressure, cooling water, feed quality.\n5. **Mechanical wear** — seals, impellers, agitator, traps.\n\nState which symptoms support each ranking.`
+            };
+        case 'action':
+            return {
+                prompt: `Propose **immediate operational actions** the shift team can take to restore performance without a full shutdown. Prioritize safety and operability, and include one **monitoring recommendation** for the next 48 hours.`,
+                modelAnswer: `1. **Verify field readings** — cross-check critical instruments before major interventions.\n2. **Stabilize operation** — adjust setpoints/loading within safe limits to protect downstream units.\n3. **Inspect accessible items** — traps, filters, bypasses, valve positions relevant to ${equipment}.\n4. **Monitor** — log key process variables every 4 h for 48 h and trend against design.`
+            };
+        case 'corrective':
+            return {
+                prompt: `If the deviation persists after shift-level actions, what **maintenance or engineering corrective steps** should be planned? Include inspection, cleaning/repair scope, and acceptance criteria.`,
+                modelAnswer: `1. Plan controlled inspection during the next approved window.\n2. Schedule cleaning/replacement if fouling or wear is confirmed.\n3. Review control strategy and alarm limits.\n4. Document findings and update the preventive maintenance plan for ${equipment}.`
+            };
+        default:
+            return {
+                prompt: `${label}: Apply engineering judgment to ${equipment} using the scenario above.`,
+                modelAnswer: `## Analysis\n\nApply the ${label.toLowerCase()} framework to the scenario.\n\n## Conclusion\n\nState actionable findings with units and assumptions.`
+            };
+    }
+}
+
+interface DemoGenerationOutput {
+    title: string;
+    questionBody: string;
+    subQuestions: ScenarioSubQuestionExtended[];
+}
+
+/** ponytail: demo-quality scenario translation until real `/generate` API is wired in the instructor UI */
+function buildDemoGenerationOutput(request: ScenarioMockGenerateRequest): DemoGenerationOutput {
+    const { sourcePrompt, selectedTypes } = request;
+    const trimmed = sourcePrompt.trim();
+
+    if (matchesHeatExchangerPrompt(trimmed)) {
+        const subQuestions = buildSubsFromTypeMap(selectedTypes, E401_DEMO_SUBS, trimmed);
+        return {
+            title: 'E-401 LMTD & fouling',
+            questionBody: E401_QUESTION_BODY,
+            subQuestions
+        };
+    }
+
+    if (matchesFreezerPrompt(trimmed)) {
+        const subQuestions = buildSubsFromTypeMap(selectedTypes, FREEZER_DEMO_SUBS, trimmed);
+        return {
+            title: 'Freezer Engineer',
+            questionBody: FREEZER_QUESTION_BODY,
+            subQuestions
+        };
+    }
+
+    const equipment = extractEquipmentLabel(trimmed);
+    const setup = summarizeSetupLines(trimmed);
+    const crisis = extractCrisisSentence(trimmed)
+        ?? `Over recent shifts, operators report performance drifting away from design at ${equipment}. Downstream units confirm the gap is real, but the root cause has not been isolated — some control-room indications still look normal.`;
+
+    const questionBody = `You are the shift process engineer at an industrial facility. ${setup}\n\n${crisis}`;
+
+    const subQuestions = buildSubsFromTypeMap(selectedTypes, {}, trimmed);
+
+    const tag = equipment.match(/^[A-Z]-\d/i) ? `${equipment} performance drop` : `${capitalizeWords(equipment)} scenario`;
+    return {
+        title: tag.charAt(0).toUpperCase() + tag.slice(1),
+        questionBody,
+        subQuestions
+    };
+}
+
+function capitalizeWords(s: string): string {
+    return s.replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function demoTitleFromRequest(request: ScenarioMockGenerateRequest, demo: DemoGenerationOutput): string {
+    const custom = request.title?.trim();
+    if (custom && custom !== 'Untitled') return custom;
+    return demo.title;
 }
 
 function difficultyToMinutes(difficulty: ScenarioDifficulty, partCount: number): number {
@@ -306,8 +469,9 @@ export async function generateQuestion(
     const store = getStore(courseId);
     const id = `sq-mock-gen-${++nextId}`;
     const now = new Date().toISOString();
-    const subQuestions = buildGeneratedSubQuestions(request.selectedTypes, request.sourcePrompt);
-    const title = request.title?.trim() || sourcePromptTitle(request.sourcePrompt);
+    const demo = buildDemoGenerationOutput(request);
+    const subQuestions = demo.subQuestions;
+    const title = demoTitleFromRequest(request, demo);
 
     const question: ScenarioQuestionExtended = {
         id,
@@ -317,7 +481,7 @@ export async function generateQuestion(
         title,
         status: 'draft',
         sourcePrompt: request.sourcePrompt,
-        questionBody: `**Role:** You are the shift engineer on duty.\n\n**Setup:** ${request.sourcePrompt}\n\n**Crisis:** Operations report a deviation from design — investigate using the sub-questions below.`,
+        questionBody: demo.questionBody,
         solutionBody: subQuestions.map(sq => sq.modelAnswer).join('\n\n---\n\n'),
         subQuestions,
         generatedBy: 'ai',
@@ -336,11 +500,6 @@ export async function generateQuestion(
     return structuredClone(question);
 }
 
-function sourcePromptTitle(prompt: string): string {
-    const line = prompt.trim().split('\n')[0] ?? 'New scenario question';
-    const trimmed = line.slice(0, 60);
-    return trimmed.length < line.length ? `${trimmed}…` : trimmed;
-}
 
 /** Client-side publish validation for flexible parts. */
 export function validatePublish(question: ScenarioQuestionExtended): string | null {

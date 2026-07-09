@@ -32,22 +32,27 @@ export class RenderChat {
         const codeResult = this.processCodeBlocks(html);
         html = codeResult.html;
         
-        // Step 2: Process artifacts using ArtefactHandler wrapper
+        // Step 2: Preserve LaTeX before markdown (bold/italic/headers can corrupt $...$)
+        const latexResult = this.preserveLatex(html);
+        html = latexResult.html;
+        
+        // Step 3: Process artifacts using ArtefactHandler wrapper
         html = this.processArtifactsWithWrapper(html, messageId);
         
-        // Step 2.5: Process questionUnstruggle tags
+        // Step 3.5: Process questionUnstruggle tags
         html = this.processQuestionUnstruggle(html, messageId);
         
-        // Step 3: Process markdown formatting
+        // Step 4: Process markdown formatting
         html = this.processMarkdown(html);
         
-        // Step 4: Add CSS classes to HTML lists
+        // Step 5: Add CSS classes to HTML lists
         html = this.addListClasses(html);
         
-        // Step 5: Wrap plain text in response-text paragraphs
+        // Step 6: Wrap plain text in response-text paragraphs
         html = this.wrapPlainText(html);
         
-        //Step 6: Restore code blocks
+        // Step 7: Restore LaTeX then code blocks
+        html = this.restoreLatex(html, latexResult.blocks);
         html = this.restoreCodeBlocks(html, codeResult.blocks);
         
         return html;
@@ -75,6 +80,43 @@ export class RenderChat {
         });
         
         return { html, blocks };
+    }
+    
+    /**
+     * Extract $...$ and $$...$$ so markdown passes do not corrupt LaTeX delimiters.
+     */
+    private preserveLatex(text: string): { html: string, blocks: string[] } {
+        const blocks: string[] = [];
+        let html = text;
+
+        html = html.replace(/\$\$[\s\S]*?\$\$/g, (match) => {
+            const placeholder = `__LATEX_${blocks.length}__`;
+            blocks.push(this.normalizeLatexForKaTeX(match));
+            return placeholder;
+        });
+
+        html = html.replace(/\$[^$\n]+?\$/g, (match) => {
+            const placeholder = `__LATEX_${blocks.length}__`;
+            blocks.push(this.normalizeLatexForKaTeX(match));
+            return placeholder;
+        });
+
+        return { html, blocks };
+    }
+
+    /**
+     * KaTeX 0.16 treats Unicode middle dot (·) as undefined \\cdotp — swap to thin spaces.
+     */
+    private normalizeLatexForKaTeX(latex: string): string {
+        return latex.replace(/·/g, '\\,');
+    }
+
+    private restoreLatex(text: string, blocks: string[]): string {
+        let html = text;
+        blocks.forEach((block, index) => {
+            html = html.replace(`__LATEX_${index}__`, block);
+        });
+        return html;
     }
     
     /**

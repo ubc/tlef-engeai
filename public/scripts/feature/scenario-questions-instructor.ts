@@ -19,12 +19,14 @@ import {
     getQuestion,
     updateQuestion,
     patchStatus,
+    deleteQuestion,
     generateQuestion,
     validatePublish,
     formatExpectedTime
 } from '../api/scenario-questions-mock.js';
 import { renderFeatherIcons } from '../api/api.js';
 import { showSuccessToast, showErrorToast } from '../ui/toast-notification.js';
+import { showConfirmModal } from '../ui/modal-overlay.js';
 import { RenderChat } from './render-chat.js';
 import { renderLatexInHtmlContent } from './chat.js';
 import {
@@ -61,6 +63,9 @@ let generateDraftTitle = 'Untitled';
 let selectedTypes: ScenarioSubQuestionType[] = [...DEFAULT_SELECTED_TYPES];
 let selectedDifficulty: ScenarioDifficulty = 'medium';
 
+/** Per-part prompt view mode in editor: raw markdown editor vs rendered preview. */
+const partPromptModes = new Map<string, 'edit' | 'preview'>();
+
 /** Per-part answer view mode in editor: text (markdown preview) or flashcard. */
 const partAnswerModes = new Map<string, 'text' | 'flashcard'>();
 /** Per-part flashcard step index. */
@@ -71,6 +76,9 @@ let questionBodyViewMode: 'edit' | 'preview' = 'edit';
 
 /** Draft LO selection while the manage modal is open. */
 let loModalDraftSelection: string[] = [];
+
+/** Draft minutes while the expected-time modal is open. */
+let timeModalDraftMinutes = 25;
 
 /** ponytail: mock catalog until course-document LO API exists. */
 const MOCK_DOCUMENT_LEARNING_OBJECTIVES: { code: string; description: string }[] = [
@@ -103,6 +111,25 @@ function errorMessage(error: unknown, fallback: string): string {
 function capitalize(s: string): string {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+type ScenarioPublishableStatus = 'draft' | 'published';
+
+const PUBLISHABLE_STATUSES: ScenarioPublishableStatus[] = ['draft', 'published'];
+
+function normalizedPublishableStatus(status: ScenarioQuestionExtended['status']): ScenarioPublishableStatus {
+    return status === 'published' ? 'published' : 'draft';
+}
+
+function learningObjectiveDescription(stored: string): string {
+    const match = MOCK_DOCUMENT_LEARNING_OBJECTIVES.find(lo => lo.code === stored || lo.description === stored);
+    return match?.description ?? stored;
+}
+
+function normalizeLearningObjectives(objectives: string[]): string[] {
+    return objectives.map(learningObjectiveDescription);
+}
+
+const SQ_MODAL_TRANSITION_MS = 300;
 
 /**
  * initializeScenarioQuestionsInstructor
@@ -187,10 +214,14 @@ function attachStaticListeners(): void {
 
     document.getElementById('sq-generate-submit-btn')?.addEventListener('click', handleGenerateSubmit, { signal });
     document.getElementById('sq-type-add-btn')?.addEventListener('click', toggleTypePopover, { signal });
-    document.getElementById('sq-difficulty-btn')?.addEventListener('click', toggleDifficultyMenu, { signal });
+    document.getElementById('sq-difficulty-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleDifficultyMenu();
+    }, { signal });
 
-    document.querySelectorAll<HTMLButtonElement>('.sq-difficulty-option').forEach(btn => {
-        btn.addEventListener('click', () => {
+    document.querySelectorAll<HTMLButtonElement>('#sq-generate-view .sq-difficulty-option').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
             const d = btn.dataset.difficulty as ScenarioDifficulty;
             if (d) setDifficulty(d);
             closeDifficultyMenu();
@@ -213,9 +244,34 @@ function attachStaticListeners(): void {
     wireInlineTitleInput('editor', signal);
 
     document.getElementById('sq-editor-save-btn')?.addEventListener('click', () => persistEditor(true), { signal });
-    document.getElementById('sq-editor-publish-btn')?.addEventListener('click', handlePublish, { signal });
-    document.getElementById('sq-editor-reject-btn')?.addEventListener('click', handleReject, { signal });
+    document.getElementById('sq-editor-status-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleEditorStatusMenu();
+    }, { signal });
+    document.querySelectorAll<HTMLButtonElement>('#sq-editor-status-menu .sq-status-menu-option').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const status = btn.dataset.status as ScenarioPublishableStatus;
+            if (status) await setEditorQuestionStatus(status);
+        }, { signal });
+    });
     document.getElementById('sq-editor-lo-manage-btn')?.addEventListener('click', openLearningObjectivesModal, { signal });
+    document.getElementById('sq-editor-lo-list')?.addEventListener('dblclick', openLearningObjectivesModal, { signal });
+    document.getElementById('sq-editor-expected-time-btn')?.addEventListener('click', openExpectedTimeModal, { signal });
+    document.getElementById('sq-time-modal-close-btn')?.addEventListener('click', closeExpectedTimeModal, { signal });
+    document.getElementById('sq-time-modal-cancel-btn')?.addEventListener('click', closeExpectedTimeModal, { signal });
+    document.getElementById('sq-time-modal-save-btn')?.addEventListener('click', saveExpectedTimeModal, { signal });
+    document.getElementById('sq-time-modal-decrease-btn')?.addEventListener('click', () => adjustTimeModalDraft(-5), { signal });
+    document.getElementById('sq-time-modal-increase-btn')?.addEventListener('click', () => adjustTimeModalDraft(5), { signal });
+    document.getElementById('sq-time-modal-overlay')?.addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeExpectedTimeModal();
+    }, { signal });
+    document.getElementById('sq-time-modal-input')?.addEventListener('input', () => {
+        document.getElementById('sq-time-modal-input')?.classList.remove('sq-time-modal-input--invalid');
+    }, { signal });
+    document.getElementById('sq-editor-delete-btn')?.addEventListener('click', () => {
+        if (editorQuestionId) void confirmAndDeleteQuestion(editorQuestionId, true);
+    }, { signal });
     document.getElementById('sq-lo-modal-close-btn')?.addEventListener('click', closeLearningObjectivesModal, { signal });
     document.getElementById('sq-lo-modal-cancel-btn')?.addEventListener('click', closeLearningObjectivesModal, { signal });
     document.getElementById('sq-lo-modal-save-btn')?.addEventListener('click', saveLearningObjectivesModal, { signal });
@@ -230,13 +286,11 @@ function attachStaticListeners(): void {
         }, { signal });
     });
 
-    document.getElementById('sq-time-decrease-btn')?.addEventListener('click', () => adjustExpectedTime(-5), { signal });
-    document.getElementById('sq-time-increase-btn')?.addEventListener('click', () => adjustExpectedTime(5), { signal });
-
     document.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
         if (!target.closest('.sq-type-add-wrap')) closeTypePopover();
         if (!target.closest('.sq-difficulty-wrap')) closeDifficultyMenu();
+        if (!target.closest('.sq-status-wrap')) closeAllStatusMenus();
     }, { signal });
 }
 
@@ -379,38 +433,247 @@ function renderTopicDetail(): void {
 
 function renderQuestionRow(question: ScenarioQuestionExtended): string {
     const partCount = question.subQuestions.length;
-    const difficulty = capitalize(question.difficulty);
-    const statusLabel = capitalize(question.status);
     const lastEdited = formatLastEditedLabel(question.updatedAt ? String(question.updatedAt) : null);
 
     return `
-        <button type="button" class="sq-question-row" data-question-id="${escapeHtml(question.id)}">
-            <div class="sq-question-row-main">
-                <p class="sq-question-row-title-line">
-                    <span class="sq-question-row-label">Question Title:</span>
-                    <span class="sq-question-row-title">${escapeHtml(question.title)}</span>
-                </p>
-                <p class="sq-question-row-sub">Sub questions: ${partCount}</p>
-                <p class="sq-question-row-updated">${escapeHtml(lastEdited)}</p>
-            </div>
+        <div class="sq-question-row" data-question-id="${escapeHtml(question.id)}">
+            <button type="button" class="sq-question-row-main-btn">
+                <div class="sq-question-row-main">
+                    <p class="sq-question-row-title-line">
+                        <span class="sq-question-row-label">Question Title:</span>
+                        <span class="sq-question-row-title">${escapeHtml(question.title)}</span>
+                    </p>
+                    <p class="sq-question-row-sub">Sub questions: ${partCount}</p>
+                    <p class="sq-question-row-updated">${escapeHtml(lastEdited)}</p>
+                </div>
+            </button>
             <div class="sq-question-row-badges">
-                <span class="sq-difficulty-badge sq-difficulty-${question.difficulty}">${difficulty}</span>
-                <span class="sq-status-pill sq-status-pill-${question.status}">
-                    <i data-feather="chevron-right"></i>
-                    <span>${escapeHtml(statusLabel)}</span>
-                </span>
+                <span class="sq-difficulty-badge sq-difficulty-${question.difficulty}">${capitalize(question.difficulty)}</span>
+                ${renderRowStatusControl(question)}
+                <button type="button" class="sq-question-row-delete-btn" data-question-id="${escapeHtml(question.id)}" aria-label="Delete ${escapeHtml(question.title)}">
+                    <i data-feather="trash-2"></i>
+                </button>
             </div>
-        </button>
+        </div>
+    `;
+}
+
+function renderRowStatusControl(question: ScenarioQuestionExtended): string {
+    const qid = escapeHtml(question.id);
+    const current = normalizedPublishableStatus(question.status);
+    return `
+        <div class="sq-status-wrap sq-row-status-wrap" data-question-id="${qid}">
+            <button type="button" class="sq-status-pill sq-status-pill-${current} sq-status-menu-btn sq-row-status-btn" data-question-id="${qid}" aria-haspopup="listbox" aria-expanded="false">
+                <i data-feather="chevron-right"></i>
+                <span>${capitalize(current)}</span>
+            </button>
+            <div class="sq-status-menu sq-row-status-menu" data-question-id="${qid}" style="display: none;" role="listbox">
+                ${PUBLISHABLE_STATUSES.map(status => `
+                    <button type="button" class="sq-status-menu-option sq-status-menu-option-${status}${status === current ? ' sq-status-menu-option--active' : ''}" data-status="${status}" data-question-id="${qid}">${capitalize(status)}</button>
+                `).join('')}
+            </div>
+        </div>
     `;
 }
 
 function attachQuestionRowListeners(): void {
-    document.querySelectorAll<HTMLButtonElement>('.sq-question-row').forEach(row => {
-        row.addEventListener('click', async () => {
-            const id = row.dataset.questionId;
+    document.querySelectorAll<HTMLButtonElement>('.sq-question-row-main-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const row = btn.closest('.sq-question-row') as HTMLElement | null;
+            const id = row?.dataset.questionId;
             if (id) await openEditorView(id);
         }, { signal: uiAbort?.signal });
     });
+
+    document.querySelectorAll<HTMLButtonElement>('.sq-row-status-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const questionId = btn.dataset.questionId;
+            if (questionId) toggleRowStatusMenu(questionId);
+        }, { signal: uiAbort?.signal });
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('.sq-row-status-menu .sq-status-menu-option').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const questionId = btn.dataset.questionId;
+            const status = btn.dataset.status as ScenarioPublishableStatus;
+            if (questionId && status) await setQuestionStatus(questionId, status);
+        }, { signal: uiAbort?.signal });
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('.sq-question-row-delete-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const questionId = btn.dataset.questionId;
+            if (questionId) void confirmAndDeleteQuestion(questionId, false);
+        }, { signal: uiAbort?.signal });
+    });
+}
+
+async function confirmAndDeleteQuestion(questionId: string, fromEditor: boolean): Promise<void> {
+    if (!currentCourse) return;
+
+    let title = 'this question';
+    try {
+        const question = await getQuestion(currentCourse.id, questionId);
+        title = question.title?.trim() || title;
+    } catch {
+        // Proceed with generic label if lookup fails.
+    }
+
+    const result = await showConfirmModal(
+        'Delete question?',
+        `"${title}" will be permanently removed from this topic.`,
+        'Delete question',
+        'Cancel',
+        'danger'
+    );
+    if (result.action !== 'delete-question') return;
+
+    try {
+        await deleteQuestion(currentCourse.id, questionId);
+        showSuccessToast('Question deleted.');
+        await refreshQuestions();
+
+        if (fromEditor) {
+            editorQuestionId = null;
+            editorQuestion = null;
+            isDirty = false;
+            clearAutoSaveTimer();
+            showTopicDetailView();
+        }
+
+        renderTopicDetail();
+    } catch (error) {
+        showErrorToast(errorMessage(error, 'Could not delete question.'));
+    }
+}
+
+async function setQuestionStatus(questionId: string, status: ScenarioPublishableStatus): Promise<void> {
+    if (!currentCourse) return;
+
+    try {
+        if (status === 'published') {
+            const question = await getQuestion(currentCourse.id, questionId);
+            const err = validatePublish(question);
+            if (err) {
+                showErrorToast(err);
+                return;
+            }
+        }
+        await patchStatus(currentCourse.id, questionId, status);
+        closeAllStatusMenus();
+        await refreshQuestions();
+        renderTopicDetail();
+        showSuccessToast(status === 'published' ? 'Question published.' : 'Question moved to draft.');
+    } catch (error) {
+        showErrorToast(errorMessage(error, 'Could not update status.'));
+    }
+}
+
+function closeRowStatusMenus(): void {
+    document.querySelectorAll<HTMLElement>('.sq-row-status-menu').forEach(menu => {
+        menu.style.display = 'none';
+    });
+    document.querySelectorAll<HTMLButtonElement>('.sq-row-status-btn').forEach(btn => {
+        btn.setAttribute('aria-expanded', 'false');
+    });
+}
+
+function closeEditorStatusMenu(): void {
+    const menu = document.getElementById('sq-editor-status-menu');
+    const btn = document.getElementById('sq-editor-status-btn');
+    if (menu) menu.style.display = 'none';
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+function closeAllStatusMenus(): void {
+    closeRowStatusMenus();
+    closeEditorStatusMenu();
+}
+
+function toggleRowStatusMenu(questionId: string): void {
+    const menu = document.querySelector<HTMLElement>(`.sq-row-status-menu[data-question-id="${questionId}"]`);
+    const btn = document.querySelector<HTMLButtonElement>(`.sq-row-status-btn[data-question-id="${questionId}"]`);
+    if (!menu || !btn) return;
+
+    const willOpen = menu.style.display === 'none';
+    closeAllStatusMenus();
+    closeDifficultyMenu();
+    if (willOpen) {
+        menu.style.display = '';
+        btn.setAttribute('aria-expanded', 'true');
+    }
+}
+
+function toggleEditorStatusMenu(): void {
+    const menu = document.getElementById('sq-editor-status-menu');
+    const btn = document.getElementById('sq-editor-status-btn');
+    if (!menu || !btn) return;
+
+    const willOpen = menu.style.display === 'none';
+    closeAllStatusMenus();
+    if (willOpen) {
+        menu.style.display = '';
+        btn.setAttribute('aria-expanded', 'true');
+    }
+}
+
+function updateEditorStatusButton(status: ScenarioQuestionExtended['status']): void {
+    const normalized = normalizedPublishableStatus(status);
+    const btn = document.getElementById('sq-editor-status-btn');
+    const label = document.getElementById('sq-editor-status-label');
+    if (label) label.textContent = capitalize(normalized);
+    if (btn) {
+        btn.classList.remove('sq-status-pill-draft', 'sq-status-pill-published', 'sq-status-pill-rejected');
+        btn.classList.add(`sq-status-pill-${normalized}`);
+    }
+    document.querySelectorAll<HTMLButtonElement>('#sq-editor-status-menu .sq-status-menu-option').forEach(option => {
+        option.classList.toggle('sq-status-menu-option--active', option.dataset.status === normalized);
+    });
+}
+
+async function setEditorQuestionStatus(status: ScenarioPublishableStatus): Promise<void> {
+    if (!currentCourse || !editorQuestionId) return;
+    const errorEl = document.getElementById('sq-editor-error');
+
+    if (isDirty) await persistEditor(false);
+
+    if (status === 'published') {
+        const question = await getQuestion(currentCourse.id, editorQuestionId);
+        const err = validatePublish({ ...question, ...collectEditorPatch() } as ScenarioQuestionExtended);
+        if (err) {
+            if (errorEl) {
+                errorEl.textContent = err;
+                errorEl.style.display = '';
+            }
+            return;
+        }
+        try {
+            await updateQuestion(currentCourse.id, editorQuestionId, collectEditorPatch());
+            await patchStatus(currentCourse.id, editorQuestionId, 'published');
+            editorQuestion = await getQuestion(currentCourse.id, editorQuestionId);
+            updateEditorStatusButton(editorQuestion.status);
+            if (errorEl) errorEl.style.display = 'none';
+            showSuccessToast('Question published.');
+        } catch (error) {
+            showErrorToast(errorMessage(error, 'Could not publish.'));
+        }
+    } else {
+        try {
+            await patchStatus(currentCourse.id, editorQuestionId, 'draft');
+            editorQuestion = await getQuestion(currentCourse.id, editorQuestionId);
+            updateEditorStatusButton(editorQuestion.status);
+            if (errorEl) errorEl.style.display = 'none';
+            showSuccessToast('Question moved to draft.');
+        } catch (error) {
+            showErrorToast(errorMessage(error, 'Could not update status.'));
+        }
+    }
+
+    closeEditorStatusMenu();
+    await refreshQuestions();
 }
 
 // --- Generate view ---
@@ -451,7 +714,7 @@ function renderTypePills(): void {
     container.innerHTML = selectedTypes.map((type, i) => `
         <button type="button" class="sq-type-pill sq-type-pill--active" data-type="${type}" data-index="${i}">
             ${escapeHtml(SUB_QUESTION_TYPE_LABELS[type])}
-            <span class="sq-type-pill-remove" data-type="${type}" aria-label="Remove ${escapeHtml(SUB_QUESTION_TYPE_LABELS[type])}">×</span>
+            <span class="sq-type-pill-remove" data-index="${i}" aria-label="Remove ${escapeHtml(SUB_QUESTION_TYPE_LABELS[type])}">×</span>
         </button>
     `).join('');
 
@@ -460,7 +723,8 @@ function renderTypePills(): void {
             const remove = (e.target as HTMLElement).closest('.sq-type-pill-remove');
             if (remove) {
                 e.stopPropagation();
-                removeType((remove as HTMLElement).dataset.type as ScenarioSubQuestionType);
+                const index = parseInt((remove as HTMLElement).dataset.index ?? '-1', 10);
+                if (index >= 0) removeTypeAtIndex(index);
             }
         }, { signal: uiAbort?.signal });
     });
@@ -470,13 +734,7 @@ function renderTypePopover(): void {
     const popover = document.getElementById('sq-type-popover');
     if (!popover) return;
 
-    const available = ALL_TYPES.filter(t => !selectedTypes.includes(t));
-    if (!available.length) {
-        popover.innerHTML = `<p class="sq-type-popover-empty">All types selected</p>`;
-        return;
-    }
-
-    popover.innerHTML = available.map(type => `
+    popover.innerHTML = ALL_TYPES.map(type => `
         <button type="button" class="sq-type-popover-item" data-type="${type}" role="menuitem">
             ${escapeHtml(SUB_QUESTION_TYPE_LABELS[type])}
         </button>
@@ -491,21 +749,17 @@ function renderTypePopover(): void {
 }
 
 function addType(type: ScenarioSubQuestionType): void {
-    if (!selectedTypes.includes(type)) {
-        selectedTypes.push(type);
-        renderTypePills();
-        renderTypePopover();
-    }
+    selectedTypes.push(type);
+    renderTypePills();
 }
 
-function removeType(type: ScenarioSubQuestionType): void {
+function removeTypeAtIndex(index: number): void {
     if (selectedTypes.length <= 1) {
         showErrorToast('At least one subquestion type is required.');
         return;
     }
-    selectedTypes = selectedTypes.filter(t => t !== type);
+    selectedTypes = selectedTypes.filter((_, i) => i !== index);
     renderTypePills();
-    renderTypePopover();
 }
 
 function toggleTypePopover(): void {
@@ -529,7 +783,7 @@ function setDifficulty(d: ScenarioDifficulty): void {
     const label = document.getElementById('sq-difficulty-label');
     if (label) label.textContent = capitalize(d);
 
-    document.querySelectorAll<HTMLButtonElement>('.sq-difficulty-option').forEach(btn => {
+    document.querySelectorAll<HTMLButtonElement>('#sq-generate-view .sq-difficulty-option').forEach(btn => {
         const isActive = btn.dataset.difficulty === d;
         btn.classList.toggle('sq-difficulty-option--active', isActive);
     });
@@ -545,9 +799,10 @@ function toggleDifficultyMenu(): void {
     const menu = document.getElementById('sq-difficulty-menu');
     const btn = document.getElementById('sq-difficulty-btn');
     if (!menu || !btn) return;
-    const open = menu.style.display === 'none';
-    menu.style.display = open ? '' : 'none';
-    btn.setAttribute('aria-expanded', String(open));
+    const willOpen = menu.style.display === 'none';
+    closeAllStatusMenus();
+    menu.style.display = willOpen ? '' : 'none';
+    btn.setAttribute('aria-expanded', String(willOpen));
 }
 
 function closeDifficultyMenu(): void {
@@ -731,9 +986,10 @@ async function openEditorView(questionId: string): Promise<void> {
     if (topicLabel) topicLabel.textContent = topicLabelForEditor(question.topicOrWeekId);
 
     updateExpectedTimeDisplay(question.expectedTimeMinutes);
-    renderLearningObjectives(question.learningObjectives);
+    renderLearningObjectives(normalizeLearningObjectives(question.learningObjectives));
     renderEditorParts(question);
     setQuestionBodyViewMode('edit');
+    updateEditorStatusButton(question.status);
 
     const errorEl = document.getElementById('sq-editor-error');
     if (errorEl) errorEl.style.display = 'none';
@@ -750,18 +1006,29 @@ function renderEditorParts(question: ScenarioQuestionExtended): void {
     container.innerHTML = question.subQuestions.map(sq => {
         const partKey = sq.partId;
         if (!partAnswerModes.has(partKey)) partAnswerModes.set(partKey, 'text');
+        if (!partPromptModes.has(partKey)) partPromptModes.set(partKey, 'edit');
         const mode = partAnswerModes.get(partKey) ?? 'text';
+        const promptMode = partPromptModes.get(partKey) ?? 'edit';
 
         const typeLabel = SUB_QUESTION_TYPE_LABELS[sq.subQuestionType] ?? sq.subQuestionType;
 
         return `
             <div class="sq-editor-part-card" data-part-id="${sq.partId}">
                 <div class="sq-editor-part-header">
-                    <h3 class="sq-editor-part-title">Part (${sq.partId})</h3>
-                    <span class="sq-part-type-badge sq-part-type-${sq.subQuestionType}">${escapeHtml(typeLabel)}</span>
+                    <div class="sq-editor-part-title-group">
+                        <h3 class="sq-editor-part-title">Part (${sq.partId})</h3>
+                        <span class="sq-part-type-badge sq-part-type-${sq.subQuestionType}">${escapeHtml(typeLabel)}</span>
+                    </div>
+                    <div class="sq-view-toggle sq-part-prompt-toggle" role="group" aria-label="Part (${sq.partId}) prompt view mode">
+                        <button type="button" class="sq-view-toggle-btn sq-part-prompt-toggle-btn ${promptMode === 'edit' ? 'sq-view-toggle-btn--active' : ''}" data-mode="edit" data-part-id="${sq.partId}">Edit</button>
+                        <button type="button" class="sq-view-toggle-btn sq-part-prompt-toggle-btn ${promptMode === 'preview' ? 'sq-view-toggle-btn--active' : ''}" data-mode="preview" data-part-id="${sq.partId}">Preview</button>
+                    </div>
                 </div>
-                <label class="sq-editor-section-label">Student prompt</label>
-                <textarea class="sq-editor-textarea sq-part-prompt" data-part-id="${sq.partId}" rows="3">${escapeHtml(sq.prompt)}</textarea>
+                <div class="sq-part-prompt-body">
+                    <label class="sq-sr-only" for="sq-part-prompt-${sq.partId}">Part (${sq.partId}) prompt</label>
+                    <textarea id="sq-part-prompt-${sq.partId}" class="sq-editor-textarea sq-part-prompt" data-part-id="${sq.partId}" rows="3" ${promptMode === 'preview' ? 'hidden' : ''}>${escapeHtml(sq.prompt)}</textarea>
+                    <div class="sq-part-prompt-preview sq-markdown-preview message-content" data-part-id="${sq.partId}" ${promptMode === 'edit' ? 'hidden' : ''}></div>
+                </div>
                 <div class="sq-answer-key-header">
                     <span class="sq-editor-section-label">Answer key</span>
                     <div class="sq-answer-toggle" role="group" aria-label="Answer key view mode">
@@ -769,14 +1036,19 @@ function renderEditorParts(question: ScenarioQuestionExtended): void {
                         <button type="button" class="sq-answer-toggle-btn ${mode === 'flashcard' ? 'sq-answer-toggle-btn--active' : ''}" data-mode="flashcard" data-part-id="${sq.partId}">flashcard</button>
                     </div>
                 </div>
-                <textarea class="sq-editor-textarea sq-part-answer sq-part-answer-edit" data-part-id="${sq.partId}" rows="6">${escapeHtml(sq.modelAnswer)}</textarea>
-                <div class="sq-part-answer-preview sq-markdown-preview message-content" data-part-id="${sq.partId}"></div>
-                <div class="sq-flashcard-panel" data-part-id="${sq.partId}" style="display: none;"></div>
+                <div class="sq-part-answer-body">
+                    <textarea class="sq-editor-textarea sq-part-answer sq-part-answer-edit" data-part-id="${sq.partId}" rows="6">${escapeHtml(sq.modelAnswer)}</textarea>
+                    <div class="sq-part-answer-preview sq-markdown-preview message-content" data-part-id="${sq.partId}"></div>
+                    <div class="sq-flashcard-panel" data-part-id="${sq.partId}" style="display: none;"></div>
+                </div>
             </div>
         `;
     }).join('');
 
-    question.subQuestions.forEach(sq => updatePartAnswerDisplay(sq.partId));
+    question.subQuestions.forEach(sq => {
+        updatePartPromptDisplay(sq.partId);
+        updatePartAnswerDisplay(sq.partId);
+    });
 }
 
 function attachEditorInputListeners(): void {
@@ -801,6 +1073,17 @@ function attachEditorInputListeners(): void {
         }, { signal });
     });
 
+    document.querySelectorAll<HTMLButtonElement>('.sq-part-prompt-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const partId = btn.dataset.partId;
+            const mode = btn.dataset.mode as 'edit' | 'preview' | undefined;
+            if (partId && mode) {
+                partPromptModes.set(partId, mode);
+                updatePartPromptDisplay(partId);
+            }
+        }, { signal });
+    });
+
     document.querySelectorAll<HTMLButtonElement>('.sq-answer-toggle-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const partId = btn.dataset.partId;
@@ -820,6 +1103,28 @@ function debouncePartPreview(partId: string): void {
     const existing = previewDebounce.get(partId);
     if (existing) clearTimeout(existing);
     previewDebounce.set(partId, setTimeout(() => updatePartAnswerDisplay(partId), 300));
+}
+
+function updatePartPromptDisplay(partId: string): void {
+    const mode = partPromptModes.get(partId) ?? 'edit';
+    const promptEl = document.querySelector<HTMLTextAreaElement>(`.sq-part-prompt[data-part-id="${partId}"]`);
+    const previewEl = document.querySelector<HTMLElement>(`.sq-part-prompt-preview[data-part-id="${partId}"]`);
+    const card = document.querySelector(`.sq-editor-part-card[data-part-id="${partId}"]`);
+
+    if (!promptEl || !previewEl || !card) return;
+
+    card.querySelectorAll<HTMLButtonElement>('.sq-part-prompt-toggle-btn').forEach(btn => {
+        btn.classList.toggle('sq-view-toggle-btn--active', btn.dataset.mode === mode);
+    });
+
+    if (mode === 'edit') {
+        promptEl.hidden = false;
+        previewEl.hidden = true;
+    } else {
+        promptEl.hidden = true;
+        previewEl.hidden = false;
+        renderMarkdownInto(previewEl, promptEl.value, `sq-part-prompt-${partId}`);
+    }
 }
 
 function updatePartAnswerDisplay(partId: string): void {
@@ -914,7 +1219,7 @@ function renderLearningObjectives(objectives: string[]): void {
     }
 
     list.innerHTML = objectives.map(lo => `
-        <span class="sq-lo-pill">${escapeHtml(lo)}</span>
+        <span class="sq-lo-pill">${escapeHtml(learningObjectiveDescription(lo))}</span>
     `).join('');
 }
 
@@ -922,17 +1227,25 @@ function openLearningObjectivesModal(): void {
     const overlay = document.getElementById('sq-lo-modal-overlay');
     if (!overlay) return;
 
-    loModalDraftSelection = [...(editorQuestion?.learningObjectives ?? [])];
+    loModalDraftSelection = normalizeLearningObjectives(editorQuestion?.learningObjectives ?? []);
     renderLearningObjectivesCatalog();
-    overlay.style.display = '';
+    overlay.style.display = 'flex';
     overlay.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => overlay.classList.add('sq-modal-overlay--visible'));
 }
 
 function closeLearningObjectivesModal(): void {
     const overlay = document.getElementById('sq-lo-modal-overlay');
     if (!overlay) return;
-    overlay.style.display = 'none';
+
+    overlay.classList.remove('sq-modal-overlay--visible');
     overlay.setAttribute('aria-hidden', 'true');
+
+    window.setTimeout(() => {
+        if (!overlay.classList.contains('sq-modal-overlay--visible')) {
+            overlay.style.display = 'none';
+        }
+    }, SQ_MODAL_TRANSITION_MS);
 }
 
 function saveLearningObjectivesModal(): void {
@@ -949,11 +1262,10 @@ function renderLearningObjectivesCatalog(): void {
     if (!catalog) return;
 
     catalog.innerHTML = MOCK_DOCUMENT_LEARNING_OBJECTIVES.map(lo => {
-        const checked = loModalDraftSelection.includes(lo.code);
+        const checked = loModalDraftSelection.includes(lo.description);
         return `
             <label class="sq-lo-catalog-item">
-                <input type="checkbox" class="sq-lo-catalog-checkbox" value="${escapeHtml(lo.code)}" ${checked ? 'checked' : ''} />
-                <span class="sq-lo-catalog-code">${escapeHtml(lo.code)}</span>
+                <input type="checkbox" class="sq-lo-catalog-checkbox" value="${escapeHtml(lo.description)}" ${checked ? 'checked' : ''} />
                 <span class="sq-lo-catalog-text">${escapeHtml(lo.description)}</span>
             </label>
         `;
@@ -961,11 +1273,11 @@ function renderLearningObjectivesCatalog(): void {
 
     catalog.querySelectorAll<HTMLInputElement>('.sq-lo-catalog-checkbox').forEach(box => {
         box.addEventListener('change', () => {
-            const code = box.value;
+            const description = box.value;
             if (box.checked) {
-                if (!loModalDraftSelection.includes(code)) loModalDraftSelection.push(code);
+                if (!loModalDraftSelection.includes(description)) loModalDraftSelection.push(description);
             } else {
-                loModalDraftSelection = loModalDraftSelection.filter(c => c !== code);
+                loModalDraftSelection = loModalDraftSelection.filter(c => c !== description);
             }
         }, { signal: uiAbort?.signal });
     });
@@ -977,12 +1289,88 @@ function updateExpectedTimeDisplay(minutes: number): void {
     el?.setAttribute('data-minutes', String(minutes));
 }
 
-function adjustExpectedTime(delta: number): void {
-    const el = document.getElementById('sq-editor-expected-time');
-    const current = parseInt(el?.getAttribute('data-minutes') ?? '25', 10);
-    const next = Math.max(5, Math.min(120, current + delta));
-    updateExpectedTimeDisplay(next);
+function clampExpectedTimeMinutes(minutes: number): number {
+    return Math.max(5, Math.min(120, Math.round(minutes)));
+}
+
+function parseExpectedTimeInput(raw: string): number | null {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+
+    const colonMatch = /^(\d+)\s*:\s*(\d{1,2})$/.exec(trimmed);
+    if (colonMatch) {
+        return clampExpectedTimeMinutes(parseInt(colonMatch[1], 10));
+    }
+
+    const numericMatch = /^(\d+)$/.exec(trimmed);
+    if (numericMatch) {
+        return clampExpectedTimeMinutes(parseInt(numericMatch[1], 10));
+    }
+
+    return null;
+}
+
+function syncTimeModalInput(minutes: number): void {
+    const input = document.getElementById('sq-time-modal-input') as HTMLInputElement | null;
+    if (input) {
+        input.value = formatExpectedTime(minutes);
+        input.classList.remove('sq-time-modal-input--invalid');
+    }
+}
+
+function openExpectedTimeModal(): void {
+    const overlay = document.getElementById('sq-time-modal-overlay');
+    if (!overlay) return;
+
+    const current = parseInt(
+        document.getElementById('sq-editor-expected-time')?.getAttribute('data-minutes') ?? '25',
+        10
+    );
+    timeModalDraftMinutes = clampExpectedTimeMinutes(current);
+    syncTimeModalInput(timeModalDraftMinutes);
+
+    overlay.style.display = 'flex';
+    overlay.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => overlay.classList.add('sq-modal-overlay--visible'));
+
+    const input = document.getElementById('sq-time-modal-input') as HTMLInputElement | null;
+    input?.focus();
+    input?.select();
+}
+
+function closeExpectedTimeModal(): void {
+    const overlay = document.getElementById('sq-time-modal-overlay');
+    if (!overlay) return;
+
+    overlay.classList.remove('sq-modal-overlay--visible');
+    overlay.setAttribute('aria-hidden', 'true');
+
+    window.setTimeout(() => {
+        if (!overlay.classList.contains('sq-modal-overlay--visible')) {
+            overlay.style.display = 'none';
+        }
+    }, SQ_MODAL_TRANSITION_MS);
+}
+
+function adjustTimeModalDraft(delta: number): void {
+    timeModalDraftMinutes = clampExpectedTimeMinutes(timeModalDraftMinutes + delta);
+    syncTimeModalInput(timeModalDraftMinutes);
+}
+
+function saveExpectedTimeModal(): void {
+    const input = document.getElementById('sq-time-modal-input') as HTMLInputElement | null;
+    const parsed = parseExpectedTimeInput(input?.value ?? '');
+
+    if (parsed === null) {
+        input?.classList.add('sq-time-modal-input--invalid');
+        input?.focus();
+        return;
+    }
+
+    timeModalDraftMinutes = parsed;
+    updateExpectedTimeDisplay(parsed);
     markDirty();
+    closeExpectedTimeModal();
 }
 
 function markDirty(): void {
@@ -1014,7 +1402,7 @@ function collectEditorPatch(): Partial<ScenarioQuestionExtended> {
     const questionBody = (document.getElementById('sq-editor-question-body') as HTMLTextAreaElement | null)?.value ?? '';
     const minutes = parseInt(document.getElementById('sq-editor-expected-time')?.getAttribute('data-minutes') ?? '25', 10);
 
-    const learningObjectives = editorQuestion?.learningObjectives ?? [];
+    const learningObjectives = normalizeLearningObjectives(editorQuestion?.learningObjectives ?? []);
 
     const subQuestions = (editorQuestion?.subQuestions ?? []).map(sq => {
         const partId = sq.partId;
@@ -1051,53 +1439,5 @@ async function persistEditor(showToast: boolean): Promise<void> {
         showSuccessToast(showToast ? 'Draft saved.' : 'Changes saved automatically.');
     } catch (error) {
         showErrorToast(errorMessage(error, 'Could not save.'));
-    }
-}
-
-async function handlePublish(): Promise<void> {
-    if (!currentCourse || !editorQuestionId) return;
-    const errorEl = document.getElementById('sq-editor-error');
-
-    if (isDirty) await persistEditor(false);
-
-    const question = await getQuestion(currentCourse.id, editorQuestionId);
-    const err = validatePublish({ ...question, ...collectEditorPatch() } as ScenarioQuestionExtended);
-    if (err) {
-        if (errorEl) {
-            errorEl.textContent = err;
-            errorEl.style.display = '';
-        }
-        return;
-    }
-
-    try {
-        await updateQuestion(currentCourse.id, editorQuestionId, collectEditorPatch());
-        await patchStatus(currentCourse.id, editorQuestionId, 'published');
-        showSuccessToast('Question published.');
-        editorQuestionId = null;
-        await refreshQuestions();
-        showTopicDetailView();
-        renderTopicDetail();
-    } catch (error) {
-        if (errorEl) {
-            errorEl.textContent = errorMessage(error, 'Could not publish.');
-            errorEl.style.display = '';
-        }
-    }
-}
-
-async function handleReject(): Promise<void> {
-    if (!currentCourse || !editorQuestionId) return;
-    if (isDirty) await persistEditor(false);
-
-    try {
-        await patchStatus(currentCourse.id, editorQuestionId, 'rejected');
-        showSuccessToast('Question rejected.');
-        editorQuestionId = null;
-        await refreshQuestions();
-        showTopicDetailView();
-        renderTopicDetail();
-    } catch (error) {
-        showErrorToast(errorMessage(error, 'Could not reject question.'));
     }
 }
