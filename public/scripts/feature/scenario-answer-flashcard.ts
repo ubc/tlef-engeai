@@ -4,8 +4,16 @@
  * scenario-answer-flashcard.ts
  *
  * Deterministic parser that splits markdown answer keys into step-by-step flashcards
- * for instructor preview (and future student practice). No LLM — see
- * planner/improved-scenario-generation.md § Flashcard answer-key preview.
+ * for instructor preview and student practice. No LLM.
+ *
+ * Card boundary (preferred): `# Card N` / `# Step N` (ATX h1).
+ * Inside a card: `## Topic`, `### Highlight` stay in the body (not new cards).
+ * Fallbacks: `##` headings, numbered lists, bold **Step N**, then paragraphs.
+ *
+ * @author: EngE-AI Team
+ * @date: 2026-07-09
+ * @version: 1.1.0
+ * @description: Parse answer-key markdown into navigable flashcard steps.
  */
 
 /** One navigable flashcard step derived from markdown answer key. */
@@ -35,8 +43,13 @@ export function parseAnswerKeyToFlashcards(markdown: string): FlashcardStep[] {
     const normalized = markdown.trim().replace(/\n{3,}/g, '\n\n');
     if (!normalized) return [];
 
-    const byHeadings = splitByMarkdownHeadings(normalized);
-    if (byHeadings.length > 1) return toSteps(byHeadings);
+    // Preferred: `# Card N` / `# …` (h1 only — `##` / `###` stay inside the card)
+    const byH1 = splitByH1Cards(normalized);
+    if (byH1.length > 1) return toSteps(byH1);
+
+    // Legacy: `## Step` headings
+    const byH2 = splitByH2Headings(normalized);
+    if (byH2.length > 1) return toSteps(byH2);
 
     const byOrderedList = splitByOrderedList(normalized);
     if (byOrderedList.length > 1) return toSteps(byOrderedList);
@@ -47,10 +60,21 @@ export function parseAnswerKeyToFlashcards(markdown: string): FlashcardStep[] {
     return toSteps(splitByParagraphs(normalized));
 }
 
-function splitByMarkdownHeadings(text: string): string[] {
+/** Split on ATX h1 (`# Title`). Does not match `##` / `###`. */
+function splitByH1Cards(text: string): string[] {
+    const parts = text.split(/(?=^#\s+)/m).map(s => s.trim()).filter(Boolean);
+    if (parts.length <= 1) return parts;
+    // Drop leading preamble that isn't a card heading
+    if (!/^#\s+/.test(parts[0])) parts.shift();
+    return parts.length ? parts : [];
+}
+
+/** Legacy split on `##` headings (kept for existing answer keys). */
+function splitByH2Headings(text: string): string[] {
     const parts = text.split(/(?=^##\s+)/m).map(s => s.trim()).filter(Boolean);
     if (parts.length <= 1) return parts;
-    return parts;
+    if (!/^##\s+/.test(parts[0])) parts.shift();
+    return parts.length ? parts : [];
 }
 
 function splitByOrderedList(text: string): string[] {
@@ -89,18 +113,30 @@ function splitByParagraphs(text: string): string[] {
     return merged.length ? merged : [text];
 }
 
+function cleanCardTitle(raw: string, fallback: string): string {
+    return raw
+        .replace(/^(?:Card|Step)\s+\d+[.:]?\s*/i, '')
+        .trim() || fallback;
+}
+
 function toSteps(segments: string[]): FlashcardStep[] {
     return segments.map((segment, i) => {
-        const headingMatch = segment.match(/^##\s+(.+?)(?:\n|$)/);
+        const fallback = `Step ${i + 1}`;
+        // h1 `# Card` first — `^#\s+` does not match `##`
+        const h1Match = segment.match(/^#\s+(.+?)(?:\n|$)/);
+        const h2Match = segment.match(/^##\s+(.+?)(?:\n|$)/);
         const boldMatch = segment.match(/^\*\*(.+?)\*\*/);
-        let title = `Step ${i + 1}`;
+        let title = fallback;
         let bodyMarkdown = segment;
 
-        if (headingMatch) {
-            title = headingMatch[1].replace(/^Step\s+\d+[.:]?\s*/i, '').trim() || title;
+        if (h1Match) {
+            title = cleanCardTitle(h1Match[1], fallback);
+            bodyMarkdown = segment.replace(/^#\s+.+?\n?/, '').trim();
+        } else if (h2Match) {
+            title = cleanCardTitle(h2Match[1], fallback);
             bodyMarkdown = segment.replace(/^##\s+.+?\n?/, '').trim();
         } else if (boldMatch) {
-            title = boldMatch[1].replace(/^Step\s+\d+[.:]?\s*/i, '').trim() || title;
+            title = cleanCardTitle(boldMatch[1], fallback);
             bodyMarkdown = segment.replace(/^\*\*.+?\*\*\s*/, '').trim();
         }
 

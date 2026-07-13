@@ -26,7 +26,7 @@ import {
 } from '../api/scenario-questions-mock.js';
 import { renderFeatherIcons } from '../api/api.js';
 import { showSuccessToast, showErrorToast } from '../ui/toast-notification.js';
-import { showConfirmModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showContentLoadingModal, closeModal } from '../ui/modal-overlay.js';
 import { RenderChat } from './render-chat.js';
 import { renderLatexInHtmlContent } from './chat.js';
 import {
@@ -37,6 +37,8 @@ import {
 const ALL_TYPES: ScenarioSubQuestionType[] = ['calculation', 'troubleshoot', 'action', 'corrective'];
 const DEFAULT_SELECTED_TYPES: ScenarioSubQuestionType[] = ['calculation', 'troubleshoot', 'action'];
 const AUTO_SAVE_MS = 5000;
+/** Brief pause after generate before opening the editor (loading modal). */
+const GENERATE_TO_EDITOR_DELAY_MS = 3000;
 
 const lastEditedDateFmt = new Intl.DateTimeFormat(undefined, {
     year: 'numeric',
@@ -50,6 +52,10 @@ const renderChat = new RenderChat();
 
 let currentCourse: activeCourse | null = null;
 let activeTopicId: string | null = null;
+/** Home browse mode: topic/week cards vs flat question list. */
+let browseMode: 'topics' | 'questions' = 'topics';
+/** Where the editor was opened from — controls back navigation. */
+let editorReturnTo: 'topic-detail' | 'browse' = 'topic-detail';
 let cachedQuestions: ScenarioQuestionExtended[] = [];
 let editorQuestionId: string | null = null;
 let editorQuestion: ScenarioQuestionExtended | null = null;
@@ -80,6 +86,28 @@ let loModalDraftSelection: string[] = [];
 /** Draft minutes while the expected-time modal is open. */
 let timeModalDraftMinutes = 25;
 
+/** Copyable answer-key template shown in the flashcard help modal. */
+const FLASHCARD_ANSWER_TEMPLATE = `# Card 1: Compute heat duty
+Calculate Q = m·Cp·ΔT for the cold stream.
+
+## Topic
+Energy balance
+
+### Highlight
+Keep units consistent (kW vs W).
+
+# Card 2: Find LMTD
+Use the four terminal temperatures for counter-current flow.
+
+## Topic
+Heat exchanger design
+
+### Highlight
+Counter-current LMTD uses all four terminal temperatures.
+
+# Card 3: Solve for area
+A = Q / (U·LMTD). Report the result in m².`;
+
 /** ponytail: mock catalog until course-document LO API exists. */
 const MOCK_DOCUMENT_LEARNING_OBJECTIVES: { code: string; description: string }[] = [
     { code: 'LO-10-1', description: 'Apply steady-state mass balances to process units.' },
@@ -91,6 +119,8 @@ const MOCK_DOCUMENT_LEARNING_OBJECTIVES: { code: string; description: string }[]
 ];
 
 let uiAbort: AbortController | null = null;
+/** Aborts question-row listeners from the previous list render. */
+let questionListAbort: AbortController | null = null;
 
 function escapeHtml(text: string): string {
     const div = document.createElement('div');
@@ -139,6 +169,8 @@ const SQ_MODAL_TRANSITION_MS = 300;
 export async function initializeScenarioQuestionsInstructor(course: activeCourse): Promise<void> {
     currentCourse = course;
     activeTopicId = null;
+    browseMode = 'topics';
+    editorReturnTo = 'topic-detail';
     cachedQuestions = [];
     editorQuestionId = null;
     isDirty = false;
@@ -146,18 +178,21 @@ export async function initializeScenarioQuestionsInstructor(course: activeCourse
 
     uiAbort?.abort();
     uiAbort = new AbortController();
+    questionListAbort?.abort();
+    questionListAbort = null;
 
     const topicIds = (course.topicOrWeekInstances || []).map(t => t.id);
     initMockStore(course.id, topicIds, course.courseName);
 
     hideAllViews();
     showGridView();
-    await renderTopicGrid();
+    syncBrowsePills();
+    await renderBrowseHome();
     attachStaticListeners();
 }
 
 function hideAllViews(): void {
-    ['sq-grid-view', 'sq-topic-detail-view', 'sq-generate-view', 'sq-editor-view'].forEach(id => {
+    ['sg-instructor-grid-view', 'sg-instructor-topic-detail-view', 'sg-instructor-generate-view', 'sg-instructor-editor-view'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
@@ -165,61 +200,72 @@ function hideAllViews(): void {
 
 function showGridView(): void {
     hideAllViews();
-    const el = document.getElementById('sq-grid-view');
+    const el = document.getElementById('sg-instructor-grid-view');
     if (el) el.style.display = '';
 }
 
 function showTopicDetailView(): void {
     hideAllViews();
-    const el = document.getElementById('sq-topic-detail-view');
+    const el = document.getElementById('sg-instructor-topic-detail-view');
     if (el) el.style.display = '';
 }
 
 function showGenerateView(): void {
     hideAllViews();
-    const el = document.getElementById('sq-generate-view');
+    const el = document.getElementById('sg-instructor-generate-view');
     if (el) el.style.display = '';
 }
 
 function showEditorView(): void {
     hideAllViews();
-    const el = document.getElementById('sq-editor-view');
+    const el = document.getElementById('sg-instructor-editor-view');
     if (el) el.style.display = '';
 }
 
 function attachStaticListeners(): void {
     const signal = uiAbort?.signal;
 
-    document.getElementById('sq-topic-detail-back-btn')?.addEventListener('click', () => {
+    document.getElementById('sg-instructor-topic-detail-back-btn')?.addEventListener('click', () => {
         activeTopicId = null;
         showGridView();
-        renderTopicGrid();
+        void renderBrowseHome();
     }, { signal });
 
-    document.getElementById('sq-topic-detail-generate-btn')?.addEventListener('click', () => {
+    document.querySelector('.sg-instructor-view-toggles')?.addEventListener('click', (e: Event) => {
+        const btn = (e.target as HTMLElement).closest('.sg-instructor-view-pill') as HTMLButtonElement | null;
+        const mode = btn?.dataset.browse as 'topics' | 'questions' | undefined;
+        if (!mode || mode === browseMode) return;
+        browseMode = mode;
+        activeTopicId = null;
+        syncBrowsePills();
+        showGridView();
+        void renderBrowseHome();
+    }, { signal });
+
+    document.getElementById('sg-instructor-topic-detail-generate-btn')?.addEventListener('click', () => {
         openGenerateView();
     }, { signal });
 
-    document.getElementById('sq-generate-back-btn')?.addEventListener('click', () => {
+    document.getElementById('sg-instructor-generate-back-btn')?.addEventListener('click', () => {
         showTopicDetailView();
         renderTopicDetail();
     }, { signal });
 
-    document.getElementById('sq-generate-title-edit-btn')?.addEventListener('click', (e) => {
+    document.getElementById('sg-instructor-generate-title-edit-btn')?.addEventListener('click', (e) => {
         e.stopPropagation();
         beginInlineTitleEdit('generate');
     }, { signal });
-    document.getElementById('sq-generate-title-display')?.addEventListener('click', () => beginInlineTitleEdit('generate'), { signal });
+    document.getElementById('sg-instructor-generate-title-display')?.addEventListener('click', () => beginInlineTitleEdit('generate'), { signal });
     wireInlineTitleInput('generate', signal);
 
-    document.getElementById('sq-generate-submit-btn')?.addEventListener('click', handleGenerateSubmit, { signal });
-    document.getElementById('sq-type-add-btn')?.addEventListener('click', toggleTypePopover, { signal });
-    document.getElementById('sq-difficulty-btn')?.addEventListener('click', (e) => {
+    document.getElementById('sg-instructor-generate-submit-btn')?.addEventListener('click', handleGenerateSubmit, { signal });
+    document.getElementById('sg-instructor-type-add-btn')?.addEventListener('click', toggleTypePopover, { signal });
+    document.getElementById('sg-instructor-difficulty-btn')?.addEventListener('click', (e) => {
         e.stopPropagation();
         toggleDifficultyMenu();
     }, { signal });
 
-    document.querySelectorAll<HTMLButtonElement>('#sq-generate-view .sq-difficulty-option').forEach(btn => {
+    document.querySelectorAll<HTMLButtonElement>('#sg-instructor-generate-view .sg-instructor-difficulty-option').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const d = btn.dataset.difficulty as ScenarioDifficulty;
@@ -228,58 +274,72 @@ function attachStaticListeners(): void {
         }, { signal });
     });
 
-    document.getElementById('sq-editor-back-btn')?.addEventListener('click', async () => {
+    document.getElementById('sg-instructor-editor-back-btn')?.addEventListener('click', async () => {
         if (isDirty) await persistEditor(false);
         editorQuestionId = null;
-        showTopicDetailView();
-        await refreshQuestions();
-        renderTopicDetail();
+        if (editorReturnTo === 'browse') {
+            activeTopicId = null;
+            showGridView();
+            await renderBrowseHome();
+        } else {
+            showTopicDetailView();
+            await refreshQuestions();
+            renderTopicDetail();
+        }
     }, { signal });
 
-    document.getElementById('sq-editor-title-edit-btn')?.addEventListener('click', (e) => {
+    document.getElementById('sg-instructor-editor-title-edit-btn')?.addEventListener('click', (e) => {
         e.stopPropagation();
         beginInlineTitleEdit('editor');
     }, { signal });
-    document.getElementById('sq-editor-title-display')?.addEventListener('click', () => beginInlineTitleEdit('editor'), { signal });
+    document.getElementById('sg-instructor-editor-title-display')?.addEventListener('click', () => beginInlineTitleEdit('editor'), { signal });
     wireInlineTitleInput('editor', signal);
 
-    document.getElementById('sq-editor-save-btn')?.addEventListener('click', () => persistEditor(true), { signal });
-    document.getElementById('sq-editor-status-btn')?.addEventListener('click', (e) => {
+    document.getElementById('sg-instructor-editor-save-btn')?.addEventListener('click', () => persistEditor(true), { signal });
+    document.getElementById('sg-instructor-editor-status-btn')?.addEventListener('click', (e) => {
         e.stopPropagation();
         toggleEditorStatusMenu();
     }, { signal });
-    document.querySelectorAll<HTMLButtonElement>('#sq-editor-status-menu .sq-status-menu-option').forEach(btn => {
+    document.querySelectorAll<HTMLButtonElement>('#sg-instructor-editor-status-menu .sg-instructor-status-menu-option').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             e.stopPropagation();
             const status = btn.dataset.status as ScenarioPublishableStatus;
             if (status) await setEditorQuestionStatus(status);
         }, { signal });
     });
-    document.getElementById('sq-editor-lo-manage-btn')?.addEventListener('click', openLearningObjectivesModal, { signal });
-    document.getElementById('sq-editor-lo-list')?.addEventListener('dblclick', openLearningObjectivesModal, { signal });
-    document.getElementById('sq-editor-expected-time-btn')?.addEventListener('click', openExpectedTimeModal, { signal });
-    document.getElementById('sq-time-modal-close-btn')?.addEventListener('click', closeExpectedTimeModal, { signal });
-    document.getElementById('sq-time-modal-cancel-btn')?.addEventListener('click', closeExpectedTimeModal, { signal });
-    document.getElementById('sq-time-modal-save-btn')?.addEventListener('click', saveExpectedTimeModal, { signal });
-    document.getElementById('sq-time-modal-decrease-btn')?.addEventListener('click', () => adjustTimeModalDraft(-5), { signal });
-    document.getElementById('sq-time-modal-increase-btn')?.addEventListener('click', () => adjustTimeModalDraft(5), { signal });
-    document.getElementById('sq-time-modal-overlay')?.addEventListener('click', (e) => {
+    document.getElementById('sg-instructor-editor-lo-manage-btn')?.addEventListener('click', openLearningObjectivesModal, { signal });
+    document.getElementById('sg-instructor-editor-lo-list')?.addEventListener('dblclick', openLearningObjectivesModal, { signal });
+    document.getElementById('sg-instructor-editor-expected-time-btn')?.addEventListener('click', openExpectedTimeModal, { signal });
+    document.getElementById('sg-instructor-time-modal-close-btn')?.addEventListener('click', closeExpectedTimeModal, { signal });
+    document.getElementById('sg-instructor-time-modal-cancel-btn')?.addEventListener('click', closeExpectedTimeModal, { signal });
+    document.getElementById('sg-instructor-time-modal-save-btn')?.addEventListener('click', saveExpectedTimeModal, { signal });
+    document.getElementById('sg-instructor-time-modal-decrease-btn')?.addEventListener('click', () => adjustTimeModalDraft(-5), { signal });
+    document.getElementById('sg-instructor-time-modal-increase-btn')?.addEventListener('click', () => adjustTimeModalDraft(5), { signal });
+    document.getElementById('sg-instructor-time-modal-overlay')?.addEventListener('click', (e) => {
         if (e.target === e.currentTarget) closeExpectedTimeModal();
     }, { signal });
-    document.getElementById('sq-time-modal-input')?.addEventListener('input', () => {
-        document.getElementById('sq-time-modal-input')?.classList.remove('sq-time-modal-input--invalid');
+    document.getElementById('sg-instructor-time-modal-input')?.addEventListener('input', () => {
+        document.getElementById('sg-instructor-time-modal-input')?.classList.remove('sg-instructor-time-modal-input--invalid');
     }, { signal });
-    document.getElementById('sq-editor-delete-btn')?.addEventListener('click', () => {
+    document.getElementById('sg-instructor-editor-delete-btn')?.addEventListener('click', () => {
         if (editorQuestionId) void confirmAndDeleteQuestion(editorQuestionId, true);
     }, { signal });
-    document.getElementById('sq-lo-modal-close-btn')?.addEventListener('click', closeLearningObjectivesModal, { signal });
-    document.getElementById('sq-lo-modal-cancel-btn')?.addEventListener('click', closeLearningObjectivesModal, { signal });
-    document.getElementById('sq-lo-modal-save-btn')?.addEventListener('click', saveLearningObjectivesModal, { signal });
-    document.getElementById('sq-lo-modal-overlay')?.addEventListener('click', (e) => {
+    document.getElementById('sg-instructor-lo-modal-close-btn')?.addEventListener('click', closeLearningObjectivesModal, { signal });
+    document.getElementById('sg-instructor-lo-modal-cancel-btn')?.addEventListener('click', closeLearningObjectivesModal, { signal });
+    document.getElementById('sg-instructor-lo-modal-save-btn')?.addEventListener('click', saveLearningObjectivesModal, { signal });
+    document.getElementById('sg-instructor-lo-modal-overlay')?.addEventListener('click', (e) => {
         if (e.target === e.currentTarget) closeLearningObjectivesModal();
     }, { signal });
 
-    document.querySelectorAll<HTMLButtonElement>('.sq-base-question-toggle-btn').forEach(btn => {
+    document.getElementById('sg-instructor-flashcard-help-btn')?.addEventListener('click', openFlashcardHelpModal, { signal });
+    document.getElementById('sg-instructor-flashcard-help-close-btn')?.addEventListener('click', closeFlashcardHelpModal, { signal });
+    document.getElementById('sg-instructor-flashcard-help-done-btn')?.addEventListener('click', closeFlashcardHelpModal, { signal });
+    document.getElementById('sg-instructor-flashcard-help-copy-btn')?.addEventListener('click', copyFlashcardHelpTemplate, { signal });
+    document.getElementById('sg-instructor-flashcard-help-overlay')?.addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeFlashcardHelpModal();
+    }, { signal });
+
+    document.querySelectorAll<HTMLButtonElement>('.sg-instructor-base-question-toggle-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const mode = btn.dataset.mode as 'edit' | 'preview' | undefined;
             if (mode) setQuestionBodyViewMode(mode);
@@ -288,9 +348,9 @@ function attachStaticListeners(): void {
 
     document.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
-        if (!target.closest('.sq-type-add-wrap')) closeTypePopover();
-        if (!target.closest('.sq-difficulty-wrap')) closeDifficultyMenu();
-        if (!target.closest('.sq-status-wrap')) closeAllStatusMenus();
+        if (!target.closest('.sg-instructor-type-add-wrap')) closeTypePopover();
+        if (!target.closest('.sg-instructor-difficulty-wrap')) closeDifficultyMenu();
+        if (!target.closest('.sg-instructor-status-wrap')) closeAllStatusMenus();
     }, { signal });
 }
 
@@ -346,20 +406,45 @@ function getTopicTitle(topicOrWeekId: string): string {
     return currentCourse?.topicOrWeekInstances?.find(c => c.id === topicOrWeekId)?.title ?? 'Topic';
 }
 
+async function renderBrowseHome(): Promise<void> {
+    if (browseMode === 'questions') await renderQuestionsList();
+    else await renderTopicGrid();
+}
+
+function syncBrowsePills(): void {
+    document.querySelectorAll<HTMLButtonElement>('.sg-instructor-view-pill[data-browse]').forEach(btn => {
+        btn.setAttribute('aria-pressed', String(btn.dataset.browse === browseMode));
+    });
+}
+
+function isTopicDetailVisible(): boolean {
+    const el = document.getElementById('sg-instructor-topic-detail-view');
+    return !!el && el.style.display !== 'none';
+}
+
+async function refreshVisibleQuestionList(): Promise<void> {
+    await refreshQuestions();
+    if (isTopicDetailVisible() && activeTopicId) renderTopicDetail();
+    else await renderBrowseHome();
+}
+
 async function renderTopicGrid(): Promise<void> {
-    const container = document.getElementById('sq-list');
+    const container = document.getElementById('sg-instructor-list');
     if (!container || !currentCourse) return;
+
+    container.className = 'sg-instructor-topic-grid';
+    container.setAttribute('aria-label', 'Topics and weeks');
 
     try {
         await refreshQuestions();
     } catch (error) {
-        container.innerHTML = `<p class="sq-empty-state sq-empty-state--full">${escapeHtml(errorMessage(error, 'Could not load questions.'))}</p>`;
+        container.innerHTML = `<p class="sg-instructor-empty-state sg-instructor-empty-state--full">${escapeHtml(errorMessage(error, 'Could not load questions.'))}</p>`;
         return;
     }
 
     const chapters = currentCourse.topicOrWeekInstances || [];
     if (!chapters.length) {
-        container.innerHTML = `<p class="sq-empty-state sq-empty-state--full">No topics or weeks have been set up for this course yet.</p>`;
+        container.innerHTML = `<p class="sg-instructor-empty-state sg-instructor-empty-state--full">No topics or weeks have been set up for this course yet.</p>`;
         return;
     }
 
@@ -379,23 +464,54 @@ async function renderTopicGrid(): Promise<void> {
     renderFeatherIcons();
 }
 
+async function renderQuestionsList(): Promise<void> {
+    const container = document.getElementById('sg-instructor-list');
+    if (!container || !currentCourse) return;
+
+    container.className = 'sg-instructor-question-row-list';
+    container.setAttribute('aria-label', 'All scenario questions');
+
+    try {
+        await refreshQuestions();
+    } catch (error) {
+        container.innerHTML = `<p class="sg-instructor-empty-state sg-instructor-empty-state--full">${escapeHtml(errorMessage(error, 'Could not load questions.'))}</p>`;
+        return;
+    }
+
+    if (!cachedQuestions.length) {
+        container.innerHTML = `<p class="sg-instructor-empty-state sg-instructor-empty-state--full">No scenario questions yet. Open a week/topic and use New question to create one.</p>`;
+        return;
+    }
+
+    const sorted = [...cachedQuestions].sort((a, b) => {
+        const topicCmp = (a.topicOrWeekId || '').localeCompare(b.topicOrWeekId || '');
+        if (topicCmp !== 0) return topicCmp;
+        return a.sortOrder - b.sortOrder;
+    });
+
+    container.innerHTML = sorted.map(q => renderQuestionRow(q, true)).join('');
+    renderFeatherIcons();
+    attachQuestionRowListeners(container, 'browse');
+}
+
 function renderTopicProjectCard(topicOrWeekId: string, title: string, count: number, lastUpdatedAt: string | null): string {
     const questionLabel = `${count} question${count === 1 ? '' : 's'}`;
     return `
-        <button type="button" class="sq-project-card" data-topic-id="${escapeHtml(topicOrWeekId)}" data-topic-title="${escapeHtml(title)}">
-            <span class="sq-project-card-title">${escapeHtml(title)}</span>
-            <span class="sq-project-card-footer">
-                <span class="sq-project-card-updated">${escapeHtml(formatLastEditedLabel(lastUpdatedAt))}</span>
-                <span class="sq-project-card-count">${escapeHtml(questionLabel)}</span>
+        <button type="button" class="sg-instructor-project-card" data-topic-id="${escapeHtml(topicOrWeekId)}" data-topic-title="${escapeHtml(title)}">
+            <span class="sg-instructor-project-card-title">${escapeHtml(title)}</span>
+            <span class="sg-instructor-project-card-footer">
+                <span class="sg-instructor-project-card-updated">${escapeHtml(formatLastEditedLabel(lastUpdatedAt))}</span>
+                <span class="sg-instructor-project-card-count">${escapeHtml(questionLabel)}</span>
             </span>
         </button>
     `;
 }
 
 function attachTopicCardListeners(): void {
-    document.querySelectorAll<HTMLButtonElement>('.sq-project-card').forEach(card => {
+    document.querySelectorAll<HTMLButtonElement>('.sg-instructor-project-card').forEach(card => {
         card.addEventListener('click', () => {
             activeTopicId = card.dataset.topicId || null;
+            editorReturnTo = 'topic-detail';
             showTopicDetailView();
             renderTopicDetail();
         }, { signal: uiAbort?.signal });
@@ -405,9 +521,9 @@ function attachTopicCardListeners(): void {
 function renderTopicDetail(): void {
     if (!currentCourse || !activeTopicId) return;
 
-    const titleEl = document.getElementById('sq-topic-detail-title');
-    const subtitleEl = document.getElementById('sq-topic-detail-subtitle');
-    const listEl = document.getElementById('sq-topic-detail-list');
+    const titleEl = document.getElementById('sg-instructor-topic-detail-title');
+    const subtitleEl = document.getElementById('sg-instructor-topic-detail-subtitle');
+    const listEl = document.getElementById('sg-instructor-topic-detail-list');
     if (!titleEl || !subtitleEl || !listEl) return;
 
     const chapters = currentCourse.topicOrWeekInstances || [];
@@ -422,35 +538,41 @@ function renderTopicDetail(): void {
     subtitleEl.textContent = formatLastEditedLabel(statsFromQuestions(topicQuestions).lastUpdatedAt);
 
     if (!topicQuestions.length) {
-        listEl.innerHTML = `<p class="sq-empty-state">No scenario questions in this topic yet. Use New question to create one.</p>`;
+        listEl.innerHTML = `<p class="sg-instructor-empty-state">No scenario questions in this topic yet. Use New question to create one.</p>`;
         return;
     }
 
-    listEl.innerHTML = topicQuestions.map(renderQuestionRow).join('');
+    listEl.innerHTML = topicQuestions.map(q => renderQuestionRow(q, false)).join('');
     renderFeatherIcons();
-    attachQuestionRowListeners();
+    attachQuestionRowListeners(listEl, 'topic-detail');
 }
 
-function renderQuestionRow(question: ScenarioQuestionExtended): string {
-    const partCount = question.subQuestions.length;
+function renderQuestionRow(question: ScenarioQuestionExtended, showTopic: boolean): string {
     const lastEdited = formatLastEditedLabel(question.updatedAt ? String(question.updatedAt) : null);
+    const topicLine = showTopic
+        ? `<p class="sg-instructor-question-row-topic">${escapeHtml(formatTopicSubtitle(question.topicOrWeekId, getTopicTitle(question.topicOrWeekId)))}</p>`
+        : '';
+    const typeBadges = question.subQuestions.map(sq => {
+        const label = SUB_QUESTION_TYPE_LABELS[sq.subQuestionType] ?? sq.subQuestionType;
+        return `<span class="sg-part-type-badge sg-part-type-${sq.subQuestionType}">${escapeHtml(label)}</span>`;
+    }).join('');
 
     return `
-        <div class="sq-question-row" data-question-id="${escapeHtml(question.id)}">
-            <button type="button" class="sq-question-row-main-btn">
-                <div class="sq-question-row-main">
-                    <p class="sq-question-row-title-line">
-                        <span class="sq-question-row-label">Question Title:</span>
-                        <span class="sq-question-row-title">${escapeHtml(question.title)}</span>
-                    </p>
-                    <p class="sq-question-row-sub">Sub questions: ${partCount}</p>
-                    <p class="sq-question-row-updated">${escapeHtml(lastEdited)}</p>
+        <div class="sg-instructor-question-row" data-question-id="${escapeHtml(question.id)}" data-topic-id="${escapeHtml(question.topicOrWeekId)}">
+            <button type="button" class="sg-instructor-question-row-main-btn">
+                <div class="sg-instructor-question-row-main">
+                    <div class="sg-instructor-question-row-title-line">
+                        <span class="sg-instructor-question-row-title">${escapeHtml(question.title)}</span>
+                        <span class="sg-instructor-question-row-types">${typeBadges}</span>
+                    </div>
+                    ${topicLine}
+                    <p class="sg-instructor-question-row-updated">${escapeHtml(lastEdited)}</p>
                 </div>
             </button>
-            <div class="sq-question-row-badges">
-                <span class="sq-difficulty-badge sq-difficulty-${question.difficulty}">${capitalize(question.difficulty)}</span>
+            <div class="sg-instructor-question-row-badges">
+                <span class="sg-instructor-difficulty-badge sg-instructor-difficulty-${question.difficulty}">${capitalize(question.difficulty)}</span>
                 ${renderRowStatusControl(question)}
-                <button type="button" class="sq-question-row-delete-btn" data-question-id="${escapeHtml(question.id)}" aria-label="Delete ${escapeHtml(question.title)}">
+                <button type="button" class="sg-instructor-question-row-delete-btn" data-question-id="${escapeHtml(question.id)}" aria-label="Delete ${escapeHtml(question.title)}">
                     <i data-feather="trash-2"></i>
                 </button>
             </div>
@@ -462,52 +584,60 @@ function renderRowStatusControl(question: ScenarioQuestionExtended): string {
     const qid = escapeHtml(question.id);
     const current = normalizedPublishableStatus(question.status);
     return `
-        <div class="sq-status-wrap sq-row-status-wrap" data-question-id="${qid}">
-            <button type="button" class="sq-status-pill sq-status-pill-${current} sq-status-menu-btn sq-row-status-btn" data-question-id="${qid}" aria-haspopup="listbox" aria-expanded="false">
+        <div class="sg-instructor-status-wrap sg-instructor-row-status-wrap" data-question-id="${qid}">
+            <button type="button" class="sg-instructor-status-pill sg-instructor-status-pill-${current} sg-instructor-status-menu-btn sg-instructor-row-status-btn" data-question-id="${qid}" aria-haspopup="listbox" aria-expanded="false">
                 <i data-feather="chevron-right"></i>
                 <span>${capitalize(current)}</span>
             </button>
-            <div class="sq-status-menu sq-row-status-menu" data-question-id="${qid}" style="display: none;" role="listbox">
+            <div class="sg-instructor-status-menu sg-instructor-row-status-menu" data-question-id="${qid}" style="display: none;" role="listbox">
                 ${PUBLISHABLE_STATUSES.map(status => `
-                    <button type="button" class="sq-status-menu-option sq-status-menu-option-${status}${status === current ? ' sq-status-menu-option--active' : ''}" data-status="${status}" data-question-id="${qid}">${capitalize(status)}</button>
+                    <button type="button" class="sg-instructor-status-menu-option sg-instructor-status-menu-option-${status}${status === current ? ' sg-instructor-status-menu-option--active' : ''}" data-status="${status}" data-question-id="${qid}">${capitalize(status)}</button>
                 `).join('')}
             </div>
         </div>
     `;
 }
 
-function attachQuestionRowListeners(): void {
-    document.querySelectorAll<HTMLButtonElement>('.sq-question-row-main-btn').forEach(btn => {
+function attachQuestionRowListeners(root: ParentNode, returnTo: 'topic-detail' | 'browse'): void {
+    questionListAbort?.abort();
+    questionListAbort = new AbortController();
+    const signal = questionListAbort.signal;
+
+    root.querySelectorAll<HTMLButtonElement>('.sg-instructor-question-row-main-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
-            const row = btn.closest('.sq-question-row') as HTMLElement | null;
+            const row = btn.closest('.sg-instructor-question-row') as HTMLElement | null;
             const id = row?.dataset.questionId;
-            if (id) await openEditorView(id);
-        }, { signal: uiAbort?.signal });
+            const topicId = row?.dataset.topicId;
+            if (!id) return;
+            editorReturnTo = returnTo;
+            if (topicId) activeTopicId = topicId;
+            await openEditorView(id);
+        }, { signal });
     });
 
-    document.querySelectorAll<HTMLButtonElement>('.sq-row-status-btn').forEach(btn => {
+    root.querySelectorAll<HTMLButtonElement>('.sg-instructor-row-status-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const questionId = btn.dataset.questionId;
             if (questionId) toggleRowStatusMenu(questionId);
-        }, { signal: uiAbort?.signal });
+        }, { signal });
     });
 
-    document.querySelectorAll<HTMLButtonElement>('.sq-row-status-menu .sq-status-menu-option').forEach(btn => {
+    root.querySelectorAll<HTMLButtonElement>('.sg-instructor-row-status-menu .sg-instructor-status-menu-option').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             e.stopPropagation();
             const questionId = btn.dataset.questionId;
             const status = btn.dataset.status as ScenarioPublishableStatus;
             if (questionId && status) await setQuestionStatus(questionId, status);
-        }, { signal: uiAbort?.signal });
+        }, { signal });
     });
 
-    document.querySelectorAll<HTMLButtonElement>('.sq-question-row-delete-btn').forEach(btn => {
+    root.querySelectorAll<HTMLButtonElement>('.sg-instructor-question-row-delete-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const questionId = btn.dataset.questionId;
             if (questionId) void confirmAndDeleteQuestion(questionId, false);
-        }, { signal: uiAbort?.signal });
+        }, { signal });
     });
 }
 
@@ -534,17 +664,21 @@ async function confirmAndDeleteQuestion(questionId: string, fromEditor: boolean)
     try {
         await deleteQuestion(currentCourse.id, questionId);
         showSuccessToast('Question deleted.');
-        await refreshQuestions();
 
         if (fromEditor) {
             editorQuestionId = null;
             editorQuestion = null;
             isDirty = false;
             clearAutoSaveTimer();
-            showTopicDetailView();
+            if (editorReturnTo === 'browse') {
+                activeTopicId = null;
+                showGridView();
+            } else {
+                showTopicDetailView();
+            }
         }
 
-        renderTopicDetail();
+        await refreshVisibleQuestionList();
     } catch (error) {
         showErrorToast(errorMessage(error, 'Could not delete question.'));
     }
@@ -564,8 +698,7 @@ async function setQuestionStatus(questionId: string, status: ScenarioPublishable
         }
         await patchStatus(currentCourse.id, questionId, status);
         closeAllStatusMenus();
-        await refreshQuestions();
-        renderTopicDetail();
+        await refreshVisibleQuestionList();
         showSuccessToast(status === 'published' ? 'Question published.' : 'Question moved to draft.');
     } catch (error) {
         showErrorToast(errorMessage(error, 'Could not update status.'));
@@ -573,17 +706,17 @@ async function setQuestionStatus(questionId: string, status: ScenarioPublishable
 }
 
 function closeRowStatusMenus(): void {
-    document.querySelectorAll<HTMLElement>('.sq-row-status-menu').forEach(menu => {
+    document.querySelectorAll<HTMLElement>('.sg-instructor-row-status-menu').forEach(menu => {
         menu.style.display = 'none';
     });
-    document.querySelectorAll<HTMLButtonElement>('.sq-row-status-btn').forEach(btn => {
+    document.querySelectorAll<HTMLButtonElement>('.sg-instructor-row-status-btn').forEach(btn => {
         btn.setAttribute('aria-expanded', 'false');
     });
 }
 
 function closeEditorStatusMenu(): void {
-    const menu = document.getElementById('sq-editor-status-menu');
-    const btn = document.getElementById('sq-editor-status-btn');
+    const menu = document.getElementById('sg-instructor-editor-status-menu');
+    const btn = document.getElementById('sg-instructor-editor-status-btn');
     if (menu) menu.style.display = 'none';
     if (btn) btn.setAttribute('aria-expanded', 'false');
 }
@@ -594,8 +727,8 @@ function closeAllStatusMenus(): void {
 }
 
 function toggleRowStatusMenu(questionId: string): void {
-    const menu = document.querySelector<HTMLElement>(`.sq-row-status-menu[data-question-id="${questionId}"]`);
-    const btn = document.querySelector<HTMLButtonElement>(`.sq-row-status-btn[data-question-id="${questionId}"]`);
+    const menu = document.querySelector<HTMLElement>(`.sg-instructor-row-status-menu[data-question-id="${questionId}"]`);
+    const btn = document.querySelector<HTMLButtonElement>(`.sg-instructor-row-status-btn[data-question-id="${questionId}"]`);
     if (!menu || !btn) return;
 
     const willOpen = menu.style.display === 'none';
@@ -608,8 +741,8 @@ function toggleRowStatusMenu(questionId: string): void {
 }
 
 function toggleEditorStatusMenu(): void {
-    const menu = document.getElementById('sq-editor-status-menu');
-    const btn = document.getElementById('sq-editor-status-btn');
+    const menu = document.getElementById('sg-instructor-editor-status-menu');
+    const btn = document.getElementById('sg-instructor-editor-status-btn');
     if (!menu || !btn) return;
 
     const willOpen = menu.style.display === 'none';
@@ -622,21 +755,21 @@ function toggleEditorStatusMenu(): void {
 
 function updateEditorStatusButton(status: ScenarioQuestionExtended['status']): void {
     const normalized = normalizedPublishableStatus(status);
-    const btn = document.getElementById('sq-editor-status-btn');
-    const label = document.getElementById('sq-editor-status-label');
+    const btn = document.getElementById('sg-instructor-editor-status-btn');
+    const label = document.getElementById('sg-instructor-editor-status-label');
     if (label) label.textContent = capitalize(normalized);
     if (btn) {
-        btn.classList.remove('sq-status-pill-draft', 'sq-status-pill-published', 'sq-status-pill-rejected');
-        btn.classList.add(`sq-status-pill-${normalized}`);
+        btn.classList.remove('sg-instructor-status-pill-draft', 'sg-instructor-status-pill-published', 'sg-instructor-status-pill-rejected');
+        btn.classList.add(`sg-instructor-status-pill-${normalized}`);
     }
-    document.querySelectorAll<HTMLButtonElement>('#sq-editor-status-menu .sq-status-menu-option').forEach(option => {
-        option.classList.toggle('sq-status-menu-option--active', option.dataset.status === normalized);
+    document.querySelectorAll<HTMLButtonElement>('#sg-instructor-editor-status-menu .sg-instructor-status-menu-option').forEach(option => {
+        option.classList.toggle('sg-instructor-status-menu-option--active', option.dataset.status === normalized);
     });
 }
 
 async function setEditorQuestionStatus(status: ScenarioPublishableStatus): Promise<void> {
     if (!currentCourse || !editorQuestionId) return;
-    const errorEl = document.getElementById('sq-editor-error');
+    const errorEl = document.getElementById('sg-instructor-editor-error');
 
     if (isDirty) await persistEditor(false);
 
@@ -688,16 +821,16 @@ function openGenerateView(): void {
     selectedDifficulty = 'medium';
     generateDraftTitle = 'Untitled';
 
-    const promptEl = document.getElementById('sq-generate-prompt') as HTMLTextAreaElement | null;
+    const promptEl = document.getElementById('sg-instructor-generate-prompt') as HTMLTextAreaElement | null;
     if (promptEl) promptEl.value = '';
 
-    const errorEl = document.getElementById('sq-generate-error');
+    const errorEl = document.getElementById('sg-instructor-generate-error');
     if (errorEl) errorEl.style.display = 'none';
 
-    const backLabel = document.getElementById('sq-generate-back-label');
+    const backLabel = document.getElementById('sg-instructor-generate-back-label');
     if (backLabel && activeTopicId) backLabel.textContent = getTopicTitle(activeTopicId);
 
-    const titleDisplay = document.getElementById('sq-generate-title-display');
+    const titleDisplay = document.getElementById('sg-instructor-generate-title-display');
     if (titleDisplay) titleDisplay.textContent = generateDraftTitle;
 
     renderTypePills();
@@ -708,19 +841,19 @@ function openGenerateView(): void {
 }
 
 function renderTypePills(): void {
-    const container = document.getElementById('sq-type-pills');
+    const container = document.getElementById('sg-instructor-type-pills');
     if (!container) return;
 
     container.innerHTML = selectedTypes.map((type, i) => `
-        <button type="button" class="sq-type-pill sq-type-pill--active" data-type="${type}" data-index="${i}">
+        <button type="button" class="sg-instructor-type-pill sg-part-type-badge sg-part-type-${type}" data-type="${type}" data-index="${i}">
             ${escapeHtml(SUB_QUESTION_TYPE_LABELS[type])}
-            <span class="sq-type-pill-remove" data-index="${i}" aria-label="Remove ${escapeHtml(SUB_QUESTION_TYPE_LABELS[type])}">×</span>
+            <span class="sg-instructor-type-pill-remove" data-index="${i}" aria-label="Remove ${escapeHtml(SUB_QUESTION_TYPE_LABELS[type])}">×</span>
         </button>
     `).join('');
 
-    container.querySelectorAll<HTMLButtonElement>('.sq-type-pill').forEach(pill => {
+    container.querySelectorAll<HTMLButtonElement>('.sg-instructor-type-pill').forEach(pill => {
         pill.addEventListener('click', (e) => {
-            const remove = (e.target as HTMLElement).closest('.sq-type-pill-remove');
+            const remove = (e.target as HTMLElement).closest('.sg-instructor-type-pill-remove');
             if (remove) {
                 e.stopPropagation();
                 const index = parseInt((remove as HTMLElement).dataset.index ?? '-1', 10);
@@ -731,16 +864,16 @@ function renderTypePills(): void {
 }
 
 function renderTypePopover(): void {
-    const popover = document.getElementById('sq-type-popover');
+    const popover = document.getElementById('sg-instructor-type-popover');
     if (!popover) return;
 
     popover.innerHTML = ALL_TYPES.map(type => `
-        <button type="button" class="sq-type-popover-item" data-type="${type}" role="menuitem">
+        <button type="button" class="sg-instructor-type-popover-item" data-type="${type}" role="menuitem">
             ${escapeHtml(SUB_QUESTION_TYPE_LABELS[type])}
         </button>
     `).join('');
 
-    popover.querySelectorAll<HTMLButtonElement>('.sq-type-popover-item').forEach(btn => {
+    popover.querySelectorAll<HTMLButtonElement>('.sg-instructor-type-popover-item').forEach(btn => {
         btn.addEventListener('click', () => {
             addType(btn.dataset.type as ScenarioSubQuestionType);
             closeTypePopover();
@@ -763,8 +896,8 @@ function removeTypeAtIndex(index: number): void {
 }
 
 function toggleTypePopover(): void {
-    const popover = document.getElementById('sq-type-popover');
-    const btn = document.getElementById('sq-type-add-btn');
+    const popover = document.getElementById('sg-instructor-type-popover');
+    const btn = document.getElementById('sg-instructor-type-add-btn');
     if (!popover || !btn) return;
     const open = popover.style.display === 'none';
     popover.style.display = open ? '' : 'none';
@@ -772,32 +905,32 @@ function toggleTypePopover(): void {
 }
 
 function closeTypePopover(): void {
-    const popover = document.getElementById('sq-type-popover');
-    const btn = document.getElementById('sq-type-add-btn');
+    const popover = document.getElementById('sg-instructor-type-popover');
+    const btn = document.getElementById('sg-instructor-type-add-btn');
     if (popover) popover.style.display = 'none';
     if (btn) btn.setAttribute('aria-expanded', 'false');
 }
 
 function setDifficulty(d: ScenarioDifficulty): void {
     selectedDifficulty = d;
-    const label = document.getElementById('sq-difficulty-label');
+    const label = document.getElementById('sg-instructor-difficulty-label');
     if (label) label.textContent = capitalize(d);
 
-    document.querySelectorAll<HTMLButtonElement>('#sq-generate-view .sq-difficulty-option').forEach(btn => {
+    document.querySelectorAll<HTMLButtonElement>('#sg-instructor-generate-view .sg-instructor-difficulty-option').forEach(btn => {
         const isActive = btn.dataset.difficulty === d;
-        btn.classList.toggle('sq-difficulty-option--active', isActive);
+        btn.classList.toggle('sg-instructor-difficulty-option--active', isActive);
     });
 
-    const diffBtn = document.getElementById('sq-difficulty-btn');
+    const diffBtn = document.getElementById('sg-instructor-difficulty-btn');
     if (diffBtn) {
-        diffBtn.classList.remove('sq-difficulty-btn-easy', 'sq-difficulty-btn-medium', 'sq-difficulty-btn-hard');
-        diffBtn.classList.add(`sq-difficulty-btn-${d}`);
+        diffBtn.classList.remove('sg-instructor-difficulty-btn-easy', 'sg-instructor-difficulty-btn-medium', 'sg-instructor-difficulty-btn-hard');
+        diffBtn.classList.add(`sg-instructor-difficulty-btn-${d}`);
     }
 }
 
 function toggleDifficultyMenu(): void {
-    const menu = document.getElementById('sq-difficulty-menu');
-    const btn = document.getElementById('sq-difficulty-btn');
+    const menu = document.getElementById('sg-instructor-difficulty-menu');
+    const btn = document.getElementById('sg-instructor-difficulty-btn');
     if (!menu || !btn) return;
     const willOpen = menu.style.display === 'none';
     closeAllStatusMenus();
@@ -806,8 +939,8 @@ function toggleDifficultyMenu(): void {
 }
 
 function closeDifficultyMenu(): void {
-    const menu = document.getElementById('sq-difficulty-menu');
-    const btn = document.getElementById('sq-difficulty-btn');
+    const menu = document.getElementById('sg-instructor-difficulty-menu');
+    const btn = document.getElementById('sg-instructor-difficulty-btn');
     if (menu) menu.style.display = 'none';
     if (btn) btn.setAttribute('aria-expanded', 'false');
 }
@@ -819,7 +952,7 @@ function titleElements(context: InlineTitleContext): {
     input: HTMLInputElement | null;
     editBtn: HTMLElement | null;
 } {
-    const prefix = context === 'editor' ? 'sq-editor' : 'sq-generate';
+    const prefix = context === 'editor' ? 'sg-instructor-editor' : 'sg-instructor-generate';
     return {
         display: document.getElementById(`${prefix}-title-display`),
         input: document.getElementById(`${prefix}-title-input`) as HTMLInputElement | null,
@@ -829,7 +962,7 @@ function titleElements(context: InlineTitleContext): {
 
 function getInlineTitleValue(context: InlineTitleContext): string {
     if (context === 'generate') return generateDraftTitle;
-    const display = document.getElementById('sq-editor-title-display');
+    const display = document.getElementById('sg-instructor-editor-title-display');
     return display?.textContent?.trim() || editorQuestion?.title || 'Untitled';
 }
 
@@ -896,11 +1029,11 @@ function wireInlineTitleInput(context: InlineTitleContext, signal?: AbortSignal)
 
 function setQuestionBodyViewMode(mode: 'edit' | 'preview'): void {
     questionBodyViewMode = mode;
-    const textarea = document.getElementById('sq-editor-question-body') as HTMLTextAreaElement | null;
-    const rendered = document.getElementById('sq-editor-question-rendered');
+    const textarea = document.getElementById('sg-instructor-editor-question-body') as HTMLTextAreaElement | null;
+    const rendered = document.getElementById('sg-instructor-editor-question-rendered');
 
-    document.querySelectorAll<HTMLButtonElement>('.sq-base-question-toggle-btn').forEach(btn => {
-        btn.classList.toggle('sq-view-toggle-btn--active', btn.dataset.mode === mode);
+    document.querySelectorAll<HTMLButtonElement>('.sg-instructor-base-question-toggle-btn').forEach(btn => {
+        btn.classList.toggle('sg-instructor-view-toggle-btn--active', btn.dataset.mode === mode);
     });
 
     if (!textarea || !rendered) return;
@@ -911,16 +1044,16 @@ function setQuestionBodyViewMode(mode: 'edit' | 'preview'): void {
     } else {
         textarea.hidden = true;
         rendered.hidden = false;
-        renderMarkdownInto(rendered, textarea.value, 'sq-question-body');
+        renderMarkdownInto(rendered, textarea.value, 'sg-instructor-question-body');
     }
 }
 
 async function handleGenerateSubmit(): Promise<void> {
     if (!currentCourse || !activeTopicId) return;
 
-    const errorEl = document.getElementById('sq-generate-error');
-    const submitBtn = document.getElementById('sq-generate-submit-btn') as HTMLButtonElement | null;
-    const sourcePrompt = (document.getElementById('sq-generate-prompt') as HTMLTextAreaElement | null)?.value.trim() || '';
+    const errorEl = document.getElementById('sg-instructor-generate-error');
+    const submitBtn = document.getElementById('sg-instructor-generate-submit-btn') as HTMLButtonElement | null;
+    const sourcePrompt = (document.getElementById('sg-instructor-generate-prompt') as HTMLTextAreaElement | null)?.value.trim() || '';
 
     if (!sourcePrompt) {
         if (errorEl) {
@@ -941,10 +1074,23 @@ async function handleGenerateSubmit(): Promise<void> {
             difficulty: selectedDifficulty,
             title: generateDraftTitle.trim() || 'Untitled'
         });
-        showSuccessToast('Generated draft — review and edit before publishing.');
         await refreshQuestions();
+
+        // Hold on a loading overlay so the jump into the editor isn't instant
+        void showContentLoadingModal({
+            title: 'Generating question',
+            line1: 'Building your scenario draft…',
+            line2: 'Opening the editor in a moment.'
+        });
+        await new Promise<void>(resolve => {
+            window.setTimeout(resolve, GENERATE_TO_EDITOR_DELAY_MS);
+        });
+        closeModal('ready');
+
+        showSuccessToast('Generated draft — review and edit before publishing.');
         await openEditorView(created.id);
     } catch (error) {
+        closeModal('error');
         if (errorEl) {
             errorEl.textContent = errorMessage(error, 'Generation failed.');
             errorEl.style.display = '';
@@ -973,16 +1119,16 @@ async function openEditorView(questionId: string): Promise<void> {
     clearAutoSaveTimer();
     updateSaveButton();
 
-    const backLabel = document.getElementById('sq-editor-back-label');
+    const backLabel = document.getElementById('sg-instructor-editor-back-label');
     if (backLabel) backLabel.textContent = getTopicTitle(question.topicOrWeekId);
 
-    const titleDisplay = document.getElementById('sq-editor-title-display');
+    const titleDisplay = document.getElementById('sg-instructor-editor-title-display');
     if (titleDisplay) titleDisplay.textContent = question.title;
 
-    const bodyEl = document.getElementById('sq-editor-question-body') as HTMLTextAreaElement | null;
+    const bodyEl = document.getElementById('sg-instructor-editor-question-body') as HTMLTextAreaElement | null;
     if (bodyEl) bodyEl.value = question.questionBody;
 
-    const topicLabel = document.getElementById('sq-editor-topic-label');
+    const topicLabel = document.getElementById('sg-instructor-editor-topic-label');
     if (topicLabel) topicLabel.textContent = topicLabelForEditor(question.topicOrWeekId);
 
     updateExpectedTimeDisplay(question.expectedTimeMinutes);
@@ -991,7 +1137,7 @@ async function openEditorView(questionId: string): Promise<void> {
     setQuestionBodyViewMode('edit');
     updateEditorStatusButton(question.status);
 
-    const errorEl = document.getElementById('sq-editor-error');
+    const errorEl = document.getElementById('sg-instructor-editor-error');
     if (errorEl) errorEl.style.display = 'none';
 
     showEditorView();
@@ -1000,7 +1146,7 @@ async function openEditorView(questionId: string): Promise<void> {
 }
 
 function renderEditorParts(question: ScenarioQuestionExtended): void {
-    const container = document.getElementById('sq-editor-parts');
+    const container = document.getElementById('sg-instructor-editor-parts');
     if (!container) return;
 
     container.innerHTML = question.subQuestions.map(sq => {
@@ -1013,33 +1159,33 @@ function renderEditorParts(question: ScenarioQuestionExtended): void {
         const typeLabel = SUB_QUESTION_TYPE_LABELS[sq.subQuestionType] ?? sq.subQuestionType;
 
         return `
-            <div class="sq-editor-part-card" data-part-id="${sq.partId}">
-                <div class="sq-editor-part-header">
-                    <div class="sq-editor-part-title-group">
-                        <h3 class="sq-editor-part-title">Part (${sq.partId})</h3>
-                        <span class="sq-part-type-badge sq-part-type-${sq.subQuestionType}">${escapeHtml(typeLabel)}</span>
+            <div class="sg-instructor-part-card" data-part-id="${sq.partId}">
+                <div class="sg-instructor-part-header">
+                    <div class="sg-part-title-group">
+                        <h3 class="sg-part-title">Part ${sq.partId.toUpperCase()}</h3>
+                        <span class="sg-part-type-badge sg-part-type-${sq.subQuestionType}">${escapeHtml(typeLabel)}</span>
                     </div>
-                    <div class="sq-view-toggle sq-part-prompt-toggle" role="group" aria-label="Part (${sq.partId}) prompt view mode">
-                        <button type="button" class="sq-view-toggle-btn sq-part-prompt-toggle-btn ${promptMode === 'edit' ? 'sq-view-toggle-btn--active' : ''}" data-mode="edit" data-part-id="${sq.partId}">Edit</button>
-                        <button type="button" class="sq-view-toggle-btn sq-part-prompt-toggle-btn ${promptMode === 'preview' ? 'sq-view-toggle-btn--active' : ''}" data-mode="preview" data-part-id="${sq.partId}">Preview</button>
-                    </div>
-                </div>
-                <div class="sq-part-prompt-body">
-                    <label class="sq-sr-only" for="sq-part-prompt-${sq.partId}">Part (${sq.partId}) prompt</label>
-                    <textarea id="sq-part-prompt-${sq.partId}" class="sq-editor-textarea sq-part-prompt" data-part-id="${sq.partId}" rows="3" ${promptMode === 'preview' ? 'hidden' : ''}>${escapeHtml(sq.prompt)}</textarea>
-                    <div class="sq-part-prompt-preview sq-markdown-preview message-content" data-part-id="${sq.partId}" ${promptMode === 'edit' ? 'hidden' : ''}></div>
-                </div>
-                <div class="sq-answer-key-header">
-                    <span class="sq-editor-section-label">Answer key</span>
-                    <div class="sq-answer-toggle" role="group" aria-label="Answer key view mode">
-                        <button type="button" class="sq-answer-toggle-btn ${mode === 'text' ? 'sq-answer-toggle-btn--active' : ''}" data-mode="text" data-part-id="${sq.partId}">Text</button>
-                        <button type="button" class="sq-answer-toggle-btn ${mode === 'flashcard' ? 'sq-answer-toggle-btn--active' : ''}" data-mode="flashcard" data-part-id="${sq.partId}">flashcard</button>
+                    <div class="sg-instructor-view-toggle sg-instructor-part-prompt-toggle" role="group" aria-label="Part ${sq.partId.toUpperCase()} prompt view mode">
+                        <button type="button" class="sg-instructor-view-toggle-btn sg-instructor-part-prompt-toggle-btn ${promptMode === 'edit' ? 'sg-instructor-view-toggle-btn--active' : ''}" data-mode="edit" data-part-id="${sq.partId}">Edit</button>
+                        <button type="button" class="sg-instructor-view-toggle-btn sg-instructor-part-prompt-toggle-btn ${promptMode === 'preview' ? 'sg-instructor-view-toggle-btn--active' : ''}" data-mode="preview" data-part-id="${sq.partId}">Preview</button>
                     </div>
                 </div>
-                <div class="sq-part-answer-body">
-                    <textarea class="sq-editor-textarea sq-part-answer sq-part-answer-edit" data-part-id="${sq.partId}" rows="6">${escapeHtml(sq.modelAnswer)}</textarea>
-                    <div class="sq-part-answer-preview sq-markdown-preview message-content" data-part-id="${sq.partId}"></div>
-                    <div class="sq-flashcard-panel" data-part-id="${sq.partId}" style="display: none;"></div>
+                <div class="sg-instructor-part-prompt-body">
+                    <label class="sg-instructor-sr-only" for="sg-instructor-part-prompt-${sq.partId}">Part ${sq.partId.toUpperCase()} prompt</label>
+                    <textarea id="sg-instructor-part-prompt-${sq.partId}" class="sg-instructor-editor-textarea sg-instructor-part-prompt" data-part-id="${sq.partId}" rows="3" ${promptMode === 'preview' ? 'hidden' : ''}>${escapeHtml(sq.prompt)}</textarea>
+                    <div class="sg-instructor-part-prompt-preview sg-instructor-markdown-preview message-content" data-part-id="${sq.partId}" ${promptMode === 'edit' ? 'hidden' : ''}></div>
+                </div>
+                <div class="sg-instructor-answer-key-header">
+                    <span class="sg-instructor-editor-section-label">Answer key</span>
+                    <div class="sg-instructor-answer-toggle" role="group" aria-label="Answer key view mode">
+                        <button type="button" class="sg-instructor-answer-toggle-btn ${mode === 'text' ? 'sg-instructor-answer-toggle-btn--active' : ''}" data-mode="text" data-part-id="${sq.partId}">Text</button>
+                        <button type="button" class="sg-instructor-answer-toggle-btn ${mode === 'flashcard' ? 'sg-instructor-answer-toggle-btn--active' : ''}" data-mode="flashcard" data-part-id="${sq.partId}">flashcard</button>
+                    </div>
+                </div>
+                <div class="sg-instructor-part-answer-body">
+                    <textarea class="sg-instructor-editor-textarea sg-instructor-part-answer sg-instructor-part-answer-edit" data-part-id="${sq.partId}" rows="6">${escapeHtml(sq.modelAnswer)}</textarea>
+                    <div class="sg-instructor-part-answer-preview sg-instructor-markdown-preview message-content" data-part-id="${sq.partId}"></div>
+                    <div class="sg-instructor-flashcard-panel" data-part-id="${sq.partId}" style="display: none;"></div>
                 </div>
             </div>
         `;
@@ -1054,26 +1200,26 @@ function renderEditorParts(question: ScenarioQuestionExtended): void {
 function attachEditorInputListeners(): void {
     const signal = uiAbort?.signal;
 
-    document.getElementById('sq-editor-question-body')?.addEventListener('input', () => {
+    document.getElementById('sg-instructor-editor-question-body')?.addEventListener('input', () => {
         markDirty();
         if (questionBodyViewMode === 'preview') {
-            const rendered = document.getElementById('sq-editor-question-rendered');
-            const body = (document.getElementById('sq-editor-question-body') as HTMLTextAreaElement | null)?.value ?? '';
-            if (rendered) renderMarkdownInto(rendered, body, 'sq-question-body');
+            const rendered = document.getElementById('sg-instructor-editor-question-rendered');
+            const body = (document.getElementById('sg-instructor-editor-question-body') as HTMLTextAreaElement | null)?.value ?? '';
+            if (rendered) renderMarkdownInto(rendered, body, 'sg-instructor-question-body');
         }
     }, { signal });
 
-    document.querySelectorAll<HTMLTextAreaElement>('.sq-part-prompt, .sq-part-answer').forEach(el => {
+    document.querySelectorAll<HTMLTextAreaElement>('.sg-instructor-part-prompt, .sg-instructor-part-answer').forEach(el => {
         el.addEventListener('input', () => {
             markDirty();
             const partId = el.dataset.partId;
-            if (partId && el.classList.contains('sq-part-answer')) {
+            if (partId && el.classList.contains('sg-instructor-part-answer')) {
                 debouncePartPreview(partId);
             }
         }, { signal });
     });
 
-    document.querySelectorAll<HTMLButtonElement>('.sq-part-prompt-toggle-btn').forEach(btn => {
+    document.querySelectorAll<HTMLButtonElement>('.sg-instructor-part-prompt-toggle-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const partId = btn.dataset.partId;
             const mode = btn.dataset.mode as 'edit' | 'preview' | undefined;
@@ -1084,7 +1230,7 @@ function attachEditorInputListeners(): void {
         }, { signal });
     });
 
-    document.querySelectorAll<HTMLButtonElement>('.sq-answer-toggle-btn').forEach(btn => {
+    document.querySelectorAll<HTMLButtonElement>('.sg-instructor-answer-toggle-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const partId = btn.dataset.partId;
             const mode = btn.dataset.mode as 'text' | 'flashcard';
@@ -1107,14 +1253,14 @@ function debouncePartPreview(partId: string): void {
 
 function updatePartPromptDisplay(partId: string): void {
     const mode = partPromptModes.get(partId) ?? 'edit';
-    const promptEl = document.querySelector<HTMLTextAreaElement>(`.sq-part-prompt[data-part-id="${partId}"]`);
-    const previewEl = document.querySelector<HTMLElement>(`.sq-part-prompt-preview[data-part-id="${partId}"]`);
-    const card = document.querySelector(`.sq-editor-part-card[data-part-id="${partId}"]`);
+    const promptEl = document.querySelector<HTMLTextAreaElement>(`.sg-instructor-part-prompt[data-part-id="${partId}"]`);
+    const previewEl = document.querySelector<HTMLElement>(`.sg-instructor-part-prompt-preview[data-part-id="${partId}"]`);
+    const card = document.querySelector(`.sg-instructor-part-card[data-part-id="${partId}"]`);
 
     if (!promptEl || !previewEl || !card) return;
 
-    card.querySelectorAll<HTMLButtonElement>('.sq-part-prompt-toggle-btn').forEach(btn => {
-        btn.classList.toggle('sq-view-toggle-btn--active', btn.dataset.mode === mode);
+    card.querySelectorAll<HTMLButtonElement>('.sg-instructor-part-prompt-toggle-btn').forEach(btn => {
+        btn.classList.toggle('sg-instructor-view-toggle-btn--active', btn.dataset.mode === mode);
     });
 
     if (mode === 'edit') {
@@ -1123,31 +1269,31 @@ function updatePartPromptDisplay(partId: string): void {
     } else {
         promptEl.hidden = true;
         previewEl.hidden = false;
-        renderMarkdownInto(previewEl, promptEl.value, `sq-part-prompt-${partId}`);
+        renderMarkdownInto(previewEl, promptEl.value, `sg-instructor-part-prompt-${partId}`);
     }
 }
 
 function updatePartAnswerDisplay(partId: string): void {
     const mode = partAnswerModes.get(partId) ?? 'text';
-    const answerEl = document.querySelector<HTMLTextAreaElement>(`.sq-part-answer[data-part-id="${partId}"]`);
-    const previewEl = document.querySelector<HTMLElement>(`.sq-part-answer-preview[data-part-id="${partId}"]`);
-    const flashcardEl = document.querySelector<HTMLElement>(`.sq-flashcard-panel[data-part-id="${partId}"]`);
-    const card = document.querySelector(`.sq-editor-part-card[data-part-id="${partId}"]`);
+    const answerEl = document.querySelector<HTMLTextAreaElement>(`.sg-instructor-part-answer[data-part-id="${partId}"]`);
+    const previewEl = document.querySelector<HTMLElement>(`.sg-instructor-part-answer-preview[data-part-id="${partId}"]`);
+    const flashcardEl = document.querySelector<HTMLElement>(`.sg-instructor-flashcard-panel[data-part-id="${partId}"]`);
+    const card = document.querySelector(`.sg-instructor-part-card[data-part-id="${partId}"]`);
 
     if (!answerEl || !previewEl || !flashcardEl || !card) return;
 
     const markdown = answerEl.value;
 
-    card.querySelectorAll<HTMLButtonElement>('.sq-answer-toggle-btn').forEach(btn => {
-        btn.classList.toggle('sq-answer-toggle-btn--active', btn.dataset.mode === mode);
+    card.querySelectorAll<HTMLButtonElement>('.sg-instructor-answer-toggle-btn').forEach(btn => {
+        btn.classList.toggle('sg-instructor-answer-toggle-btn--active', btn.dataset.mode === mode);
     });
 
     if (mode === 'text') {
         answerEl.style.display = '';
         previewEl.style.display = '';
         flashcardEl.style.display = 'none';
-        answerEl.classList.remove('sq-part-answer--hidden');
-        renderMarkdownInto(previewEl, markdown, `sq-part-${partId}`);
+        answerEl.classList.remove('sg-instructor-part-answer--hidden');
+        renderMarkdownInto(previewEl, markdown, `sg-instructor-part-${partId}`);
     } else {
         answerEl.style.display = 'none';
         previewEl.style.display = 'none';
@@ -1159,7 +1305,7 @@ function updatePartAnswerDisplay(partId: string): void {
 function renderFlashcardPanel(partId: string, markdown: string, container: HTMLElement): void {
     const steps = parseAnswerKeyToFlashcards(markdown);
     if (!steps.length) {
-        container.innerHTML = `<p class="sq-flashcard-empty">No steps detected. Use numbered lists or ## Step headings in the answer key.</p>`;
+        container.innerHTML = `<p class="sg-instructor-flashcard-empty">No steps detected. Use <code># Card</code> headings, numbered lists, or <code>##</code> step headings in the answer key.</p>`;
         return;
     }
 
@@ -1169,83 +1315,128 @@ function renderFlashcardPanel(partId: string, markdown: string, container: HTMLE
 
     const step = steps[idx];
     const bodyHost = document.createElement('div');
-    bodyHost.className = 'sq-flashcard-body sq-markdown-preview message-content';
-    renderMarkdownInto(bodyHost, step.bodyMarkdown, `sq-fc-${partId}-${idx}`);
+    bodyHost.className = 'sg-instructor-flashcard-body sg-instructor-markdown-preview message-content';
+    renderMarkdownInto(bodyHost, step.bodyMarkdown, `sg-instructor-fc-${partId}-${idx}`);
     container.innerHTML = `
-        <div class="sq-flashcard">
-            <div class="sq-flashcard-header">
-                <span class="sq-flashcard-step-label">Step ${idx + 1} of ${steps.length}</span>
-                <span class="sq-flashcard-title">${escapeHtml(step.title)}</span>
+        <div class="sg-instructor-flashcard">
+            <div class="sg-instructor-flashcard-header">
+                <span class="sg-instructor-flashcard-step-label">Step ${idx + 1} of ${steps.length}</span>
+                <span class="sg-instructor-flashcard-title">${escapeHtml(step.title)}</span>
             </div>
-            <div class="sq-flashcard-nav">
-                <button type="button" class="sq-flashcard-nav-btn" data-action="prev" data-part-id="${partId}" ${idx === 0 ? 'disabled' : ''} aria-label="Previous step">
+            <div class="sg-instructor-flashcard-nav">
+                <button type="button" class="sg-instructor-flashcard-nav-btn" data-action="prev" data-part-id="${partId}" ${idx === 0 ? 'disabled' : ''} aria-label="Previous step">
                     <i data-feather="chevron-left"></i>
                 </button>
-                <button type="button" class="sq-flashcard-nav-btn" data-action="next" data-part-id="${partId}" ${idx >= steps.length - 1 ? 'disabled' : ''} aria-label="Next step">
+                <button type="button" class="sg-instructor-flashcard-nav-btn" data-action="next" data-part-id="${partId}" ${idx >= steps.length - 1 ? 'disabled' : ''} aria-label="Next step">
                     <i data-feather="chevron-right"></i>
                 </button>
             </div>
         </div>
     `;
-    const flashcardEl = container.querySelector('.sq-flashcard');
-    const navEl = container.querySelector('.sq-flashcard-nav');
+    const flashcardEl = container.querySelector('.sg-instructor-flashcard');
+    const navEl = container.querySelector('.sg-instructor-flashcard-nav');
     if (flashcardEl && navEl) flashcardEl.insertBefore(bodyHost, navEl);
     renderFeatherIcons();
 
-    container.querySelectorAll<HTMLButtonElement>('.sq-flashcard-nav-btn').forEach(btn => {
+    container.querySelectorAll<HTMLButtonElement>('.sg-instructor-flashcard-nav-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const action = btn.dataset.action;
             const pid = btn.dataset.partId;
             if (!pid) return;
             const current = partFlashcardIndex.get(pid) ?? 0;
             const allSteps = parseAnswerKeyToFlashcards(
-                document.querySelector<HTMLTextAreaElement>(`.sq-part-answer[data-part-id="${pid}"]`)?.value ?? ''
+                document.querySelector<HTMLTextAreaElement>(`.sg-instructor-part-answer[data-part-id="${pid}"]`)?.value ?? ''
             );
             if (action === 'prev' && current > 0) partFlashcardIndex.set(pid, current - 1);
             if (action === 'next' && current < allSteps.length - 1) partFlashcardIndex.set(pid, current + 1);
-            const answerMd = document.querySelector<HTMLTextAreaElement>(`.sq-part-answer[data-part-id="${pid}"]`)?.value ?? '';
+            const answerMd = document.querySelector<HTMLTextAreaElement>(`.sg-instructor-part-answer[data-part-id="${pid}"]`)?.value ?? '';
             renderFlashcardPanel(pid, answerMd, container);
         }, { signal: uiAbort?.signal, once: true });
     });
 }
 
 function renderLearningObjectives(objectives: string[]): void {
-    const list = document.getElementById('sq-editor-lo-list');
+    const list = document.getElementById('sg-instructor-editor-lo-list');
     if (!list) return;
 
     if (!objectives.length) {
-        list.innerHTML = `<span class="sq-lo-empty">No objectives selected</span>`;
+        list.innerHTML = `<span class="sg-instructor-lo-empty">No objectives selected</span>`;
         return;
     }
 
     list.innerHTML = objectives.map(lo => `
-        <span class="sq-lo-pill">${escapeHtml(learningObjectiveDescription(lo))}</span>
+        <span class="sg-instructor-lo-pill">${escapeHtml(learningObjectiveDescription(lo))}</span>
     `).join('');
 }
 
 function openLearningObjectivesModal(): void {
-    const overlay = document.getElementById('sq-lo-modal-overlay');
+    const overlay = document.getElementById('sg-instructor-lo-modal-overlay');
     if (!overlay) return;
 
     loModalDraftSelection = normalizeLearningObjectives(editorQuestion?.learningObjectives ?? []);
     renderLearningObjectivesCatalog();
     overlay.style.display = 'flex';
     overlay.setAttribute('aria-hidden', 'false');
-    requestAnimationFrame(() => overlay.classList.add('sq-modal-overlay--visible'));
+    requestAnimationFrame(() => overlay.classList.add('sg-instructor-modal-overlay--visible'));
 }
 
 function closeLearningObjectivesModal(): void {
-    const overlay = document.getElementById('sq-lo-modal-overlay');
+    const overlay = document.getElementById('sg-instructor-lo-modal-overlay');
     if (!overlay) return;
 
-    overlay.classList.remove('sq-modal-overlay--visible');
+    overlay.classList.remove('sg-instructor-modal-overlay--visible');
     overlay.setAttribute('aria-hidden', 'true');
 
     window.setTimeout(() => {
-        if (!overlay.classList.contains('sq-modal-overlay--visible')) {
+        if (!overlay.classList.contains('sg-instructor-modal-overlay--visible')) {
             overlay.style.display = 'none';
         }
     }, SQ_MODAL_TRANSITION_MS);
+}
+
+function openFlashcardHelpModal(): void {
+    const overlay = document.getElementById('sg-instructor-flashcard-help-overlay');
+    const templateEl = document.getElementById('sg-instructor-flashcard-help-template');
+    if (!overlay) return;
+
+    if (templateEl) templateEl.textContent = FLASHCARD_ANSWER_TEMPLATE;
+    const copyLabel = document.getElementById('sg-instructor-flashcard-help-copy-label');
+    if (copyLabel) copyLabel.textContent = 'Copy';
+
+    overlay.style.display = 'flex';
+    overlay.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => overlay.classList.add('sg-instructor-modal-overlay--visible'));
+    renderFeatherIcons();
+}
+
+function closeFlashcardHelpModal(): void {
+    const overlay = document.getElementById('sg-instructor-flashcard-help-overlay');
+    if (!overlay) return;
+
+    overlay.classList.remove('sg-instructor-modal-overlay--visible');
+    overlay.setAttribute('aria-hidden', 'true');
+
+    window.setTimeout(() => {
+        if (!overlay.classList.contains('sg-instructor-modal-overlay--visible')) {
+            overlay.style.display = 'none';
+        }
+    }, SQ_MODAL_TRANSITION_MS);
+}
+
+async function copyFlashcardHelpTemplate(): Promise<void> {
+    const label = document.getElementById('sg-instructor-flashcard-help-copy-label');
+    try {
+        await navigator.clipboard.writeText(FLASHCARD_ANSWER_TEMPLATE);
+        if (label) label.textContent = 'Copied';
+        window.setTimeout(() => {
+            if (label) label.textContent = 'Copy';
+        }, 1500);
+    } catch {
+        if (label) label.textContent = 'Failed';
+        window.setTimeout(() => {
+            if (label) label.textContent = 'Copy';
+        }, 1500);
+    }
 }
 
 function saveLearningObjectivesModal(): void {
@@ -1258,20 +1449,20 @@ function saveLearningObjectivesModal(): void {
 }
 
 function renderLearningObjectivesCatalog(): void {
-    const catalog = document.getElementById('sq-lo-modal-catalog');
+    const catalog = document.getElementById('sg-instructor-lo-modal-catalog');
     if (!catalog) return;
 
     catalog.innerHTML = MOCK_DOCUMENT_LEARNING_OBJECTIVES.map(lo => {
         const checked = loModalDraftSelection.includes(lo.description);
         return `
-            <label class="sq-lo-catalog-item">
-                <input type="checkbox" class="sq-lo-catalog-checkbox" value="${escapeHtml(lo.description)}" ${checked ? 'checked' : ''} />
-                <span class="sq-lo-catalog-text">${escapeHtml(lo.description)}</span>
+            <label class="sg-instructor-lo-catalog-item">
+                <input type="checkbox" class="sg-instructor-lo-catalog-checkbox" value="${escapeHtml(lo.description)}" ${checked ? 'checked' : ''} />
+                <span class="sg-instructor-lo-catalog-text">${escapeHtml(lo.description)}</span>
             </label>
         `;
     }).join('');
 
-    catalog.querySelectorAll<HTMLInputElement>('.sq-lo-catalog-checkbox').forEach(box => {
+    catalog.querySelectorAll<HTMLInputElement>('.sg-instructor-lo-catalog-checkbox').forEach(box => {
         box.addEventListener('change', () => {
             const description = box.value;
             if (box.checked) {
@@ -1284,7 +1475,7 @@ function renderLearningObjectivesCatalog(): void {
 }
 
 function updateExpectedTimeDisplay(minutes: number): void {
-    const el = document.getElementById('sq-editor-expected-time');
+    const el = document.getElementById('sg-instructor-editor-expected-time');
     if (el) el.textContent = formatExpectedTime(minutes);
     el?.setAttribute('data-minutes', String(minutes));
 }
@@ -1311,19 +1502,19 @@ function parseExpectedTimeInput(raw: string): number | null {
 }
 
 function syncTimeModalInput(minutes: number): void {
-    const input = document.getElementById('sq-time-modal-input') as HTMLInputElement | null;
+    const input = document.getElementById('sg-instructor-time-modal-input') as HTMLInputElement | null;
     if (input) {
         input.value = formatExpectedTime(minutes);
-        input.classList.remove('sq-time-modal-input--invalid');
+        input.classList.remove('sg-instructor-time-modal-input--invalid');
     }
 }
 
 function openExpectedTimeModal(): void {
-    const overlay = document.getElementById('sq-time-modal-overlay');
+    const overlay = document.getElementById('sg-instructor-time-modal-overlay');
     if (!overlay) return;
 
     const current = parseInt(
-        document.getElementById('sq-editor-expected-time')?.getAttribute('data-minutes') ?? '25',
+        document.getElementById('sg-instructor-editor-expected-time')?.getAttribute('data-minutes') ?? '25',
         10
     );
     timeModalDraftMinutes = clampExpectedTimeMinutes(current);
@@ -1331,22 +1522,22 @@ function openExpectedTimeModal(): void {
 
     overlay.style.display = 'flex';
     overlay.setAttribute('aria-hidden', 'false');
-    requestAnimationFrame(() => overlay.classList.add('sq-modal-overlay--visible'));
+    requestAnimationFrame(() => overlay.classList.add('sg-instructor-modal-overlay--visible'));
 
-    const input = document.getElementById('sq-time-modal-input') as HTMLInputElement | null;
+    const input = document.getElementById('sg-instructor-time-modal-input') as HTMLInputElement | null;
     input?.focus();
     input?.select();
 }
 
 function closeExpectedTimeModal(): void {
-    const overlay = document.getElementById('sq-time-modal-overlay');
+    const overlay = document.getElementById('sg-instructor-time-modal-overlay');
     if (!overlay) return;
 
-    overlay.classList.remove('sq-modal-overlay--visible');
+    overlay.classList.remove('sg-instructor-modal-overlay--visible');
     overlay.setAttribute('aria-hidden', 'true');
 
     window.setTimeout(() => {
-        if (!overlay.classList.contains('sq-modal-overlay--visible')) {
+        if (!overlay.classList.contains('sg-instructor-modal-overlay--visible')) {
             overlay.style.display = 'none';
         }
     }, SQ_MODAL_TRANSITION_MS);
@@ -1358,11 +1549,11 @@ function adjustTimeModalDraft(delta: number): void {
 }
 
 function saveExpectedTimeModal(): void {
-    const input = document.getElementById('sq-time-modal-input') as HTMLInputElement | null;
+    const input = document.getElementById('sg-instructor-time-modal-input') as HTMLInputElement | null;
     const parsed = parseExpectedTimeInput(input?.value ?? '');
 
     if (parsed === null) {
-        input?.classList.add('sq-time-modal-input--invalid');
+        input?.classList.add('sg-instructor-time-modal-input--invalid');
         input?.focus();
         return;
     }
@@ -1380,7 +1571,7 @@ function markDirty(): void {
 }
 
 function updateSaveButton(): void {
-    const btn = document.getElementById('sq-editor-save-btn') as HTMLButtonElement | null;
+    const btn = document.getElementById('sg-instructor-editor-save-btn') as HTMLButtonElement | null;
     if (btn) btn.disabled = !isDirty;
 }
 
@@ -1399,19 +1590,19 @@ function scheduleAutoSave(): void {
 }
 
 function collectEditorPatch(): Partial<ScenarioQuestionExtended> {
-    const questionBody = (document.getElementById('sq-editor-question-body') as HTMLTextAreaElement | null)?.value ?? '';
-    const minutes = parseInt(document.getElementById('sq-editor-expected-time')?.getAttribute('data-minutes') ?? '25', 10);
+    const questionBody = (document.getElementById('sg-instructor-editor-question-body') as HTMLTextAreaElement | null)?.value ?? '';
+    const minutes = parseInt(document.getElementById('sg-instructor-editor-expected-time')?.getAttribute('data-minutes') ?? '25', 10);
 
     const learningObjectives = normalizeLearningObjectives(editorQuestion?.learningObjectives ?? []);
 
     const subQuestions = (editorQuestion?.subQuestions ?? []).map(sq => {
         const partId = sq.partId;
-        const prompt = document.querySelector<HTMLTextAreaElement>(`.sq-part-prompt[data-part-id="${partId}"]`)?.value ?? sq.prompt;
-        const modelAnswer = document.querySelector<HTMLTextAreaElement>(`.sq-part-answer[data-part-id="${partId}"]`)?.value ?? sq.modelAnswer;
+        const prompt = document.querySelector<HTMLTextAreaElement>(`.sg-instructor-part-prompt[data-part-id="${partId}"]`)?.value ?? sq.prompt;
+        const modelAnswer = document.querySelector<HTMLTextAreaElement>(`.sg-instructor-part-answer[data-part-id="${partId}"]`)?.value ?? sq.modelAnswer;
         return { partId, subQuestionType: sq.subQuestionType, prompt, modelAnswer };
     });
 
-    const titleDisplay = document.getElementById('sq-editor-title-display');
+    const titleDisplay = document.getElementById('sg-instructor-editor-title-display');
     const title = titleDisplay?.textContent?.trim() || editorQuestion?.title || 'Untitled';
 
     return {

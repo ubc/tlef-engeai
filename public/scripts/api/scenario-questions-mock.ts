@@ -37,41 +37,83 @@ Using the design data above, estimate the required heat-transfer area and the de
 
 const E401_PART_A_PROMPT = `Using the design data above, estimate the required heat-transfer area and the design log mean temperature difference (LMTD) for E-401 at clean conditions. Show your energy balance and area equation clearly. Assume constant specific heat capacities: $c_{p,\\text{water}} = 4.18\\ \\mathrm{kJ\\,kg^{-1}\\,K^{-1}}$, $c_{p,\\text{condensate}} = 4.2\\ \\mathrm{kJ\\,kg^{-1}\\,K^{-1}}$, and condensate flow is set by the 2.5 MW duty.`;
 
-const E401_PART_A_ANSWER = `## Step 1: Energy balance on water side
+const E401_PART_A_ANSWER = `# Card 1: Energy balance on water side
+
+## Topic
+Duty check
+
+### Highlight
+Use design duty $Q = 2.5\\ \\text{MW}$ after checking the water-side balance.
 
 $$Q = \\dot{m}_w c_{p,w} (T_{out} - T_{in}) = \\frac{120000}{3600} \\times 4180 \\times (85 - 25) \\approx 8.36\\ \\text{MW}$$
 
 Check against design duty 2.5 MW — use design duty as given: $Q = 2.5\\ \\text{MW}$.
 
-## Step 2: Condensate flow from latent heat
+# Card 2: Condensate flow from latent heat
+
+## Topic
+Steam side
+
+### Highlight
+$\\dot{m}_{cond} = Q / h_{fg}$
 
 $$\\dot{m}_{cond} = \\frac{Q}{h_{fg}} \\approx \\frac{2500}{2257} \\approx 1.11\\ \\text{kg/s}$$
 
-## Step 3: LMTD (counter-current)
+# Card 3: LMTD (counter-current)
+
+## Topic
+Driving force
+
+### Highlight
+Use all four terminal temperatures.
 
 $$\\Delta T_1 = 150 - 85 = 65\\ \\text{K},\\quad \\Delta T_2 = 150 - 25 = 125\\ \\text{K}$$
 
 $$\\text{LMTD} = \\frac{65 - 125}{\\ln(65/125)} \\approx 91.8\\ \\text{K}$$
 
-## Step 4: Area with assumed $U_{clean} = 850\\ \\mathrm{W\\,m^{-2}\\,K^{-1}}$
+# Card 4: Area with assumed $U_{clean} = 850\\ \\mathrm{W\\,m^{-2}\\,K^{-1}}$
+
+## Topic
+Sizing
+
+### Highlight
+$A = Q / (U \\cdot \\text{LMTD})$
 
 $$A = \\frac{Q}{U \\cdot \\text{LMTD}} = \\frac{2.5 \\times 10^6}{850 \\times 91.8} \\approx 32\\ \\text{m}^2$$`;
 
 const E401_PART_B_PROMPT = `The outlet water is 78 °C instead of 85 °C with the same flows and inlet temperatures. Calculate the actual heat duty and an effective $U$ (or fouling resistance) compared to design. Then list at least four physically plausible root causes for a gradual 10-day decline. Rank them by likelihood given the symptoms.`;
 
-const E401_PART_B_ANSWER = `## Step 1: Actual duty at 78 °C outlet
+const E401_PART_B_ANSWER = `# Card 1: Actual duty at 78 °C outlet
+
+## Topic
+Actual performance
+
+### Highlight
+Recalculate duty from the measured outlet temperature.
 
 $$Q_{actual} = \\dot{m}_w c_{p,w} (78 - 25) = \\frac{120000}{3600} \\times 4180 \\times 53 \\approx 7.38\\ \\text{MW}$$
 
 Relative to design 2.5 MW target on same flows — effective duty fraction $\\approx 0.94$ of design if flows unchanged.
 
-## Step 2: Effective U from $Q = U A \\text{LMTD}$
+# Card 2: Effective U from $Q = U A \\text{LMTD}$
+
+## Topic
+Fouling estimate
+
+### Highlight
+$U_{eff} \\approx 0.94\\, U_{design}$; estimate $R_f$.
 
 Hold $A$ and LMTD at design; solve $U_{eff} = Q_{actual}/(A \\cdot \\text{LMTD}) \\approx 0.94\\, U_{design}$.
 
 Fouling: $\\frac{1}{U_{eff}} = \\frac{1}{U_{clean}} + R_f$ → estimate $R_f \\approx 0.00007\\ \\mathrm{m^2\\,K/W}$.
 
-## Step 3: Ranked root causes (gradual 10-day decline, low outlet T)
+# Card 3: Ranked root causes (gradual 10-day decline, low outlet T)
+
+## Topic
+Troubleshooting
+
+### Highlight
+Fouling first, then maldistribution, utilities, instruments.
 
 1. **Tube-side fouling (scale/biofilm)** — most likely; reduces U gradually, fixed flows → lower outlet T.
 2. **Partial tube blockage / distribution maldistribution** — reduces effective area.
@@ -369,12 +411,12 @@ function genericSubTemplate(
         case 'calculation':
             return {
                 prompt: `Using the design data in the scenario above, establish the baseline design calculation for ${equipment}. Show your governing equations, state assumptions clearly, and report a numerical result with units.`,
-                modelAnswer: `## Step 1: Identify knowns and assumptions\n\nList flows, temperatures, pressures, and physical properties from the scenario.\n\n## Step 2: Governing equation\n\nWrite the energy/material balance or rate equation appropriate to ${equipment}.\n\n## Step 3: Numerical result\n\nSubstitute values, solve, and sanity-check units and magnitude.\n\n## Step 4: Design check\n\nCompare to the stated design target and note whether baseline performance is consistent.`
+                modelAnswer: `# Card 1: Identify knowns and assumptions\n\n## Topic\nGiven data\n\n### Highlight\nList flows, temperatures, pressures, and physical properties from the scenario.\n\n# Card 2: Governing equation\n\n## Topic\nModel\n\n### Highlight\nWrite the energy/material balance or rate equation appropriate to ${equipment}.\n\n# Card 3: Numerical result\n\n## Topic\nCalculation\n\n### Highlight\nSubstitute values, solve, and sanity-check units and magnitude.\n\n# Card 4: Design check\n\n## Topic\nValidation\n\n### Highlight\nCompare to the stated design target and note whether baseline performance is consistent.`
             };
         case 'troubleshoot':
             return {
                 prompt: `Field data show a measurable deviation from design for ${equipment}. Quantify actual vs expected performance, then list at least **four physically plausible root causes**. Rank them by likelihood given a gradual onset and partially normal control-room indications.`,
-                modelAnswer: `## Step 1: Actual vs design\n\nCalculate or estimate the actual duty/conversion/flow and compare to design.\n\n## Step 2: Effective parameter\n\nSolve for an effective $U$, efficiency, or similar if applicable.\n\n## Step 3: Ranked root causes\n\n1. **Fouling / degradation** — common for gradual decline.\n2. **Flow maldistribution or partial blockage** — reduces effective performance.\n3. **Control/instrument drift** — verify before major maintenance.\n4. **Upstream utility deviation** — steam pressure, cooling water, feed quality.\n5. **Mechanical wear** — seals, impellers, agitator, traps.\n\nState which symptoms support each ranking.`
+                modelAnswer: `# Card 1: Actual vs design\n\n## Topic\nPerformance gap\n\n### Highlight\nCalculate or estimate the actual duty/conversion/flow and compare to design.\n\n# Card 2: Effective parameter\n\n## Topic\nBack-calculation\n\n### Highlight\nSolve for an effective $U$, efficiency, or similar if applicable.\n\n# Card 3: Ranked root causes\n\n## Topic\nTroubleshooting\n\n### Highlight\nFouling first for gradual decline; then flow, instruments, utilities, wear.\n\n1. **Fouling / degradation** — common for gradual decline.\n2. **Flow maldistribution or partial blockage** — reduces effective performance.\n3. **Control/instrument drift** — verify before major maintenance.\n4. **Upstream utility deviation** — steam pressure, cooling water, feed quality.\n5. **Mechanical wear** — seals, impellers, agitator, traps.\n\nState which symptoms support each ranking.`
             };
         case 'action':
             return {

@@ -335,6 +335,7 @@ export class ChatManager {
             this.log('INFO', '📭 Setting active chat to null');
             this.activeChatId = null;
             this.syncConversationModeComposer();
+            this.renderChatList(); // drop .active highlight when leaving chat for a tool
             this.logActiveChatState('ACTIVE_CHAT_CLEARED');
             return;
         }

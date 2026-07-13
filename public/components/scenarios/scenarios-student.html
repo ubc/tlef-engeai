@@ -1,51 +1,77 @@
-<div class="scenarios-container">
+<div class="sg-student-container">
+    <link rel="stylesheet" href="/styles/scenario-generation/sg-shared.css">
     <link rel="stylesheet" href="/styles/student-components/scenarios.css">
 
-    <div id="scenarios-list-view" class="scenarios-view">
-        <div class="scenarios-header mobile-header-bar">
-            <button id="hamburger-btn" class="mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
-                <i data-feather="menu"></i>
-            </button>
-            <h1 class="mobile-header-title">Practice Scenarios</h1>
+    <!-- List view -->
+    <div id="sg-student-list-view" class="sg-student-view">
+        <header class="sg-student-page-header">
+            <div class="sg-student-header mobile-header-bar">
+                <button id="hamburger-btn" class="mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
+                    <i data-feather="menu"></i>
+                </button>
+                <h1 class="mobile-header-title">Scenario Generation</h1>
+            </div>
+            <div class="sg-student-page-header-row">
+                <h1 class="sg-student-page-title">Scenario Generation</h1>
+            </div>
+        </header>
+
+        <div class="sg-student-filters" aria-label="Filters">
+            <span class="sg-student-filters-label">Filters:</span>
+            <button type="button" class="sg-student-filter-pill" data-filter="all" aria-pressed="true">All</button>
+            <button type="button" class="sg-student-filter-pill" data-filter="attempted" aria-pressed="false">Attempted</button>
+            <button type="button" class="sg-student-filter-pill" data-filter="unsolved" aria-pressed="false">Unsolved</button>
+            <button type="button" class="sg-student-filter-pill" data-filter="chapter" disabled title="Coming soon">Chapter</button>
+            <button type="button" class="sg-student-filter-pill" data-filter="topic" disabled title="Coming soon">Topic</button>
         </div>
-        <div id="scenarios-chapter-list" class="scenarios-chapter-list">
-            <!-- Chapter accordion rendered by scenarios-student.ts -->
+
+        <div id="sg-student-question-list" class="sg-student-question-list" role="list">
+            <!-- Question cards rendered by scenarios-student.ts -->
         </div>
     </div>
 
-    <div id="scenarios-practice-view" class="scenarios-view scenarios-practice-view" style="display: none;">
-        <div class="practice-header">
-            <button id="scenarios-back-btn" class="scenarios-back-btn">
-                <i data-feather="arrow-left"></i>
-                <span>Back to list</span>
-            </button>
-            <h2 id="practice-question-title" class="practice-question-title"></h2>
-        </div>
+    <!-- Question workspace (practice + exam) -->
+    <div id="sg-student-workspace-view" class="sg-student-view sg-student-workspace-view" style="display: none;">
+        <button id="sg-student-back-btn" class="sg-student-back-btn" type="button">
+            <i data-feather="arrow-left"></i>
+            <span>Scenario Generation</span>
+        </button>
 
-        <div class="practice-body">
-            <div class="practice-narrative-block">
-                <div id="practice-narrative" class="practice-narrative response-text"></div>
-            </div>
+        <header class="sg-student-workspace-header">
+            <h1 id="sg-student-question-title" class="sg-student-page-title sg-student-question-title"></h1>
+        </header>
 
-            <div id="practice-progress" class="practice-progress" role="list" aria-label="Question parts progress"></div>
-
-            <div id="practice-part-card" class="practice-part-card">
-                <h3 id="practice-part-label" class="practice-part-label"></h3>
-                <p id="practice-part-prompt" class="practice-part-prompt"></p>
-                <textarea id="practice-answer-input" class="practice-answer-input" rows="6" placeholder="Type your answer here..."></textarea>
-                <div class="practice-part-actions">
-                    <button id="practice-check-btn" class="btn-primary practice-check-btn">Check answer</button>
+        <div class="sg-student-layout">
+            <div class="sg-student-main">
+                <div id="sg-student-narrative" class="sg-student-narrative"></div>
+                <div id="sg-student-parts" class="sg-student-parts">
+                    <!-- Parts rendered by scenarios-student.ts -->
                 </div>
             </div>
 
-            <div id="practice-feedback-panel" class="practice-feedback-panel" style="display: none;"></div>
-
-            <div class="practice-continue-row">
-                <button id="practice-continue-btn" class="btn-secondary practice-continue-btn" disabled>Continue →</button>
-                <button id="practice-solution-btn" class="btn-outline practice-solution-btn" style="display: none;">View model solution</button>
-            </div>
-
-            <div id="practice-solution-panel" class="practice-solution-panel response-text" style="display: none;"></div>
+            <aside class="sg-student-side-panel" aria-label="Question status">
+                <div class="sg-student-status-row">
+                    <span id="sg-student-status-badge" class="sg-student-status-badge">On Going</span>
+                </div>
+                <div class="sg-student-meta-field">
+                    <span class="sg-student-meta-label">Topic</span>
+                    <p id="sg-student-topic-label" class="sg-student-meta-value"></p>
+                </div>
+                <div class="sg-student-meta-field">
+                    <span class="sg-student-meta-label">Learning objectives</span>
+                    <div id="sg-student-llo-list" class="sg-student-llo-list"></div>
+                </div>
+                <div id="sg-student-timer-block" class="sg-student-timer-block" style="display: none;">
+                    <div class="sg-student-meta-field">
+                        <span class="sg-student-meta-label">Time Remaining</span>
+                        <p id="sg-student-timer-display" class="sg-student-timer-display" aria-live="polite">25:00</p>
+                        <p id="sg-student-time-up" class="sg-student-time-up" style="display: none;">Time’s up — answers are locked.</p>
+                    </div>
+                    <button id="sg-student-submit-btn" type="button" class="sg-student-submit-btn">
+                        <span>Submit</span>
+                    </button>
+                </div>
+            </aside>
         </div>
     </div>
 </div>

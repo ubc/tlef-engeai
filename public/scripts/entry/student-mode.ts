@@ -14,8 +14,8 @@ import { authService } from '../services/auth-service.js';
 import { studentUserFactory } from '../factories/student-user-factory.js';
 import { renderStudentOnboarding } from '../onboarding/student-onboarding.js';
 import { initializeStudentFlagHistory } from '../feature/student-flag-history.js';
-import { initializeScenariosStudent } from '../feature/scenarios-student.js';
-import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
+import { initializeScenariosStudent, isScenarioWorkspaceActive, confirmLeaveScenarioWorkspace, expandStudentSidebar } from '../feature/scenarios-student.js';
+import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInfoModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
 import { renderAbout } from '../about/about.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
 import { 
@@ -256,6 +256,13 @@ function initializeInactivityTracking(): void {
  */
 async function initializeChatInterface(user: any, urlState?: { view: string | null, chatId: string | null }): Promise<void> {
 
+    // ponytail: mirror instructor menu-list-item.active; one helper for both tools
+    const setStudentToolActive = (toolId: string | null) => {
+        document.querySelectorAll('.student-tool-btn').forEach((btn) => {
+            btn.classList.toggle('active', toolId !== null && btn.id === toolId);
+        });
+    };
+
     
     const chatManager = ChatManager.getInstance({
         isInstructor: false,
@@ -265,6 +272,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             if (action === 'ui-update-needed') {
                 updateUI();
             } else if (action === 'new-chat-created') {
+                setStudentToolActive(null);
                 // New chat created from welcome screen or sidebar
                 const newChatId = data?.chatId;
                 if (newChatId) {
@@ -278,7 +286,8 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                 }
                 // Note: loadChatWindow() is called by updateUI() or ChatManager
             } else if (action === 'chat-clicked') {
-                // Chat clicked from sidebar
+                // Chat clicked from sidebar — clear tool selection
+                setStudentToolActive(null);
                 const clickedChatId = data?.chatId;
                 if (clickedChatId) {
                     const courseId = getCourseIdFromURL();
@@ -365,6 +374,39 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             if (isMobileView()) closeMobileSidebar();
         }
     });
+
+    // Warn before leaving an active Practice/Exam via sidebar (chat, new chat, other tools).
+    // Logout is excluded. Capture + re-click so ChatManager handlers still run after confirm.
+    let bypassScenarioLeaveGuard = false;
+    const SCENARIO_LEAVE_SELECTOR = [
+        '#add-chat-btn',
+        '.chat-item',
+        '#about-btn',
+        '#profile-btn',
+        '#course-selection-btn',
+        '#writing-analysis-btn'
+    ].join(', ');
+
+    sidebarEl?.addEventListener('click', async (e: MouseEvent) => {
+        if (bypassScenarioLeaveGuard) return;
+        if (currentComponent !== 'scenarios' || !isScenarioWorkspaceActive()) return;
+
+        const target = e.target as HTMLElement;
+        if (target.closest('#logout-btn')) return;
+
+        const leaveEl = target.closest(SCENARIO_LEAVE_SELECTOR) as HTMLElement | null;
+        if (!leaveEl) return;
+
+        e.preventDefault();
+        e.stopImmediatePropagation();
+
+        const ok = await confirmLeaveScenarioWorkspace();
+        if (!ok) return;
+
+        bypassScenarioLeaveGuard = true;
+        leaveEl.click();
+        bypassScenarioLeaveGuard = false;
+    }, true);
 
     // Swipe-to-right gesture on left edge of main content
     let touchStartX = 0;
@@ -475,6 +517,19 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
     // --- COMPONENT LOADING ---
     const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history' | 'scenarios') => {
         if (!mainContentArea) return;
+
+        // Leaving Scenario Generation: warn if Practice/Exam is active; always expand sidebar
+        if (currentComponent === 'scenarios' && componentName !== 'scenarios') {
+            if (isScenarioWorkspaceActive()) {
+                const ok = await confirmLeaveScenarioWorkspace();
+                if (!ok) return;
+            } else {
+                expandStudentSidebar();
+            }
+        }
+
+        // Keep tool highlight in sync with the main view (Writing Analysis is modal-only)
+        setStudentToolActive(componentName === 'scenarios' ? 'practice-scenarios-btn' : null);
 
         // Close mobile sidebar when navigating to new view
         if (isMobileView()) closeMobileSidebar();
@@ -827,6 +882,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         if (aboutBtn) {
             aboutBtn.addEventListener('click', () => {
                 // console.log('[STUDENT-MODE] ℹ️ About button clicked');
+                setStudentToolActive(null);
                 navigateToStudentView('about');
             });
             // console.log('[STUDENT-MODE] ✅ About button listener attached');
@@ -962,20 +1018,41 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
 
         profileBtn.addEventListener('click', () => {
             // console.log('[STUDENT-MODE] 👤 Loading flag history component...');
+            setStudentToolActive(null);
             navigateToStudentView('flag-history');
         });
         // console.log('[STUDENT-MODE] ✅ Flag history button listener attached');
     };
 
+    const clearSelectedChatForTool = async () => {
+        await chatManager.setActiveChatId(null);
+    };
+
     const attachPracticeScenariosButtonListener = () => {
         const practiceScenariosBtn = document.getElementById('practice-scenarios-btn');
         if (!practiceScenariosBtn) {
-            console.warn('[STUDENT-MODE] ⚠️ Practice Scenarios button not found');
+            console.warn('[STUDENT-MODE] ⚠️ Scenario Generation button not found');
             return;
         }
 
-        practiceScenariosBtn.addEventListener('click', () => {
+        practiceScenariosBtn.addEventListener('click', async () => {
+            await clearSelectedChatForTool();
+            setStudentToolActive('practice-scenarios-btn');
             navigateToStudentView('scenarios');
+        });
+    };
+
+    const attachWritingAnalysisButtonListener = () => {
+        const writingAnalysisBtn = document.getElementById('writing-analysis-btn');
+        if (!writingAnalysisBtn) {
+            console.warn('[STUDENT-MODE] ⚠️ Writing Analysis button not found');
+            return;
+        }
+
+        writingAnalysisBtn.addEventListener('click', async () => {
+            await clearSelectedChatForTool();
+            setStudentToolActive('writing-analysis-btn');
+            void showInfoModal('Writing Analysis', 'Writing analysis is coming soon.');
         });
     };
 
@@ -1015,7 +1092,8 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
     // --- INITIALIZATION ---
     attachLogoutListener(); // Attach logout button listener
     attachProfileButtonListener(); // Attach profile button listener
-    attachPracticeScenariosButtonListener(); // Attach Practice Scenarios button listener
+    attachPracticeScenariosButtonListener(); // Scenario Generation
+    attachWritingAnalysisButtonListener(); // Writing Analysis (coming soon)
     attachCourseSelectionListener(); // Attach course selection button listener
     
     // Update companion text with current course

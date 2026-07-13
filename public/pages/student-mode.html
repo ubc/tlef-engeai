@@ -22,6 +22,7 @@
     <link rel="stylesheet" href="/styles/instructor-components/onboarding.css" />
     <link rel="stylesheet" href="/styles/student-components/student-onboarding.css" />
     <link rel="stylesheet" href="/styles/student-components/scenarios.css" />
+    <link rel="stylesheet" href="/styles/scenario-generation/sg-shared.css" />
     <link rel="stylesheet" href="/styles/about.css" />
     
     <!-- KaTeX CSS for LaTeX rendering -->
@@ -49,10 +50,14 @@
                     </button>
                 </div>
                 <nav class="chat-list">
-                    <div class="practice-scenarios-box">
-                        <button class="practice-scenarios-btn" id="practice-scenarios-btn">
+                    <div class="student-tools-box">
+                        <button type="button" class="student-tool-btn" id="practice-scenarios-btn">
                             <i data-feather="clipboard"></i>
-                            <span>Practice Scenarios</span>
+                            <p>Scenario Generation</p>
+                        </button>
+                        <button type="button" class="student-tool-btn" id="writing-analysis-btn">
+                            <i data-feather="edit-3"></i>
+                            <p>Writing Analysis</p>
                         </button>
                     </div>
                     <div class="add-chat-box">

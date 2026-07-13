@@ -1,0 +1,56 @@
+/**
+ * Shared Scenario Generation (sg-) atoms used by student + instructor.
+ * Part title + type badges — same look/meaning on both roles.
+ */
+
+.sg-part-title {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-secondary, #6c757d);
+    letter-spacing: 0.01em;
+}
+
+.sg-part-title-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.sg-part-type-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    border: 1px solid transparent;
+}
+
+.sg-part-type-calculation {
+    background: rgba(15, 118, 110, 0.08);
+    color: #0f766e;
+    border-color: rgba(15, 118, 110, 0.35);
+}
+
+.sg-part-type-troubleshoot {
+    background: rgba(180, 83, 9, 0.1);
+    color: #b45309;
+    border-color: rgba(180, 83, 9, 0.4);
+}
+
+.sg-part-type-action {
+    background: rgba(55, 48, 163, 0.08);
+    color: #3730a3;
+    border-color: rgba(55, 48, 163, 0.35);
+}
+
+.sg-part-type-corrective {
+    background: rgba(190, 18, 60, 0.08);
+    color: #be123c;
+    border-color: rgba(190, 18, 60, 0.3);
+}
