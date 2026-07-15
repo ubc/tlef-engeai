@@ -20,20 +20,28 @@ import {
     ScenarioSubQuestionType,
     ScenarioExamPartResult,
     ScenarioLearningObjectiveSnapshot,
+    ScenarioPartFeedbackResponse,
 } from '../types.js';
 import {
     fetchPublishedScenarioQuestions,
     fetchScenarioQuestion,
     checkScenarioAnswer,
+    fetchScenarioResponseHistory,
     fetchScenarioSolution,
     submitScenarioExam,
 } from '../api/scenario-questions-api.js';
 import { renderFeatherIcons } from '../api/api.js';
-import { closeModal, showCustomModal, showWarningModal } from '../ui/modal-overlay.js';
+import { closeModal, showConfirmModal, showCustomModal, showWarningModal } from '../ui/modal-overlay.js';
 import { showErrorToast } from '../ui/toast-notification.js';
 import { flashcardToneIndex, parseAnswerKeyToFlashcards, SUB_QUESTION_TYPE_LABELS } from './scenario-answer-flashcard.js';
 import { RenderChat } from './render-chat.js';
 import { renderLatexInHtmlContent } from './chat.js';
+import { stashChatDraftPrefill } from '../utils/chat-draft-prefill.js';
+import {
+    getStudentScenariosParamsFromURL,
+    navigateToStudentScenarios,
+    type StudentScenariosUrlOptions,
+} from '../utils/url-parser.js';
 
 const renderChat = new RenderChat();
 
@@ -62,6 +70,9 @@ interface StudentQuestionView {
 }
 
 const EXAM_SECONDS_FALLBACK = 25 * 60;
+const PRACTICE_DAILY_MAX_ATTEMPTS = 6;
+const PRACTICE_COOLDOWN_MS = 30_000;
+const PRACTICE_DAY_TIMEZONE = 'America/Vancouver';
 
 let currentCourse: activeCourse | null = null;
 let cachedList: StudentQuestionView[] = [];
@@ -76,6 +87,350 @@ let examTimerId: ReturnType<typeof setInterval> | null = null;
 let uiAbort: AbortController | null = null;
 const flashcardIndexByPart = new Map<string, number>();
 const flashcardNavDirByPart = new Map<string, 'prev' | 'next'>();
+/** Today's practice attempt count per sub-question (from server history). */
+const todayAttemptCountByPart = new Map<string, number>();
+/** Cooldown expiry (ms since epoch) per sub-question. */
+const cooldownUntilByPart = new Map<string, number>();
+/** Daily limit reset (ms since epoch) per sub-question. */
+const dailyLimitUntilByPart = new Map<string, number>();
+/** Last persisted feedback time today per part — client-side cooldown hint. */
+const lastFeedbackAtByPart = new Map<string, number>();
+const cooldownTimerIdsByPart = new Map<string, ReturnType<typeof setTimeout>>();
+
+interface ExamSubmittedState {
+    overallGrade: number;
+    results: ScenarioExamPartResult[];
+    localAnswers: Map<string, string>;
+}
+
+interface RenderPartsOptions {
+    submitted?: ExamSubmittedState | null;
+}
+
+/** Snapshot of the latest successful exam submit — used for View solutions re-render. */
+let lastExamSubmission: ExamSubmittedState | null = null;
+
+function getPracticeDayKey(date: Date): string {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: PRACTICE_DAY_TIMEZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).format(date);
+}
+
+function clearPracticeLimitTimers(): void {
+    for (const id of cooldownTimerIdsByPart.values()) {
+        clearTimeout(id);
+    }
+    cooldownTimerIdsByPart.clear();
+    todayAttemptCountByPart.clear();
+    cooldownUntilByPart.clear();
+    dailyLimitUntilByPart.clear();
+    lastFeedbackAtByPart.clear();
+}
+
+function buildScenarioChatPrefill(question: StudentQuestionView, part: StudentPartView, studentAnswer: string): string {
+    const partIndex = question.parts.findIndex((p) => p.id === part.id);
+    const partLabel = partIndex >= 0 ? `Part ${partIndex + 1}` : 'this part';
+    const answerBlock = studentAnswer.trim()
+        ? `\n\nMy current answer:\n${studentAnswer.trim()}`
+        : '';
+    return [
+        `I'm working on the practice scenario **${question.title}**.`,
+        '',
+        '**Scenario:**',
+        question.narrative.trim(),
+        '',
+        `**${partLabel}:**`,
+        part.prompt.trim(),
+        answerBlock,
+        '',
+        'Can you help me think through this step by step?',
+    ].join('\n');
+}
+
+async function openConversationForPart(part: StudentPartView): Promise<void> {
+    if (!currentCourse || !activeQuestion) return;
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+        `.sg-student-answer-input[data-sub-question-id="${part.id}"]`
+    );
+    const answer = textarea?.value?.trim() || '';
+    const draft = buildScenarioChatPrefill(activeQuestion, part, answer);
+    stashChatDraftPrefill(currentCourse.id, draft);
+    window.dispatchEvent(
+        new CustomEvent('engeai-student-open-chat-draft', { detail: { courseId: currentCourse.id } })
+    );
+}
+
+async function loadPracticeResponseHistory(questionId: string): Promise<void> {
+    if (!currentCourse) return;
+    todayAttemptCountByPart.clear();
+    lastFeedbackAtByPart.clear();
+    try {
+        const history = await fetchScenarioResponseHistory(currentCourse.id, questionId);
+        const todayKey = getPracticeDayKey(new Date());
+        const now = Date.now();
+        for (const entry of history) {
+            if (entry.mode !== 'practice') continue;
+            if (getPracticeDayKey(new Date(entry.submittedAt)) !== todayKey) continue;
+            const prev = todayAttemptCountByPart.get(entry.subQuestionId) ?? 0;
+            todayAttemptCountByPart.set(entry.subQuestionId, prev + 1);
+            const submittedMs = new Date(entry.submittedAt).getTime();
+            const priorLast = lastFeedbackAtByPart.get(entry.subQuestionId) ?? 0;
+            if (submittedMs > priorLast) {
+                lastFeedbackAtByPart.set(entry.subQuestionId, submittedMs);
+            }
+        }
+        for (const [partId, lastAt] of lastFeedbackAtByPart.entries()) {
+            const elapsed = now - lastAt;
+            if (elapsed < PRACTICE_COOLDOWN_MS) {
+                cooldownUntilByPart.set(partId, lastAt + PRACTICE_COOLDOWN_MS);
+                schedulePracticeButtonRefresh(partId, PRACTICE_COOLDOWN_MS - elapsed + 50);
+            }
+        }
+    } catch {
+        // ponytail: limits still enforced server-side if history load fails
+    }
+}
+
+function schedulePracticeButtonRefresh(partId: string, delayMs: number): void {
+    const existing = cooldownTimerIdsByPart.get(partId);
+    if (existing) clearTimeout(existing);
+    const timerId = setTimeout(() => {
+        cooldownTimerIdsByPart.delete(partId);
+        cooldownUntilByPart.delete(partId);
+    }, delayMs);
+    cooldownTimerIdsByPart.set(partId, timerId);
+}
+
+function isPracticeCooldownActive(partId: string): boolean {
+    const until = cooldownUntilByPart.get(partId);
+    return !!until && until > Date.now();
+}
+
+function isPracticeDailyLimitReached(partId: string): boolean {
+    const todayCount = todayAttemptCountByPart.get(partId) ?? 0;
+    return todayCount >= PRACTICE_DAILY_MAX_ATTEMPTS;
+}
+
+function revealStudentPanel(panel: HTMLElement): void {
+    panel.hidden = false;
+    panel.classList.remove('sg-student-panel--enter');
+    // Force reflow so repeated reveals re-trigger the animation
+    void panel.offsetWidth;
+    panel.classList.add('sg-student-panel--enter');
+    panel.addEventListener(
+        'animationend',
+        () => {
+            panel.classList.remove('sg-student-panel--enter');
+        },
+        { once: true }
+    );
+}
+
+function setAiFeedbackButtonLoading(partId: string, loading: boolean): void {
+    const btn = document.querySelector<HTMLButtonElement>(
+        `.sg-student-ai-btn[data-sub-question-id="${partId}"]`
+    );
+    if (!btn) return;
+    btn.classList.toggle('is-loading', loading);
+    btn.setAttribute('aria-busy', loading ? 'true' : 'false');
+}
+
+function showPracticeFeedbackLoading(partId: string): void {
+    const panel = document.querySelector<HTMLElement>(`.sg-student-ai-feedback[data-sub-question-id="${partId}"]`);
+    const body = panel?.querySelector<HTMLElement>('.sg-student-ai-feedback-body');
+    if (!panel || !body) return;
+    body.innerHTML = `
+        <div class="sg-student-feedback-loading" role="status" aria-live="polite">
+            <div class="sg-student-spinner" aria-hidden="true"></div>
+            <span>Getting feedback…</span>
+        </div>`;
+    revealStudentPanel(panel);
+    renderFeatherIcons();
+}
+
+function renderFeedbackMarkdown(body: HTMLElement, feedback: string, partId: string): void {
+    body.classList.add('message-content');
+    body.innerHTML = renderChat.render(feedback, `sg-student-feedback-${partId}-${Date.now()}`);
+    renderLatexInHtmlContent(body);
+}
+
+function showPracticeGateFeedback(partId: string, gate: 'cooldown' | 'daily_limit'): void {
+    const panel = document.querySelector<HTMLElement>(`.sg-student-ai-feedback[data-sub-question-id="${partId}"]`);
+    const body = panel?.querySelector<HTMLElement>('.sg-student-ai-feedback-body');
+    if (!panel || !body) return;
+
+    if (gate === 'cooldown') {
+        body.innerHTML =
+            '<p class="sg-student-practice-gate-note">Take a moment with your answer—you may want to revise it before asking for feedback again.</p>';
+    } else {
+        body.innerHTML = `<p class="sg-student-practice-gate-note">You have been asking for feedback on this part quite often. Would you like to work through it in a <button type="button" class="sg-student-chat-cta" data-sub-question-id="${escapeHtml(partId)}">conversation</button> instead?</p>`;
+    }
+    revealStudentPanel(panel);
+    renderFeatherIcons();
+}
+
+function showPartFeedback(partId: string, feedback: string): void {
+    const panel = document.querySelector<HTMLElement>(`.sg-student-ai-feedback[data-sub-question-id="${partId}"]`);
+    const body = panel?.querySelector<HTMLElement>('.sg-student-ai-feedback-body');
+    if (panel && body) {
+        renderFeedbackMarkdown(body, feedback, partId);
+        revealStudentPanel(panel);
+        renderFeatherIcons();
+    }
+}
+
+function showExamPartFeedback(partId: string, feedback: string): void {
+    const headerLabel = document.querySelector<HTMLElement>(
+        `.sg-student-ai-feedback[data-sub-question-id="${partId}"] .sg-student-ai-feedback-header span`
+    );
+    if (headerLabel) headerLabel.textContent = 'AI Grading';
+    showPartFeedback(partId, feedback);
+}
+
+function applyPracticeFeedbackResponse(partId: string, result: ScenarioPartFeedbackResponse): void {
+    if (result.blockReason === 'cooldown') {
+        showPracticeGateFeedback(partId, 'cooldown');
+    } else if (result.blockReason === 'daily_limit') {
+        showPracticeGateFeedback(partId, 'daily_limit');
+    } else {
+        showPartFeedback(partId, result.feedback);
+    }
+
+    if (result.attemptNumber != null && result.feedbackSource === 'llm') {
+        todayAttemptCountByPart.set(partId, result.attemptNumber);
+        lastFeedbackAtByPart.set(partId, Date.now());
+    } else if (result.blockReason === 'daily_limit' && result.attemptNumber != null) {
+        todayAttemptCountByPart.set(partId, result.attemptNumber);
+    }
+
+    if (result.blockReason === 'cooldown' && result.retryAfterSeconds) {
+        cooldownUntilByPart.set(partId, Date.now() + result.retryAfterSeconds * 1000);
+        schedulePracticeButtonRefresh(partId, result.retryAfterSeconds * 1000 + 50);
+    }
+
+    if (result.blockReason === 'daily_limit' && result.resetsAt) {
+        dailyLimitUntilByPart.set(partId, new Date(result.resetsAt).getTime());
+        const delay = Math.max(0, new Date(result.resetsAt).getTime() - Date.now());
+        schedulePracticeButtonRefresh(partId, delay + 50);
+    }
+}
+
+async function requestPracticeFeedback(part: StudentPartView, answer: string): Promise<void> {
+    const partId = part.id;
+    if (isPracticeDailyLimitReached(partId)) {
+        showPracticeGateFeedback(partId, 'daily_limit');
+        return;
+    }
+    if (isPracticeCooldownActive(partId)) {
+        showPracticeGateFeedback(partId, 'cooldown');
+        return;
+    }
+
+    if (!currentCourse || !activeQuestion) return;
+
+    setAiFeedbackButtonLoading(partId, true);
+    showPracticeFeedbackLoading(partId);
+    try {
+        const feedback = await checkScenarioAnswer(
+            currentCourse.id,
+            activeQuestion.id,
+            part.id,
+            answer,
+            'practice'
+        );
+        applyPracticeFeedbackResponse(part.id, feedback);
+    } catch (error) {
+        showErrorToast(error instanceof Error ? error.message : 'Feedback failed.');
+    } finally {
+        setAiFeedbackButtonLoading(partId, false);
+    }
+}
+
+async function confirmEmptyAnswerReveal(): Promise<boolean> {
+    const result = await showConfirmModal(
+        'View the answer?',
+        'You have not entered an answer yet. Seeing the solution now may reduce the benefit of working through this part on your own. Do you want to continue?',
+        'Show answer',
+        'Go back'
+    );
+    return result.action === 'show-answer';
+}
+
+async function handlePracticeSeeTheAnswer(part: StudentPartView): Promise<void> {
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+        `.sg-student-answer-input[data-sub-question-id="${part.id}"]`
+    );
+    const answer = textarea?.value?.trim() || '';
+    if (!answer) {
+        const proceed = await confirmEmptyAnswerReveal();
+        if (!proceed) return;
+    }
+
+    const ok = await unlockPartSolution(part.id);
+    if (!ok) return;
+    flashcardIndexByPart.set(part.id, flashcardIndexByPart.get(part.id) ?? 0);
+    showAnswerFlashcard(part);
+}
+
+let suppressUrlSync = false;
+let scenariosMounted = false;
+
+function syncStudentScenariosUrl(options: StudentScenariosUrlOptions = {}, replace = false): void {
+    if (suppressUrlSync) return;
+    navigateToStudentScenarios(options, replace);
+}
+
+export function isScenariosStudentMounted(): boolean {
+    return scenariosMounted;
+}
+
+export async function syncStudentScenariosFromURL(fromPopstate = false): Promise<void> {
+    if (!scenariosMounted || !currentCourse) return;
+    if (fromPopstate && activeMode) {
+        const ok = await confirmLeaveScenarioWorkspace();
+        if (!ok) {
+            suppressUrlSync = true;
+            if (activeQuestion && activeMode) {
+                navigateToStudentScenarios({ questionId: activeQuestion.id, mode: activeMode }, true);
+            }
+            suppressUrlSync = false;
+            return;
+        }
+    }
+    await restoreStudentFromURL();
+}
+
+async function restoreStudentFromURL(): Promise<void> {
+    const params = getStudentScenariosParamsFromURL();
+    suppressUrlSync = true;
+
+    if (params.questionId && params.mode) {
+        const listItem = cachedList.find((q) => q.id === params.questionId);
+        if (listItem) {
+            await startWorkspace(listItem, params.mode, true);
+        } else {
+            try {
+                const detail = await fetchScenarioQuestion(currentCourse!.id, params.questionId);
+                if (detail) {
+                    await startWorkspace(toWorkspaceQuestion(detail), params.mode, true);
+                } else {
+                    showErrorToast('Scenario not found.');
+                    showListView(true);
+                }
+            } catch {
+                showErrorToast('Scenario not found.');
+                showListView(true);
+            }
+        }
+    } else {
+        showListView(true);
+    }
+
+    suppressUrlSync = false;
+}
 
 function topicTitle(topicOrWeekId: string): string {
     const topic = currentCourse?.topicOrWeekInstances?.find((t) => t.id === topicOrWeekId);
@@ -144,26 +499,53 @@ function renderGradeBadge(grade: number): string {
     return `<span class="sg-student-grade-badge" aria-label="Grade ${g} out of 10">${g} / 10</span>`;
 }
 
+function renderPartTitleGroup(index: number, part: StudentPartView, grade?: number): string {
+    const typeLabel = SUB_QUESTION_TYPE_LABELS[part.subQuestionType] ?? part.subQuestionType;
+    return `
+                <div class="sg-part-title-group">
+                    <h3 class="sg-part-title">Part ${index + 1}</h3>
+                    <span class="sg-part-type-badge sg-part-type-${part.subQuestionType}">${escapeHtml(typeLabel)}</span>
+                    ${grade != null ? renderGradeBadge(grade) : ''}
+                </div>`;
+}
+
+function renderPartOutcomesShell(partId: string, headerLabel: string): string {
+    return `
+            <div class="sg-student-part-outcomes">
+                <div class="sg-student-ai-feedback" data-sub-question-id="${escapeHtml(partId)}" hidden>
+                    <div class="sg-student-ai-feedback-header">
+                        <i data-feather="message-circle" aria-hidden="true"></i>
+                        <span>${escapeHtml(headerLabel)}</span>
+                    </div>
+                    <div class="sg-student-ai-feedback-body"></div>
+                </div>
+                <div class="sg-student-answer-panel" data-sub-question-id="${escapeHtml(partId)}" hidden></div>
+            </div>`;
+}
+
 /**
  * initializeScenariosStudent
  *
  * @param course activeCourse
  */
 export async function initializeScenariosStudent(course: activeCourse): Promise<void> {
+    scenariosMounted = false;
+
     currentCourse = course;
     stopExamTimer();
     statusFilter = 'all';
     activeQuestion = null;
     activeMode = null;
+    lastExamSubmission = null;
 
     uiAbort?.abort();
     uiAbort = new AbortController();
 
-    showListView();
-    syncFilterPills();
     attachListListeners();
     attachWorkspaceListeners();
     await refreshQuestionList();
+    scenariosMounted = true;
+    await restoreStudentFromURL();
     renderFeatherIcons();
 }
 
@@ -186,7 +568,7 @@ function escapeHtml(text: string): string {
     return div.innerHTML;
 }
 
-function showListView(): void {
+function showListView(skipUrlSync = false): void {
     stopExamTimer();
     const listView = document.getElementById('sg-student-list-view');
     const workspace = document.getElementById('sg-student-workspace-view');
@@ -194,7 +576,10 @@ function showListView(): void {
     if (workspace) workspace.style.display = 'none';
     activeQuestion = null;
     activeMode = null;
+    lastExamSubmission = null;
+    syncFilterPills();
     expandStudentSidebar();
+    if (!skipUrlSync) syncStudentScenariosUrl({});
 }
 
 export function isScenarioWorkspaceActive(): boolean {
@@ -392,7 +777,7 @@ async function openModeModal(question: StudentQuestionView): Promise<void> {
     else if (result.action === 'exam') await startWorkspace(question, 'exam');
 }
 
-async function startWorkspace(listItem: StudentQuestionView, mode: ScenarioMode): Promise<void> {
+async function startWorkspace(listItem: StudentQuestionView, mode: ScenarioMode, skipUrlSync = false): Promise<void> {
     if (!currentCourse) return;
 
     let question = listItem;
@@ -415,8 +800,10 @@ async function startWorkspace(listItem: StudentQuestionView, mode: ScenarioMode)
 
     activeQuestion = question;
     activeMode = mode;
+    lastExamSubmission = null;
     flashcardIndexByPart.clear();
     flashcardNavDirByPart.clear();
+    clearPracticeLimitTimers();
 
     const titleEl = document.getElementById('sg-student-question-title');
     if (titleEl) {
@@ -455,26 +842,34 @@ async function startWorkspace(listItem: StudentQuestionView, mode: ScenarioMode)
     if (submitBtn) {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Submit';
+        submitBtn.style.display = mode === 'exam' ? '' : 'none';
     }
 
     renderParts(question, mode);
+    if (mode === 'practice') {
+        await loadPracticeResponseHistory(question.id);
+    }
     setupTimerForMode(mode, question.expectedTimeMinutes);
     showWorkspaceView();
     collapseStudentSidebar();
     renderFeatherIcons();
+    if (!skipUrlSync) syncStudentScenariosUrl({ questionId: question.id, mode });
 }
 
 function collapseStudentSidebar(): void {
     document.querySelector('.sidebar')?.classList.add('collapsed');
 }
 
-function renderParts(question: StudentQuestionView, mode: ScenarioMode): void {
+function renderParts(question: StudentQuestionView, mode: ScenarioMode, options?: RenderPartsOptions): void {
     const container = document.getElementById('sg-student-parts');
     if (!container) return;
 
+    const submitted = options?.submitted ?? null;
+    const resultById = submitted ? new Map(submitted.results.map((r) => [r.subQuestionId, r])) : null;
+
     container.innerHTML = question.parts
         .map((part, index) => {
-            const typeLabel = SUB_QUESTION_TYPE_LABELS[part.subQuestionType] ?? part.subQuestionType;
+            const graded = resultById?.get(part.id);
             const practiceBlock =
                 mode === 'practice'
                     ? `
@@ -482,25 +877,19 @@ function renderParts(question: StudentQuestionView, mode: ScenarioMode): void {
                 <button type="button" class="sg-student-ai-btn" data-sub-question-id="${escapeHtml(part.id)}">Get AI Feedback</button>
                 <button type="button" class="sg-student-answer-btn" data-sub-question-id="${escapeHtml(part.id)}">See the Answer</button>
             </div>
-            <div class="sg-student-part-outcomes">
-                <div class="sg-student-ai-feedback" data-sub-question-id="${escapeHtml(part.id)}" hidden>
-                    <div class="sg-student-ai-feedback-header">
-                        <i data-feather="message-circle" aria-hidden="true"></i>
-                        <span>AI Feedback</span>
-                    </div>
-                    <div class="sg-student-ai-feedback-body"></div>
-                </div>
-                <div class="sg-student-answer-panel" data-sub-question-id="${escapeHtml(part.id)}" hidden></div>
-            </div>`
-                    : '';
+            ${renderPartOutcomesShell(part.id, 'AI Feedback')}`
+                    : mode === 'exam'
+                      ? `
+            ${submitted ? `<div class="sg-student-part-actions">
+                <button type="button" class="sg-student-answer-btn" data-sub-question-id="${escapeHtml(part.id)}">View solution</button>
+            </div>` : ''}
+            ${renderPartOutcomesShell(part.id, 'AI Grading')}`
+                      : '';
 
             return `
         <section class="sg-student-part" data-sub-question-id="${escapeHtml(part.id)}">
             <div class="sg-student-part-header">
-                <div class="sg-part-title-group">
-                    <h3 class="sg-part-title">Part ${index + 1}</h3>
-                    <span class="sg-part-type-badge sg-part-type-${part.subQuestionType}">${escapeHtml(typeLabel)}</span>
-                </div>
+                ${renderPartTitleGroup(index, part, graded?.grade)}
             </div>
             <div class="sg-student-part-prompt message-content" data-sub-question-id="${escapeHtml(part.id)}"></div>
             <textarea
@@ -508,6 +897,7 @@ function renderParts(question: StudentQuestionView, mode: ScenarioMode): void {
                 data-sub-question-id="${escapeHtml(part.id)}"
                 rows="5"
                 placeholder="Type your answer here..."
+                ${submitted ? 'disabled' : ''}
             ></textarea>
             ${practiceBlock}
         </section>`;
@@ -525,6 +915,69 @@ function renderParts(question: StudentQuestionView, mode: ScenarioMode): void {
             btn.classList.add('artefact-button--scenario');
         });
     }
+
+    if (submitted) {
+        applyExamPartResults(question, submitted.results, submitted.localAnswers);
+    }
+}
+
+function applyExamPartResults(
+    question: StudentQuestionView,
+    results: ScenarioExamPartResult[],
+    localAnswers: Map<string, string>
+): void {
+    const resultById = new Map(results.map((r) => [r.subQuestionId, r]));
+    for (const part of question.parts) {
+        const graded = resultById.get(part.id);
+        const section = document.querySelector<HTMLElement>(`.sg-student-part[data-sub-question-id="${part.id}"]`);
+        if (!section) continue;
+
+        const titleGroup = section.querySelector('.sg-part-title-group');
+        if (titleGroup && graded && !titleGroup.querySelector('.sg-student-grade-badge')) {
+            titleGroup.insertAdjacentHTML('beforeend', renderGradeBadge(graded.grade));
+        }
+
+        const textarea = section.querySelector<HTMLTextAreaElement>('.sg-student-answer-input');
+        if (textarea) {
+            textarea.disabled = true;
+            if (localAnswers.has(part.id)) textarea.value = localAnswers.get(part.id) || '';
+        }
+
+        if (graded?.feedback) {
+            showExamPartFeedback(part.id, graded.feedback);
+        }
+    }
+    renderFeatherIcons();
+}
+
+function showExamScoreSidebar(overallGrade: number, partCount: number): void {
+    const timerBlock = document.getElementById('sg-student-timer-block');
+    const timerLabel = document.getElementById('sg-student-timer-label');
+    const display = document.getElementById('sg-student-timer-display');
+    const timeUpEl = document.getElementById('sg-student-time-up');
+    const maxScore = Math.max(1, partCount) * 10;
+
+    if (timerBlock) timerBlock.style.display = '';
+    if (timerLabel) timerLabel.textContent = 'Exam Score';
+    if (display) display.textContent = `${overallGrade} / ${maxScore}`;
+    if (timeUpEl) timeUpEl.style.display = 'none';
+
+    const submitBtn = document.getElementById('sg-student-submit-btn') as HTMLButtonElement | null;
+    if (submitBtn) {
+        submitBtn.style.display = 'none';
+        submitBtn.removeAttribute('aria-busy');
+    }
+}
+
+function applyExamResults(
+    overallGrade: number,
+    results: ScenarioExamPartResult[],
+    localAnswers: Map<string, string>
+): void {
+    if (!activeQuestion) return;
+    const submitted: ExamSubmittedState = { overallGrade, results, localAnswers };
+    renderParts(activeQuestion, 'exam', { submitted });
+    showExamScoreSidebar(overallGrade, activeQuestion.parts.length);
 }
 
 function setupTimerForMode(mode: ScenarioMode, expectedMinutes: number): void {
@@ -540,8 +993,12 @@ function setupTimerForMode(mode: ScenarioMode, expectedMinutes: number): void {
 
     examSecondsLeft = Math.max(0, Math.round((expectedMinutes || 25) * 60));
     if (timerBlock) timerBlock.style.display = '';
+    const timerLabel = document.getElementById('sg-student-timer-label');
+    if (timerLabel) timerLabel.textContent = 'Time Remaining';
     if (timeUpEl) timeUpEl.style.display = 'none';
     if (display) display.textContent = formatTime(examSecondsLeft);
+    const submitBtn = document.getElementById('sg-student-submit-btn') as HTMLButtonElement | null;
+    if (submitBtn) submitBtn.style.display = '';
 
     examTimerId = setInterval(() => {
         examSecondsLeft -= 1;
@@ -602,8 +1059,8 @@ function showAnswerFlashcard(part: StudentPartView): void {
 
     const steps = parseAnswerKeyToFlashcards(part.modelAnswer);
     if (!steps.length) {
-        panel.hidden = false;
         panel.innerHTML = `<p class="sg-student-flashcard-empty">No answer key available for this part.</p>`;
+        revealStudentPanel(panel);
         return;
     }
 
@@ -633,7 +1090,6 @@ function showAnswerFlashcard(part: StudentPartView): void {
             </div>`
             : '';
 
-    panel.hidden = false;
     panel.innerHTML = `
         <div class="sg-student-flashcard sg-student-flashcard--tone-${tone}${enterClass}">
             <div class="sg-student-flashcard-header">
@@ -655,6 +1111,8 @@ function showAnswerFlashcard(part: StudentPartView): void {
         else flashcardEl.appendChild(bodyHost);
     }
 
+    revealStudentPanel(panel);
+
     if (enterClass && flashcardEl) {
         flashcardEl.addEventListener('animationend', () => {
             flashcardEl.classList.remove('sg-student-flashcard--enter-prev', 'sg-student-flashcard--enter-next');
@@ -669,7 +1127,7 @@ async function unlockPartSolution(partId: string): Promise<boolean> {
         currentCourse.id,
         activeQuestion.id,
         activeMode,
-        activeMode === 'practice' ? partId : undefined
+        partId
     );
     if (!solution) {
         showErrorToast('Submit an answer for this part before viewing the solution.');
@@ -752,10 +1210,20 @@ function attachWorkspaceListeners(): void {
                 return;
             }
 
-            if (activeMode !== 'practice') return;
+            if (activeMode !== 'practice' && !(activeMode === 'exam' && lastExamSubmission)) return;
+
+            const chatCta = target.closest('.sg-student-chat-cta') as HTMLButtonElement | null;
+            if (chatCta) {
+                if (activeMode !== 'practice') return;
+                const partId = chatCta.dataset.subQuestionId;
+                const part = activeQuestion.parts.find((p) => p.id === partId);
+                if (part) void openConversationForPart(part);
+                return;
+            }
 
             const aiBtn = target.closest('.sg-student-ai-btn') as HTMLButtonElement | null;
             if (aiBtn) {
+                if (activeMode !== 'practice') return;
                 const partId = aiBtn.dataset.subQuestionId;
                 const part = activeQuestion.parts.find((p) => p.id === partId);
                 if (!part) return;
@@ -767,31 +1235,7 @@ function attachWorkspaceListeners(): void {
                     showErrorToast('Enter an answer before requesting feedback.');
                     return;
                 }
-                void (async () => {
-                    aiBtn.disabled = true;
-                    try {
-                        const feedback = await checkScenarioAnswer(
-                            currentCourse!.id,
-                            activeQuestion!.id,
-                            part.id,
-                            answer,
-                            'practice'
-                        );
-                        const panel = document.querySelector<HTMLElement>(
-                            `.sg-student-ai-feedback[data-sub-question-id="${part.id}"]`
-                        );
-                        const body = panel?.querySelector<HTMLElement>('.sg-student-ai-feedback-body');
-                        if (panel && body) {
-                            body.innerHTML = `<p class="sg-student-grade-feedback">${escapeHtml(feedback.feedback)}</p>`;
-                            panel.hidden = false;
-                            renderFeatherIcons();
-                        }
-                    } catch (error) {
-                        showErrorToast(error instanceof Error ? error.message : 'Feedback failed.');
-                    } finally {
-                        aiBtn.disabled = false;
-                    }
-                })();
+                void requestPracticeFeedback(part, answer);
                 return;
             }
 
@@ -801,29 +1245,18 @@ function attachWorkspaceListeners(): void {
                 const part = activeQuestion.parts.find((p) => p.id === partId);
                 if (!part) return;
                 void (async () => {
-                    answerBtn.disabled = true;
                     try {
-                        const textarea = document.querySelector<HTMLTextAreaElement>(
-                            `.sg-student-answer-input[data-sub-question-id="${part.id}"]`
-                        );
-                        const answer = textarea?.value?.trim() || '';
-                        const feedbackPanel = document.querySelector<HTMLElement>(
-                            `.sg-student-ai-feedback[data-sub-question-id="${part.id}"]`
-                        );
-                        const hasFeedback = !!feedbackPanel && !feedbackPanel.hidden;
+                        if (activeMode === 'exam' && lastExamSubmission) {
+                            const ok = await unlockPartSolution(part.id);
+                            if (!ok) return;
+                            flashcardIndexByPart.set(part.id, flashcardIndexByPart.get(part.id) ?? 0);
+                            showAnswerFlashcard(part);
+                            return;
+                        }
 
-                        if (!hasFeedback) {
-                            if (!answer) {
-                                showErrorToast('Enter an answer before viewing the solution.');
-                                return;
-                            }
-                            await checkScenarioAnswer(
-                                currentCourse!.id,
-                                activeQuestion!.id,
-                                part.id,
-                                answer,
-                                'practice'
-                            );
+                        if (activeMode === 'practice') {
+                            await handlePracticeSeeTheAnswer(part);
+                            return;
                         }
 
                         const ok = await unlockPartSolution(part.id);
@@ -832,8 +1265,6 @@ function attachWorkspaceListeners(): void {
                         showAnswerFlashcard(part);
                     } catch (error) {
                         showErrorToast(error instanceof Error ? error.message : 'Could not load the answer.');
-                    } finally {
-                        answerBtn.disabled = false;
                     }
                 })();
             }
@@ -885,10 +1316,14 @@ async function handleExamSubmit(): Promise<void> {
             statusBadge.classList.remove('time-up');
         }
         if (submitBtn) {
-            submitBtn.textContent = 'Submitted';
             submitBtn.removeAttribute('aria-busy');
         }
-        renderExamResults(result.overallGrade, result.results, localAnswers);
+        lastExamSubmission = {
+            overallGrade: result.overallGrade,
+            results: result.results,
+            localAnswers,
+        };
+        applyExamResults(result.overallGrade, result.results, localAnswers);
     } catch (error) {
         document.querySelectorAll<HTMLTextAreaElement>('.sg-student-answer-input').forEach((el) => {
             el.disabled = false;
@@ -900,65 +1335,4 @@ async function handleExamSubmit(): Promise<void> {
         }
         showErrorToast(error instanceof Error ? error.message : 'Exam submission failed.');
     }
-}
-
-function renderExamResults(
-    overallGrade: number,
-    results: ScenarioExamPartResult[],
-    localAnswers: Map<string, string>
-): void {
-    if (!activeQuestion) return;
-    const partsHost = document.getElementById('sg-student-parts');
-    const timerBlock = document.getElementById('sg-student-timer-block');
-    if (timerBlock) timerBlock.style.display = 'none';
-    if (!partsHost) return;
-
-    const resultById = new Map(results.map((r) => [r.subQuestionId, r]));
-    const cards = activeQuestion.parts
-        .map((part, index) => {
-            const graded = resultById.get(part.id);
-            const answer = localAnswers.get(part.id) || '';
-            return `
-            <section class="sg-student-exam-part-result" data-sub-question-id="${escapeHtml(part.id)}">
-                <div class="sg-student-exam-part-result-header">
-                    <h3 class="sg-part-title">Part ${index + 1}</h3>
-                    ${graded ? renderGradeBadge(graded.grade) : ''}
-                </div>
-                <div class="sg-student-exam-submitted-answer">
-                    <span class="sg-student-meta-label">Your answer</span>
-                    <p>${escapeHtml(answer)}</p>
-                </div>
-                <p class="sg-student-grade-feedback">${escapeHtml(graded?.feedback || '')}</p>
-            </section>`;
-        })
-        .join('');
-
-    partsHost.innerHTML = `
-        <div id="sg-student-exam-results" class="sg-student-exam-results">
-            <div class="sg-student-exam-summary">
-                <h2 class="sg-student-exam-summary-title">Exam Results</h2>
-                <p class="sg-student-exam-overall">Exam grade: <strong>${overallGrade.toFixed(1)} / 10</strong></p>
-                <button type="button" id="sg-student-view-solutions-btn" class="sg-student-submit-btn">View solutions</button>
-            </div>
-            ${cards}
-        </div>`;
-
-    document.getElementById('sg-student-view-solutions-btn')?.addEventListener('click', () => {
-        void (async () => {
-            const ok = await unlockSolutionAnswers();
-            if (!ok || !activeQuestion) return;
-            // Restore part sections so flashcard panels exist, then reveal answers
-            renderParts(activeQuestion, 'exam');
-            document.querySelectorAll<HTMLTextAreaElement>('.sg-student-answer-input').forEach((el) => {
-                const id = el.dataset.subQuestionId;
-                if (id && localAnswers.has(id)) el.value = localAnswers.get(id) || '';
-                el.disabled = true;
-            });
-            for (const part of activeQuestion.parts) {
-                flashcardIndexByPart.set(part.id, 0);
-                showAnswerFlashcard(part);
-            }
-            renderFeatherIcons();
-        })();
-    });
 }

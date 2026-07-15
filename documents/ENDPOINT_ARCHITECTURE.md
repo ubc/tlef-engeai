@@ -53,7 +53,7 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 | `GET /course/:courseId/instructor/chat` | Instructor chat |
 | `GET /course/:courseId/instructor/assistant-prompts` | Assistant prompts |
 | `GET /course/:courseId/instructor/system-prompts` | System prompts |
-| `GET /course/:courseId/instructor/scenario-questions` | Scenario Questions (Practice Scenarios authoring) |
+| `GET /course/:courseId/instructor/scenario-questions` | Scenario Questions (Practice Scenarios authoring). Query: `?browse=questions`, `?topicOrWeekId=`, `?generate=1`, `?questionId=` |
 | `GET /course/:courseId/instructor/course-information` | Course info |
 | `GET /course/:courseId/instructor/about` | About page |
 | `GET /course/:courseId/instructor/onboarding/course-setup` | Onboarding |
@@ -68,7 +68,7 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 |------|-------------|
 | `GET /course/:courseId/student` | Student home |
 | `GET /course/:courseId/student/chat` | Chat interface |
-| `GET /course/:courseId/student/scenarios` | Practice Scenarios |
+| `GET /course/:courseId/student/scenarios` | Practice Scenarios. Query: `?questionId=`, `?mode=practice|exam` |
 | `GET /course/:courseId/student/profile` | Profile |
 | `GET /course/:courseId/student/flag-history` | Flag history |
 | `GET /course/:courseId/student/about` | About page |
@@ -273,7 +273,7 @@ Two auth tiers: `requireCourseMemberForScenarioAPI` (enrolled student **or** sta
 | PATCH | `/api/courses/:courseId/scenario-questions/:questionId/status` | Yes | Instructor | `{ status: 'draft' \| 'published' \| 'rejected' }` — publish re-validates server-side |
 | DELETE | `/api/courses/:courseId/scenario-questions/:questionId` | Yes | Instructor | Hard delete |
 | POST | `/api/courses/:courseId/scenario-questions/generate` | Yes | Instructor | `{ mode, sourcePrompt, topicOrWeekId, learningObjectiveIds?, subQuestionTypes?, difficulty?, title?, count? }` — RAG-grounded AI drafts |
-| POST | `/api/courses/:courseId/scenario-questions/:questionId/check-answer` | Yes | Member | `{ subQuestionId, studentAnswer, mode }` → `{ responseId, grade (1–10), feedback }` — appends embedded history |
+| POST | `/api/courses/:courseId/scenario-questions/:questionId/check-answer` | Yes | Member | `{ subQuestionId, studentAnswer, mode }` → practice: `{ responseId, feedback, feedbackTier?, feedbackSource?, blockReason?, attemptNumber?, attemptsRemaining?, maxAttemptsPerDay?, retryAfterSeconds?, resetsAt?, answerRevealed? }` (no grade). Socratic attempts 1–2/day; descriptive 3–6 with server-attached model answer; 7+ same day blocked; 30s cooldown between attempts. Canned responses when gated (no persist, no LLM). Instructor preview skips limits. Appends embedded history on allowed LLM responses |
 | POST | `/api/courses/:courseId/scenario-questions/:questionId/submit-exam` | Yes | Student | `{ answers: [{ subQuestionId, studentAnswer }] }` → `{ overallGrade, results[] }` — batch grade + atomic append |
 | GET | `/api/courses/:courseId/scenario-questions/:questionId/responses` | Yes | Member | Caller's own embedded response history only |
 | GET | `/api/courses/:courseId/scenario-questions/:questionId/solution?mode=` | Yes | Member | Gated reveal — 403 until every sub-question has a response in `mode` (`practice` \| `exam`) |

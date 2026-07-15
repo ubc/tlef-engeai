@@ -782,6 +782,15 @@ export interface ScenarioPartFeedbackResponse {
     grade?: number;
     feedback: string;
     error?: string;
+    feedbackTier?: 'socratic' | 'descriptive';
+    feedbackSource?: 'llm' | 'canned';
+    blockReason?: 'cooldown' | 'daily_limit';
+    attemptNumber?: number;
+    attemptsRemaining?: number;
+    maxAttemptsPerDay?: number;
+    retryAfterSeconds?: number;
+    resetsAt?: string;
+    answerRevealed?: boolean;
 }
 
 /** One graded part returned inside an exam submit response. */
@@ -791,7 +800,7 @@ export interface ScenarioExamPartResult {
     feedback: string;
 }
 
-/** Response for `POST .../submit-exam`. `overallGrade` is derived, not stored. */
+/** Response for `POST .../submit-exam`. `overallGrade` is the sum of part grades (not stored). */
 export interface ScenarioExamSubmitResponse {
     success: boolean;
     overallGrade: number;
@@ -815,7 +824,7 @@ export interface ScenarioGenerateRequest {
     /** Ordered types from create UI — become sub-questions in order. */
     subQuestionTypes?: ScenarioSubQuestionType[];
     difficulty?: ScenarioDifficulty;
-    /** Optional instructor title override for the generated draft. */
+    /** Instructor title override only — omit or send a placeholder to use the LLM-generated title. */
     title?: string;
     /** Batch mode only — number of drafts to generate; server caps at {@link SCENARIO_BATCH_MAX_COUNT}. */
     count?: number;
@@ -850,11 +859,10 @@ export function defaultExpectedTimeMinutes(difficulty: ScenarioDifficulty, partC
     return SCENARIO_DIFFICULTY_BASE_MINUTES[difficulty] + Math.max(0, partCount) * 5;
 }
 
-/** Arithmetic mean of integer part grades, rounded to one decimal place. */
+/** Sum of integer part grades (1–10 each). */
 export function computeScenarioOverallGrade(grades: number[]): number {
     if (grades.length === 0) return 0;
-    const sum = grades.reduce((acc, g) => acc + g, 0);
-    return Math.round((sum / grades.length) * 10) / 10;
+    return grades.reduce((acc, g) => acc + g, 0);
 }
 
 /** Response for `POST /api/courses/:courseId/scenario-questions/generate`. */

@@ -42,6 +42,11 @@ import {
     parseAnswerKeyToFlashcards,
     SUB_QUESTION_TYPE_LABELS
 } from './scenario-answer-flashcard.js';
+import {
+    getScenarioQuestionsParamsFromURL,
+    navigateToScenarioQuestions,
+    type ScenarioQuestionsUrlOptions,
+} from '../utils/url-parser.js';
 
 const ALL_TYPES: ScenarioSubQuestionType[] = ['calculation', 'troubleshoot', 'action', 'corrective'];
 const DEFAULT_SELECTED_TYPES: ScenarioSubQuestionType[] = ['calculation', 'troubleshoot', 'action'];
@@ -68,9 +73,6 @@ let editorQuestionId: string | null = null;
 let editorQuestion: ScenarioQuestionExtended | null = null;
 let isDirty = false;
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-
-/** Draft title while composing a new question in the generate view. */
-let generateDraftTitle = 'Untitled';
 
 /** Selected types in order for generate view. */
 let selectedTypes: ScenarioSubQuestionType[] = [...DEFAULT_SELECTED_TYPES];
@@ -100,6 +102,102 @@ const TIME_MODAL_STEP_SECONDS = 5 * 60;
 let uiAbort: AbortController | null = null;
 /** Aborts question-row listeners from the previous list render. */
 let questionListAbort: AbortController | null = null;
+
+const VIEW_PARTIALS = ['grid', 'topic', 'generate', 'editor'] as const;
+type ViewPartial = (typeof VIEW_PARTIALS)[number];
+const mountedPartials = new Set<ViewPartial>();
+let suppressUrlSync = false;
+let scenarioMounted = false;
+
+async function loadScenarioPartial(name: ViewPartial): Promise<void> {
+    if (mountedPartials.has(name)) return;
+    const root = document.getElementById('sg-instructor-view-root');
+    if (!root) throw new Error('Scenario view root missing');
+    const res = await fetch(`/components/scenarios/scenario-questions-${name}.html`);
+    if (!res.ok) throw new Error(`Failed to load scenario view: ${name}`);
+    root.insertAdjacentHTML('beforeend', await res.text());
+    mountedPartials.add(name);
+}
+
+async function ensureViewPartialsLoaded(names: readonly ViewPartial[] = VIEW_PARTIALS): Promise<void> {
+    await Promise.all(names.map(loadScenarioPartial));
+}
+
+function syncScenarioUrl(options: ScenarioQuestionsUrlOptions = {}, replace = false): void {
+    if (suppressUrlSync) return;
+    navigateToScenarioQuestions(options, replace);
+}
+
+function isValidTopicId(id: string): boolean {
+    if (id === '__uncategorized__') return true;
+    return !!currentCourse?.topicOrWeekInstances?.some((t) => t.id === id);
+}
+
+/** True while the scenario-questions component is mounted and initialized. */
+export function isScenarioQuestionsMounted(): boolean {
+    return scenarioMounted;
+}
+
+/** Restore sub-view from URL without full component reload (browser back/forward). */
+export async function syncScenarioQuestionsFromURL(fromPopstate = false): Promise<void> {
+    if (!scenarioMounted || !currentCourse) return;
+    await restoreFromURL(fromPopstate);
+}
+
+async function restoreFromURL(fromPopstate = false): Promise<void> {
+    const params = getScenarioQuestionsParamsFromURL();
+
+    if (editorQuestionId && isDirty && fromPopstate) {
+        await persistEditor(false);
+    }
+
+    suppressUrlSync = true;
+    browseMode = params.browse;
+    syncBrowsePills();
+    await refreshQuestions();
+
+    if (params.questionId) {
+        editorReturnTo = 'topic-detail';
+        await openEditorView(params.questionId, true);
+    } else if (params.generate && params.topicOrWeekId) {
+        if (!isValidTopicId(params.topicOrWeekId)) {
+            showErrorToast('Topic not found.');
+            activeTopicId = null;
+            editorQuestionId = null;
+            showGridView();
+            await renderBrowseHome();
+            navigateToScenarioQuestions(browseMode === 'questions' ? { browse: 'questions' } : {}, true);
+            suppressUrlSync = false;
+            return;
+        }
+        activeTopicId = params.topicOrWeekId;
+        editorReturnTo = 'topic-detail';
+        await openGenerateView(true);
+    } else if (params.topicOrWeekId) {
+        if (!isValidTopicId(params.topicOrWeekId)) {
+            showErrorToast('Topic not found.');
+            activeTopicId = null;
+            editorQuestionId = null;
+            showGridView();
+            await renderBrowseHome();
+            navigateToScenarioQuestions(browseMode === 'questions' ? { browse: 'questions' } : {}, true);
+            suppressUrlSync = false;
+            return;
+        }
+        activeTopicId = params.topicOrWeekId;
+        editorReturnTo = 'topic-detail';
+        await refreshQuestions(activeTopicId);
+        showTopicDetailView();
+        renderTopicDetail();
+    } else {
+        editorQuestionId = null;
+        editorQuestion = null;
+        activeTopicId = null;
+        showGridView();
+        await renderBrowseHome();
+    }
+    suppressUrlSync = false;
+}
 
 /** Copyable answer-key template shown in the flashcard help modal. */
 const FLASHCARD_ANSWER_TEMPLATE = `# Compute heat duty
@@ -207,12 +305,17 @@ const SQ_MODAL_TRANSITION_MS = 300;
  * @param course activeCourse
  */
 export async function initializeScenarioQuestionsInstructor(course: activeCourse): Promise<void> {
+    scenarioMounted = false;
+    mountedPartials.clear();
+
+    const urlParams = getScenarioQuestionsParamsFromURL();
     currentCourse = course;
     activeTopicId = null;
-    browseMode = 'topics';
+    browseMode = urlParams.browse;
     editorReturnTo = 'topic-detail';
     cachedQuestions = [];
     editorQuestionId = null;
+    editorQuestion = null;
     isDirty = false;
     clearAutoSaveTimer();
 
@@ -221,11 +324,12 @@ export async function initializeScenarioQuestionsInstructor(course: activeCourse
     questionListAbort?.abort();
     questionListAbort = null;
 
+    await ensureViewPartialsLoaded();
     hideAllViews();
-    showGridView();
-    syncBrowsePills();
-    await renderBrowseHome();
     attachStaticListeners();
+    scenarioMounted = true;
+
+    await restoreFromURL();
 }
 
 function hideAllViews(): void {
@@ -266,6 +370,7 @@ function attachStaticListeners(): void {
         activeTopicId = null;
         showGridView();
         void renderBrowseHome();
+        syncScenarioUrl(browseMode === 'questions' ? { browse: 'questions' } : {});
     }, { signal });
 
     document.querySelector('.sg-instructor-view-toggles')?.addEventListener('click', (e: Event) => {
@@ -277,23 +382,20 @@ function attachStaticListeners(): void {
         syncBrowsePills();
         showGridView();
         void renderBrowseHome();
+        syncScenarioUrl(mode === 'questions' ? { browse: 'questions' } : {});
     }, { signal });
 
     document.getElementById('sg-instructor-topic-detail-generate-btn')?.addEventListener('click', () => {
-        openGenerateView();
+        void openGenerateView();
     }, { signal });
 
     document.getElementById('sg-instructor-generate-back-btn')?.addEventListener('click', () => {
-        showTopicDetailView();
-        renderTopicDetail();
+        if (activeTopicId) {
+            showTopicDetailView();
+            renderTopicDetail();
+            syncScenarioUrl({ topicOrWeekId: activeTopicId });
+        }
     }, { signal });
-
-    document.getElementById('sg-instructor-generate-title-edit-btn')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        beginInlineTitleEdit('generate');
-    }, { signal });
-    document.getElementById('sg-instructor-generate-title-display')?.addEventListener('click', () => beginInlineTitleEdit('generate'), { signal });
-    wireInlineTitleInput('generate', signal);
 
     document.getElementById('sg-instructor-generate-submit-btn')?.addEventListener('click', handleGenerateSubmit, { signal });
     document.getElementById('sg-instructor-type-add-btn')?.addEventListener('click', toggleTypePopover, { signal });
@@ -318,19 +420,21 @@ function attachStaticListeners(): void {
             activeTopicId = null;
             showGridView();
             await renderBrowseHome();
+            syncScenarioUrl(browseMode === 'questions' ? { browse: 'questions' } : {});
         } else {
             showTopicDetailView();
             await refreshQuestions(activeTopicId);
             renderTopicDetail();
+            if (activeTopicId) syncScenarioUrl({ topicOrWeekId: activeTopicId });
         }
     }, { signal });
 
     document.getElementById('sg-instructor-editor-title-edit-btn')?.addEventListener('click', (e) => {
         e.stopPropagation();
-        beginInlineTitleEdit('editor');
+        beginInlineTitleEdit();
     }, { signal });
-    document.getElementById('sg-instructor-editor-title-display')?.addEventListener('click', () => beginInlineTitleEdit('editor'), { signal });
-    wireInlineTitleInput('editor', signal);
+    document.getElementById('sg-instructor-editor-title-display')?.addEventListener('click', () => beginInlineTitleEdit(), { signal });
+    wireInlineTitleInput(signal);
 
     document.getElementById('sg-instructor-editor-save-btn')?.addEventListener('click', () => persistEditor(true), { signal });
     document.getElementById('sg-instructor-editor-status-btn')?.addEventListener('click', (e) => {
@@ -373,6 +477,13 @@ function attachStaticListeners(): void {
     document.getElementById('sg-instructor-flashcard-help-copy-btn')?.addEventListener('click', copyFlashcardHelpTemplate, { signal });
     document.getElementById('sg-instructor-flashcard-help-overlay')?.addEventListener('click', (e) => {
         if (e.target === e.currentTarget) closeFlashcardHelpModal();
+    }, { signal });
+
+    document.getElementById('sg-instructor-type-help-btn')?.addEventListener('click', openTypeHelpModal, { signal });
+    document.getElementById('sg-instructor-type-help-close-btn')?.addEventListener('click', closeTypeHelpModal, { signal });
+    document.getElementById('sg-instructor-type-help-done-btn')?.addEventListener('click', closeTypeHelpModal, { signal });
+    document.getElementById('sg-instructor-type-help-overlay')?.addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeTypeHelpModal();
     }, { signal });
 
     // Answer-key info icons are re-rendered with parts — delegate from the parts host
@@ -563,6 +674,7 @@ function attachTopicCardListeners(): void {
                 showTopicDetailView();
                 await refreshQuestions(activeTopicId);
                 renderTopicDetail();
+                if (activeTopicId) syncScenarioUrl({ topicOrWeekId: activeTopicId });
             })();
         }, { signal: uiAbort?.signal });
     });
@@ -636,7 +748,6 @@ function renderRowStatusControl(question: ScenarioQuestionExtended): string {
     return `
         <div class="sg-instructor-status-wrap sg-instructor-row-status-wrap" data-question-id="${qid}">
             <button type="button" class="sg-instructor-status-pill sg-instructor-status-pill-${current} sg-instructor-status-menu-btn sg-instructor-row-status-btn" data-question-id="${qid}" aria-haspopup="listbox" aria-expanded="false">
-                <i data-feather="chevron-right"></i>
                 <span>${capitalize(current)}</span>
             </button>
             <div class="sg-instructor-status-menu sg-instructor-row-status-menu" data-question-id="${qid}" style="display: none;" role="listbox">
@@ -723,8 +834,10 @@ async function confirmAndDeleteQuestion(questionId: string, fromEditor: boolean)
             if (editorReturnTo === 'browse') {
                 activeTopicId = null;
                 showGridView();
+                syncScenarioUrl(browseMode === 'questions' ? { browse: 'questions' } : {});
             } else {
                 showTopicDetailView();
+                if (activeTopicId) syncScenarioUrl({ topicOrWeekId: activeTopicId });
             }
         }
 
@@ -884,7 +997,7 @@ async function setEditorQuestionStatus(status: ScenarioPublishableStatus): Promi
 
 // --- Generate view ---
 
-async function openGenerateView(): Promise<void> {
+async function openGenerateView(skipUrlSync = false): Promise<void> {
     if (!activeTopicId || activeTopicId === '__uncategorized__') {
         showErrorToast('Select a topic with a valid chapter first.');
         return;
@@ -892,7 +1005,6 @@ async function openGenerateView(): Promise<void> {
 
     selectedTypes = [...DEFAULT_SELECTED_TYPES];
     selectedDifficulty = 'medium';
-    generateDraftTitle = 'Untitled';
     generateSelectedLoIds = [];
 
     const promptEl = document.getElementById('sg-instructor-generate-prompt') as HTMLTextAreaElement | null;
@@ -904,9 +1016,6 @@ async function openGenerateView(): Promise<void> {
     const backLabel = document.getElementById('sg-instructor-generate-back-label');
     if (backLabel && activeTopicId) backLabel.textContent = getTopicTitle(activeTopicId);
 
-    const titleDisplay = document.getElementById('sg-instructor-generate-title-display');
-    if (titleDisplay) titleDisplay.textContent = generateDraftTitle;
-
     await loadLoCatalog(activeTopicId);
     renderGenerateLoCatalog();
     renderTypePills();
@@ -914,6 +1023,9 @@ async function openGenerateView(): Promise<void> {
     setDifficulty('medium');
     showGenerateView();
     renderFeatherIcons();
+    if (!skipUrlSync && activeTopicId) {
+        syncScenarioUrl({ topicOrWeekId: activeTopicId, generate: true });
+    }
 }
 
 function renderGenerateLoCatalog(): void {
@@ -1052,41 +1164,33 @@ function closeDifficultyMenu(): void {
     if (btn) btn.setAttribute('aria-expanded', 'false');
 }
 
-type InlineTitleContext = 'editor' | 'generate';
-
-function titleElements(context: InlineTitleContext): {
+function editorTitleElements(): {
     display: HTMLElement | null;
     input: HTMLInputElement | null;
     editBtn: HTMLElement | null;
 } {
-    const prefix = context === 'editor' ? 'sg-instructor-editor' : 'sg-instructor-generate';
     return {
-        display: document.getElementById(`${prefix}-title-display`),
-        input: document.getElementById(`${prefix}-title-input`) as HTMLInputElement | null,
-        editBtn: document.getElementById(`${prefix}-title-edit-btn`),
+        display: document.getElementById('sg-instructor-editor-title-display'),
+        input: document.getElementById('sg-instructor-editor-title-input') as HTMLInputElement | null,
+        editBtn: document.getElementById('sg-instructor-editor-title-edit-btn'),
     };
 }
 
-function getInlineTitleValue(context: InlineTitleContext): string {
-    if (context === 'generate') return generateDraftTitle;
+function getEditorTitleValue(): string {
     const display = document.getElementById('sg-instructor-editor-title-display');
     return display?.textContent?.trim() || editorQuestion?.title || 'Untitled';
 }
 
-function setInlineTitleValue(context: InlineTitleContext, value: string): void {
+function setEditorTitleValue(value: string): void {
     const trimmed = value.trim() || 'Untitled';
-    if (context === 'generate') {
-        generateDraftTitle = trimmed;
-        return;
-    }
     if (editorQuestion) editorQuestion = { ...editorQuestion, title: trimmed };
 }
 
-function beginInlineTitleEdit(context: InlineTitleContext): void {
-    const { display, input, editBtn } = titleElements(context);
+function beginInlineTitleEdit(): void {
+    const { display, input, editBtn } = editorTitleElements();
     if (!display || !input) return;
 
-    input.value = getInlineTitleValue(context);
+    input.value = getEditorTitleValue();
     display.style.display = 'none';
     if (editBtn) editBtn.style.display = 'none';
     input.style.display = '';
@@ -1094,21 +1198,21 @@ function beginInlineTitleEdit(context: InlineTitleContext): void {
     input.select();
 }
 
-function commitInlineTitleEdit(context: InlineTitleContext): void {
-    const { display, input, editBtn } = titleElements(context);
+function commitInlineTitleEdit(): void {
+    const { display, input, editBtn } = editorTitleElements();
     if (!display || !input) return;
 
     const next = input.value.trim();
-    if (next) setInlineTitleValue(context, next);
-    display.textContent = getInlineTitleValue(context);
+    if (next) setEditorTitleValue(next);
+    display.textContent = getEditorTitleValue();
     display.style.display = '';
     if (editBtn) editBtn.style.display = '';
     input.style.display = 'none';
-    if (context === 'editor') markDirty();
+    markDirty();
 }
 
-function cancelInlineTitleEdit(context: InlineTitleContext): void {
-    const { display, input, editBtn } = titleElements(context);
+function cancelInlineTitleEdit(): void {
+    const { display, input, editBtn } = editorTitleElements();
     if (!display || !input) return;
 
     display.style.display = '';
@@ -1116,22 +1220,22 @@ function cancelInlineTitleEdit(context: InlineTitleContext): void {
     input.style.display = 'none';
 }
 
-function wireInlineTitleInput(context: InlineTitleContext, signal?: AbortSignal): void {
-    const input = titleElements(context).input;
+function wireInlineTitleInput(signal?: AbortSignal): void {
+    const input = editorTitleElements().input;
     if (!input) return;
 
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            commitInlineTitleEdit(context);
+            commitInlineTitleEdit();
         }
         if (e.key === 'Escape') {
             e.preventDefault();
-            cancelInlineTitleEdit(context);
+            cancelInlineTitleEdit();
         }
     }, { signal });
 
-    input.addEventListener('blur', () => commitInlineTitleEdit(context), { signal });
+    input.addEventListener('blur', () => commitInlineTitleEdit(), { signal });
 }
 
 function setQuestionBodyViewMode(mode: 'edit' | 'preview'): void {
@@ -1187,7 +1291,6 @@ async function handleGenerateSubmit(): Promise<void> {
             sourcePrompt,
             subQuestionTypes: [...selectedTypes],
             difficulty: selectedDifficulty,
-            title: generateDraftTitle.trim() || 'Untitled',
             learningObjectiveIds: generateSelectedLoIds.length ? [...generateSelectedLoIds] : undefined,
         });
         if (!result.success || !result.data?.length) {
@@ -1212,7 +1315,7 @@ async function handleGenerateSubmit(): Promise<void> {
 
 // --- Editor view ---
 
-async function openEditorView(questionId: string): Promise<void> {
+async function openEditorView(questionId: string, skipUrlSync = false): Promise<void> {
     if (!currentCourse) return;
 
     let question: ScenarioQuestionExtended | null;
@@ -1255,9 +1358,11 @@ async function openEditorView(questionId: string): Promise<void> {
     const errorEl = document.getElementById('sg-instructor-editor-error');
     if (errorEl) errorEl.style.display = 'none';
 
+    if (question.topicOrWeekId) activeTopicId = question.topicOrWeekId;
     showEditorView();
     attachEditorInputListeners();
     renderFeatherIcons();
+    if (!skipUrlSync) syncScenarioUrl({ questionId });
 }
 
 function renderEditorParts(question: ScenarioQuestionExtended): void {
@@ -1533,6 +1638,30 @@ function openFlashcardHelpModal(): void {
 
 function closeFlashcardHelpModal(): void {
     const overlay = document.getElementById('sg-instructor-flashcard-help-overlay');
+    if (!overlay) return;
+
+    overlay.classList.remove('sg-instructor-modal-overlay--visible');
+    overlay.setAttribute('aria-hidden', 'true');
+
+    window.setTimeout(() => {
+        if (!overlay.classList.contains('sg-instructor-modal-overlay--visible')) {
+            overlay.style.display = 'none';
+        }
+    }, SQ_MODAL_TRANSITION_MS);
+}
+
+function openTypeHelpModal(): void {
+    const overlay = document.getElementById('sg-instructor-type-help-overlay');
+    if (!overlay) return;
+
+    overlay.style.display = 'flex';
+    overlay.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => overlay.classList.add('sg-instructor-modal-overlay--visible'));
+    renderFeatherIcons();
+}
+
+function closeTypeHelpModal(): void {
+    const overlay = document.getElementById('sg-instructor-type-help-overlay');
     if (!overlay) return;
 
     overlay.classList.remove('sg-instructor-modal-overlay--visible');

@@ -2,190 +2,8 @@
     <link rel="stylesheet" href="/styles/scenario-generation/sg-shared.css">
     <link rel="stylesheet" href="/styles/instructor-components/scenario-questions-instructor.css">
 
-    <div id="sg-instructor-grid-view" class="sg-instructor-grid-view">
-        <header class="sg-instructor-page-header">
-            <div class="sg-instructor-header mobile-header-bar">
-                <button id="instructor-hamburger-btn" class="instructor-mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
-                    <i data-feather="menu"></i>
-                </button>
-                <h1 class="mobile-header-title">Scenario Generation</h1>
-            </div>
-            <div class="sg-instructor-page-header-row">
-                <h1 class="sg-instructor-page-title">Scenario Generation</h1>
-            </div>
-            <div class="sg-instructor-view-toggles" role="group" aria-label="Browse by">
-                <span class="sg-instructor-view-toggles-label">View:</span>
-                <button type="button" class="sg-instructor-view-pill" data-browse="topics" aria-pressed="true">Week/Topic</button>
-                <button type="button" class="sg-instructor-view-pill" data-browse="questions" aria-pressed="false">Questions</button>
-            </div>
-        </header>
-
-        <div id="sg-instructor-list" class="sg-instructor-topic-grid" role="list" aria-label="Topics and weeks">
-            <!-- Topic/week project cards or flat question list -->
-        </div>
-    </div>
-
-    <div id="sg-instructor-topic-detail-view" class="sg-instructor-topic-detail-view" style="display: none;">
-        <button id="sg-instructor-topic-detail-back-btn" class="sg-instructor-topic-detail-back-btn" type="button">
-            <i data-feather="arrow-left"></i>
-            <span>Scenario Generation</span>
-        </button>
-        <header class="sg-instructor-topic-detail-page-header">
-            <div class="sg-instructor-topic-detail-page-titles">
-                <h1 id="sg-instructor-topic-detail-title" class="sg-instructor-page-title"></h1>
-                <p id="sg-instructor-topic-detail-subtitle" class="sg-instructor-topic-detail-subtitle"></p>
-            </div>
-            <button id="sg-instructor-topic-detail-generate-btn" class="sg-instructor-new-question-btn" type="button">New question</button>
-        </header>
-        <div id="sg-instructor-topic-detail-list" class="sg-instructor-question-row-list" role="list" aria-label="Scenario questions in this topic">
-            <!-- Question rows for the selected topic/week -->
-        </div>
-    </div>
-
-    <!-- Interface 2: Generate view (full page) -->
-    <div id="sg-instructor-generate-view" class="sg-instructor-generate-view" style="display: none;">
-        <button id="sg-instructor-generate-back-btn" class="sg-instructor-topic-detail-back-btn" type="button">
-            <i data-feather="arrow-left"></i>
-            <span id="sg-instructor-generate-back-label"></span>
-        </button>
-        <header class="sg-instructor-generate-page-header sg-instructor-editor-page-header">
-            <div class="sg-instructor-editor-title-row">
-                <h1 id="sg-instructor-generate-title-display" class="sg-instructor-page-title sg-instructor-editor-title" tabindex="0" role="button" aria-label="Edit question title">Untitled</h1>
-                <input id="sg-instructor-generate-title-input" class="sg-instructor-editor-title-input sg-instructor-page-title sg-instructor-editor-title" type="text" aria-label="Question title" style="display: none;" />
-                <button id="sg-instructor-generate-title-edit-btn" type="button" class="sg-instructor-editor-title-edit-btn" aria-label="Edit question title">
-                    <i data-feather="edit-2"></i>
-                </button>
-            </div>
-        </header>
-
-        <p class="sg-instructor-generate-hint"><em>*Describe the scenario in the base question field below, then choose subquestion types and difficulty before generating.</em></p>
-
-        <div class="sg-instructor-generate-card">
-            <label class="sg-instructor-sr-only" for="sg-instructor-generate-prompt">Base question</label>
-            <textarea id="sg-instructor-generate-prompt" class="sg-instructor-generate-prompt" rows="8" placeholder="Write your base question here."></textarea>
-
-            <div class="sg-instructor-generate-controls">
-                <div id="sg-instructor-generate-lo-block" class="sg-instructor-generate-lo-block" style="width: 100%; margin-bottom: 12px;">
-                    <span class="sg-instructor-editor-section-label">Learning objectives (optional)</span>
-                    <div id="sg-instructor-generate-lo-catalog" class="sg-instructor-lo-modal-catalog" role="group" aria-label="Learning objectives for generation"></div>
-                </div>
-                <div class="sg-instructor-type-pills-row">
-                    <div id="sg-instructor-type-pills" class="sg-instructor-type-pills" role="group" aria-label="Subquestion types"></div>
-                    <div class="sg-instructor-type-add-wrap">
-                        <button id="sg-instructor-type-add-btn" type="button" class="sg-instructor-type-add-btn" aria-label="Add subquestion type" aria-expanded="false" aria-haspopup="true">+</button>
-                        <div id="sg-instructor-type-popover" class="sg-instructor-type-popover" style="display: none;" role="menu"></div>
-                    </div>
-                </div>
-
-                <div class="sg-instructor-generate-controls-right">
-                    <div class="sg-instructor-difficulty-wrap">
-                        <button id="sg-instructor-difficulty-btn" type="button" class="sg-instructor-difficulty-btn sg-instructor-difficulty-btn-medium" aria-haspopup="listbox" aria-expanded="false">
-                            <i data-feather="chevron-right"></i>
-                            <span id="sg-instructor-difficulty-label">Medium</span>
-                        </button>
-                        <div id="sg-instructor-difficulty-menu" class="sg-instructor-difficulty-menu" style="display: none;" role="listbox">
-                            <button type="button" class="sg-instructor-difficulty-option" data-difficulty="hard">Hard</button>
-                            <button type="button" class="sg-instructor-difficulty-option sg-instructor-difficulty-option--active" data-difficulty="medium">Medium</button>
-                            <button type="button" class="sg-instructor-difficulty-option" data-difficulty="easy">Easy</button>
-                        </div>
-                    </div>
-                    <button id="sg-instructor-generate-submit-btn" type="button" class="sg-instructor-generate-submit-btn">Generate</button>
-                </div>
-            </div>
-
-            <p id="sg-instructor-generate-error" class="sg-instructor-form-error" style="display: none;"></p>
-        </div>
-    </div>
-
-    <!-- Interface 3: Editor view (full page) -->
-    <div id="sg-instructor-editor-view" class="sg-instructor-editor-view" data-artefact-inline style="display: none;">
-        <button id="sg-instructor-editor-back-btn" class="sg-instructor-topic-detail-back-btn" type="button">
-            <i data-feather="arrow-left"></i>
-            <span id="sg-instructor-editor-back-label"></span>
-        </button>
-
-        <div class="sg-instructor-editor-layout">
-            <main class="sg-instructor-editor-main">
-                <header class="sg-instructor-editor-page-header">
-                    <div class="sg-instructor-editor-title-row">
-                        <h1 id="sg-instructor-editor-title-display" class="sg-instructor-page-title sg-instructor-editor-title" tabindex="0" role="button" aria-label="Edit question title"></h1>
-                        <input id="sg-instructor-editor-title-input" class="sg-instructor-editor-title-input sg-instructor-page-title sg-instructor-editor-title" type="text" aria-label="Question title" style="display: none;" />
-                        <button id="sg-instructor-editor-title-edit-btn" type="button" class="sg-instructor-editor-title-edit-btn" aria-label="Edit question title">
-                            <i data-feather="edit-2"></i>
-                        </button>
-                    </div>
-                </header>
-
-                <div class="sg-instructor-editor-section sg-instructor-base-question-panel">
-                    <div class="sg-instructor-section-header-row">
-                        <span class="sg-instructor-editor-section-label">Base question</span>
-                        <div class="sg-instructor-view-toggle sg-instructor-base-question-toggle" role="group" aria-label="Base question view mode">
-                            <button type="button" class="sg-instructor-view-toggle-btn sg-instructor-base-question-toggle-btn sg-instructor-view-toggle-btn--active" data-mode="edit">Edit</button>
-                            <button type="button" class="sg-instructor-view-toggle-btn sg-instructor-base-question-toggle-btn" data-mode="preview">Preview</button>
-                        </div>
-                    </div>
-                    <div class="sg-instructor-base-question-body">
-                        <label class="sg-instructor-sr-only" for="sg-instructor-editor-question-body">Base question</label>
-                        <textarea id="sg-instructor-editor-question-body" class="sg-instructor-editor-textarea sg-instructor-editor-textarea--large" rows="6"></textarea>
-                        <div id="sg-instructor-editor-question-rendered" class="sg-instructor-markdown-preview message-content" hidden></div>
-                    </div>
-                </div>
-
-                <div id="sg-instructor-editor-parts" class="sg-instructor-editor-parts">
-                    <!-- Subquestion cards rendered by TS -->
-                </div>
-
-                <p id="sg-instructor-editor-error" class="sg-instructor-form-error" style="display: none;"></p>
-            </main>
-
-            <div class="sg-instructor-editor-side">
-            <aside class="sg-instructor-editor-meta">
-                <div class="sg-instructor-editor-meta-header">
-                    <button id="sg-instructor-editor-save-btn" type="button" class="sg-instructor-save-btn" disabled>Save</button>
-                </div>
-
-                <div class="sg-instructor-meta-field">
-                    <span class="sg-instructor-meta-label">Topic</span>
-                    <p id="sg-instructor-editor-topic-label" class="sg-instructor-meta-value"></p>
-                </div>
-
-                <div class="sg-instructor-meta-field">
-                    <span class="sg-instructor-meta-label">Learning objectives</span>
-                    <div id="sg-instructor-editor-lo-list" class="sg-instructor-lo-list" aria-live="polite"></div>
-                    <button id="sg-instructor-editor-lo-manage-btn" type="button" class="sg-instructor-lo-manage-btn">Manage objectives</button>
-                </div>
-
-                <div class="sg-instructor-meta-field sg-instructor-meta-field--time">
-                    <span class="sg-instructor-meta-label">Expected Time</span>
-                    <button id="sg-instructor-editor-expected-time-btn" type="button" class="sg-instructor-expected-time-btn" aria-haspopup="dialog" aria-controls="sg-instructor-time-modal-overlay">
-                        <span id="sg-instructor-editor-expected-time" class="sg-instructor-expected-time" data-seconds="1500">25:00</span>
-                        <span class="sg-instructor-expected-time-edit-label">Edit</span>
-                    </button>
-                </div>
-
-                <div class="sg-instructor-editor-meta-actions">
-                    <div class="sg-instructor-status-wrap sg-instructor-editor-status-wrap">
-                        <button id="sg-instructor-editor-status-btn" type="button" class="sg-instructor-status-pill sg-instructor-status-pill-draft sg-instructor-status-menu-btn" aria-haspopup="listbox" aria-expanded="false">
-                            <i data-feather="chevron-right"></i>
-                            <span id="sg-instructor-editor-status-label">Draft</span>
-                        </button>
-                        <div id="sg-instructor-editor-status-menu" class="sg-instructor-status-menu" style="display: none;" role="listbox" aria-label="Question status">
-                            <button type="button" class="sg-instructor-status-menu-option sg-instructor-status-menu-option-draft" data-status="draft">Draft</button>
-                            <button type="button" class="sg-instructor-status-menu-option sg-instructor-status-menu-option-published" data-status="published">Published</button>
-                        </div>
-                    </div>
-                    <button id="sg-instructor-editor-delete-btn" type="button" class="sg-instructor-status-pill sg-instructor-delete-pill sg-instructor-status-menu-btn" aria-label="Delete question">
-                        <i data-feather="trash-2"></i>
-                        <span>Delete question</span>
-                    </button>
-                </div>
-            </aside>
-            <p class="sg-instructor-flashcard-help">
-                Not sure how to format answer cards?
-                <button type="button" id="sg-instructor-flashcard-help-btn" class="sg-instructor-flashcard-help-link">Click here</button>
-            </p>
-            </div>
-        </div>
+    <div id="sg-instructor-view-root">
+        <!-- View partials loaded by scenario-questions-instructor.ts -->
     </div>
 
     <div id="sg-instructor-flashcard-help-overlay" class="sg-instructor-modal-overlay" aria-hidden="true">
@@ -222,6 +40,89 @@
             </div>
             <div class="sg-instructor-modal-footer">
                 <button id="sg-instructor-flashcard-help-done-btn" type="button" class="btn-primary">Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="sg-instructor-type-help-overlay" class="sg-instructor-modal-overlay" aria-hidden="true">
+        <div class="sg-instructor-modal sg-instructor-type-help-modal" role="dialog" aria-labelledby="sg-instructor-type-help-title" aria-modal="true">
+            <div class="sg-instructor-modal-header">
+                <h2 id="sg-instructor-type-help-title">Subquestion types</h2>
+                <button id="sg-instructor-type-help-close-btn" type="button" class="sg-instructor-modal-close-btn" aria-label="Close">×</button>
+            </div>
+            <div class="sg-instructor-modal-body sg-instructor-type-help-body">
+                <p class="sg-instructor-type-help-intro">Pick one or more types before generating. Each type becomes a separate part (Part A, B, …) with its own prompt and answer key in the editor.</p>
+
+                <section class="sg-instructor-type-help-section">
+                    <p class="sg-instructor-type-help-desc">Students establish a baseline design calculation from scenario data — governing equations, stated assumptions, and a numerical result with units.</p>
+                    <div class="sg-instructor-part-card sg-instructor-type-help-example">
+                        <div class="sg-instructor-part-header">
+                            <div class="sg-part-title-group">
+                                <h3 class="sg-part-title">Part A</h3>
+                                <span class="sg-part-type-badge sg-part-type-calculation">Calculation</span>
+                            </div>
+                        </div>
+                        <div class="sg-instructor-part-prompt-body">
+                            <div class="sg-instructor-part-prompt-preview sg-instructor-markdown-preview message-content">
+                                <p class="response-text">Using the design data in the scenario above, establish the baseline design calculation for the heat exchanger. Show your governing equations, state assumptions clearly, and report a numerical result with units.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="sg-instructor-type-help-section">
+                    <p class="sg-instructor-type-help-desc">Students quantify actual vs design performance and list physically plausible root causes (fouling, flow issues, instrument drift, etc.), ranked by likelihood.</p>
+                    <div class="sg-instructor-part-card sg-instructor-type-help-example">
+                        <div class="sg-instructor-part-header">
+                            <div class="sg-part-title-group">
+                                <h3 class="sg-part-title">Part B</h3>
+                                <span class="sg-part-type-badge sg-part-type-troubleshoot">Troubleshoot</span>
+                            </div>
+                        </div>
+                        <div class="sg-instructor-part-prompt-body">
+                            <div class="sg-instructor-part-prompt-preview sg-instructor-markdown-preview message-content">
+                                <p class="response-text">Field data show a measurable deviation from design. Quantify actual vs expected performance, then list at least <strong>four physically plausible root causes</strong>. Rank them by likelihood given a gradual onset and partially normal control-room indications.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="sg-instructor-type-help-section">
+                    <p class="sg-instructor-type-help-desc">Students propose immediate operational actions the shift team can take without a full shutdown, plus a monitoring plan for the next 48 hours.</p>
+                    <div class="sg-instructor-part-card sg-instructor-type-help-example">
+                        <div class="sg-instructor-part-header">
+                            <div class="sg-part-title-group">
+                                <h3 class="sg-part-title">Part C</h3>
+                                <span class="sg-part-type-badge sg-part-type-action">Action</span>
+                            </div>
+                        </div>
+                        <div class="sg-instructor-part-prompt-body">
+                            <div class="sg-instructor-part-prompt-preview sg-instructor-markdown-preview message-content">
+                                <p class="response-text">Propose <strong>immediate operational actions</strong> the shift team can take to restore performance without a full shutdown. Prioritize safety and operability, and include one <strong>monitoring recommendation</strong> for the next 48 hours.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="sg-instructor-type-help-section">
+                    <p class="sg-instructor-type-help-desc">Students outline planned maintenance or engineering corrective steps if shift-level actions are not enough — inspection scope, cleaning or repair, and acceptance criteria.</p>
+                    <div class="sg-instructor-part-card sg-instructor-type-help-example">
+                        <div class="sg-instructor-part-header">
+                            <div class="sg-part-title-group">
+                                <h3 class="sg-part-title">Part D</h3>
+                                <span class="sg-part-type-badge sg-part-type-corrective">Corrective</span>
+                            </div>
+                        </div>
+                        <div class="sg-instructor-part-prompt-body">
+                            <div class="sg-instructor-part-prompt-preview sg-instructor-markdown-preview message-content">
+                                <p class="response-text">If the deviation persists after shift-level actions, what <strong>maintenance or engineering corrective steps</strong> should be planned? Include inspection, cleaning/repair scope, and acceptance criteria.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+            <div class="sg-instructor-modal-footer">
+                <button id="sg-instructor-type-help-done-btn" type="button" class="btn-primary">Got it</button>
             </div>
         </div>
     </div>

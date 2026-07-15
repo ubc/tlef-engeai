@@ -23,6 +23,8 @@ import {
 import { ConversationModePicker } from "./conversation-mode-picker.js";
 import { RenderChat } from "./render-chat.js";
 import { showDisclaimerModal, showDeleteConfirmationModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
+import { getCourseIdFromURL } from "../utils/url-parser.js";
+import { consumeChatDraftPrefill, stashChatDraftPrefill } from "../utils/chat-draft-prefill.js";
 
 /**
  * Chat Metadata Interface - Lightweight chat information without full message history
@@ -1626,6 +1628,41 @@ export class ChatManager {
         this.lastRenderedMessageCount = 0;
     }
 
+    /**
+     * Inserts a scenario-sourced draft into the chat composer when present in sessionStorage.
+     *
+     * @returns true when a draft was applied
+     */
+    public applyPendingChatDraftPrefill(afterResize?: () => void): boolean {
+        const courseId = getCourseIdFromURL();
+        if (!courseId) return false;
+        const draft = consumeChatDraftPrefill(courseId);
+        if (!draft) return false;
+        const inputEl = document.getElementById('chat-input') as HTMLTextAreaElement | null;
+        if (!inputEl) return false;
+        inputEl.value = draft;
+        afterResize?.();
+        inputEl.focus();
+        const len = inputEl.value.length;
+        inputEl.setSelectionRange(len, len);
+        return true;
+    }
+
+    /**
+     * Opens chat (creating one if needed) and prefills the composer for scenario handoff.
+     */
+    public async openChatComposerWithDraft(text: string): Promise<void> {
+        const courseId = getCourseIdFromURL();
+        if (!courseId) return;
+        stashChatDraftPrefill(courseId, text);
+        if (!this.getActiveChat()) {
+            const created = await this.createNewChat();
+            if (!created.success) return;
+        }
+        this.notifyUIUpdate();
+        queueMicrotask(() => this.applyPendingChatDraftPrefill());
+    }
+
     public bindMessageEvents(): void {
         this.initConversationModePicker();
 
@@ -1648,6 +1685,8 @@ export class ChatManager {
         };
         inputEl?.addEventListener('input', autoGrow);
         autoGrow();
+
+        this.applyPendingChatDraftPrefill(autoGrow);
 
         sendBtn?.addEventListener('click', () => this.handleSendMessage());
         inputEl?.addEventListener('keydown', (e: KeyboardEvent) => {

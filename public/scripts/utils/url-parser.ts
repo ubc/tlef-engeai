@@ -76,6 +76,128 @@ export function navigateToInstructorView(view: string, chatId?: string): void {
 /**
  * Navigate to specific chat
  */
+// ===========================================
+// SCENARIO QUESTIONS URL (instructor)
+// ===========================================
+
+export interface ScenarioQuestionsUrlParams {
+    topicOrWeekId: string | null;
+    questionId: string | null;
+    generate: boolean;
+    browse: 'topics' | 'questions';
+}
+
+export interface ScenarioQuestionsUrlOptions {
+    topicOrWeekId?: string | null;
+    questionId?: string | null;
+    generate?: boolean;
+    browse?: 'topics' | 'questions';
+}
+
+/** Parse scenario-questions sub-view from query string on the current page URL. */
+export function getScenarioQuestionsParamsFromURL(): ScenarioQuestionsUrlParams {
+    const params = new URLSearchParams(window.location.search);
+    const browse = params.get('browse') === 'questions' ? 'questions' : 'topics';
+    return {
+        topicOrWeekId: params.get('topicOrWeekId'),
+        questionId: params.get('questionId'),
+        generate: params.get('generate') === '1',
+        browse,
+    };
+}
+
+/** Build instructor scenario-questions URL with optional sub-view query params. */
+export function buildScenarioQuestionsURL(courseId: string, options: ScenarioQuestionsUrlOptions = {}): string {
+    const base = `/course/${courseId}/instructor/scenario-questions`;
+    const params = new URLSearchParams();
+    if (options.questionId) {
+        params.set('questionId', options.questionId);
+    } else {
+        if (options.topicOrWeekId) params.set('topicOrWeekId', options.topicOrWeekId);
+        if (options.generate) params.set('generate', '1');
+        if (options.browse === 'questions') params.set('browse', 'questions');
+    }
+    const qs = params.toString();
+    return qs ? `${base}?${qs}` : base;
+}
+
+/**
+ * Update browser URL for scenario-questions sub-navigation (no synthetic popstate).
+ * Sub-view restore on back/forward is handled by the scenario feature module.
+ */
+export function navigateToScenarioQuestions(options: ScenarioQuestionsUrlOptions = {}, replace = false): void {
+    const courseId = getCourseIdFromURL();
+    if (!courseId) {
+        console.error('[URL-PARSER] Cannot navigate: courseId not found in URL');
+        return;
+    }
+
+    const url = buildScenarioQuestionsURL(courseId, options);
+    if (window.location.pathname + window.location.search === url) return;
+
+    const state = { view: 'scenario-questions', scenario: options };
+    if (replace) {
+        window.history.replaceState(state, '', url);
+    } else {
+        window.history.pushState(state, '', url);
+    }
+}
+
+// ===========================================
+// STUDENT SCENARIOS URL
+// ===========================================
+
+export interface StudentScenariosUrlParams {
+    questionId: string | null;
+    mode: 'practice' | 'exam' | null;
+}
+
+export interface StudentScenariosUrlOptions {
+    questionId?: string | null;
+    mode?: 'practice' | 'exam' | null;
+}
+
+/** Parse student scenarios workspace from query string on the current page URL. */
+export function getStudentScenariosParamsFromURL(): StudentScenariosUrlParams {
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode');
+    return {
+        questionId: params.get('questionId'),
+        mode: mode === 'practice' || mode === 'exam' ? mode : null,
+    };
+}
+
+/** Build student scenarios URL with optional workspace query params. */
+export function buildStudentScenariosURL(courseId: string, options: StudentScenariosUrlOptions = {}): string {
+    const base = `/course/${courseId}/student/scenarios`;
+    const params = new URLSearchParams();
+    if (options.questionId) {
+        params.set('questionId', options.questionId);
+        if (options.mode) params.set('mode', options.mode);
+    }
+    const qs = params.toString();
+    return qs ? `${base}?${qs}` : base;
+}
+
+/** Update browser URL for student scenarios sub-navigation (no synthetic popstate). */
+export function navigateToStudentScenarios(options: StudentScenariosUrlOptions = {}, replace = false): void {
+    const courseId = getCourseIdFromURL();
+    if (!courseId) {
+        console.error('[URL-PARSER] Cannot navigate: courseId not found in URL');
+        return;
+    }
+
+    const url = buildStudentScenariosURL(courseId, options);
+    if (window.location.pathname + window.location.search === url) return;
+
+    const state = { view: 'scenarios', scenario: options };
+    if (replace) {
+        window.history.replaceState(state, '', url);
+    } else {
+        window.history.pushState(state, '', url);
+    }
+}
+
 export function navigateToChat(courseId: string, chatId: string): void {
     const url = buildInstructorURL(courseId, 'chat', chatId);
 

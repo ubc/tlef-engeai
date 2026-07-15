@@ -14,7 +14,7 @@ import { authService } from '../services/auth-service.js';
 import { studentUserFactory } from '../factories/student-user-factory.js';
 import { renderStudentOnboarding } from '../onboarding/student-onboarding.js';
 import { initializeStudentFlagHistory } from '../feature/student-flag-history.js';
-import { initializeScenariosStudent, isScenarioWorkspaceActive, confirmLeaveScenarioWorkspace, expandStudentSidebar } from '../feature/scenarios-student.js';
+import { initializeScenariosStudent, isScenarioWorkspaceActive, confirmLeaveScenarioWorkspace, expandStudentSidebar, isScenariosStudentMounted, syncStudentScenariosFromURL } from '../feature/scenarios-student.js';
 import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInfoModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
 import { renderAbout } from '../about/about.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
@@ -977,6 +977,8 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             await loadComponent('profile');
         } else if (view === 'flag-history') {
             await loadComponent('flag-history');
+        } else if (view === 'scenarios' && currentComponent === 'scenarios' && isScenariosStudentMounted()) {
+            await syncStudentScenariosFromURL(true);
         } else if (view === 'scenarios') {
             await loadComponent('scenarios');
         } else if (view === 'about') {
@@ -1041,6 +1043,24 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             navigateToStudentView('scenarios');
         });
     };
+
+    window.addEventListener('engeai-student-open-chat-draft', () => {
+        void (async () => {
+            if (isNavigating) return;
+            isNavigating = true;
+            try {
+                setStudentToolActive(null);
+                navigateToStudentView('chat');
+                await loadComponent('chat-window');
+                if (!chatManager.getActiveChat()) {
+                    await chatManager.createNewChat();
+                }
+                chatManager.applyPendingChatDraftPrefill();
+            } finally {
+                isNavigating = false;
+            }
+        })();
+    });
 
     const attachWritingAnalysisButtonListener = () => {
         const writingAnalysisBtn = document.getElementById('writing-analysis-btn');

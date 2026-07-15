@@ -542,31 +542,29 @@ export function mountScenarioQuestionRoutes(router: Router): void {
                 return res.status(404).json({ success: false, error: 'Question not found' });
             }
 
-            // Students must complete every part in the requested mode before full reveal;
-            // practice mode may request one sub-question after that part has a response.
+            // Students must complete the requested part (or every part for full reveal).
+            // Practice per-part reveal is direct — no prior check-answer required (See the Answer).
             if (!isInstructor) {
                 const service = getScenarioService();
-                const canReveal =
-                    subQuestionId && mode === 'practice'
-                        ? hasCompletedSubQuestion(question, globalUser.userId, mode, subQuestionId)
-                        : service.canRevealSolution(question, globalUser.userId, mode);
+                const canReveal = subQuestionId
+                    ? mode === 'practice' ||
+                      hasCompletedSubQuestion(question, globalUser.userId, mode, subQuestionId)
+                    : service.canRevealSolution(question, globalUser.userId, mode);
                 if (!canReveal) {
                     return res.status(403).json({
                         success: false,
-                        error:
-                            subQuestionId && mode === 'practice'
-                                ? 'Submit an answer for this part before viewing the solution'
-                                : `Submit all parts in ${mode} mode before viewing the solution`,
+                        error: subQuestionId
+                            ? 'Submit an answer for this part before viewing the solution'
+                            : `Submit all parts in ${mode} mode before viewing the solution`,
                     });
                 }
             }
 
-            const revealSubs =
-                subQuestionId && mode === 'practice'
-                    ? question.subQuestions.filter((sub) => sub.subQuestionId === subQuestionId)
-                    : question.subQuestions;
+            const revealSubs = subQuestionId
+                ? question.subQuestions.filter((sub) => sub.subQuestionId === subQuestionId)
+                : question.subQuestions;
 
-            if (subQuestionId && mode === 'practice' && revealSubs.length === 0) {
+            if (subQuestionId && revealSubs.length === 0) {
                 return res.status(404).json({ success: false, error: 'Sub-question not found' });
             }
 

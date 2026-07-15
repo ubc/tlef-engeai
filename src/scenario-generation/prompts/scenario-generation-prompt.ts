@@ -79,7 +79,7 @@ Core rules for authoring one complete troubleshooting scenario as structured JSO
 Author one complete undergraduate engineering troubleshooting scenario as structured JSON in a single response (not chat).
 
 Output fields:
-- title — short instructor-facing title
+- title — short instructor-facing label for the polished scenario (questionBody), not a copy of the raw instructor seed. Derive from the crisis narrative you write: 4–12 words, engineering-specific (equipment, process, or crisis hook). No markdown, no "Part (a)", no trailing period. Example: seed "heat exchanger lab fouling" → title "Shell-and-Tube Exchanger Fouling Crisis".
 - questionBody — Role + Setup + Crisis narrative (~150–300 words). Markdown and optional <Artefact> diagram allowed. Never put "Part (a)/(b)" labels or a preview of sub-questions in the narrative. Do not write section titles like "Role", "The Setup", "The Crisis".
 - subQuestions — one entry per instructor-selected type, in order. Each has subQuestionType (calculation | troubleshoot | action | corrective), prompt, modelAnswer. Do not invent partId/subQuestionId — the server assigns ids. No empty padding parts.
 - solutionBody — full worked solution across all parts (instructor review / final self-check).

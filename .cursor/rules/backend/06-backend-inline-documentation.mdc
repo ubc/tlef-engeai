@@ -49,28 +49,40 @@ export class ChatApp { ... }
 
 ## Method JSDoc
 
-**Public and exported methods** — behavior-first contract:
+**Public, exported, and non-obvious private methods** — use the four-part contract below.
+
+### Four-part shape (required)
+
+| Section | Rule |
+|---------|------|
+| **1. Title** | `{functionName} - {main purpose}` on line 1 |
+| **2. Explicit properties** | 1–2 prose lines: return shape (`{ feedback }`), side effects (persist, LLM), branch/tier behavior |
+| **3. Params** | `@param` for **every** parameter — domain role, not signature restatement |
+| **4. Return** | `@returns` — shape, success value, and failure/throw when non-obvious; add `@throws` when applicable |
 
 ```typescript
 /**
- * Send a user message and get response from LLM with RAG context
+ * feedbackPracticePart - Practice check-answer: friendly TA feedback via structured LLM output (no grade).
  *
- * @param message - The user's message
- * @param chatId - The chat ID
- * @param userId - The user ID
- * @param courseName - The course name for RAG context
- * @param onChunk - Callback for streaming chunks to the client
- * @returns The complete assistant response message
+ * Tier selects the prompt path: `socratic` returns hint-style feedback only; `descriptive`
+ * evaluates the answer and appends the model answer server-side. Always returns `{ feedback }`.
+ *
+ * @param questionBody - Parent scenario stem shown to the LLM for context
+ * @param subQuestion - Target sub-part (prompt, modelAnswer, type)
+ * @param studentAnswer - Student submission text for this sub-question
+ * @param tier - `socratic` (default) or `descriptive` (evaluation + model answer reveal)
+ * @returns `{ feedback }` TA-facing string; throws when structured LLM output is empty
  */
 ```
 
+**Canonical references:** `feedbackPracticePart`, `submitStudentResponse` in `scenario-service.ts`; `restoreChatFromDatabase` in `chat-app.ts`.
+
 | Do | Don't |
 |----|-------|
-| Lead with what the method **does** in domain terms | Restate the signature (`@param chatId - The chat id`) |
-| Document side effects (persist, timer reset, LLM call) | JSDoc every private one-liner |
-| `@returns` describes shape and failure modes when non-obvious | `@returns void` on constructors |
-
-**Private methods** — JSDoc only when the name alone does not convey behavior (e.g. `validateExamAnswers`, `resolveLearningObjectives`).
+| Lead with `{name} -` then explicit return shape / side effects | Skip the explicit-properties block when return shape or branching is non-obvious |
+| Document every `@param`, including defaulted or optional args | Restate the signature (`@param chatId - The chat id`) |
+| `@returns` describes shape and failure modes | `@returns void` on constructors |
+| JSDoc private helpers only when behavior is not obvious from the name | JSDoc every private one-liner |
 
 ## Inline step comments (two tiers)
 
@@ -153,7 +165,7 @@ Use a short banner between unrelated groups (mongo delegate pattern):
 
 - [ ] File header per `05-code-docs.mdc`
 - [ ] Main class has Key Features (or concise responsibility prose)
-- [ ] Every **public** method has behavior-first JSDoc with `@param` / `@returns` where helpful
+- [ ] Every **public** method uses four-part JSDoc (`{name} -`, explicit properties when needed, `@param`, `@returns`)
 - [ ] Orchestration methods use STEP banners; other multi-step methods use Tier 1 comments
 - [ ] Branch comments explain **why** (e.g. instructor preview vs student persist)
 - [ ] No permanent `// DEBUG:` / `// TEMP:` comments

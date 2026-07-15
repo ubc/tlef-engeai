@@ -880,6 +880,15 @@ export interface ScenarioPartFeedbackResponse {
     grade?: number;
     feedback: string;
     error?: string;
+    feedbackTier?: 'socratic' | 'descriptive';
+    feedbackSource?: 'llm' | 'canned';
+    blockReason?: 'cooldown' | 'daily_limit';
+    attemptNumber?: number;
+    attemptsRemaining?: number;
+    maxAttemptsPerDay?: number;
+    retryAfterSeconds?: number;
+    resetsAt?: string;
+    answerRevealed?: boolean;
 }
 
 /** Must match src/types/shared.ts. */
@@ -911,6 +920,7 @@ export interface ScenarioGenerateRequest {
     learningObjectiveIds?: string[];
     subQuestionTypes?: ScenarioSubQuestionType[];
     difficulty?: ScenarioDifficulty;
+    /** Instructor title override only — omit or send a placeholder to use the LLM-generated title. */
     title?: string;
     count?: number;
 }
@@ -941,8 +951,7 @@ export function defaultExpectedTimeMinutes(difficulty: ScenarioDifficulty, partC
 
 export function computeScenarioOverallGrade(grades: number[]): number {
     if (grades.length === 0) return 0;
-    const sum = grades.reduce((acc, g) => acc + g, 0);
-    return Math.round((sum / grades.length) * 10) / 10;
+    return grades.reduce((acc, g) => acc + g, 0);
 }
 
 /** Must match src/types/shared.ts. Response for POST .../generate. */

@@ -27,7 +27,7 @@ import { initializeCourseSummary, summonCourseSummary, configureCourseSummaryFab
 import { inactivityTracker } from '../services/inactivity-tracker.js';
 import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from '../feature/assistant-prompts.js';
 import { initializeSystemPrompts, flushSystemPromptOnLeave } from '../feature/system-prompts.js';
-import { initializeScenarioQuestionsInstructor } from '../feature/scenario-questions-instructor.js';
+import { initializeScenarioQuestionsInstructor, isScenarioQuestionsMounted, syncScenarioQuestionsFromURL } from '../feature/scenario-questions-instructor.js';
 import { 
     getCourseIdFromURL, 
     getInstructorViewFromURL, 
@@ -542,6 +542,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 } else {
                     navigateToInstructorView('documents');
                 }
+            } else if (
+                view === 'scenario-questions' &&
+                currentState === StateEvent.ScenarioQuestions &&
+                isScenarioQuestionsMounted()
+            ) {
+                await syncScenarioQuestionsFromURL(true);
             } else {
                 // Load component for current view
                 currentState = mapViewToStateEvent(view);

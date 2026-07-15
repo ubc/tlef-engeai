@@ -36,22 +36,36 @@ import { buildScenarioGenerationSystemPrompt } from './prompts/scenario-generati
 import {
     buildScenarioExamGradingUserTurn,
     buildScenarioExamFeedbackSystemPrompt,
-    buildScenarioPracticeFeedbackSystemPrompt,
+    buildScenarioPracticeDescriptiveFeedbackSystemPrompt,
     buildScenarioPracticeFeedbackUserTurn,
+    buildScenarioPracticeSocraticFeedbackSystemPrompt,
+    type PracticeFeedbackPromptTier,
 } from './prompts/scenario-feedback-prompt';
 import {
     batchScenarioSchema,
+    assemblePracticeDescriptiveFeedback,
     sanitizeExamGradingResponse,
     sanitizeGeneratedScenario,
     sanitizeScenarioFeedback,
+    sanitizeScenarioPracticeDescriptiveFeedback,
     sanitizeScenarioPracticeFeedback,
+    resolveScenarioPersistTitle,
     scenarioExamGradingResponseSchema,
-    scenarioFeedbackResponseSchema,
     scenarioPracticeFeedbackResponseSchema,
     singleScenarioSchema,
     type GeneratedScenario,
 } from './scenario-schemas';
 import { hasCompletedAllSubQuestions } from '../db/mongo/scenario-questions-mongo';
+import {
+    checkPracticeSubmissionGate,
+    countPracticeAttemptsToday,
+    getLastPracticeAttemptAtToday,
+    PRACTICE_DAILY_MAX_ATTEMPTS,
+} from './scenario-practice-limits';
+import {
+    getPracticeCooldownMessage,
+    getPracticeDailyLimitMessage,
+} from './scenario-practice-canned-responses';
 
 /** Instructor/AI generate request — routes map Zod-parsed body into this shape. */
 export interface ScenarioGenerateDraftsInput {
@@ -189,8 +203,7 @@ export class ScenarioService {
 
             // persist the generated questions
             for (const question of sanitized) {
-                // get the title – if not provided, use the question title
-                const title = input.title?.trim() || question.title;
+                const title = resolveScenarioPersistTitle(input.title, question.title);
 
                 // create the scenario question
                 const created = await mongoDB.createScenarioQuestion({
@@ -226,7 +239,8 @@ export class ScenarioService {
     }
 
     /**
-     * Grade one sub-question answer (practice: TA feedback only), persist, and return feedback.
+     * submitStudentResponse - Grade one sub-question answer (practice: TA feedback only), persist, and return feedback.
+     * 
      *
      * @param input - Question/sub-question ids, student answer, mode, and course context
      * @returns Grade and feedback; persists unless instructor preview on unpublished draft fails lookup
@@ -264,17 +278,74 @@ export class ScenarioService {
                 };
             }
 
+            const now = new Date();
+            let feedbackTier: PracticeFeedbackPromptTier = 'socratic';
+
             // ====================================================================
-            // STEP 2: Practice feedback via LLM (or mock) — no numeric grade
+            // STEP 2a: Practice abuse gates (students only — instructor preview skips)
+            // ====================================================================
+            if (mode === 'practice' && !input.allowUnpublished) {
+                const todayPriorCount = countPracticeAttemptsToday(subQuestion, input.studentUserId, now);
+                const lastSubmittedAtToday = getLastPracticeAttemptAtToday(
+                    subQuestion,
+                    input.studentUserId,
+                    now
+                );
+                const gate = checkPracticeSubmissionGate({
+                    todayPriorCount,
+                    lastSubmittedAtToday,
+                    now,
+                });
+
+                if (!gate.allowed) {
+                    const feedback =
+                        gate.blockReason === 'cooldown'
+                            ? getPracticeCooldownMessage((gate.retryAfterMs ?? 0) / 1000)
+                            : getPracticeDailyLimitMessage(gate.resetsAt ?? now);
+
+                    return {
+                        success: true,
+                        responseId: '',
+                        subQuestionId,
+                        mode,
+                        feedback,
+                        feedbackSource: 'canned',
+                        blockReason: gate.blockReason ?? undefined,
+                        attemptNumber: todayPriorCount,
+                        attemptsRemaining: Math.max(0, PRACTICE_DAILY_MAX_ATTEMPTS - todayPriorCount),
+                        maxAttemptsPerDay: PRACTICE_DAILY_MAX_ATTEMPTS,
+                        retryAfterSeconds:
+                            gate.blockReason === 'cooldown'
+                                ? Math.ceil((gate.retryAfterMs ?? 0) / 1000)
+                                : undefined,
+                        resetsAt:
+                            gate.blockReason === 'daily_limit' && gate.resetsAt
+                                ? gate.resetsAt.toISOString()
+                                : undefined,
+                    };
+                }
+
+                feedbackTier = gate.tier === 'descriptive' ? 'descriptive' : 'socratic';
+            }
+
+            // ====================================================================
+            // STEP 2b: Practice feedback via LLM (or mock) — no numeric grade
             // ====================================================================
             const reviewed = await this.feedbackPracticePart(
                 question.questionBody,
                 subQuestion,
-                input.studentAnswer
+                input.studentAnswer,
+                feedbackTier
             );
 
+            const todayPriorCount =
+                mode === 'practice' && !input.allowUnpublished
+                    ? countPracticeAttemptsToday(subQuestion, input.studentUserId, now)
+                    : 0;
+            const attemptNumber = todayPriorCount + 1;
+            const answerRevealed = feedbackTier === 'descriptive';
+
             // generate a unique response id
-            const now = new Date();
             const responseId = IDGenerator.getInstance().scenarioStudentResponseID(
                 subQuestionId,
                 input.studentUserId,
@@ -309,6 +380,16 @@ export class ScenarioService {
                 subQuestionId,
                 mode,
                 feedback: reviewed.feedback,
+                feedbackTier: mode === 'practice' ? feedbackTier : undefined,
+                feedbackSource: 'llm',
+                attemptNumber: mode === 'practice' && !input.allowUnpublished ? attemptNumber : undefined,
+                attemptsRemaining:
+                    mode === 'practice' && !input.allowUnpublished
+                        ? Math.max(0, PRACTICE_DAILY_MAX_ATTEMPTS - attemptNumber)
+                        : undefined,
+                maxAttemptsPerDay:
+                    mode === 'practice' && !input.allowUnpublished ? PRACTICE_DAILY_MAX_ATTEMPTS : undefined,
+                answerRevealed: mode === 'practice' ? answerRevealed : undefined,
             };
         } catch (error) {
             appLogger.error('[SCENARIO-SERVICE] submitStudentResponse failed:', error);
@@ -388,7 +469,7 @@ export class ScenarioService {
             await mongoDB.appendScenarioExamResponses(input.courseName, input.questionId, items);
 
             // ====================================================================
-            // STEP 4: Compute overall grade and return results in question order
+            // STEP 4: Sum part grades and return results in question order
             // ====================================================================
             const overallGrade = computeScenarioOverallGrade(graded.map((g) => g.grade));
             const results = orderedIds.map((id) => {
@@ -436,14 +517,17 @@ export class ScenarioService {
     }
 
     /**
-     * Validate exam payload: exactly one non-empty answer per visible subQuestionId.
+     * validateExamAnswers - Validate exam payload: exactly one non-empty answer per visible subQuestionId.
      *
+     * @param question - Full instructor question (includes embedded responses)
+     * @param answers - Array of scenario exam answer inputs
      * @returns Human-readable error string, or null when valid
      */
     private validateExamAnswers(question: ScenarioQuestion, answers: ScenarioExamAnswerInput[]): string | null {
         const expected = new Set(question.subQuestions.map((s) => s.subQuestionId));
         const seen = new Set<string>();
 
+        // iterate over the answers and validate them
         for (const answer of answers) {
             const id = answer.subQuestionId?.trim();
             if (!id || !expected.has(id)) {
@@ -458,10 +542,13 @@ export class ScenarioService {
             seen.add(id);
         }
 
+        // if the number of seen answers is not the same as the number of expected answers, return an error
         if (seen.size !== expected.size) {
             const missing = [...expected].filter((id) => !seen.has(id));
             return `Missing answers for: ${missing.join(', ')}`;
         }
+
+        // if the answers are valid, return null
         return null;
     }
 
@@ -475,11 +562,15 @@ export class ScenarioService {
     ): Promise<ScenarioLearningObjectiveSnapshot[]> {
         if (!learningObjectiveIds?.length) return [];
 
+        // get the learning objectives from the database
         const mongoDB = await EngEAI_MongoDB.getInstance();
         const catalog = await mongoDB.getLearningObjectivesForTopicOrWeek(courseId, topicOrWeekId);
+        // map the learning objectives by id
         const byId = new Map(catalog.map((o) => [o.objectiveId, o]));
+        // create the snapshots
         const snapshots: ScenarioLearningObjectiveSnapshot[] = [];
 
+        // iterate over the learning objective ids and create the snapshots
         for (const id of learningObjectiveIds) {
             const option = byId.get(id);
             if (!option) {
@@ -492,6 +583,8 @@ export class ScenarioService {
                 sourceItemId: option.itemId,
             });
         }
+
+        //if no learning objectives are found, return an empty array
         return snapshots;
     }
 
@@ -516,6 +609,8 @@ export class ScenarioService {
 
         // Retrieve course-material context scoped to the selected topic/week when possible
         const ragApp = await RAGApp.getInstance();
+
+        // log the RAG query and scope
         appLogger.log(`[SCENARIO-SERVICE] RAG query:\n${ragQuery}`);
         appLogger.log(`[SCENARIO-SERVICE] RAG scope — course: ${input.courseName}, topicOrWeekId: ${input.topicOrWeekId}`);
 
@@ -570,31 +665,46 @@ export class ScenarioService {
     }
 
     /**
-     * Practice check-answer: friendly TA feedback via structured LLM output (no grade).
-     * 
-     * @param questionBody - The body of the question
-     * @param subQuestion - The sub-question to feedback on
-     * @param studentAnswer - The student's answer
-     * @returns The feedback
+     * feedbackPracticePart - Practice check-answer: friendly TA feedback via structured LLM output (no grade).
+     *
+     * Tier selects the prompt path: `socratic` returns hint-style feedback only; `descriptive`
+     * evaluates the answer and appends the model answer server-side. Always returns `{ feedback }`.
+     *
+     * @param questionBody - Parent scenario stem shown to the LLM for context
+     * @param subQuestion - Target sub-part (prompt, modelAnswer, type)
+     * @param studentAnswer - Student submission text for this sub-question
+     * @param tier - `socratic` (default) or `descriptive` (evaluation + model answer reveal)
+     * @returns `{ feedback }` TA-facing string; throws when structured LLM output is empty
      */
     private async feedbackPracticePart(
         questionBody: string,
         subQuestion: ScenarioSubQuestion,
-        studentAnswer: string
+        studentAnswer: string,
+        tier: PracticeFeedbackPromptTier = 'socratic'
     ): Promise<{ feedback: string }> {
+        
+        // if in developer mode, return the mock feedback
         if (isDeveloperMode()) {
-            return getMockScenarioPracticeFeedback();
+            const mock = getMockScenarioPracticeFeedback();
+            if (tier === 'descriptive') {
+                return { feedback: assemblePracticeDescriptiveFeedback(mock.feedback, subQuestion.modelAnswer) };
+            }
+            return mock;
         }
 
         // build the system prompt
-        const systemPrompt = buildScenarioPracticeFeedbackSystemPrompt();
+        const systemPrompt =
+            tier === 'descriptive'
+                ? buildScenarioPracticeDescriptiveFeedbackSystemPrompt()
+                : buildScenarioPracticeSocraticFeedbackSystemPrompt();
 
         // build the user turn
         const userTurn = buildScenarioPracticeFeedbackUserTurn(
             questionBody,
             subQuestion.prompt,
             subQuestion.modelAnswer,
-            studentAnswer
+            studentAnswer,
+            tier
         );
 
         // build the messages
@@ -613,6 +723,11 @@ export class ScenarioService {
         );
         if (!response?.parsed) {
             throw new Error('Empty structured response from LLM');
+        }
+
+        if (tier === 'descriptive') {
+            const { feedback: evaluation } = sanitizeScenarioPracticeDescriptiveFeedback(response.parsed);
+            return { feedback: assemblePracticeDescriptiveFeedback(evaluation, subQuestion.modelAnswer) };
         }
 
         return sanitizeScenarioPracticeFeedback(response.parsed, subQuestion.modelAnswer);
