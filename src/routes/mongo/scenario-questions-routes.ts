@@ -2,11 +2,15 @@
  * scenario-questions-routes.ts
  *
  * Practice Scenarios (student) / Scenario Questions (instructor) REST API.
- * Mounted from `route-mongo.ts` under `/api/courses` — see
- * planner/improved-scenario-generation-deliverables.md §7 for the frozen contract.
+ * Mounted from `route-mongo.ts` under `/api/courses`.
  *
- * Business logic lives in `scenario-questions-mongo.ts` / `scenario-generator.ts` /
- * `scenario-feedback.ts`; this file only does auth, param parsing, and response shaping.
+ * Business logic lives in `scenario-service.ts` / `scenario-questions-mongo.ts`;
+ * this file only does auth, Zod parsing, and response shaping.
+ *
+ * @author: @gatahcha
+ * @date: 2026-07-03
+ * @version: 2.0.0
+ * @description: Scenario Questions REST routes — generate, check-answer, submit-exam, responses, LOs.
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
@@ -16,11 +20,19 @@ import { EngEAI_MongoDB } from '../../db/enge-ai-mongodb';
 import { isCourseStaff } from '../../utils/course-staff';
 import { normalizeRouteParams } from '../../helpers/route-params';
 import { appLogger } from '../../utils/logger';
-import type { activeCourse, GlobalUser, ScenarioPartId, ScenarioQuestionStatus } from '../../types/shared';
-import { REQUIRED_SCENARIO_PART_IDS, SCENARIO_BATCH_MAX_COUNT } from '../../types/shared';
-import { hasCheckedAllRequiredParts } from '../../db/mongo/scenario-questions-mongo';
-import { generateScenarioQuestions } from '../../scenario-generation/scenario-generator';
-import { checkScenarioAnswer } from '../../scenario-generation/scenario-feedback';
+import type { activeCourse, GlobalUser, ScenarioMode, ScenarioQuestionStatus } from '../../types/shared';
+import {
+    generateScenarioQuestions,
+    getScenarioService,
+    submitScenarioExam,
+    submitScenarioStudentResponse,
+} from '../../scenario-generation/scenario-service';
+import { hasCompletedSubQuestion } from '../../db/mongo/scenario-questions-mongo';
+import {
+    checkScenarioAnswerRequestSchema,
+    scenarioGenerateRequestSchema,
+    submitScenarioExamRequestSchema,
+} from '../../scenario-generation/scenario-schemas';
 
 interface ScenarioRequestContext {
     course: activeCourse;
@@ -28,13 +40,10 @@ interface ScenarioRequestContext {
     isInstructor: boolean;
 }
 
-/**
- * Middleware: require course membership (enrolled student **or** course staff) for
- * scenario-questions read endpoints shared by both roles. Attaches `res.locals.scenarioCtx`.
- */
 function requireCourseMemberForScenarioAPI() {
     return async (req: Request, res: Response, next: NextFunction) => {
         try {
+            // Authenticate session user and resolve global profile
             const user = (req as any).user;
             if (!user) {
                 return res.status(401).json({ success: false, error: 'Authentication required' });
@@ -50,6 +59,7 @@ function requireCourseMemberForScenarioAPI() {
                 return res.status(404).json({ success: false, error: 'Course not found' });
             }
 
+            // Allow course staff or enrolled students — deny everyone else
             const isInstructor = isCourseStaff(course as activeCourse, globalUser);
             const isEnrolled = globalUser.coursesEnrolled.includes(courseId);
             if (!isInstructor && !isEnrolled) {
@@ -60,7 +70,7 @@ function requireCourseMemberForScenarioAPI() {
             (res.locals as any).scenarioCtx = {
                 course: course as activeCourse,
                 globalUser,
-                isInstructor
+                isInstructor,
             } satisfies ScenarioRequestContext;
             next();
         } catch (error) {
@@ -74,15 +84,42 @@ function scenarioCtx(res: Response): ScenarioRequestContext {
     return (res.locals as any).scenarioCtx as ScenarioRequestContext;
 }
 
+function parseMode(value: unknown): ScenarioMode | null {
+    return value === 'practice' || value === 'exam' ? value : null;
+}
+
 /**
  * Registers Practice Scenarios / Scenario Questions routes on the courses router.
  */
 export function mountScenarioQuestionRoutes(router: Router): void {
     /**
-     * GET /:courseId/scenario-questions
-     * Instructor: all statuses, `?status=` / `?topicOrWeekId=` filters.
-     * Student: published only, `?topicOrWeekId=` filter (draft never leaves the server — T-B01).
+     * GET /:courseId/scenario-questions/learning-objectives?topicOrWeekId=
+     * Topic-scoped LO catalog for instructor generate/editor selectors.
      */
+    router.get(
+        '/:courseId/scenario-questions/learning-objectives',
+        requireInstructorForCourseAPI(['params']),
+        asyncHandlerWithAuth(async (req: Request, res: Response) => {
+            const { courseId } = normalizeRouteParams(req.params);
+            const topicOrWeekId =
+                typeof req.query.topicOrWeekId === 'string' ? req.query.topicOrWeekId : '';
+            if (!topicOrWeekId) {
+                return res.status(400).json({ success: false, error: 'topicOrWeekId query param is required' });
+            }
+            const instance = await EngEAI_MongoDB.getInstance();
+            const course = await instance.getActiveCourse(courseId);
+            if (!course) {
+                return res.status(404).json({ success: false, error: 'Course not found' });
+            }
+            const chapterExists = (course as activeCourse).topicOrWeekInstances.some((t) => t.id === topicOrWeekId);
+            if (!chapterExists) {
+                return res.status(400).json({ success: false, error: `Unknown topicOrWeekId: ${topicOrWeekId}` });
+            }
+            const data = await instance.getLearningObjectivesForTopicOrWeek(courseId, topicOrWeekId);
+            res.json({ success: true, data });
+        })
+    );
+
     router.get(
         '/:courseId/scenario-questions',
         requireCourseMemberForScenarioAPI(),
@@ -91,23 +128,29 @@ export function mountScenarioQuestionRoutes(router: Router): void {
             const instance = await EngEAI_MongoDB.getInstance();
             await instance.ensureScenarioQuestionsCollection(course.id);
 
-            const topicOrWeekId = typeof req.query.topicOrWeekId === 'string' ? req.query.topicOrWeekId : undefined;
+            const topicOrWeekId =
+                typeof req.query.topicOrWeekId === 'string' ? req.query.topicOrWeekId : undefined;
 
             if (isInstructor) {
-                const status = typeof req.query.status === 'string' ? (req.query.status as ScenarioQuestionStatus) : undefined;
-                const data = await instance.listScenarioQuestions(course.courseName, { status, topicOrWeekId });
+                const status =
+                    typeof req.query.status === 'string'
+                        ? (req.query.status as ScenarioQuestionStatus)
+                        : undefined;
+                const data = await instance.listScenarioQuestions(course.courseName, {
+                    status,
+                    topicOrWeekId,
+                });
                 return res.json({ success: true, data });
             }
 
-            const data = await instance.listPublishedScenarioQuestionsForStudent(course.courseName, topicOrWeekId);
+            const data = await instance.listPublishedScenarioQuestionsForStudent(
+                course.courseName,
+                topicOrWeekId
+            );
             res.json({ success: true, data });
         })
     );
 
-    /**
-     * GET /:courseId/scenario-questions/:questionId
-     * Instructor: full document (any status). Student: 404 unless published (D5/E-01 — no draft leakage).
-     */
     router.get(
         '/:courseId/scenario-questions/:questionId',
         requireCourseMemberForScenarioAPI(),
@@ -125,7 +168,10 @@ export function mountScenarioQuestionRoutes(router: Router): void {
                 return res.json({ success: true, data: question });
             }
 
-            const question = await instance.getPublishedScenarioQuestionForStudent(course.courseName, questionId);
+            const question = await instance.getPublishedScenarioQuestionForStudent(
+                course.courseName,
+                questionId
+            );
             if (!question) {
                 return res.status(404).json({ success: false, error: 'Question not found' });
             }
@@ -133,10 +179,6 @@ export function mountScenarioQuestionRoutes(router: Router): void {
         })
     );
 
-    /**
-     * POST /:courseId/scenario-questions
-     * Manual instructor create (draft).
-     */
     router.post(
         '/:courseId/scenario-questions',
         requireInstructorForCourseAPI(['params']),
@@ -149,11 +191,25 @@ export function mountScenarioQuestionRoutes(router: Router): void {
             }
             await instance.ensureScenarioQuestionsCollection(courseId);
 
-            const { title, topicOrWeekId, sourcePrompt, questionBody, solutionBody, subQuestions } = req.body ?? {};
+            const {
+                title,
+                topicOrWeekId,
+                sourcePrompt,
+                questionBody,
+                solutionBody,
+                subQuestions,
+                difficulty,
+                expectedTimeMinutes,
+                learningObjectives,
+            } = req.body ?? {};
             if (!title?.trim() || !topicOrWeekId || !questionBody?.trim()) {
-                return res.status(400).json({ success: false, error: 'title, topicOrWeekId, and questionBody are required' });
+                return res
+                    .status(400)
+                    .json({ success: false, error: 'title, topicOrWeekId, and questionBody are required' });
             }
-            const chapterExists = (course as activeCourse).topicOrWeekInstances.some((t) => t.id === topicOrWeekId);
+            const chapterExists = (course as activeCourse).topicOrWeekInstances.some(
+                (t) => t.id === topicOrWeekId
+            );
             if (!chapterExists) {
                 return res.status(400).json({ success: false, error: `Unknown topicOrWeekId: ${topicOrWeekId}` });
             }
@@ -169,16 +225,15 @@ export function mountScenarioQuestionRoutes(router: Router): void {
                 solutionBody: solutionBody ?? '',
                 subQuestions: Array.isArray(subQuestions) ? subQuestions : [],
                 generatedBy: 'instructor',
-                createdByUserId: globalUser?.userId ?? 'unknown'
+                createdByUserId: globalUser?.userId ?? 'unknown',
+                difficulty,
+                expectedTimeMinutes,
+                learningObjectives: Array.isArray(learningObjectives) ? learningObjectives : undefined,
             });
             res.status(201).json({ success: true, data: question });
         })
     );
 
-    /**
-     * PUT /:courseId/scenario-questions/:questionId
-     * Instructor edit (title, chapter, narrative, parts).
-     */
     router.put(
         '/:courseId/scenario-questions/:questionId',
         requireInstructorForCourseAPI(['params']),
@@ -189,18 +244,40 @@ export function mountScenarioQuestionRoutes(router: Router): void {
             if (!course) {
                 return res.status(404).json({ success: false, error: 'Course not found' });
             }
-            const { title, topicOrWeekId, questionBody, solutionBody, subQuestions } = req.body ?? {};
+            const {
+                title,
+                topicOrWeekId,
+                questionBody,
+                solutionBody,
+                subQuestions,
+                difficulty,
+                expectedTimeMinutes,
+                learningObjectives,
+            } = req.body ?? {};
             if (topicOrWeekId) {
-                const chapterExists = (course as activeCourse).topicOrWeekInstances.some((t) => t.id === topicOrWeekId);
+                const chapterExists = (course as activeCourse).topicOrWeekInstances.some(
+                    (t) => t.id === topicOrWeekId
+                );
                 if (!chapterExists) {
-                    return res.status(400).json({ success: false, error: `Unknown topicOrWeekId: ${topicOrWeekId}` });
+                    return res
+                        .status(400)
+                        .json({ success: false, error: `Unknown topicOrWeekId: ${topicOrWeekId}` });
                 }
             }
             const globalUser = await instance.findGlobalUserByPUID((req as any).user.puid);
             const updated = await instance.updateScenarioQuestion(
                 (course as activeCourse).courseName,
                 questionId,
-                { title, topicOrWeekId, questionBody, solutionBody, subQuestions },
+                {
+                    title,
+                    topicOrWeekId,
+                    questionBody,
+                    solutionBody,
+                    subQuestions,
+                    difficulty,
+                    expectedTimeMinutes,
+                    learningObjectives,
+                },
                 globalUser?.userId
             );
             if (!updated) {
@@ -210,10 +287,6 @@ export function mountScenarioQuestionRoutes(router: Router): void {
         })
     );
 
-    /**
-     * PATCH /:courseId/scenario-questions/:questionId/status
-     * `{ status: 'draft' | 'published' | 'rejected' }` — publish re-validates (a)(b)(c) server-side.
-     */
     router.patch(
         '/:courseId/scenario-questions/:questionId/status',
         requireInstructorForCourseAPI(['params']),
@@ -222,14 +295,20 @@ export function mountScenarioQuestionRoutes(router: Router): void {
             const { status } = req.body ?? {};
             const validStatuses: ScenarioQuestionStatus[] = ['draft', 'published', 'rejected'];
             if (!validStatuses.includes(status)) {
-                return res.status(400).json({ success: false, error: `status must be one of: ${validStatuses.join(', ')}` });
+                return res
+                    .status(400)
+                    .json({ success: false, error: `status must be one of: ${validStatuses.join(', ')}` });
             }
             const instance = await EngEAI_MongoDB.getInstance();
             const course = await instance.getActiveCourse(courseId);
             if (!course) {
                 return res.status(404).json({ success: false, error: 'Course not found' });
             }
-            const result = await instance.patchScenarioQuestionStatus((course as activeCourse).courseName, questionId, status);
+            const result = await instance.patchScenarioQuestionStatus(
+                (course as activeCourse).courseName,
+                questionId,
+                status
+            );
             if (result.error) {
                 const notFound = result.error === 'Question not found';
                 return res.status(notFound ? 404 : 400).json({ success: false, error: result.error });
@@ -238,9 +317,6 @@ export function mountScenarioQuestionRoutes(router: Router): void {
         })
     );
 
-    /**
-     * DELETE /:courseId/scenario-questions/:questionId
-     */
     router.delete(
         '/:courseId/scenario-questions/:questionId',
         requireInstructorForCourseAPI(['params']),
@@ -251,7 +327,10 @@ export function mountScenarioQuestionRoutes(router: Router): void {
             if (!course) {
                 return res.status(404).json({ success: false, error: 'Course not found' });
             }
-            const deleted = await instance.deleteScenarioQuestion((course as activeCourse).courseName, questionId);
+            const deleted = await instance.deleteScenarioQuestion(
+                (course as activeCourse).courseName,
+                questionId
+            );
             if (!deleted) {
                 return res.status(404).json({ success: false, error: 'Question not found' });
             }
@@ -261,57 +340,61 @@ export function mountScenarioQuestionRoutes(router: Router): void {
 
     /**
      * POST /:courseId/scenario-questions/generate
-     * `{ mode: 'single' | 'batch', sourcePrompt, topicOrWeekId, count? }` — RAG-grounded AI generation.
      */
     router.post(
         '/:courseId/scenario-questions/generate',
         requireInstructorForCourseAPI(['params']),
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { courseId } = normalizeRouteParams(req.params);
-            const { mode, sourcePrompt, topicOrWeekId, count } = req.body ?? {};
-
-            if (mode !== 'single' && mode !== 'batch') {
-                return res.status(400).json({ success: false, error: "mode must be 'single' or 'batch'" });
+            const parsed = scenarioGenerateRequestSchema.safeParse(req.body ?? {});
+            if (!parsed.success) {
+                return res.status(400).json({
+                    success: false,
+                    error: parsed.error.issues[0]?.message || 'Invalid generate request',
+                });
             }
-            if (!sourcePrompt?.trim() || !topicOrWeekId) {
-                return res.status(400).json({ success: false, error: 'sourcePrompt and topicOrWeekId are required' });
-            }
-            if (mode === 'batch' && count !== undefined && (typeof count !== 'number' || count > SCENARIO_BATCH_MAX_COUNT || count < 1)) {
-                return res.status(400).json({ success: false, error: `count must be between 1 and ${SCENARIO_BATCH_MAX_COUNT}` });
-            }
+            const body = parsed.data;
 
             const instance = await EngEAI_MongoDB.getInstance();
             const course = await instance.getActiveCourse(courseId);
             if (!course) {
                 return res.status(404).json({ success: false, error: 'Course not found' });
             }
-            const chapterExists = (course as activeCourse).topicOrWeekInstances.some((t) => t.id === topicOrWeekId);
+            const chapterExists = (course as activeCourse).topicOrWeekInstances.some(
+                (t) => t.id === body.topicOrWeekId
+            );
             if (!chapterExists) {
-                return res.status(400).json({ success: false, error: `Unknown topicOrWeekId: ${topicOrWeekId}` });
+                return res
+                    .status(400)
+                    .json({ success: false, error: `Unknown topicOrWeekId: ${body.topicOrWeekId}` });
             }
             await instance.ensureScenarioQuestionsCollection(courseId);
             const globalUser = await instance.findGlobalUserByPUID((req as any).user.puid);
 
-            const result = await generateScenarioQuestions({
-                mode,
-                sourcePrompt,
-                topicOrWeekId,
-                count,
-                courseId,
-                courseName: (course as activeCourse).courseName,
-                createdByUserId: globalUser?.userId ?? 'unknown'
-            });
+            try {
+                const result = await generateScenarioQuestions({
+                    ...body,
+                    courseId,
+                    courseName: (course as activeCourse).courseName,
+                    createdByUserId: globalUser?.userId ?? 'unknown',
+                });
 
-            if (!result.success) {
-                return res.status(422).json(result);
+                if (!result.success) {
+                    return res.status(422).json(result);
+                }
+                res.status(201).json(result);
+            } catch (error) {
+                return res.status(400).json({
+                    success: false,
+                    error: error instanceof Error ? error.message : 'Generation failed',
+                });
             }
-            res.status(201).json(result);
         })
     );
 
     /**
      * POST /:courseId/scenario-questions/:questionId/check-answer
-     * `{ partId, studentAnswer }` → `ScenarioPartFeedbackResponse`. Student (or instructor preview).
+     * `{ subQuestionId, studentAnswer, mode }` → grade + feedback.
      */
     router.post(
         '/:courseId/scenario-questions/:questionId/check-answer',
@@ -319,47 +402,128 @@ export function mountScenarioQuestionRoutes(router: Router): void {
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { course, globalUser, isInstructor } = scenarioCtx(res);
             const { questionId } = normalizeRouteParams(req.params);
-            const { partId, studentAnswer } = req.body ?? {};
-
-            const validParts: ScenarioPartId[] = ['a', 'b', 'c', 'd'];
-            if (!validParts.includes(partId)) {
-                return res.status(400).json({ success: false, partId, error: 'Invalid partId' });
-            }
-            if (!studentAnswer || !String(studentAnswer).trim()) {
-                return res.status(400).json({ success: false, partId, error: 'Answer required' });
+            const parsed = checkScenarioAnswerRequestSchema.safeParse(req.body ?? {});
+            if (!parsed.success) {
+                return res.status(400).json({
+                    success: false,
+                    error: parsed.error.issues[0]?.message || 'Invalid check-answer request',
+                });
             }
 
             const instance = await EngEAI_MongoDB.getInstance();
             await instance.ensureScenarioQuestionsCollection(course.id);
-            const question = isInstructor
-                ? await instance.getScenarioQuestionById(course.courseName, questionId)
-                : await instance.getPublishedScenarioQuestionForStudent(course.courseName, questionId);
-            if (!question) {
-                return res.status(404).json({ success: false, partId, error: 'Question not found' });
-            }
-            const fullQuestion = await instance.getScenarioQuestionById(course.courseName, questionId);
-            const subQuestion = fullQuestion?.subQuestions.find((s) => s.partId === partId);
-            if (!subQuestion) {
-                return res.status(404).json({ success: false, partId, error: `Part (${partId}) not found on this question` });
+
+            // Instructors may preview grading on drafts; students only see published questions via service
+            if (isInstructor) {
+                const fullQuestion = await instance.getScenarioQuestionById(course.courseName, questionId);
+                if (!fullQuestion) {
+                    return res.status(404).json({
+                        success: false,
+                        subQuestionId: parsed.data.subQuestionId,
+                        error: 'Question not found',
+                    });
+                }
             }
 
-            const feedback = await checkScenarioAnswer({
-                questionBody: fullQuestion!.questionBody,
-                subQuestion,
-                studentAnswer: String(studentAnswer)
+            const feedback = await submitScenarioStudentResponse({
+                courseId: course.id,
+                courseName: course.courseName,
+                questionId,
+                subQuestionId: parsed.data.subQuestionId,
+                studentAnswer: parsed.data.studentAnswer,
+                mode: parsed.data.mode,
+                studentUserId: globalUser.userId,
+                allowUnpublished: isInstructor,
             });
 
-            if (!isInstructor) {
-                await instance.recordScenarioPartCheck(course.courseName, globalUser.userId, questionId, partId, feedback.verdict);
+            if (!feedback.success) {
+                const status = feedback.error?.includes('not found') ? 404 : 422;
+                return res.status(status).json(feedback);
             }
-
             res.json(feedback);
         })
     );
 
     /**
-     * GET /:courseId/scenario-questions/:questionId/solution
-     * Gated reveal — 403 until all of {@link REQUIRED_SCENARIO_PART_IDS} have been checked (T-B17, E-12).
+     * POST /:courseId/scenario-questions/:questionId/submit-exam
+     */
+    router.post(
+        '/:courseId/scenario-questions/:questionId/submit-exam',
+        requireCourseMemberForScenarioAPI(),
+        asyncHandlerWithAuth(async (req: Request, res: Response) => {
+            const { course, globalUser, isInstructor } = scenarioCtx(res);
+            if (isInstructor) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Exam submit is for enrolled students only',
+                });
+            }
+
+            const { questionId } = normalizeRouteParams(req.params);
+            const parsed = submitScenarioExamRequestSchema.safeParse(req.body ?? {});
+            if (!parsed.success) {
+                return res.status(400).json({
+                    success: false,
+                    error: parsed.error.issues[0]?.message || 'Invalid submit-exam request',
+                });
+            }
+
+            const instance = await EngEAI_MongoDB.getInstance();
+            await instance.ensureScenarioQuestionsCollection(course.id);
+
+            const result = await submitScenarioExam({
+                courseId: course.id,
+                courseName: course.courseName,
+                questionId,
+                answers: parsed.data.answers,
+                studentUserId: globalUser.userId,
+            });
+
+            if (!result.success) {
+                const status = result.error?.includes('not found')
+                    ? 404
+                    : result.error?.includes('Missing') ||
+                        result.error?.includes('Duplicate') ||
+                        result.error?.includes('Unknown') ||
+                        result.error?.includes('Empty')
+                      ? 400
+                      : 422;
+                return res.status(status).json(result);
+            }
+            res.json(result);
+        })
+    );
+
+    /**
+     * GET /:courseId/scenario-questions/:questionId/responses
+     * Returns only the caller's embedded response history.
+     */
+    router.get(
+        '/:courseId/scenario-questions/:questionId/responses',
+        requireCourseMemberForScenarioAPI(),
+        asyncHandlerWithAuth(async (req: Request, res: Response) => {
+            const { course, globalUser } = scenarioCtx(res);
+            const { questionId } = normalizeRouteParams(req.params);
+            const instance = await EngEAI_MongoDB.getInstance();
+            await instance.ensureScenarioQuestionsCollection(course.id);
+
+            const question = await instance.getScenarioQuestionById(course.courseName, questionId);
+            if (!question || question.status !== 'published') {
+                return res.status(404).json({ success: false, error: 'Question not found' });
+            }
+
+            const data = await getScenarioService().getStudentResponseHistory(
+                course.courseName,
+                questionId,
+                globalUser.userId
+            );
+            res.json({ success: true, data });
+        })
+    );
+
+    /**
+     * GET /:courseId/scenario-questions/:questionId/solution?mode=practice|exam
+     * Gated reveal — every sub-question must have a response in the given mode.
      */
     router.get(
         '/:courseId/scenario-questions/:questionId/solution',
@@ -367,6 +531,9 @@ export function mountScenarioQuestionRoutes(router: Router): void {
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { course, globalUser, isInstructor } = scenarioCtx(res);
             const { questionId } = normalizeRouteParams(req.params);
+            const mode = parseMode(req.query.mode) ?? 'practice';
+            const subQuestionId =
+                typeof req.query.subQuestionId === 'string' ? req.query.subQuestionId.trim() : '';
             const instance = await EngEAI_MongoDB.getInstance();
             await instance.ensureScenarioQuestionsCollection(course.id);
 
@@ -375,15 +542,32 @@ export function mountScenarioQuestionRoutes(router: Router): void {
                 return res.status(404).json({ success: false, error: 'Question not found' });
             }
 
+            // Students must complete every part in the requested mode before full reveal;
+            // practice mode may request one sub-question after that part has a response.
             if (!isInstructor) {
-                const progress = await instance.getScenarioProgress(course.courseName, globalUser.userId, questionId);
-                if (!hasCheckedAllRequiredParts(progress)) {
+                const service = getScenarioService();
+                const canReveal =
+                    subQuestionId && mode === 'practice'
+                        ? hasCompletedSubQuestion(question, globalUser.userId, mode, subQuestionId)
+                        : service.canRevealSolution(question, globalUser.userId, mode);
+                if (!canReveal) {
                     return res.status(403).json({
                         success: false,
-                        error: `Check all required parts (${REQUIRED_SCENARIO_PART_IDS.join(', ')}) before viewing the solution`
+                        error:
+                            subQuestionId && mode === 'practice'
+                                ? 'Submit an answer for this part before viewing the solution'
+                                : `Submit all parts in ${mode} mode before viewing the solution`,
                     });
                 }
-                await instance.markScenarioSolutionViewed(course.courseName, globalUser.userId, questionId);
+            }
+
+            const revealSubs =
+                subQuestionId && mode === 'practice'
+                    ? question.subQuestions.filter((sub) => sub.subQuestionId === subQuestionId)
+                    : question.subQuestions;
+
+            if (subQuestionId && mode === 'practice' && revealSubs.length === 0) {
+                return res.status(404).json({ success: false, error: 'Sub-question not found' });
             }
 
             res.json({
@@ -391,8 +575,9 @@ export function mountScenarioQuestionRoutes(router: Router): void {
                 data: {
                     questionBody: question.questionBody,
                     solutionBody: question.solutionBody,
-                    subQuestions: question.subQuestions
-                }
+                    // Strip embedded student history from solution payload
+                    subQuestions: revealSubs.map(({ studentResponses, ...sub }) => sub),
+                },
             });
         })
     );

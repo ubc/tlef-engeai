@@ -3,23 +3,30 @@
 /**
  * scenario-questions-api.ts
  *
+ * Thin client for Practice Scenarios / Scenario Questions. Feature modules
+ * (`scenarios-student.ts`, `scenario-questions-instructor.ts`) call only this file.
+ *
  * @author: @gatahcha
  * @date: 2026-07-03
- * @description: Thin client for Practice Scenarios / Scenario Questions. Feature modules
- * (`scenarios-student.ts`, `scenario-questions.ts`) call only this file — never the mock or fetch
- * directly — so the P2 backend cutover to real `/api/courses/:courseId/scenario-questions*`
- * endpoints only changes function bodies here, not call sites.
+ * @version: 2.0.0
+ * @description: Client API for scenario questions CRUD, generate, check-answer, submit-exam.
  */
 
 import type {
     ScenarioQuestion,
     ScenarioQuestionForStudent,
     ScenarioQuestionStatus,
-    ScenarioPartId,
     ScenarioPartFeedbackResponse,
     ScenarioGenerateRequest,
     ScenarioGenerateResponse,
+    ScenarioDifficulty,
+    ScenarioMode,
+    ScenarioExamAnswerInput,
+    ScenarioExamSubmitResponse,
+    ScenarioLearningObjectiveOption,
+    ScenarioStudentResponse,
 } from '../types.js';
+import { defaultExpectedTimeMinutes } from '../types.js';
 
 function apiBase(courseId: string): string {
     return `/api/courses/${courseId}/scenario-questions`;
@@ -75,8 +82,7 @@ export async function fetchPublishedScenarioQuestions(
 }
 
 /**
- * Fetches one question by id. Returns `null` on 404 (draft hidden from students, or deleted) —
- * callers render a "not found" state instead of throwing.
+ * Fetches one question by id. Returns `null` on 404 (draft hidden from students, or deleted).
  */
 export async function fetchScenarioQuestion(
     courseId: string,
@@ -159,28 +165,74 @@ export async function generateScenarioQuestions(
     return data as ScenarioGenerateResponse;
 }
 
+/** Topic-scoped learning objective catalog for instructor selectors. */
+export async function fetchScenarioLearningObjectives(
+    courseId: string,
+    topicOrWeekId: string
+): Promise<ScenarioLearningObjectiveOption[]> {
+    const params = new URLSearchParams({ topicOrWeekId });
+    const response = await fetch(`${apiBase(courseId)}/learning-objectives?${params}`, {
+        method: 'GET',
+        credentials: 'same-origin',
+    });
+    const data = await parseJsonOrThrow(response);
+    return (data.data ?? []) as ScenarioLearningObjectiveOption[];
+}
+
 export async function checkScenarioAnswer(
     courseId: string,
     questionId: string,
-    partId: ScenarioPartId,
-    studentAnswer: string
+    subQuestionId: string,
+    studentAnswer: string,
+    mode: ScenarioMode = 'practice'
 ): Promise<ScenarioPartFeedbackResponse> {
     const response = await fetch(`${apiBase(courseId)}/${questionId}/check-answer`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ partId, studentAnswer }),
+        body: JSON.stringify({ subQuestionId, studentAnswer, mode }),
     });
     const data = await parseJsonOrThrow(response);
     return data as ScenarioPartFeedbackResponse;
 }
 
-/** Gated reveal — resolves `null` when the server has not unlocked the solution yet (still 200 with `unlocked: false`). */
-export async function fetchScenarioSolution(
+export async function submitScenarioExam(
+    courseId: string,
+    questionId: string,
+    answers: ScenarioExamAnswerInput[]
+): Promise<ScenarioExamSubmitResponse> {
+    const response = await fetch(`${apiBase(courseId)}/${questionId}/submit-exam`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers }),
+    });
+    const data = await parseJsonOrThrow(response);
+    return data as ScenarioExamSubmitResponse;
+}
+
+export async function fetchScenarioResponseHistory(
     courseId: string,
     questionId: string
+): Promise<Array<ScenarioStudentResponse & { subQuestionId: string }>> {
+    const response = await fetch(`${apiBase(courseId)}/${questionId}/responses`, {
+        method: 'GET',
+        credentials: 'same-origin',
+    });
+    const data = await parseJsonOrThrow(response);
+    return (data.data ?? []) as Array<ScenarioStudentResponse & { subQuestionId: string }>;
+}
+
+/** Gated reveal — `null` on 403 (solution not unlocked yet). Optional `subQuestionId` for practice per-part reveal. */
+export async function fetchScenarioSolution(
+    courseId: string,
+    questionId: string,
+    mode: ScenarioMode = 'practice',
+    subQuestionId?: string
 ): Promise<{ questionBody: string; solutionBody: string; subQuestions: ScenarioQuestion['subQuestions'] } | null> {
-    const response = await fetch(`${apiBase(courseId)}/${questionId}/solution`, {
+    const params = new URLSearchParams({ mode });
+    if (subQuestionId?.trim()) params.set('subQuestionId', subQuestionId.trim());
+    const response = await fetch(`${apiBase(courseId)}/${questionId}/solution?${params}`, {
         method: 'GET',
         credentials: 'same-origin',
     });
@@ -188,5 +240,41 @@ export async function fetchScenarioSolution(
         return null;
     }
     const data = await parseJsonOrThrow(response);
-    return data.unlocked === false ? null : (data.data as any);
+    return data.data as {
+        questionBody: string;
+        solutionBody: string;
+        subQuestions: ScenarioQuestion['subQuestions'];
+    };
 }
+
+/** Client-side publish pre-check (server re-validates on PATCH status). */
+export function validatePublish(question: Pick<ScenarioQuestion, 'questionBody' | 'subQuestions'>): string | null {
+    if (!question.questionBody?.trim()) return 'Base question narrative is required.';
+    if (!question.subQuestions?.length) return 'At least one subquestion is required.';
+    for (const sq of question.subQuestions) {
+        const label = sq.subQuestionId || sq.partId || '?';
+        if (!sq.prompt?.trim() || !sq.modelAnswer?.trim()) {
+            return `Part (${label}) needs both prompt and answer key.`;
+        }
+    }
+    return null;
+}
+
+/** Format a duration as MM:SS from total seconds. */
+export function formatExpectedTime(totalSeconds: number): string {
+    const sec = Math.max(0, Math.round(totalSeconds));
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+export function expectedSecondsFromMinutes(minutes: number): number {
+    return Math.max(0, Math.round(minutes * 60));
+}
+
+export function expectedMinutesFromSeconds(totalSeconds: number): number {
+    return Math.max(0, totalSeconds) / 60;
+}
+
+export { defaultExpectedTimeMinutes };
+export type { ScenarioDifficulty };

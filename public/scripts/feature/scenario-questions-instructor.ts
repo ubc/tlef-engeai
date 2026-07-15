@@ -4,32 +4,41 @@
  * scenario-questions-instructor.ts
  *
  * Instructor Scenario Generation: topic grid, question list, generation form, and
- * editor/review views. Mock-only phase — uses scenario-questions-mock.ts (no API calls).
+ * editor/review views. Wired to `/api/courses/:courseId/scenario-questions` via
+ * scenario-questions-api.ts.
  */
 
 import {
     activeCourse,
     ScenarioSubQuestionType,
     ScenarioDifficulty,
-    ScenarioQuestionExtended
+    ScenarioQuestion,
+    ScenarioQuestionExtended,
+    ScenarioLearningObjectiveSnapshot,
+    ScenarioLearningObjectiveOption,
+    ScenarioSubQuestion
 } from '../types.js';
 import {
-    initMockStore,
-    listQuestions,
-    getQuestion,
-    updateQuestion,
-    patchStatus,
-    deleteQuestion,
-    generateQuestion,
+    fetchScenarioQuestions,
+    fetchScenarioQuestion,
+    updateScenarioQuestion,
+    patchScenarioQuestionStatus,
+    deleteScenarioQuestion,
+    generateScenarioQuestions,
+    fetchScenarioLearningObjectives,
     validatePublish,
+    expectedMinutesFromSeconds,
+    expectedSecondsFromMinutes,
     formatExpectedTime
-} from '../api/scenario-questions-mock.js';
+} from '../api/scenario-questions-api.js';
 import { renderFeatherIcons } from '../api/api.js';
 import { showSuccessToast, showErrorToast } from '../ui/toast-notification.js';
 import { showConfirmModal, showContentLoadingModal, closeModal } from '../ui/modal-overlay.js';
 import { RenderChat } from './render-chat.js';
 import { renderLatexInHtmlContent } from './chat.js';
 import {
+    flashcardToneIndex,
+    parseAnswerKeyFlashcardsDetailed,
     parseAnswerKeyToFlashcards,
     SUB_QUESTION_TYPE_LABELS
 } from './scenario-answer-flashcard.js';
@@ -37,8 +46,6 @@ import {
 const ALL_TYPES: ScenarioSubQuestionType[] = ['calculation', 'troubleshoot', 'action', 'corrective'];
 const DEFAULT_SELECTED_TYPES: ScenarioSubQuestionType[] = ['calculation', 'troubleshoot', 'action'];
 const AUTO_SAVE_MS = 5000;
-/** Brief pause after generate before opening the editor (loading modal). */
-const GENERATE_TO_EDITOR_DELAY_MS = 3000;
 
 const lastEditedDateFmt = new Intl.DateTimeFormat(undefined, {
     year: 'numeric',
@@ -72,55 +79,43 @@ let selectedDifficulty: ScenarioDifficulty = 'medium';
 /** Per-part prompt view mode in editor: raw markdown editor vs rendered preview. */
 const partPromptModes = new Map<string, 'edit' | 'preview'>();
 
-/** Per-part answer view mode in editor: text (markdown preview) or flashcard. */
-const partAnswerModes = new Map<string, 'text' | 'flashcard'>();
 /** Per-part flashcard step index. */
 const partFlashcardIndex = new Map<string, number>();
+
+/** Last nav direction per part — drives enter animation class. */
+const partFlashcardNavDir = new Map<string, 'prev' | 'next'>();
 
 /** Base question pane: raw markdown editor vs rendered preview (mutually exclusive). */
 let questionBodyViewMode: 'edit' | 'preview' = 'edit';
 
 /** Draft LO selection while the manage modal is open. */
-let loModalDraftSelection: string[] = [];
+let loModalDraftSelection: ScenarioLearningObjectiveSnapshot[] = [];
 
-/** Draft minutes while the expected-time modal is open. */
-let timeModalDraftMinutes = 25;
+/** Draft duration (seconds) while the expected-time modal is open. */
+let timeModalDraftSeconds = 25 * 60;
 
-/** Copyable answer-key template shown in the flashcard help modal. */
-const FLASHCARD_ANSWER_TEMPLATE = `# Card 1: Compute heat duty
-Calculate Q = m·Cp·ΔT for the cold stream.
-
-## Topic
-Energy balance
-
-### Highlight
-Keep units consistent (kW vs W).
-
-# Card 2: Find LMTD
-Use the four terminal temperatures for counter-current flow.
-
-## Topic
-Heat exchanger design
-
-### Highlight
-Counter-current LMTD uses all four terminal temperatures.
-
-# Card 3: Solve for area
-A = Q / (U·LMTD). Report the result in m².`;
-
-/** ponytail: mock catalog until course-document LO API exists. */
-const MOCK_DOCUMENT_LEARNING_OBJECTIVES: { code: string; description: string }[] = [
-    { code: 'LO-10-1', description: 'Apply steady-state mass balances to process units.' },
-    { code: 'LO-10-2', description: 'Interpret P&ID symbols for valve and pump failures.' },
-    { code: 'LO-10-3', description: 'Troubleshoot deviations using first-principles reasoning.' },
-    { code: 'LO-11-1', description: 'Select appropriate corrective actions under operational constraints.' },
-    { code: 'LO-11-2', description: 'Communicate engineering recommendations with units and assumptions.' },
-    { code: 'LO-12-1', description: 'Evaluate safety and environmental impacts of process changes.' },
-];
+const MAX_EXPECTED_TIME_SECONDS = 90 * 60;
+const TIME_MODAL_STEP_SECONDS = 5 * 60;
 
 let uiAbort: AbortController | null = null;
 /** Aborts question-row listeners from the previous list render. */
 let questionListAbort: AbortController | null = null;
+
+/** Copyable answer-key template shown in the flashcard help modal. */
+const FLASHCARD_ANSWER_TEMPLATE = `# Compute heat duty
+Calculate $Q = \\dot{m} c_p \\Delta T$ for the cold stream. Keep units consistent (kW vs W).
+
+# Find LMTD
+Use the four terminal temperatures for counter-current flow.
+
+$$\\text{LMTD} = \\frac{\\Delta T_1 - \\Delta T_2}{\\ln(\\Delta T_1 / \\Delta T_2)}$$
+
+# Solve for area
+$A = Q / (U \\cdot \\text{LMTD})$. Report the result in m².`;
+
+/** Cached LO catalog for the current topic/week (editor + generate). */
+let loCatalog: ScenarioLearningObjectiveOption[] = [];
+let generateSelectedLoIds: string[] = [];
 
 function escapeHtml(text: string): string {
     const div = document.createElement('div');
@@ -132,6 +127,10 @@ function escapeHtml(text: string): string {
 function renderMarkdownInto(element: HTMLElement, markdown: string, idPrefix: string): void {
     element.innerHTML = renderChat.render(markdown, idPrefix);
     renderLatexInHtmlContent(element);
+    element.querySelectorAll('.artefact-button').forEach(btn => {
+        btn.classList.add('artefact-button--scenario');
+    });
+    renderFeatherIcons();
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -150,13 +149,54 @@ function normalizedPublishableStatus(status: ScenarioQuestionExtended['status'])
     return status === 'published' ? 'published' : 'draft';
 }
 
-function learningObjectiveDescription(stored: string): string {
-    const match = MOCK_DOCUMENT_LEARNING_OBJECTIVES.find(lo => lo.code === stored || lo.description === stored);
-    return match?.description ?? stored;
+/** Stable DOM / API key for a sub-question (subQuestionId preferred). */
+function subQuestionKey(sq: Pick<ScenarioSubQuestion, 'subQuestionId' | 'partId'>, index = 0): string {
+    return sq.subQuestionId?.trim() || sq.partId || `part-${index}`;
 }
 
-function normalizeLearningObjectives(objectives: string[]): string[] {
-    return objectives.map(learningObjectiveDescription);
+function displayPartLabel(sq: Pick<ScenarioSubQuestion, 'subQuestionId' | 'partId'>, index: number): string {
+    if (sq.partId) return sq.partId.toUpperCase();
+    return String(index + 1);
+}
+
+function loSnapshotText(lo: ScenarioLearningObjectiveSnapshot | string): string {
+    if (typeof lo === 'string') return lo;
+    return lo.text;
+}
+
+function normalizeLearningObjectives(
+    objectives: Array<ScenarioLearningObjectiveSnapshot | string> | undefined
+): ScenarioLearningObjectiveSnapshot[] {
+    if (!Array.isArray(objectives)) return [];
+    return objectives
+        .map((item): ScenarioLearningObjectiveSnapshot | null => {
+            if (typeof item === 'string') {
+                const text = item.trim();
+                if (!text) return null;
+                const fromCatalog = loCatalog.find((o) => o.text === text || o.objectiveId === text);
+                return {
+                    objectiveId: fromCatalog?.objectiveId || `legacy-${text.slice(0, 24)}`,
+                    text: fromCatalog?.text || text,
+                    sourceTopicOrWeekId: fromCatalog?.topicOrWeekId || '',
+                    sourceItemId: fromCatalog?.itemId || '',
+                };
+            }
+            if (item?.objectiveId && item?.text) return item;
+            return null;
+        })
+        .filter((x): x is ScenarioLearningObjectiveSnapshot => x !== null);
+}
+
+async function loadLoCatalog(topicOrWeekId: string): Promise<void> {
+    if (!currentCourse || !topicOrWeekId) {
+        loCatalog = [];
+        return;
+    }
+    try {
+        loCatalog = await fetchScenarioLearningObjectives(currentCourse.id, topicOrWeekId);
+    } catch {
+        loCatalog = [];
+    }
 }
 
 const SQ_MODAL_TRANSITION_MS = 300;
@@ -180,9 +220,6 @@ export async function initializeScenarioQuestionsInstructor(course: activeCourse
     uiAbort = new AbortController();
     questionListAbort?.abort();
     questionListAbort = null;
-
-    const topicIds = (course.topicOrWeekInstances || []).map(t => t.id);
-    initMockStore(course.id, topicIds, course.courseName);
 
     hideAllViews();
     showGridView();
@@ -283,7 +320,7 @@ function attachStaticListeners(): void {
             await renderBrowseHome();
         } else {
             showTopicDetailView();
-            await refreshQuestions();
+            await refreshQuestions(activeTopicId);
             renderTopicDetail();
         }
     }, { signal });
@@ -318,9 +355,8 @@ function attachStaticListeners(): void {
     document.getElementById('sg-instructor-time-modal-overlay')?.addEventListener('click', (e) => {
         if (e.target === e.currentTarget) closeExpectedTimeModal();
     }, { signal });
-    document.getElementById('sg-instructor-time-modal-input')?.addEventListener('input', () => {
-        document.getElementById('sg-instructor-time-modal-input')?.classList.remove('sg-instructor-time-modal-input--invalid');
-    }, { signal });
+    document.getElementById('sg-instructor-time-modal-minutes')?.addEventListener('input', clearTimeModalInputInvalid, { signal });
+    document.getElementById('sg-instructor-time-modal-seconds')?.addEventListener('input', clearTimeModalInputInvalid, { signal });
     document.getElementById('sg-instructor-editor-delete-btn')?.addEventListener('click', () => {
         if (editorQuestionId) void confirmAndDeleteQuestion(editorQuestionId, true);
     }, { signal });
@@ -339,6 +375,12 @@ function attachStaticListeners(): void {
         if (e.target === e.currentTarget) closeFlashcardHelpModal();
     }, { signal });
 
+    // Answer-key info icons are re-rendered with parts — delegate from the parts host
+    document.getElementById('sg-instructor-editor-parts')?.addEventListener('click', (e) => {
+        const btn = (e.target as HTMLElement).closest('.sg-instructor-answer-key-help-btn');
+        if (btn) openFlashcardHelpModal();
+    }, { signal });
+
     document.querySelectorAll<HTMLButtonElement>('.sg-instructor-base-question-toggle-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const mode = btn.dataset.mode as 'edit' | 'preview' | undefined;
@@ -354,9 +396,13 @@ function attachStaticListeners(): void {
     }, { signal });
 }
 
-async function refreshQuestions(): Promise<void> {
+async function refreshQuestions(topicOrWeekId?: string | null): Promise<void> {
     if (!currentCourse) return;
-    cachedQuestions = await listQuestions(currentCourse.id);
+    const scoped =
+        topicOrWeekId && topicOrWeekId !== '__uncategorized__'
+            ? { topicOrWeekId }
+            : undefined;
+    cachedQuestions = await fetchScenarioQuestions(currentCourse.id, scoped);
 }
 
 function formatTopicSubtitle(topicOrWeekId: string, title: string): string {
@@ -423,7 +469,8 @@ function isTopicDetailVisible(): boolean {
 }
 
 async function refreshVisibleQuestionList(): Promise<void> {
-    await refreshQuestions();
+    const scope = isTopicDetailVisible() ? activeTopicId : null;
+    await refreshQuestions(scope);
     if (isTopicDetailVisible() && activeTopicId) renderTopicDetail();
     else await renderBrowseHome();
 }
@@ -510,10 +557,13 @@ function renderTopicProjectCard(topicOrWeekId: string, title: string, count: num
 function attachTopicCardListeners(): void {
     document.querySelectorAll<HTMLButtonElement>('.sg-instructor-project-card').forEach(card => {
         card.addEventListener('click', () => {
-            activeTopicId = card.dataset.topicId || null;
-            editorReturnTo = 'topic-detail';
-            showTopicDetailView();
-            renderTopicDetail();
+            void (async () => {
+                activeTopicId = card.dataset.topicId || null;
+                editorReturnTo = 'topic-detail';
+                showTopicDetailView();
+                await refreshQuestions(activeTopicId);
+                renderTopicDetail();
+            })();
         }, { signal: uiAbort?.signal });
     });
 }
@@ -646,8 +696,8 @@ async function confirmAndDeleteQuestion(questionId: string, fromEditor: boolean)
 
     let title = 'this question';
     try {
-        const question = await getQuestion(currentCourse.id, questionId);
-        title = question.title?.trim() || title;
+        const question = await fetchScenarioQuestion(currentCourse.id, questionId);
+        title = question?.title?.trim() || title;
     } catch {
         // Proceed with generic label if lookup fails.
     }
@@ -662,7 +712,7 @@ async function confirmAndDeleteQuestion(questionId: string, fromEditor: boolean)
     if (result.action !== 'delete-question') return;
 
     try {
-        await deleteQuestion(currentCourse.id, questionId);
+        await deleteScenarioQuestion(currentCourse.id, questionId);
         showSuccessToast('Question deleted.');
 
         if (fromEditor) {
@@ -689,14 +739,18 @@ async function setQuestionStatus(questionId: string, status: ScenarioPublishable
 
     try {
         if (status === 'published') {
-            const question = await getQuestion(currentCourse.id, questionId);
-            const err = validatePublish(question);
+            const question = await fetchScenarioQuestion(currentCourse.id, questionId);
+            if (!question || !('solutionBody' in question)) {
+                showErrorToast('Question not found.');
+                return;
+            }
+            const err = validatePublish(question as ScenarioQuestion);
             if (err) {
                 showErrorToast(err);
                 return;
             }
         }
-        await patchStatus(currentCourse.id, questionId, status);
+        await patchScenarioQuestionStatus(currentCourse.id, questionId, status);
         closeAllStatusMenus();
         await refreshVisibleQuestionList();
         showSuccessToast(status === 'published' ? 'Question published.' : 'Question moved to draft.');
@@ -774,7 +828,11 @@ async function setEditorQuestionStatus(status: ScenarioPublishableStatus): Promi
     if (isDirty) await persistEditor(false);
 
     if (status === 'published') {
-        const question = await getQuestion(currentCourse.id, editorQuestionId);
+        const question = await fetchScenarioQuestion(currentCourse.id, editorQuestionId);
+        if (!question || !('solutionBody' in question)) {
+            showErrorToast('Question not found.');
+            return;
+        }
         const err = validatePublish({ ...question, ...collectEditorPatch() } as ScenarioQuestionExtended);
         if (err) {
             if (errorEl) {
@@ -783,10 +841,24 @@ async function setEditorQuestionStatus(status: ScenarioPublishableStatus): Promi
             }
             return;
         }
+        const los = normalizeLearningObjectives(
+            (collectEditorPatch().learningObjectives as ScenarioLearningObjectiveSnapshot[] | undefined) ??
+                (question as ScenarioQuestion).learningObjectives
+        );
+        if (!los.length) {
+            const confirmed = await showConfirmModal(
+                'Publish without learning objectives?',
+                'This question has no learning objectives mapped. Publish anyway?',
+                'Publish',
+                'Cancel'
+            );
+            if (confirmed.action !== 'publish') return;
+        }
         try {
-            await updateQuestion(currentCourse.id, editorQuestionId, collectEditorPatch());
-            await patchStatus(currentCourse.id, editorQuestionId, 'published');
-            editorQuestion = await getQuestion(currentCourse.id, editorQuestionId);
+            await updateScenarioQuestion(currentCourse.id, editorQuestionId, collectEditorPatch());
+            await patchScenarioQuestionStatus(currentCourse.id, editorQuestionId, 'published');
+            editorQuestion = (await fetchScenarioQuestion(currentCourse.id, editorQuestionId)) as ScenarioQuestionExtended | null;
+            if (!editorQuestion || !('solutionBody' in editorQuestion)) throw new Error('Question not found.');
             updateEditorStatusButton(editorQuestion.status);
             if (errorEl) errorEl.style.display = 'none';
             showSuccessToast('Question published.');
@@ -795,8 +867,9 @@ async function setEditorQuestionStatus(status: ScenarioPublishableStatus): Promi
         }
     } else {
         try {
-            await patchStatus(currentCourse.id, editorQuestionId, 'draft');
-            editorQuestion = await getQuestion(currentCourse.id, editorQuestionId);
+            await patchScenarioQuestionStatus(currentCourse.id, editorQuestionId, 'draft');
+            editorQuestion = (await fetchScenarioQuestion(currentCourse.id, editorQuestionId)) as ScenarioQuestionExtended | null;
+            if (!editorQuestion || !('solutionBody' in editorQuestion)) throw new Error('Question not found.');
             updateEditorStatusButton(editorQuestion.status);
             if (errorEl) errorEl.style.display = 'none';
             showSuccessToast('Question moved to draft.');
@@ -806,12 +879,12 @@ async function setEditorQuestionStatus(status: ScenarioPublishableStatus): Promi
     }
 
     closeEditorStatusMenu();
-    await refreshQuestions();
+    await refreshQuestions(editorQuestion?.topicOrWeekId ?? activeTopicId);
 }
 
 // --- Generate view ---
 
-function openGenerateView(): void {
+async function openGenerateView(): Promise<void> {
     if (!activeTopicId || activeTopicId === '__uncategorized__') {
         showErrorToast('Select a topic with a valid chapter first.');
         return;
@@ -820,6 +893,7 @@ function openGenerateView(): void {
     selectedTypes = [...DEFAULT_SELECTED_TYPES];
     selectedDifficulty = 'medium';
     generateDraftTitle = 'Untitled';
+    generateSelectedLoIds = [];
 
     const promptEl = document.getElementById('sg-instructor-generate-prompt') as HTMLTextAreaElement | null;
     if (promptEl) promptEl.value = '';
@@ -833,11 +907,44 @@ function openGenerateView(): void {
     const titleDisplay = document.getElementById('sg-instructor-generate-title-display');
     if (titleDisplay) titleDisplay.textContent = generateDraftTitle;
 
+    await loadLoCatalog(activeTopicId);
+    renderGenerateLoCatalog();
     renderTypePills();
     renderTypePopover();
     setDifficulty('medium');
     showGenerateView();
     renderFeatherIcons();
+}
+
+function renderGenerateLoCatalog(): void {
+    const catalog = document.getElementById('sg-instructor-generate-lo-catalog');
+    if (!catalog) return;
+    if (!loCatalog.length) {
+        catalog.innerHTML = `<p class="sg-instructor-lo-empty">No learning objectives for this topic/week.</p>`;
+        return;
+    }
+    catalog.innerHTML = loCatalog
+        .map(
+            (lo) => `
+        <label class="sg-instructor-lo-catalog-item">
+            <input type="checkbox" class="sg-instructor-generate-lo-checkbox" value="${escapeHtml(lo.objectiveId)}" ${generateSelectedLoIds.includes(lo.objectiveId) ? 'checked' : ''} />
+            <span class="sg-instructor-lo-catalog-text">${escapeHtml(lo.text)}</span>
+        </label>`
+        )
+        .join('');
+    catalog.querySelectorAll<HTMLInputElement>('.sg-instructor-generate-lo-checkbox').forEach((box) => {
+        box.addEventListener(
+            'change',
+            () => {
+                if (box.checked) {
+                    if (!generateSelectedLoIds.includes(box.value)) generateSelectedLoIds.push(box.value);
+                } else {
+                    generateSelectedLoIds = generateSelectedLoIds.filter((id) => id !== box.value);
+                }
+            },
+            { signal: uiAbort?.signal }
+        );
+    });
 }
 
 function renderTypePills(): void {
@@ -1066,27 +1173,30 @@ async function handleGenerateSubmit(): Promise<void> {
     if (submitBtn) submitBtn.disabled = true;
     if (errorEl) errorEl.style.display = 'none';
 
+    // Block the UI for the full RAG + LLM round-trip (same pattern as document upload).
+    void showContentLoadingModal({
+        title: 'Generating question',
+        line1: 'Building your scenario draft…',
+        line2: 'Retrieving course context and running the model. This may take a moment.'
+    });
+
     try {
-        const created = await generateQuestion(currentCourse.id, currentCourse.courseName, {
+        const result = await generateScenarioQuestions(currentCourse.id, {
+            mode: 'single',
             topicOrWeekId: activeTopicId,
             sourcePrompt,
-            selectedTypes: [...selectedTypes],
+            subQuestionTypes: [...selectedTypes],
             difficulty: selectedDifficulty,
-            title: generateDraftTitle.trim() || 'Untitled'
+            title: generateDraftTitle.trim() || 'Untitled',
+            learningObjectiveIds: generateSelectedLoIds.length ? [...generateSelectedLoIds] : undefined,
         });
-        await refreshQuestions();
+        if (!result.success || !result.data?.length) {
+            throw new Error(result.error || 'Generation failed.');
+        }
+        const created = result.data[0];
+        await refreshQuestions(activeTopicId);
 
-        // Hold on a loading overlay so the jump into the editor isn't instant
-        void showContentLoadingModal({
-            title: 'Generating question',
-            line1: 'Building your scenario draft…',
-            line2: 'Opening the editor in a moment.'
-        });
-        await new Promise<void>(resolve => {
-            window.setTimeout(resolve, GENERATE_TO_EDITOR_DELAY_MS);
-        });
-        closeModal('ready');
-
+        closeModal('success');
         showSuccessToast('Generated draft — review and edit before publishing.');
         await openEditorView(created.id);
     } catch (error) {
@@ -1105,11 +1215,15 @@ async function handleGenerateSubmit(): Promise<void> {
 async function openEditorView(questionId: string): Promise<void> {
     if (!currentCourse) return;
 
-    let question: ScenarioQuestionExtended;
+    let question: ScenarioQuestionExtended | null;
     try {
-        question = await getQuestion(currentCourse.id, questionId);
+        question = await fetchScenarioQuestion(currentCourse.id, questionId) as ScenarioQuestionExtended | null;
     } catch (error) {
         showErrorToast(errorMessage(error, 'Could not load question.'));
+        return;
+    }
+    if (!question) {
+        showErrorToast('Question not found.');
         return;
     }
 
@@ -1131,7 +1245,8 @@ async function openEditorView(questionId: string): Promise<void> {
     const topicLabel = document.getElementById('sg-instructor-editor-topic-label');
     if (topicLabel) topicLabel.textContent = topicLabelForEditor(question.topicOrWeekId);
 
-    updateExpectedTimeDisplay(question.expectedTimeMinutes);
+    await loadLoCatalog(question.topicOrWeekId);
+    updateExpectedTimeDisplay(expectedSecondsFromMinutes(question.expectedTimeMinutes ?? 25));
     renderLearningObjectives(normalizeLearningObjectives(question.learningObjectives));
     renderEditorParts(question);
     setQuestionBodyViewMode('edit');
@@ -1149,52 +1264,51 @@ function renderEditorParts(question: ScenarioQuestionExtended): void {
     const container = document.getElementById('sg-instructor-editor-parts');
     if (!container) return;
 
-    container.innerHTML = question.subQuestions.map(sq => {
-        const partKey = sq.partId;
-        if (!partAnswerModes.has(partKey)) partAnswerModes.set(partKey, 'text');
+    container.innerHTML = question.subQuestions.map((sq, index) => {
+        const partKey = subQuestionKey(sq, index);
+        const partLabel = displayPartLabel(sq, index);
         if (!partPromptModes.has(partKey)) partPromptModes.set(partKey, 'edit');
-        const mode = partAnswerModes.get(partKey) ?? 'text';
         const promptMode = partPromptModes.get(partKey) ?? 'edit';
 
         const typeLabel = SUB_QUESTION_TYPE_LABELS[sq.subQuestionType] ?? sq.subQuestionType;
 
         return `
-            <div class="sg-instructor-part-card" data-part-id="${sq.partId}">
+            <div class="sg-instructor-part-card" data-part-id="${escapeHtml(partKey)}">
                 <div class="sg-instructor-part-header">
                     <div class="sg-part-title-group">
-                        <h3 class="sg-part-title">Part ${sq.partId.toUpperCase()}</h3>
+                        <h3 class="sg-part-title">Part ${escapeHtml(partLabel)}</h3>
                         <span class="sg-part-type-badge sg-part-type-${sq.subQuestionType}">${escapeHtml(typeLabel)}</span>
                     </div>
-                    <div class="sg-instructor-view-toggle sg-instructor-part-prompt-toggle" role="group" aria-label="Part ${sq.partId.toUpperCase()} prompt view mode">
-                        <button type="button" class="sg-instructor-view-toggle-btn sg-instructor-part-prompt-toggle-btn ${promptMode === 'edit' ? 'sg-instructor-view-toggle-btn--active' : ''}" data-mode="edit" data-part-id="${sq.partId}">Edit</button>
-                        <button type="button" class="sg-instructor-view-toggle-btn sg-instructor-part-prompt-toggle-btn ${promptMode === 'preview' ? 'sg-instructor-view-toggle-btn--active' : ''}" data-mode="preview" data-part-id="${sq.partId}">Preview</button>
+                    <div class="sg-instructor-view-toggle sg-instructor-part-prompt-toggle" role="group" aria-label="Part ${escapeHtml(partLabel)} prompt view mode">
+                        <button type="button" class="sg-instructor-view-toggle-btn sg-instructor-part-prompt-toggle-btn ${promptMode === 'edit' ? 'sg-instructor-view-toggle-btn--active' : ''}" data-mode="edit" data-part-id="${escapeHtml(partKey)}">Edit</button>
+                        <button type="button" class="sg-instructor-view-toggle-btn sg-instructor-part-prompt-toggle-btn ${promptMode === 'preview' ? 'sg-instructor-view-toggle-btn--active' : ''}" data-mode="preview" data-part-id="${escapeHtml(partKey)}">Preview</button>
                     </div>
                 </div>
                 <div class="sg-instructor-part-prompt-body">
-                    <label class="sg-instructor-sr-only" for="sg-instructor-part-prompt-${sq.partId}">Part ${sq.partId.toUpperCase()} prompt</label>
-                    <textarea id="sg-instructor-part-prompt-${sq.partId}" class="sg-instructor-editor-textarea sg-instructor-part-prompt" data-part-id="${sq.partId}" rows="3" ${promptMode === 'preview' ? 'hidden' : ''}>${escapeHtml(sq.prompt)}</textarea>
-                    <div class="sg-instructor-part-prompt-preview sg-instructor-markdown-preview message-content" data-part-id="${sq.partId}" ${promptMode === 'edit' ? 'hidden' : ''}></div>
+                    <label class="sg-instructor-sr-only" for="sg-instructor-part-prompt-${escapeHtml(partKey)}">Part ${escapeHtml(partLabel)} prompt</label>
+                    <textarea id="sg-instructor-part-prompt-${escapeHtml(partKey)}" class="sg-instructor-editor-textarea sg-instructor-part-prompt" data-part-id="${escapeHtml(partKey)}" rows="3" ${promptMode === 'preview' ? 'hidden' : ''}>${escapeHtml(sq.prompt)}</textarea>
+                    <div class="sg-instructor-part-prompt-preview sg-instructor-markdown-preview message-content" data-part-id="${escapeHtml(partKey)}" ${promptMode === 'edit' ? 'hidden' : ''}></div>
                 </div>
                 <div class="sg-instructor-answer-key-header">
                     <span class="sg-instructor-editor-section-label">Answer key</span>
-                    <div class="sg-instructor-answer-toggle" role="group" aria-label="Answer key view mode">
-                        <button type="button" class="sg-instructor-answer-toggle-btn ${mode === 'text' ? 'sg-instructor-answer-toggle-btn--active' : ''}" data-mode="text" data-part-id="${sq.partId}">Text</button>
-                        <button type="button" class="sg-instructor-answer-toggle-btn ${mode === 'flashcard' ? 'sg-instructor-answer-toggle-btn--active' : ''}" data-mode="flashcard" data-part-id="${sq.partId}">flashcard</button>
-                    </div>
+                    <button type="button" class="sg-instructor-answer-key-help-btn" aria-label="How answer cards work" title="How answer cards work">
+                        <i data-feather="info"></i>
+                    </button>
                 </div>
                 <div class="sg-instructor-part-answer-body">
-                    <textarea class="sg-instructor-editor-textarea sg-instructor-part-answer sg-instructor-part-answer-edit" data-part-id="${sq.partId}" rows="6">${escapeHtml(sq.modelAnswer)}</textarea>
-                    <div class="sg-instructor-part-answer-preview sg-instructor-markdown-preview message-content" data-part-id="${sq.partId}"></div>
-                    <div class="sg-instructor-flashcard-panel" data-part-id="${sq.partId}" style="display: none;"></div>
+                    <textarea class="sg-instructor-editor-textarea sg-instructor-part-answer sg-instructor-part-answer-edit" data-part-id="${escapeHtml(partKey)}" rows="6">${escapeHtml(sq.modelAnswer)}</textarea>
+                    <div class="sg-instructor-flashcard-panel" data-part-id="${escapeHtml(partKey)}"></div>
                 </div>
             </div>
         `;
     }).join('');
 
-    question.subQuestions.forEach(sq => {
-        updatePartPromptDisplay(sq.partId);
-        updatePartAnswerDisplay(sq.partId);
+    question.subQuestions.forEach((sq, index) => {
+        const partKey = subQuestionKey(sq, index);
+        updatePartPromptDisplay(partKey);
+        updatePartAnswerDisplay(partKey);
     });
+    renderFeatherIcons();
 }
 
 function attachEditorInputListeners(): void {
@@ -1226,18 +1340,6 @@ function attachEditorInputListeners(): void {
             if (partId && mode) {
                 partPromptModes.set(partId, mode);
                 updatePartPromptDisplay(partId);
-            }
-        }, { signal });
-    });
-
-    document.querySelectorAll<HTMLButtonElement>('.sg-instructor-answer-toggle-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const partId = btn.dataset.partId;
-            const mode = btn.dataset.mode as 'text' | 'flashcard';
-            if (partId && mode) {
-                partAnswerModes.set(partId, mode);
-                partFlashcardIndex.set(partId, 0);
-                updatePartAnswerDisplay(partId);
             }
         }, { signal });
     });
@@ -1274,38 +1376,24 @@ function updatePartPromptDisplay(partId: string): void {
 }
 
 function updatePartAnswerDisplay(partId: string): void {
-    const mode = partAnswerModes.get(partId) ?? 'text';
     const answerEl = document.querySelector<HTMLTextAreaElement>(`.sg-instructor-part-answer[data-part-id="${partId}"]`);
-    const previewEl = document.querySelector<HTMLElement>(`.sg-instructor-part-answer-preview[data-part-id="${partId}"]`);
     const flashcardEl = document.querySelector<HTMLElement>(`.sg-instructor-flashcard-panel[data-part-id="${partId}"]`);
-    const card = document.querySelector(`.sg-instructor-part-card[data-part-id="${partId}"]`);
-
-    if (!answerEl || !previewEl || !flashcardEl || !card) return;
-
-    const markdown = answerEl.value;
-
-    card.querySelectorAll<HTMLButtonElement>('.sg-instructor-answer-toggle-btn').forEach(btn => {
-        btn.classList.toggle('sg-instructor-answer-toggle-btn--active', btn.dataset.mode === mode);
-    });
-
-    if (mode === 'text') {
-        answerEl.style.display = '';
-        previewEl.style.display = '';
-        flashcardEl.style.display = 'none';
-        answerEl.classList.remove('sg-instructor-part-answer--hidden');
-        renderMarkdownInto(previewEl, markdown, `sg-instructor-part-${partId}`);
-    } else {
-        answerEl.style.display = 'none';
-        previewEl.style.display = 'none';
-        flashcardEl.style.display = '';
-        renderFlashcardPanel(partId, markdown, flashcardEl);
-    }
+    if (!answerEl || !flashcardEl) return;
+    renderFlashcardPanel(partId, answerEl.value, flashcardEl);
 }
 
 function renderFlashcardPanel(partId: string, markdown: string, container: HTMLElement): void {
-    const steps = parseAnswerKeyToFlashcards(markdown);
+    const { steps, error } = parseAnswerKeyFlashcardsDetailed(markdown);
     if (!steps.length) {
-        container.innerHTML = `<p class="sg-instructor-flashcard-empty">No steps detected. Use <code># Card</code> headings, numbered lists, or <code>##</code> step headings in the answer key.</p>`;
+        const tip = 'Start each step with a <code># Title</code> line; body text (and LaTeX) goes underneath.';
+        if (error) {
+            const excerpt = error.excerpt
+                ? ` — line ${error.line}: “${escapeHtml(error.excerpt)}”`
+                : '';
+            container.innerHTML = `<p class="sg-instructor-flashcard-empty sg-instructor-flashcard-error">Cannot render cards${excerpt} — ${escapeHtml(error.reason)}. ${tip}</p>`;
+        } else {
+            container.innerHTML = `<p class="sg-instructor-flashcard-empty">No cards yet. ${tip}</p>`;
+        }
         return;
     }
 
@@ -1314,48 +1402,81 @@ function renderFlashcardPanel(partId: string, markdown: string, container: HTMLE
     partFlashcardIndex.set(partId, idx);
 
     const step = steps[idx];
+    const tone = flashcardToneIndex(idx);
+    const navDir = partFlashcardNavDir.get(partId);
+    partFlashcardNavDir.delete(partId);
+    const enterClass = navDir === 'prev'
+        ? ' sg-instructor-flashcard--enter-prev'
+        : navDir === 'next'
+            ? ' sg-instructor-flashcard--enter-next'
+            : '';
+
     const bodyHost = document.createElement('div');
     bodyHost.className = 'sg-instructor-flashcard-body sg-instructor-markdown-preview message-content';
     renderMarkdownInto(bodyHost, step.bodyMarkdown, `sg-instructor-fc-${partId}-${idx}`);
-    container.innerHTML = `
-        <div class="sg-instructor-flashcard">
-            <div class="sg-instructor-flashcard-header">
-                <span class="sg-instructor-flashcard-step-label">Step ${idx + 1} of ${steps.length}</span>
-                <span class="sg-instructor-flashcard-title">${escapeHtml(step.title)}</span>
-            </div>
-            <div class="sg-instructor-flashcard-nav">
+    const stepLabel =
+        steps.length > 1
+            ? `<span class="sg-instructor-flashcard-step-label">Step ${idx + 1} of ${steps.length}</span>`
+            : '';
+    const navHtml =
+        steps.length > 1
+            ? `<div class="sg-instructor-flashcard-nav">
                 <button type="button" class="sg-instructor-flashcard-nav-btn" data-action="prev" data-part-id="${partId}" ${idx === 0 ? 'disabled' : ''} aria-label="Previous step">
                     <i data-feather="chevron-left"></i>
                 </button>
                 <button type="button" class="sg-instructor-flashcard-nav-btn" data-action="next" data-part-id="${partId}" ${idx >= steps.length - 1 ? 'disabled' : ''} aria-label="Next step">
                     <i data-feather="chevron-right"></i>
                 </button>
+            </div>`
+            : '';
+    container.innerHTML = `
+        <div class="sg-instructor-flashcard sg-instructor-flashcard--tone-${tone}${enterClass}">
+            <div class="sg-instructor-flashcard-header">
+                ${stepLabel}
+                <span class="sg-instructor-flashcard-title">${escapeHtml(step.title)}</span>
             </div>
+            ${navHtml}
         </div>
     `;
     const flashcardEl = container.querySelector('.sg-instructor-flashcard');
     const navEl = container.querySelector('.sg-instructor-flashcard-nav');
-    if (flashcardEl && navEl) flashcardEl.insertBefore(bodyHost, navEl);
+    if (flashcardEl) {
+        if (navEl) flashcardEl.insertBefore(bodyHost, navEl);
+        else flashcardEl.appendChild(bodyHost);
+    }
     renderFeatherIcons();
+
+    // Drop enter class after animation so re-renders from typing don't re-trigger
+    if (enterClass && flashcardEl) {
+        flashcardEl.addEventListener('animationend', () => {
+            flashcardEl.classList.remove('sg-instructor-flashcard--enter-prev', 'sg-instructor-flashcard--enter-next');
+        }, { once: true });
+    }
 
     container.querySelectorAll<HTMLButtonElement>('.sg-instructor-flashcard-nav-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const action = btn.dataset.action;
             const pid = btn.dataset.partId;
-            if (!pid) return;
+            if (!pid || (action !== 'prev' && action !== 'next')) return;
             const current = partFlashcardIndex.get(pid) ?? 0;
             const allSteps = parseAnswerKeyToFlashcards(
                 document.querySelector<HTMLTextAreaElement>(`.sg-instructor-part-answer[data-part-id="${pid}"]`)?.value ?? ''
             );
-            if (action === 'prev' && current > 0) partFlashcardIndex.set(pid, current - 1);
-            if (action === 'next' && current < allSteps.length - 1) partFlashcardIndex.set(pid, current + 1);
+            if (action === 'prev' && current > 0) {
+                partFlashcardIndex.set(pid, current - 1);
+                partFlashcardNavDir.set(pid, 'prev');
+            }
+            if (action === 'next' && current < allSteps.length - 1) {
+                partFlashcardIndex.set(pid, current + 1);
+                partFlashcardNavDir.set(pid, 'next');
+            }
             const answerMd = document.querySelector<HTMLTextAreaElement>(`.sg-instructor-part-answer[data-part-id="${pid}"]`)?.value ?? '';
             renderFlashcardPanel(pid, answerMd, container);
         }, { signal: uiAbort?.signal, once: true });
     });
 }
 
-function renderLearningObjectives(objectives: string[]): void {
+function renderLearningObjectives(objectives: ScenarioLearningObjectiveSnapshot[]): void {
     const list = document.getElementById('sg-instructor-editor-lo-list');
     if (!list) return;
 
@@ -1365,15 +1486,16 @@ function renderLearningObjectives(objectives: string[]): void {
     }
 
     list.innerHTML = objectives.map(lo => `
-        <span class="sg-instructor-lo-pill">${escapeHtml(learningObjectiveDescription(lo))}</span>
+        <span class="sg-instructor-lo-pill">${escapeHtml(loSnapshotText(lo))}</span>
     `).join('');
 }
 
-function openLearningObjectivesModal(): void {
+async function openLearningObjectivesModal(): Promise<void> {
     const overlay = document.getElementById('sg-instructor-lo-modal-overlay');
-    if (!overlay) return;
+    if (!overlay || !editorQuestion) return;
 
-    loModalDraftSelection = normalizeLearningObjectives(editorQuestion?.learningObjectives ?? []);
+    await loadLoCatalog(editorQuestion.topicOrWeekId);
+    loModalDraftSelection = normalizeLearningObjectives(editorQuestion.learningObjectives);
     renderLearningObjectivesCatalog();
     overlay.style.display = 'flex';
     overlay.setAttribute('aria-hidden', 'false');
@@ -1452,61 +1574,127 @@ function renderLearningObjectivesCatalog(): void {
     const catalog = document.getElementById('sg-instructor-lo-modal-catalog');
     if (!catalog) return;
 
-    catalog.innerHTML = MOCK_DOCUMENT_LEARNING_OBJECTIVES.map(lo => {
-        const checked = loModalDraftSelection.includes(lo.description);
+    if (!loCatalog.length) {
+        catalog.innerHTML = `<p class="sg-instructor-lo-empty">No learning objectives found for this topic/week.</p>`;
+        return;
+    }
+
+    const selectedIds = new Set(loModalDraftSelection.map((lo) => lo.objectiveId));
+    catalog.innerHTML = loCatalog.map(lo => {
+        const checked = selectedIds.has(lo.objectiveId);
         return `
             <label class="sg-instructor-lo-catalog-item">
-                <input type="checkbox" class="sg-instructor-lo-catalog-checkbox" value="${escapeHtml(lo.description)}" ${checked ? 'checked' : ''} />
-                <span class="sg-instructor-lo-catalog-text">${escapeHtml(lo.description)}</span>
+                <input type="checkbox" class="sg-instructor-lo-catalog-checkbox" value="${escapeHtml(lo.objectiveId)}" ${checked ? 'checked' : ''} />
+                <span class="sg-instructor-lo-catalog-text">${escapeHtml(lo.text)}</span>
             </label>
         `;
     }).join('');
 
     catalog.querySelectorAll<HTMLInputElement>('.sg-instructor-lo-catalog-checkbox').forEach(box => {
         box.addEventListener('change', () => {
-            const description = box.value;
+            const option = loCatalog.find((o) => o.objectiveId === box.value);
+            if (!option) return;
             if (box.checked) {
-                if (!loModalDraftSelection.includes(description)) loModalDraftSelection.push(description);
+                if (!loModalDraftSelection.some((s) => s.objectiveId === option.objectiveId)) {
+                    loModalDraftSelection.push({
+                        objectiveId: option.objectiveId,
+                        text: option.text,
+                        sourceTopicOrWeekId: option.topicOrWeekId,
+                        sourceItemId: option.itemId,
+                    });
+                }
             } else {
-                loModalDraftSelection = loModalDraftSelection.filter(c => c !== description);
+                loModalDraftSelection = loModalDraftSelection.filter((s) => s.objectiveId !== option.objectiveId);
             }
         }, { signal: uiAbort?.signal });
     });
 }
 
-function updateExpectedTimeDisplay(minutes: number): void {
+function updateExpectedTimeDisplay(totalSeconds: number): void {
     const el = document.getElementById('sg-instructor-editor-expected-time');
-    if (el) el.textContent = formatExpectedTime(minutes);
-    el?.setAttribute('data-minutes', String(minutes));
+    if (el) el.textContent = formatExpectedTime(totalSeconds);
+    el?.setAttribute('data-seconds', String(Math.max(0, Math.round(totalSeconds))));
 }
 
-function clampExpectedTimeMinutes(minutes: number): number {
-    return Math.max(5, Math.min(120, Math.round(minutes)));
+function clampExpectedTimeSeconds(totalSeconds: number): number {
+    return Math.max(0, Math.min(MAX_EXPECTED_TIME_SECONDS, Math.round(totalSeconds)));
 }
 
-function parseExpectedTimeInput(raw: string): number | null {
-    const trimmed = raw.trim();
-    if (!trimmed) return null;
-
-    const colonMatch = /^(\d+)\s*:\s*(\d{1,2})$/.exec(trimmed);
-    if (colonMatch) {
-        return clampExpectedTimeMinutes(parseInt(colonMatch[1], 10));
-    }
-
-    const numericMatch = /^(\d+)$/.exec(trimmed);
-    if (numericMatch) {
-        return clampExpectedTimeMinutes(parseInt(numericMatch[1], 10));
-    }
-
-    return null;
+function timeModalMinutesInput(): HTMLInputElement | null {
+    return document.getElementById('sg-instructor-time-modal-minutes') as HTMLInputElement | null;
 }
 
-function syncTimeModalInput(minutes: number): void {
-    const input = document.getElementById('sg-instructor-time-modal-input') as HTMLInputElement | null;
-    if (input) {
-        input.value = formatExpectedTime(minutes);
-        input.classList.remove('sg-instructor-time-modal-input--invalid');
+function timeModalSecondsInput(): HTMLInputElement | null {
+    return document.getElementById('sg-instructor-time-modal-seconds') as HTMLInputElement | null;
+}
+
+function clearTimeModalInputInvalid(): void {
+    timeModalMinutesInput()?.classList.remove('sg-instructor-time-modal-input--invalid');
+    timeModalSecondsInput()?.classList.remove('sg-instructor-time-modal-input--invalid');
+    hideTimeModalWarning();
+}
+
+function showTimeModalWarning(kind: 'max' | 'zero'): void {
+    const warning = document.getElementById('sg-instructor-time-modal-warning');
+    if (!warning) return;
+    warning.textContent =
+        kind === 'max' ? 'Maximum time is 90 minutes.' : 'Time cannot go below zero.';
+    warning.hidden = false;
+}
+
+function hideTimeModalWarning(): void {
+    const warning = document.getElementById('sg-instructor-time-modal-warning');
+    if (!warning) return;
+    warning.textContent = '';
+    warning.hidden = true;
+}
+
+function shakeTimeModalControls(): void {
+    const controls = document.getElementById('sg-instructor-time-modal-controls');
+    if (!controls) return;
+    controls.classList.remove('sg-instructor-time-modal-controls--shake');
+    // Force reflow so repeated shakes retrigger
+    void controls.offsetWidth;
+    controls.classList.add('sg-instructor-time-modal-controls--shake');
+    controls.addEventListener(
+        'animationend',
+        () => controls.classList.remove('sg-instructor-time-modal-controls--shake'),
+        { once: true }
+    );
+}
+
+function syncTimeModalInputs(totalSeconds: number): void {
+    const clamped = clampExpectedTimeSeconds(totalSeconds);
+    const minutes = Math.floor(clamped / 60);
+    const seconds = clamped % 60;
+    const formatted = formatExpectedTime(clamped);
+    const [, secondsText] = formatted.split(':');
+    const minutesEl = timeModalMinutesInput();
+    const secondsEl = timeModalSecondsInput();
+    if (minutesEl) minutesEl.value = String(minutes);
+    if (secondsEl && secondsText) secondsEl.value = secondsText;
+    clearTimeModalInputInvalid();
+}
+
+function parseTimeModalInputs(): { totalSeconds: number } | { error: 'invalid' | 'max' } {
+    const minutesRaw = timeModalMinutesInput()?.value.trim() ?? '';
+    const secondsRaw = timeModalSecondsInput()?.value.trim() ?? '';
+    if (!/^\d+$/.test(minutesRaw) || !/^\d+$/.test(secondsRaw)) {
+        return { error: 'invalid' };
     }
+
+    const minutes = parseInt(minutesRaw, 10);
+    const seconds = parseInt(secondsRaw, 10);
+    if (seconds > 59) {
+        return { error: 'invalid' };
+    }
+
+    const totalSeconds = minutes * 60 + seconds;
+    if (totalSeconds > MAX_EXPECTED_TIME_SECONDS) {
+        return { error: 'max' };
+    }
+
+    return { totalSeconds };
 }
 
 function openExpectedTimeModal(): void {
@@ -1514,19 +1702,19 @@ function openExpectedTimeModal(): void {
     if (!overlay) return;
 
     const current = parseInt(
-        document.getElementById('sg-instructor-editor-expected-time')?.getAttribute('data-minutes') ?? '25',
+        document.getElementById('sg-instructor-editor-expected-time')?.getAttribute('data-seconds') ?? '1500',
         10
     );
-    timeModalDraftMinutes = clampExpectedTimeMinutes(current);
-    syncTimeModalInput(timeModalDraftMinutes);
+    timeModalDraftSeconds = clampExpectedTimeSeconds(current);
+    syncTimeModalInputs(timeModalDraftSeconds);
+    hideTimeModalWarning();
 
     overlay.style.display = 'flex';
     overlay.setAttribute('aria-hidden', 'false');
     requestAnimationFrame(() => overlay.classList.add('sg-instructor-modal-overlay--visible'));
 
-    const input = document.getElementById('sg-instructor-time-modal-input') as HTMLInputElement | null;
-    input?.focus();
-    input?.select();
+    timeModalMinutesInput()?.focus();
+    timeModalMinutesInput()?.select();
 }
 
 function closeExpectedTimeModal(): void {
@@ -1535,6 +1723,7 @@ function closeExpectedTimeModal(): void {
 
     overlay.classList.remove('sg-instructor-modal-overlay--visible');
     overlay.setAttribute('aria-hidden', 'true');
+    hideTimeModalWarning();
 
     window.setTimeout(() => {
         if (!overlay.classList.contains('sg-instructor-modal-overlay--visible')) {
@@ -1543,23 +1732,60 @@ function closeExpectedTimeModal(): void {
     }, SQ_MODAL_TRANSITION_MS);
 }
 
-function adjustTimeModalDraft(delta: number): void {
-    timeModalDraftMinutes = clampExpectedTimeMinutes(timeModalDraftMinutes + delta);
-    syncTimeModalInput(timeModalDraftMinutes);
-}
+function adjustTimeModalDraft(deltaMinutes: number): void {
+    const parsed = parseTimeModalInputs();
+    if ('totalSeconds' in parsed) {
+        timeModalDraftSeconds = parsed.totalSeconds;
+    }
 
-function saveExpectedTimeModal(): void {
-    const input = document.getElementById('sg-instructor-time-modal-input') as HTMLInputElement | null;
-    const parsed = parseExpectedTimeInput(input?.value ?? '');
+    const deltaSeconds = deltaMinutes * 60;
 
-    if (parsed === null) {
-        input?.classList.add('sg-instructor-time-modal-input--invalid');
-        input?.focus();
+    if (deltaSeconds < 0) {
+        if (timeModalDraftSeconds === 0) {
+            showTimeModalWarning('zero');
+            shakeTimeModalControls();
+            return;
+        }
+        timeModalDraftSeconds = Math.max(0, timeModalDraftSeconds + deltaSeconds);
+        hideTimeModalWarning();
+        syncTimeModalInputs(timeModalDraftSeconds);
         return;
     }
 
-    timeModalDraftMinutes = parsed;
-    updateExpectedTimeDisplay(parsed);
+    if (timeModalDraftSeconds >= MAX_EXPECTED_TIME_SECONDS) {
+        showTimeModalWarning('max');
+        shakeTimeModalControls();
+        return;
+    }
+
+    const next = Math.min(MAX_EXPECTED_TIME_SECONDS, timeModalDraftSeconds + deltaSeconds);
+    const hitMax = timeModalDraftSeconds + deltaSeconds > MAX_EXPECTED_TIME_SECONDS;
+    timeModalDraftSeconds = next;
+    syncTimeModalInputs(timeModalDraftSeconds);
+    hideTimeModalWarning();
+
+    if (hitMax) {
+        showTimeModalWarning('max');
+        shakeTimeModalControls();
+    }
+}
+
+function saveExpectedTimeModal(): void {
+    const parsed = parseTimeModalInputs();
+
+    if ('error' in parsed) {
+        timeModalMinutesInput()?.classList.add('sg-instructor-time-modal-input--invalid');
+        timeModalSecondsInput()?.classList.add('sg-instructor-time-modal-input--invalid');
+        if (parsed.error === 'max') {
+            showTimeModalWarning('max');
+            shakeTimeModalControls();
+        }
+        timeModalMinutesInput()?.focus();
+        return;
+    }
+
+    timeModalDraftSeconds = parsed.totalSeconds;
+    updateExpectedTimeDisplay(parsed.totalSeconds);
     markDirty();
     closeExpectedTimeModal();
 }
@@ -1591,15 +1817,25 @@ function scheduleAutoSave(): void {
 
 function collectEditorPatch(): Partial<ScenarioQuestionExtended> {
     const questionBody = (document.getElementById('sg-instructor-editor-question-body') as HTMLTextAreaElement | null)?.value ?? '';
-    const minutes = parseInt(document.getElementById('sg-instructor-editor-expected-time')?.getAttribute('data-minutes') ?? '25', 10);
+    const totalSeconds = parseInt(
+        document.getElementById('sg-instructor-editor-expected-time')?.getAttribute('data-seconds') ?? '1500',
+        10
+    );
 
     const learningObjectives = normalizeLearningObjectives(editorQuestion?.learningObjectives ?? []);
 
-    const subQuestions = (editorQuestion?.subQuestions ?? []).map(sq => {
-        const partId = sq.partId;
-        const prompt = document.querySelector<HTMLTextAreaElement>(`.sg-instructor-part-prompt[data-part-id="${partId}"]`)?.value ?? sq.prompt;
-        const modelAnswer = document.querySelector<HTMLTextAreaElement>(`.sg-instructor-part-answer[data-part-id="${partId}"]`)?.value ?? sq.modelAnswer;
-        return { partId, subQuestionType: sq.subQuestionType, prompt, modelAnswer };
+    const subQuestions = (editorQuestion?.subQuestions ?? []).map((sq, index) => {
+        const partKey = subQuestionKey(sq, index);
+        const prompt = document.querySelector<HTMLTextAreaElement>(`.sg-instructor-part-prompt[data-part-id="${partKey}"]`)?.value ?? sq.prompt;
+        const modelAnswer = document.querySelector<HTMLTextAreaElement>(`.sg-instructor-part-answer[data-part-id="${partKey}"]`)?.value ?? sq.modelAnswer;
+        return {
+            subQuestionId: sq.subQuestionId || partKey,
+            partId: sq.partId,
+            subQuestionType: sq.subQuestionType,
+            prompt,
+            modelAnswer,
+            studentResponses: sq.studentResponses ?? [],
+        };
     });
 
     const titleDisplay = document.getElementById('sg-instructor-editor-title-display');
@@ -1609,7 +1845,7 @@ function collectEditorPatch(): Partial<ScenarioQuestionExtended> {
         title,
         questionBody,
         learningObjectives,
-        expectedTimeMinutes: minutes,
+        expectedTimeMinutes: expectedMinutesFromSeconds(totalSeconds),
         subQuestions,
         solutionBody: subQuestions.map(sq => sq.modelAnswer).join('\n\n---\n\n')
     };
@@ -1623,10 +1859,10 @@ async function persistEditor(showToast: boolean): Promise<void> {
 
     try {
         const patch = collectEditorPatch();
-        editorQuestion = await updateQuestion(currentCourse.id, editorQuestionId, patch);
+        editorQuestion = await updateScenarioQuestion(currentCourse.id, editorQuestionId, patch);
         isDirty = false;
         updateSaveButton();
-        await refreshQuestions();
+        await refreshQuestions(editorQuestion?.topicOrWeekId ?? activeTopicId);
         showSuccessToast(showToast ? 'Draft saved.' : 'Changes saved automatically.');
     } catch (error) {
         showErrorToast(errorMessage(error, 'Could not save.'));

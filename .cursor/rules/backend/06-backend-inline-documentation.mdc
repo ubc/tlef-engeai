@@ -1,0 +1,166 @@
+---
+description: Backend inline documentation — class/method JSDoc and step comments (chat-app.ts style)
+globs: src/**
+alwaysApply: false
+---
+
+# Backend Inline Documentation
+
+Teaches the **chat-app.ts documentation style** for `src/` backend code. Use alongside `main-rules/05-code-docs.mdc` (file headers, TSDoc contracts). This skill owns **how the body reads** — step comments and orchestration-class structure.
+
+**Canonical reference:** `src/chat/chat-app.ts`  
+**Secondary references:** `src/rag/rag-app.ts` (`parseDocument`, `uploadDocument`), `src/scenario-generation/scenario-service.ts`
+
+## When to apply
+
+- New or substantially changed **orchestration classes** (ChatApp, RAGApp, ScenarioService, memory agent)
+- Multi-phase methods: LLM + RAG + persist, grading pipelines, upload/parse, migration backfills
+- Any public method where the *procedure* is not obvious from helper names alone
+
+## Class-level block
+
+After the file header, document the main export class with responsibilities and key features:
+
+```typescript
+/**
+ * ChatApp Class
+ *
+ * This module provides the ChatApp class for managing chat conversations,
+ * RAG integration, and message handling for the EngE-AI platform.
+ *
+ * Key Features:
+ * - Streaming chat responses from LLM
+ * - RAG document retrieval from Qdrant
+ * - Chat inactivity timer management
+ *
+ * @author: EngE-AI Team
+ * @version: 2.0.0
+ * @since: 2026-03-16
+ */
+export class ChatApp { ... }
+```
+
+| Element | Rule |
+|---------|------|
+| Title line | `{Name} Class` or `{Name}` for non-class modules |
+| Prose | 1–2 sentences on layer boundary (orchestration vs routes vs mongo delegate) |
+| Key Features | Bullet list of **non-obvious** capabilities — skip trivial getters |
+| `@since` | Optional on long-lived classes; use `@date` on file header for new files |
+
+## Method JSDoc
+
+**Public and exported methods** — behavior-first contract:
+
+```typescript
+/**
+ * Send a user message and get response from LLM with RAG context
+ *
+ * @param message - The user's message
+ * @param chatId - The chat ID
+ * @param userId - The user ID
+ * @param courseName - The course name for RAG context
+ * @param onChunk - Callback for streaming chunks to the client
+ * @returns The complete assistant response message
+ */
+```
+
+| Do | Don't |
+|----|-------|
+| Lead with what the method **does** in domain terms | Restate the signature (`@param chatId - The chat id`) |
+| Document side effects (persist, timer reset, LLM call) | JSDoc every private one-liner |
+| `@returns` describes shape and failure modes when non-obvious | `@returns void` on constructors |
+
+**Private methods** — JSDoc only when the name alone does not convey behavior (e.g. `validateExamAnswers`, `resolveLearningObjectives`).
+
+## Inline step comments (two tiers)
+
+### Tier 1 — Simple steps (default)
+
+One full-sentence `//` comment **immediately before** each logical step:
+
+```typescript
+// Reset the inactivity timer since user is actively using this chat
+this.resetChatTimer(chatId);
+
+// Validate chat exists
+if (!this.conversations.has(chatId)) {
+    throw new Error('Chat not found');
+}
+
+// Remove from conversations map
+this.conversations.delete(chatId);
+```
+
+Use for: validation, map/array mutations, timer cleanup, branch intent.
+
+### Tier 2 — Numbered pipeline blocks (orchestration methods)
+
+When a method has **4+ distinct phases** (RAG → LLM → persist → side effects), use banner blocks:
+
+```typescript
+// ====================================================================
+// STEP 1: Add user message to conversation and history
+// ====================================================================
+
+// Add user message to both LLM conversation and chatHistory for frontend sync
+const addedUserMessage = this.addUserMessage(chatId, message, userId, courseName);
+
+// ====================================================================
+// STEP 2: RAG DOCUMENT RETRIEVAL (for CURRENT user message)
+// ====================================================================
+```
+
+| Use STEP banners | Use simple `//` only |
+|------------------|-------------------|
+| `sendUserMessage`-scale pipelines | CRUD delegates, sanitizers, index creation |
+| Generate → sanitize → persist loops | Single LLM call + return |
+| Exam validate → batch grade → atomic append | Getters, thin route handlers |
+
+Keep **sub-steps** under each banner as Tier 1 comments.
+
+## Interface and export docs
+
+Exported request/context interfaces at module top get a one-line or short block:
+
+```typescript
+/** Input for batch exam submission — one answer per visible sub-question. */
+export interface ScenarioSubmitExamInput { ... }
+```
+
+Module-level convenience exports:
+
+```typescript
+/** Module-level wrapper around the process-wide {@link ScenarioService} singleton. */
+export async function generateScenarioQuestions(...) { ... }
+```
+
+## Section dividers in large files
+
+Use a short banner between unrelated groups (mongo delegate pattern):
+
+```typescript
+// =====================================================
+// Embedded studentResponses + solution gate
+// =====================================================
+```
+
+## Prompt and constant modules
+
+- `scenario-*-modules.ts`, `rag-prompts.ts`: file header + `/** Prompt module: NAME */` above each export — **no** step comments inside template strings.
+- `scenario-*-prompt.ts`: file header; JSDoc on `build*Prompt` / `build*UserTurn` describing XML shape and escaping.
+
+## Checklist (before marking Document phase done)
+
+- [ ] File header per `05-code-docs.mdc`
+- [ ] Main class has Key Features (or concise responsibility prose)
+- [ ] Every **public** method has behavior-first JSDoc with `@param` / `@returns` where helpful
+- [ ] Orchestration methods use STEP banners; other multi-step methods use Tier 1 comments
+- [ ] Branch comments explain **why** (e.g. instructor preview vs student persist)
+- [ ] No permanent `// DEBUG:` / `// TEMP:` comments
+
+## Anti-patterns
+
+- Comment every line (`// increment i`)
+- Duplicate JSDoc and step comment with the same words
+- STEP banners on 10-line helpers
+- Enumerate every method inside the class JSDoc (use Key Features instead)

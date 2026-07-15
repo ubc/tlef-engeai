@@ -187,6 +187,170 @@
   height: 16px;
 }
 
+/* Scenario surfaces: match Manage objectives chip */
+.artefact-button--scenario {
+  margin: 0.5rem 0 0;
+  padding: 0.4rem 0.85rem;
+  background: var(--color-chbe-green);
+  color: white;
+  border: 1px solid var(--color-chbe-green);
+  border-radius: 8px;
+  box-shadow: none;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: inherit;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    opacity 0.2s ease,
+    max-height 0.28s ease,
+    padding 0.28s ease,
+    margin 0.28s ease;
+  max-height: 3rem;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.artefact-button--scenario:hover {
+  color: white;
+  background: #446b2a;
+  border-color: #446b2a;
+  transform: none;
+  box-shadow: 0 4px 12px rgba(77, 122, 47, 0.35);
+}
+
+.artefact-button--scenario:active {
+  background: #3d6026;
+  border-color: #3d6026;
+  box-shadow: 0 2px 6px rgba(77, 122, 47, 0.45);
+}
+
+.artefact-button--scenario i {
+  width: 15px;
+  height: 15px;
+  color: white;
+}
+
+/* Morphing host: chip size ↔ full artefact frame */
+.artefact-inline-host {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: max-content;
+  max-width: 100%;
+  margin: 0.5rem 0 0;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  box-sizing: border-box;
+  transition:
+    width 0.28s ease,
+    height 0.28s ease,
+    border-radius 0.28s ease,
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.artefact-inline-host .artefact-button--scenario {
+  margin: 0;
+  align-self: flex-start;
+}
+
+.artefact-inline-host.is-open {
+  width: 100% !important;
+  height: 420px !important;
+  border-radius: 10px;
+  border-color: var(--border-color, #e0e0e0);
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+.artefact-inline-host.is-open .artefact-button--scenario,
+.artefact-inline-host.is-closing .artefact-panel--inline {
+  max-height: 0;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin: 0;
+  border-width: 0;
+  pointer-events: none;
+}
+
+.artefact-inline-host.is-open .artefact-button--scenario {
+  /* Chip folds away as the frame grows */
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.artefact-inline-host.is-closing {
+  border-radius: 8px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.artefact-panel--inline {
+  flex: 1 1 auto !important;
+  align-self: stretch;
+  width: 100%;
+  min-width: 0 !important;
+  min-height: 0;
+  margin: 0;
+  opacity: 0;
+  transform: none !important;
+  overflow: hidden;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transition: opacity 0.2s ease 0.05s;
+  animation: none !important;
+  display: flex;
+  flex-direction: column;
+}
+
+.artefact-inline-host.is-open .artefact-panel--inline {
+  opacity: 1;
+  animation: none !important;
+}
+
+.artefact-panel--inline.open {
+  animation: none !important;
+}
+
+.artefact-panel--inline.closing {
+  animation: none !important;
+}
+
+.artefact-panel--inline .artefact-header {
+  border-radius: 0;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.artefact-panel--inline .artefact-content {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+.artefact-panel--inline .pan-zoom-container {
+  min-height: 0;
+  height: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .artefact-inline-host,
+  .artefact-button--scenario,
+  .artefact-panel--inline {
+    transition: none;
+  }
+}
+
 /* Mermaid diagram container */
 .mermaid-diagram {
   width: 100%;

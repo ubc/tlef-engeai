@@ -5,9 +5,7 @@
  * - `socratic-default/`, `explanatory-default/` — `{mode}.json` + mode-only `.md` files (flat)
  * - `shared-default/` — shared `.md` modules referenced as `shared-default/<file>.md`
  *
- * Note: `scenario-generation-default/` is retained on disk but is no longer a chat conversation
- * mode — it is repurposed by the standalone scenario generation feature (see
- * `src/scenario-generation/`) and is not loaded through this module.
+ * Practice Scenarios generation/feedback prompts live under `src/scenario-generation/prompts/*.ts`.
  *
  * Admin POST reload clears and re-reads files without restart.
  */

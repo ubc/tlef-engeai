@@ -1,12 +1,12 @@
 {
   "name": "tlef-EngE-AI",
-  "version": "1.5.11",
+  "version": "1.5.19",
   "description": "",
   "main": "dist/server.js",
   "scripts": {
     "clean": "rm -rf dist public/dist",
     "vendor:chart": "node scripts/vendor-chart-js.cjs",
-    "build:backend": "tsc -p tsconfig.json && mkdir -p dist/chat/system-prompts/shared-default dist/chat/system-prompts/socratic-default dist/chat/system-prompts/explanatory-default dist/chat/system-prompts/scenario-generation-default dist/chat/system-prompts/scenario-feedback-default dist/fixtures && cp -R src/chat/system-prompts/shared-default/. dist/chat/system-prompts/shared-default/ && cp -R src/chat/system-prompts/socratic-default/. dist/chat/system-prompts/socratic-default/ && cp -R src/chat/system-prompts/explanatory-default/. dist/chat/system-prompts/explanatory-default/ && cp -R src/chat/system-prompts/scenario-generation-default/. dist/chat/system-prompts/scenario-generation-default/ && cp -R src/chat/system-prompts/scenario-feedback-default/. dist/chat/system-prompts/scenario-feedback-default/ && cp src/fixtures/*.json dist/fixtures/",
+    "build:backend": "tsc -p tsconfig.json && mkdir -p dist/chat/system-prompts/shared-default dist/chat/system-prompts/socratic-default dist/chat/system-prompts/explanatory-default dist/fixtures && cp -R src/chat/system-prompts/shared-default/. dist/chat/system-prompts/shared-default/ && cp -R src/chat/system-prompts/socratic-default/. dist/chat/system-prompts/socratic-default/ && cp -R src/chat/system-prompts/explanatory-default/. dist/chat/system-prompts/explanatory-default/ && cp src/fixtures/*.json dist/fixtures/",
     "build:frontend": "npm run vendor:chart && tsc -p public/tsconfig.json",
     "build": "sleep 2 && npm run clean && npm run build:backend && npm run build:frontend",
     "start": "cross-env NODE_ENV=production node dist/server.js",

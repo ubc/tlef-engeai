@@ -6,13 +6,13 @@
  * Deterministic parser that splits markdown answer keys into step-by-step flashcards
  * for instructor preview and student practice. No LLM.
  *
- * Card boundary (preferred): `# Card N` / `# Step N` (ATX h1).
- * Inside a card: `## Topic`, `### Highlight` stay in the body (not new cards).
- * Fallbacks: `##` headings, numbered lists, bold **Step N**, then paragraphs.
+ * Card boundary: `# Title` (ATX h1) only. Body under each heading is
+ * latex-supported markdown until the next `#`. Answer key must start with
+ * `# Title`; leading prose or missing first title → no cards.
  *
  * @author: EngE-AI Team
  * @date: 2026-07-09
- * @version: 1.1.0
+ * @version: 1.4.0
  * @description: Parse answer-key markdown into navigable flashcard steps.
  */
 
@@ -22,6 +22,21 @@ export interface FlashcardStep {
     title: string;
     bodyMarkdown: string;
 }
+
+/** Line-aware parse failure for instructor empty-state diagnostics. */
+export interface FlashcardParseError {
+    line: number;
+    excerpt: string;
+    reason: string;
+}
+
+/** Detailed parse result — steps on success, error when unrenderable. */
+export type FlashcardParseResult =
+    | { steps: FlashcardStep[]; error: null }
+    | { steps: []; error: FlashcardParseError };
+
+/** Soft background tone count for `sg-*-flashcard--tone-{n}` classes. */
+export const FLASHCARD_TONE_COUNT = 5;
 
 const PART_ID_CHARS = ['a', 'b', 'c', 'd'] as const;
 
@@ -34,83 +49,68 @@ export const SUB_QUESTION_TYPE_LABELS: Record<string, string> = {
 };
 
 /**
- * parseAnswerKeyToFlashcards
+ * parseAnswerKeyFlashcardsDetailed
+ *
+ * Only `# Title` headings become cards. The answer key must begin with `#`;
+ * leading prose (missing first-card title) returns an error with line + excerpt.
  *
  * @param markdown - Raw model answer markdown
- * @returns Ordered flashcard steps
+ * @returns Steps or a line-aware parse error
+ */
+export function parseAnswerKeyFlashcardsDetailed(markdown: string): FlashcardParseResult {
+    const trimmed = markdown.trim();
+    if (!trimmed) {
+        return {
+            steps: [],
+            error: { line: 1, excerpt: '', reason: 'Answer key is empty' }
+        };
+    }
+
+    const normalized = trimmed.replace(/\n{3,}/g, '\n\n');
+    if (!/^#\s+/.test(normalized)) {
+        const { line, excerpt } = firstNonEmptyLine(trimmed);
+        return {
+            steps: [],
+            error: {
+                line,
+                excerpt,
+                reason: 'First card must start with `# Title`'
+            }
+        };
+    }
+
+    return { steps: toSteps(splitByH1Cards(normalized)), error: null };
+}
+
+/**
+ * parseAnswerKeyToFlashcards
+ *
+ * Thin wrapper for callers that only need steps.
+ *
+ * @param markdown - Raw model answer markdown
+ * @returns Ordered flashcard steps (empty when invalid / no `#` cards)
  */
 export function parseAnswerKeyToFlashcards(markdown: string): FlashcardStep[] {
-    const normalized = markdown.trim().replace(/\n{3,}/g, '\n\n');
-    if (!normalized) return [];
-
-    // Preferred: `# Card N` / `# …` (h1 only — `##` / `###` stay inside the card)
-    const byH1 = splitByH1Cards(normalized);
-    if (byH1.length > 1) return toSteps(byH1);
-
-    // Legacy: `## Step` headings
-    const byH2 = splitByH2Headings(normalized);
-    if (byH2.length > 1) return toSteps(byH2);
-
-    const byOrderedList = splitByOrderedList(normalized);
-    if (byOrderedList.length > 1) return toSteps(byOrderedList);
-
-    const byBoldSteps = splitByBoldSteps(normalized);
-    if (byBoldSteps.length > 1) return toSteps(byBoldSteps);
-
-    return toSteps(splitByParagraphs(normalized));
+    return parseAnswerKeyFlashcardsDetailed(markdown).steps;
 }
 
-/** Split on ATX h1 (`# Title`). Does not match `##` / `###`. */
+/** Tone class suffix 0..FLASHCARD_TONE_COUNT-1 for a step index. */
+export function flashcardToneIndex(stepIndex: number): number {
+    return ((stepIndex % FLASHCARD_TONE_COUNT) + FLASHCARD_TONE_COUNT) % FLASHCARD_TONE_COUNT;
+}
+
+/** Split on ATX h1 (`# Title`). Does not match `##` / `###`. Caller guarantees starts with `#`. */
 function splitByH1Cards(text: string): string[] {
-    const parts = text.split(/(?=^#\s+)/m).map(s => s.trim()).filter(Boolean);
-    if (parts.length <= 1) return parts;
-    // Drop leading preamble that isn't a card heading
-    if (!/^#\s+/.test(parts[0])) parts.shift();
-    return parts.length ? parts : [];
+    return text.split(/(?=^#\s+)/m).map(s => s.trim()).filter(Boolean);
 }
 
-/** Legacy split on `##` headings (kept for existing answer keys). */
-function splitByH2Headings(text: string): string[] {
-    const parts = text.split(/(?=^##\s+)/m).map(s => s.trim()).filter(Boolean);
-    if (parts.length <= 1) return parts;
-    if (!/^##\s+/.test(parts[0])) parts.shift();
-    return parts.length ? parts : [];
-}
-
-function splitByOrderedList(text: string): string[] {
+function firstNonEmptyLine(text: string): { line: number; excerpt: string } {
     const lines = text.split('\n');
-    const segments: string[] = [];
-    let current: string[] = [];
-
-    for (const line of lines) {
-        if (/^\d+\.\s/.test(line) && current.length > 0) {
-            segments.push(current.join('\n').trim());
-            current = [line];
-        } else {
-            current.push(line);
-        }
+    for (let i = 0; i < lines.length; i++) {
+        const excerpt = lines[i].trim();
+        if (excerpt) return { line: i + 1, excerpt: excerpt.slice(0, 120) };
     }
-    if (current.length) segments.push(current.join('\n').trim());
-    return segments.filter(Boolean);
-}
-
-function splitByBoldSteps(text: string): string[] {
-    const parts = text.split(/(?=\*\*(?:Step\s+\d+|[0-9]+\.)[^*]*\*\*)/i).map(s => s.trim()).filter(Boolean);
-    return parts.length > 1 ? parts : [];
-}
-
-function splitByParagraphs(text: string): string[] {
-    const paragraphs = text.split(/\n\n+/).map(s => s.trim()).filter(Boolean);
-    const merged: string[] = [];
-
-    for (const para of paragraphs) {
-        if (para.length < 40 && merged.length > 0) {
-            merged[merged.length - 1] += '\n\n' + para;
-        } else {
-            merged.push(para);
-        }
-    }
-    return merged.length ? merged : [text];
+    return { line: 1, excerpt: '' };
 }
 
 function cleanCardTitle(raw: string, fallback: string): string {
@@ -122,29 +122,20 @@ function cleanCardTitle(raw: string, fallback: string): string {
 function toSteps(segments: string[]): FlashcardStep[] {
     return segments.map((segment, i) => {
         const fallback = `Step ${i + 1}`;
-        // h1 `# Card` first — `^#\s+` does not match `##`
-        const h1Match = segment.match(/^#\s+(.+?)(?:\n|$)/);
-        const h2Match = segment.match(/^##\s+(.+?)(?:\n|$)/);
-        const boldMatch = segment.match(/^\*\*(.+?)\*\*/);
-        let title = fallback;
-        let bodyMarkdown = segment;
-
-        if (h1Match) {
-            title = cleanCardTitle(h1Match[1], fallback);
-            bodyMarkdown = segment.replace(/^#\s+.+?\n?/, '').trim();
-        } else if (h2Match) {
-            title = cleanCardTitle(h2Match[1], fallback);
-            bodyMarkdown = segment.replace(/^##\s+.+?\n?/, '').trim();
-        } else if (boldMatch) {
-            title = cleanCardTitle(boldMatch[1], fallback);
-            bodyMarkdown = segment.replace(/^\*\*.+?\*\*\s*/, '').trim();
+        const h1Match = segment.match(/^#\s+([^\n]+)/);
+        if (!h1Match) {
+            // ponytail: parse already requires leading #; keep guard for safety
+            return { index: i, title: fallback, bodyMarkdown: segment };
         }
-
-        return { index: i, title, bodyMarkdown };
+        return {
+            index: i,
+            title: cleanCardTitle(h1Match[1], fallback),
+            bodyMarkdown: segment.replace(/^#\s+[^\n]+\n?/, '').trim()
+        };
     });
 }
 
-/** Map part index 0–3 to ScenarioPartId letter. */
+/** Map part index → ScenarioPartId letter (`0→a`, `1→b`, … beyond `d` via char code). */
 export function partIdFromIndex(index: number): string {
     return PART_ID_CHARS[index] ?? String.fromCharCode(97 + index);
 }

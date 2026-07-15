@@ -1,37 +1,53 @@
 // public/scripts/feature/scenarios-student.ts
 
 /**
- * Scenario Generation (student mock)
+ * scenarios-student.ts
  *
- * Client-only mock of the Scenario Generation student flow: question list with
- * Attempted filter, Practice/Exam mode modal, practice AI feedback buttons, and
- * a 25-minute exam countdown. No API calls — hardcoded sample questions.
+ * Student Practice Scenarios: published question list, Practice/Exam workspace,
+ * per-part check-answer (AI feedback), and gated solution flashcards.
  *
  * @author: EngE-AI Team
- * @date: 2026-07-09
- * @version: 2.0.0
- * @description: Student Scenario Generation mock UI (list, modal, practice, exam).
+ * @date: 2026-07-13
+ * @version: 3.0.0
+ * @description: Student Practice Scenarios UI wired to scenario-questions-api.
  */
 
-import { activeCourse } from '../types.js';
+import {
+    activeCourse,
+    ScenarioQuestion,
+    ScenarioQuestionForStudent,
+    ScenarioSubQuestion,
+    ScenarioSubQuestionType,
+    ScenarioExamPartResult,
+    ScenarioLearningObjectiveSnapshot,
+} from '../types.js';
+import {
+    fetchPublishedScenarioQuestions,
+    fetchScenarioQuestion,
+    checkScenarioAnswer,
+    fetchScenarioSolution,
+    submitScenarioExam,
+} from '../api/scenario-questions-api.js';
 import { renderFeatherIcons } from '../api/api.js';
 import { closeModal, showCustomModal, showWarningModal } from '../ui/modal-overlay.js';
-import { parseAnswerKeyToFlashcards, SUB_QUESTION_TYPE_LABELS } from './scenario-answer-flashcard.js';
+import { showErrorToast } from '../ui/toast-notification.js';
+import { flashcardToneIndex, parseAnswerKeyToFlashcards, SUB_QUESTION_TYPE_LABELS } from './scenario-answer-flashcard.js';
+import { RenderChat } from './render-chat.js';
+import { renderLatexInHtmlContent } from './chat.js';
+
+const renderChat = new RenderChat();
 
 type ScenarioMode = 'practice' | 'exam';
 type StatusFilter = 'all' | 'attempted' | 'unsolved';
-type SubQuestionType = keyof typeof SUB_QUESTION_TYPE_LABELS;
 
-interface MockPart {
-    id: 'a' | 'b';
-    subQuestionType: SubQuestionType;
+interface StudentPartView {
+    id: string;
+    subQuestionType: ScenarioSubQuestionType;
     prompt: string;
-    mockAiResponse: string;
-    /** Mock instructor answer key (flashcard source in practice). */
     modelAnswer: string;
 }
 
-interface MockQuestion {
+interface StudentQuestionView {
     id: string;
     title: string;
     chapter: string;
@@ -41,143 +57,100 @@ interface MockQuestion {
     narrative: string;
     topicLabel: string;
     learningObjectives: string[];
-    parts: MockPart[];
+    expectedTimeMinutes: number;
+    parts: StudentPartView[];
 }
 
-const EXAM_SECONDS = 25 * 60;
+const EXAM_SECONDS_FALLBACK = 25 * 60;
 
-const MOCK_QUESTIONS: MockQuestion[] = [
-    {
-        id: 'q1',
-        title: 'Heat Exchanger E-401 Area & LMTD',
-        chapter: 'Chapter 4',
-        topics: ['Heat Transfer', 'LMTD'],
-        date: '2026-03-12',
-        attempted: false,
-        narrative:
-            'Estimate the required heat-transfer area and LMTD for heat exchanger E-401 under the stated process conditions. Use the given overall heat-transfer coefficient and assume counter-current flow unless noted otherwise.',
-        topicLabel: 'Topic 1: Heat Transfer',
-        learningObjectives: [
-            'Apply steady-state mass balances to process units.',
-            'Interpret P&ID symbols for valve and pump failures.',
-            'Troubleshoot deviations using first-principles reasoning.'
-        ],
-        parts: [
-            {
-                id: 'a',
-                subQuestionType: 'calculation',
-                prompt:
-                    'Calculate the heat duty, LMTD, and required area for E-401 given the inlet/outlet temperatures and mass flow rates provided in the problem statement.',
-                mockAiResponse:
-                    'Start from Q = m·Cp·ΔT for the cold stream, then compute LMTD for counter-current flow, and finally A = Q / (U·LMTD). Check units carefully (kW vs W).',
-                modelAnswer:
-                    '# Card 1: Cold-stream duty\n\n## Topic\nEnergy balance\n\n### Highlight\nQ = m·Cp·ΔT\n\n# Card 2: LMTD\n\n## Topic\nHeat exchanger design\n\n### Highlight\nCounter-current LMTD from the four terminal temperatures.\n\n# Card 3: Area\n\n## Topic\nSizing\n\n### Highlight\nA = Q / (U·LMTD); report m².'
-            },
-            {
-                id: 'b',
-                subQuestionType: 'troubleshoot',
-                prompt:
-                    'Outlet water temperature is lower than designed. Calculate heat duty and effective U, then list and rank likely root causes for a 10-day decline.',
-                mockAiResponse:
-                    'A lower outlet temperature usually means reduced duty or fouling (lower effective U). Rank fouling, flow maldistribution, and utility-side supply issues; support each with the duty/U numbers you computed.',
-                modelAnswer:
-                    '# Card 1: Recalculate duty\n\n## Topic\nActual performance\n\n### Highlight\nUse the measured outlet temperature.\n\n# Card 2: Effective U\n\n## Topic\nBack-calculation\n\n### Highlight\nCompare effective U to design U.\n\n# Card 3: Rank causes\n\n## Topic\nTroubleshooting\n\n### Highlight\nFouling, maldistribution, then utility supply — with evidence.'
-            }
-        ]
-    },
-    {
-        id: 'q2',
-        title: 'Catalyst Optimization for Green Hydrogen',
-        chapter: 'Chapter 6',
-        topics: ['Kinetics', 'Catalysis'],
-        date: '2026-03-18',
-        attempted: true,
-        narrative:
-            'A packed-bed reactor produces green hydrogen via steam reforming. You must recommend operating conditions that improve conversion without exceeding the catalyst temperature limit.',
-        topicLabel: 'Topic 2: Reaction Engineering',
-        learningObjectives: [
-            'Evaluate safety and environmental impacts of process changes.',
-            'Select appropriate corrective actions under operational constraints.'
-        ],
-        parts: [
-            {
-                id: 'a',
-                subQuestionType: 'calculation',
-                prompt:
-                    'Estimate conversion at the proposed space velocity and inlet temperature using the provided rate expression.',
-                mockAiResponse:
-                    'Integrate the PFR design equation with the given rate law. Watch for the temperature constraint — if hotspots appear, lower inlet T or dilute the feed.',
-                modelAnswer:
-                    '# Card 1: PFR setup\n\n## Topic\nReactor design\n\n### Highlight\nUse the given rate law in the PFR equation.\n\n# Card 2: Integrate\n\n## Topic\nConversion\n\n### Highlight\nIntegrate across the bed at the stated space velocity.\n\n# Card 3: Temperature check\n\n## Topic\nConstraints\n\n### Highlight\nIf hotspot exceeds the limit, lower inlet T or dilute the feed.'
-            },
-            {
-                id: 'b',
-                subQuestionType: 'troubleshoot',
-                prompt:
-                    'Conversion dropped 8% over two weeks. Propose diagnostic checks and a ranked list of causes.',
-                mockAiResponse:
-                    'Check for catalyst deactivation (coking/sintering), feed impurity spikes, and measurement drift on the GC. Rank by likelihood given the gradual decline.',
-                modelAnswer:
-                    '# Card 1: Instruments & feed\n\n## Topic\nDiagnostics\n\n### Highlight\nReview GC calibration and feed impurity logs.\n\n# Card 2: Catalyst health\n\n## Topic\nDeactivation\n\n### Highlight\nLook for coking or sintering indicators.\n\n# Card 3: Rank causes\n\n## Topic\nRoot cause\n\n### Highlight\nDeactivation, impurities, then measurement drift.'
-            }
-        ]
-    },
-    {
-        id: 'q3',
-        title: 'Wastewater Treatment System Sizing',
-        chapter: 'Chapter 2',
-        topics: ['Mass Balance', 'Environment'],
-        date: '2026-02-28',
-        attempted: false,
-        narrative:
-            'Size a primary clarifier and aeration basin for a municipal wastewater plant upgrade. Steady-state mass balances and typical design criteria are provided.',
-        topicLabel: 'Topic 3: Environmental Process Design',
-        learningObjectives: [
-            'Apply steady-state mass balances to process units.',
-            'Communicate engineering recommendations with units and assumptions.',
-            'Troubleshoot deviations using first-principles reasoning.'
-        ],
-        parts: [
-            {
-                id: 'a',
-                subQuestionType: 'calculation',
-                prompt:
-                    'Perform a solids mass balance around the clarifier and determine the required surface area.',
-                mockAiResponse:
-                    'Use overflow rate and solids loading criteria together. Your area should satisfy both; report which constraint governs.',
-                modelAnswer:
-                    '# Card 1: Solids balance\n\n## Topic\nMass balance\n\n### Highlight\nWrite the solids balance around the clarifier.\n\n# Card 2: Size by criteria\n\n## Topic\nDesign criteria\n\n### Highlight\nOverflow rate and solids loading each imply an area.\n\n# Card 3: Governing constraint\n\n## Topic\nSelection\n\n### Highlight\nTake the larger area and state which constraint governs.'
-            },
-            {
-                id: 'b',
-                subQuestionType: 'troubleshoot',
-                prompt:
-                    'Effluent TSS is rising. Identify possible hydraulic or process causes and suggest one corrective action for each.',
-                mockAiResponse:
-                    'Consider short-circuiting, sludge blanket rise, and influent surge events. For each, propose a concrete check (e.g. dye test, blanket depth, flow equalization).',
-                modelAnswer:
-                    '# Card 1: Short-circuiting\n\n## Topic\nHydraulics\n\n### Highlight\nDye test; correct inlet baffling if needed.\n\n# Card 2: Sludge blanket\n\n## Topic\nSolids inventory\n\n### Highlight\nMeasure blanket depth and adjust wasting.\n\n# Card 3: Influent surges\n\n## Topic\nLoad variation\n\n### Highlight\nAdd flow equalization if surges drive the TSS rise.'
-            }
-        ]
-    }
-];
+let currentCourse: activeCourse | null = null;
+let cachedList: StudentQuestionView[] = [];
+/** Session-local attempted ids (no list progress API yet). */
+const attemptedIds = new Set<string>();
 
 let statusFilter: StatusFilter = 'all';
-let activeQuestion: MockQuestion | null = null;
+let activeQuestion: StudentQuestionView | null = null;
 let activeMode: ScenarioMode | null = null;
-let examSecondsLeft = EXAM_SECONDS;
+let examSecondsLeft = EXAM_SECONDS_FALLBACK;
 let examTimerId: ReturnType<typeof setInterval> | null = null;
 let uiAbort: AbortController | null = null;
-/** Flashcard step index per part id while answer panel is open. */
 const flashcardIndexByPart = new Map<string, number>();
+const flashcardNavDirByPart = new Map<string, 'prev' | 'next'>();
+
+function topicTitle(topicOrWeekId: string): string {
+    const topic = currentCourse?.topicOrWeekInstances?.find((t) => t.id === topicOrWeekId);
+    return topic?.title?.trim() || 'Topic/Week';
+}
+
+function formatListDate(value: string | Date | undefined | null): string {
+    if (!value) return '—';
+    const d = typeof value === 'string' ? new Date(value) : value;
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toISOString().slice(0, 10);
+}
+
+function loTexts(objectives: Array<ScenarioLearningObjectiveSnapshot | string> | undefined): string[] {
+    if (!Array.isArray(objectives)) return [];
+    return objectives.map((lo) => (typeof lo === 'string' ? lo : lo.text)).filter(Boolean);
+}
+
+function subKey(sub: { subQuestionId?: string; partId?: string }, index: number): string {
+    return sub.subQuestionId?.trim() || sub.partId || `part-${index}`;
+}
+
+function toListCard(q: ScenarioQuestionForStudent): StudentQuestionView {
+    const topic = topicTitle(q.topicOrWeekId);
+    return {
+        id: q.id,
+        title: q.title,
+        chapter: topic,
+        topics: [topic],
+        date: formatListDate(q.publishedAt ?? q.updatedAt),
+        attempted: attemptedIds.has(q.id),
+        narrative: q.questionBody,
+        topicLabel: topic,
+        learningObjectives: loTexts(q.learningObjectives as any),
+        expectedTimeMinutes: q.expectedTimeMinutes ?? 25,
+        parts: (q.subQuestions ?? []).map((sub, index) => ({
+            id: subKey(sub, index),
+            subQuestionType: sub.subQuestionType ?? 'calculation',
+            prompt: sub.prompt,
+            modelAnswer: '',
+        })),
+    };
+}
+
+function toWorkspaceQuestion(
+    q: ScenarioQuestion | ScenarioQuestionForStudent,
+    prior?: StudentQuestionView
+): StudentQuestionView {
+    const base = toListCard(q as ScenarioQuestionForStudent);
+    return {
+        ...base,
+        attempted: prior?.attempted ?? attemptedIds.has(q.id),
+        parts: (q.subQuestions ?? []).map(
+            (sub: Omit<ScenarioSubQuestion, 'modelAnswer'> & { modelAnswer?: string }, index: number) => ({
+                id: subKey(sub, index),
+                subQuestionType: sub.subQuestionType ?? 'calculation',
+                prompt: sub.prompt,
+                modelAnswer: sub.modelAnswer ?? '',
+            })
+        ),
+    };
+}
+
+function renderGradeBadge(grade: number): string {
+    const g = Math.round(grade);
+    return `<span class="sg-student-grade-badge" aria-label="Grade ${g} out of 10">${g} / 10</span>`;
+}
 
 /**
  * initializeScenariosStudent
  *
- * @param _course activeCourse — unused in mock; kept for student-mode.ts call site
- * @returns Promise<void>
+ * @param course activeCourse
  */
-export async function initializeScenariosStudent(_course: activeCourse): Promise<void> {
+export async function initializeScenariosStudent(course: activeCourse): Promise<void> {
+    currentCourse = course;
     stopExamTimer();
     statusFilter = 'all';
     activeQuestion = null;
@@ -188,10 +161,23 @@ export async function initializeScenariosStudent(_course: activeCourse): Promise
 
     showListView();
     syncFilterPills();
-    renderQuestionList();
     attachListListeners();
     attachWorkspaceListeners();
+    await refreshQuestionList();
     renderFeatherIcons();
+}
+
+async function refreshQuestionList(): Promise<void> {
+    if (!currentCourse) return;
+    try {
+        const published = await fetchPublishedScenarioQuestions(currentCourse.id);
+        cachedList = published.map(toListCard);
+        renderQuestionList();
+    } catch (error) {
+        cachedList = [];
+        renderQuestionList();
+        showErrorToast(error instanceof Error ? error.message : 'Could not load scenarios.');
+    }
 }
 
 function escapeHtml(text: string): string {
@@ -211,24 +197,14 @@ function showListView(): void {
     expandStudentSidebar();
 }
 
-/**
- * isScenarioWorkspaceActive — true while Practice/Exam workspace is open
- */
 export function isScenarioWorkspaceActive(): boolean {
     return activeMode !== null;
 }
 
-/**
- * expandStudentSidebar — restore sidebar after leaving Practice/Exam or Scenario Generation
- */
 export function expandStudentSidebar(): void {
     document.querySelector('.sidebar')?.classList.remove('collapsed');
 }
 
-/**
- * confirmLeaveScenarioWorkspace — warn before abandoning an active Practice/Exam.
- * Returns true if navigation may proceed (no session, or student confirmed Leave).
- */
 export async function confirmLeaveScenarioWorkspace(): Promise<boolean> {
     if (!activeMode) {
         expandStudentSidebar();
@@ -250,9 +226,6 @@ export async function confirmLeaveScenarioWorkspace(): Promise<boolean> {
     return true;
 }
 
-/**
- * confirmLeaveWorkspace — back-button path; only leaves after confirm
- */
 async function confirmLeaveWorkspace(): Promise<void> {
     if (!activeMode) {
         showListView();
@@ -268,14 +241,14 @@ function showWorkspaceView(): void {
     if (workspace) workspace.style.display = '';
 }
 
-function filteredQuestions(): MockQuestion[] {
-    if (statusFilter === 'attempted') return MOCK_QUESTIONS.filter(q => q.attempted);
-    if (statusFilter === 'unsolved') return MOCK_QUESTIONS.filter(q => !q.attempted);
-    return MOCK_QUESTIONS;
+function filteredQuestions(): StudentQuestionView[] {
+    if (statusFilter === 'attempted') return cachedList.filter((q) => q.attempted || attemptedIds.has(q.id));
+    if (statusFilter === 'unsolved') return cachedList.filter((q) => !(q.attempted || attemptedIds.has(q.id)));
+    return cachedList;
 }
 
 function syncFilterPills(): void {
-    document.querySelectorAll<HTMLButtonElement>('.sg-student-filter-pill[data-filter]').forEach(btn => {
+    document.querySelectorAll<HTMLButtonElement>('.sg-student-filter-pill[data-filter]').forEach((btn) => {
         const key = btn.dataset.filter;
         if (key === 'chapter' || key === 'topic') return;
         btn.setAttribute('aria-pressed', key === statusFilter ? 'true' : 'false');
@@ -289,63 +262,68 @@ function renderQuestionList(): void {
     const questions = filteredQuestions();
 
     if (questions.length === 0) {
-        container.innerHTML = `<p class="sg-student-empty-state">No questions match this filter.</p>`;
+        container.innerHTML = `<p class="sg-student-empty-state">No published scenarios yet.</p>`;
         return;
     }
 
-    container.innerHTML = questions.map(q => `
+    container.innerHTML = questions
+        .map((q) => {
+            const attempted = q.attempted || attemptedIds.has(q.id);
+            return `
         <button type="button" class="sg-student-question-card" data-question-id="${escapeHtml(q.id)}" role="listitem">
             <div class="sg-student-card-top">
                 <div class="sg-student-card-title-row">
                     <h3 class="sg-student-card-title">${escapeHtml(q.title)}</h3>
                     <span class="sg-student-card-chapter">${escapeHtml(q.chapter)}</span>
                 </div>
-                <span class="sg-student-card-status${q.attempted ? ' attempted' : ''}">
-                    ${q.attempted ? 'Attempted' : 'Unsolved'}
+                <span class="sg-student-card-status${attempted ? ' attempted' : ''}">
+                    ${attempted ? 'Attempted' : 'Unsolved'}
                 </span>
             </div>
             <div class="sg-student-card-meta">
                 <span class="sg-student-card-topics">
                     Covered Topic:
-                    ${q.topics.map(t => `<span class="sg-student-topic-pill">${escapeHtml(t)}</span>`).join('')}
+                    ${q.topics.map((t) => `<span class="sg-student-topic-pill">${escapeHtml(t)}</span>`).join('')}
                 </span>
                 <span>Date: ${escapeHtml(q.date)}</span>
             </div>
-        </button>
-    `).join('');
+        </button>`;
+        })
+        .join('');
 }
 
 function attachListListeners(): void {
     const signal = uiAbort?.signal;
 
-    document.querySelector('.sg-student-filters')?.addEventListener('click', (e: Event) => {
-        const btn = (e.target as HTMLElement).closest('.sg-student-filter-pill') as HTMLButtonElement | null;
-        if (!btn || btn.disabled) return;
-        const key = btn.dataset.filter as StatusFilter | undefined;
-        if (!key || (key !== 'all' && key !== 'attempted' && key !== 'unsolved')) return;
-        statusFilter = key;
-        syncFilterPills();
-        renderQuestionList();
-    }, { signal });
+    document.querySelector('.sg-student-filters')?.addEventListener(
+        'click',
+        (e: Event) => {
+            const btn = (e.target as HTMLElement).closest('.sg-student-filter-pill') as HTMLButtonElement | null;
+            if (!btn || btn.disabled) return;
+            const key = btn.dataset.filter as StatusFilter | undefined;
+            if (!key || (key !== 'all' && key !== 'attempted' && key !== 'unsolved')) return;
+            statusFilter = key;
+            syncFilterPills();
+            renderQuestionList();
+        },
+        { signal }
+    );
 
     const list = document.getElementById('sg-student-question-list');
-    list?.addEventListener('click', (e: MouseEvent) => {
-        const card = (e.target as HTMLElement).closest('.sg-student-question-card') as HTMLElement | null;
-        const id = card?.dataset.questionId;
-        if (!id) return;
-        const question = MOCK_QUESTIONS.find(q => q.id === id);
-        if (question) void openModeModal(question);
-    }, { signal });
+    list?.addEventListener(
+        'click',
+        (e: MouseEvent) => {
+            const card = (e.target as HTMLElement).closest('.sg-student-question-card') as HTMLElement | null;
+            const id = card?.dataset.questionId;
+            if (!id) return;
+            const question = cachedList.find((q) => q.id === id);
+            if (question) void openModeModal(question);
+        },
+        { signal }
+    );
 }
 
-/**
- * openModeModal — Practice / Exam chooser via shared modal-overlay
- *
- * Select a mode card (green highlight), then confirm with Start.
- *
- * @param question MockQuestion
- */
-async function openModeModal(question: MockQuestion): Promise<void> {
+async function openModeModal(question: StudentQuestionView): Promise<void> {
     let selectedMode: ScenarioMode | null = null;
 
     const body = document.createElement('div');
@@ -379,31 +357,29 @@ async function openModeModal(question: MockQuestion): Promise<void> {
             card.classList.toggle('is-selected', on);
             card.setAttribute('aria-pressed', on ? 'true' : 'false');
         });
-        confirmEl?.removeAttribute('hidden');
-        startBtn?.focus();
+        if (confirmEl) confirmEl.hidden = false;
     };
 
-    body.addEventListener('click', (event) => {
-        const target = event.target as HTMLElement;
-        const card = target.closest<HTMLElement>('[data-mode]');
-        if (card) {
-            const mode = card.dataset.mode;
+    cards.forEach((card) => {
+        card.addEventListener('click', () => {
+            const mode = card.dataset.mode as ScenarioMode;
             if (mode === 'practice' || mode === 'exam') selectMode(mode);
-            return;
-        }
-        if (target.closest('[data-start]') && selectedMode) {
-            closeModal(selectedMode);
-        }
+        });
     });
 
     const resultPromise = showCustomModal({
-        type: 'info',
+        type: 'custom',
         title: question.title,
         content: body,
         maxWidth: '560px',
         customClass: 'sg-student-mode-modal',
         closeOnOverlayClick: true,
-        buttons: []
+        buttons: [],
+    });
+
+    startBtn?.addEventListener('click', () => {
+        if (!selectedMode) return;
+        closeModal(selectedMode);
     });
 
     queueMicrotask(() => {
@@ -412,20 +388,52 @@ async function openModeModal(question: MockQuestion): Promise<void> {
 
     const result = await resultPromise;
 
-    if (result.action === 'practice') startWorkspace(question, 'practice');
-    else if (result.action === 'exam') startWorkspace(question, 'exam');
+    if (result.action === 'practice') await startWorkspace(question, 'practice');
+    else if (result.action === 'exam') await startWorkspace(question, 'exam');
 }
 
-function startWorkspace(question: MockQuestion, mode: ScenarioMode): void {
+async function startWorkspace(listItem: StudentQuestionView, mode: ScenarioMode): Promise<void> {
+    if (!currentCourse) return;
+
+    let question = listItem;
+    try {
+        const detail = await fetchScenarioQuestion(currentCourse.id, listItem.id);
+        if (!detail) {
+            showErrorToast('This scenario is not available.');
+            return;
+        }
+        question = toWorkspaceQuestion(detail, listItem);
+    } catch (error) {
+        showErrorToast(error instanceof Error ? error.message : 'Could not open scenario.');
+        return;
+    }
+
+    attemptedIds.add(question.id);
+    question.attempted = true;
+    const cached = cachedList.find((q) => q.id === question.id);
+    if (cached) cached.attempted = true;
+
     activeQuestion = question;
     activeMode = mode;
     flashcardIndexByPart.clear();
+    flashcardNavDirByPart.clear();
 
     const titleEl = document.getElementById('sg-student-question-title');
-    if (titleEl) titleEl.textContent = question.title;
+    if (titleEl) {
+        titleEl.textContent = question.title;
+        titleEl.classList.toggle('is-practice', mode === 'practice');
+        titleEl.classList.toggle('is-exam', mode === 'exam');
+    }
 
     const narrativeEl = document.getElementById('sg-student-narrative');
-    if (narrativeEl) narrativeEl.textContent = question.narrative;
+    if (narrativeEl) {
+        narrativeEl.classList.add('message-content');
+        narrativeEl.innerHTML = renderChat.render(question.narrative, `sg-student-narrative-${question.id}`);
+        renderLatexInHtmlContent(narrativeEl);
+        narrativeEl.querySelectorAll('.artefact-button').forEach((btn) => {
+            btn.classList.add('artefact-button--scenario');
+        });
+    }
 
     const topicEl = document.getElementById('sg-student-topic-label');
     if (topicEl) topicEl.textContent = question.topicLabel;
@@ -433,9 +441,7 @@ function startWorkspace(question: MockQuestion, mode: ScenarioMode): void {
     const lloEl = document.getElementById('sg-student-llo-list');
     if (lloEl) {
         lloEl.innerHTML = question.learningObjectives.length
-            ? question.learningObjectives
-                .map(lo => `<span class="sg-student-lo-pill">${escapeHtml(lo)}</span>`)
-                .join('')
+            ? question.learningObjectives.map((lo) => `<span class="sg-student-lo-pill">${escapeHtml(lo)}</span>`).join('')
             : `<span class="sg-student-lo-empty">No objectives selected</span>`;
     }
 
@@ -452,7 +458,7 @@ function startWorkspace(question: MockQuestion, mode: ScenarioMode): void {
     }
 
     renderParts(question, mode);
-    setupTimerForMode(mode);
+    setupTimerForMode(mode, question.expectedTimeMinutes);
     showWorkspaceView();
     collapseStudentSidebar();
     renderFeatherIcons();
@@ -462,50 +468,66 @@ function collapseStudentSidebar(): void {
     document.querySelector('.sidebar')?.classList.add('collapsed');
 }
 
-function renderParts(question: MockQuestion, mode: ScenarioMode): void {
+function renderParts(question: StudentQuestionView, mode: ScenarioMode): void {
     const container = document.getElementById('sg-student-parts');
     if (!container) return;
 
-    container.innerHTML = question.parts.map(part => {
-        const typeLabel = SUB_QUESTION_TYPE_LABELS[part.subQuestionType] ?? part.subQuestionType;
-        const practiceBlock = mode === 'practice'
-            ? `
+    container.innerHTML = question.parts
+        .map((part, index) => {
+            const typeLabel = SUB_QUESTION_TYPE_LABELS[part.subQuestionType] ?? part.subQuestionType;
+            const practiceBlock =
+                mode === 'practice'
+                    ? `
             <div class="sg-student-part-actions">
-                <button type="button" class="sg-student-ai-btn" data-part-id="${part.id}">Get AI Feedback</button>
-                <button type="button" class="sg-student-answer-btn" data-part-id="${part.id}">See the Answer</button>
+                <button type="button" class="sg-student-ai-btn" data-sub-question-id="${escapeHtml(part.id)}">Get AI Feedback</button>
+                <button type="button" class="sg-student-answer-btn" data-sub-question-id="${escapeHtml(part.id)}">See the Answer</button>
             </div>
-            <div class="sg-student-ai-feedback" data-part-id="${part.id}" hidden>
-                <div class="sg-student-ai-feedback-header">
-                    <i data-feather="message-circle" aria-hidden="true"></i>
-                    <span>AI Feedback</span>
+            <div class="sg-student-part-outcomes">
+                <div class="sg-student-ai-feedback" data-sub-question-id="${escapeHtml(part.id)}" hidden>
+                    <div class="sg-student-ai-feedback-header">
+                        <i data-feather="message-circle" aria-hidden="true"></i>
+                        <span>AI Feedback</span>
+                    </div>
+                    <div class="sg-student-ai-feedback-body"></div>
                 </div>
-                <div class="sg-student-ai-feedback-body"></div>
+                <div class="sg-student-answer-panel" data-sub-question-id="${escapeHtml(part.id)}" hidden></div>
             </div>`
-            : '';
+                    : '';
 
-        return `
-        <section class="sg-student-part" data-part-id="${part.id}">
+            return `
+        <section class="sg-student-part" data-sub-question-id="${escapeHtml(part.id)}">
             <div class="sg-student-part-header">
                 <div class="sg-part-title-group">
-                    <h3 class="sg-part-title">Part ${part.id.toUpperCase()}</h3>
+                    <h3 class="sg-part-title">Part ${index + 1}</h3>
                     <span class="sg-part-type-badge sg-part-type-${part.subQuestionType}">${escapeHtml(typeLabel)}</span>
                 </div>
             </div>
-            <p class="sg-student-part-prompt">${escapeHtml(part.prompt)}</p>
+            <div class="sg-student-part-prompt message-content" data-sub-question-id="${escapeHtml(part.id)}"></div>
             <textarea
                 class="sg-student-answer-input"
-                data-part-id="${part.id}"
+                data-sub-question-id="${escapeHtml(part.id)}"
                 rows="5"
                 placeholder="Type your answer here..."
             ></textarea>
             ${practiceBlock}
-            <div class="sg-student-answer-panel" data-part-id="${part.id}" hidden></div>
-        </section>
-    `;
-    }).join('');
+        </section>`;
+        })
+        .join('');
+
+    for (const part of question.parts) {
+        const promptEl = container.querySelector<HTMLElement>(
+            `.sg-student-part-prompt[data-sub-question-id="${part.id}"]`
+        );
+        if (!promptEl) continue;
+        promptEl.innerHTML = renderChat.render(part.prompt, `sg-student-prompt-${question.id}-${part.id}`);
+        renderLatexInHtmlContent(promptEl);
+        promptEl.querySelectorAll('.artefact-button').forEach((btn) => {
+            btn.classList.add('artefact-button--scenario');
+        });
+    }
 }
 
-function setupTimerForMode(mode: ScenarioMode): void {
+function setupTimerForMode(mode: ScenarioMode, expectedMinutes: number): void {
     stopExamTimer();
     const timerBlock = document.getElementById('sg-student-timer-block');
     const timeUpEl = document.getElementById('sg-student-time-up');
@@ -516,7 +538,7 @@ function setupTimerForMode(mode: ScenarioMode): void {
         return;
     }
 
-    examSecondsLeft = EXAM_SECONDS;
+    examSecondsLeft = Math.max(0, Math.round((expectedMinutes || 25) * 60));
     if (timerBlock) timerBlock.style.display = '';
     if (timeUpEl) timeUpEl.style.display = 'none';
     if (display) display.textContent = formatTime(examSecondsLeft);
@@ -556,7 +578,7 @@ function lockExamInputs(badgeLabel: string = 'Time’s up'): void {
         if (timeUpEl) timeUpEl.style.display = '';
     }
 
-    document.querySelectorAll<HTMLTextAreaElement>('.sg-student-answer-input').forEach(el => {
+    document.querySelectorAll<HTMLTextAreaElement>('.sg-student-answer-input').forEach((el) => {
         el.disabled = true;
     });
 
@@ -564,10 +586,18 @@ function lockExamInputs(badgeLabel: string = 'Time’s up'): void {
     if (submitBtn) submitBtn.disabled = true;
 }
 
-function showAnswerFlashcard(part: MockPart): void {
-    const panel = document.querySelector<HTMLElement>(
-        `.sg-student-answer-panel[data-part-id="${part.id}"]`
-    );
+function placeAnswerPanelBelowFeedback(partId: string): void {
+    const feedback = document.querySelector<HTMLElement>(`.sg-student-ai-feedback[data-sub-question-id="${partId}"]`);
+    const panel = document.querySelector<HTMLElement>(`.sg-student-answer-panel[data-sub-question-id="${partId}"]`);
+    if (!panel) return;
+    if (feedback?.parentElement) {
+        feedback.insertAdjacentElement('afterend', panel);
+    }
+}
+
+function showAnswerFlashcard(part: StudentPartView): void {
+    placeAnswerPanelBelowFeedback(part.id);
+    const panel = document.querySelector<HTMLElement>(`.sg-student-answer-panel[data-sub-question-id="${part.id}"]`);
     if (!panel) return;
 
     const steps = parseAnswerKeyToFlashcards(part.modelAnswer);
@@ -578,37 +608,100 @@ function showAnswerFlashcard(part: MockPart): void {
     }
 
     let idx = flashcardIndexByPart.get(part.id) ?? 0;
-    if (idx >= steps.length) idx = steps.length - 1;
-    if (idx < 0) idx = 0;
+    idx = Math.max(0, Math.min(steps.length - 1, idx));
     flashcardIndexByPart.set(part.id, idx);
-
     const step = steps[idx];
-    const body = step.bodyMarkdown.replace(/^\d+\.\s+/, '').trim();
-    const showTitle = !/^Step\s+\d+$/i.test(step.title);
+    const tone = flashcardToneIndex(idx);
+    const navDir = flashcardNavDirByPart.get(part.id);
+    flashcardNavDirByPart.delete(part.id);
+    const enterClass =
+        navDir === 'prev' ? ' sg-student-flashcard--enter-prev' : navDir === 'next' ? ' sg-student-flashcard--enter-next' : '';
+
+    const stepLabel =
+        steps.length > 1
+            ? `<span class="sg-student-flashcard-step-label">Step ${idx + 1} of ${steps.length}</span>`
+            : '';
+    const navHtml =
+        steps.length > 1
+            ? `<div class="sg-student-flashcard-nav">
+                <button type="button" class="sg-student-flashcard-nav-btn" data-action="prev" data-sub-question-id="${part.id}" ${idx === 0 ? 'disabled' : ''} aria-label="Previous step">
+                    <i data-feather="chevron-left"></i>
+                </button>
+                <button type="button" class="sg-student-flashcard-nav-btn" data-action="next" data-sub-question-id="${part.id}" ${idx >= steps.length - 1 ? 'disabled' : ''} aria-label="Next step">
+                    <i data-feather="chevron-right"></i>
+                </button>
+            </div>`
+            : '';
 
     panel.hidden = false;
     panel.innerHTML = `
-        <div class="sg-student-flashcard">
+        <div class="sg-student-flashcard sg-student-flashcard--tone-${tone}${enterClass}">
             <div class="sg-student-flashcard-header">
-                <span class="sg-student-flashcard-step-label">Step ${idx + 1} of ${steps.length}</span>
-                ${showTitle ? `<span class="sg-student-flashcard-title">${escapeHtml(step.title)}</span>` : ''}
+                ${stepLabel}
+                <span class="sg-student-flashcard-title">${escapeHtml(step.title)}</span>
             </div>
-            <div class="sg-student-flashcard-body">${escapeHtml(body)}</div>
-            <div class="sg-student-flashcard-nav">
-                <button type="button" class="sg-student-flashcard-nav-btn" data-action="prev" data-part-id="${part.id}" ${idx === 0 ? 'disabled' : ''} aria-label="Previous step">
-                    <i data-feather="chevron-left"></i>
-                </button>
-                <button type="button" class="sg-student-flashcard-nav-btn" data-action="next" data-part-id="${part.id}" ${idx >= steps.length - 1 ? 'disabled' : ''} aria-label="Next step">
-                    <i data-feather="chevron-right"></i>
-                </button>
-            </div>
-        </div>
-    `;
+            ${navHtml}
+        </div>`;
+
+    const bodyHost = document.createElement('div');
+    bodyHost.className = 'sg-student-flashcard-body message-content';
+    bodyHost.innerHTML = renderChat.render(step.bodyMarkdown, `sg-student-flash-${part.id}-${idx}`);
+    renderLatexInHtmlContent(bodyHost);
+
+    const flashcardEl = panel.querySelector('.sg-student-flashcard');
+    const navEl = panel.querySelector('.sg-student-flashcard-nav');
+    if (flashcardEl) {
+        if (navEl) flashcardEl.insertBefore(bodyHost, navEl);
+        else flashcardEl.appendChild(bodyHost);
+    }
+
+    if (enterClass && flashcardEl) {
+        flashcardEl.addEventListener('animationend', () => {
+            flashcardEl.classList.remove('sg-student-flashcard--enter-prev', 'sg-student-flashcard--enter-next');
+        }, { once: true });
+    }
     renderFeatherIcons();
 }
 
-function revealAllAnswerFlashcards(): void {
+async function unlockPartSolution(partId: string): Promise<boolean> {
+    if (!currentCourse || !activeQuestion || !activeMode) return false;
+    const solution = await fetchScenarioSolution(
+        currentCourse.id,
+        activeQuestion.id,
+        activeMode,
+        activeMode === 'practice' ? partId : undefined
+    );
+    if (!solution) {
+        showErrorToast('Submit an answer for this part before viewing the solution.');
+        return false;
+    }
+    for (const [index, sub] of solution.subQuestions.entries()) {
+        const id = subKey(sub, index);
+        const part = activeQuestion.parts.find((p) => p.id === id);
+        if (part) part.modelAnswer = sub.modelAnswer;
+    }
+    return true;
+}
+
+async function unlockSolutionAnswers(): Promise<boolean> {
+    if (!currentCourse || !activeQuestion || !activeMode) return false;
+    const solution = await fetchScenarioSolution(currentCourse.id, activeQuestion.id, activeMode);
+    if (!solution) {
+        showErrorToast(`Submit all parts in ${activeMode} mode before viewing the solution.`);
+        return false;
+    }
+    for (const [index, sub] of solution.subQuestions.entries()) {
+        const id = subKey(sub, index);
+        const part = activeQuestion.parts.find((p) => p.id === id);
+        if (part) part.modelAnswer = sub.modelAnswer;
+    }
+    return true;
+}
+
+async function revealAllAnswerFlashcards(): Promise<void> {
     if (!activeQuestion) return;
+    const ok = await unlockSolutionAnswers();
+    if (!ok) return;
     for (const part of activeQuestion.parts) {
         flashcardIndexByPart.set(part.id, 0);
         showAnswerFlashcard(part);
@@ -618,63 +711,254 @@ function revealAllAnswerFlashcards(): void {
 function attachWorkspaceListeners(): void {
     const signal = uiAbort?.signal;
 
-    document.getElementById('sg-student-back-btn')?.addEventListener('click', () => {
-        void confirmLeaveWorkspace();
-    }, { signal });
+    document.getElementById('sg-student-back-btn')?.addEventListener(
+        'click',
+        () => {
+            void confirmLeaveWorkspace();
+        },
+        { signal }
+    );
 
-    document.getElementById('sg-student-submit-btn')?.addEventListener('click', () => {
-        if (activeMode !== 'exam' || !activeQuestion) return;
-        stopExamTimer();
-        lockExamInputs('Submitted');
-        const submitBtn = document.getElementById('sg-student-submit-btn') as HTMLButtonElement | null;
-        if (submitBtn) submitBtn.textContent = 'Submitted';
-        revealAllAnswerFlashcards();
-    }, { signal });
+    document.getElementById('sg-student-submit-btn')?.addEventListener(
+        'click',
+        () => {
+            if (activeMode !== 'exam' || !activeQuestion || !currentCourse) return;
+            void handleExamSubmit();
+        },
+        { signal }
+    );
 
     const parts = document.getElementById('sg-student-parts');
-    parts?.addEventListener('click', (e: MouseEvent) => {
-        if (!activeQuestion) return;
-        const target = e.target as HTMLElement;
+    parts?.addEventListener(
+        'click',
+        (e: MouseEvent) => {
+            if (!activeQuestion || !currentCourse) return;
+            const target = e.target as HTMLElement;
 
-        const navBtn = target.closest('.sg-student-flashcard-nav-btn') as HTMLButtonElement | null;
-        if (navBtn) {
-            const partId = navBtn.dataset.partId;
-            const part = activeQuestion.parts.find(p => p.id === partId);
-            if (!part) return;
-            const steps = parseAnswerKeyToFlashcards(part.modelAnswer);
-            const cur = flashcardIndexByPart.get(part.id) ?? 0;
-            const next = navBtn.dataset.action === 'next' ? cur + 1 : cur - 1;
-            flashcardIndexByPart.set(part.id, Math.max(0, Math.min(steps.length - 1, next)));
-            showAnswerFlashcard(part);
-            return;
-        }
-
-        if (activeMode !== 'practice') return;
-
-        const aiBtn = target.closest('.sg-student-ai-btn') as HTMLButtonElement | null;
-        if (aiBtn) {
-            const partId = aiBtn.dataset.partId;
-            const part = activeQuestion.parts.find(p => p.id === partId);
-            if (!part) return;
-            const feedback = document.querySelector<HTMLElement>(
-                `.sg-student-ai-feedback[data-part-id="${part.id}"]`
-            );
-            const body = feedback?.querySelector<HTMLElement>('.sg-student-ai-feedback-body');
-            if (feedback && body) {
-                body.textContent = part.mockAiResponse;
-                feedback.hidden = false;
-                renderFeatherIcons();
+            const navBtn = target.closest('.sg-student-flashcard-nav-btn') as HTMLButtonElement | null;
+            if (navBtn) {
+                const partId = navBtn.dataset.subQuestionId;
+                const part = activeQuestion.parts.find((p) => p.id === partId);
+                if (!part) return;
+                const steps = parseAnswerKeyToFlashcards(part.modelAnswer);
+                const cur = flashcardIndexByPart.get(part.id) ?? 0;
+                const next = navBtn.dataset.action === 'next' ? cur + 1 : cur - 1;
+                const clamped = Math.max(0, Math.min(steps.length - 1, next));
+                if (clamped !== cur) {
+                    flashcardNavDirByPart.set(part.id, navBtn.dataset.action === 'next' ? 'next' : 'prev');
+                }
+                flashcardIndexByPart.set(part.id, clamped);
+                showAnswerFlashcard(part);
+                return;
             }
-            return;
-        }
 
-        const answerBtn = target.closest('.sg-student-answer-btn') as HTMLButtonElement | null;
-        if (answerBtn) {
-            const partId = answerBtn.dataset.partId;
-            const part = activeQuestion.parts.find(p => p.id === partId);
-            if (!part) return;
-            flashcardIndexByPart.set(part.id, flashcardIndexByPart.get(part.id) ?? 0);
-            showAnswerFlashcard(part);
+            if (activeMode !== 'practice') return;
+
+            const aiBtn = target.closest('.sg-student-ai-btn') as HTMLButtonElement | null;
+            if (aiBtn) {
+                const partId = aiBtn.dataset.subQuestionId;
+                const part = activeQuestion.parts.find((p) => p.id === partId);
+                if (!part) return;
+                const textarea = document.querySelector<HTMLTextAreaElement>(
+                    `.sg-student-answer-input[data-sub-question-id="${part.id}"]`
+                );
+                const answer = textarea?.value?.trim() || '';
+                if (!answer) {
+                    showErrorToast('Enter an answer before requesting feedback.');
+                    return;
+                }
+                void (async () => {
+                    aiBtn.disabled = true;
+                    try {
+                        const feedback = await checkScenarioAnswer(
+                            currentCourse!.id,
+                            activeQuestion!.id,
+                            part.id,
+                            answer,
+                            'practice'
+                        );
+                        const panel = document.querySelector<HTMLElement>(
+                            `.sg-student-ai-feedback[data-sub-question-id="${part.id}"]`
+                        );
+                        const body = panel?.querySelector<HTMLElement>('.sg-student-ai-feedback-body');
+                        if (panel && body) {
+                            body.innerHTML = `<p class="sg-student-grade-feedback">${escapeHtml(feedback.feedback)}</p>`;
+                            panel.hidden = false;
+                            renderFeatherIcons();
+                        }
+                    } catch (error) {
+                        showErrorToast(error instanceof Error ? error.message : 'Feedback failed.');
+                    } finally {
+                        aiBtn.disabled = false;
+                    }
+                })();
+                return;
+            }
+
+            const answerBtn = target.closest('.sg-student-answer-btn') as HTMLButtonElement | null;
+            if (answerBtn) {
+                const partId = answerBtn.dataset.subQuestionId;
+                const part = activeQuestion.parts.find((p) => p.id === partId);
+                if (!part) return;
+                void (async () => {
+                    answerBtn.disabled = true;
+                    try {
+                        const textarea = document.querySelector<HTMLTextAreaElement>(
+                            `.sg-student-answer-input[data-sub-question-id="${part.id}"]`
+                        );
+                        const answer = textarea?.value?.trim() || '';
+                        const feedbackPanel = document.querySelector<HTMLElement>(
+                            `.sg-student-ai-feedback[data-sub-question-id="${part.id}"]`
+                        );
+                        const hasFeedback = !!feedbackPanel && !feedbackPanel.hidden;
+
+                        if (!hasFeedback) {
+                            if (!answer) {
+                                showErrorToast('Enter an answer before viewing the solution.');
+                                return;
+                            }
+                            await checkScenarioAnswer(
+                                currentCourse!.id,
+                                activeQuestion!.id,
+                                part.id,
+                                answer,
+                                'practice'
+                            );
+                        }
+
+                        const ok = await unlockPartSolution(part.id);
+                        if (!ok) return;
+                        flashcardIndexByPart.set(part.id, flashcardIndexByPart.get(part.id) ?? 0);
+                        showAnswerFlashcard(part);
+                    } catch (error) {
+                        showErrorToast(error instanceof Error ? error.message : 'Could not load the answer.');
+                    } finally {
+                        answerBtn.disabled = false;
+                    }
+                })();
+            }
+        },
+        { signal }
+    );
+}
+
+async function handleExamSubmit(): Promise<void> {
+    if (!currentCourse || !activeQuestion || activeMode !== 'exam') return;
+
+    const answers = activeQuestion.parts.map((part) => {
+        const textarea = document.querySelector<HTMLTextAreaElement>(
+            `.sg-student-answer-input[data-sub-question-id="${part.id}"]`
+        );
+        return {
+            subQuestionId: part.id,
+            studentAnswer: textarea?.value?.trim() || '',
+        };
+    });
+
+    if (answers.some((a) => !a.studentAnswer)) {
+        showErrorToast('Answer every part before submitting the exam.');
+        return;
+    }
+
+    const submitBtn = document.getElementById('sg-student-submit-btn') as HTMLButtonElement | null;
+    const localAnswers = new Map(answers.map((a) => [a.subQuestionId, a.studentAnswer]));
+
+    stopExamTimer();
+    document.querySelectorAll<HTMLTextAreaElement>('.sg-student-answer-input').forEach((el) => {
+        el.disabled = true;
+    });
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting…';
+        submitBtn.setAttribute('aria-busy', 'true');
+    }
+
+    try {
+        const result = await submitScenarioExam(currentCourse.id, activeQuestion.id, answers);
+        if (!result.success) {
+            throw new Error(result.error || 'Exam submission failed.');
         }
-    }, { signal });
+        const statusBadge = document.getElementById('sg-student-status-badge');
+        if (statusBadge) {
+            statusBadge.textContent = 'Submitted';
+            statusBadge.classList.add('submitted');
+            statusBadge.classList.remove('time-up');
+        }
+        if (submitBtn) {
+            submitBtn.textContent = 'Submitted';
+            submitBtn.removeAttribute('aria-busy');
+        }
+        renderExamResults(result.overallGrade, result.results, localAnswers);
+    } catch (error) {
+        document.querySelectorAll<HTMLTextAreaElement>('.sg-student-answer-input').forEach((el) => {
+            el.disabled = false;
+        });
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit';
+            submitBtn.removeAttribute('aria-busy');
+        }
+        showErrorToast(error instanceof Error ? error.message : 'Exam submission failed.');
+    }
+}
+
+function renderExamResults(
+    overallGrade: number,
+    results: ScenarioExamPartResult[],
+    localAnswers: Map<string, string>
+): void {
+    if (!activeQuestion) return;
+    const partsHost = document.getElementById('sg-student-parts');
+    const timerBlock = document.getElementById('sg-student-timer-block');
+    if (timerBlock) timerBlock.style.display = 'none';
+    if (!partsHost) return;
+
+    const resultById = new Map(results.map((r) => [r.subQuestionId, r]));
+    const cards = activeQuestion.parts
+        .map((part, index) => {
+            const graded = resultById.get(part.id);
+            const answer = localAnswers.get(part.id) || '';
+            return `
+            <section class="sg-student-exam-part-result" data-sub-question-id="${escapeHtml(part.id)}">
+                <div class="sg-student-exam-part-result-header">
+                    <h3 class="sg-part-title">Part ${index + 1}</h3>
+                    ${graded ? renderGradeBadge(graded.grade) : ''}
+                </div>
+                <div class="sg-student-exam-submitted-answer">
+                    <span class="sg-student-meta-label">Your answer</span>
+                    <p>${escapeHtml(answer)}</p>
+                </div>
+                <p class="sg-student-grade-feedback">${escapeHtml(graded?.feedback || '')}</p>
+            </section>`;
+        })
+        .join('');
+
+    partsHost.innerHTML = `
+        <div id="sg-student-exam-results" class="sg-student-exam-results">
+            <div class="sg-student-exam-summary">
+                <h2 class="sg-student-exam-summary-title">Exam Results</h2>
+                <p class="sg-student-exam-overall">Exam grade: <strong>${overallGrade.toFixed(1)} / 10</strong></p>
+                <button type="button" id="sg-student-view-solutions-btn" class="sg-student-submit-btn">View solutions</button>
+            </div>
+            ${cards}
+        </div>`;
+
+    document.getElementById('sg-student-view-solutions-btn')?.addEventListener('click', () => {
+        void (async () => {
+            const ok = await unlockSolutionAnswers();
+            if (!ok || !activeQuestion) return;
+            // Restore part sections so flashcard panels exist, then reveal answers
+            renderParts(activeQuestion, 'exam');
+            document.querySelectorAll<HTMLTextAreaElement>('.sg-student-answer-input').forEach((el) => {
+                const id = el.dataset.subQuestionId;
+                if (id && localAnswers.has(id)) el.value = localAnswers.get(id) || '';
+                el.disabled = true;
+            });
+            for (const part of activeQuestion.parts) {
+                flashcardIndexByPart.set(part.id, 0);
+                showAnswerFlashcard(part);
+            }
+            renderFeatherIcons();
+        })();
+    });
 }

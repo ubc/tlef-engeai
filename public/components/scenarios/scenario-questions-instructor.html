@@ -65,6 +65,10 @@
             <textarea id="sg-instructor-generate-prompt" class="sg-instructor-generate-prompt" rows="8" placeholder="Write your base question here."></textarea>
 
             <div class="sg-instructor-generate-controls">
+                <div id="sg-instructor-generate-lo-block" class="sg-instructor-generate-lo-block" style="width: 100%; margin-bottom: 12px;">
+                    <span class="sg-instructor-editor-section-label">Learning objectives (optional)</span>
+                    <div id="sg-instructor-generate-lo-catalog" class="sg-instructor-lo-modal-catalog" role="group" aria-label="Learning objectives for generation"></div>
+                </div>
                 <div class="sg-instructor-type-pills-row">
                     <div id="sg-instructor-type-pills" class="sg-instructor-type-pills" role="group" aria-label="Subquestion types"></div>
                     <div class="sg-instructor-type-add-wrap">
@@ -94,7 +98,7 @@
     </div>
 
     <!-- Interface 3: Editor view (full page) -->
-    <div id="sg-instructor-editor-view" class="sg-instructor-editor-view" style="display: none;">
+    <div id="sg-instructor-editor-view" class="sg-instructor-editor-view" data-artefact-inline style="display: none;">
         <button id="sg-instructor-editor-back-btn" class="sg-instructor-topic-detail-back-btn" type="button">
             <i data-feather="arrow-left"></i>
             <span id="sg-instructor-editor-back-label"></span>
@@ -154,7 +158,7 @@
                 <div class="sg-instructor-meta-field sg-instructor-meta-field--time">
                     <span class="sg-instructor-meta-label">Expected Time</span>
                     <button id="sg-instructor-editor-expected-time-btn" type="button" class="sg-instructor-expected-time-btn" aria-haspopup="dialog" aria-controls="sg-instructor-time-modal-overlay">
-                        <span id="sg-instructor-editor-expected-time" class="sg-instructor-expected-time" data-minutes="25">25:00</span>
+                        <span id="sg-instructor-editor-expected-time" class="sg-instructor-expected-time" data-seconds="1500">25:00</span>
                         <span class="sg-instructor-expected-time-edit-label">Edit</span>
                     </button>
                 </div>
@@ -191,21 +195,20 @@
                 <button id="sg-instructor-flashcard-help-close-btn" type="button" class="sg-instructor-modal-close-btn" aria-label="Close">×</button>
             </div>
             <div class="sg-instructor-modal-body sg-instructor-flashcard-help-body">
-                <p>Each <strong>flashcard</strong> is one swipeable step students see after “See the Answer” or exam submit. The answer key is plain markdown; we split it into cards automatically.</p>
+                <p>Each <strong>flashcard</strong> is one swipeable step students see after “See the Answer” or exam submit. The answer key is plain markdown with LaTeX; we split it into cards automatically. The live card preview sits under the answer editor as you type.</p>
 
                 <h3 class="sg-instructor-flashcard-help-heading">Recommended structure</h3>
                 <ul class="sg-instructor-flashcard-help-list">
-                    <li><code># Card 1: Title</code> starts a <strong>new card</strong> (official delimiter).</li>
-                    <li>Everything under that heading until the next <code># Card</code> is the card body.</li>
-                    <li><code>## Topic</code> and <code>### Highlight</code> are optional sections <em>inside</em> a card — they render in the body, they do <strong>not</strong> create extra cards.</li>
-                    <li>Legacy fallbacks still work: <code>## Step</code> headings, or a numbered list (<code>1.</code> <code>2.</code> <code>3.</code>).</li>
+                    <li><code># Title</code> starts a <strong>new card</strong>.</li>
+                    <li>Everything under that heading until the next <code>#</code> is the card body (markdown + LaTeX like <code>$Q = mc_p\\Delta T$</code>).</li>
+                    <li>Do <strong>not</strong> use <code>##</code> / <code>###</code> for cards — only <code>#</code> starts a new step.</li>
+                    <li>The answer key must <strong>start</strong> with <code># Title</code>. Leading prose or a missing first title leaves the carousel empty.</li>
                 </ul>
 
                 <h3 class="sg-instructor-flashcard-help-heading">Why this layout</h3>
                 <ul class="sg-instructor-flashcard-help-list">
                     <li>One clear card boundary (<code>#</code>) so instructors always know what students will swipe next.</li>
-                    <li><code>##</code> / <code>###</code> stay free for structure inside a single card (topic + highlight).</li>
-                    <li>Avoids treating every heading level as a separate card.</li>
+                    <li>Body stays free for equations and short prose — no extra Topic/Highlight scaffolding.</li>
                 </ul>
 
                 <h3 class="sg-instructor-flashcard-help-heading">Template</h3>
@@ -230,12 +233,17 @@
                 <button id="sg-instructor-time-modal-close-btn" type="button" class="sg-instructor-modal-close-btn" aria-label="Close">×</button>
             </div>
             <div class="sg-instructor-modal-body">
-                <p class="sg-instructor-time-modal-hint">Set how long students should need for this question (in minutes).</p>
-                <div class="sg-instructor-expected-time-row sg-instructor-expected-time-row--modal">
-                    <button id="sg-instructor-time-modal-decrease-btn" type="button" class="sg-instructor-time-step-btn" aria-label="Decrease time by 5 minutes">−</button>
-                    <input id="sg-instructor-time-modal-input" type="text" class="sg-instructor-time-modal-input" inputmode="numeric" autocomplete="off" aria-label="Expected time in minutes" placeholder="25:00" />
+                <p class="sg-instructor-time-modal-hint">Set how long students should need for this question (minutes and seconds).</p>
+                <div id="sg-instructor-time-modal-controls" class="sg-instructor-expected-time-row sg-instructor-expected-time-row--modal">
                     <button id="sg-instructor-time-modal-increase-btn" type="button" class="sg-instructor-time-step-btn" aria-label="Increase time by 5 minutes">+</button>
+                    <div class="sg-instructor-time-modal-fields">
+                        <input id="sg-instructor-time-modal-minutes" type="text" class="sg-instructor-time-modal-input" inputmode="numeric" autocomplete="off" aria-label="Expected time minutes" maxlength="2" placeholder="25" />
+                        <span class="sg-instructor-time-modal-sep" aria-hidden="true">:</span>
+                        <input id="sg-instructor-time-modal-seconds" type="text" class="sg-instructor-time-modal-input" inputmode="numeric" autocomplete="off" aria-label="Expected time seconds" maxlength="2" placeholder="00" />
+                    </div>
+                    <button id="sg-instructor-time-modal-decrease-btn" type="button" class="sg-instructor-time-step-btn" aria-label="Decrease time by 5 minutes">−</button>
                 </div>
+                <p id="sg-instructor-time-modal-warning" class="sg-instructor-time-modal-warning" hidden aria-live="polite"></p>
             </div>
             <div class="sg-instructor-modal-footer">
                 <button id="sg-instructor-time-modal-cancel-btn" type="button" class="btn-outline">Cancel</button>

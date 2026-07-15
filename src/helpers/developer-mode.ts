@@ -88,36 +88,54 @@ export function getMockGeneratedStruggleTopics(): string[] {
 
 /**
  * Get one mock generated scenario question for Practice Scenarios developer-mode generation.
- * Shape matches `scenario-generation-schema.ts`'s `singleScenarioSchema`.
+ * Shape matches `scenario-schemas.ts` generatedScenarioSchema (no partId — server assigns subQuestionId).
  */
-export function getMockGeneratedScenario(): {
+export function getMockGeneratedScenario(
+    types: Array<'calculation' | 'troubleshoot' | 'action' | 'corrective'> = [
+        'calculation',
+        'troubleshoot',
+        'action',
+    ]
+): {
     title: string;
     questionBody: string;
     solutionBody: string;
-    subQuestions: Array<{ partId: 'a' | 'b' | 'c' | 'd'; prompt: string; modelAnswer: string }>;
+    subQuestions: Array<{
+        subQuestionType: 'calculation' | 'troubleshoot' | 'action' | 'corrective';
+        prompt: string;
+        modelAnswer: string;
+    }>;
 } {
+    const subQuestions = types.map((subQuestionType) => ({
+        subQuestionType,
+        prompt: `[DEV MODE] ${subQuestionType} prompt for this scenario.`,
+        modelAnswer: `# Step 1\n[DEV MODE] ${subQuestionType} model answer.`,
+    }));
     return {
         title: '[DEV MODE] Mock generated scenario',
         questionBody:
             'You are a process engineer at a pilot plant. During the morning shift, the reactor ' +
             'is running 15% below the design conversion rate and the operator has flagged an ' +
             'unexpected temperature drift on the jacket cooling loop.',
-        solutionBody:
-            '[DEV MODE] The baseline conversion is calculated from the design rate law. The deviation ' +
-            'is consistent with catalyst deactivation and reduced heat transfer efficiency.',
-        subQuestions: [
-            { partId: 'a', prompt: '[DEV MODE] Calculate the design conversion rate given the feed conditions.', modelAnswer: '[DEV MODE] Baseline conversion model answer.' },
-            { partId: 'b', prompt: '[DEV MODE] List plausible reasons for the observed 15% deviation.', modelAnswer: '[DEV MODE] Reasons model answer.' },
-            { partId: 'c', prompt: '[DEV MODE] Recommend corrective actions.', modelAnswer: '[DEV MODE] Actions model answer.' },
-        ],
+        solutionBody: subQuestions.map((s) => s.modelAnswer).join('\n\n'),
+        subQuestions,
     };
 }
 
-/** Get a mock check-answer verdict/guidance pair for developer-mode scenario feedback. */
-export function getMockScenarioFeedback(): { verdict: 'correct' | 'needs_improvement'; guidance?: string } {
+/** Get a mock grade/feedback pair for developer-mode exam grading. */
+export function getMockScenarioFeedback(): { grade: number; feedback: string } {
     return {
-        verdict: 'needs_improvement',
-        guidance: '[DEV MODE] What governing equation applies here? What assumption might not hold?',
+        grade: 7,
+        feedback:
+            '[DEV MODE] The approach is mostly sound. Check that units and assumptions are applied consistently throughout the calculation.',
+    };
+}
+
+/** Get mock practice TA feedback (no grade) for developer-mode check-answer. */
+export function getMockScenarioPracticeFeedback(): { feedback: string } {
+    return {
+        feedback:
+            '[DEV MODE] Nice start — your setup looks reasonable. Double-check unit consistency and whether every assumption matches the scenario before you finalize the calculation.',
     };
 }
 

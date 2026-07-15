@@ -408,6 +408,60 @@ export async function getAllLearningObjectives(
 }
 
 /**
+ * getLearningObjectivesForTopicOrWeek — flatten LOs for one topic/week for Scenario Questions catalog UI.
+ *
+ * @returns ScenarioLearningObjectiveOption[] with objectiveId, text, and parent titles
+ */
+export async function getLearningObjectivesForTopicOrWeek(
+    ctx: MongoDalContext,
+    courseId: string,
+    topicOrWeekId: string
+): Promise<
+    Array<{
+        objectiveId: string;
+        text: string;
+        topicOrWeekId: string;
+        topicOrWeekTitle: string;
+        itemId: string;
+        itemTitle: string;
+    }>
+> {
+    const results = await activeCourseListCollection(ctx.db)
+        .aggregate<{
+            objectiveId: string;
+            text: string;
+            topicOrWeekId: string;
+            topicOrWeekTitle: string;
+            itemId: string;
+            itemTitle: string;
+        }>([
+            { $match: { id: courseId } },
+            { $unwind: '$topicOrWeekInstances' },
+            { $match: { 'topicOrWeekInstances.id': topicOrWeekId } },
+            { $unwind: '$topicOrWeekInstances.items' },
+            { $unwind: '$topicOrWeekInstances.items.learningObjectives' },
+            {
+                $project: {
+                    _id: 0,
+                    objectiveId: '$topicOrWeekInstances.items.learningObjectives.id',
+                    text: '$topicOrWeekInstances.items.learningObjectives.LearningObjective',
+                    topicOrWeekId: '$topicOrWeekInstances.id',
+                    topicOrWeekTitle: { $ifNull: ['$topicOrWeekInstances.title', ''] },
+                    itemId: '$topicOrWeekInstances.items.id',
+                    itemTitle: {
+                        $ifNull: [
+                            '$topicOrWeekInstances.items.itemTitle',
+                            { $ifNull: ['$topicOrWeekInstances.items.title', ''] },
+                        ],
+                    },
+                },
+            },
+        ])
+        .toArray();
+    return results.filter((r) => !!r.objectiveId && !!r.text);
+}
+
+/**
  * addInstructorStruggleTopic
  *
  * `$push` one instructor struggle topic onto a specific content item within a topic/week instance.

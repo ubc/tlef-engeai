@@ -50,9 +50,8 @@ import * as CourseRosterMongo from './mongo/course-roster-mongo';
 import * as InstructorPeriodAllowanceMongo from './mongo/instructor-period-allowance-mongo';
 import * as ScenarioQuestionsMongo from './mongo/scenario-questions-mongo';
 import type {
-    ScenarioAnswerVerdict,
-    ScenarioPartId,
-    ScenarioQuestionStatus
+    ScenarioQuestionStatus,
+    ScenarioStudentResponse
 } from '../types/shared';
 
 dotenv.config();
@@ -436,19 +435,31 @@ export class EngEAI_MongoDB {
     public deleteScenarioQuestion = async (courseName: string, questionId: string) =>
         ScenarioQuestionsMongo.deleteScenarioQuestion(this.ctx(), courseName, questionId);
 
-    public getScenarioProgress = async (courseName: string, userId: string, questionId: string) =>
-        ScenarioQuestionsMongo.getScenarioProgress(this.ctx(), courseName, userId, questionId);
-
-    public recordScenarioPartCheck = async (
+    public appendScenarioStudentResponse = async (
         courseName: string,
-        userId: string,
         questionId: string,
-        partId: ScenarioPartId,
-        verdict: ScenarioAnswerVerdict
-    ) => ScenarioQuestionsMongo.recordScenarioPartCheck(this.ctx(), courseName, userId, questionId, partId, verdict);
+        subQuestionId: string,
+        response: ScenarioStudentResponse
+    ) =>
+        ScenarioQuestionsMongo.appendStudentResponse(
+            this.ctx(),
+            courseName,
+            questionId,
+            subQuestionId,
+            response
+        );
 
-    public markScenarioSolutionViewed = async (courseName: string, userId: string, questionId: string) =>
-        ScenarioQuestionsMongo.markScenarioSolutionViewed(this.ctx(), courseName, userId, questionId);
+    public appendScenarioExamResponses = async (
+        courseName: string,
+        questionId: string,
+        items: Array<{ subQuestionId: string; response: ScenarioStudentResponse }>
+    ) => ScenarioQuestionsMongo.appendExamResponses(this.ctx(), courseName, questionId, items);
+
+    public getScenarioStudentResponses = async (courseName: string, questionId: string, studentUserId: string) =>
+        ScenarioQuestionsMongo.getStudentResponsesForQuestion(this.ctx(), courseName, questionId, studentUserId);
+
+    public getLearningObjectivesForTopicOrWeek = async (courseId: string, topicOrWeekId: string) =>
+        TopicWeekMongo.getLearningObjectivesForTopicOrWeek(this.ctx(), courseId, topicOrWeekId);
 
     /**
      * #########################################################

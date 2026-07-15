@@ -215,6 +215,7 @@ Type aliases and unions: one-line JSDoc above with when/why. Enums: comment non-
 |------|-------------|
 | `src/chat/conversation-modes/**` | `prompt-engineer/01-conversation-modes-docs.mdc` |
 | `src/db/mongo/**` | File header + JSDoc on exports; idempotency in `@description` or prose |
+| `src/**` orchestration classes | `backend/06-backend-inline-documentation.mdc` — STEP banners and Key Features (`chat-app.ts` style) |
 
 ## Check-in
 

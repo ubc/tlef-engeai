@@ -259,23 +259,27 @@ Platform defaults ship in `src/chat/system-prompts/shared-default/`, `socratic-d
 
 #### Scenario Questions (Practice Scenarios / Scenario Questions)
 
-Standalone practice bank replacing the retired `scenario-generation` chat mode (`planner/improved-scenario-generation-deliverables.md`). Documents live one-per-question in `{courseName}_scenario_questions` — lazy-provisioned on first request via SQ-001 ([DATA_MIGRATIONS.md](DATA_MIGRATIONS.md#sq-001-scenario-questions-collection-backfill)), never embedded on `activeCourse`. Chapter grouping uses `TopicOrWeekInstance.id`. Mounted from `src/routes/mongo/scenario-questions-routes.ts`; business logic lives in `src/db/mongo/scenario-questions-mongo.ts` and `src/scenario-generation/{scenario-generator,scenario-feedback}.ts`.
+Standalone practice bank (`planner/scenario-generation-recovery-plan.md`). Documents live one-per-question in `{courseName}_scenario_questions` — lazy-provisioned on first request via SQ-001 ([DATA_MIGRATIONS.md](DATA_MIGRATIONS.md#sq-001-scenario-questions-collection-backfill)), never embedded on `activeCourse`. Chapter grouping uses `TopicOrWeekInstance.id`. Mounted from `src/routes/mongo/scenario-questions-routes.ts`; orchestration lives in `src/scenario-generation/scenario-service.ts`.
 
-Two auth tiers: `requireCourseMemberForScenarioAPI` (enrolled student **or** staff — list/get/check-answer/solution) and `requireInstructorForCourseAPI` (create/edit/status/delete/generate). Drafts are **404**, not 403, for students (D5/E-01 — no draft-existence leakage).
+Two auth tiers: `requireCourseMemberForScenarioAPI` (enrolled student **or** staff — list/get/check-answer/solution/responses) and `requireInstructorForCourseAPI` (create/edit/status/delete/generate/LO catalog). Drafts are **404**, not 403, for students (D5/E-01 — no draft-existence leakage).
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
-| GET | `/api/courses/:courseId/scenario-questions` | Yes | Member | Instructor: all statuses, `?status=`/`?topicOrWeekId=` filters. Student: published only, `?topicOrWeekId=` filter |
-| GET | `/api/courses/:courseId/scenario-questions/:questionId` | Yes | Member | Instructor: full document any status. Student: 404 unless published |
-| POST | `/api/courses/:courseId/scenario-questions` | Yes | Instructor | Manual create (draft); `{ title, topicOrWeekId, sourcePrompt?, questionBody, solutionBody?, subQuestions? }` |
-| PUT | `/api/courses/:courseId/scenario-questions/:questionId` | Yes | Instructor | Edit title/chapter/narrative/parts (does not change `status`) |
-| PATCH | `/api/courses/:courseId/scenario-questions/:questionId/status` | Yes | Instructor | `{ status: 'draft' \| 'published' \| 'rejected' }` — publish re-validates parts (a)(b)(c) server-side |
+| GET | `/api/courses/:courseId/scenario-questions/learning-objectives?topicOrWeekId=` | Yes | Instructor | Topic-scoped LO catalog for generate/editor selectors |
+| GET | `/api/courses/:courseId/scenario-questions` | Yes | Member | Instructor: all statuses, `?status=`/`?topicOrWeekId=` filters. Student: published only |
+| GET | `/api/courses/:courseId/scenario-questions/:questionId` | Yes | Member | Instructor: full document any status. Student: 404 unless published (no model answers / response history) |
+| POST | `/api/courses/:courseId/scenario-questions` | Yes | Instructor | Manual create (draft) |
+| PUT | `/api/courses/:courseId/scenario-questions/:questionId` | Yes | Instructor | Edit title/chapter/narrative/parts/LOs (does not change `status`) |
+| PATCH | `/api/courses/:courseId/scenario-questions/:questionId/status` | Yes | Instructor | `{ status: 'draft' \| 'published' \| 'rejected' }` — publish re-validates server-side |
 | DELETE | `/api/courses/:courseId/scenario-questions/:questionId` | Yes | Instructor | Hard delete |
-| POST | `/api/courses/:courseId/scenario-questions/generate` | Yes | Instructor | `{ mode: 'single' \| 'batch', sourcePrompt, topicOrWeekId, count? }` — RAG-grounded AI generation of draft(s); `count` capped at `SCENARIO_BATCH_MAX_COUNT` (10) |
-| POST | `/api/courses/:courseId/scenario-questions/:questionId/check-answer` | Yes | Member | `{ partId, studentAnswer }` → `ScenarioPartFeedbackResponse` (verdict + Socratic guidance, never the model answer); flexible part order, any number of re-checks |
-| GET | `/api/courses/:courseId/scenario-questions/:questionId/solution` | Yes | Member | Gated reveal — 403 for students until parts (a)(b)(c) each checked at least once; 200 with `{ questionBody, solutionBody, subQuestions }` (includes `modelAnswer`) once unlocked |
+| POST | `/api/courses/:courseId/scenario-questions/generate` | Yes | Instructor | `{ mode, sourcePrompt, topicOrWeekId, learningObjectiveIds?, subQuestionTypes?, difficulty?, title?, count? }` — RAG-grounded AI drafts |
+| POST | `/api/courses/:courseId/scenario-questions/:questionId/check-answer` | Yes | Member | `{ subQuestionId, studentAnswer, mode }` → `{ responseId, grade (1–10), feedback }` — appends embedded history |
+| POST | `/api/courses/:courseId/scenario-questions/:questionId/submit-exam` | Yes | Student | `{ answers: [{ subQuestionId, studentAnswer }] }` → `{ overallGrade, results[] }` — batch grade + atomic append |
+| GET | `/api/courses/:courseId/scenario-questions/:questionId/responses` | Yes | Member | Caller's own embedded response history only |
+| GET | `/api/courses/:courseId/scenario-questions/:questionId/solution?mode=` | Yes | Member | Gated reveal — 403 until every sub-question has a response in `mode` (`practice` \| `exam`) |
 
-**Errors:** `400` invalid body/status/partId; `401` unauthenticated; `403` non-member (list/check-answer/solution) or unmet solution gate; `404` course/question not found (including drafts for students); `422` generation failed (parse/validation failure — no orphan drafts persisted); `500` server error.
+**Errors:** `400` invalid body / missing-or-duplicate exam answers; `401` unauthenticated; `403` non-member, instructor on submit-exam, or unmet solution gate; `404` course/question not found (including drafts for students); `422` generation/grading failure; `500` server error.
+
 
 ### 4.4 RAG (`/api/rag`)
 
