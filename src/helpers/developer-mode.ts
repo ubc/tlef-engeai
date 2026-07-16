@@ -9,6 +9,7 @@
  * - Check if developer mode is enabled
  * - Generate mock streaming responses for chat
  * - Provide mock struggle words for memory agent
+ * - Optional GUARDRAIL_MOCK_TRIGGER for Guided Pathways guardrail testing
  * 
  * @author: EngE-AI Team
  * @version: 1.0.0
@@ -16,6 +17,10 @@
  */
 
 import { appLogger } from '../utils/logger';
+import {
+    buildGuardrailResult,
+    type GuardrailResult,
+} from '../chat/guided-pathways/guardrail-schema';
 
 /**
  * Check if developer mode is enabled
@@ -84,5 +89,43 @@ export function getMockGeneratedStruggleTopics(): string[] {
         'mock nernst equation and cell potential relationships',
         'mock galvanic cell schematic representation',
     ];
+}
+
+/** Valid values for GUARDRAIL_MOCK_TRIGGER when DEVELOPING_MODE is enabled. */
+export type GuardrailMockTriggerId =
+    | 'mental-health-crisis'
+    | 'inappropriate-content'
+    | 'off-topic';
+
+/**
+ * Force a guardrail trigger in developer mode without calling the evaluator LLM.
+ *
+ * Reads `GUARDRAIL_MOCK_TRIGGER` (one of the platform guardrail ids). When unset,
+ * returns null and the orchestrator proceeds to a real or mocked structured call.
+ *
+ * @param courseName - Substituted into static response templates.
+ * @returns Mock {@link GuardrailResult} when env is set and valid; otherwise null.
+ */
+export function getMockGuardrailEvaluation(courseName: string): GuardrailResult | null {
+    if (!isDeveloperMode()) {
+        return null;
+    }
+
+    const triggerId = process.env.GUARDRAIL_MOCK_TRIGGER?.trim() as GuardrailMockTriggerId | undefined;
+    if (!triggerId) {
+        return null;
+    }
+
+    const validIds: GuardrailMockTriggerId[] = [
+        'mental-health-crisis',
+        'inappropriate-content',
+        'off-topic',
+    ];
+    if (!validIds.includes(triggerId)) {
+        appLogger.warn(`[DEVELOPER-MODE] Invalid GUARDRAIL_MOCK_TRIGGER: ${triggerId}`);
+        return null;
+    }
+
+    return buildGuardrailResult(triggerId, courseName);
 }
 
