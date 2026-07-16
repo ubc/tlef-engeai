@@ -22,6 +22,7 @@ import { getDefaultAssistantMessage } from './initial-assistant-prompt-default';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import { isDeveloperMode, generateMockStreamingResponse } from '../helpers/developer-mode';
+import { evaluateGuardrails } from './guided-pathways/guardrail-orchestrator';
 
 /**
  * Interface for initializing a new chat conversation
@@ -333,6 +334,28 @@ export class ChatApp {
             throw new Error('Conversation not found');
         }
 
+        // ====================================================================
+        // STEP 0: GUARDRAILS (Guided Pathways P0)
+        // ====================================================================
+        const conversationMode = this.getGuardrailConversationMode(chatId);
+        if (conversationMode) {
+            const guardrailResult = await evaluateGuardrails({
+                message,
+                courseName,
+                conversationMode,
+            });
+
+            // If guardrails are triggered, add user message to history only and return assistant message
+            if (guardrailResult.triggered && guardrailResult.responseText) {
+                this.addUserMessageToHistoryOnly(chatId, message, userId, courseName);
+                return this.addAssistantMessage(
+                    chatId,
+                    guardrailResult.responseText,
+                    userId,
+                    courseName
+                );
+            }
+        }
 
         // ====================================================================
         // STEP 1: Add user message to conversation and history
@@ -1166,7 +1189,75 @@ export class ChatApp {
     }
 
     /**
-     * True when Mongo row needs `conversationMode` persisted for the current message history.
+     * Returns the conversation mode when guardrails apply (Socratic or Explanatory only).
+     */
+    private getGuardrailConversationMode(
+        chatId: string
+    ): 'socratic' | 'explanatory' | undefined {
+        const mode = this.chatConversationModes.get(chatId);
+        return mode === 'socratic' || mode === 'explanatory' ? mode : undefined;
+    }
+
+    /**
+     * addUserMessageToHistoryOnly - Add a user message to chat history only — excluded from main LLM conversation (D4).
+     * 
+     * @param chatId - The chat ID
+     * @param message - The user's message
+     * @param userId - The user ID
+     * @param courseName - The course name
+     * @returns ChatMessage - The created user message
+     */
+    private addUserMessageToHistoryOnly(
+        chatId: string,
+        message: string,
+        userId: string,
+        courseName: string = ''
+    ): ChatMessage {
+        const currentDate = new Date();
+        const messageId = this.chatIDGenerator.messageID(message, chatId, currentDate);
+
+        const chatMessage: ChatMessage = {
+            id: messageId,
+            sender: 'user',
+            userId: userId,
+            courseName: courseName,
+            text: message,
+            timestamp: Date.now(),
+        };
+
+        try {
+            if (this.chatHistory.has(chatId)) {
+
+                // Add user message to chat history
+                const existingHistory = this.chatHistory.get(chatId);
+
+                // If chat history exists, add user message to it
+                if (existingHistory) {
+                    existingHistory.push(chatMessage);
+                } else {
+                    this.chatHistory.set(chatId, [chatMessage]);
+                }
+
+            } 
+
+            // If chat history does not exist, create a new chat history
+            else {
+                // Add user message to chat history
+                this.chatHistory.set(chatId, [chatMessage]);
+            }
+        } catch (error) {
+            appLogger.error('Error adding user message to history only:', error as Error);
+        }
+
+        return chatMessage;
+    }
+
+    /**
+     * chatNeedsConversationModeBackfill - True when Mongo row needs `conversationMode` persisted for the current message history.
+     * 
+     * @param chat - The chat to check
+     * @param targetMode - The target conversation mode
+     * @returns boolean - True if the chat needs conversation mode backfill, false otherwise
      */
     private chatNeedsConversationModeBackfill(chat: Chat, targetMode: PersistedConversationModeId): boolean {
         const raw = chat.conversationMode;
