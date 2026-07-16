@@ -338,6 +338,8 @@ export class ChatApp {
         // STEP 0: GUARDRAILS (Guided Pathways P0)
         // ====================================================================
         const conversationMode = this.getGuardrailConversationMode(chatId);
+
+        //if conversation mode (socratic or explanatory) is not undefined, evaluate the guardrails
         if (conversationMode) {
             const guardrailResult = await evaluateGuardrails({
                 message,
@@ -348,12 +350,30 @@ export class ChatApp {
             // If guardrails are triggered, add user message to history only and return assistant message
             if (guardrailResult.triggered && guardrailResult.responseText) {
                 this.addUserMessageToHistoryOnly(chatId, message, userId, courseName);
+
+                // Log the guardrail result
+                appLogger.log(`############   GUIDE RAIL TRIGGERED   ##################`);
+                appLogger.log(``);
+                appLogger.log(`[CHAT-APP] 🔍 Guardrail result: ${guardrailResult.responseText}`);
+                appLogger.log(``);
+                appLogger.log(`########################################################`);
+
+
                 return this.addAssistantMessage(
                     chatId,
                     guardrailResult.responseText,
                     userId,
                     courseName
                 );
+            }
+
+            else {
+
+                appLogger.log(`############   GUIDE RAIL NOT TRIGGERED   ##################`);
+                appLogger.log(``);
+                appLogger.log(``);
+                appLogger.log(`########################################################`);
+
             }
         }
 
@@ -383,8 +403,8 @@ export class ChatApp {
             ragContext = ragPrompts.formatRetrievedContext(documents);
             documentsLength = documents.length;
             
-            appLogger.log(`📚 Captured ${documents.length} documents for storage`);
-            appLogger.log(`📚 Retrieved document texts: ${ragContext}`);
+            // appLogger.log(`📚 Captured ${documents.length} documents for storage`);
+            // appLogger.log(`📚 Retrieved document texts: ${ragContext}`);
         } catch (error) {
             appLogger.log(`❌ RAG Context Error:`, error);
             appLogger.error('Error retrieving RAG documents:', error as any);
@@ -439,10 +459,10 @@ export class ChatApp {
         // LOG BOTH ORIGINAL AND FORKED CONVERSATION HISTORIES
         // ====================================================================
 
-        // Log original conversation (stored in Maps)
-        appLogger.log(`\n📝 ORIGINAL CONVERSATION HISTORY (Chat: ${chatId}, User: ${userId}) - STORED IN MAPS:`);
-        appLogger.log(`Total messages: ${originalConversationHistory.length}`);
-        appLogger.log('='.repeat(80));
+        // // Log original conversation (stored in Maps)
+        // appLogger.log(`\n📝 ORIGINAL CONVERSATION HISTORY (Chat: ${chatId}, User: ${userId}) - STORED IN MAPS:`);
+        // appLogger.log(`Total messages: ${originalConversationHistory.length}`);
+        // appLogger.log('='.repeat(80));
 
         originalConversationHistory.forEach((msg: any, index: number) => {
             const role = msg.role.toUpperCase();
@@ -459,9 +479,9 @@ export class ChatApp {
 
         // Log forked conversation (used for LLM call)
         const forkedConversationHistory : Message[] = forkedConversation.getHistory();
-        appLogger.log(`\n📝 FORKED CONVERSATION HISTORY (Chat: ${chatId}, User: ${userId}) - SENT TO LLM:`);
-        appLogger.log(`Total messages: ${forkedConversationHistory.length}`);
-        appLogger.log('='.repeat(80));
+        // appLogger.log(`\n📝 FORKED CONVERSATION HISTORY (Chat: ${chatId}, User: ${userId}) - SENT TO LLM:`);
+        // appLogger.log(`Total messages: ${forkedConversationHistory.length}`);
+        // appLogger.log('='.repeat(80));
 
         forkedConversationHistory.forEach((msg: Message, index: number) => {
             const role = msg.role.toUpperCase();
