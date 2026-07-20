@@ -565,6 +565,8 @@ export class EngEAI_MongoDB {
         affiliation: 'student' | 'faculty'
     ) => GlobalUserMongo.updateGlobalUserAffiliation(this.ctx(), userId, affiliation);
 
+    public findAdminGlobalUsers = async () => GlobalUserMongo.findAdminGlobalUsers(this.ctx());
+
     /**
      * #########################################################
      * Memory agent — memory-agent-mongo.ts

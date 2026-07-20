@@ -1,42 +1,28 @@
 /**
  * Platform admin utilities.
+ *
+ * Admins are identified by full name (not PUID) via the ADMINS env var, a
+ * comma-separated list, e.g. ADMINS=Kathleen Tom,Example Admin
+ * Matching is fuzzy (handles middle initials/suffix variation) via namesMatch.
  */
 
-import type { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import type { GlobalUser } from '../types/shared';
+import { namesMatch } from './name-matching';
 
 /** True when the global user has platform admin privileges. */
 export function isAdminUser(globalUser: GlobalUser | null | undefined): boolean {
     return globalUser?.isAdmin === true;
 }
 
-/** PUIDs that receive platform admin (from env: CHARISMA_RUSDIYANTO_PUID, RICHARD_TAPE_PUID). */
-export function getPlatformAdminPuids(): string[] {
-    const puids: string[] = [];
-    const charisma = process.env.CHARISMA_RUSDIYANTO_PUID?.trim();
-    const richard = process.env.RICHARD_TAPE_PUID?.trim();
-    if (charisma) puids.push(charisma);
-    if (richard) puids.push(richard);
-    return puids;
+function getAdminNames(): string[] {
+    return (process.env.ADMINS || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
 }
 
-/** True when the given PUID is configured as a platform admin. */
-export function isPlatformAdminPuid(puid: string): boolean {
-    if (!puid || typeof puid !== 'string') return false;
-    return getPlatformAdminPuids().includes(puid.trim());
-}
-
-/**
- * Ensures env-configured platform admins have `isAdmin: true` in MongoDB.
- * Idempotent — no-op when already admin or PUID is not in the admin list.
- */
-export async function ensurePlatformAdminGlobalUser(
-    mongoDB: EngEAI_MongoDB,
-    globalUser: GlobalUser,
-    puid: string
-): Promise<GlobalUser> {
-    if (!isPlatformAdminPuid(puid) || globalUser.isAdmin === true) {
-        return globalUser;
-    }
-    return mongoDB.updateGlobalUser(puid, { isAdmin: true });
+/** True if the given name matches an entry in the ADMINS allowlist. */
+export function isAdminName(name: string | undefined): boolean {
+    if (!name) return false;
+    return getAdminNames().some((adminName) => namesMatch(adminName, name));
 }
