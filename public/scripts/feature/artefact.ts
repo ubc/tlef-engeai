@@ -59,8 +59,8 @@ export class ArtefactHandler {
                 return;
             }
 
-            // Check for close button clicks
-            const closeBtn = target.closest('#close-artefact-btn') as HTMLButtonElement;
+            // Check for close button clicks (split panel id or inline class)
+            const closeBtn = target.closest('#close-artefact-btn, .artefact-close-btn') as HTMLButtonElement;
             if (closeBtn) {
                 this.closeArtefact();
                 return;
@@ -74,7 +74,7 @@ export class ArtefactHandler {
             }
 
             // Check for download button clicks
-            const downloadBtn = target.closest('#download-artefact-btn') as HTMLButtonElement;
+            const downloadBtn = target.closest('#download-artefact-btn, .artefact-download-btn') as HTMLButtonElement;
             if (downloadBtn) {
                 const panel = downloadBtn.closest('.artefact-panel') as HTMLElement;
                 if (panel) {
@@ -220,7 +220,10 @@ export class ArtefactHandler {
      */
     public createArtefactButton(artefactData: ArtefactData): HTMLElement {
         const button = document.createElement('button');
-        button.className = 'artefact-button';
+        button.type = 'button';
+        button.className = artefactData.messageId.startsWith('sg-')
+            ? 'artefact-button artefact-button--scenario'
+            : 'artefact-button';
         button.id = `artefact-btn-${artefactData.id}`;
         
         // Always show "View Diagram" text, but the functionality will toggle
@@ -233,6 +236,16 @@ export class ArtefactHandler {
         // This allows buttons injected via innerHTML to work properly
 
         return button;
+    }
+
+    /** True when the button lives in a scenario host (inline expand) or lacks chat/onboarding. */
+    private shouldUseInlineMode(button: HTMLElement | null): boolean {
+        if (button?.closest('[data-artefact-inline], .sg-instructor-editor-view, .sg-student-workspace-view')) {
+            return true;
+        }
+        const onboardingContainer = document.querySelector('.onboarding');
+        const chatContainer = document.querySelector('.chat-window-container');
+        return !onboardingContainer && !chatContainer;
     }
 
     /**
@@ -301,6 +314,17 @@ graph TD
             return;
         }
 
+        // One open at a time — close whatever is showing first
+        if (this.currentlyOpenArtefactId && this.currentlyOpenArtefactId !== artefactId) {
+            this.closeArtefact({ immediate: true });
+        }
+
+        const button = document.getElementById(`artefact-btn-${artefactId}`) as HTMLButtonElement | null;
+        if (this.shouldUseInlineMode(button)) {
+            await this.openArtefactInline(artefactId, button);
+            return;
+        }
+
         // Update artefact state
         artefactData.isOpen = true;
         this.artefacts.set(artefactId, artefactData);
@@ -316,6 +340,8 @@ graph TD
         const chatContainer = document.querySelector('.chat-window-container') as HTMLElement | null;
         const container = onboardingContainer || chatContainer;
         if (!container) {
+            // Fallback: no chat shell — open inline under the button
+            await this.openArtefactInline(artefactId, button);
             return;
         }
 
@@ -324,7 +350,7 @@ graph TD
         // Get or create artefact panel (panel is removed on close, so always create fresh)
         let panel = document.getElementById('artefact-panel') as HTMLElement;
         if (!panel) {
-            panel = this.createArtefactPanel();
+            panel = this.createArtefactPanel(false);
 
             if (useModalMode) {
                 // Modal mode: create wrapper with backdrop, append to body
@@ -375,28 +401,72 @@ graph TD
     }
 
     /**
+     * Morph View Diagram chip into a full inline artefact panel (scenario surfaces).
+     */
+    private async openArtefactInline(artefactId: string, button: HTMLButtonElement | null): Promise<void> {
+        const artefactData = this.artefacts.get(artefactId);
+        if (!artefactData || !button) return;
+
+        artefactData.isOpen = true;
+        this.artefacts.set(artefactId, artefactData);
+        this.currentlyOpenArtefactId = artefactId;
+        this.updateArtefactButton(artefactId);
+
+        // Wrap button — host is the morphing surface (chip → panel → chip)
+        let host = button.closest('.artefact-inline-host') as HTMLElement | null;
+        if (!host) {
+            host = document.createElement('div');
+            host.className = 'artefact-inline-host';
+            button.parentNode?.insertBefore(host, button);
+            host.appendChild(button);
+        }
+        host.classList.remove('is-closing');
+        host.querySelector('.artefact-panel--inline')?.remove();
+
+        // Start at chip size so width/height can transition to the artefact frame
+        const chip = button.getBoundingClientRect();
+        host.style.width = `${Math.max(chip.width, 1)}px`;
+        host.style.height = `${Math.max(chip.height, 1)}px`;
+
+        const panel = this.createArtefactPanel(true);
+        panel.classList.add('open');
+        panel.setAttribute('aria-hidden', 'false');
+        host.appendChild(panel);
+
+        if (typeof (window as any).feather !== 'undefined') {
+            (window as any).feather.replace();
+        }
+
+        // Next frame: grow host to full artefact size
+        void host.offsetWidth;
+        host.classList.add('is-open');
+        host.style.width = '';
+        host.style.height = '';
+
+        await this.waitForPanelVisible(panel);
+        this.updateArtefactPanel(panel, artefactData);
+        this.addEscListener();
+    }
+
+    /**
      * Close artefact panel
      * Removes the panel from DOM after closing animation
-     * Handles both modal mode (wrapper in body) and desktop split-screen mode
+     * Handles modal, desktop split-screen, and scenario inline modes
      */
-    public closeArtefact(): void {
-        const panel = document.getElementById('artefact-panel');
-        if (!panel) return;
-
-        // Update currently open artefact state
-        if (this.currentlyOpenArtefactId) {
-            const artefactData = this.artefacts.get(this.currentlyOpenArtefactId);
-            if (artefactData) {
-                artefactData.isOpen = false;
-                this.artefacts.set(this.currentlyOpenArtefactId, artefactData);
-            }
-            
-            // Update button appearance for the previously open artefact
-            this.updateArtefactButton(this.currentlyOpenArtefactId);
-            
-            // Clear currently open artefact
-            this.currentlyOpenArtefactId = null;
+    public closeArtefact(options?: { immediate?: boolean }): void {
+        const inlinePanel = document.querySelector('.artefact-panel--inline') as HTMLElement | null;
+        if (inlinePanel) {
+            this.closeArtefactInline(inlinePanel, options?.immediate === true);
+            return;
         }
+
+        const panel = document.getElementById('artefact-panel');
+        if (!panel) {
+            this.clearOpenArtefactState();
+            return;
+        }
+
+        this.clearOpenArtefactState();
 
         const isInModalWrapper = panel.closest('.artefact-modal-wrapper');
         if (!isInModalWrapper) {
@@ -407,6 +477,13 @@ graph TD
             if (container) {
                 container.classList.remove('artefact-open');
             }
+        }
+
+        if (options?.immediate) {
+            if (isInModalWrapper) isInModalWrapper.remove();
+            else panel.remove();
+            this.removeEscListener();
+            return;
         }
 
         // Start closing animation
@@ -424,6 +501,61 @@ graph TD
         }, 180);
     }
 
+    private closeArtefactInline(panel: HTMLElement, immediate: boolean): void {
+        const host = panel.closest('.artefact-inline-host') as HTMLElement | null;
+        const button = host?.querySelector('.artefact-button') as HTMLElement | null;
+        this.clearOpenArtefactState();
+
+        const finish = () => {
+            panel.remove();
+            host?.classList.remove('is-open', 'is-closing');
+            if (host) {
+                host.style.width = '';
+                host.style.height = '';
+            }
+            this.removeEscListener();
+        };
+
+        if (immediate || !host) {
+            finish();
+            return;
+        }
+
+        // Shrink host toward the restored chip size
+        const openRect = host.getBoundingClientRect();
+        host.style.width = `${openRect.width}px`;
+        host.style.height = `${openRect.height}px`;
+        host.classList.add('is-closing');
+        host.classList.remove('is-open');
+
+        // Let chip layout contribute size, then animate down to it
+        void host.offsetWidth;
+        const chipW = button ? Math.max(button.getBoundingClientRect().width, 1) : openRect.width;
+        const chipH = button ? Math.max(button.getBoundingClientRect().height, 1) : 36;
+        host.style.width = `${chipW}px`;
+        host.style.height = `${chipH}px`;
+
+        let done = false;
+        const once = () => {
+            if (done) return;
+            done = true;
+            finish();
+        };
+        host.addEventListener('transitionend', once, { once: true });
+        setTimeout(once, 320);
+    }
+
+    private clearOpenArtefactState(): void {
+        if (!this.currentlyOpenArtefactId) return;
+        const artefactData = this.artefacts.get(this.currentlyOpenArtefactId);
+        if (artefactData) {
+            artefactData.isOpen = false;
+            this.artefacts.set(this.currentlyOpenArtefactId, artefactData);
+        }
+        this.updateArtefactButton(this.currentlyOpenArtefactId);
+        this.currentlyOpenArtefactId = null;
+    }
+
     /**
      * Update artefact button appearance based on current state
      * @param artefactId - The artefact ID to update
@@ -435,7 +567,13 @@ graph TD
         const artefactData = this.artefacts.get(artefactId);
         if (!artefactData) return;
 
+        const scenarioClass = button.classList.contains('artefact-button--scenario')
+            || artefactData.messageId.startsWith('sg-');
+
         // Always show "View Diagram" text, but the functionality will toggle
+        button.className = scenarioClass
+            ? 'artefact-button artefact-button--scenario'
+            : 'artefact-button';
         button.innerHTML = `
             <i data-feather="image"></i>
             <span>View Diagram</span>
@@ -451,16 +589,19 @@ graph TD
      * Create artefact panel dynamically using DOM manipulation
      * Matches the structure from chat-window.html and student-onboarding.html
      * Detects if we're in onboarding mode to apply appropriate classes
+     * @param inline - Scenario expand-under-button panel
      */
-    private createArtefactPanel(): HTMLElement {
+    private createArtefactPanel(inline: boolean): HTMLElement {
         // Check if we're in onboarding mode
         const onboardingContainer = document.querySelector('.onboarding') as HTMLElement | null;
         const isOnboarding = onboardingContainer !== null;
         
         // Create main panel element
         const panel = document.createElement('aside');
-        panel.id = 'artefact-panel';
-        panel.className = isOnboarding ? 'artefact-panel artefact-onboarding' : 'artefact-panel';
+        panel.id = inline ? 'artefact-inline-panel' : 'artefact-panel';
+        panel.className = inline
+            ? 'artefact-panel artefact-panel--inline'
+            : (isOnboarding ? 'artefact-panel artefact-onboarding' : 'artefact-panel');
         panel.setAttribute('aria-hidden', 'true');
         
         // Create header
@@ -469,7 +610,7 @@ graph TD
         
         // Create header title
         const title = document.createElement('h3');
-        title.textContent = isOnboarding ? 'Interactive Diagram' : 'Diagram';
+        title.textContent = isOnboarding && !inline ? 'Interactive Diagram' : 'Diagram';
         header.appendChild(title);
         
         // Create header actions container
@@ -478,8 +619,9 @@ graph TD
         
         // Create download button
         const downloadBtn = document.createElement('button');
+        downloadBtn.type = 'button';
         downloadBtn.id = 'download-artefact-btn';
-        downloadBtn.className = 'icon-btn';
+        downloadBtn.className = 'icon-btn artefact-download-btn';
         downloadBtn.title = 'Download diagram';
         const downloadIcon = document.createElement('i');
         downloadIcon.setAttribute('data-feather', 'download');
@@ -488,8 +630,9 @@ graph TD
         
         // Create close button
         const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
         closeBtn.id = 'close-artefact-btn';
-        closeBtn.className = 'icon-btn';
+        closeBtn.className = 'icon-btn artefact-close-btn';
         closeBtn.title = 'Close';
         const closeIcon = document.createElement('i');
         closeIcon.setAttribute('data-feather', 'x');

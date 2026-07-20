@@ -14,7 +14,8 @@ import { authService } from '../services/auth-service.js';
 import { studentUserFactory } from '../factories/student-user-factory.js';
 import { renderStudentOnboarding } from '../onboarding/student-onboarding.js';
 import { initializeStudentFlagHistory } from '../feature/student-flag-history.js';
-import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
+import { initializeScenariosStudent, isScenarioWorkspaceActive, confirmLeaveScenarioWorkspace, expandStudentSidebar, isScenariosStudentMounted, syncStudentScenariosFromURL } from '../feature/scenarios-student.js';
+import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInfoModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
 import { renderAbout } from '../about/about.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
 import { 
@@ -40,8 +41,8 @@ async function checkAuthentication(): Promise<boolean> {
 }
 
 // State tracking for navigation
-let currentComponent: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history' = 'welcome-screen';
-let previousComponent: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history' = 'welcome-screen';
+let currentComponent: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history' | 'scenarios' = 'welcome-screen';
+let previousComponent: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history' | 'scenarios' = 'welcome-screen';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // Check authentication first
@@ -255,6 +256,13 @@ function initializeInactivityTracking(): void {
  */
 async function initializeChatInterface(user: any, urlState?: { view: string | null, chatId: string | null }): Promise<void> {
 
+    // ponytail: mirror instructor menu-list-item.active; one helper for both tools
+    const setStudentToolActive = (toolId: string | null) => {
+        document.querySelectorAll('.student-tool-btn').forEach((btn) => {
+            btn.classList.toggle('active', toolId !== null && btn.id === toolId);
+        });
+    };
+
     
     const chatManager = ChatManager.getInstance({
         isInstructor: false,
@@ -264,20 +272,25 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             if (action === 'ui-update-needed') {
                 updateUI();
             } else if (action === 'new-chat-created') {
-                // New chat created from welcome screen or sidebar
-                const newChatId = data?.chatId;
-                if (newChatId) {
-                    const courseId = getCourseIdFromURL();
-                    if (courseId) {
-                        // Only navigate if not already navigating (prevent recursion)
-                        if (!isNavigating) {
+                setStudentToolActive(null);
+                const newChatId = data?.chatId ?? data?.chat?.id;
+                if (!newChatId || isNavigating) return;
+                void (async () => {
+                    isNavigating = true;
+                    try {
+                        const courseId = getCourseIdFromURL();
+                        if (courseId) {
                             navigateToStudentChat(courseId, newChatId);
                         }
+                        await loadComponent('chat-window');
+                        chatManager.rebindMessageEvents();
+                    } finally {
+                        isNavigating = false;
                     }
-                }
-                // Note: loadChatWindow() is called by updateUI() or ChatManager
+                })();
             } else if (action === 'chat-clicked') {
-                // Chat clicked from sidebar
+                // Chat clicked from sidebar — clear tool selection
+                setStudentToolActive(null);
                 const clickedChatId = data?.chatId;
                 if (clickedChatId) {
                     const courseId = getCourseIdFromURL();
@@ -364,6 +377,39 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             if (isMobileView()) closeMobileSidebar();
         }
     });
+
+    // Warn before leaving an active Practice/Exam via sidebar (chat, new chat, other tools).
+    // Logout is excluded. Capture + re-click so ChatManager handlers still run after confirm.
+    let bypassScenarioLeaveGuard = false;
+    const SCENARIO_LEAVE_SELECTOR = [
+        '#add-chat-btn',
+        '.chat-item',
+        '#about-btn',
+        '#profile-btn',
+        '#course-selection-btn',
+        '#writing-analysis-btn'
+    ].join(', ');
+
+    sidebarEl?.addEventListener('click', async (e: MouseEvent) => {
+        if (bypassScenarioLeaveGuard) return;
+        if (currentComponent !== 'scenarios' || !isScenarioWorkspaceActive()) return;
+
+        const target = e.target as HTMLElement;
+        if (target.closest('#logout-btn')) return;
+
+        const leaveEl = target.closest(SCENARIO_LEAVE_SELECTOR) as HTMLElement | null;
+        if (!leaveEl) return;
+
+        e.preventDefault();
+        e.stopImmediatePropagation();
+
+        const ok = await confirmLeaveScenarioWorkspace();
+        if (!ok) return;
+
+        bypassScenarioLeaveGuard = true;
+        leaveEl.click();
+        bypassScenarioLeaveGuard = false;
+    }, true);
 
     // Swipe-to-right gesture on left edge of main content
     let touchStartX = 0;
@@ -453,9 +499,40 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         document.addEventListener('keydown', escHandler);
     };
 
+    const attachScenariosListeners = async () => {
+        try {
+            const response = await fetch(`/api/courses?name=${encodeURIComponent(user.courseName)}`, {
+                method: 'GET',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const result = await response.json();
+            if (result.success && result.data) {
+                await initializeScenariosStudent(result.data);
+            } else {
+                console.error('[STUDENT-MODE] ❌ Failed to load course for Practice Scenarios:', result.error);
+            }
+        } catch (error) {
+            console.error('[STUDENT-MODE] ❌ Error loading course for Practice Scenarios:', error);
+        }
+    };
+
     // --- COMPONENT LOADING ---
-    const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history') => {
+    const loadComponent = async (componentName: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history' | 'scenarios') => {
         if (!mainContentArea) return;
+
+        // Leaving Scenario Generation: warn if Practice/Exam is active; always expand sidebar
+        if (currentComponent === 'scenarios' && componentName !== 'scenarios') {
+            if (isScenarioWorkspaceActive()) {
+                const ok = await confirmLeaveScenarioWorkspace();
+                if (!ok) return;
+            } else {
+                expandStudentSidebar();
+            }
+        }
+
+        // Keep tool highlight in sync with the main view (Writing Analysis is modal-only)
+        setStudentToolActive(componentName === 'scenarios' ? 'practice-scenarios-btn' : null);
 
         // Close mobile sidebar when navigating to new view
         if (isMobileView()) closeMobileSidebar();
@@ -471,6 +548,8 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                 const response = await fetch('/components/student/flag-history.html');
                 if (!response.ok) throw new Error(`Failed to load flag-history component: ${response.statusText}`);
                 html = await response.text();
+            } else if (componentName === 'scenarios') {
+                html = await loadComponentHTML('scenarios-student');
             } else {
                 html = await loadComponentHTML(componentName);
             }
@@ -499,6 +578,8 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                 attachProfileListeners();
             } else if (componentName === 'flag-history') {
                 attachFlagHistoryListeners();
+            } else if (componentName === 'scenarios') {
+                await attachScenariosListeners();
             }
         } catch (error) {
             console.error(`Error loading component ${componentName}:`, error);
@@ -517,9 +598,14 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             return;
         }
 
-        // Respect URL state: do not overwrite about/flag-history when triggered by ui-update-needed
+        // Respect URL state: do not overwrite standalone views when triggered by ui-update-needed
         const viewFromURL = getStudentViewFromURL();
-        if (viewFromURL === 'about' || viewFromURL === 'flag-history') {
+        if (
+            viewFromURL === 'about' ||
+            viewFromURL === 'flag-history' ||
+            viewFromURL === 'scenarios' ||
+            viewFromURL === 'profile'
+        ) {
             return;
         }
 
@@ -560,6 +646,8 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             await loadComponent('profile');
         } else if (view === 'flag-history') {
             await loadComponent('flag-history');
+        } else if (view === 'scenarios') {
+            await loadComponent('scenarios');
         } else if (view === 'about') {
             await renderAbout({ component: currentComponent, mode: 'student' });
         } else if (view === 'welcoming-message') {
@@ -712,7 +800,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         
         // URL state takes priority for about, flag-history, welcoming-message, profile
         // Prevents refresh bug where updateUI's async loadComponent overwrites handleURLState
-        const urlStateViews = ['about', 'flag-history', 'welcoming-message', 'profile'];
+        const urlStateViews = ['about', 'flag-history', 'welcoming-message', 'profile', 'scenarios'];
         const hasUrlStateView = urlState?.view && urlStateViews.includes(urlState.view);
         
         if (hasUrlStateView) {
@@ -797,6 +885,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         if (aboutBtn) {
             aboutBtn.addEventListener('click', () => {
                 // console.log('[STUDENT-MODE] ℹ️ About button clicked');
+                setStudentToolActive(null);
                 navigateToStudentView('about');
             });
             // console.log('[STUDENT-MODE] ✅ About button listener attached');
@@ -891,6 +980,10 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             await loadComponent('profile');
         } else if (view === 'flag-history') {
             await loadComponent('flag-history');
+        } else if (view === 'scenarios' && currentComponent === 'scenarios' && isScenariosStudentMounted()) {
+            await syncStudentScenariosFromURL(true);
+        } else if (view === 'scenarios') {
+            await loadComponent('scenarios');
         } else if (view === 'about') {
             await renderAbout({ component: currentComponent, mode: 'student' });
         }
@@ -930,9 +1023,60 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
 
         profileBtn.addEventListener('click', () => {
             // console.log('[STUDENT-MODE] 👤 Loading flag history component...');
+            setStudentToolActive(null);
             navigateToStudentView('flag-history');
         });
         // console.log('[STUDENT-MODE] ✅ Flag history button listener attached');
+    };
+
+    const clearSelectedChatForTool = async () => {
+        await chatManager.setActiveChatId(null);
+    };
+
+    const attachPracticeScenariosButtonListener = () => {
+        const practiceScenariosBtn = document.getElementById('practice-scenarios-btn');
+        if (!practiceScenariosBtn) {
+            console.warn('[STUDENT-MODE] ⚠️ Scenario Generation button not found');
+            return;
+        }
+
+        practiceScenariosBtn.addEventListener('click', async () => {
+            await clearSelectedChatForTool();
+            setStudentToolActive('practice-scenarios-btn');
+            navigateToStudentView('scenarios');
+        });
+    };
+
+    window.addEventListener('engeai-student-open-chat-draft', () => {
+        void (async () => {
+            if (isNavigating) return;
+            isNavigating = true;
+            try {
+                setStudentToolActive(null);
+                navigateToStudentView('chat');
+                await loadComponent('chat-window');
+                if (!chatManager.getActiveChat()) {
+                    await chatManager.createNewChat();
+                }
+                chatManager.applyPendingChatDraftPrefill();
+            } finally {
+                isNavigating = false;
+            }
+        })();
+    });
+
+    const attachWritingAnalysisButtonListener = () => {
+        const writingAnalysisBtn = document.getElementById('writing-analysis-btn');
+        if (!writingAnalysisBtn) {
+            console.warn('[STUDENT-MODE] ⚠️ Writing Analysis button not found');
+            return;
+        }
+
+        writingAnalysisBtn.addEventListener('click', async () => {
+            await clearSelectedChatForTool();
+            setStudentToolActive('writing-analysis-btn');
+            void showInfoModal('Writing Analysis', 'Writing analysis is coming soon.');
+        });
     };
 
     const attachCourseSelectionListener = () => {
@@ -971,12 +1115,13 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
     // --- INITIALIZATION ---
     attachLogoutListener(); // Attach logout button listener
     attachProfileButtonListener(); // Attach profile button listener
+    attachPracticeScenariosButtonListener(); // Scenario Generation
+    attachWritingAnalysisButtonListener(); // Writing Analysis (coming soon)
     attachCourseSelectionListener(); // Attach course selection button listener
     
     // Update companion text with current course
     updateCompanionText(user);
-    
-    updateUI();
+    // Initial view is set in the ChatManager init block above (handleURLState or updateUI).
 }
 
 /**

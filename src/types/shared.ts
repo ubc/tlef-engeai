@@ -27,17 +27,28 @@
  * {@link Chat.conversationMode} until the first user message finalizes the chat to a real mode.
  *
  * Current product phase: memory-agent struggle detection and per-turn struggle tags apply only
- * when the resolved mode is `'socratic'`. Explanatory and scenario-generation do not consume
- * {@link MemoryAgentEntry}.
+ * when the resolved mode is `'socratic'`. Explanatory does not consume {@link MemoryAgentEntry}.
  */
-export const CONVERSATION_MODE_IDS = ['socratic', 'explanatory', 'scenario-generation'] as const;
+export const CONVERSATION_MODE_IDS = ['socratic', 'explanatory'] as const;
 
 export type ConversationModeId = (typeof CONVERSATION_MODE_IDS)[number];
 
 /**
- * Persisted chat lifecycle mode. `undeclared` means the chat has not received a user message yet.
+ * Retired chat mode slugs. `scenario-generation` was removed from the chat mode picker and
+ * replaced by the standalone Practice Scenarios / Scenario Questions feature (see
+ * `planner/improved-scenario-generation-deliverables.md`). Kept only so legacy chat documents
+ * that already persisted this value continue to type-check and render history; never selectable
+ * for new chats or sends.
  */
-export type PersistedConversationModeId = ConversationModeId | 'undeclared';
+export const RETIRED_CONVERSATION_MODE_IDS = ['scenario-generation'] as const;
+
+export type RetiredConversationModeId = (typeof RETIRED_CONVERSATION_MODE_IDS)[number];
+
+/**
+ * Persisted chat lifecycle mode. `undeclared` means the chat has not received a user message yet.
+ * Includes {@link RetiredConversationModeId} so legacy chat documents remain type-safe.
+ */
+export type PersistedConversationModeId = ConversationModeId | RetiredConversationModeId | 'undeclared';
 
 /**
  * Catalog availability for a {@link ConversationModeId} (GET /api/chat/conversation-modes).
@@ -177,6 +188,8 @@ export interface activeCourse {
         memoryAgent: string;
         /** Per-course scheduled publish jobs (e.g. `${courseName}_scheduled_tasks`) */
         scheduledTasks?: string;
+        /** Per-course Practice Scenarios question bank (e.g. `${courseName}_scenario_questions`); SQ-001 lazy-provisions on existing courses */
+        scenarioQuestions?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
     /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */
@@ -272,7 +285,6 @@ export interface CourseSystemPromptConfig {
     modes: {
         socratic: ModeSystemPromptState;
         explanatory: ModeSystemPromptState;
-        'scenario-generation': ModeSystemPromptState; // using string as key to avoid type error
     };
 }
 
@@ -621,4 +633,256 @@ export interface CourseAnalyticsAccessFlags {
     periodEndDate: string | null;
     isAdminEarlyAccess: boolean;
     isAcademicPeriodEnded: boolean;
+}
+
+// =====================================================
+// ===== SCENARIO QUESTIONS (Practice Scenarios) ======
+// =====================================================
+//
+// Standalone practice bank replacing the retired `scenario-generation` chat mode — see
+// `planner/improved-scenario-generation-deliverables.md`. Persisted one document per question in
+// `{courseName}_scenario_questions` (collection name on `activeCourse.collections.scenarioQuestions`,
+// lazy-provisioned by SQ-001). Not embedded on the `activeCourse` document.
+
+/** Lifecycle of a scenario question. Drafts are invisible to students (404, not 403). */
+export type ScenarioQuestionStatus = 'draft' | 'published' | 'rejected';
+
+/** Practice vs exam discriminator on embedded student responses and grading requests. */
+export type ScenarioMode = 'practice' | 'exam';
+
+/**
+ * @deprecated Prefer {@link ScenarioSubQuestion.subQuestionId}. Kept for SQ-003 backfill of legacy docs.
+ * Ordinal letter slot (`a`, `b`, …) used by older drafts.
+ */
+export type ScenarioPartId = string;
+
+/** @deprecated Legacy partId shape — single lowercase letter. */
+export const SCENARIO_PART_ID_PATTERN = /^[a-z]$/;
+
+/** Soft default framework labels used by prompts/docs — not a hard publish requirement. */
+export const DEFAULT_SCENARIO_FRAMEWORK_PART_IDS = ['a', 'b', 'c'] as const;
+
+/** @deprecated Use flexible publish (≥1 complete part). Kept as alias of {@link DEFAULT_SCENARIO_FRAMEWORK_PART_IDS}. */
+export const REQUIRED_SCENARIO_PART_IDS = DEFAULT_SCENARIO_FRAMEWORK_PART_IDS;
+
+/** @deprecated Prefer non-empty `subQuestionId` checks. */
+export function isScenarioPartId(value: unknown): value is ScenarioPartId {
+    return typeof value === 'string' && SCENARIO_PART_ID_PATTERN.test(value);
+}
+
+/** Instructor-selected / generated subquestion type. */
+export type ScenarioSubQuestionType = 'calculation' | 'troubleshoot' | 'action' | 'corrective';
+
+/** Difficulty set at generation; instructor-editable. */
+export type ScenarioDifficulty = 'easy' | 'medium' | 'hard';
+
+/**
+ * Immutable snapshot of a course learning objective mapped onto a scenario question.
+ * Resolved from the topic/week catalog at generate/edit time — not free text.
+ */
+export interface ScenarioLearningObjectiveSnapshot {
+    objectiveId: string; // LearningObjective.id from course content
+    text: string; // snapshot of LearningObjective.LearningObjective at mapping time
+    sourceTopicOrWeekId: string; // TopicOrWeekInstance.id where the LO lives
+    sourceItemId: string; // content item id that owns the LO
+}
+
+/** Catalog option returned by the topic-scoped learning-objective lookup for instructor UI. */
+export interface ScenarioLearningObjectiveOption {
+    objectiveId: string;
+    text: string;
+    topicOrWeekId: string;
+    topicOrWeekTitle: string;
+    itemId: string;
+    itemTitle: string;
+}
+
+/**
+ * One immutable student submission for a single sub-question.
+ * Embedded on the question document; never written from untrusted client fields for grade/feedback/ids.
+ */
+export interface ScenarioStudentResponse {
+    id: string; // server-generated response id
+    studentUserId: string; // internal roster id — never PUID
+    mode: ScenarioMode; // practice vs exam discriminator
+    studentAnswer: string; // exact submitted text
+    grade?: number; // AI integer grade 1–10 — present for exam submissions only
+    feedback: string; // TA suggestions (practice) or academic feedback (exam)
+    submittedAt: Date; // submission timestamp for history order
+}
+
+/**
+ * One sub-question embedded on a {@link ScenarioQuestion}. Stored inline (not a separate
+ * collection) so publish validation and check-answer stay simple. Count is variable (1–N).
+ */
+export interface ScenarioSubQuestion {
+    subQuestionId: string; // server-generated stable id — survives reorder; API key for check-answer/exam
+    /** @deprecated Legacy ordinal letter; retained only until SQ-003 backfill completes. */
+    partId?: ScenarioPartId;
+    /** Pedagogical type for this part (create UI / generate selection). */
+    subQuestionType: ScenarioSubQuestionType;
+    prompt: string; // student-facing sub-question text (no "Part (a)" title in prose — UI shows the label)
+    points?: number; // optional instructor-assigned weight for this part
+    /** Instructor-approved model answer — never sent to students except via the gated solution endpoint. */
+    modelAnswer: string;
+    /** Immutable history of student submissions for this sub-question. Stripped from student projections. */
+    studentResponses: ScenarioStudentResponse[];
+}
+
+/**
+ * A single practice scenario question. Chapter grouping uses {@link TopicOrWeekInstance.id} (D1).
+ * Full document lives in `{courseName}_scenario_questions`; never embedded on `activeCourse`.
+ */
+export interface ScenarioQuestion {
+    id: string; // business id from IDGenerator.scenarioQuestionID
+    courseId: string; // activeCourse.id — cross-check FK
+    courseName: string; // denormalized, matches the flags/scheduled-tasks pattern for queries/logging
+    topicOrWeekId: string; // FK -> TopicOrWeekInstance.id (chapter); orphaned ids show as "Uncategorized" in instructor UI
+    title: string;
+    status: ScenarioQuestionStatus;
+    sourcePrompt: string; // instructor seed (single mode) or batch prompt text used to generate this question
+    questionBody: string; // Role + Setup + Crisis narrative (markdown + optional mermaid) — no sub-part titles in prose
+    solutionBody: string; // full model solution for instructor review / gated student reveal — stripped on student list/detail APIs
+    subQuestions: ScenarioSubQuestion[]; // ≥1 for publish; each present part needs non-empty prompt+modelAnswer
+    difficulty: ScenarioDifficulty;
+    expectedTimeMinutes: number;
+    learningObjectives: ScenarioLearningObjectiveSnapshot[]; // question-level LO mappings from topic catalog
+    generatedBy: 'instructor' | 'ai';
+    aiGenerationJobId?: string; // groups sibling drafts created by the same batch generation request
+    sortOrder: number; // instructor ordering within a chapter
+    createdAt: Date;
+    updatedAt: Date;
+    publishedAt?: Date | null;
+    createdByUserId: string;
+    lastEditedByUserId?: string;
+}
+
+/** Student-safe projection — omits model answers, solution body, and embedded response history. */
+export type ScenarioQuestionForStudent = Omit<ScenarioQuestion, 'solutionBody' | 'subQuestions' | 'learningObjectives'> & {
+    learningObjectives: ScenarioLearningObjectiveSnapshot[];
+    subQuestions: Array<Omit<ScenarioSubQuestion, 'modelAnswer' | 'studentResponses'>>;
+};
+
+/** Request body for `POST .../check-answer`. */
+export interface ScenarioCheckAnswerRequest {
+    subQuestionId: string;
+    studentAnswer: string;
+    mode: ScenarioMode;
+}
+
+/**
+ * Response for the per-part check-answer endpoint. Practice mode returns TA feedback only (no grade).
+ * Exam grading uses submit-exam and returns grades per part.
+ */
+export interface ScenarioPartFeedbackResponse {
+    success: boolean;
+    responseId: string;
+    subQuestionId: string;
+    mode: ScenarioMode;
+    grade?: number;
+    feedback: string;
+    error?: string;
+    feedbackTier?: 'socratic' | 'descriptive';
+    feedbackSource?: 'llm' | 'canned';
+    blockReason?: 'cooldown' | 'daily_limit';
+    attemptNumber?: number;
+    attemptsRemaining?: number;
+    maxAttemptsPerDay?: number;
+    retryAfterSeconds?: number;
+    resetsAt?: string;
+    answerRevealed?: boolean;
+}
+
+/** One graded part returned inside an exam submit response. */
+export interface ScenarioExamPartResult {
+    subQuestionId: string;
+    grade: number;
+    feedback: string;
+}
+
+/** Response for `POST .../submit-exam`. `overallGrade` is the sum of part grades (not stored). */
+export interface ScenarioExamSubmitResponse {
+    success: boolean;
+    overallGrade: number;
+    results: ScenarioExamPartResult[];
+    error?: string;
+}
+
+/** One answer slot in a submit-exam request. */
+export interface ScenarioExamAnswerInput {
+    subQuestionId: string;
+    studentAnswer: string;
+}
+
+/** Request body for `POST /api/courses/:courseId/scenario-questions/generate`. */
+export interface ScenarioGenerateRequest {
+    mode: 'single' | 'batch';
+    sourcePrompt: string;
+    topicOrWeekId: string;
+    /** Selected LO ids from the topic/week catalog — resolved server-side to snapshots. */
+    learningObjectiveIds?: string[];
+    /** Ordered types from create UI — become sub-questions in order. */
+    subQuestionTypes?: ScenarioSubQuestionType[];
+    difficulty?: ScenarioDifficulty;
+    /** Instructor title override only — omit or send a placeholder to use the LLM-generated title. */
+    title?: string;
+    /** Batch mode only — number of drafts to generate; server caps at {@link SCENARIO_BATCH_MAX_COUNT}. */
+    count?: number;
+}
+
+/** Hard cap on batch generation size (D — deliverables §2 default). */
+export const SCENARIO_BATCH_MAX_COUNT = 10;
+
+/** Default expected minutes by difficulty (+ 5 per part applied at create/generate). */
+export const SCENARIO_DIFFICULTY_BASE_MINUTES: Record<ScenarioDifficulty, number> = {
+    easy: 15,
+    medium: 20,
+    hard: 30,
+};
+
+/**
+ * Infer `subQuestionType` for SQ-002/SQ-003 backfill of legacy parts missing the field.
+ * Prefer `subQuestionType` on the document when present.
+ */
+export function inferSubQuestionTypeFromPartId(partId: ScenarioPartId): ScenarioSubQuestionType {
+    const byLetter: Record<string, ScenarioSubQuestionType> = {
+        a: 'calculation',
+        b: 'troubleshoot',
+        c: 'action',
+        d: 'corrective',
+    };
+    return byLetter[partId] ?? 'calculation';
+}
+
+/** Expected time from difficulty + part count (instructor may override). */
+export function defaultExpectedTimeMinutes(difficulty: ScenarioDifficulty, partCount: number): number {
+    return SCENARIO_DIFFICULTY_BASE_MINUTES[difficulty] + Math.max(0, partCount) * 5;
+}
+
+/** Sum of integer part grades (1–10 each). */
+export function computeScenarioOverallGrade(grades: number[]): number {
+    if (grades.length === 0) return 0;
+    return grades.reduce((acc, g) => acc + g, 0);
+}
+
+/** Response for `POST /api/courses/:courseId/scenario-questions/generate`. */
+export interface ScenarioGenerateResponse {
+    success: boolean;
+    data?: ScenarioQuestion[]; // newly created draft(s); empty/omitted on parse failure (no orphan drafts persisted)
+    aiGenerationJobId?: string;
+    error?: string;
+}
+
+/**
+ * Response for the gated `GET /api/courses/:courseId/scenario-questions/:questionId/solution`.
+ * Live handler returns `{ success, data: { questionBody, solutionBody, subQuestions } }`.
+ */
+export interface ScenarioSolutionResponse {
+    success: boolean;
+    data?: {
+        questionBody: string;
+        solutionBody: string;
+        subQuestions: ScenarioSubQuestion[];
+    };
+    error?: string;
 }

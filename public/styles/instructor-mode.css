@@ -370,7 +370,6 @@ body {
 }
 
 .sidebar-content {
-    border-top: 1px solid var(--border-color);
     margin-top: 10px;
     display: flex;
     flex-direction: row;
@@ -411,7 +410,7 @@ body {
 
 
 .sidebar-menu-list .menu-list-item {
-    height: 50px;
+    height: 45px;
     width: 100%;
     display: flex;
     flex-direction: row;

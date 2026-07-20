@@ -6,7 +6,7 @@
 
 import { ConversationModeId, SystemPromptModule } from '../../types/shared';
 
-const VALID_SYSTEM_PROMPT_MODES = 'socratic|explanatory|scenario-generation';
+const VALID_SYSTEM_PROMPT_MODES = 'socratic|explanatory';
 const SYSTEM_PROMPT_OPEN_RE = new RegExp(
     `^<system_prompt\\s+mode="(${VALID_SYSTEM_PROMPT_MODES})">\\s*`,
     'i'

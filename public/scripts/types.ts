@@ -18,12 +18,21 @@
  * Must match src/types/shared.ts.
  * Selectable teaching mode; struggle overlay applies to Socratic only (current phase).
  */
-export const CONVERSATION_MODE_IDS = ['socratic', 'explanatory', 'scenario-generation'] as const;
+export const CONVERSATION_MODE_IDS = ['socratic', 'explanatory'] as const;
 
 export type ConversationModeId = (typeof CONVERSATION_MODE_IDS)[number];
 
+/**
+ * Must match src/types/shared.ts.
+ * Retired chat mode kept only so legacy chat documents (already persisted before this mode was
+ * removed) continue to type-check and render history; never selectable for new chats or sends.
+ */
+export const RETIRED_CONVERSATION_MODE_IDS = ['scenario-generation'] as const;
+
+export type RetiredConversationModeId = (typeof RETIRED_CONVERSATION_MODE_IDS)[number];
+
 /** Must match src/types/shared.ts. Persisted lifecycle state on Chat. */
-export type PersistedConversationModeId = ConversationModeId | 'undeclared';
+export type PersistedConversationModeId = ConversationModeId | RetiredConversationModeId | 'undeclared';
 
 /** Must match src/types/shared.ts */
 export type ConversationModeStatus = 'active' | 'coming_soon';
@@ -120,6 +129,8 @@ export interface activeCourse {
         flags: string;
         memoryAgent: string;
         scheduledTasks?: string;
+        /** Per-course Practice Scenarios question bank; SQ-001 lazy-provisions on existing courses */
+        scenarioQuestions?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
     /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */
@@ -219,7 +230,6 @@ export interface CourseSystemPromptConfig {
     modes: {
         socratic: ModeSystemPromptState;
         explanatory: ModeSystemPromptState;
-        'scenario-generation': ModeSystemPromptState;
     };
 }
 
@@ -742,3 +752,239 @@ export interface ActivityData {
 
 /** Inactivity tracker event types */
 export type InactivityEvent = 'warning' | 'logout' | 'activity-reset';
+
+// =====================================================
+// ===== SCENARIO QUESTIONS (Practice Scenarios) ======
+// =====================================================
+//
+// Must match src/types/shared.ts. Standalone practice bank replacing the retired
+// `scenario-generation` chat mode. Chapter grouping uses TopicOrWeekInstance.id (D1).
+
+/** Must match src/types/shared.ts. Drafts are invisible to students (404, not 403). */
+export type ScenarioQuestionStatus = 'draft' | 'published' | 'rejected';
+
+/** Must match src/types/shared.ts. Practice vs exam discriminator. */
+export type ScenarioMode = 'practice' | 'exam';
+
+/**
+ * @deprecated Prefer subQuestionId. Legacy ordinal letter slot.
+ */
+export type ScenarioPartId = string;
+
+/** @deprecated Legacy partId shape. */
+export const SCENARIO_PART_ID_PATTERN = /^[a-z]$/;
+
+/** Must match src/types/shared.ts — soft default framework, not a hard publish list. */
+export const DEFAULT_SCENARIO_FRAMEWORK_PART_IDS = ['a', 'b', 'c'] as const;
+
+/** @deprecated Alias of {@link DEFAULT_SCENARIO_FRAMEWORK_PART_IDS}. */
+export const REQUIRED_SCENARIO_PART_IDS = DEFAULT_SCENARIO_FRAMEWORK_PART_IDS;
+
+/** @deprecated Prefer non-empty subQuestionId checks. */
+export function isScenarioPartId(value: unknown): value is ScenarioPartId {
+    return typeof value === 'string' && SCENARIO_PART_ID_PATTERN.test(value);
+}
+
+/** Must match src/types/shared.ts. */
+export type ScenarioSubQuestionType = 'calculation' | 'troubleshoot' | 'action' | 'corrective';
+
+/** Must match src/types/shared.ts. */
+export type ScenarioDifficulty = 'easy' | 'medium' | 'hard';
+
+/** Must match src/types/shared.ts. Immutable LO snapshot on a question. */
+export interface ScenarioLearningObjectiveSnapshot {
+    objectiveId: string;
+    text: string;
+    sourceTopicOrWeekId: string;
+    sourceItemId: string;
+}
+
+/** Must match src/types/shared.ts. Catalog option for instructor LO selector. */
+export interface ScenarioLearningObjectiveOption {
+    objectiveId: string;
+    text: string;
+    topicOrWeekId: string;
+    topicOrWeekTitle: string;
+    itemId: string;
+    itemTitle: string;
+}
+
+/** Must match src/types/shared.ts. Embedded student submission (instructor/history APIs only). */
+export interface ScenarioStudentResponse {
+    id: string;
+    studentUserId: string;
+    mode: ScenarioMode;
+    studentAnswer: string;
+    grade?: number;
+    feedback: string;
+    submittedAt: string | Date;
+}
+
+/** Must match src/types/shared.ts (minus server-only trust boundary notes). */
+export interface ScenarioSubQuestion {
+    subQuestionId: string;
+    /** @deprecated Legacy ordinal letter. */
+    partId?: ScenarioPartId;
+    subQuestionType: ScenarioSubQuestionType;
+    prompt: string;
+    points?: number;
+    /** Only present on instructor-facing responses; never sent to students until solution reveal. */
+    modelAnswer: string;
+    /** Stripped from student list/detail projections. */
+    studentResponses?: ScenarioStudentResponse[];
+}
+
+/** Must match src/types/shared.ts. Full document — instructor views only. */
+export interface ScenarioQuestion {
+    id: string;
+    courseId: string;
+    courseName: string;
+    topicOrWeekId: string;
+    title: string;
+    status: ScenarioQuestionStatus;
+    sourcePrompt: string;
+    questionBody: string;
+    solutionBody: string;
+    subQuestions: ScenarioSubQuestion[];
+    difficulty: ScenarioDifficulty;
+    expectedTimeMinutes: number;
+    learningObjectives: ScenarioLearningObjectiveSnapshot[];
+    generatedBy: 'instructor' | 'ai';
+    aiGenerationJobId?: string;
+    sortOrder: number;
+    createdAt: string | Date;
+    updatedAt: string | Date;
+    publishedAt?: string | Date | null;
+    createdByUserId: string;
+    lastEditedByUserId?: string;
+}
+
+/** Must match src/types/shared.ts (`ScenarioQuestionForStudent`). Student-safe projection — no model answers/solution/history. */
+export type ScenarioQuestionForStudent = Omit<ScenarioQuestion, 'solutionBody' | 'subQuestions'> & {
+    subQuestions: Array<Omit<ScenarioSubQuestion, 'modelAnswer' | 'studentResponses'>>;
+};
+
+/** Must match src/types/shared.ts. Request body for POST .../check-answer. */
+export interface ScenarioCheckAnswerRequest {
+    subQuestionId: string;
+    studentAnswer: string;
+    mode: ScenarioMode;
+}
+
+/** Must match src/types/shared.ts. Response for POST .../check-answer. */
+export interface ScenarioPartFeedbackResponse {
+    success: boolean;
+    responseId: string;
+    subQuestionId: string;
+    mode: ScenarioMode;
+    grade?: number;
+    feedback: string;
+    error?: string;
+    feedbackTier?: 'socratic' | 'descriptive';
+    feedbackSource?: 'llm' | 'canned';
+    blockReason?: 'cooldown' | 'daily_limit';
+    attemptNumber?: number;
+    attemptsRemaining?: number;
+    maxAttemptsPerDay?: number;
+    retryAfterSeconds?: number;
+    resetsAt?: string;
+    answerRevealed?: boolean;
+}
+
+/** Must match src/types/shared.ts. */
+export interface ScenarioExamPartResult {
+    subQuestionId: string;
+    grade: number;
+    feedback: string;
+}
+
+/** Must match src/types/shared.ts. Response for POST .../submit-exam. */
+export interface ScenarioExamSubmitResponse {
+    success: boolean;
+    overallGrade: number;
+    results: ScenarioExamPartResult[];
+    error?: string;
+}
+
+/** Must match src/types/shared.ts. */
+export interface ScenarioExamAnswerInput {
+    subQuestionId: string;
+    studentAnswer: string;
+}
+
+/** Must match src/types/shared.ts. Request body for POST .../generate. */
+export interface ScenarioGenerateRequest {
+    mode: 'single' | 'batch';
+    sourcePrompt: string;
+    topicOrWeekId: string;
+    learningObjectiveIds?: string[];
+    subQuestionTypes?: ScenarioSubQuestionType[];
+    difficulty?: ScenarioDifficulty;
+    /** Instructor title override only — omit or send a placeholder to use the LLM-generated title. */
+    title?: string;
+    count?: number;
+}
+
+/** Must match src/types/shared.ts. Hard cap on batch generation size. */
+export const SCENARIO_BATCH_MAX_COUNT = 10;
+
+/** Must match src/types/shared.ts. */
+export const SCENARIO_DIFFICULTY_BASE_MINUTES: Record<ScenarioDifficulty, number> = {
+    easy: 15,
+    medium: 20,
+    hard: 30,
+};
+
+export function inferSubQuestionTypeFromPartId(partId: ScenarioPartId): ScenarioSubQuestionType {
+    const byLetter: Record<string, ScenarioSubQuestionType> = {
+        a: 'calculation',
+        b: 'troubleshoot',
+        c: 'action',
+        d: 'corrective',
+    };
+    return byLetter[partId] ?? 'calculation';
+}
+
+export function defaultExpectedTimeMinutes(difficulty: ScenarioDifficulty, partCount: number): number {
+    return SCENARIO_DIFFICULTY_BASE_MINUTES[difficulty] + Math.max(0, partCount) * 5;
+}
+
+export function computeScenarioOverallGrade(grades: number[]): number {
+    if (grades.length === 0) return 0;
+    return grades.reduce((acc, g) => acc + g, 0);
+}
+
+/** Must match src/types/shared.ts. Response for POST .../generate. */
+export interface ScenarioGenerateResponse {
+    success: boolean;
+    data?: ScenarioQuestion[];
+    aiGenerationJobId?: string;
+    error?: string;
+}
+
+/** Must match src/types/shared.ts — live handler nests under `data`. */
+export interface ScenarioSolutionResponse {
+    success: boolean;
+    data?: {
+        questionBody: string;
+        solutionBody: string;
+        subQuestions: ScenarioSubQuestion[];
+    };
+    error?: string;
+}
+
+/** @deprecated Alias — fields now on {@link ScenarioSubQuestion}. */
+export type ScenarioSubQuestionExtended = ScenarioSubQuestion;
+
+/** @deprecated Alias — fields now on {@link ScenarioQuestion}. */
+export type ScenarioQuestionExtended = ScenarioQuestion;
+
+/** Generate request shape used by instructor UI (maps to ScenarioGenerateRequest). */
+export interface ScenarioMockGenerateRequest {
+    topicOrWeekId: string;
+    sourcePrompt: string;
+    selectedTypes: ScenarioSubQuestionType[];
+    difficulty: ScenarioDifficulty;
+    title?: string;
+    learningObjectiveIds?: string[];
+}

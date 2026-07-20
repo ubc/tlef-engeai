@@ -264,6 +264,19 @@ router.get('/course/:courseId/instructor/system-prompts', validateCourseAccess, 
 
 
 /**
+ * GET /course/:courseId/instructor/scenario-questions
+ * Serves instructor Scenario Questions page. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/scenario-questions
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Instructor scenario questions page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
+router.get('/course/:courseId/instructor/scenario-questions', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+/**
  * GET /course/:courseId/instructor/course-information
  * Serves course information page. Requires course access and instructor role.
  *
@@ -399,6 +412,20 @@ router.get('/course/:courseId/student', validateCourseAccess, requireStudentForC
  * @response 404 - Course not found
  */
 router.get('/course/:courseId/student/chat', validateCourseAccess, requireStudentForCourse, serveStudentShell());
+
+
+/**
+ * GET /course/:courseId/student/scenarios
+ * Serves student Practice Scenarios page. Requires course access and student role.
+ *
+ * @route GET /course/:courseId/student/scenarios
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves student-mode.html
+ * @response 200 - Student practice scenarios page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
+router.get('/course/:courseId/student/scenarios', validateCourseAccess, requireStudentForCourse, serveStudentShell());
 
 
 /**

@@ -143,6 +143,84 @@ body {
 }
 
 
+/* Student tool nav — mirrors instructor .sidebar-menu-list / .menu-list-item */
+.student-tools-box {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0 0 0.25rem 0;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.student-tool-btn {
+    height: 45px;
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 1rem;
+    padding: 0 0 0 15px;
+    background-color: transparent;
+    border: none;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.8rem;
+    color: inherit;
+    text-align: left;
+    overflow: hidden;
+    transition: background-color 0.1s ease-in-out,
+                padding 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                gap 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.student-tool-btn:not(.active):hover {
+    background-color: var(--hover-bg);
+    cursor: pointer;
+}
+
+.student-tool-btn.active {
+    background-color: #e2d9cf;
+    color: #4a4a4a;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18),
+                inset 0 -1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.student-tool-btn .feather {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.student-tool-btn.active .feather {
+    width: 24px;
+    height: 24px;
+    color: var(--color-chbe-green);
+}
+
+.student-tool-btn p {
+    white-space: nowrap;
+    opacity: 1;
+    max-width: 200px;
+    overflow: hidden;
+    margin: 0;
+    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                max-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar.collapsed .student-tool-btn p {
+    opacity: 0;
+    max-width: 0;
+}
+
+.sidebar.collapsed .student-tool-btn {
+    padding: 0 0 0 7px;
+    gap: 0;
+}
+
 /* Add chat button text hide when sidebar collapses */
 .sidebar.collapsed .add-chat-btn span {
     display: none;
@@ -170,7 +248,7 @@ body {
 
 .sidebar .sidebar-collapse-icon {
     background-color: transparent;
-    margin: 10px 0 0 0;
+    margin: 10px 0 10px 0;
     color: var(--text-secondary);
     cursor: pointer;
     border: none;
@@ -181,8 +259,7 @@ body {
 }
 
 .sidebar.collapsed .sidebar-collapse-icon {
-    margin: 10px 0 0 5px;
-    padding: 0 0 0 10px;
+    margin: 10px 0 10px 5px;
 }
 
 /* Hide chat list action buttons when collapsed, EXCEPT show the pinned star */
@@ -442,21 +519,25 @@ body {
 
 
 /* --- Modal --- */
-/* Overlay dims and subtly blurs the background (ChatGPT-like) */
+/* Keep opacity/visibility transitions (shared ModalOverlay). display:none kills them. */
 .modal-overlay {
     position: fixed;
     inset: 0;
-    display: none;                 /* toggled via .show */
+    display: flex;
     align-items: center;
     justify-content: center;
     padding: 1rem;
     background: rgba(0, 0, 0, 0.55);
-    /* backdrop-filter: blur(4px); */ /* Removed blur effect */
-    /* -webkit-backdrop-filter: blur(4px); */ /* Removed blur effect */
     z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.28s ease, visibility 0.28s ease;
 }
 
-.modal-overlay.show { display: flex; }
+.modal-overlay.show {
+    opacity: 1;
+    visibility: visible;
+}
 
 /* Modal container */
 .modal {

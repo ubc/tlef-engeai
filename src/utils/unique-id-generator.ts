@@ -300,6 +300,50 @@ export class IDGenerator {
     }
 
     /**
+     * Generates a unique Scenario Question ID using the formula:
+     * title + "-" + topicOrWeekId + "-" + courseName + "-" + date.toISOString() -> uniqueIDGenerator
+     *
+     * @param title - The scenario question title (instructor-entered or AI-generated)
+     * @param topicOrWeekId - The parent TopicOrWeekInstance.id (chapter)
+     * @param courseName - The name of the course for hierarchical uniqueness
+     * @param date - The creation date of the question (full ISO string with milliseconds)
+     * @returns A 12-character hexadecimal string representing the unique scenario question ID
+     */
+    scenarioQuestionID(title: string, topicOrWeekId: string, courseName: string, date: Date): string {
+        const dateString = date.toISOString();
+        const hashInput = title + "-" + topicOrWeekId + "-" + courseName + "-" + dateString;
+        return this.uniqueIDGenerator(hashInput);
+    }
+
+    /**
+     * Generates a stable Scenario Sub-Question ID.
+     * Formula: questionId + "-" + index + "-" + date.toISOString() -> uniqueIDGenerator
+     *
+     * @param questionId - Parent scenario question id
+     * @param index - Zero-based position at creation time (does not change on later reorder)
+     * @param date - Creation timestamp
+     * @returns A 12-character hexadecimal string
+     */
+    scenarioSubQuestionID(questionId: string, index: number, date: Date): string {
+        const hashInput = questionId + "-" + String(index) + "-" + date.toISOString();
+        return this.uniqueIDGenerator(hashInput);
+    }
+
+    /**
+     * Generates a unique Scenario Student Response ID.
+     * Formula: subQuestionId + "-" + studentUserId + "-" + date.toISOString() -> uniqueIDGenerator
+     *
+     * @param subQuestionId - Parent sub-question id
+     * @param studentUserId - Internal roster user id (never PUID)
+     * @param date - Submission timestamp
+     * @returns A 12-character hexadecimal string
+     */
+    scenarioStudentResponseID(subQuestionId: string, studentUserId: string, date: Date): string {
+        const hashInput = subQuestionId + "-" + studentUserId + "-" + date.toISOString();
+        return this.uniqueIDGenerator(hashInput);
+    }
+
+    /**
      * Generates a unique 6-character uppercase alphanumeric course code using the formula:
      * courseName + "-" + date.toISOString() -> uniqueIDGenerator -> convert to 6-char uppercase alphanumeric
      * 

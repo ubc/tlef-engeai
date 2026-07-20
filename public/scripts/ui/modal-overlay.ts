@@ -178,6 +178,15 @@ export class ModalOverlay {
             this.container.appendChild(footer);
         }
 
+        // Custom body controls (e.g. choice cards) must join the tab trap
+        this.container.querySelectorAll<HTMLElement>(
+            '.modal-body button, .modal-body [href], .modal-body input, .modal-body select, .modal-body textarea'
+        ).forEach((el) => {
+            if (!this.focusableElements.includes(el)) {
+                this.focusableElements.push(el);
+            }
+        });
+
         this.overlay.appendChild(this.container);
         document.body.appendChild(this.overlay);
 
@@ -504,22 +513,21 @@ export class ModalOverlay {
     private showModal(): void {
         if (!this.overlay) return;
 
-        // Trigger reflow
-        this.overlay.offsetHeight;
-
-        // Show modal
-        this.overlay.classList.add('show');
         this.isVisible = true;
+        document.body.style.overflow = 'hidden';
 
-        // Focus first focusable element
+        // Double rAF so the initial opacity/transform paint before .show (CSS transition needs it)
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                this.overlay?.classList.add('show');
+            });
+        });
+
         if (this.focusableElements.length > 0) {
             this.focusableElements[0].focus();
         } else {
             this.overlay.focus();
         }
-
-        // Prevent body scroll
-        document.body.style.overflow = 'hidden';
     }
 
     /**
@@ -725,7 +733,7 @@ export async function showInfoModal(
  * @param title - Modal title
  * @param message - Confirmation message
  * @param confirmText - Text for confirm button
- * @param cancelText - Text for cancel button
+ * @param cancelText - Text for cancel button; omit the button when empty
  * @param confirmVariant - Styling for the confirm button (destructive actions use "danger")
  * @returns Promise that resolves with user choice
  */
@@ -738,14 +746,18 @@ export async function showConfirmModal(
 ): Promise<ModalResult> {
     const modal = getModal();
     const confirmType = confirmVariant === 'danger' ? 'danger' : 'primary';
+    const buttons: ModalButton[] = [
+        { text: confirmText, type: confirmType, closeOnClick: true }
+    ];
+    // Empty cancelText = OK-only alert (e.g. session expired)
+    if (cancelText) {
+        buttons.unshift({ text: cancelText, type: 'secondary', closeOnClick: true });
+    }
     return modal.show({
         type: 'info',
         title,
         content: message,
-        buttons: [
-            { text: cancelText, type: 'secondary', closeOnClick: true },
-            { text: confirmText, type: confirmType, closeOnClick: true }
-        ]
+        buttons
     });
 }
 

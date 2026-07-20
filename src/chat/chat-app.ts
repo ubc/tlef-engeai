@@ -25,6 +25,13 @@ import { isDeveloperMode, generateMockStreamingResponse } from '../helpers/devel
 import { evaluateGuardrails } from './guided-pathways/guardrail-orchestrator';
 
 /**
+ * Shown to students who try to send a new message in a retired scenario-generation chat.
+ * History still renders; see `planner/improved-scenario-generation-deliverables.md` §3.8/§11.
+ */
+export const RETIRED_CONVERSATION_MODE_MESSAGE =
+    'Scenario Generation is no longer available in chat. Please use Practice Scenarios from the sidebar to work on troubleshooting cases.';
+
+/**
  * Interface for initializing a new chat conversation
  */
 export interface initChatRequest {
@@ -1101,6 +1108,18 @@ export class ChatApp {
      */
     public validateChatExists(chatId: string): boolean {
         return this.conversations.has(chatId);
+    }
+
+    /**
+     * Returns the in-memory persisted teaching mode for a chat, populated after
+     * {@link restoreChatFromDatabase} or chat creation. Used by the send route to block new
+     * messages on retired-mode chats (e.g. `scenario-generation`) without an extra DB read.
+     *
+     * @param chatId - The chat ID to look up
+     * @returns The persisted mode, or `undefined` when the chat's mode has not been resolved yet
+     */
+    public getPersistedConversationMode(chatId: string): PersistedConversationModeId | undefined {
+        return this.chatConversationModes.get(chatId);
     }
 
     /**

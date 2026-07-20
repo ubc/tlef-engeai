@@ -31,7 +31,6 @@ interface ConfigApiResponse {
         modes: {
             socratic: ModeStateWithDisplay;
             explanatory: ModeStateWithDisplay;
-            'scenario-generation': ModeStateWithDisplay;
         };
     };
     error?: string;
@@ -117,7 +116,6 @@ function getDisplayModules(mode: ConversationModeId): SystemPromptModule[] {
 const MODE_MENU_LABELS: Record<ConversationModeId, string> = {
     socratic: 'Socratic',
     explanatory: 'Explanatory',
-    'scenario-generation': 'Scenario Generation',
 };
 
 function getModeMenuLabel(mode: ConversationModeId): string {

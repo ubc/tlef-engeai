@@ -88,6 +88,7 @@ import { normalizeRouteParams, routeParam } from '../helpers/route-params';
 import { contentDispositionAttachmentPdf } from '../report-generation';
 import type { ConversationZipExportRow } from '../db/mongo/conversation-export-mongo';
 import { mountSystemPromptConfigRoutes } from './mongo/system-prompt-config-routes';
+import { mountScenarioQuestionRoutes } from './mongo/scenario-questions-routes';
 
 const router = express.Router();
 export default router;
@@ -4704,3 +4705,8 @@ router.post('/:courseId/assistant-prompts/:promptId/select', asyncHandlerWithAut
 // ========= SYSTEM PROMPT CONFIG API (v2) ==
 // ===========================================
 mountSystemPromptConfigRoutes(router);
+
+// ===========================================
+// ========= SCENARIO QUESTIONS API =========
+// ===========================================
+mountScenarioQuestionRoutes(router);

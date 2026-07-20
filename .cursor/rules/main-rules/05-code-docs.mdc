@@ -70,21 +70,33 @@ List responsibilities in prose — do not enumerate every method in the class bl
 
 **Exported and public methods** — required. **Private** — only when non-obvious.
 
-### Preferred shape (behavior first)
+### Preferred shape (four-part contract)
 
-Use for anything with side effects, filters, or domain rules — see `retrieveForChat` in `rag-app.ts`:
+Use for anything with side effects, filters, domain rules, or non-primitive returns — see `feedbackPracticePart` in `scenario-service.ts` and `retrieveForChat` in `rag-app.ts`:
+
+| Section | Rule |
+|---------|------|
+| **1. Title** | `{functionName} - {main purpose}` |
+| **2. Explicit properties** | Prose block: return object keys, side effects, tier/mode branching |
+| **3. Params** | `@param` per argument — what it contributes, not its type name |
+| **4. Return** | `@returns` shape and failure modes; `@throws` when the method throws |
 
 ```typescript
 /**
- * {functionName} - {description}
+ * feedbackPracticePart - Practice check-answer: friendly TA feedback via structured LLM output (no grade).
  *
- * @param query - Student message text used for vector search
- * @param courseName - Course display name for Qdrant filter
- * @param options - Optional limit and score threshold overrides
- * @returns Retrieved chunks; empty array when skipped or unavailable
- * @throws Error when RAGApp failed to initialize (hard failures only)
+ * Tier selects the prompt path: `socratic` returns hint-style feedback only; `descriptive`
+ * evaluates the answer and appends the model answer server-side. Always returns `{ feedback }`.
+ *
+ * @param questionBody - Parent scenario stem shown to the LLM for context
+ * @param subQuestion - Target sub-part (prompt, modelAnswer, type)
+ * @param studentAnswer - Student submission text for this sub-question
+ * @param tier - `socratic` (default) or `descriptive` (evaluation + model answer reveal)
+ * @returns `{ feedback }` TA-facing string; throws when structured LLM output is empty
  */
 ```
+
+Simpler methods without branching or object returns may omit section 2 (explicit properties) — see `retrieveForChat` in `rag-app.ts`.
 
 ### Minimal shape (simple accessors)
 
@@ -215,6 +227,7 @@ Type aliases and unions: one-line JSDoc above with when/why. Enums: comment non-
 |------|-------------|
 | `src/chat/conversation-modes/**` | `prompt-engineer/01-conversation-modes-docs.mdc` |
 | `src/db/mongo/**` | File header + JSDoc on exports; idempotency in `@description` or prose |
+| `src/**` orchestration classes | `backend/06-backend-inline-documentation.mdc` — STEP banners and Key Features (`chat-app.ts` style) |
 
 ## Check-in
 
