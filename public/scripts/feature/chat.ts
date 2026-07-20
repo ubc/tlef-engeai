@@ -1584,8 +1584,10 @@ export class ChatManager {
                     this.renderChatList();
                     this.scrollToBottom();
                     
-                    // Notify instructor mode that a new chat was created
-                    this.callModeSpecificCallback('new-chat-created', { chat: result.chat });
+                    this.callModeSpecificCallback('new-chat-created', {
+                        chat: result.chat,
+                        chatId: result.chat?.id,
+                    });
                 }
             });
         });

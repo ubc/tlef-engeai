@@ -273,18 +273,21 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                 updateUI();
             } else if (action === 'new-chat-created') {
                 setStudentToolActive(null);
-                // New chat created from welcome screen or sidebar
-                const newChatId = data?.chatId;
-                if (newChatId) {
-                    const courseId = getCourseIdFromURL();
-                    if (courseId) {
-                        // Only navigate if not already navigating (prevent recursion)
-                        if (!isNavigating) {
+                const newChatId = data?.chatId ?? data?.chat?.id;
+                if (!newChatId || isNavigating) return;
+                void (async () => {
+                    isNavigating = true;
+                    try {
+                        const courseId = getCourseIdFromURL();
+                        if (courseId) {
                             navigateToStudentChat(courseId, newChatId);
                         }
+                        await loadComponent('chat-window');
+                        chatManager.rebindMessageEvents();
+                    } finally {
+                        isNavigating = false;
                     }
-                }
-                // Note: loadChatWindow() is called by updateUI() or ChatManager
+                })();
             } else if (action === 'chat-clicked') {
                 // Chat clicked from sidebar — clear tool selection
                 setStudentToolActive(null);
