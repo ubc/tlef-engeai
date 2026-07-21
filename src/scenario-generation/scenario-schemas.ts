@@ -131,6 +131,12 @@ export const submitScenarioExamRequestSchema = z.object({
         .min(1),
 });
 
+/** Query params for instructor paginated student-response history on the question editor. */
+export const scenarioInstructorStudentResponsesQuerySchema = z.object({
+    limit: z.coerce.number().int().min(1).max(50).optional().default(10), // default 10 responses per page
+    offset: z.coerce.number().int().min(0).optional().default(0), // default 0 offset
+});
+
 /** scenarioGenerateRequestSchema - Request schema for generating a scenario. */
 export const scenarioGenerateRequestSchema = z.object({
     mode: z.enum(['single', 'batch']),

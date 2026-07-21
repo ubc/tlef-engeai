@@ -36,7 +36,6 @@ import { showErrorToast } from '../ui/toast-notification.js';
 import { flashcardToneIndex, parseAnswerKeyToFlashcards, SUB_QUESTION_TYPE_LABELS } from './scenario-answer-flashcard.js';
 import { RenderChat } from './render-chat.js';
 import { renderLatexInHtmlContent } from './chat.js';
-import { stashChatDraftPrefill } from '../utils/chat-draft-prefill.js';
 import {
     getStudentScenariosParamsFromURL,
     navigateToStudentScenarios,
@@ -130,24 +129,56 @@ function clearPracticeLimitTimers(): void {
     lastFeedbackAtByPart.clear();
 }
 
-function buildScenarioChatPrefill(question: StudentQuestionView, part: StudentPartView, studentAnswer: string): string {
+function buildScenarioChatPrefill(
+    question: StudentQuestionView,
+    part: StudentPartView,
+    studentAnswer: string,
+    answerKey: string
+): string {
     const partIndex = question.parts.findIndex((p) => p.id === part.id);
     const partLabel = partIndex >= 0 ? `Part ${partIndex + 1}` : 'this part';
-    const answerBlock = studentAnswer.trim()
-        ? `\n\nMy current answer:\n${studentAnswer.trim()}`
-        : '';
+    const answerText = studentAnswer.trim() || '(not entered yet)';
+    const answerKeyText = answerKey.trim() || '(not available)';
     return [
-        `I'm working on the practice scenario **${question.title}**.`,
+        "I'm working on a practice scenario and would like help thinking through this part.",
         '',
-        '**Scenario:**',
+        '**Scenario**',
         question.narrative.trim(),
         '',
-        `**${partLabel}:**`,
+        `**${partLabel}**`,
         part.prompt.trim(),
-        answerBlock,
         '',
-        'Can you help me think through this step by step?',
+        '**Answer Key**',
+        answerKeyText,
+        '',
+        '**My answer**',
+        answerText,
+        '',
+        'Please help me work through this step by step.',
     ].join('\n');
+}
+
+async function resolvePartAnswerKey(part: StudentPartView): Promise<string> {
+    if (part.modelAnswer.trim()) return part.modelAnswer;
+    if (!currentCourse || !activeQuestion || activeMode !== 'practice') return '';
+
+    try {
+        const solution = await fetchScenarioSolution(
+            currentCourse.id,
+            activeQuestion.id,
+            'practice',
+            part.id
+        );
+        if (!solution?.subQuestions?.length) return '';
+
+        const modelAnswer = solution.subQuestions[0]?.modelAnswer?.trim() ?? '';
+        if (modelAnswer) {
+            part.modelAnswer = modelAnswer;
+        }
+        return modelAnswer;
+    } catch {
+        return '';
+    }
 }
 
 async function openConversationForPart(part: StudentPartView): Promise<void> {
@@ -156,10 +187,12 @@ async function openConversationForPart(part: StudentPartView): Promise<void> {
         `.sg-student-answer-input[data-sub-question-id="${part.id}"]`
     );
     const answer = textarea?.value?.trim() || '';
-    const draft = buildScenarioChatPrefill(activeQuestion, part, answer);
-    stashChatDraftPrefill(currentCourse.id, draft);
+    const answerKey = await resolvePartAnswerKey(part);
+    const draft = buildScenarioChatPrefill(activeQuestion, part, answer, answerKey);
     window.dispatchEvent(
-        new CustomEvent('engeai-student-open-chat-draft', { detail: { courseId: currentCourse.id } })
+        new CustomEvent('engeai-student-open-chat-draft', {
+            detail: { courseId: currentCourse.id, text: draft },
+        })
     );
 }
 

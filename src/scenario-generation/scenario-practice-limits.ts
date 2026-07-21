@@ -13,7 +13,7 @@
 import type { ScenarioStudentResponse, ScenarioSubQuestion } from '../types/shared';
 
 export const PRACTICE_SOCRATIC_MAX_ATTEMPT = 2;
-export const PRACTICE_DAILY_MAX_ATTEMPTS = 6;
+export const PRACTICE_DAILY_MAX_ATTEMPTS = 1;
 export const PRACTICE_COOLDOWN_MS = 30_000;
 export const PRACTICE_DAY_TIMEZONE = 'America/Vancouver';
 
