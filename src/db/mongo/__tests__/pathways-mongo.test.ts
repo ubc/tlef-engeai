@@ -24,6 +24,7 @@ jest.mock('../collection-registry-mongo', () => ({
         memoryAgent: 'Test_memory-agent',
         scheduledTasks: 'Test_scheduled_tasks',
         scenarioQuestions: 'Test_scenario_questions',
+        scenarioProgress: 'Test_scenario_progress',
         pathways: 'Test_pathways',
     }),
 }));

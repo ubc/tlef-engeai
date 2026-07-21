@@ -179,13 +179,14 @@ export class RenderChat {
             // Create HTML for the question and buttons
             const questionHtml = `
                 <div class="question-unstruggle-container" data-topic="${this.escapeHtml(topic)}" data-message-id="${msgId}">
-                    <p class="question-unstruggle-question">Do you think you're confident with the topic of <strong>${this.escapeHtml(topic)}</strong>?</p>
+                    <hr class="question-unstruggle-divider" aria-hidden="true" />
+                    <p class="question-unstruggle-question">Do you understand about <em class="question-unstruggle-topic">${this.escapeHtml(topic)}</em>?</p>
                     <div class="question-unstruggle-buttons">
                         <button class="question-unstruggle-btn question-unstruggle-yes" data-topic="${this.escapeHtml(topic)}" data-response="True" data-message-id="${msgId}">
                             <span class="question-unstruggle-btn-text">Yes</span>
                         </button>
                         <button class="question-unstruggle-btn question-unstruggle-no" data-topic="${this.escapeHtml(topic)}" data-response="False" data-action="dismiss" data-message-id="${msgId}">
-                            <span class="question-unstruggle-btn-text">No, maybe later</span>
+                            <span class="question-unstruggle-btn-text">No</span>
                         </button>
                     </div>
                 </div>

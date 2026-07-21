@@ -131,6 +131,31 @@ export const submitScenarioExamRequestSchema = z.object({
         .min(1),
 });
 
+/** scenarioProgressAnswerSchema - One draft answer for a sub-question. */
+export const scenarioProgressAnswerSchema = z.object({
+    subQuestionId: scenarioSubQuestionIdSchema,
+    studentAnswer: z.string(),
+});
+
+/**
+ * scenarioSaveProgressRequestSchema - Request body for PUT .../progress.
+ * Rejects when every answer is empty/whitespace after trim.
+ */
+export const scenarioSaveProgressRequestSchema = z
+    .object({
+        mode: scenarioModeSchema,
+        answers: z.array(scenarioProgressAnswerSchema).min(1),
+    })
+    .refine(
+        (data) => data.answers.some((a) => a.studentAnswer.trim().length > 0),
+        { message: 'At least one answer must contain non-whitespace text' }
+    );
+
+/** scenarioProgressQuerySchema - Query params for GET .../progress. */
+export const scenarioProgressQuerySchema = z.object({
+    mode: scenarioModeSchema,
+});
+
 /** Query params for instructor paginated student-response history on the question editor. */
 export const scenarioInstructorStudentResponsesQuerySchema = z.object({
     limit: z.coerce.number().int().min(1).max(50).optional().default(10), // default 10 responses per page

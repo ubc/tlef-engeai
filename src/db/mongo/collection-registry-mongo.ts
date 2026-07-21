@@ -32,6 +32,7 @@ export async function getCollectionNames(
     memoryAgent: string;
     scheduledTasks: string;
     scenarioQuestions: string;
+    scenarioProgress: string;
     pathways: string;
 }> {
     if (ctx.collectionNamesCache.has(courseName)) {
@@ -51,6 +52,7 @@ export async function getCollectionNames(
             const scheduledTasks = c.collections.scheduledTasks ?? `${courseName}_scheduled_tasks`;
             // SQ-001: computed fallback until ensureScenarioQuestionsCollection lazily provisions + persists the name.
             const scenarioQuestions = c.collections.scenarioQuestions ?? `${courseName}_scenario_questions`;
+            const scenarioProgress = c.collections.scenarioProgress ?? `${courseName}_scenario_progress`;
             const pathways = c.collections.pathways ?? `${courseName}_pathways`;
             const collectionNames = {
                 users: c.collections.users,
@@ -58,6 +60,7 @@ export async function getCollectionNames(
                 memoryAgent: c.collections.memoryAgent,
                 scheduledTasks,
                 scenarioQuestions,
+                scenarioProgress,
                 pathways,
             };
             ctx.collectionNamesCache.set(courseName, collectionNames);
@@ -76,6 +79,7 @@ export async function getCollectionNames(
         memoryAgent: `${courseName}_memory-agent`,
         scheduledTasks: `${courseName}_scheduled_tasks`,
         scenarioQuestions: `${courseName}_scenario_questions`,
+        scenarioProgress: `${courseName}_scenario_progress`,
         pathways: `${courseName}_pathways`,
     };
     ctx.collectionNamesCache.set(courseName, computedNames);

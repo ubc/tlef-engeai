@@ -124,3 +124,56 @@ export function getMockPathwayEvaluation(
 export function getMockGuardrailEvaluation(courseName: string): PathwayEvaluationResult | null {
     return getMockPathwayEvaluation(courseName, buildPlatformPathwaySeeds());
 }
+
+/**
+ * Get one mock generated scenario question for Practice Scenarios mock-response generation.
+ * Shape matches `scenario-schemas.ts` generatedScenarioSchema (no partId — server assigns subQuestionId).
+ */
+export function getMockGeneratedScenario(
+    types: Array<'calculation' | 'troubleshoot' | 'action' | 'corrective'> = [
+        'calculation',
+        'troubleshoot',
+        'action',
+    ]
+): {
+    title: string;
+    questionBody: string;
+    solutionBody: string;
+    subQuestions: Array<{
+        subQuestionType: 'calculation' | 'troubleshoot' | 'action' | 'corrective';
+        prompt: string;
+        modelAnswer: string;
+    }>;
+} {
+    const subQuestions = types.map((subQuestionType) => ({
+        subQuestionType,
+        prompt: `[MOCK] ${subQuestionType} prompt for this scenario.`,
+        modelAnswer: `# Step 1\n[MOCK] ${subQuestionType} model answer.`,
+    }));
+    return {
+        title: '[MOCK] Mock generated scenario',
+        questionBody:
+            'You are a process engineer at a pilot plant. During the morning shift, the reactor ' +
+            'is running 15% below the design conversion rate and the operator has flagged an ' +
+            'unexpected temperature drift on the jacket cooling loop.',
+        solutionBody: subQuestions.map((s) => s.modelAnswer).join('\n\n'),
+        subQuestions,
+    };
+}
+
+/** Get a mock grade/feedback pair for mock-response exam grading. */
+export function getMockScenarioFeedback(): { grade: number; feedback: string } {
+    return {
+        grade: 7,
+        feedback:
+            '[MOCK] The approach is mostly sound. Check that units and assumptions are applied consistently throughout the calculation.',
+    };
+}
+
+/** Get mock practice TA feedback (no grade) for mock-response check-answer. */
+export function getMockScenarioPracticeFeedback(): { feedback: string } {
+    return {
+        feedback:
+            '[MOCK] Nice start — your setup looks reasonable. Double-check unit consistency and whether every assumption matches the scenario before you finalize the calculation.',
+    };
+}

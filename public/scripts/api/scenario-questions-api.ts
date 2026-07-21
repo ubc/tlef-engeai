@@ -27,6 +27,8 @@ import type {
     ScenarioLearningObjectiveOption,
     ScenarioStudentResponse,
     ScenarioInstructorStudentResponsesPage,
+    ScenarioSaveProgressRequest,
+    ScenarioProgressResponse,
 } from '../types.js';
 import { defaultExpectedTimeMinutes } from '../types.js';
 
@@ -260,6 +262,37 @@ export async function fetchScenarioResponseHistory(
     });
     const data = await parseJsonOrThrow(response);
     return (data.data ?? []) as Array<ScenarioStudentResponse & { subQuestionId: string }>;
+}
+
+/** Load caller's saved draft answers for one question and mode. */
+export async function fetchScenarioProgress(
+    courseId: string,
+    questionId: string,
+    mode: ScenarioMode
+): Promise<ScenarioProgressResponse> {
+    const params = new URLSearchParams({ mode });
+    const response = await fetch(`${apiBase(courseId)}/${questionId}/progress?${params}`, {
+        method: 'GET',
+        credentials: 'same-origin',
+    });
+    const data = await parseJsonOrThrow(response);
+    return (data.data ?? { questionId, mode, answers: [], updatedAt: '' }) as ScenarioProgressResponse;
+}
+
+/** Upsert caller's draft answers (explicit save on leave). */
+export async function saveScenarioProgress(
+    courseId: string,
+    questionId: string,
+    body: ScenarioSaveProgressRequest
+): Promise<ScenarioProgressResponse> {
+    const response = await fetch(`${apiBase(courseId)}/${questionId}/progress`, {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    const data = await parseJsonOrThrow(response);
+    return data.data as ScenarioProgressResponse;
 }
 
 /** Gated reveal — `null` on 403 (solution not unlocked yet). Optional `subQuestionId` for practice per-part reveal. */
