@@ -197,6 +197,21 @@
     min-height: 0;
     scrollbar-gutter: stable;
     scroll-behavior: smooth;
+    scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+.message-area::-webkit-scrollbar {
+    width: 8px;
+    background: transparent;
+}
+
+.message-area::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.message-area::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.22);
+    border-radius: 4px;
 }
 
 .message {
@@ -571,11 +586,26 @@
     resize: none;
     line-height: 1.4;
     min-height: calc(1.4em + 0.65rem + 0.45rem);
-    max-height: calc(1.4em * 4 + 1.1rem);
+    max-height: calc(1.4em * 10 + 1.1rem);
     overflow: hidden;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     word-break: break-word;
+    scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+.composer-input-row textarea#chat-input::-webkit-scrollbar {
+    width: 6px;
+    background: transparent;
+}
+
+.composer-input-row textarea#chat-input::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.composer-input-row textarea#chat-input::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.22);
+    border-radius: 3px;
 }
 
 .composer-toolbar {

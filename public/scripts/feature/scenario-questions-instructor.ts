@@ -16,11 +16,15 @@ import {
     ScenarioQuestionExtended,
     ScenarioLearningObjectiveSnapshot,
     ScenarioLearningObjectiveOption,
-    ScenarioSubQuestion
+    ScenarioSubQuestion,
+    ScenarioMode,
+    ScenarioInstructorStudentResponseRow,
 } from '../types.js';
 import {
     fetchScenarioQuestions,
     fetchScenarioQuestion,
+    fetchInstructorStudentResponses,
+    INSTRUCTOR_RESPONSES_FETCH_BATCH_SIZE,
     updateScenarioQuestion,
     patchScenarioQuestionStatus,
     deleteScenarioQuestion,
@@ -43,6 +47,13 @@ import {
     SUB_QUESTION_TYPE_LABELS
 } from './scenario-answer-flashcard.js';
 import {
+    getPageSlice,
+    getTotalPages,
+    INSTRUCTOR_RESPONSES_DISPLAY_PAGE_SIZE,
+    needsFetch,
+    shouldPrefetch,
+} from '../utils/instructor-response-carousel.js';
+import {
     getScenarioQuestionsParamsFromURL,
     navigateToScenarioQuestions,
     type ScenarioQuestionsUrlOptions,
@@ -51,6 +62,21 @@ import {
 const ALL_TYPES: ScenarioSubQuestionType[] = ['calculation', 'troubleshoot', 'action', 'corrective'];
 const DEFAULT_SELECTED_TYPES: ScenarioSubQuestionType[] = ['calculation', 'troubleshoot', 'action'];
 const AUTO_SAVE_MS = 5000;
+
+interface PartResponseState {
+    buffer: ScenarioInstructorStudentResponseRow[];
+    currentPage: number;
+    total: number;
+    loading: boolean;
+    prefetching: boolean;
+    error?: string;
+}
+
+const partResponseState = new Map<string, PartResponseState>();
+const partResponseCollapsed = new Map<string, boolean>();
+const partResponseDownloading = new Set<string>();
+
+const INSTRUCTOR_RESPONSES_DOWNLOAD_BATCH_SIZE = 50;
 
 const lastEditedDateFmt = new Intl.DateTimeFormat(undefined, {
     year: 'numeric',
@@ -556,6 +582,309 @@ function formatLastEditedLabel(isoDate: string | null): string {
     const date = new Date(isoDate);
     if (Number.isNaN(date.getTime())) return 'Last edited: Not updated yet';
     return `Last edited: ${lastEditedDateFmt.format(date)}`;
+}
+
+function formatResponseTimestamp(isoDate: string): string {
+    const date = new Date(isoDate);
+    if (Number.isNaN(date.getTime())) return '';
+    return lastEditedDateFmt.format(date);
+}
+
+function renderModeBadge(mode: ScenarioMode): string {
+    const label = mode === 'practice' ? 'Practice' : 'Exam';
+    return `<span class="sg-mode-badge sg-mode-badge--${mode}">${escapeHtml(label)}</span>`;
+}
+
+function getSubQuestionResponseCount(sq: ScenarioSubQuestion): number {
+    if (typeof sq.studentResponseCount === 'number') return sq.studentResponseCount;
+    return sq.studentResponses?.length ?? 0;
+}
+
+function renderResponseCardHtml(row: ScenarioInstructorStudentResponseRow): string {
+    const feedbackId = `sg-instructor-feedback-${row.id}`;
+    return `
+        <article class="sg-instructor-response-card sg-instructor-response-card--${row.mode}" data-response-id="${escapeHtml(row.id)}">
+            <div class="sg-instructor-response-card-header">
+                ${renderModeBadge(row.mode)}
+                <span class="sg-instructor-response-student">${escapeHtml(row.studentName)}</span>
+                <time class="sg-instructor-response-time" datetime="${escapeHtml(row.submittedAt)}">${escapeHtml(formatResponseTimestamp(row.submittedAt))}</time>
+            </div>
+            <div class="sg-instructor-response-answer-label">Answer</div>
+            <div class="sg-instructor-response-answer">${escapeHtml(row.studentAnswer)}</div>
+            <div class="sg-instructor-response-feedback-label">Feedback</div>
+            <div class="sg-instructor-response-feedback sg-instructor-response-feedback--${row.mode} message-content" id="${escapeHtml(feedbackId)}"></div>
+        </article>
+    `;
+}
+
+function paintResponseFeedbackBodies(list: HTMLElement, items: ScenarioInstructorStudentResponseRow[]): void {
+    items.forEach((row) => {
+        const el = list.querySelector<HTMLElement>(`#sg-instructor-feedback-${row.id}`);
+        if (el) renderMarkdownInto(el, row.feedback, `sg-instructor-response-${row.id}`);
+    });
+}
+
+function paintPartStudentResponses(subQuestionId: string): void {
+    const section = document.querySelector<HTMLElement>(
+        `.sg-instructor-student-responses[data-sub-question-id="${subQuestionId}"]`
+    );
+    if (!section) return;
+
+    const state = partResponseState.get(subQuestionId) ?? {
+        buffer: [],
+        currentPage: 0,
+        total: 0,
+        loading: false,
+        prefetching: false,
+    };
+    const collapsed = partResponseCollapsed.get(subQuestionId) ?? false;
+    const body = section.querySelector<HTMLElement>('.sg-instructor-student-responses-body');
+    const list = section.querySelector<HTMLElement>('.sg-instructor-response-list');
+    const countEl = section.querySelector<HTMLElement>('.sg-instructor-student-responses-count');
+    const nav = section.querySelector<HTMLElement>('.sg-instructor-response-nav');
+    const prevBtn = section.querySelector<HTMLButtonElement>('.sg-instructor-response-nav-btn[data-action="prev"]');
+    const nextBtn = section.querySelector<HTMLButtonElement>('.sg-instructor-response-nav-btn[data-action="next"]');
+    const pageLabel = section.querySelector<HTMLElement>('.sg-instructor-response-page-label');
+    const toggleBtn = section.querySelector<HTMLButtonElement>('.sg-instructor-student-responses-toggle');
+    const downloadBtn = section.querySelector<HTMLButtonElement>('.sg-instructor-student-responses-download-btn');
+
+    if (body) body.hidden = collapsed;
+    if (toggleBtn) {
+        toggleBtn.setAttribute('aria-expanded', String(!collapsed));
+        toggleBtn.setAttribute(
+            'aria-label',
+            collapsed ? 'Expand student responses' : 'Collapse student responses'
+        );
+    }
+    if (downloadBtn) {
+        const busy = partResponseDownloading.has(subQuestionId);
+        downloadBtn.disabled = busy || state.total === 0 || (state.loading && !state.buffer.length);
+        downloadBtn.setAttribute('aria-busy', String(busy));
+    }
+
+    if (countEl) {
+        const label = state.total === 1 ? '1 response' : `${state.total} responses`;
+        countEl.textContent = state.loading && !state.buffer.length ? 'Loading…' : label;
+    }
+
+    if (!list) return;
+
+    if (collapsed) {
+        if (nav) nav.hidden = true;
+        return;
+    }
+
+    if (state.loading && !state.buffer.length) {
+        list.innerHTML = '<p class="sg-instructor-response-loading">Loading student responses…</p>';
+        if (nav) nav.hidden = true;
+        return;
+    }
+
+    if (state.error && !state.buffer.length) {
+        list.innerHTML = `<p class="sg-instructor-response-error">${escapeHtml(state.error)}</p>`;
+        if (nav) nav.hidden = true;
+        return;
+    }
+
+    if (!state.total) {
+        list.innerHTML = '<p class="sg-instructor-response-empty">No student responses yet.</p>';
+        if (nav) nav.hidden = true;
+        return;
+    }
+
+    const visibleItems = getPageSlice(state.buffer, state.currentPage);
+    if (!visibleItems.length && state.loading) {
+        list.innerHTML = '<p class="sg-instructor-response-loading">Loading student responses…</p>';
+    } else if (!visibleItems.length) {
+        list.innerHTML = '<p class="sg-instructor-response-empty">No student responses yet.</p>';
+    } else {
+        list.innerHTML = visibleItems.map((row) => renderResponseCardHtml(row)).join('');
+        paintResponseFeedbackBodies(list, visibleItems);
+    }
+
+    const totalPages = getTotalPages(state.total);
+    if (nav) {
+        nav.hidden = totalPages <= 1;
+        if (pageLabel) {
+            pageLabel.textContent = `Page ${state.currentPage + 1} of ${totalPages}`;
+        }
+        if (prevBtn) {
+            prevBtn.disabled = state.currentPage === 0 || state.loading;
+        }
+        if (nextBtn) {
+            const onLastPage = state.currentPage >= totalPages - 1;
+            nextBtn.disabled = onLastPage || state.loading || state.prefetching;
+            nextBtn.setAttribute('aria-busy', String(state.loading || state.prefetching));
+        }
+    }
+    renderFeatherIcons();
+}
+
+type ResponseFetchMode = 'initial' | 'append' | 'prefetch';
+
+async function fetchResponseBatch(
+    subQuestionId: string,
+    offset: number,
+    mode: ResponseFetchMode
+): Promise<void> {
+    if (!currentCourse || !editorQuestionId) return;
+
+    const prior = partResponseState.get(subQuestionId);
+    if (!prior) return;
+    if (prior.loading || (mode === 'prefetch' && prior.prefetching)) return;
+
+    partResponseState.set(subQuestionId, {
+        ...prior,
+        buffer: mode === 'initial' ? [] : prior.buffer,
+        loading: mode !== 'prefetch',
+        prefetching: mode === 'prefetch',
+        error: undefined,
+    });
+    paintPartStudentResponses(subQuestionId);
+
+    try {
+        const page = await fetchInstructorStudentResponses(
+            currentCourse.id,
+            editorQuestionId,
+            subQuestionId,
+            { limit: INSTRUCTOR_RESPONSES_FETCH_BATCH_SIZE, offset }
+        );
+        const current = partResponseState.get(subQuestionId);
+        if (!current) return;
+
+        const buffer = mode === 'initial' ? page.items : [...current.buffer, ...page.items];
+        partResponseState.set(subQuestionId, {
+            ...current,
+            buffer,
+            total: page.total,
+            loading: false,
+            prefetching: false,
+        });
+    } catch (error) {
+        const current = partResponseState.get(subQuestionId);
+        if (!current) return;
+        partResponseState.set(subQuestionId, {
+            ...current,
+            loading: false,
+            prefetching: false,
+            error: errorMessage(error, 'Could not load student responses.'),
+        });
+    }
+
+    paintPartStudentResponses(subQuestionId);
+}
+
+async function prefetchAhead(subQuestionId: string): Promise<void> {
+    const state = partResponseState.get(subQuestionId);
+    if (!state || state.prefetching || state.loading) return;
+    if (!shouldPrefetch(state.buffer.length, state.currentPage, state.total)) return;
+    await fetchResponseBatch(subQuestionId, state.buffer.length, 'prefetch');
+}
+
+async function goToResponsePage(subQuestionId: string, page: number): Promise<void> {
+    const prior = partResponseState.get(subQuestionId);
+    if (!prior || prior.loading) return;
+
+    const totalPages = getTotalPages(prior.total);
+    const nextPage = Math.max(0, Math.min(page, Math.max(totalPages - 1, 0)));
+    if (nextPage === prior.currentPage) return;
+
+    partResponseState.set(subQuestionId, { ...prior, currentPage: nextPage });
+    paintPartStudentResponses(subQuestionId);
+
+    const updated = partResponseState.get(subQuestionId);
+    if (!updated) return;
+
+    const pageStart = nextPage * INSTRUCTOR_RESPONSES_DISPLAY_PAGE_SIZE;
+    if (needsFetch(updated.buffer.length, pageStart, updated.total)) {
+        await fetchResponseBatch(subQuestionId, updated.buffer.length, 'append');
+    }
+    void prefetchAhead(subQuestionId);
+}
+
+async function loadInitialPartResponses(subQuestionId: string): Promise<void> {
+    await fetchResponseBatch(subQuestionId, 0, 'initial');
+    void prefetchAhead(subQuestionId);
+}
+
+async function loadAllPartStudentResponses(question: ScenarioQuestionExtended): Promise<void> {
+    partResponseState.clear();
+    partResponseCollapsed.clear();
+    partResponseDownloading.clear();
+    await Promise.all(
+        question.subQuestions.map((sq, index) => {
+            const subQuestionId = sq.subQuestionId || subQuestionKey(sq, index);
+            const count = getSubQuestionResponseCount(sq);
+            partResponseState.set(subQuestionId, {
+                buffer: [],
+                currentPage: 0,
+                total: count,
+                loading: false,
+                prefetching: false,
+            });
+            paintPartStudentResponses(subQuestionId);
+            if (count === 0) return Promise.resolve();
+            return loadInitialPartResponses(subQuestionId);
+        })
+    );
+}
+
+function sanitizeDownloadFilenamePart(value: string): string {
+    return value.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'part';
+}
+
+async function downloadPartStudentResponsesJson(subQuestionId: string, partLabel: string): Promise<void> {
+    if (!currentCourse || !editorQuestionId || partResponseDownloading.has(subQuestionId)) return;
+
+    const state = partResponseState.get(subQuestionId);
+    if (!state?.total) {
+        showErrorToast('No student responses to download.');
+        return;
+    }
+
+    partResponseDownloading.add(subQuestionId);
+    paintPartStudentResponses(subQuestionId);
+
+    try {
+        const responses: ScenarioInstructorStudentResponseRow[] = [];
+        let offset = 0;
+        let total = state.total;
+
+        while (responses.length < total) {
+            const page = await fetchInstructorStudentResponses(
+                currentCourse.id,
+                editorQuestionId,
+                subQuestionId,
+                { limit: INSTRUCTOR_RESPONSES_DOWNLOAD_BATCH_SIZE, offset }
+            );
+            total = page.total;
+            if (!page.items.length) break;
+            responses.push(...page.items);
+            offset += page.items.length;
+        }
+
+        const payload = {
+            questionId: editorQuestionId,
+            subQuestionId,
+            partLabel,
+            exportedAt: new Date().toISOString(),
+            total: responses.length,
+            responses,
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `student-responses-${sanitizeDownloadFilenamePart(partLabel)}-${editorQuestionId}.json`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+        showSuccessToast('Student responses downloaded.');
+    } catch (error) {
+        showErrorToast(errorMessage(error, 'Could not download student responses.'));
+    } finally {
+        partResponseDownloading.delete(subQuestionId);
+        paintPartStudentResponses(subQuestionId);
+    }
 }
 
 function getTopicTitle(topicOrWeekId: string): string {
@@ -1352,6 +1681,7 @@ async function openEditorView(questionId: string, skipUrlSync = false): Promise<
     updateExpectedTimeDisplay(expectedSecondsFromMinutes(question.expectedTimeMinutes ?? 25));
     renderLearningObjectives(normalizeLearningObjectives(question.learningObjectives));
     renderEditorParts(question);
+    void loadAllPartStudentResponses(question);
     setQuestionBodyViewMode('edit');
     updateEditorStatusButton(question.status);
 
@@ -1376,6 +1706,8 @@ function renderEditorParts(question: ScenarioQuestionExtended): void {
         const promptMode = partPromptModes.get(partKey) ?? 'edit';
 
         const typeLabel = SUB_QUESTION_TYPE_LABELS[sq.subQuestionType] ?? sq.subQuestionType;
+        const subQuestionId = sq.subQuestionId || partKey;
+        const responseCount = getSubQuestionResponseCount(sq);
 
         return `
             <div class="sg-instructor-part-card" data-part-id="${escapeHtml(partKey)}">
@@ -1404,6 +1736,34 @@ function renderEditorParts(question: ScenarioQuestionExtended): void {
                     <textarea class="sg-instructor-editor-textarea sg-instructor-part-answer sg-instructor-part-answer-edit" data-part-id="${escapeHtml(partKey)}" rows="6">${escapeHtml(sq.modelAnswer)}</textarea>
                     <div class="sg-instructor-flashcard-panel" data-part-id="${escapeHtml(partKey)}"></div>
                 </div>
+                <section class="sg-instructor-student-responses" data-sub-question-id="${escapeHtml(subQuestionId)}" aria-label="Student responses for Part ${escapeHtml(partLabel)}">
+                    <div class="sg-instructor-student-responses-header">
+                        <div class="sg-instructor-student-responses-header-start">
+                            <button type="button" class="sg-instructor-student-responses-toggle" data-sub-question-id="${escapeHtml(subQuestionId)}" aria-expanded="true" aria-label="Collapse student responses">
+                                <i data-feather="chevron-down"></i>
+                            </button>
+                            <span class="sg-instructor-editor-section-label">Student responses</span>
+                            <span class="sg-instructor-student-responses-count">${responseCount === 1 ? '1 response' : `${responseCount} responses`}</span>
+                        </div>
+                        <div class="sg-instructor-student-responses-header-actions">
+                            <div class="sg-instructor-response-nav" hidden>
+                                <button type="button" class="sg-instructor-response-nav-btn" data-action="prev" data-sub-question-id="${escapeHtml(subQuestionId)}" aria-label="Previous responses page">
+                                    <i data-feather="chevron-left"></i>
+                                </button>
+                                <span class="sg-instructor-response-page-label">Page 1 of 1</span>
+                                <button type="button" class="sg-instructor-response-nav-btn" data-action="next" data-sub-question-id="${escapeHtml(subQuestionId)}" aria-label="Next responses page">
+                                    <i data-feather="chevron-right"></i>
+                                </button>
+                            </div>
+                            <button type="button" class="sg-instructor-student-responses-download-btn" data-sub-question-id="${escapeHtml(subQuestionId)}" data-part-label="${escapeHtml(partLabel)}" aria-label="Download student responses as JSON" title="Download JSON">
+                                <i data-feather="download"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="sg-instructor-student-responses-body">
+                        <div class="sg-instructor-response-list"></div>
+                    </div>
+                </section>
             </div>
         `;
     }).join('');
@@ -1448,6 +1808,39 @@ function attachEditorInputListeners(): void {
             }
         }, { signal });
     });
+
+    document.getElementById('sg-instructor-editor-parts')?.addEventListener('click', (event) => {
+        const target = event.target as HTMLElement;
+
+        const toggleBtn = target.closest<HTMLButtonElement>('.sg-instructor-student-responses-toggle');
+        if (toggleBtn?.dataset.subQuestionId) {
+            const subQuestionId = toggleBtn.dataset.subQuestionId;
+            const collapsed = !(partResponseCollapsed.get(subQuestionId) ?? false);
+            partResponseCollapsed.set(subQuestionId, collapsed);
+            paintPartStudentResponses(subQuestionId);
+            return;
+        }
+
+        const downloadBtn = target.closest<HTMLButtonElement>('.sg-instructor-student-responses-download-btn');
+        if (downloadBtn?.dataset.subQuestionId) {
+            void downloadPartStudentResponsesJson(
+                downloadBtn.dataset.subQuestionId,
+                downloadBtn.dataset.partLabel ?? 'part'
+            );
+            return;
+        }
+
+        const btn = target.closest<HTMLButtonElement>('.sg-instructor-response-nav-btn');
+        if (!btn?.dataset.subQuestionId || !btn.dataset.action) return;
+        const subQuestionId = btn.dataset.subQuestionId;
+        const state = partResponseState.get(subQuestionId);
+        if (!state) return;
+        if (btn.dataset.action === 'prev') {
+            void goToResponsePage(subQuestionId, state.currentPage - 1);
+        } else if (btn.dataset.action === 'next') {
+            void goToResponsePage(subQuestionId, state.currentPage + 1);
+        }
+    }, { signal });
 }
 
 const previewDebounce = new Map<string, ReturnType<typeof setTimeout>>();
@@ -1963,7 +2356,6 @@ function collectEditorPatch(): Partial<ScenarioQuestionExtended> {
             subQuestionType: sq.subQuestionType,
             prompt,
             modelAnswer,
-            studentResponses: sq.studentResponses ?? [],
         };
     });
 

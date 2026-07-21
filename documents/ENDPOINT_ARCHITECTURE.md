@@ -266,8 +266,8 @@ Two auth tiers: `requireCourseMemberForScenarioAPI` (enrolled student **or** sta
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
 | GET | `/api/courses/:courseId/scenario-questions/learning-objectives?topicOrWeekId=` | Yes | Instructor | Topic-scoped LO catalog for generate/editor selectors |
-| GET | `/api/courses/:courseId/scenario-questions` | Yes | Member | Instructor: all statuses, `?status=`/`?topicOrWeekId=` filters. Student: published only |
-| GET | `/api/courses/:courseId/scenario-questions/:questionId` | Yes | Member | Instructor: full document any status. Student: 404 unless published (no model answers / response history) |
+| GET | `/api/courses/:courseId/scenario-questions` | Yes | Member | Instructor: all statuses, `?status=`/`?topicOrWeekId=` filters (projection omits embedded `studentResponses`; includes `studentResponseCount` per part). Student: published only |
+| GET | `/api/courses/:courseId/scenario-questions/:questionId` | Yes | Member | Instructor: editor projection (no embedded `studentResponses`; `studentResponseCount` per part). Student: 404 unless published (no model answers / response history) |
 | POST | `/api/courses/:courseId/scenario-questions` | Yes | Instructor | Manual create (draft) |
 | PUT | `/api/courses/:courseId/scenario-questions/:questionId` | Yes | Instructor | Edit title/chapter/narrative/parts/LOs (does not change `status`) |
 | PATCH | `/api/courses/:courseId/scenario-questions/:questionId/status` | Yes | Instructor | `{ status: 'draft' \| 'published' \| 'rejected' }` — publish re-validates server-side |
@@ -276,6 +276,7 @@ Two auth tiers: `requireCourseMemberForScenarioAPI` (enrolled student **or** sta
 | POST | `/api/courses/:courseId/scenario-questions/:questionId/check-answer` | Yes | Member | `{ subQuestionId, studentAnswer, mode }` → practice: `{ responseId, feedback, feedbackTier?, feedbackSource?, blockReason?, attemptNumber?, attemptsRemaining?, maxAttemptsPerDay?, retryAfterSeconds?, resetsAt?, answerRevealed? }` (no grade). Socratic attempts 1–2/day; descriptive 3–6 with server-attached model answer; 7+ same day blocked; 30s cooldown between attempts. Canned responses when gated (no persist, no LLM). Instructor preview skips limits. Appends embedded history on allowed LLM responses |
 | POST | `/api/courses/:courseId/scenario-questions/:questionId/submit-exam` | Yes | Student | `{ answers: [{ subQuestionId, studentAnswer }] }` → `{ overallGrade, results[] }` — batch grade + atomic append |
 | GET | `/api/courses/:courseId/scenario-questions/:questionId/responses` | Yes | Member | Caller's own embedded response history only |
+| GET | `/api/courses/:courseId/scenario-questions/:questionId/sub-questions/:subQuestionId/student-responses?limit=&offset=` | Yes | Instructor | Paginated student submissions for one sub-question (newest first; default `limit=10`, max `50`). Instructor editor prefetches with `limit=20` and displays 10 per carousel page. `total` is the live embedded-array count on every response. Returns roster `studentName`, `mode`, `studentAnswer`, `feedback`, `submittedAt` |
 | GET | `/api/courses/:courseId/scenario-questions/:questionId/solution?mode=` | Yes | Member | Gated reveal — 403 until every sub-question has a response in `mode` (`practice` \| `exam`) |
 
 **Errors:** `400` invalid body / missing-or-duplicate exam answers; `401` unauthenticated; `403` non-member, instructor on submit-exam, or unmet solution gate; `404` course/question not found (including drafts for students); `422` generation/grading failure; `500` server error.

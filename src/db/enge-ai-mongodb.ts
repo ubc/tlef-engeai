@@ -458,6 +458,20 @@ export class EngEAI_MongoDB {
     public getScenarioStudentResponses = async (courseName: string, questionId: string, studentUserId: string) =>
         ScenarioQuestionsMongo.getStudentResponsesForQuestion(this.ctx(), courseName, questionId, studentUserId);
 
+    public getInstructorStudentResponsesPage = async (
+        courseName: string,
+        questionId: string,
+        subQuestionId: string,
+        options?: { limit?: number; offset?: number }
+    ) =>
+        ScenarioQuestionsMongo.getInstructorStudentResponsesPage(
+            this.ctx(),
+            courseName,
+            questionId,
+            subQuestionId,
+            options
+        );
+
     public getLearningObjectivesForTopicOrWeek = async (courseId: string, topicOrWeekId: string) =>
         TopicWeekMongo.getLearningObjectivesForTopicOrWeek(this.ctx(), courseId, topicOrWeekId);
 

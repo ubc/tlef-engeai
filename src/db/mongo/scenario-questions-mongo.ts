@@ -18,9 +18,12 @@ import type { Collection } from 'mongodb';
 import {
     activeCourse,
     ScenarioDifficulty,
+    ScenarioInstructorStudentResponseRow,
+    ScenarioInstructorStudentResponsesPage,
     ScenarioLearningObjectiveSnapshot,
     ScenarioMode,
     ScenarioQuestion,
+    ScenarioQuestionForInstructor,
     ScenarioQuestionForStudent,
     ScenarioQuestionStatus,
     ScenarioStudentResponse,
@@ -33,10 +36,17 @@ import { activeCourseListCollection } from './mongo-collections';
 import type { MongoDalContext } from './mongo-context';
 import { fetchActiveCourseDocById } from './active-course-queries-mongo';
 import { createScenarioQuestionIndexes } from './scenario-indexes';
+import { batchFindUsersByUserIds } from './course-user-mongo';
 import { appLogger } from '../../utils/logger';
 
 /** Soft ceiling before Mongo's 16 MiB document limit — reject writes with a clear error. */
 export const SCENARIO_DOCUMENT_GROWTH_GUARD_BYTES = 14 * 1024 * 1024;
+
+/** Default page size for instructor student-response history in the editor. */
+export const SCENARIO_INSTRUCTOR_RESPONSES_DEFAULT_LIMIT = 10;
+
+/** Hard cap on instructor student-response page size. */
+export const SCENARIO_INSTRUCTOR_RESPONSES_MAX_LIMIT = 50;
 
 /** Input accepted by `createScenarioQuestion` — server computes id, sortOrder, timestamps, status. */
 export interface CreateScenarioQuestionInput {
@@ -296,6 +306,32 @@ export function toStudentProjection(question: ScenarioQuestion): ScenarioQuestio
         learningObjectives: normalizeLearningObjectives(question.learningObjectives),
         subQuestions: subQuestions.map(({ modelAnswer, studentResponses, ...sub }) => ({ ...sub })),
     };
+}
+
+/**
+ * toInstructorProjection — strips embedded studentResponses; exposes per-part counts only.
+ */
+export function toInstructorProjection(question: ScenarioQuestion): ScenarioQuestionForInstructor {
+    const { subQuestions, ...rest } = question;
+    return {
+        ...rest,
+        learningObjectives: normalizeLearningObjectives(question.learningObjectives),
+        subQuestions: subQuestions.map(({ studentResponses, ...sub }) => ({
+            ...sub,
+            studentResponseCount: (studentResponses ?? []).length,
+        })),
+    };
+}
+
+/**
+ * sortStudentResponsesNewestFirst — newest submittedAt first for instructor history UI.
+ */
+export function sortStudentResponsesNewestFirst(
+    responses: ScenarioStudentResponse[]
+): ScenarioStudentResponse[] {
+    return [...responses].sort(
+        (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+    );
 }
 
 /**
@@ -654,4 +690,63 @@ export async function getStudentResponsesForQuestion(
         }
     }
     return out;
+}
+
+const UNKNOWN_STUDENT_NAME = 'Unknown student';
+
+/**
+ * getInstructorStudentResponsesPage — paginated instructor view of one sub-question's embedded history.
+ *
+ * Returns `null` when the question or sub-question id is not found. Sorts newest-first; hydrates roster
+ * names via {@link batchFindUsersByUserIds} for the current page only.
+ *
+ * @param ctx - MongoDalContext
+ * @param courseName - Course namespace
+ * @param questionId - Parent scenario question id
+ * @param subQuestionId - Target sub-question id
+ * @param options - Optional `limit` (default 10, max 50) and `offset` (default 0)
+ * @returns Paginated rows with metadata, or `null` when question/sub-question missing
+ */
+export async function getInstructorStudentResponsesPage(
+    ctx: MongoDalContext,
+    courseName: string,
+    questionId: string,
+    subQuestionId: string,
+    options?: { limit?: number; offset?: number }
+): Promise<ScenarioInstructorStudentResponsesPage | null> {
+    const limit = Math.min(
+        Math.max(options?.limit ?? SCENARIO_INSTRUCTOR_RESPONSES_DEFAULT_LIMIT, 1),
+        SCENARIO_INSTRUCTOR_RESPONSES_MAX_LIMIT
+    );
+    const offset = Math.max(options?.offset ?? 0, 0);
+
+    const question = await getScenarioQuestionById(ctx, courseName, questionId);
+    if (!question) return null;
+
+    const sub = question.subQuestions.find((s) => s.subQuestionId === subQuestionId);
+    if (!sub) return null;
+
+    const sorted = sortStudentResponsesNewestFirst(sub.studentResponses ?? []);
+    const total = sorted.length;
+    const page = sorted.slice(offset, offset + limit);
+    const userIds = [...new Set(page.map((r) => r.studentUserId))];
+    const userMap = await batchFindUsersByUserIds(ctx, courseName, userIds);
+
+    const items: ScenarioInstructorStudentResponseRow[] = page.map((r) => ({
+        id: r.id,
+        studentUserId: r.studentUserId,
+        studentName: userMap.get(String(r.studentUserId))?.name ?? UNKNOWN_STUDENT_NAME,
+        mode: r.mode,
+        studentAnswer: r.studentAnswer,
+        feedback: r.feedback,
+        submittedAt: new Date(r.submittedAt).toISOString(),
+    }));
+
+    return {
+        items,
+        total,
+        hasMore: offset + items.length < total,
+        limit,
+        offset,
+    };
 }

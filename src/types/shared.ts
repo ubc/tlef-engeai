@@ -763,6 +763,35 @@ export type ScenarioQuestionForStudent = Omit<ScenarioQuestion, 'solutionBody' |
     subQuestions: Array<Omit<ScenarioSubQuestion, 'modelAnswer' | 'studentResponses'>>;
 };
 
+/** Instructor editor projection — omits embedded response arrays; includes per-part counts only. */
+export type ScenarioSubQuestionForInstructor = Omit<ScenarioSubQuestion, 'studentResponses'> & {
+    studentResponseCount: number; // total submissions for this part — paginated fetch via instructor responses API
+};
+
+export type ScenarioQuestionForInstructor = Omit<ScenarioQuestion, 'subQuestions'> & {
+    subQuestions: ScenarioSubQuestionForInstructor[];
+};
+
+/** One row in the instructor paginated student-responses API (roster name hydrated server-side). */
+export interface ScenarioInstructorStudentResponseRow {
+    id: string; // response id
+    studentUserId: string; // roster id — never PUID
+    studentName: string; // from course users; fallback when dropped from roster
+    mode: ScenarioMode; // practice vs exam — drives badge color in editor UI
+    studentAnswer: string; // submitted text
+    feedback: string; // TA or exam feedback shown to instructor
+    submittedAt: string; // ISO 8601 for display sorting
+}
+
+/** Paginated instructor view of embedded student responses for one sub-question. */
+export interface ScenarioInstructorStudentResponsesPage {
+    items: ScenarioInstructorStudentResponseRow[];
+    total: number; // full count for this sub-question (all modes)
+    hasMore: boolean; // true when offset + items.length < total
+    limit: number; // applied page size (capped server-side)
+    offset: number; // slice start into newest-first list
+}
+
 /** Request body for `POST .../check-answer`. */
 export interface ScenarioCheckAnswerRequest {
     subQuestionId: string;

@@ -832,6 +832,37 @@ export interface ScenarioSubQuestion {
     modelAnswer: string;
     /** Stripped from student list/detail projections. */
     studentResponses?: ScenarioStudentResponse[];
+    /** Instructor projection only — total embedded submissions for this part. */
+    studentResponseCount?: number;
+}
+
+/** Must match src/types/shared.ts. Instructor editor projection (no embedded response arrays). */
+export type ScenarioSubQuestionForInstructor = Omit<ScenarioSubQuestion, 'studentResponses'> & {
+    studentResponseCount: number;
+};
+
+export type ScenarioQuestionForInstructor = Omit<ScenarioQuestion, 'subQuestions'> & {
+    subQuestions: ScenarioSubQuestionForInstructor[];
+};
+
+/** Must match src/types/shared.ts. One row in instructor paginated student-response history. */
+export interface ScenarioInstructorStudentResponseRow {
+    id: string;
+    studentUserId: string;
+    studentName: string;
+    mode: ScenarioMode;
+    studentAnswer: string;
+    feedback: string;
+    submittedAt: string;
+}
+
+/** Must match src/types/shared.ts. Paginated instructor student-response page. */
+export interface ScenarioInstructorStudentResponsesPage {
+    items: ScenarioInstructorStudentResponseRow[];
+    total: number;
+    hasMore: boolean;
+    limit: number;
+    offset: number;
 }
 
 /** Must match src/types/shared.ts. Full document — instructor views only. */
@@ -977,7 +1008,7 @@ export interface ScenarioSolutionResponse {
 export type ScenarioSubQuestionExtended = ScenarioSubQuestion;
 
 /** @deprecated Alias — fields now on {@link ScenarioQuestion}. */
-export type ScenarioQuestionExtended = ScenarioQuestion;
+export type ScenarioQuestionExtended = ScenarioQuestion | ScenarioQuestionForInstructor;
 
 /** Generate request shape used by instructor UI (maps to ScenarioGenerateRequest). */
 export interface ScenarioMockGenerateRequest {

@@ -24,7 +24,11 @@ import { ConversationModePicker } from "./conversation-mode-picker.js";
 import { RenderChat } from "./render-chat.js";
 import { showDisclaimerModal, showDeleteConfirmationModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
 import { getCourseIdFromURL } from "../utils/url-parser.js";
-import { consumeChatDraftPrefill, stashChatDraftPrefill } from "../utils/chat-draft-prefill.js";
+import {
+    clearChatDraftPrefill,
+    peekChatDraftPrefill,
+    stashChatDraftPrefill,
+} from "../utils/chat-draft-prefill.js";
 
 /**
  * Chat Metadata Interface - Lightweight chat information without full message history
@@ -1632,22 +1636,70 @@ export class ChatManager {
 
     /**
      * Inserts a scenario-sourced draft into the chat composer when present in sessionStorage.
+     * Only removes the stash after a successful apply so a missing #chat-input does not drop the draft.
      *
      * @returns true when a draft was applied
      */
     public applyPendingChatDraftPrefill(afterResize?: () => void): boolean {
         const courseId = getCourseIdFromURL();
         if (!courseId) return false;
-        const draft = consumeChatDraftPrefill(courseId);
+        const draft = peekChatDraftPrefill(courseId);
         if (!draft) return false;
         const inputEl = document.getElementById('chat-input') as HTMLTextAreaElement | null;
         if (!inputEl) return false;
-        inputEl.value = draft;
+        inputEl.value = draft.text;
+        clearChatDraftPrefill(courseId);
         afterResize?.();
         inputEl.focus();
         const len = inputEl.value.length;
         inputEl.setSelectionRange(len, len);
         return true;
+    }
+
+    /**
+     * openScenarioHandoff - Practice Scenarios → chat: new chat, explanatory mode, composer draft stashed.
+     *
+     * Stashes the draft, creates a fresh chat, and PATCHes conversation mode before navigation.
+     * Caller loads chat-window and calls applyPendingChatDraftPrefill after DOM is ready.
+     *
+     * @param options.text - Structured composer prefill from the scenario workspace
+     * @param options.conversationMode - Teaching mode to persist (default explanatory)
+     * @returns success flag; clears stash on chat creation failure
+     */
+    public async openScenarioHandoff(options: {
+        text: string;
+        conversationMode?: ConversationModeId;
+    }): Promise<{ success: boolean; error?: string }> {
+        const courseId = getCourseIdFromURL();
+        if (!courseId) {
+            return { success: false, error: 'No course in URL' };
+        }
+
+        const conversationMode = options.conversationMode ?? 'explanatory';
+        stashChatDraftPrefill(courseId, options.text, conversationMode);
+
+        const created = await this.createNewChat();
+        if (!created.success || !created.chat) {
+            clearChatDraftPrefill(courseId);
+            return { success: false, error: created.error || 'Could not create chat' };
+        }
+
+        const activeChat = created.chat;
+        const modeResponse = await updateChatConversationMode(activeChat.id, conversationMode);
+        if (!modeResponse.success) {
+            await showSimpleErrorModal(
+                modeResponse.error || 'Could not set explanatory mode for this chat.',
+                'Conversation Mode'
+            );
+        } else {
+            const persistedMode = modeResponse.conversationMode ?? conversationMode;
+            activeChat.conversationMode = persistedMode;
+            this.selectedConversationMode = persistedMode;
+            this.syncConversationModeComposer();
+        }
+
+        this.notifyUIUpdate();
+        return { success: true };
     }
 
     /**
@@ -1676,12 +1728,11 @@ export class ChatManager {
         // Debug logging for delete button binding
         // console.log('🔗 Binding message events - Delete button found:', !!deleteBtn);
 
-        // Auto-grow textarea
+        // Auto-grow textarea — cap comes from CSS max-height
         const autoGrow = () => {
             if (!inputEl) return;
             inputEl.style.height = 'auto';
-            const lineHeight = parseFloat(getComputedStyle(inputEl).lineHeight || '20');
-            const maxH = lineHeight * 4;
+            const maxH = parseFloat(getComputedStyle(inputEl).maxHeight) || Infinity;
             inputEl.style.height = Math.min(inputEl.scrollHeight, maxH) + 'px';
             inputEl.style.overflowY = inputEl.scrollHeight > maxH ? 'auto' : 'hidden';
         };

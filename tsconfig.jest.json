@@ -4,5 +4,5 @@
     "types": ["node", "jest"],
     "noEmit": true
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "public/scripts/utils/instructor-response-carousel.ts"]
 }

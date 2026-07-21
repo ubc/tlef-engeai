@@ -54,3 +54,29 @@
     color: #be123c;
     border-color: rgba(190, 18, 60, 0.3);
 }
+
+/* Practice / Exam mode badge — shared by student picker and instructor response history */
+.sg-mode-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    border: 1px solid transparent;
+}
+
+.sg-mode-badge--practice {
+    background: rgba(77, 122, 47, 0.12);
+    color: var(--color-chbe-green, #4d7a2f);
+    border-color: var(--color-chbe-green, #4d7a2f);
+}
+
+.sg-mode-badge--exam {
+    background: rgba(139, 0, 0, 0.08);
+    color: var(--color-eng-red, #8b0000);
+    border-color: var(--color-eng-red, #8b0000);
+}
