@@ -15,6 +15,25 @@
     padding: 1.5rem 3rem;
     box-sizing: border-box;
     overflow-y: auto;
+    scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+.sg-instructor-container::-webkit-scrollbar {
+    width: 8px;
+    background: transparent;
+}
+
+.sg-instructor-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.sg-instructor-container::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.22);
+    border-radius: 4px;
+}
+
+.sg-instructor-container::-webkit-scrollbar-corner {
+    background: transparent;
 }
 
 /* --- Page header (plain title on desktop; mobile bar on small screens) --- */
@@ -1625,7 +1644,6 @@
     font-size: 0.85rem;
     font-weight: 600;
     color: var(--text-secondary, #6c757d);
-    margin-bottom: 0.35rem;
 }
 
 .sg-instructor-editor-textarea {
@@ -2312,8 +2330,8 @@
 }
 
 .sg-instructor-student-responses-download-btn {
-    width: 36px;
     height: 36px;
+    padding: 0 0.75rem;
     border-radius: 999px;
     border: 1px solid #b0b0b0;
     background: white;
@@ -2321,6 +2339,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    gap: 0.35rem;
     flex-shrink: 0;
 }
 
@@ -2332,6 +2351,12 @@
 .sg-instructor-student-responses-download-btn .feather {
     width: 18px;
     height: 18px;
+}
+
+.sg-instructor-student-responses-download-label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    line-height: 1;
 }
 
 .sg-instructor-student-responses-count {
@@ -2349,11 +2374,17 @@
     gap: 1rem;
 }
 
-.sg-instructor-response-nav {
+.sg-instructor-response-pager {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
+}
+
+.sg-instructor-response-pager--footer {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border-color, #e8e8e8);
 }
 
 .sg-instructor-response-page-label {
@@ -2363,7 +2394,7 @@
     text-align: center;
 }
 
-.sg-instructor-response-nav-btn {
+.sg-instructor-response-pager-btn {
     width: 36px;
     height: 36px;
     border-radius: 999px;
@@ -2375,12 +2406,12 @@
     justify-content: center;
 }
 
-.sg-instructor-response-nav-btn:disabled {
+.sg-instructor-response-pager-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
 }
 
-.sg-instructor-response-nav-btn .feather {
+.sg-instructor-response-pager-btn .feather {
     width: 18px;
     height: 18px;
 }

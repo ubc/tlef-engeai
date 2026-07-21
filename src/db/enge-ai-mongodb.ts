@@ -21,12 +21,15 @@ import {
     InitialAssistantPrompt,
     MemoryAgentEntry,
     SystemPromptItem,
-    ConversationModeId
+    ScenarioMode,
+    ScenarioQuestionStatus,
+    ScenarioStudentResponse,
+    ConversationModeId,
 } from '../types/shared';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { appLogger } from '../utils/logger';
 
-import type { MongoDalContext } from './mongo/mongo-context';
+import type { MongoDalContext, CourseCollectionNames } from './mongo/mongo-context';
 import * as ChatMongo from './mongo/chat-mongo';
 import * as CollectionRegistryMongo from './mongo/collection-registry-mongo';
 import * as CourseMongo from './mongo/course-mongo';
@@ -49,10 +52,7 @@ import * as CourseEnrollmentMongo from './mongo/course-enrollment-mongo';
 import * as CourseRosterMongo from './mongo/course-roster-mongo';
 import * as InstructorPeriodAllowanceMongo from './mongo/instructor-period-allowance-mongo';
 import * as ScenarioQuestionsMongo from './mongo/scenario-questions-mongo';
-import type {
-    ScenarioQuestionStatus,
-    ScenarioStudentResponse
-} from '../types/shared';
+import * as ScenarioProgressMongo from './mongo/scenario-progress-mongo';
 
 dotenv.config();
 
@@ -70,10 +70,7 @@ export class EngEAI_MongoDB {
     public db!: Db;
     public idGenerator: IDGenerator;
 
-    private collectionNamesCache: Map<
-        string,
-        { users: string; flags: string; memoryAgent: string; scheduledTasks: string; scenarioQuestions: string }
-    > = new Map();
+    private collectionNamesCache: Map<string, CourseCollectionNames> = new Map();
 
     private scheduledTasksIndexesEnsured = new Set<string>();
 
@@ -471,6 +468,28 @@ export class EngEAI_MongoDB {
             subQuestionId,
             options
         );
+
+    public ensureScenarioProgressCollection = async (courseId: string) =>
+        ScenarioProgressMongo.ensureScenarioProgressCollection(this.ctx(), courseId);
+
+    public upsertScenarioStudentProgress = async (
+        courseName: string,
+        input: ScenarioProgressMongo.UpsertScenarioStudentProgressInput
+    ) => ScenarioProgressMongo.upsertScenarioStudentProgress(this.ctx(), courseName, input);
+
+    public getScenarioStudentProgress = async (
+        courseName: string,
+        userId: string,
+        questionId: string,
+        mode: ScenarioMode
+    ) => ScenarioProgressMongo.getScenarioStudentProgress(this.ctx(), courseName, userId, questionId, mode);
+
+    public deleteScenarioStudentProgress = async (
+        courseName: string,
+        userId: string,
+        questionId: string,
+        mode: ScenarioMode
+    ) => ScenarioProgressMongo.deleteScenarioStudentProgress(this.ctx(), courseName, userId, questionId, mode);
 
     public getLearningObjectivesForTopicOrWeek = async (courseId: string, topicOrWeekId: string) =>
         TopicWeekMongo.getLearningObjectivesForTopicOrWeek(this.ctx(), courseId, topicOrWeekId);

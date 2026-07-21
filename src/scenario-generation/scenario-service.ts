@@ -26,11 +26,14 @@ import type {
     ScenarioLearningObjectiveSnapshot,
     ScenarioMode,
     ScenarioPartFeedbackResponse,
+    ScenarioProgressResponse,
     ScenarioQuestion,
+    ScenarioSaveProgressRequest,
     ScenarioStudentResponse,
     ScenarioSubQuestion,
     ScenarioSubQuestionType,
 } from '../types/shared';
+import { filterProgressAnswers } from '../db/mongo/scenario-progress-mongo';
 import { computeScenarioOverallGrade, defaultExpectedTimeMinutes } from '../types/shared';
 import { buildScenarioGenerationSystemPrompt } from './prompts/scenario-generation-prompt';
 import {
@@ -468,6 +471,14 @@ export class ScenarioService {
 
             await mongoDB.appendScenarioExamResponses(input.courseName, input.questionId, items);
 
+            // Clear exam draft progress after successful submit
+            await mongoDB.deleteScenarioStudentProgress(
+                input.courseName,
+                input.studentUserId,
+                input.questionId,
+                'exam'
+            );
+
             // ====================================================================
             // STEP 4: Sum part grades and return results in question order
             // ====================================================================
@@ -503,6 +514,76 @@ export class ScenarioService {
     ): Promise<Array<ScenarioStudentResponse & { subQuestionId: string }>> {
         const mongoDB = await EngEAI_MongoDB.getInstance();
         return mongoDB.getScenarioStudentResponses(courseName, questionId, studentUserId);
+    }
+
+    /**
+     * getStudentProgress - Load caller's draft answers for one question and mode.
+     *
+     * Filters stored answers to sub-questions still on the published question.
+     *
+     * @param courseName - Course display name (collection suffix)
+     * @param questionId - Scenario question id
+     * @param studentUserId - Caller roster id
+     * @param mode - practice or exam
+     * @returns Progress payload with ISO updatedAt, or empty answers when no draft
+     */
+    public async getStudentProgress(
+        courseName: string,
+        questionId: string,
+        studentUserId: string,
+        mode: ScenarioMode
+    ): Promise<ScenarioProgressResponse> {
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const question = await mongoDB.getScenarioQuestionById(courseName, questionId);
+        if (!question || question.status !== 'published') {
+            return { questionId, mode, answers: [], updatedAt: new Date(0).toISOString() };
+        }
+
+        const validIds = new Set(question.subQuestions.map((s) => s.subQuestionId));
+        const doc = await mongoDB.getScenarioStudentProgress(courseName, studentUserId, questionId, mode);
+        if (!doc) {
+            return { questionId, mode, answers: [], updatedAt: new Date(0).toISOString() };
+        }
+
+        const answers = filterProgressAnswers(doc.answers, validIds);
+        const updatedAt =
+            doc.updatedAt instanceof Date ? doc.updatedAt.toISOString() : new Date(doc.updatedAt).toISOString();
+        return { questionId, mode, answers, updatedAt };
+    }
+
+    /**
+     * saveStudentProgress - Upsert draft answers for one question and mode.
+     *
+     * @param courseName - Course display name
+     * @param questionId - Scenario question id
+     * @param studentUserId - Caller roster id
+     * @param body - mode + answers from client
+     * @returns Saved progress with ISO updatedAt; null when question not published
+     */
+    public async saveStudentProgress(
+        courseName: string,
+        questionId: string,
+        studentUserId: string,
+        body: ScenarioSaveProgressRequest
+    ): Promise<ScenarioProgressResponse | null> {
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const question = await mongoDB.getScenarioQuestionById(courseName, questionId);
+        if (!question || question.status !== 'published') {
+            return null;
+        }
+
+        const validIds = new Set(question.subQuestions.map((s) => s.subQuestionId));
+        const doc = await mongoDB.upsertScenarioStudentProgress(courseName, {
+            userId: studentUserId,
+            questionId,
+            mode: body.mode,
+            answers: body.answers,
+            validSubQuestionIds: validIds,
+        });
+
+        const updatedAt =
+            doc.updatedAt instanceof Date ? doc.updatedAt.toISOString() : new Date(doc.updatedAt).toISOString();
+        return { questionId, mode: body.mode, answers: doc.answers, updatedAt };
     }
 
     /**

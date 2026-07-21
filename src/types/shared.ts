@@ -190,6 +190,8 @@ export interface activeCourse {
         scheduledTasks?: string;
         /** Per-course Practice Scenarios question bank (e.g. `${courseName}_scenario_questions`); SQ-001 lazy-provisions on existing courses */
         scenarioQuestions?: string;
+        /** Per-course student scenario draft answers (e.g. `${courseName}_scenario_progress`); SQ-004 lazy-provisions on first save */
+        scenarioProgress?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
     /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */
@@ -790,6 +792,39 @@ export interface ScenarioInstructorStudentResponsesPage {
     hasMore: boolean; // true when offset + items.length < total
     limit: number; // applied page size (capped server-side)
     offset: number; // slice start into newest-first list
+}
+
+/** One saved draft answer for a sub-question (in-progress only — never submitted). */
+export interface ScenarioProgressAnswer {
+    subQuestionId: string; // must match a sub-question on the published question
+    studentAnswer: string; // raw textarea text; trim only for empty detection, store as typed
+}
+
+/**
+ * Student draft progress for one question in one mode.
+ * Collection: `{courseName}_scenario_progress`. One doc per (userId, questionId, mode).
+ * Never exposed to instructor APIs.
+ */
+export interface ScenarioStudentProgress {
+    userId: string; // roster id — never PUID
+    questionId: string; // ScenarioQuestion.id
+    mode: ScenarioMode; // practice vs exam — separate drafts per mode
+    answers: ScenarioProgressAnswer[];
+    updatedAt: Date;
+}
+
+/** Request body for `PUT .../progress`. */
+export interface ScenarioSaveProgressRequest {
+    mode: ScenarioMode;
+    answers: ScenarioProgressAnswer[];
+}
+
+/** Response for `GET .../progress`. */
+export interface ScenarioProgressResponse {
+    questionId: string;
+    mode: ScenarioMode;
+    answers: ScenarioProgressAnswer[];
+    updatedAt: string; // ISO 8601
 }
 
 /** Request body for `POST .../check-answer`. */

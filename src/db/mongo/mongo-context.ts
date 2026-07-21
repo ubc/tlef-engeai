@@ -20,6 +20,8 @@ export interface CourseCollectionNames {
     scheduledTasks: string;
     /** `{courseName}_scenario_questions` — SQ-001 lazy-provisioned, see `scenario-questions-mongo.ts`. */
     scenarioQuestions: string;
+    /** `{courseName}_scenario_progress` — SQ-004 lazy-provisioned, see `scenario-progress-mongo.ts`. */
+    scenarioProgress: string;
 }
 
 /**

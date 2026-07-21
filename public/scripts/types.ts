@@ -895,6 +895,35 @@ export type ScenarioQuestionForStudent = Omit<ScenarioQuestion, 'solutionBody' |
     subQuestions: Array<Omit<ScenarioSubQuestion, 'modelAnswer' | 'studentResponses'>>;
 };
 
+/** Must match src/types/shared.ts. One saved draft answer for a sub-question. */
+export interface ScenarioProgressAnswer {
+    subQuestionId: string;
+    studentAnswer: string;
+}
+
+/** Must match src/types/shared.ts. Student draft progress for one question in one mode. */
+export interface ScenarioStudentProgress {
+    userId: string;
+    questionId: string;
+    mode: ScenarioMode;
+    answers: ScenarioProgressAnswer[];
+    updatedAt: string | Date;
+}
+
+/** Must match src/types/shared.ts. Request body for PUT .../progress. */
+export interface ScenarioSaveProgressRequest {
+    mode: ScenarioMode;
+    answers: ScenarioProgressAnswer[];
+}
+
+/** Must match src/types/shared.ts. Response for GET .../progress. */
+export interface ScenarioProgressResponse {
+    questionId: string;
+    mode: ScenarioMode;
+    answers: ScenarioProgressAnswer[];
+    updatedAt: string;
+}
+
 /** Must match src/types/shared.ts. Request body for POST .../check-answer. */
 export interface ScenarioCheckAnswerRequest {
     subQuestionId: string;
