@@ -72,9 +72,11 @@ EngE-AI is an AI-powered learning assistant for UBC Engineering courses which em
 
 3. Create a `.env` file in the project root (use `.env.example` and update the variables as needed).
 
-4. Run the application:
-   - **Development:** `npm run dev` (nodemon + BrowserSync)
-   - **Production:** `npm start`
+4. Build and run the application:
+   - **Development:** `npm run dev` (nodemon + BrowserSync; compiles frontend in watch mode)
+   - **Production:** `npm run start:prod` (runs full build, then starts the server)
+
+   Compiled browser scripts are written to `public/dist/` (gitignored). `npm start` alone does **not** build them — use `npm run start:prod` or run `npm run build` first.
 
 ---
 
@@ -112,3 +114,5 @@ For API reference, see [documentation/ENDPOINT_ARCHITECTURE.md](documentation/EN
 ## Continuous Integration
 
 Pushing to the main branch in this repo will trigger a deploy automatically to the staging server.
+
+The staging deploy step must run **`npm run start:prod`** (or `npm run build` then `npm start`). Without a frontend build, login and app pages will 404 on `/dist/public/scripts/...` assets.

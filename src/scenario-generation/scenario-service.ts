@@ -16,7 +16,6 @@ import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { RAGApp } from '../rag/rag-app';
 import { ragPrompts } from '../rag/rag-prompts';
 import { IDGenerator } from '../utils/unique-id-generator';
-import { isDeveloperMode, getMockGeneratedScenario, getMockScenarioFeedback, getMockScenarioPracticeFeedback } from '../helpers/developer-mode';
 import { appLogger } from '../utils/logger';
 import type {
     ScenarioDifficulty,
@@ -162,23 +161,15 @@ export class ScenarioService {
                 : (['calculation', 'troubleshoot', 'action'] as ScenarioSubQuestionType[]);
 
             // ====================================================================
-            // STEP 2: Generate via LLM (or developer-mode mock)
+            // STEP 2: Generate via LLM
             // ====================================================================
-            let rawResults: GeneratedScenario[];
-            if (isDeveloperMode()) {
-                appLogger.log('[SCENARIO-SERVICE] Developer mode — mock generated scenario(s)');
-                rawResults = Array.from({ length: requestedCount }, () => getMockGeneratedScenario(types));
-            } else {
-
-                // generate the scenario questions
-                rawResults = await this.generateViaLLM(
-                    input,
-                    requestedCount,
-                    types,
-                    difficulty,
-                    learningObjectives.map((lo) => lo.text)
-                );
-            }
+            const rawResults = await this.generateViaLLM(
+                input,
+                requestedCount,
+                types,
+                difficulty,
+                learningObjectives.map((lo) => lo.text)
+            );
 
             // ====================================================================
             // STEP 3: Sanitize LLM output — drop incomplete parts, remap types
@@ -682,15 +673,6 @@ export class ScenarioService {
         studentAnswer: string,
         tier: PracticeFeedbackPromptTier = 'socratic'
     ): Promise<{ feedback: string }> {
-        
-        // if in developer mode, return the mock feedback
-        if (isDeveloperMode()) {
-            const mock = getMockScenarioPracticeFeedback();
-            if (tier === 'descriptive') {
-                return { feedback: assemblePracticeDescriptiveFeedback(mock.feedback, subQuestion.modelAnswer) };
-            }
-            return mock;
-        }
 
         // build the system prompt
         const systemPrompt =
@@ -760,11 +742,6 @@ export class ScenarioService {
         const modelAnswersBySubQuestionId = Object.fromEntries(
             question.subQuestions.map((s) => [s.subQuestionId, s.modelAnswer])
         );
-
-        if (isDeveloperMode()) {
-            const mock = getMockScenarioFeedback();
-            return expectedIds.map((subQuestionId) => ({ subQuestionId, ...mock }));
-        }
 
         // One structured LLM call grades every part — shared narrative, independent judgments
         const systemPrompt = buildScenarioExamFeedbackSystemPrompt();

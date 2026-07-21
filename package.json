@@ -1,6 +1,6 @@
 {
   "name": "tlef-EngE-AI",
-  "version": "1.5.11",
+  "version": "1.5.12",
   "description": "",
   "main": "dist/server.js",
   "scripts": {
@@ -10,6 +10,7 @@
     "build:frontend": "npm run vendor:chart && tsc -p public/tsconfig.json",
     "build": "sleep 2 && npm run clean && npm run build:backend && npm run build:frontend",
     "start": "cross-env NODE_ENV=production node dist/server.js",
+    "start:prod": "npm run build && npm start",
     "dev": "npm-run-all --parallel dev:*",
     "dev:server": "cross-env NODE_ENV=development nodemon",
     "dev:frontend": "npm run vendor:chart && tsc -p public/tsconfig.json --watch",

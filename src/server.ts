@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import express from 'express';
+import fs from 'fs';
 import path from 'path';
 // import cors from 'cors';
 import { loadConfig } from './utils/config';
@@ -54,6 +55,28 @@ app.use(passport.session());
 // When running from dist/server.js, __dirname is .../dist
 // The correct relative path to public is one level up, then into public.
 const publicPath = path.join(__dirname, '../public');
+
+/** Login-page bundle; must exist under public/dist after `npm run build:frontend`. */
+const frontendBuildSentinel = path.join(
+    publicPath,
+    'dist/public/scripts/auth/auth-manager.js'
+);
+
+function assertFrontendBuilt(): void {
+    if (process.env.NODE_ENV !== 'production') {
+        return;
+    }
+    if (fs.existsSync(frontendBuildSentinel)) {
+        return;
+    }
+    logger.error(
+        '[STARTUP] Frontend not built (missing %s). Run `npm run build` or `npm run start:prod` before production start.',
+        frontendBuildSentinel
+    );
+    process.exit(1);
+}
+
+assertFrontendBuilt();
 
 // Request logging middleware
 app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
