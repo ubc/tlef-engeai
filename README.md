@@ -99,14 +99,15 @@ EngE-AI is an AI-powered learning assistant for UBC Engineering courses which em
 2. Follow existing code style (TypeScript, Express patterns)
 3. Submit a pull request
 
-For API reference, see [documentation/ENDPOINT_ARCHITECTURE.md](documentation/ENDPOINT_ARCHITECTURE.md).
+For API reference, see [documents/ENDPOINT_ARCHITECTURE.md](documents/ENDPOINT_ARCHITECTURE.md).
 
 ---
 
 ## Documentation
 
-- [Endpoint Architecture](documentation/ENDPOINT_ARCHITECTURE.md)
-- [Responsive Design](documentation/RESPONSIVE_DESIGN.md)
+- [Endpoint Architecture](documents/ENDPOINT_ARCHITECTURE.md)
+- [Responsive Design](documents/RESPONSIVE_DESIGN.md)
+- [Git Worktrees and Cursor Workflow](documents/GIT_WORKTREES_AND_CURSOR.md)
 - [docker-simple-saml](https://github.com/ubc/docker-simple-saml) — Containerized SAML 2.0 IdP for local development
 
 ---
