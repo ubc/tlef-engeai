@@ -909,6 +909,28 @@ async function prefetchAhead(subQuestionId: string): Promise<void> {
     await fetchResponseBatch(subQuestionId, state.buffer.length, 'prefetch');
 }
 
+function scrollToPartStudentResponses(subQuestionId: string): void {
+    const section = document.querySelector<HTMLElement>(
+        `.sg-instructor-student-responses[data-sub-question-id="${subQuestionId}"]`
+    );
+    if (!section) return;
+
+    const scrollRoot = document.querySelector<HTMLElement>('.sg-instructor-container');
+    if (!scrollRoot) {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+    }
+
+    const stickyChrome = document.querySelector<HTMLElement>('.sg-instructor-editor-sticky-chrome');
+    const anchorBottom = stickyChrome?.getBoundingClientRect().bottom
+        ?? scrollRoot.getBoundingClientRect().top;
+    const offset = section.getBoundingClientRect().top - anchorBottom - 8;
+
+    if (Math.abs(offset) > 2) {
+        scrollRoot.scrollBy({ top: offset, behavior: 'smooth' });
+    }
+}
+
 async function goToResponsePage(subQuestionId: string, page: number): Promise<void> {
     const prior = partResponseState.get(subQuestionId);
     if (!prior || prior.loading) return;
@@ -919,6 +941,7 @@ async function goToResponsePage(subQuestionId: string, page: number): Promise<vo
 
     partResponseState.set(subQuestionId, { ...prior, currentPage: nextPage });
     paintPartStudentResponses(subQuestionId);
+    scrollToPartStudentResponses(subQuestionId);
 
     const updated = partResponseState.get(subQuestionId);
     if (!updated) return;
@@ -926,6 +949,7 @@ async function goToResponsePage(subQuestionId: string, page: number): Promise<vo
     const pageStart = nextPage * INSTRUCTOR_RESPONSES_DISPLAY_PAGE_SIZE;
     if (needsFetch(updated.buffer.length, pageStart, updated.total)) {
         await fetchResponseBatch(subQuestionId, updated.buffer.length, 'append');
+        scrollToPartStudentResponses(subQuestionId);
     }
     void prefetchAhead(subQuestionId);
 }
