@@ -1058,6 +1058,35 @@ export class ChatApp {
     }
 
     /**
+     * appendMessagesToChat - sync in-memory history and LLM conversation after route-level persist.
+     */
+    public appendMessagesToChat(chatId: string, userMessage: ChatMessage, assistantMessage: ChatMessage): void {
+        const conversation = this.conversations.get(chatId);
+        if (conversation) {
+            conversation.addMessage('user', userMessage.text);
+            conversation.addMessage('assistant', assistantMessage.text);
+        }
+
+        const history = this.chatHistory.get(chatId) ?? [];
+        history.push(userMessage, assistantMessage);
+        this.chatHistory.set(chatId, history);
+    }
+
+    /**
+     * formatRecentChatExcerpt - last N messages for forked unstruggle-yes prompt context.
+     */
+    public formatRecentChatExcerpt(chatId: string, maxMessages = 6): string {
+        const history = this.chatHistory.get(chatId) ?? [];
+        const tail = history.slice(-maxMessages);
+        return tail
+            .map((msg) => {
+                const role = msg.sender === 'user' ? 'Student' : 'AI Tutor';
+                return `${role}: ${msg.text}`;
+            })
+            .join('\n\n');
+    }
+
+    /**
      * Validate if a chat exists
      * 
      * @param chatId - The chat ID to validate

@@ -370,6 +370,20 @@ export interface LearningObjectiveForDisplay {
     itemTitle: string;
 }
 
+/** Flattened LO text for unstruggle-yes follow-up LLM selection (text is the canonical key). */
+export interface LearningObjectiveForLLM {
+    text: string;
+    topicOrWeekTitle: string;
+    itemTitle: string;
+}
+
+/** Minimal scenario row embedded in chat `<scenarioSuggestions>` tag. */
+export interface ScenarioSuggestionForChat {
+    id: string;
+    title: string;
+    difficulty: ScenarioDifficulty; // color-coded badge in unstruggle Yes follow-up list
+}
+
 /**
  * Instructor-authored struggle topic catalog entry (per section).
  *

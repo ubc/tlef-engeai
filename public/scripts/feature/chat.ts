@@ -23,7 +23,7 @@ import {
 import { ConversationModePicker } from "./conversation-mode-picker.js";
 import { RenderChat } from "./render-chat.js";
 import { showDisclaimerModal, showDeleteConfirmationModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
-import { getCourseIdFromURL } from "../utils/url-parser.js";
+import { getCourseIdFromURL, navigateToStudentScenarios } from "../utils/url-parser.js";
 import {
     clearChatDraftPrefill,
     peekChatDraftPrefill,
@@ -1903,6 +1903,25 @@ export class ChatManager {
                     }
                 }
             }
+        });
+
+        document.addEventListener('click', (e) => {
+            const target = e.target as HTMLElement;
+            const link = target.closest('.scenario-suggestion-link') as HTMLButtonElement | null;
+            if (!link) return;
+
+            const questionId = link.dataset.questionId;
+            if (!questionId) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            navigateToStudentScenarios({ questionId, mode: 'practice' });
+            window.dispatchEvent(
+                new PopStateEvent('popstate', {
+                    state: { view: 'scenarios', scenario: { questionId, mode: 'practice' } },
+                })
+            );
         });
     }
 

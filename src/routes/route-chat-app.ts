@@ -17,8 +17,9 @@ import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { ChatApp, RETIRED_CONVERSATION_MODE_MESSAGE } from '../chat/chat-app';
 import { conversationModePrompts } from '../chat/compose-system-prompt';
 
-import { getRandomYesResponse, getRandomNoResponse } from '../memory-agent/unstruggle-responses';
+import { getRandomNoResponse } from '../memory-agent/unstruggle-responses';
 import { memoryAgent } from '../memory-agent/memory-agent';
+import { unstruggleYesFollowup } from '../memory-agent/unstruggle-yes-followup';
 import { stripQuestionUnstruggleTag } from '../utils/message-utils';
 import { appLogger } from '../utils/logger';
 import { normalizeRouteParams } from '../helpers/route-params';
@@ -738,15 +739,39 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 appLogger.log('✅ Unstruggle validation passed - previous message matches');
                 //END DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-VALIDATION)
                 
-                // Get hardcoded response (no LLM call)
+                // Get hardcoded response (no LLM call) for No; forked LLM for Yes
                 let responseText: string;
-                
+
                 if (isConfident) {
-                    // User is confident - remove struggle word and send yes response
                     await memoryAgent.removeStruggleWord(userId.toString(), courseName, topic);
-                    responseText = getRandomYesResponse();
+
+                    if (lastBotMessage) {
+                        const strippedBotText = stripQuestionUnstruggleTag(lastBotMessage.text, topic);
+                        try {
+                            await mongoDB.updateMessageInChat(
+                                courseName,
+                                userId,
+                                chatId,
+                                lastBotMessage.id,
+                                strippedBotText
+                            );
+                            chatApp.updateMessageInChat(chatId, lastBotMessage.id, strippedBotText);
+                        } catch (stripError) {
+                            appLogger.error('⚠️ Failed to strip unstruggle tag from prior bot message:', {
+                                error: stripError,
+                            });
+                        }
+                    }
+
+                    const recentMessages = chatApp.formatRecentChatExcerpt(chatId);
+                    const followUp = await unstruggleYesFollowup.suggestPracticeAfterUnstruggleYes({
+                        userId: userId.toString(),
+                        courseName,
+                        clearedStruggleTopic: topic,
+                        recentMessages,
+                    });
+                    responseText = followUp.displayText;
                 } else {
-                    // User needs more practice - send no response
                     responseText = getRandomNoResponse();
                 }
                 
@@ -778,6 +803,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 try {
                     await mongoDB.addMessageToChat(courseName, userId, chatId, userMessage);
                     await mongoDB.addMessageToChat(courseName, userId, chatId, assistantMessage);
+                    chatApp.appendMessagesToChat(chatId, userMessage, assistantMessage);
                     //START DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-002)
                     appLogger.log('✅ Unstruggle messages saved to MongoDB');
                     //END DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-002)

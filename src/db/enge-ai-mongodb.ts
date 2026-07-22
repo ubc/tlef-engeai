@@ -237,6 +237,33 @@ export class EngEAI_MongoDB {
     public getAllLearningObjectives = async (courseId: string) =>
         TopicWeekMongo.getAllLearningObjectives(this.ctx(), courseId);
 
+    public getAllLearningObjectivesWithIds = async (courseId: string) =>
+        TopicWeekMongo.getAllLearningObjectivesWithIds(this.ctx(), courseId);
+
+    public findPublishedScenariosByObjectiveIds = async (
+        courseName: string,
+        objectiveIds: string[],
+        limit?: number
+    ) =>
+        ScenarioQuestionsMongo.findPublishedScenariosByObjectiveIds(
+            this.ctx(),
+            courseName,
+            objectiveIds,
+            limit
+        );
+
+    public findPublishedScenariosByObjectiveTexts = async (
+        courseName: string,
+        objectiveTexts: string[],
+        limit?: number
+    ) =>
+        ScenarioQuestionsMongo.findPublishedScenariosByObjectiveTexts(
+            this.ctx(),
+            courseName,
+            objectiveTexts,
+            limit
+        );
+
     /** Instructor struggle catalog CRUD — delegates to topic-week-mongo.ts */
     public addInstructorStruggleTopic = async (
         courseId: string,

@@ -1,24 +1,20 @@
 /* styles/chat-components/unstruggle.css */
 
 .question-unstruggle-container {
-    margin: 1rem 0 0;
     padding: 0;
     background: transparent;
     border: none;
 }
 
 .question-unstruggle-divider {
-    margin: 1rem 0;
     border: none;
     border-top: 1px solid rgba(0, 0, 0, 0.12);
 }
 
 .question-unstruggle-question {
-    margin: 0 0 0.75rem;
-    padding: 0.5rem 0;
     font-size: 0.95rem;
     color: var(--text-secondary, #6c757d);
-    line-height: 1.5;
+    line-height: 1 !important;
 }
 
 .question-unstruggle-topic {
@@ -101,4 +97,137 @@
     font-size: inherit;
     font-weight: inherit;
     color: inherit;
+}
+
+/* Scenario suggestions after unstruggle Yes */
+.scenario-suggestions-container {
+    padding: 0;
+    background: transparent;
+    border: none;
+}
+
+.scenario-suggestions-divider {
+    margin: 1rem 0;
+    border: none;
+    border-top: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.scenario-suggestions-intro {
+    margin: 0 0 0.5rem;
+    font-size: 0.95rem;
+    color: var(--text-secondary, #6c757d);
+    line-height: 1.5;
+}
+
+.scenario-suggestions-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+.scenario-suggestion-item {
+    margin: 0;
+    animation: scenario-suggestion-appear 0.35s ease-out backwards;
+}
+
+.scenario-suggestion-item:nth-child(1) { animation-delay: 0.05s; }
+.scenario-suggestion-item:nth-child(2) { animation-delay: 0.1s; }
+.scenario-suggestion-item:nth-child(3) { animation-delay: 0.15s; }
+.scenario-suggestion-item:nth-child(4) { animation-delay: 0.2s; }
+.scenario-suggestion-item:nth-child(5) { animation-delay: 0.25s; }
+.scenario-suggestion-item:nth-child(6) { animation-delay: 0.3s; }
+.scenario-suggestion-item:nth-child(n + 7) { animation-delay: 0.35s; }
+
+@keyframes scenario-suggestion-appear {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.scenario-suggestion-link {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 4.5rem;
+    text-align: left;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 6px;
+    background: rgba(108, 117, 125, 0.1);
+    color: var(--text-primary, #333);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.scenario-suggestion-title {
+    display: block;
+    line-height: 1.35;
+}
+
+.scenario-suggestion-difficulty {
+    display: inline-flex;
+    align-items: center;
+    margin-top: auto;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1;
+    border: 1px solid transparent;
+}
+
+.scenario-suggestion-difficulty-easy {
+    background: rgba(76, 175, 80, 0.1);
+    color: var(--pinned-color, #5c8a3a);
+    border-color: var(--pinned-color, #5c8a3a);
+}
+
+.scenario-suggestion-difficulty-medium {
+    background: rgba(255, 193, 7, 0.15);
+    color: #b8860b;
+    border-color: #d4a017;
+}
+
+.scenario-suggestion-difficulty-hard {
+    background: rgba(175, 76, 76, 0.1);
+    color: var(--color-eng-red, #c82333);
+    border-color: var(--color-eng-red, #c82333);
+}
+
+.scenario-suggestion-link:hover {
+    background: rgba(77, 122, 47, 0.12);
+    border-color: var(--color-chbe-green, #4d7a2f);
+    color: var(--color-chbe-green, #4d7a2f);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.scenario-suggestion-link:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+@media (max-width: 768px) {
+    .scenario-suggestions-list {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .scenario-suggestion-item {
+        animation: none;
+    }
 }

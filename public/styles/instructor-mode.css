@@ -26,6 +26,7 @@ body {
     flex-direction: row;
     height: 100%;
     width: 100%;
+    overflow: hidden;
     opacity: 1;
     background-color: var(--chat-bg);
 }
@@ -33,6 +34,12 @@ body {
 .instructor-sidebar {
     display: flex; 
     flex-direction: row;
+    position: sticky;
+    top: 10px;
+    align-self: flex-start;
+    flex-shrink: 0;
+    height: calc(100vh - 20px);
+    max-height: calc(100vh - 20px);
     border-radius: 10px;
     margin: 10px 5px 10px 10px;
     border: 1px solid var(--border-color);
@@ -477,9 +484,10 @@ body {
 
 
 #main-content-area {
-    flex-grow: 1;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
     margin: 10px;
-    overflow: scroll;
 }
 
 /* Floating control to open course summary (below summary modal z-index 1100) */

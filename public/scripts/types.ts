@@ -300,6 +300,13 @@ export interface LearningObjectiveForDisplay {
     itemTitle: string;
 }
 
+/** Minimal scenario row embedded in chat `<scenarioSuggestions>` tag. */
+export interface ScenarioSuggestionForChat {
+    id: string;
+    title: string;
+    difficulty: ScenarioDifficulty; // color-coded badge in unstruggle Yes follow-up list
+}
+
 /**
  * Must match src/types/shared.ts
  * Instructor-authored struggle topic catalog entry (per section).
