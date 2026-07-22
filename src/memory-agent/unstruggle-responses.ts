@@ -4,48 +4,74 @@
  * or when they indicate they need more practice
  */
 
-/**
- * Responses when student clicks "Yes" (confident with topic)
- */
-export const UNSTRUGGLE_YES_RESPONSES: string[] = [
-    "Great! Is there anything else I can help you with?",
-    "Excellent! Feel free to ask if you have any other questions.",
-    "Wonderful! Let me know if there's anything more you'd like to explore.",
-    "That's fantastic! I'm here if you need help with anything else.",
-    "Awesome! Don't hesitate to reach out if you have more questions.",
-    "Perfect! What else would you like to work on?",
-    "Great to hear! Is there another topic you'd like to discuss?",
-    "Excellent! I'm here whenever you need assistance with other concepts."
+/** Yes follow-up when published scenario questions resolve for selected LOs. */
+export const UNSTRUGGLE_YES_WITH_SCENARIOS_RESPONSES: string[] = [
+    'Great job mastering {topic}! Try these practice scenario questions to keep building your skills.',
+    'Excellent work on {topic}! Here are some scenario questions that can help you go deeper.',
+    'Nice progress with {topic}! These practice scenario questions are a great next step.',
+    "You're doing well with {topic}! Give these scenario questions a try when you're ready.",
+    'Fantastic — sounds like {topic} is clicking for you. Practice with the scenario questions below.',
+    'Well done on {topic}! Working through a few scenario questions is a solid way to reinforce what you learned.',
+    "Great to hear you're confident with {topic}! The scenario questions below are a good follow-up.",
+    'Awesome progress on {topic}! Try a scenario question below to put your understanding into practice.',
+];
+
+/** Yes follow-up when no scenario questions are available to suggest. */
+export const UNSTRUGGLE_YES_NO_SCENARIOS_RESPONSES: string[] = [
+    'Great work on {topic}! Feel free to ask if you want to explore anything else.',
+    "Nice job with {topic}! I'm here whenever you have more questions.",
+    'Excellent progress on {topic}! Keep practicing with your course materials.',
+    "That's great to hear about {topic}! Let me know what you'd like to work on next.",
+    'Wonderful — glad {topic} is making sense. Ask anytime you want to go further.',
+    'Good work on {topic}! You can always come back here if another concept feels tricky.',
+    'Solid progress on {topic}! What would you like to tackle next?',
+    "Great to hear you're comfortable with {topic}! I'm here if you need help with anything else.",
 ];
 
 /**
  * Responses when student clicks "No, I need more practice"
  */
 export const UNSTRUGGLE_NO_RESPONSES: string[] = [
-    "No problem! Would you like to practice more with this topic?",
+    'No problem! Would you like to practice more with this topic?',
     "That's perfectly fine! Let's continue practicing. What would you like to focus on?",
     "I understand. Let's work through some more examples together. What aspect would you like to explore?",
     "Sure thing! We can keep practicing. What specific part would you like to work on?",
     "Of course! Let's dive deeper. What would you like to practice?",
-    "Absolutely! What would you like to focus on for more practice?",
+    'Absolutely! What would you like to focus on for more practice?',
     "That's okay! Let's continue working on this. What would you like to explore next?",
-    "No worries! I'm here to help you practice. What would you like to work on?"
+    "No worries! I'm here to help you practice. What would you like to work on?",
 ];
 
+function pickRandom(pool: readonly string[]): string {
+    return pool[Math.floor(Math.random() * pool.length)];
+}
+
 /**
- * Get a random response from the yes responses array
+ * formatUnstruggleYesMessage - substitute cleared struggle topic into a template.
  */
-export function getRandomYesResponse(): string {
-    const randomIndex = Math.floor(Math.random() * UNSTRUGGLE_YES_RESPONSES.length);
-    return UNSTRUGGLE_YES_RESPONSES[randomIndex];
+export function formatUnstruggleYesMessage(template: string, topic: string): string {
+    return template.replace(/\{topic\}/g, topic.trim());
+}
+
+/**
+ * getRandomYesWithScenariosMessage - encouragement when scenario question links will be shown.
+ */
+export function getRandomYesWithScenariosMessage(topic: string): string {
+    return formatUnstruggleYesMessage(pickRandom(UNSTRUGGLE_YES_WITH_SCENARIOS_RESPONSES), topic);
+}
+
+/**
+ * getRandomYesNoScenariosMessage - encouragement when no scenario questions resolve.
+ */
+export function getRandomYesNoScenariosMessage(topic: string): string {
+    return formatUnstruggleYesMessage(pickRandom(UNSTRUGGLE_YES_NO_SCENARIOS_RESPONSES), topic);
 }
 
 /**
  * Get a random response from the no responses array
  */
 export function getRandomNoResponse(): string {
-    const randomIndex = Math.floor(Math.random() * UNSTRUGGLE_NO_RESPONSES.length);
-    return UNSTRUGGLE_NO_RESPONSES[randomIndex];
+    return pickRandom(UNSTRUGGLE_NO_RESPONSES);
 }
 
 /**
@@ -53,14 +79,12 @@ export function getRandomNoResponse(): string {
  * Used when struggle topic is already removed or concurrent operations occur
  */
 export const UNSTRUGGLE_FAILURE_RESPONSES: string[] = [
-    "We find that you are already mastered this topic. Thank you for trusting EngE AI.",
-    // Add more variations if needed
+    'We find that you are already mastered this topic. Thank you for trusting EngE AI.',
 ];
 
 /**
  * Get a random failure response
  */
 export function getRandomFailureResponse(): string {
-    const randomIndex = Math.floor(Math.random() * UNSTRUGGLE_FAILURE_RESPONSES.length);
-    return UNSTRUGGLE_FAILURE_RESPONSES[randomIndex];
+    return pickRandom(UNSTRUGGLE_FAILURE_RESPONSES);
 }

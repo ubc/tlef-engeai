@@ -627,8 +627,15 @@ function paintResponseFeedbackBodies(list: HTMLElement, items: ScenarioInstructo
     });
 }
 
+function studentResponsesBodyId(partKey: string): string {
+    return `sg-instructor-responses-body-${partKey}`;
+}
+
 function renderStudentResponsePagerHtml(subQuestionId: string, placement: 'header' | 'footer'): string {
-    const placementClass = placement === 'footer' ? ' sg-instructor-response-pager--footer' : '';
+    const placementClass =
+        placement === 'footer'
+            ? ' sg-instructor-response-pager--footer'
+            : ' sg-instructor-response-pager--header';
     return `
         <div class="sg-instructor-response-pager${placementClass}" hidden>
             <button type="button" class="sg-instructor-response-pager-btn" data-action="prev" data-sub-question-id="${escapeHtml(subQuestionId)}" aria-label="Previous responses page">
@@ -642,15 +649,81 @@ function renderStudentResponsePagerHtml(subQuestionId: string, placement: 'heade
     `;
 }
 
+function removeFooterPager(section: HTMLElement): void {
+    section.querySelector('.sg-instructor-response-pager--footer')?.remove();
+}
+
+function syncResponsePagers(section: HTMLElement, subQuestionId: string, state: PartResponseState): void {
+    const showPagers = state.total > 0 && getTotalPages(state.total) > 1;
+    const headerPager = section.querySelector<HTMLElement>('.sg-instructor-response-pager--header');
+    const body = section.querySelector<HTMLElement>('.sg-instructor-student-responses-body');
+
+    if (headerPager) {
+        headerPager.hidden = !showPagers;
+        headerPager.classList.toggle('sg-instructor-response-pager--visible', showPagers);
+    }
+
+    let footerPager = section.querySelector<HTMLElement>('.sg-instructor-response-pager--footer');
+    if (!showPagers) {
+        footerPager?.remove();
+        return;
+    }
+
+    if (body && !footerPager) {
+        body.insertAdjacentHTML('beforeend', renderStudentResponsePagerHtml(subQuestionId, 'footer'));
+        footerPager = section.querySelector<HTMLElement>('.sg-instructor-response-pager--footer');
+        if (footerPager) {
+            requestAnimationFrame(() => {
+                footerPager?.classList.add('sg-instructor-response-pager--visible');
+            });
+        }
+    }
+    if (footerPager) {
+        footerPager.hidden = false;
+        footerPager.classList.add('sg-instructor-response-pager--visible');
+    }
+
+    const totalPages = getTotalPages(state.total);
+    const pageText = `Page ${state.currentPage + 1} of ${totalPages}`;
+    const onLastPage = state.currentPage >= totalPages - 1;
+    section.querySelectorAll<HTMLElement>('.sg-instructor-response-page-label').forEach((label) => {
+        label.textContent = pageText;
+    });
+    section.querySelectorAll<HTMLButtonElement>('.sg-instructor-response-pager-btn[data-action="prev"]').forEach((btn) => {
+        btn.disabled = state.currentPage === 0 || state.loading;
+    });
+    section.querySelectorAll<HTMLButtonElement>('.sg-instructor-response-pager-btn[data-action="next"]').forEach((btn) => {
+        btn.disabled = onLastPage || state.loading || state.prefetching;
+        btn.setAttribute('aria-busy', String(state.loading || state.prefetching));
+    });
+}
+
+function expandPartStudentResponses(subQuestionId: string): void {
+    partResponseCollapsed.set(subQuestionId, false);
+    paintPartStudentResponses(subQuestionId);
+    const state = partResponseState.get(subQuestionId);
+    if (state && state.total > 0 && !state.buffer.length && !state.loading && !state.prefetching) {
+        void loadInitialPartResponses(subQuestionId);
+    }
+}
+
+function collapsePartStudentResponses(subQuestionId: string): void {
+    partResponseCollapsed.set(subQuestionId, true);
+    paintPartStudentResponses(subQuestionId);
+}
+
 function handleEditorPartsClick(event: Event): void {
     const target = event.target as HTMLElement;
 
-    const toggleBtn = target.closest<HTMLButtonElement>('.sg-instructor-student-responses-toggle');
-    if (toggleBtn?.dataset.subQuestionId) {
-        const subQuestionId = toggleBtn.dataset.subQuestionId;
-        const collapsed = !(partResponseCollapsed.get(subQuestionId) ?? PART_RESPONSES_DEFAULT_COLLAPSED);
-        partResponseCollapsed.set(subQuestionId, collapsed);
-        paintPartStudentResponses(subQuestionId);
+    const collapsedBar = target.closest<HTMLButtonElement>('.sg-instructor-student-responses-collapsed-bar');
+    if (collapsedBar?.dataset.subQuestionId) {
+        expandPartStudentResponses(collapsedBar.dataset.subQuestionId);
+        return;
+    }
+
+    const headerStart = target.closest<HTMLButtonElement>('.sg-instructor-student-responses-header-start');
+    if (headerStart?.dataset.subQuestionId) {
+        collapsePartStudentResponses(headerStart.dataset.subQuestionId);
         return;
     }
 
@@ -689,27 +762,48 @@ function paintPartStudentResponses(subQuestionId: string): void {
         prefetching: false,
     };
     const collapsed = partResponseCollapsed.get(subQuestionId) ?? PART_RESPONSES_DEFAULT_COLLAPSED;
+    const collapsedBar = section.querySelector<HTMLButtonElement>('.sg-instructor-student-responses-collapsed-bar');
+    const collapsedHeader = section.querySelector<HTMLElement>('.sg-instructor-student-responses-collapsed-header');
+    const expandedShell = section.querySelector<HTMLElement>('.sg-instructor-student-responses-expanded-shell');
+    const expandedHeader = section.querySelector<HTMLElement>('.sg-instructor-student-responses-header');
     const body = section.querySelector<HTMLElement>('.sg-instructor-student-responses-body');
     const list = section.querySelector<HTMLElement>('.sg-instructor-response-list');
     const countEl = section.querySelector<HTMLElement>('.sg-instructor-student-responses-count');
-    const pagers = section.querySelectorAll<HTMLElement>('.sg-instructor-response-pager');
-    const toggleBtn = section.querySelector<HTMLButtonElement>('.sg-instructor-student-responses-toggle');
+    const headerStartBtn = section.querySelector<HTMLButtonElement>('.sg-instructor-student-responses-header-start');
     const downloadBtn = section.querySelector<HTMLButtonElement>('.sg-instructor-student-responses-download-btn');
 
-    if (body) body.hidden = collapsed;
-    if (toggleBtn) {
-        toggleBtn.setAttribute('aria-expanded', String(!collapsed));
-        toggleBtn.setAttribute(
-            'aria-label',
-            collapsed ? 'Expand student responses' : 'Collapse student responses'
-        );
+    section.classList.toggle('sg-instructor-student-responses--expanded', !collapsed);
+
+    if (collapsed) {
+        if (collapsedBar) {
+            collapsedBar.setAttribute('aria-expanded', 'false');
+            collapsedBar.removeAttribute('aria-hidden');
+        }
+        if (collapsedHeader) collapsedHeader.removeAttribute('aria-hidden');
+        if (expandedHeader) expandedHeader.setAttribute('aria-hidden', 'true');
+        if (expandedShell) expandedShell.setAttribute('aria-hidden', 'true');
+        if (body) body.setAttribute('aria-hidden', 'true');
+        removeFooterPager(section);
+        return;
+    }
+
+    if (collapsedBar) {
+        collapsedBar.setAttribute('aria-expanded', 'true');
+        collapsedBar.setAttribute('aria-hidden', 'true');
+    }
+    if (collapsedHeader) collapsedHeader.setAttribute('aria-hidden', 'true');
+    if (expandedHeader) expandedHeader.removeAttribute('aria-hidden');
+    if (expandedShell) expandedShell.removeAttribute('aria-hidden');
+    if (body) body.removeAttribute('aria-hidden');
+    if (headerStartBtn) {
+        headerStartBtn.setAttribute('aria-expanded', 'true');
+        headerStartBtn.setAttribute('aria-label', 'Collapse student responses');
     }
     if (downloadBtn) {
         const busy = partResponseDownloading.has(subQuestionId);
         downloadBtn.disabled = busy || state.total === 0 || (state.loading && !state.buffer.length);
         downloadBtn.setAttribute('aria-busy', String(busy));
     }
-
     if (countEl) {
         const label = state.total === 1 ? '1 response' : `${state.total} responses`;
         countEl.textContent = state.loading && !state.buffer.length ? 'Loading…' : label;
@@ -717,32 +811,24 @@ function paintPartStudentResponses(subQuestionId: string): void {
 
     if (!list) return;
 
-    const hidePagers = (): void => {
-        pagers.forEach((pager) => {
-            pager.hidden = true;
-        });
-    };
-
-    if (collapsed) {
-        hidePagers();
-        return;
-    }
-
     if (state.loading && !state.buffer.length) {
         list.innerHTML = '<p class="sg-instructor-response-loading">Loading student responses…</p>';
-        hidePagers();
+        syncResponsePagers(section, subQuestionId, state);
+        renderFeatherIcons();
         return;
     }
 
     if (state.error && !state.buffer.length) {
         list.innerHTML = `<p class="sg-instructor-response-error">${escapeHtml(state.error)}</p>`;
-        hidePagers();
+        syncResponsePagers(section, subQuestionId, state);
+        renderFeatherIcons();
         return;
     }
 
     if (!state.total) {
         list.innerHTML = '<p class="sg-instructor-response-empty">No student responses yet.</p>';
-        hidePagers();
+        syncResponsePagers(section, subQuestionId, state);
+        renderFeatherIcons();
         return;
     }
 
@@ -750,28 +836,15 @@ function paintPartStudentResponses(subQuestionId: string): void {
     if (!visibleItems.length && state.loading) {
         list.innerHTML = '<p class="sg-instructor-response-loading">Loading student responses…</p>';
     } else if (!visibleItems.length) {
-        list.innerHTML = '<p class="sg-instructor-response-empty">No student responses yet.</p>';
+        list.innerHTML = state.total > 0
+            ? '<p class="sg-instructor-response-loading">Loading student responses…</p>'
+            : '<p class="sg-instructor-response-empty">No student responses yet.</p>';
     } else {
         list.innerHTML = visibleItems.map((row) => renderResponseCardHtml(row)).join('');
         paintResponseFeedbackBodies(list, visibleItems);
     }
 
-    const totalPages = getTotalPages(state.total);
-    const pageText = `Page ${state.currentPage + 1} of ${totalPages}`;
-    const onLastPage = state.currentPage >= totalPages - 1;
-    pagers.forEach((pager) => {
-        pager.hidden = totalPages <= 1;
-    });
-    section.querySelectorAll<HTMLElement>('.sg-instructor-response-page-label').forEach((label) => {
-        label.textContent = pageText;
-    });
-    section.querySelectorAll<HTMLButtonElement>('.sg-instructor-response-pager-btn[data-action="prev"]').forEach((btn) => {
-        btn.disabled = state.currentPage === 0 || state.loading;
-    });
-    section.querySelectorAll<HTMLButtonElement>('.sg-instructor-response-pager-btn[data-action="next"]').forEach((btn) => {
-        btn.disabled = onLastPage || state.loading || state.prefetching;
-        btn.setAttribute('aria-busy', String(state.loading || state.prefetching));
-    });
+    syncResponsePagers(section, subQuestionId, state);
     renderFeatherIcons();
 }
 
@@ -862,26 +935,22 @@ async function loadInitialPartResponses(subQuestionId: string): Promise<void> {
     void prefetchAhead(subQuestionId);
 }
 
-async function loadAllPartStudentResponses(question: ScenarioQuestionExtended): Promise<void> {
+function seedPartStudentResponseState(question: ScenarioQuestionExtended): void {
     partResponseState.clear();
     partResponseCollapsed.clear();
     partResponseDownloading.clear();
-    await Promise.all(
-        question.subQuestions.map((sq, index) => {
-            const subQuestionId = sq.subQuestionId || subQuestionKey(sq, index);
-            const count = getSubQuestionResponseCount(sq);
-            partResponseState.set(subQuestionId, {
-                buffer: [],
-                currentPage: 0,
-                total: count,
-                loading: false,
-                prefetching: false,
-            });
-            paintPartStudentResponses(subQuestionId);
-            if (count === 0) return Promise.resolve();
-            return loadInitialPartResponses(subQuestionId);
-        })
-    );
+    question.subQuestions.forEach((sq, index) => {
+        const subQuestionId = sq.subQuestionId || subQuestionKey(sq, index);
+        const count = getSubQuestionResponseCount(sq);
+        partResponseState.set(subQuestionId, {
+            buffer: [],
+            currentPage: 0,
+            total: count,
+            loading: false,
+            prefetching: false,
+        });
+        paintPartStudentResponses(subQuestionId);
+    });
 }
 
 function sanitizeDownloadFilenamePart(value: string): string {
@@ -1736,7 +1805,7 @@ async function openEditorView(questionId: string, skipUrlSync = false): Promise<
     updateExpectedTimeDisplay(expectedSecondsFromMinutes(question.expectedTimeMinutes ?? 25));
     renderLearningObjectives(normalizeLearningObjectives(question.learningObjectives));
     renderEditorParts(question);
-    void loadAllPartStudentResponses(question);
+    seedPartStudentResponseState(question);
     setQuestionBodyViewMode('edit');
     updateEditorStatusButton(question.status);
 
@@ -1762,7 +1831,7 @@ function renderEditorParts(question: ScenarioQuestionExtended): void {
 
         const typeLabel = SUB_QUESTION_TYPE_LABELS[sq.subQuestionType] ?? sq.subQuestionType;
         const subQuestionId = sq.subQuestionId || partKey;
-        const responseCount = getSubQuestionResponseCount(sq);
+        const responsesBodyId = studentResponsesBodyId(partKey);
 
         return `
             <div class="sg-instructor-part-card" data-part-id="${escapeHtml(partKey)}">
@@ -1792,25 +1861,32 @@ function renderEditorParts(question: ScenarioQuestionExtended): void {
                     <div class="sg-instructor-flashcard-panel" data-part-id="${escapeHtml(partKey)}"></div>
                 </div>
                 <section class="sg-instructor-student-responses" data-sub-question-id="${escapeHtml(subQuestionId)}" aria-label="Student responses for Part ${escapeHtml(partLabel)}">
-                    <div class="sg-instructor-student-responses-header">
-                        <div class="sg-instructor-student-responses-header-start">
-                            <button type="button" class="sg-instructor-student-responses-toggle" data-sub-question-id="${escapeHtml(subQuestionId)}" aria-expanded="false" aria-label="Expand student responses">
-                                <i data-feather="chevron-down"></i>
-                            </button>
+                    <div class="sg-instructor-student-responses-collapsed-header">
+                        <button type="button" class="sg-instructor-student-responses-collapsed-bar" data-sub-question-id="${escapeHtml(subQuestionId)}" aria-expanded="false" aria-controls="${escapeHtml(responsesBodyId)}" aria-label="Expand student responses">
+                            <i data-feather="chevron-right"></i>
                             <span class="sg-instructor-editor-section-label">Student responses</span>
-                            <span class="sg-instructor-student-responses-count">${responseCount === 1 ? '1 response' : `${responseCount} responses`}</span>
-                        </div>
-                        <div class="sg-instructor-student-responses-header-actions">
-                            ${renderStudentResponsePagerHtml(subQuestionId, 'header')}
-                            <button type="button" class="sg-instructor-student-responses-download-btn" data-sub-question-id="${escapeHtml(subQuestionId)}" data-part-label="${escapeHtml(partLabel)}" aria-label="Download student responses as JSON" title="Download JSON">
-                                <i data-feather="download"></i>
-                                <span class="sg-instructor-student-responses-download-label">JSON</span>
-                            </button>
-                        </div>
+                        </button>
                     </div>
-                    <div class="sg-instructor-student-responses-body" hidden>
-                        <div class="sg-instructor-response-list"></div>
-                        ${renderStudentResponsePagerHtml(subQuestionId, 'footer')}
+                    <div class="sg-instructor-student-responses-expanded-shell" aria-hidden="true">
+                        <div class="sg-instructor-student-responses-expanded-shell-inner">
+                            <div class="sg-instructor-student-responses-header">
+                                <button type="button" class="sg-instructor-student-responses-header-start" data-sub-question-id="${escapeHtml(subQuestionId)}" aria-expanded="true" aria-controls="${escapeHtml(responsesBodyId)}" aria-label="Collapse student responses">
+                                    <i data-feather="chevron-down"></i>
+                                    <span class="sg-instructor-editor-section-label">Student responses</span>
+                                    <span class="sg-instructor-student-responses-count"></span>
+                                </button>
+                                <div class="sg-instructor-student-responses-header-actions">
+                                    ${renderStudentResponsePagerHtml(subQuestionId, 'header')}
+                                    <button type="button" class="sg-instructor-student-responses-download-btn" data-sub-question-id="${escapeHtml(subQuestionId)}" data-part-label="${escapeHtml(partLabel)}" aria-label="Download student responses as JSON" title="Download JSON">
+                                        <i data-feather="download"></i>
+                                        <span class="sg-instructor-student-responses-download-label">JSON</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="sg-instructor-student-responses-body" id="${escapeHtml(responsesBodyId)}">
+                                <div class="sg-instructor-response-list"></div>
+                            </div>
+                        </div>
                     </div>
                 </section>
             </div>

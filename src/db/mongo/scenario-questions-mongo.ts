@@ -382,6 +382,101 @@ export async function listPublishedScenarioQuestionsForStudent(
     return (docs as unknown as ScenarioQuestion[]).map((q) => toStudentProjection(hydrateQuestion(q)));
 }
 
+/**
+ * findPublishedScenariosByObjectiveIds — published scenarios matching any LO id, ranked by match count.
+ */
+export async function findPublishedScenariosByObjectiveIds(
+    ctx: MongoDalContext,
+    courseName: string,
+    objectiveIds: string[],
+    limit = 3
+): Promise<Array<{ id: string; title: string }>> {
+    const ids = [...new Set(objectiveIds.map((id) => id.trim()).filter(Boolean))];
+    if (ids.length === 0) return [];
+
+    const collection = await getScenarioQuestionsCollection(ctx, courseName);
+    const docs = await collection
+        .find({
+            status: 'published',
+            'learningObjectives.objectiveId': { $in: ids },
+        })
+        .toArray();
+
+    const idSet = new Set(ids);
+    const ranked = (docs as unknown as ScenarioQuestion[])
+        .map((raw) => hydrateQuestion(raw))
+        .map((q) => {
+            const matchCount = (q.learningObjectives ?? []).filter((lo) =>
+                idSet.has(lo.objectiveId?.trim() ?? '')
+            ).length;
+            return { id: q.id, title: q.title, matchCount, sortOrder: q.sortOrder ?? 0 };
+        })
+        .sort((a, b) => {
+            if (b.matchCount !== a.matchCount) return b.matchCount - a.matchCount;
+            return a.sortOrder - b.sortOrder;
+        });
+
+    const seen = new Set<string>();
+    const out: Array<{ id: string; title: string }> = [];
+    for (const row of ranked) {
+        if (seen.has(row.id)) continue;
+        seen.add(row.id);
+        out.push({ id: row.id, title: row.title });
+        if (out.length >= limit) break;
+    }
+    return out;
+}
+
+/**
+ * pickRandomSubset - Fisher–Yates partial shuffle; returns up to `limit` items without full sort.
+ */
+export function pickRandomSubset<T>(items: readonly T[], limit: number): T[] {
+    if (limit <= 0 || items.length === 0) return [];
+    if (items.length <= limit) return [...items];
+    const copy = [...items];
+    for (let i = 0; i < limit; i++) {
+        const j = i + Math.floor(Math.random() * (copy.length - i));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy.slice(0, limit);
+}
+
+/**
+ * findPublishedScenariosByObjectiveTexts — published scenarios matching any LO text; random sample up to limit.
+ */
+export async function findPublishedScenariosByObjectiveTexts(
+    ctx: MongoDalContext,
+    courseName: string,
+    objectiveTexts: string[],
+    limit = 3
+): Promise<Array<{ id: string; title: string; difficulty: ScenarioDifficulty }>> {
+    const texts = [...new Set(objectiveTexts.map((t) => t.trim()).filter(Boolean))];
+    if (texts.length === 0) return [];
+
+    const collection = await getScenarioQuestionsCollection(ctx, courseName);
+    const docs = await collection
+        .find({
+            status: 'published',
+            'learningObjectives.text': { $in: texts },
+        })
+        .toArray();
+
+    const seen = new Set<string>();
+    const candidates: Array<{ id: string; title: string; difficulty: ScenarioDifficulty }> = [];
+    for (const raw of docs as unknown as ScenarioQuestion[]) {
+        const q = hydrateQuestion(raw);
+        if (seen.has(q.id)) continue;
+        seen.add(q.id);
+        candidates.push({
+            id: q.id,
+            title: q.title,
+            difficulty: q.difficulty ?? 'medium',
+        });
+    }
+
+    return pickRandomSubset(candidates, limit);
+}
+
 export async function getScenarioQuestionById(
     ctx: MongoDalContext,
     courseName: string,

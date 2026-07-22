@@ -177,3 +177,14 @@ export function getMockScenarioPracticeFeedback(): { feedback: string } {
             '[MOCK] Nice start — your setup looks reasonable. Double-check unit consistency and whether every assumption matches the scenario before you finalize the calculation.',
     };
 }
+
+/**
+ * Mock unstruggle Yes follow-up structured output (first up to 3 catalog objective texts).
+ */
+export function getMockUnstruggleYesFollowup(catalog: Array<{ text: string }>): {
+    learningObjectiveTexts: string[];
+} {
+    return {
+        learningObjectiveTexts: catalog.slice(0, 3).map((row) => row.text),
+    };
+}

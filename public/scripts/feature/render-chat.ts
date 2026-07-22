@@ -41,6 +41,9 @@ export class RenderChat {
         
         // Step 3.5: Process questionUnstruggle tags
         html = this.processQuestionUnstruggle(html, messageId);
+
+        // Step 3.6: Process scenarioSuggestions tags (unstruggle Yes follow-up)
+        html = this.processScenarioSuggestions(html);
         
         // Step 4: Process markdown formatting
         html = this.processMarkdown(html);
@@ -180,7 +183,7 @@ export class RenderChat {
             const questionHtml = `
                 <div class="question-unstruggle-container" data-topic="${this.escapeHtml(topic)}" data-message-id="${msgId}">
                     <hr class="question-unstruggle-divider" aria-hidden="true" />
-                    <p class="question-unstruggle-question">Do you understand about <em class="question-unstruggle-topic">${this.escapeHtml(topic)}</em>?</p>
+                    <p class="question-unstruggle-question">Are you now comfortable with the topic of <em class="question-unstruggle-topic">${this.escapeHtml(topic)}</em>?</p>
                     <div class="question-unstruggle-buttons">
                         <button class="question-unstruggle-btn question-unstruggle-yes" data-topic="${this.escapeHtml(topic)}" data-response="True" data-message-id="${msgId}">
                             <span class="question-unstruggle-btn-text">Yes</span>
@@ -193,6 +196,65 @@ export class RenderChat {
             `;
             
             return questionHtml;
+        });
+    }
+
+    /**
+     * Process scenarioSuggestions tags into practice scenario link list.
+     */
+    private processScenarioSuggestions(text: string): string {
+        const tagRegex = /<scenarioSuggestions>([\s\S]*?)<\/scenarioSuggestions>/gi;
+        const difficulties = new Set(['easy', 'medium', 'hard']);
+
+        const normalizeDifficulty = (value: unknown): 'easy' | 'medium' | 'hard' => {
+            if (typeof value === 'string' && difficulties.has(value)) {
+                return value as 'easy' | 'medium' | 'hard';
+            }
+            return 'medium';
+        };
+
+        const capitalizeDifficulty = (difficulty: 'easy' | 'medium' | 'hard'): string =>
+            difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
+
+        return text.replace(tagRegex, (_match, jsonPayload: string) => {
+            let suggestions: Array<{ id: string; title: string; difficulty: 'easy' | 'medium' | 'hard' }> = [];
+            try {
+                const parsed = JSON.parse(jsonPayload.trim());
+                if (Array.isArray(parsed)) {
+                    suggestions = parsed
+                        .filter(
+                            (item) =>
+                                item &&
+                                typeof item.id === 'string' &&
+                                typeof item.title === 'string' &&
+                                item.id.trim() &&
+                                item.title.trim()
+                        )
+                        .map((item) => ({
+                            id: item.id.trim(),
+                            title: item.title.trim(),
+                            difficulty: normalizeDifficulty(item.difficulty),
+                        }));
+                }
+            } catch {
+                return '';
+            }
+            if (suggestions.length === 0) return '';
+
+            const linksHtml = suggestions
+                .map((s) => {
+                    const difficultyLabel = capitalizeDifficulty(s.difficulty);
+                    return `<li class="scenario-suggestion-item"><button type="button" class="scenario-suggestion-link" data-question-id="${this.escapeHtml(s.id)}"><span class="scenario-suggestion-title">${this.escapeHtml(s.title)}</span><span class="scenario-suggestion-difficulty scenario-suggestion-difficulty-${s.difficulty}" aria-label="Difficulty: ${this.escapeHtml(difficultyLabel)}">${this.escapeHtml(difficultyLabel)}</span></button></li>`;
+                })
+                .join('');
+
+            return `
+                <div class="scenario-suggestions-container">
+                    <hr class="scenario-suggestions-divider" aria-hidden="true" />
+                    <p class="scenario-suggestions-intro">Try these practice scenario questions:</p>
+                    <ul class="scenario-suggestions-list">${linksHtml}</ul>
+                </div>
+            `;
         });
     }
     
