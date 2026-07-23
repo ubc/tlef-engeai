@@ -4288,20 +4288,13 @@ router.get(
  * @response 404 - Course not found
  * @response 500 - Failed to get assistant prompts
  */
-router.get('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.get(
+    '/:courseId/assistant-prompts',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const globalUser = (req.session as any).globalUser;
-        if (!globalUser || globalUser.affiliation !== 'faculty') {
-            return res.status(403).json({
-                success: false,
-                error: 'Instructor access required'
-            });
-        }
-
         const { courseId } = normalizeRouteParams(req.params);
         const instance = await EngEAI_MongoDB.getInstance();
-        
-        // Verify instructor is in course's instructors array
         const course = await instance.getActiveCourse(courseId);
         if (!course) {
             return res.status(404).json({
@@ -4311,27 +4304,6 @@ router.get('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Requ
         }
 
         const courseData = course as unknown as activeCourse;
-        const instructorUserId = globalUser.userId;
-        
-        // Helper function to check if instructor is in the array (handles both old and new formats)
-        const isInstructorInArray = (instructors: any[]): boolean => {
-            if (!instructors || instructors.length === 0) return false;
-            return instructors.some(inst => {
-                if (typeof inst === 'string') {
-                    return inst === instructorUserId;
-                } else if (inst && inst.userId) {
-                    return inst.userId === instructorUserId;
-                }
-                return false;
-            });
-        };
-
-        if (!isInstructorInArray(courseData.instructors || [])) {
-            return res.status(403).json({
-                success: false,
-                error: 'You do not have permission to access this course'
-            });
-        }
 
         // Ensure default prompt exists before returning prompts
         await instance.ensureDefaultPromptExists(courseId, courseData.courseName);
@@ -4353,11 +4325,6 @@ router.get('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Requ
 }));
 
 
-// ===========================================
-// ========= MEMORY AGENT (STRUGGLE WORDS) ===
-// ===========================================
-
-
 /**
  * POST /:courseId/assistant-prompts
  * Create a new initial assistant prompt. Instructors only.
@@ -4372,16 +4339,11 @@ router.get('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Requ
  * @response 404 - Course not found
  * @response 500 - Failed to create prompt
  */
-router.post('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.post(
+    '/:courseId/assistant-prompts',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const globalUser = (req.session as any).globalUser;
-        if (!globalUser || globalUser.affiliation !== 'faculty') {
-            return res.status(403).json({
-                success: false,
-                error: 'Instructor access required'
-            });
-        }
-
         const { courseId } = normalizeRouteParams(req.params);
         const { title, content } = req.body;
 
@@ -4395,8 +4357,6 @@ router.post('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Req
         // Content can be empty, so we allow it
 
         const instance = await EngEAI_MongoDB.getInstance();
-        
-        // Verify instructor is in course's instructors array
         const course = await instance.getActiveCourse(courseId);
         if (!course) {
             return res.status(404).json({
@@ -4406,26 +4366,6 @@ router.post('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Req
         }
 
         const courseData = course as unknown as activeCourse;
-        const instructorUserId = globalUser.userId;
-        
-        const isInstructorInArray = (instructors: any[]): boolean => {
-            if (!instructors || instructors.length === 0) return false;
-            return instructors.some(inst => {
-                if (typeof inst === 'string') {
-                    return inst === instructorUserId;
-                } else if (inst && inst.userId) {
-                    return inst.userId === instructorUserId;
-                }
-                return false;
-            });
-        };
-
-        if (!isInstructorInArray(courseData.instructors || [])) {
-            return res.status(403).json({
-                success: false,
-                error: 'You do not have permission to access this course'
-            });
-        }
 
         // Generate ID for the new prompt
         const dateCreated = new Date();
@@ -4471,16 +4411,11 @@ router.post('/:courseId/assistant-prompts', asyncHandlerWithAuth(async (req: Req
  * @response 404 - Course or prompt not found
  * @response 500 - Failed to update prompt
  */
-router.put('/:courseId/assistant-prompts/:promptId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.put(
+    '/:courseId/assistant-prompts/:promptId',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const globalUser = (req.session as any).globalUser;
-        if (!globalUser || globalUser.affiliation !== 'faculty') {
-            return res.status(403).json({
-                success: false,
-                error: 'Instructor access required'
-            });
-        }
-
         const { courseId, promptId } = normalizeRouteParams(req.params);
         const { title, content } = req.body;
 
@@ -4492,37 +4427,6 @@ router.put('/:courseId/assistant-prompts/:promptId', asyncHandlerWithAuth(async 
         }
 
         const instance = await EngEAI_MongoDB.getInstance();
-        
-        // Verify instructor is in course's instructors array
-        const course = await instance.getActiveCourse(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                error: 'Course not found'
-            });
-        }
-
-        const courseData = course as unknown as activeCourse;
-        const instructorUserId = globalUser.userId;
-        
-        const isInstructorInArray = (instructors: any[]): boolean => {
-            if (!instructors || instructors.length === 0) return false;
-            return instructors.some(inst => {
-                if (typeof inst === 'string') {
-                    return inst === instructorUserId;
-                } else if (inst && inst.userId) {
-                    return inst.userId === instructorUserId;
-                }
-                return false;
-            });
-        };
-
-        if (!isInstructorInArray(courseData.instructors || [])) {
-            return res.status(403).json({
-                success: false,
-                error: 'You do not have permission to access this course'
-            });
-        }
 
         const updates: Partial<InitialAssistantPrompt> = {};
         if (title !== undefined) updates.title = title.trim();
@@ -4563,49 +4467,13 @@ router.put('/:courseId/assistant-prompts/:promptId', asyncHandlerWithAuth(async 
  * @response 404 - Course or prompt not found
  * @response 500 - Failed to delete prompt
  */
-router.delete('/:courseId/assistant-prompts/:promptId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.delete(
+    '/:courseId/assistant-prompts/:promptId',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const globalUser = (req.session as any).globalUser;
-        if (!globalUser || globalUser.affiliation !== 'faculty') {
-            return res.status(403).json({
-                success: false,
-                error: 'Instructor access required'
-            });
-        }
-
         const { courseId, promptId } = normalizeRouteParams(req.params);
         const instance = await EngEAI_MongoDB.getInstance();
-        
-        // Verify instructor is in course's instructors array
-        const course = await instance.getActiveCourse(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                error: 'Course not found'
-            });
-        }
-
-        const courseData = course as unknown as activeCourse;
-        const instructorUserId = globalUser.userId;
-        
-        const isInstructorInArray = (instructors: any[]): boolean => {
-            if (!instructors || instructors.length === 0) return false;
-            return instructors.some(inst => {
-                if (typeof inst === 'string') {
-                    return inst === instructorUserId;
-                } else if (inst && inst.userId) {
-                    return inst.userId === instructorUserId;
-                }
-                return false;
-            });
-        };
-
-        if (!isInstructorInArray(courseData.instructors || [])) {
-            return res.status(403).json({
-                success: false,
-                error: 'You do not have permission to access this course'
-            });
-        }
 
         await instance.deleteInitialAssistantPrompt(courseId, promptId);
         
@@ -4636,49 +4504,13 @@ router.delete('/:courseId/assistant-prompts/:promptId', asyncHandlerWithAuth(asy
  * @response 404 - Course or prompt not found
  * @response 500 - Failed to select prompt
  */
-router.post('/:courseId/assistant-prompts/:promptId/select', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.post(
+    '/:courseId/assistant-prompts/:promptId/select',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const globalUser = (req.session as any).globalUser;
-        if (!globalUser || globalUser.affiliation !== 'faculty') {
-            return res.status(403).json({
-                success: false,
-                error: 'Instructor access required'
-            });
-        }
-
         const { courseId, promptId } = normalizeRouteParams(req.params);
         const instance = await EngEAI_MongoDB.getInstance();
-        
-        // Verify instructor is in course's instructors array
-        const course = await instance.getActiveCourse(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                error: 'Course not found'
-            });
-        }
-
-        const courseData = course as unknown as activeCourse;
-        const instructorUserId = globalUser.userId;
-        
-        const isInstructorInArray = (instructors: any[]): boolean => {
-            if (!instructors || instructors.length === 0) return false;
-            return instructors.some(inst => {
-                if (typeof inst === 'string') {
-                    return inst === instructorUserId;
-                } else if (inst && inst.userId) {
-                    return inst.userId === instructorUserId;
-                }
-                return false;
-            });
-        };
-
-        if (!isInstructorInArray(courseData.instructors || [])) {
-            return res.status(403).json({
-                success: false,
-                error: 'You do not have permission to access this course'
-            });
-        }
 
         await instance.selectInitialAssistantPrompt(courseId, promptId);
         
