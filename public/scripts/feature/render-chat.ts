@@ -244,7 +244,7 @@ export class RenderChat {
             const linksHtml = suggestions
                 .map((s) => {
                     const difficultyLabel = capitalizeDifficulty(s.difficulty);
-                    return `<li class="scenario-suggestion-item"><button type="button" class="scenario-suggestion-link" data-question-id="${this.escapeHtml(s.id)}"><span class="scenario-suggestion-title">${this.escapeHtml(s.title)}</span><span class="scenario-suggestion-difficulty scenario-suggestion-difficulty-${s.difficulty}" aria-label="Difficulty: ${this.escapeHtml(difficultyLabel)}">${this.escapeHtml(difficultyLabel)}</span></button></li>`;
+                    return `<li class="scenario-suggestion-item"><button type="button" class="scenario-suggestion-link scenario-suggestion-link--${s.difficulty}" data-question-id="${this.escapeHtml(s.id)}"><span class="scenario-suggestion-title">${this.escapeHtml(s.title)}</span><span class="scenario-suggestion-difficulty scenario-suggestion-difficulty-${s.difficulty}" aria-label="Difficulty: ${this.escapeHtml(difficultyLabel)}">${this.escapeHtml(difficultyLabel)}</span></button></li>`;
                 })
                 .join('');
 

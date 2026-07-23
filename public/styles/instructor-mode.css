@@ -133,6 +133,22 @@ body {
     flex: 1;
     overflow-y: auto;
     min-height: 0;
+    scrollbar-gutter: stable;
+    scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+.instructor-sidebar .chat-list .chat-list-ul::-webkit-scrollbar {
+    width: 8px;
+    background: transparent;
+}
+
+.instructor-sidebar .chat-list .chat-list-ul::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.instructor-sidebar .chat-list .chat-list-ul::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.22);
+    border-radius: 4px;
 }
 
 .instructor-sidebar .chat-list .chat-item {

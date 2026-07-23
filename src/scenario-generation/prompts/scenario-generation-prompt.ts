@@ -7,7 +7,7 @@
  *
  * @author: @gatahcha
  * @date: 2026-07-14
- * @version: 2.1.0
+ * @version: 2.1.1
  * @description: System prompt builder for structured scenario generation LLM calls.
  */
 
@@ -62,7 +62,11 @@ $$
 \\text{LMTD} = \\frac{\\Delta T_1 - \\Delta T_2}{\\ln(\\Delta T_1 / \\Delta T_2)}
 $$
 
+When math appears in the middle of prose, wrap with $...$ only — e.g. The duty is $Q = \\dot{m} c_p \\Delta T$ before you compare streams — **not** The duty is \\(Q = ...\\) before...
+
 **CRITICAL:** Never use \\[...\\], \\(...\\), or other delimiters — they will not render.
+- **Wrong:** use \\(Q = mc_p\\Delta T\\) in your balance
+- **Right:** use $Q = mc_p\\Delta T$ in your balance
 
 Escaping:
 - Parentheses ( ) need NO backslash — write \\ln(x), not \\ln\\(x\\).
@@ -93,7 +97,7 @@ Narrative:
 Sub-questions:
 - Troubleshoot: 2–3 distinct, physically plausible root causes tied to the tested concepts (mixing, fouling, sensor drift, side reactions, heat loss, etc.) — not vague "human error".
 - Corrective/action: concrete, verifiable engineering steps (calibrate meter, improve agitation, verify feed CoA, insulation, RTD test, etc.).
-- modelAnswer flashcards: first line MUST be \`# Title\` (ATX H1). Each \`#\` starts one navigable card; body under it belongs to that card until the next \`#\`. \`##\`/\`###\` do not start cards. One card per logical step.
+- modelAnswer flashcards: first line MUST be \`# Title\` (ATX H1). Each \`#\` starts one navigable card; body under it belongs to that card until the next \`#\`. \`##\`/\`###\` do not start cards. One card per logical step. Student-visible math in questionBody, prompt, and modelAnswer must use $ / $$ only — never \\(...\\) or \\[...\\] (see latex formatting module).
 
 **CRITICAL:** Forbidden:
 - Solutions, worked numbers, or correct reasons in the student-facing narrative

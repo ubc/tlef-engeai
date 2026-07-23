@@ -28,6 +28,14 @@ Suggest changes inside `<styling_AI_suggest>` only — user applies manually.
 
 Orchestrator may set `css_apply: implement` in handoff for CSS-only tasks — then implement directly in `.css` files.
 
+## Scrollbars
+
+Scrollable regions should use **transparent scrollbar tracks** — no opaque gutter or track background.
+
+- Standard pattern: `scrollbar-gutter: stable; scrollbar-color: rgba(0, 0, 0, 0.22) transparent;`
+- WebKit: `::-webkit-scrollbar { background: transparent }`, `::-webkit-scrollbar-track { background: transparent }`, thumb `rgba(0, 0, 0, 0.22)` with `border-radius: 4px`
+- Reference implementations: `.message-area` and `.chat-list ul` / `.chat-list-ul` in `chat-feature.css` and `instructor-mode.css`
+
 ## Reference
 
 - `documentation/RESPONSIVE_DESIGN.md`

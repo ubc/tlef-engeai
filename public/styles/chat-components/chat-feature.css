@@ -78,6 +78,22 @@
     flex: 1 1 auto;
     overflow-y: auto; /* Enable scrolling */
     min-height: 0;
+    scrollbar-gutter: stable;
+    scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+.chat-list ul::-webkit-scrollbar {
+    width: 8px;
+    background: transparent;
+}
+
+.chat-list ul::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.chat-list ul::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.22);
+    border-radius: 4px;
 }
 
 .chat-list .chat-item { 
