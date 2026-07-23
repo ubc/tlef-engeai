@@ -154,11 +154,11 @@
 
 .scenario-suggestion-link {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
+    flex-direction: row;
+    align-items: center;
     justify-content: space-between;
+    gap: 0.5rem;
     width: 100%;
-    min-height: 4.5rem;
     text-align: left;
     padding: 0.55rem 0.75rem;
     border: 1px solid rgba(0, 0, 0, 0.12);
@@ -169,50 +169,63 @@
     font-weight: 500;
     cursor: pointer;
     font-family: inherit;
-    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .scenario-suggestion-title {
     display: block;
+    flex: 1;
+    min-width: 0;
     line-height: 1.35;
 }
 
 .scenario-suggestion-difficulty {
     display: inline-flex;
     align-items: center;
-    margin-top: auto;
-    padding: 0.2rem 0.55rem;
-    border-radius: 999px;
-    font-size: 0.75rem;
-    font-weight: 600;
+    flex-shrink: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: none;
+    font-style: italic;
+    font-size: 0.8rem;
+    font-weight: 500;
     line-height: 1;
-    border: 1px solid transparent;
 }
 
 .scenario-suggestion-difficulty-easy {
-    background: rgba(76, 175, 80, 0.1);
     color: var(--pinned-color, #5c8a3a);
-    border-color: var(--pinned-color, #5c8a3a);
 }
 
 .scenario-suggestion-difficulty-medium {
-    background: rgba(255, 193, 7, 0.15);
     color: #b8860b;
-    border-color: #d4a017;
 }
 
 .scenario-suggestion-difficulty-hard {
-    background: rgba(175, 76, 76, 0.1);
     color: var(--color-eng-red, #c82333);
-    border-color: var(--color-eng-red, #c82333);
 }
 
 .scenario-suggestion-link:hover {
-    background: rgba(77, 122, 47, 0.12);
-    border-color: var(--color-chbe-green, #4d7a2f);
-    color: var(--color-chbe-green, #4d7a2f);
     transform: translateY(-2px);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.scenario-suggestion-link--easy:hover {
+    background: rgba(76, 175, 80, 0.12);
+    border-color: var(--pinned-color, #5c8a3a);
+    color: var(--pinned-color, #5c8a3a);
+}
+
+.scenario-suggestion-link--medium:hover {
+    background: rgba(255, 193, 7, 0.15);
+    border-color: #d4a017;
+    color: #b8860b;
+}
+
+.scenario-suggestion-link--hard:hover {
+    background: rgba(175, 76, 76, 0.12);
+    border-color: var(--color-eng-red, #c82333);
+    color: var(--color-eng-red, #c82333);
 }
 
 .scenario-suggestion-link:active {

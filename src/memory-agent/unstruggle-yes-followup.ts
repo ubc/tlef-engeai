@@ -113,6 +113,12 @@ export class UnstruggleYesFollowupService {
                     response?.parsed?.learningObjectiveTexts ?? [],
                     allowedTexts
                 );
+
+
+                // print the objective texts
+                appLogger.log('\n\n--------------------------------------------------\n\n');
+                appLogger.log('[UNSTRUGGLE-YES] Objective texts:', objectiveTexts);
+                appLogger.log('\n\n--------------------------------------------------\n\n');
             } catch (error) {
                 appLogger.error('[UNSTRUGGLE-YES] LLM follow-up failed:', error);
                 return this.noScenariosResult(topic);
