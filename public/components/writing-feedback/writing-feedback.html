@@ -1,0 +1,63 @@
+<!--
+  Writing Feedback instructor workspace shell
+
+  Provides the persistent heading/status regions and three view hosts populated
+  by the Writing Feedback TypeScript modules.
+
+  @author: @rdschrs
+  @date: 2026-07-19
+  @version: 1.0.0
+  @description: Semantic component shell for assignment intake, rubric editing, and submission review.
+-->
+<link rel="stylesheet" href="/styles/instructor-components/writing-feedback.css">
+
+<div class="wf-page" aria-labelledby="writing-feedback-title">
+    <main class="wf-main-content">
+        <!-- Persistent feature header and task-first intake actions -->
+        <header class="wf-header mobile-header-bar">
+            <div class="wf-header-left">
+                <button id="instructor-hamburger-btn" class="instructor-mobile-hamburger-btn icon-btn" type="button" aria-label="Open instructor menu">
+                    <i data-feather="menu" aria-hidden="true"></i>
+                </button>
+                <h1 id="writing-feedback-title" class="mobile-header-title">Writing Feedback</h1>
+            </div>
+            <div id="wf-header-actions" class="wf-header-actions" aria-label="Writing feedback actions">
+                <button id="wf-import-canvas" class="wf-header-btn" type="button">
+                    <i data-feather="download-cloud" aria-hidden="true"></i>
+                    <span>Import from Canvas</span>
+                </button>
+                <button id="wf-add-assignment" class="wf-header-btn" type="button">
+                    <i data-feather="plus" aria-hidden="true"></i>
+                    <span>Add assignment</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Durable live status for capability, Canvas mode, and action results -->
+        <div id="wf-workspace-message" class="wf-workspace-message" role="status" aria-live="polite" data-tone="info">
+            Loading the staff workspace…
+        </div>
+
+        <!-- Assignment queue and inline setup/import panel -->
+        <div id="wf-view-landing">
+            <section id="wf-action-panel" class="wf-action-panel" aria-labelledby="wf-action-panel-title" hidden>
+                <header class="wf-action-panel-header">
+                    <h2 id="wf-action-panel-title">Action</h2>
+                    <button id="wf-action-panel-close" class="wf-icon-button" type="button" aria-label="Close setup panel">
+                        <i data-feather="x" aria-hidden="true"></i>
+                    </button>
+                </header>
+                <div id="wf-action-panel-content"></div>
+            </section>
+
+            <div id="wf-assignment-list" class="wf-assignment-list" aria-live="polite" aria-busy="true">
+                <p class="wf-muted-note">Loading assignments…</p>
+            </div>
+        </div>
+
+        <!-- Mutually exclusive routed hosts populated by rubric/review modules -->
+        <div id="wf-view-rubric" hidden></div>
+
+        <div id="wf-view-review" hidden></div>
+    </main>
+</div>

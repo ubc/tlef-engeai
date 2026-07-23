@@ -7,6 +7,8 @@ import { appLogger } from './utils/logger';
 import chatAppRoutes from './routes/route-chat-app';
 import ragAppRoutes from './routes/route-rag';
 import mongodbRoutes from './routes/route-mongo';
+// @rdschrs: Implemented the Writing Feedback API router mount.
+import writingFeedbackRoutes from './routes/route-writing-feedback';
 import healthRoutes from './routes/route-health';
 import versionRoutes from './routes/route-version';
 import onboardingRoutes from './routes/route-onboarding';
@@ -234,6 +236,8 @@ app.get('/settings', (req: any, res: any) => {
 app.use('/api/chat', chatAppRoutes);
 app.use('/api/rag', ragAppRoutes);
 app.use('/api/courses', mongodbRoutes);  // Course management routes
+// The router applies staff RBAC and explicit capability gates to its shared prefix.
+app.use('/api/courses', writingFeedbackRoutes);
 app.use('/api/academic-periods', academicPeriodRoutes);
 app.use('/api/admin', adminCourseRoutes);
 app.use('/api/course', courseEntryRoutes);  // Course entry routes

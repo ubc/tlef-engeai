@@ -63,6 +63,8 @@ import {
     resolveCourseAcademicPeriod,
     shouldAutoDisplayCourseSummaryModal
 } from '../helpers/academic-period-access';
+// @rdschrs: Implemented protected Writing Feedback capability configuration for courses.
+import { updateWritingFeedbackCapability } from '../helpers/course-features';
 import { CourseRosterError } from '../db/mongo/course-roster-mongo';
 import { scheduledPublishAudit } from '../jobs/scheduled-publish-audit';
 import {
@@ -375,6 +377,16 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
             onBoarded: true, // default to false for new courses
             instructors: updatedInstructors,
             teachingAssistants: req.body.teachingAssistants || [],
+            // Record first-enable provenance while defaulting absent or false input to disabled.
+            features: {
+                ...req.body.features,
+                writingFeedback: {
+                    enabled: req.body.features?.writingFeedback?.enabled === true,
+                    ...(req.body.features?.writingFeedback?.enabled === true
+                        ? { enabledAt: new Date(), enabledBy: creatorUserId }
+                        : {})
+                }
+            },
             tilesNumber: req.body.tilesNumber || 0,
             courseSetup: req.body.courseSetup ?? true
         };
@@ -766,7 +778,7 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
  */
 router.post(
     '/:id/complete-course-setup',
-    requireInstructorForCourseAPI(['paramsId']),
+    requireRosterManageAPI(['paramsId']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         const instance = await EngEAI_MongoDB.getInstance();
         const courseId = routeParam(req.params, 'id');
@@ -833,7 +845,13 @@ router.post(
             frameType,
             tilesNumber,
             topicOrWeekInstances,
-            instructors: updatedInstructors
+            instructors: updatedInstructors,
+            // Preserve initial enable provenance when setup submits the capability again.
+            features: updateWritingFeedbackCapability(
+                courseData.features,
+                req.body?.features?.writingFeedback?.enabled === true,
+                creatorUserId
+            )
         } as Partial<activeCourse>);
 
         let updatedCourse = (await instance.getActiveCourse(courseId)) as unknown as activeCourse;
@@ -893,6 +911,53 @@ router.post(
 );
 
 /**
+ * PATCH /:courseId/features/writing-feedback
+ * Enables or disables the optional staff writing-review workspace.
+ *
+ * Restricted to roster managers (faculty instructors and platform admins).
+ * Disabling changes availability only; existing assessment records are retained.
+ *
+ * @route PATCH /api/courses/:courseId/features/writing-feedback
+ * @param {string} courseId - Owning course id
+ * @param {boolean} enabled - Desired capability state
+ * @returns Updated course with stable first-enable provenance
+ */
+router.patch(
+    '/:courseId/features/writing-feedback',
+    requireRosterManageAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        if (typeof req.body?.enabled !== 'boolean') {
+            return res.status(400).json({ success: false, error: 'enabled must be a boolean' });
+        }
+
+        const instance = await EngEAI_MongoDB.getInstance();
+        const courseId = routeParam(req.params, 'courseId');
+        const course = await instance.getActiveCourse(courseId) as unknown as activeCourse | null;
+        if (!course) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+
+        const globalUser = (req.session as any).globalUser;
+
+        // Change capability metadata only; never cascade into Writing Feedback records.
+        const features = updateWritingFeedbackCapability(
+            course.features,
+            req.body.enabled,
+            globalUser.userId
+        );
+        const updatedCourse = await instance.updateActiveCourse(courseId, { features });
+
+        return res.status(200).json({
+            success: true,
+            data: updatedCourse,
+            message: req.body.enabled
+                ? 'Writing Feedback enabled'
+                : 'Writing Feedback disabled; existing review records were preserved'
+        });
+    })
+);
+
+/**
  * PUT /:id
  * Update a course. Instructors only.
  *
@@ -917,8 +982,8 @@ router.put('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWith
         });
     }
     
-    // Update the course
-    const updateData = req.body;
+    // Strip capabilities so this generic instructor update cannot bypass the roster-manager gate.
+    const { features: _ignoredFeatures, ...updateData } = req.body ?? {};
     const updatedCourse = await instance.updateActiveCourse(routeParam(req.params, 'id'), updateData);
     
     res.status(200).json({

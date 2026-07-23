@@ -1,0 +1,15 @@
+---
+description: Writing submission intake, OCR verification, storage, and privacy rules
+globs: src/writing-feedback/**/*extract*,src/writing-feedback/**/*ocr*,src/writing-feedback/**/*submission*,src/routes/route-writing-feedback.ts
+alwaysApply: false
+---
+
+# Submission Intake, OCR, and Privacy
+
+- Digital input may be pasted text or TXT, DOCX, PDF, HTML/HTM, and Markdown.
+- Reuse document parsing without calling RAG upload, chunking, embedding, retrieval, or Qdrant.
+- Scanned PDF/JPEG/PNG OCR is a draft transcript; feedback is blocked until staff verification.
+- Prefer Canvas source references over copying binaries. Use the restricted writing GridFS bucket only when review requires a retained staff upload.
+- Key records by internal IDs and Canvas IDs only where necessary; never store PUID.
+- Retention must be configurable and production-approved. No silent permanent storage.
+- Errors and logs may include internal record IDs/statuses, never submission text or OAuth secrets.

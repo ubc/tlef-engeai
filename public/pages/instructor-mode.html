@@ -31,10 +31,12 @@
     <script src="https://unpkg.com/feather-icons"></script>
 </head>
 <body>
+    <!-- @rdschrs: Added accessible, capability-gated Writing Feedback navigation to this shell. -->
+    <a class="skip-link" href="#main-content-area">Skip to main content</a>
     <!-- Sidebar overlay for mobile - click to close sidebar -->
     <div id="instructor-sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
     <div class="main-dashboard">
-        <aside class="instructor-sidebar">
+        <aside class="instructor-sidebar" aria-label="Instructor workspace navigation">
             <div class="instructor-feature-sidebar">
                 <div class="sidebar-main-content" >
                     <div class="logo-box">
@@ -50,30 +52,34 @@
                     <div class="sidebar-content" id="sidebar-content">
                         <div class="sidebar-menu-list">
                             <ul>
-                                <li id="documents-state" class="menu-list-item">
-                                    <i data-feather="file-text"></i>
+                                <li><button id="documents-state" class="menu-list-item" type="button">
+                                    <i data-feather="file-text" aria-hidden="true"></i>
                                     <p>Document</p>
-                                </li>
-                                <li id="chat-state" class="menu-list-item">
-                                    <i data-feather="message-circle"></i>
+                                </button></li>
+                                <li><button id="writing-feedback-state" class="menu-list-item" type="button" hidden>
+                                    <i data-feather="edit-3" aria-hidden="true"></i>
+                                    <p>Writing Feedback</p>
+                                </button></li>
+                                <li><button id="chat-state" class="menu-list-item" type="button">
+                                    <i data-feather="message-circle" aria-hidden="true"></i>
                                     <p>Chat with EngE-AI</p>
-                                </li>
-                                <li id="flag-state" class="menu-list-item">
-                                    <i data-feather="alert-triangle"></i>
+                                </button></li>
+                                <li><button id="flag-state" class="menu-list-item" type="button">
+                                    <i data-feather="alert-triangle" aria-hidden="true"></i>
                                     <p>Flags</p>
-                                </li>
-                                <li id="monitor-state" class="menu-list-item">
-                                    <i data-feather="monitor"></i>
+                                </button></li>
+                                <li><button id="monitor-state" class="menu-list-item" type="button">
+                                    <i data-feather="monitor" aria-hidden="true"></i>
                                     <p>Monitor</p>
-                                </li>
-                                <li id="assistant-prompts-state" class="menu-list-item">
-                                    <i data-feather="message-square"></i>
+                                </button></li>
+                                <li><button id="assistant-prompts-state" class="menu-list-item" type="button">
+                                    <i data-feather="message-square" aria-hidden="true"></i>
                                     <p>Initial Assistant Prompt</p>
-                                </li>
-                                <li id="system-prompts-state" class="menu-list-item">
-                                    <i data-feather="settings"></i>
+                                </button></li>
+                                <li><button id="system-prompts-state" class="menu-list-item" type="button">
+                                    <i data-feather="settings" aria-hidden="true"></i>
                                     <p>System Prompt</p>
-                                </li>
+                                </button></li>
                             </ul>
                         </div>
                     </div>
@@ -114,9 +120,9 @@
             </div>
             
         </aside>
-        <div id="main-content-area">
+        <main id="main-content-area" tabindex="-1">
             <!-- content will be populated here -->
-        </div>
+        </main>
 
         <button type="button" class="course-summary-summon-fab course-summary-fab-hidden" id="course-summary-summon-fab" aria-label="Open course summary">
             <i data-feather="pie-chart"></i>

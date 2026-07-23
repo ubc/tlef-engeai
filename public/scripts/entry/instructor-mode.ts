@@ -23,6 +23,8 @@ import { authService } from '../services/auth-service.js';
 import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
 import { renderAbout } from '../about/about.js';
 import { initializeCourseInformation } from '../feature/course-information.js';
+// @rdschrs: Integrated capability-gated Writing Feedback navigation and initialization.
+import { initializeWritingFeedback } from '../feature/writing-feedback.js';
 import { initializeCourseSummary, summonCourseSummary, configureCourseSummaryFabVisibility } from '../feature/course-summary.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
 import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from '../feature/assistant-prompts.js';
@@ -58,6 +60,7 @@ async function checkAuthentication(): Promise<boolean> {
 function mapViewToStateEvent(view: string): StateEvent {
     switch (view) {
         case 'documents': return StateEvent.Documents;
+        case 'writing-feedback': return StateEvent.WritingFeedback;
         case 'flags': return StateEvent.Flag;
         case 'monitor': return StateEvent.Monitor;
         case 'chat': return StateEvent.Chat;
@@ -71,6 +74,7 @@ const enum StateEvent {
     Flag,
     Monitor,
     Documents,
+    WritingFeedback,
     Chat,
     AssistantPrompts,
     SystemPrompts
@@ -461,12 +465,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    if (new URLSearchParams(window.location.search).get('notice') === 'writing-feedback-disabled') {
+        void showSimpleErrorModal(
+            'Writing Feedback is not enabled for this course. You can enable it from Course Information if you have instructor or admin access.',
+            'Feature unavailable'
+        );
+        const cleanUrl = `${window.location.pathname}${window.location.hash}`;
+        window.history.replaceState(window.history.state, '', cleanUrl);
+    }
+
     // --- STATE MANAGEMENT ----
     let isSidebarCollapsed: boolean = false;
     
     const flagStateEl = document.getElementById('flag-state');
     const monitorStateEl = document.getElementById('monitor-state');
     const documentsStateEl = document.getElementById('documents-state');
+    const writingFeedbackStateEl = document.getElementById('writing-feedback-state');
     const chatStateEl = document.getElementById('chat-state');
     const assistantPromptsStateEl = document.getElementById('assistant-prompts-state');
     const systemPromptsStateEl = document.getElementById('system-prompts-state');
@@ -486,6 +500,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     documentsStateEl?.addEventListener('click', () => {
         navigateToInstructorView('documents');
+    });
+
+    writingFeedbackStateEl?.addEventListener('click', () => {
+        navigateToInstructorView('writing-feedback');
     });
 
     assistantPromptsStateEl?.addEventListener('click', () => {
@@ -517,6 +535,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Show welcome screen (chat view with no chats)
                 currentState = StateEvent.Chat;
                 await showChatContent();
+            } else if (view === 'writing-feedback' && currentClass.features?.writingFeedback?.enabled !== true) {
+                await showSimpleErrorModal(
+                    'Writing Feedback is not enabled for this course.',
+                    'Feature unavailable'
+                );
+                navigateToInstructorView('documents');
             } else if (
                 (view === 'monitor' || view === 'assistant-prompts' || view === 'system-prompts') &&
                 window.innerWidth < 768
@@ -577,6 +601,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         componentName :'flag-instructor' 
                         | 'monitor-instructor' 
                         | 'documents-instructor' 
+                        | 'writing-feedback'
                         | 'flag-history' 
                         | 'course-setup'
                         | 'document-setup'
@@ -606,6 +631,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (componentName === 'documents-instructor') {
                 // console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing documents page...`); // 🟢 MEDIUM: Component init - keep for monitoring
                 initializeDocumentsPage(currentClass);
+            }
+            else if (componentName === 'writing-feedback') {
+                await initializeWritingFeedback(currentClass);
             }
             else if (componentName === 'flag-instructor') {
                 // console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing flags...`); // 🟢 MEDIUM: Debug info
@@ -717,6 +745,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             expandFeatureSidebar();
             hideChatList(); // Ensure chat list is hidden
         }
+        else if (currentState === StateEvent.WritingFeedback) {
+            if (currentClass.features?.writingFeedback?.enabled !== true) {
+                navigateToInstructorView('documents');
+                return;
+            }
+            loadComponent('writing-feedback');
+            updateSidebarState();
+            expandFeatureSidebar();
+            hideChatList();
+        }
         else if ( currentState === StateEvent.Chat){
             updateSidebarState(); // Update menu active state
             collapseFeatureSidebar();
@@ -771,16 +809,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Handle active state for menu items
         // Remove active class from all menu items first
         documentsStateEl?.classList.remove('active');
+        writingFeedbackStateEl?.classList.remove('active');
         chatStateEl?.classList.remove('active');
         flagStateEl?.classList.remove('active');
         monitorStateEl?.classList.remove('active');
         assistantPromptsStateEl?.classList.remove('active');
         systemPromptsStateEl?.classList.remove('active');
+        [
+            documentsStateEl,
+            writingFeedbackStateEl,
+            chatStateEl,
+            flagStateEl,
+            monitorStateEl,
+            assistantPromptsStateEl,
+            systemPromptsStateEl
+        ].forEach((item) => item?.removeAttribute('aria-current'));
 
         // Add active class to the current state's menu item
         switch(currentState) {
             case StateEvent.Documents:
                 documentsStateEl?.classList.add('active');
+                break;
+            case StateEvent.WritingFeedback:
+                writingFeedbackStateEl?.classList.add('active');
                 break;
             case StateEvent.Chat:
                 chatStateEl?.classList.add('active');
@@ -798,7 +849,35 @@ document.addEventListener('DOMContentLoaded', async () => {
                 systemPromptsStateEl?.classList.add('active');
                 break;
         }
+        [
+            documentsStateEl,
+            writingFeedbackStateEl,
+            chatStateEl,
+            flagStateEl,
+            monitorStateEl,
+            assistantPromptsStateEl,
+            systemPromptsStateEl
+        ].find((item) => item?.classList.contains('active'))?.setAttribute('aria-current', 'page');
     }
+
+    const updateWritingFeedbackNavigation = () => {
+        const enabled = currentClass.features?.writingFeedback?.enabled === true;
+        if (writingFeedbackStateEl) writingFeedbackStateEl.hidden = !enabled;
+    };
+    updateWritingFeedbackNavigation();
+
+    window.addEventListener('course-feature-changed', (event: Event) => {
+        const detail = (event as CustomEvent<{ feature?: string; enabled?: boolean }>).detail;
+        if (detail?.feature !== 'writingFeedback') return;
+        currentClass.features = {
+            ...currentClass.features,
+            writingFeedback: { enabled: detail.enabled === true }
+        };
+        updateWritingFeedbackNavigation();
+        if (!detail.enabled && currentState === StateEvent.WritingFeedback) {
+            navigateToInstructorView('documents');
+        }
+    });
 
     // Helper functions for chat behavior
     const hideChatList = () => {

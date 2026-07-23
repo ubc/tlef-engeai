@@ -30,7 +30,22 @@ export function showToast(
 
     const toast = document.createElement('div');
     toast.className = `toast-notification toast-${type}`;
-    toast.textContent = message;
+    // @rdschrs: Added accessible live-region and dismiss controls for feature workflows.
+    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+    toast.setAttribute('aria-atomic', 'true');
+
+    const messageElement = document.createElement('span');
+    messageElement.className = 'toast-message';
+    messageElement.textContent = message;
+
+    const dismissButton = document.createElement('button');
+    dismissButton.type = 'button';
+    dismissButton.className = 'toast-dismiss';
+    dismissButton.setAttribute('aria-label', 'Dismiss notification');
+    dismissButton.textContent = '\u00d7';
+
+    toast.append(messageElement, dismissButton);
 
     container.appendChild(toast);
     document.body.appendChild(container);

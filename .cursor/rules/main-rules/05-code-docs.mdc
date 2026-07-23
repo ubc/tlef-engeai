@@ -42,9 +42,11 @@ Every `.ts` source file opens with:
  */
 ```
 
+<!-- @rdschrs: Added contributor-safe authorship guidance for feature-owned files. -->
+
 | Tag | Rule |
 |-----|------|
-| `@author` | `@gatahcha` or `EngE-AI Team` — match nearby files in the same area |
+| `@author` | `@gatahcha`, `@rdschrs`, or `EngE-AI Team` — use the actual file owner and preserve existing attribution |
 | `@date` | Creation date; update on major rewrite only |
 | `@version` | Version number; update on major rewrite only |
 | `@description` | One concise line; may wrap — not a duplicate of the title |

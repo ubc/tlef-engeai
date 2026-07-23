@@ -25,6 +25,7 @@ All API routes are prefixed with `/api/`. Page routes are served from `/` and `/
 | `/api/chat` | chatAppRoutes | Chat CRUD, streaming, metadata |
 | `/api/rag` | ragAppRoutes | Document upload, retrieval, search, wipe |
 | `/api/courses` | mongodbRoutes | Courses, flags, objectives, materials, monitor |
+| `/api/courses` | writingFeedbackRoutes | Optional staff writing-feedback workspace |
 | `/api/course` | courseEntryRoutes | Course entry, enter-by-code, current course |
 | `/api/user` | userManagementRoutes | User profile, onboarding, activity |
 | `/api/health` | healthRoutes | Health check |
@@ -48,6 +49,7 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 |------|-------------|
 | `GET /course/:courseId/instructor` | Redirects to documents |
 | `GET /course/:courseId/instructor/documents` | Document management |
+| `GET /course/:courseId/instructor/writing-feedback` | Capability-gated Writing Feedback; redirects to Documents when disabled |
 | `GET /course/:courseId/instructor/flags` | Flag reports |
 | `GET /course/:courseId/instructor/monitor` | Student chat monitoring |
 | `GET /course/:courseId/instructor/chat` | Instructor chat |
@@ -75,6 +77,48 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 ---
 
 ## 4. API Routes by Domain
+
+<!-- @rdschrs: Implemented the course-scoped Writing Feedback API boundary. -->
+### 4.0 Writing Feedback (`/api/courses/:courseId/writing-feedback`)
+
+Every endpoint requires course-staff RBAC followed by `requireCourseFeatureAPI('writingFeedback')`. Feature configuration is separate: `PATCH /api/courses/:courseId/features/writing-feedback` requires instructor/admin roster-management permission. Instructors and TAs can operate intake/review endpoints after enablement; rubric mutation and future Canvas connection configuration add instructor/admin roster-management permission.
+
+Canvas endpoints report their integration mode honestly. `demo` with `integration: mock_canvas` lists/imports synthetic local data without contacting Canvas; `not_configured` with `integration: none` explains the institutional OAuth gate. No endpoint in the current local slice establishes live OAuth or writes a rubric/grade/comment to Canvas without a separate explicit release action.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/workspace-context` | Returns UI permissions (including rubric management) and non-secret integration context for the current staff member |
+| GET | `/assignments` | Lists assignments (with a per-assignment `submissionCount`) and seeds the A2 profile when absent |
+| POST | `/assignments` | Creates a manual writing assignment (`{ title, dueAt? }`) seeded from the A2 rubric profile; instructor/admin only |
+| GET | `/canvas/status` | Returns `demo` or `not_configured` status and safe staff-facing setup guidance; never returns tokens |
+| GET | `/canvas/assignments` | Lists selectable synthetic assignments in local demo mode; live listing remains OAuth-gated |
+| GET | `/canvas/assignments/:canvasAssignmentId/preview` | Read-only preview of the selected synthetic assignment/submissions before import |
+| POST | `/canvas/import` | Creates/reuses the mapped writing assignment, imports/reconciles its selected demo submissions, and reports imported/skipped counts; allowed for instructors/TAs |
+| POST | `/assignments/:assignmentId/canvas-import-fixture` | Backward-compatible, clearly labelled synthetic import helper for local testing only |
+| DELETE | `/assignments/:assignmentId` | Deletes an assignment; `409` while it still has any submissions (delete those first). Any course staff |
+| GET | `/assignments/:assignmentId/rubric` | Returns approved rubric, optional draft, immutable history, and the caller's edit permission |
+| PUT | `/assignments/:assignmentId/rubric-draft` | Validates and saves the next rubric draft version without changing the approved rubric; instructor/admin only |
+| DELETE | `/assignments/:assignmentId/rubric-draft` | Explicitly discards the inactive saved draft; instructor/admin only |
+| POST | `/assignments/:assignmentId/rubric-draft/approve` | Explicitly promotes the saved draft to a new immutable approved version and derives a numeric mapping only when every level has points; instructor/admin only |
+| GET/POST | `/submissions` | Staff queue / manual verified-text intake |
+| POST | `/submissions/file` | TXT, DOCX, text-PDF, or HTML extraction; requires staff verification |
+| GET | `/submissions/:submissionId` | Submission, history, latest feedback run, stored anchored `comments` (stale-flagged against the current verified text), and `seedComments` derived from run evidence while no revision has stored comments |
+| DELETE | `/submissions/:submissionId` | Deletes a submission at any status (including `released`) and cascades its feedback runs, releases, and queued jobs. Any course staff |
+| POST | `/submissions/:submissionId/verify` | Saves staff-verified transcript |
+| POST | `/submissions/:submissionId/generate` | Generates validated structured feedback; never releases |
+| POST | `/submissions/:submissionId/reviews` | Appends a staff review revision; optional `comments` array of anchored comments is schema-validated and every anchor re-checked as an exact slice of the verified text |
+| POST | `/submissions/:submissionId/approve` | Explicit staff approval |
+| GET | `/submissions/:submissionId/feedback.pdf` | Student-safe feedback PDF; `?include=general\|annotated\|both` selects the summary document, the verified text with Canvas-style `/Highlight` popup annotations, or both (default `general`; legacy `specific` maps to `annotated`) |
+| POST | `/submissions/:submissionId/release-preview` | Dry-run Canvas payload preview |
+| POST | `/submissions/:submissionId/release` | Mock-only release; real Canvas requires OAuth gates |
+
+`POST /canvas/import` reads a selected source and writes local writing records only. It creates or reuses one writing assignment per Canvas assignment mapping. The current response explicitly reports `rubricImport: not_imported`; native Canvas rubric ingestion remains future work. Import does not approve a rubric, generate feedback, or call a Canvas write endpoint. Repeating the same assignment/student/attempt import is idempotent and is returned as skipped/reconciled rather than duplicated.
+
+The rubric draft body contains complete task, audience, purpose, constraints, learning outcomes, grading intent, four A2 criteria/SFL descriptions, and four ordinal levels with optional points. Draft validation failures return field-safe `400` responses. Approving without a saved draft is a conflict; TAs receive `403` for both rubric mutation routes. Saving or approving a rubric never updates Canvas automatically.
+
+Anchored comments carry `{ id, criterion?, quote, startOffset, endOffset, comment, howToImprove?, courseMaterialLink?, glossaryDefinition?, origin, functionTag?, levelTag?, priority? }` with UTF-16 offsets into the verified text, a 50-comment cap, and http(s)-only links. `functionTag` (`content|interpersonal|organizational`), `levelTag` (`text|section|clause_word`), and `priority` (`high|medium|low`) mirror the Academic Writing Matrix taxonomy; they are staff-facing triage metadata, seeded only as a criterion→function mapping, and never printed in the student PDF. Offsets are the anchor source of truth and the quote is a checksum: saving rejects any comment whose slice no longer matches, and reads mark such comments `stale` instead of re-anchoring them. Seed comments derive from immutable model-run evidence at read time and are only persisted when staff save a revision. The student PDF includes only comments whose anchors still validate and never exposes `origin`, confidence, internal flags, or staff notes.
+
+Live Canvas OAuth routes are intentionally absent from this table until the privacy/security and developer-key gates are satisfied. The future implementation must preserve the same status/list/import contract while adding encrypted refresh-token storage, pagination, throttling, and explicit instructor connection management.
 
 ### 4.1 Authentication (`/auth`)
 

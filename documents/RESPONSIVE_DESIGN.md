@@ -56,6 +56,27 @@ We use a **mobile-first** approach with two primary breakpoints:
 
 ## Considerations for Mobile / Tablet Components
 
+<!-- @rdschrs: Implemented the responsive Writing Feedback review workflow. -->
+### Writing Feedback review workflow
+
+- **Desktop (901px+)**: show the submission queue and review workspace side by side. Keep verified text, student-facing feedback, and staff-only notes visually distinct. An open Canvas import or rubric panel spans the workspace above the split view so assignment context remains visible.
+- **Tablet (601–900px)**: use a single-panel queue/detail flow rather than placing two full workspaces in one long stack. Selecting a row opens detail; **Back to submissions** restores the prior assignment, filter, search, and scroll context. Import and rubric forms are full-width.
+- **Phone (600px and below)**: keep the same single-panel flow with full-width actions and labelled inputs. Stack rubric criteria/level fields into one column and prevent horizontal scrolling. Staff must still be able to import, verify, save a revision, approve, preview, and release.
+- Do not use status color as the only indicator; include the status word. Move focus to the selected detail heading, restore it to the returning queue row, and announce queue/status changes with live regions.
+- The action priority stays **Import from Canvas**, **Upload files**, **Add text**, then **Edit/View rubric** at every width. Wrapping may change layout but not order or meaning.
+- Canvas mode, loading, empty, error, imported/skipped, rubric dirty/saved/approved, and release preview/released states must fit without hover-dependent detail. Do not use browser `alert()` or `confirm()` as a responsive fallback.
+
+#### Writing Feedback component behavior
+
+- Queue controls wrap without clipping: assignment selector first, then search and status filter.
+- At desktop width, keep the queue usable at a stable minimum width while the review pane takes remaining space.
+- At tablet/phone widths, hide the inactive queue or detail from both visual and keyboard navigation; do not leave focusable controls off-screen.
+- The Canvas assignment list uses full-row labels and an explicit import button. In local demo mode the synthetic label remains visible at all widths.
+- Rubric editor sections use one column on phone and may use two columns only when labels, helper text, and point inputs remain readable.
+- Sticky action bars may be used only if they do not cover validation messages, the instructor sidebar toggle, or the final form fields. Account for safe-area insets on mobile.
+- Loading placeholders reserve enough height to avoid large jumps. Filtered-empty and course-empty states have different copy and actions.
+- Preserve at least 44×44px touch targets, `:focus-visible`, and `prefers-reduced-motion` at every breakpoint.
+
 ### Layout & Spacing
 
 - **Stack vs. row**: Phone = single column; tablet = 2 columns or side-by-side where appropriate
@@ -173,4 +194,8 @@ The student mode uses a consistent mobile header pattern across welcome screen, 
 - [ ] 375px (common phone)
 - [ ] 480px (breakpoint)
 - [ ] 768px (breakpoint)
+- [ ] 900px/901px (Writing Feedback single/split transition)
+- [ ] Writing Feedback queue → detail → back preserves selection, filters, and focus
+- [ ] Canvas demo/not-configured/importing/imported/error states at phone and desktop widths
+- [ ] Rubric clean/dirty/saved/validation/approved states at phone and desktop widths
 - [ ] Portrait and landscape on both phone and tablet

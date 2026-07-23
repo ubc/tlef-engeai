@@ -1,0 +1,21 @@
+---
+description: Writing Feedback rubric, SFL, evidence, and formative-feedback rules
+globs: src/writing-feedback/**/*profile*,src/writing-feedback/**/*schema*,src/writing-feedback/**/*prompt*,src/writing-feedback/**/*engine*
+alwaysApply: false
+---
+
+# Rubric and SFL Feedback
+
+- The assignment's current approved rubric governs generation, PDF, and release; a saved draft never changes active behavior.
+- Native Canvas rubrics may initialize a local definition with provenance, but import never approves changes or writes a rubric back to Canvas.
+- Only instructors/admins may save or approve a rubric draft. TAs have read-only rubric access.
+- Approval promotes a higher version. Never mutate an approved rubric in place or rewrite the rubric provenance of an existing feedback run/release.
+- Require task, audience, purpose, constraints, learning outcomes, grading intent, the supported criteria/SFL lenses, and the complete ordinal scale before approval.
+- Never add hidden grading criteria or infer criterion weights/point mappings.
+- Derive numeric grade mapping only when every supported level has instructor-approved points; otherwise keep ordinal feedback and block numeric release.
+- Validate every evidence quotation as an exact substring of verified submission text.
+- LLED A2 maps Organization to textual meaning, Content to ideational/experiential meaning, and IP to interpersonal positioning.
+- Feedback names strengths and no more than three revision priorities using questions/actions.
+- Never rewrite a paragraph, supply a final answer, or grade by similarity to an exemplar.
+- Exemplars must be instructor-approved, multi-level anchors used only to clarify features.
+- Invalid structured output or evidence fails the run and requires regeneration/review.

@@ -66,6 +66,18 @@
                         <label for="courseInfoContentCount" id="courseInfoCountDescription">Number of Sections</label>
                         <input type="number" id="courseInfoContentCount" class="form-input" min="1" max="52" readonly>
                     </div>
+
+                    <!-- @rdschrs: Added the authorized Writing Feedback capability setting. -->
+                    <fieldset class="form-group">
+                        <legend>Course Features</legend>
+                        <label for="courseInfoWritingFeedback">
+                            <input type="checkbox" id="courseInfoWritingFeedback">
+                            Enable writing feedback and assessment tools for this course.
+                        </label>
+                        <p class="course-info-description">When enabled, instructors and TAs can import writing, review AI-assisted feedback, approve it, and prepare a Canvas release.</p>
+                        <button class="nav-btn btn-next" id="saveWritingFeedbackFeature" type="button">Save feature setting</button>
+                        <p id="writingFeedbackFeatureStatus" role="status" aria-live="polite"></p>
+                    </fieldset>
                 </div>
             </div>
         </div>
@@ -79,4 +91,3 @@
         </div>
     </div>
 </div>
-

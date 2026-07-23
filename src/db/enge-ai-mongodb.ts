@@ -48,6 +48,16 @@ import * as AcademicPeriodMongo from './mongo/academic-period-mongo';
 import * as CourseEnrollmentMongo from './mongo/course-enrollment-mongo';
 import * as CourseRosterMongo from './mongo/course-roster-mongo';
 import * as InstructorPeriodAllowanceMongo from './mongo/instructor-period-allowance-mongo';
+// @rdschrs: Implemented the Writing Feedback persistence façade and delegate boundary.
+import * as WritingFeedbackMongo from './mongo/writing-feedback-mongo';
+import type {
+    StaffReviewRevision,
+    WritingFeedbackRun,
+    WritingJob,
+    WritingRelease,
+    WritingRubricDefinition,
+    WritingSubmission
+} from '../writing-feedback/contracts';
 
 dotenv.config();
 
@@ -159,6 +169,313 @@ export class EngEAI_MongoDB {
 
     public deleteActiveCourse = async (course: activeCourse) =>
         CourseMongo.deleteActiveCourse(this.ctx(), course);
+
+    /**
+     * ensureA2WritingAssignment — returns or seeds the course's canonical A2 assignment.
+     *
+     * @param courseId - Owning course id
+     * @returns Existing, migrated, or newly seeded assignment
+     */
+    public ensureA2WritingAssignment = async (courseId: string) =>
+        WritingFeedbackMongo.ensureA2WritingAssignment(this.ctx(), courseId);
+
+    /**
+     * listWritingAssignments — lists course assignments after ensuring the A2 seed.
+     *
+     * @param courseId - Owning course id
+     * @returns Assignments in creation order
+     */
+    public listWritingAssignments = async (courseId: string) =>
+        WritingFeedbackMongo.listWritingAssignments(this.ctx(), courseId);
+
+    /**
+     * getWritingAssignment — retrieves one course-scoped assignment.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Internal assignment id
+     * @returns Assignment or `null` when absent/out of scope
+     */
+    public getWritingAssignment = async (courseId: string, assignmentId: string) =>
+        WritingFeedbackMongo.getWritingAssignment(this.ctx(), courseId, assignmentId);
+
+    /**
+     * getWritingAssignmentByCanvasId — resolves a course-local Canvas mapping.
+     *
+     * @param courseId - Owning course id
+     * @param canvasAssignmentId - Canvas assignment identifier
+     * @returns Mapped assignment or `null`
+     */
+    public getWritingAssignmentByCanvasId = async (courseId: string, canvasAssignmentId: string) =>
+        WritingFeedbackMongo.getWritingAssignmentByCanvasId(this.ctx(), courseId, canvasAssignmentId);
+
+    /**
+     * createCanvasWritingAssignment — idempotently persists a Canvas-mapped assignment.
+     *
+     * @param courseId - Owning course id
+     * @param canvasAssignmentId - Stable Canvas assignment identifier
+     * @param title - Imported assignment title
+     * @param dueAt - Optional imported deadline
+     * @returns Newly created or concurrently existing assignment
+     */
+    public createCanvasWritingAssignment = async (
+        courseId: string,
+        canvasAssignmentId: string,
+        title: string,
+        dueAt?: Date
+    ) => WritingFeedbackMongo.createCanvasWritingAssignment(this.ctx(), courseId, canvasAssignmentId, title, dueAt);
+
+    /**
+     * createManualWritingAssignment — persists a staff-created local assignment.
+     *
+     * @param courseId - Owning course id
+     * @param title - Validated display title
+     * @param dueAt - Optional deadline
+     * @returns Newly created assignment
+     */
+    public createManualWritingAssignment = async (courseId: string, title: string, dueAt?: Date) =>
+        WritingFeedbackMongo.createManualWritingAssignment(this.ctx(), courseId, title, dueAt);
+
+    /**
+     * countWritingSubmissionsByAssignment — aggregates queue counts for a course.
+     *
+     * @param courseId - Course whose submissions are counted
+     * @returns Assignment-id-to-count map
+     */
+    public countWritingSubmissionsByAssignment = async (courseId: string) =>
+        WritingFeedbackMongo.countWritingSubmissionsByAssignment(this.ctx(), courseId);
+
+    /**
+     * saveWritingRubricDraft — stores editable rubric state without activating it.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment receiving the draft
+     * @param draft - Validated rubric draft
+     * @returns Updated assignment or `null`
+     */
+    public saveWritingRubricDraft = async (
+        courseId: string,
+        assignmentId: string,
+        draft: WritingRubricDefinition
+    ) => WritingFeedbackMongo.saveWritingRubricDraft(this.ctx(), courseId, assignmentId, draft);
+
+    /**
+     * discardWritingRubricDraft — removes only the editable rubric draft.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment whose draft is removed
+     * @returns Updated assignment or `null`
+     */
+    public discardWritingRubricDraft = async (courseId: string, assignmentId: string) =>
+        WritingFeedbackMongo.discardWritingRubricDraft(this.ctx(), courseId, assignmentId);
+
+    /**
+     * approveWritingRubricDraft — atomically promotes the expected draft version.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment whose draft is approved
+     * @param rubric - Approved rubric derived from the current draft
+     * @param gradeMapping - Optional instructor-approved numeric mapping
+     * @returns Updated assignment or `null` for missing/stale state
+     */
+    public approveWritingRubricDraft = async (
+        courseId: string,
+        assignmentId: string,
+        rubric: WritingRubricDefinition,
+        gradeMapping?: Partial<Record<'emerging' | 'developing' | 'competent' | 'strong', number>>
+    ) => WritingFeedbackMongo.approveWritingRubricDraft(this.ctx(), courseId, assignmentId, rubric, gradeMapping);
+
+    /**
+     * mapWritingAssignmentToCanvas — attaches a unique Canvas mapping.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Local assignment id
+     * @param canvasAssignmentId - Canvas assignment id
+     * @returns Updated assignment or `null`
+     */
+    public mapWritingAssignmentToCanvas = async (courseId: string, assignmentId: string, canvasAssignmentId: string) =>
+        WritingFeedbackMongo.mapWritingAssignmentToCanvas(this.ctx(), courseId, assignmentId, canvasAssignmentId);
+
+    /**
+     * createWritingSubmission — persists restricted review text outside RAG/Qdrant.
+     *
+     * @param input - Validated submission fields excluding server provenance
+     * @returns Newly persisted submission
+     */
+    public createWritingSubmission = async (input: Omit<WritingSubmission, 'id' | 'createdAt' | 'updatedAt'>) =>
+        WritingFeedbackMongo.createWritingSubmission(this.ctx(), input);
+
+    /**
+     * getWritingSubmission — retrieves one scoped submission with review history.
+     *
+     * @param courseId - Owning course id
+     * @param submissionId - Internal submission id
+     * @returns Submission detail or `null`
+     */
+    public getWritingSubmission = async (courseId: string, submissionId: string) =>
+        WritingFeedbackMongo.getWritingSubmission(this.ctx(), courseId, submissionId);
+
+    /**
+     * listWritingSubmissions — returns an assignment review queue newest first.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment whose queue is requested
+     * @returns Scoped submission list
+     */
+    public listWritingSubmissions = async (courseId: string, assignmentId: string) =>
+        WritingFeedbackMongo.listWritingSubmissions(this.ctx(), courseId, assignmentId);
+
+    /**
+     * updateVerifiedWritingText — stores staff-confirmed extraction text.
+     *
+     * @param courseId - Owning course id
+     * @param submissionId - Submission being verified
+     * @param verifiedText - Staff-confirmed source text
+     * @returns Updated submission or `null`
+     */
+    public updateVerifiedWritingText = async (courseId: string, submissionId: string, verifiedText: string) =>
+        WritingFeedbackMongo.updateVerifiedWritingText(this.ctx(), courseId, submissionId, verifiedText);
+
+    /**
+     * setWritingSubmissionStatus — persists a service-validated workflow status.
+     *
+     * @param courseId - Owning course id
+     * @param submissionId - Submission to transition
+     * @param status - Target workflow status
+     * @returns Updated submission or `null`
+     */
+    public setWritingSubmissionStatus = async (courseId: string, submissionId: string, status: WritingSubmission['status']) =>
+        WritingFeedbackMongo.setWritingSubmissionStatus(this.ctx(), courseId, submissionId, status);
+
+    /**
+     * createWritingFeedbackRun — appends immutable model-output provenance.
+     *
+     * @param input - Completed run fields excluding server provenance
+     * @returns Newly persisted feedback run
+     */
+    public createWritingFeedbackRun = async (input: Omit<WritingFeedbackRun, 'id' | 'createdAt'>) =>
+        WritingFeedbackMongo.createWritingFeedbackRun(this.ctx(), input);
+
+    /**
+     * getLatestWritingFeedbackRun — retrieves the newest run for a submission.
+     *
+     * @param submissionId - Submission whose generation history is queried
+     * @returns Latest run or `null`
+     */
+    public getLatestWritingFeedbackRun = async (submissionId: string) =>
+        WritingFeedbackMongo.getLatestWritingFeedbackRun(this.ctx(), submissionId);
+
+    /**
+     * appendWritingReview — appends an immutable staff revision and invalidates approval.
+     *
+     * @param courseId - Owning course id
+     * @param submissionId - Submission under review
+     * @param revision - Staff revision excluding server provenance
+     * @returns Newly appended revision
+     */
+    public appendWritingReview = async (
+        courseId: string,
+        submissionId: string,
+        revision: Omit<StaffReviewRevision, 'id' | 'createdAt' | 'submissionId'>
+    ) => WritingFeedbackMongo.appendWritingReview(this.ctx(), courseId, submissionId, revision);
+
+    /**
+     * approveWritingSubmission — records explicit approval for draft-ready feedback.
+     *
+     * @param courseId - Owning course id
+     * @param submissionId - Draft-ready submission
+     * @param staffUserId - Internal approving staff user id
+     * @param staffName - Optional display name used as PDF comment author
+     * @returns Approved submission or `null` when the status predicate fails
+     */
+    public approveWritingSubmission = async (courseId: string, submissionId: string, staffUserId: string, staffName?: string) =>
+        WritingFeedbackMongo.approveWritingSubmission(this.ctx(), courseId, submissionId, staffUserId, staffName);
+
+    /**
+     * createWritingRelease — persists one fingerprinted release attempt.
+     *
+     * @param release - Release fields excluding server provenance
+     * @returns Newly persisted release
+     */
+    public createWritingRelease = async (release: Omit<WritingRelease, 'id' | 'createdAt' | 'updatedAt'>) =>
+        WritingFeedbackMongo.createWritingRelease(this.ctx(), release);
+
+    /**
+     * findWritingReleaseByFingerprint — reconciles retries to prior release state.
+     *
+     * @param payloadFingerprint - Stable outbound payload hash
+     * @returns Existing release or `null`
+     */
+    public findWritingReleaseByFingerprint = async (payloadFingerprint: string) =>
+        WritingFeedbackMongo.findWritingReleaseByFingerprint(this.ctx(), payloadFingerprint);
+
+    /**
+     * finalizeWritingRelease — records final provider state for one fingerprint.
+     *
+     * @param payloadFingerprint - Stable outbound payload hash
+     * @param update - Final status and returned Canvas identifiers
+     * @returns Updated release or `null`
+     */
+    public finalizeWritingRelease = async (
+        payloadFingerprint: string,
+        update: Pick<WritingRelease, 'status' | 'canvasCommentId' | 'canvasSubmissionId'>
+    ) => WritingFeedbackMongo.finalizeWritingRelease(this.ctx(), payloadFingerprint, update);
+
+    /**
+     * enqueueWritingJob — appends retry-bounded background work.
+     *
+     * @param job - Job fields excluding server provenance and attempts
+     * @returns Newly queued job
+     */
+    public enqueueWritingJob = async (job: Omit<WritingJob, 'id' | 'createdAt' | 'updatedAt' | 'attempts'>) =>
+        WritingFeedbackMongo.enqueueWritingJob(this.ctx(), job);
+
+    /**
+     * leaseNextWritingJob — atomically claims the oldest runnable job.
+     *
+     * @param leaseMs - Optional lease duration before work can be reclaimed
+     * @returns Leased job or `null`
+     */
+    public leaseNextWritingJob = async (leaseMs?: number) =>
+        WritingFeedbackMongo.leaseNextWritingJob(this.ctx(), leaseMs);
+
+    /**
+     * completeWritingJob — completes a currently leased job.
+     *
+     * @param jobId - Internal job id
+     * @returns When the conditional update completes
+     */
+    public completeWritingJob = async (jobId: string) =>
+        WritingFeedbackMongo.completeWritingJob(this.ctx(), jobId);
+
+    /**
+     * failWritingJob — requeues or terminally fails leased work.
+     *
+     * @param job - Leased job snapshot with attempt budget
+     * @param sanitizedError - Content-safe operational diagnostic
+     * @returns When the conditional transition completes
+     */
+    public failWritingJob = async (job: WritingJob, sanitizedError: string) =>
+        WritingFeedbackMongo.failWritingJob(this.ctx(), job, sanitizedError);
+
+    /**
+     * deleteWritingAssignment — removes an assignment only when it has no submissions.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment requested for deletion
+     * @returns Deletion result and blocking submission count
+     */
+    public deleteWritingAssignment = async (courseId: string, assignmentId: string) =>
+        WritingFeedbackMongo.deleteWritingAssignment(this.ctx(), courseId, assignmentId);
+
+    /**
+     * deleteWritingSubmission — removes a scoped submission and dependent workflow records.
+     *
+     * @param courseId - Owning course id
+     * @param submissionId - Submission requested for deletion
+     * @returns Whether a scoped submission was deleted
+     */
+    public deleteWritingSubmission = async (courseId: string, submissionId: string) =>
+        WritingFeedbackMongo.deleteWritingSubmission(this.ctx(), courseId, submissionId);
 
     public removeCourseFromAllUsers = async (courseId: string): Promise<number> =>
         CourseMongo.removeCourseFromAllUsers(this.ctx(), courseId);

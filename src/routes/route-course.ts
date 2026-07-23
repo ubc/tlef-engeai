@@ -12,6 +12,8 @@ import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { isCourseStaff } from '../utils/course-staff';
 import { normalizeRouteParams } from '../helpers/route-params';
+// @rdschrs: Implemented the capability-gated Writing Feedback instructor page.
+import { isCourseFeatureEnabled } from '../helpers/course-features';
 
 const router = express.Router();
 
@@ -92,6 +94,23 @@ function requireInstructorForCourse(req: Request, res: Response, next: express.N
     if (!ctx?.isInstructor) {
         appLogger.log(`[COURSE-ROUTES] User attempted instructor route without instructor role, redirecting to course-selection`);
         return res.redirect('/course-selection');
+    }
+    next();
+}
+
+/**
+ * requireWritingFeedbackFeaturePage — prevents disabled courses from serving the workspace shell.
+ *
+ * Runs after course access and instructor-role validation. Missing capability
+ * configuration is disabled and redirects staff to the existing Documents page.
+ */
+function requireWritingFeedbackFeaturePage(req: Request, res: Response, next: express.NextFunction) {
+    const course = (req as any).courseContext?.course;
+
+    // Treat legacy courses without feature metadata as opted out.
+    if (!isCourseFeatureEnabled(course, 'writingFeedback')) {
+        const { courseId } = normalizeRouteParams(req.params);
+        return res.redirect(`/course/${courseId}/instructor/documents?notice=writing-feedback-disabled`);
     }
     next();
 }
@@ -191,6 +210,18 @@ function serveStudentShell() {
  * @response 500 - Server error
  */
 router.get('/course/:courseId/instructor/documents', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+/**
+ * GET /course/:courseId/instructor/writing-feedback
+ * Serves the instructor SPA shell only after access, staff role, and capability checks.
+ */
+router.get(
+    '/course/:courseId/instructor/writing-feedback',
+    validateCourseAccess,
+    requireInstructorForCourse,
+    requireWritingFeedbackFeaturePage,
+    serveInstructorShell()
+);
 
 
 /**
@@ -485,4 +516,3 @@ router.get('/course/:courseId/instructor', validateCourseAccess, requireInstruct
 });
 
 export default router;
-

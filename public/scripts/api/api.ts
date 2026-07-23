@@ -43,6 +43,7 @@ export async function sendMessageToServer(text: string): Promise<MessageReply> {
  * flag-instructor, 
  * monitor-instructor, 
  * documents-instructor, 
+ * writing-feedback,
  * course-setup, 
  * document-setup, 
  * flag-setup, 
@@ -65,6 +66,7 @@ export async function loadComponentHTML(
                     | 'flag-instructor'
                     | 'monitor-instructor'
                     | 'documents-instructor'
+                    | 'writing-feedback'
                     | 'course-setup'
                     | 'document-setup'
                     | 'flag-setup'
@@ -76,6 +78,7 @@ export async function loadComponentHTML(
                     | 'system-prompts-instructor'
 ): Promise<string> {
 
+    // @rdschrs: Added Writing Feedback to the shared component loader.
     let response: Response;
 
     // Using switch logic for page request
@@ -97,6 +100,9 @@ export async function loadComponentHTML(
             break;
         case 'documents-instructor':
             response = await fetch(`/components/documents/${componentName}.html`);
+            break;
+        case 'writing-feedback':
+            response = await fetch(`/components/writing-feedback/${componentName}.html`);
             break;
         case 'course-setup':
         case 'document-setup':
@@ -137,5 +143,3 @@ export async function loadComponentHTML(
 export function renderFeatherIcons(): void {
     try { feather.replace(); } catch {}
 }
-
-

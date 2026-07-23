@@ -1,0 +1,18 @@
+---
+description: Writing Feedback system boundaries and human-in-the-loop invariants
+globs: src/writing-feedback/**,src/routes/route-writing-feedback.ts,src/db/mongo/writing-feedback-mongo.ts,public/**/writing-feedback*
+alwaysApply: false
+---
+
+# Writing Feedback System
+
+- Require course staff RBAC and the `writingFeedback` course capability on every operational endpoint.
+- Instructors/admins configure the capability; instructors and TAs operate it.
+- Instructors/admins create, edit, and approve rubric versions; TAs may view the approved rubric but must not mutate it.
+- Keep routes thin, orchestration in `src/writing-feedback/`, and persistence in the Mongo delegate.
+- Model output is immutable draft provenance. Staff edits are append-only revisions.
+- Approval and release are separate explicit actions; generation never releases.
+- Canvas import is an explicit staff action that writes local records only. It must not create/associate a Canvas rubric, comment, or grade.
+- Keep local synthetic Canvas demo, not-configured, and future live OAuth modes visibly and technically distinct.
+- Missing capability configuration means disabled. Disabling never deletes assessment records.
+- Never log student content, model prompts/responses, Canvas identifiers, or tokens.

@@ -157,6 +157,21 @@ export interface InstructorInfo {
     name: string;
 }
 
+// @rdschrs: Implemented backward-compatible Writing Feedback course capability types.
+/**
+ * Optional capability metadata persisted on an active course.
+ *
+ * Consumers must treat a missing map or entry as disabled so legacy course
+ * records cannot expose newly introduced functionality without staff opt-in.
+ */
+export interface CourseFeatures {
+    writingFeedback?: {
+        enabled: boolean; // explicit availability switch checked by page and API gates
+        enabledAt?: Date; // first-enable timestamp retained across later toggles
+        enabledBy?: string; // internal enabling staff user id for provenance, never a PUID
+    }; // Writing Feedback workspace capability; absence means disabled
+}
+
 export interface activeCourse {
     id : string,
     date : Date,
@@ -184,6 +199,8 @@ export interface activeCourse {
     systemPromptConfig?: CourseSystemPromptConfig;
     /** FK to `academic-periods.id`; lazy-migrated via AP-001 when missing */
     academicPeriodId?: string;
+    /** Optional capability map; missing entries remain disabled for legacy courses. */
+    features?: CourseFeatures;
 }
 
 /**

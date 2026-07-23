@@ -1,0 +1,20 @@
+---
+description: Canvas OAuth, import, dry-run, and idempotent release rules
+globs: src/writing-feedback/**/*canvas*,src/writing-feedback/**/*release*,src/routes/route-writing-feedback.ts
+alwaysApply: false
+---
+
+# Canvas OAuth and Release
+
+- Expose an honest integration status before listing/importing: local synthetic demo, not configured, or approved live connection.
+- Local demo import must be visibly synthetic, make no Canvas request, and persist no OAuth token.
+- Use institutionally scoped OAuth. Encrypt refresh tokens; keep access tokens memory-only.
+- Pin/allow-list the Canvas base URL and request only documented endpoint scopes.
+- Respect pagination and throttling headers with bounded backoff.
+- Instructors and TAs may explicitly import after configuration; only instructors/admins may configure the connection or mutate/approve rubrics.
+- Import reads selected Canvas data into local writing records and is idempotent by assignment/student/attempt. It must not write grades, comments, files, or rubrics to Canvas.
+- Always provide a release preview and require an approved feedback revision.
+- Upload the comment file first, then submit grade, rubric assessment, comment, and file ID together.
+- Persist a payload fingerprint and returned Canvas identifiers.
+- On timeout, reconcile the current submission/comments before retrying; never blindly duplicate a comment.
+- Mock Canvas adapters must be visibly identified and must not be described as production connectivity.

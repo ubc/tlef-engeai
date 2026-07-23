@@ -103,3 +103,8 @@ planner
 
 *.code-workspace
 
+
+# Local dev artifacts — never commit
+cert/
+output/
+.claude/
