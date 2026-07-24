@@ -15,14 +15,14 @@ import {
 } from '../rag/rag-prompts';
 import { Conversation } from 'ubc-genai-toolkit-llm/dist/conversation-interface';
 import { IDGenerator } from '../utils/unique-id-generator';
-import { Chat, ChatMessage, ConversationModeId, PersistedConversationModeId, LearningObjectiveForDisplay, activeCourse, DEFAULT_PROMPT_ID } from '../types/shared';
+import { Chat, ChatMessage, ConversationModeId, PersistedConversationModeId, LearningObjectiveForDisplay, activeCourse, DEFAULT_PROMPT_ID, PathwayCta } from '../types/shared';
 import { conversationModePrompts } from './compose-system-prompt';
 import { assembleCourseSystemPrompt } from './system-prompts/assemble-course-system-prompt';
 import { getDefaultAssistantMessage } from './initial-assistant-prompt-default';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import { isDeveloperMode, generateMockStreamingResponse } from '../helpers/developer-mode';
-import { evaluateGuardrails } from './guided-pathways/guardrail-orchestrator';
+import { evaluatePathways } from '../guided-pathways/pathway-orchestrator';
 
 /**
  * Shown to students who try to send a new message in a retired scenario-generation chat.
@@ -342,41 +342,36 @@ export class ChatApp {
         }
 
         // ====================================================================
-        // STEP 0: GUARDRAILS (Guided Pathways P0)
+        // STEP 0: GUIDED PATHWAYS (pre-LLM intercept)
         // ====================================================================
         const conversationMode = this.getGuardrailConversationMode(chatId);
 
-        //if conversation mode (socratic or explanatory) is not undefined, evaluate the guardrails
         if (conversationMode) {
-            const guardrailResult = await evaluateGuardrails({
+            const pathwayResult = await evaluatePathways({
                 message,
                 courseName,
                 conversationMode,
             });
 
-            // If guardrails are triggered, add user message to history only and return assistant message
-            if (guardrailResult.triggered && guardrailResult.responseText) {
+            if (pathwayResult.triggered && pathwayResult.responseText) {
                 this.addUserMessageToHistoryOnly(chatId, message, userId, courseName);
 
-                // Log the guardrail result
-                appLogger.log(`############   GUIDE RAIL TRIGGERED   ##################`);
-                appLogger.log(``);
-                appLogger.log(`[CHAT-APP] 🔍 Guardrail result: ${guardrailResult.responseText}`);
-                appLogger.log(``);
+                appLogger.log(`############   PATHWAY TRIGGERED   ##################`);
+                appLogger.log(`[CHAT-APP] Pathway: ${pathwayResult.winningPathwayId}`);
                 appLogger.log(`########################################################`);
-
 
                 return this.addAssistantMessage(
                     chatId,
-                    guardrailResult.responseText,
+                    pathwayResult.responseText,
                     userId,
-                    courseName
+                    courseName,
+                    pathwayResult.ctas
                 );
             }
 
             else {
 
-                appLogger.log(`############   GUIDE RAIL NOT TRIGGERED   ##################`);
+                appLogger.log(`############   PATHWAY NOT TRIGGERED   ##################`);
                 appLogger.log(``);
                 appLogger.log(``);
                 appLogger.log(`########################################################`);
@@ -1039,7 +1034,13 @@ export class ChatApp {
      * @param retrievedDocuments - Optional array of retrieved document texts
      * @returns ChatMessage - The created assistant message
      */
-    private addAssistantMessage(chatId: string, message: string, userId: string, courseName: string = ''): ChatMessage {
+    private addAssistantMessage(
+        chatId: string,
+        message: string,
+        userId: string,
+        courseName: string = '',
+        ctas?: PathwayCta[]
+    ): ChatMessage {
         // Generate message ID
         const currentDate = new Date();
         const messageId = this.chatIDGenerator.messageID(message, chatId, currentDate);
@@ -1052,6 +1053,7 @@ export class ChatApp {
             courseName: courseName,
             text: message,
             timestamp: Date.now(),
+            ...(ctas && ctas.length > 0 ? { ctas } : {}),
         };
         
         try {

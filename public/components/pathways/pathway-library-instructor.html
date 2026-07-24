@@ -1,0 +1,93 @@
+<!-- public/components/pathways/pathway-library-instructor.html -->
+<section class="pathway-library" aria-labelledby="pathway-library-title">
+    <header class="pathway-library__header">
+        <h1 id="pathway-library-title" class="pathway-library__title">Pathway Library</h1>
+        <p class="pathway-library__subtitle">
+            Configure guided pathways that intercept chat before the teaching assistant responds.
+            List order is priority (top wins when multiple could match).
+        </p>
+        <div class="pathway-library__header-actions">
+            <button type="button" id="pathway-library-add-btn" class="pathway-library__btn pathway-library__btn--primary">
+                + Add Pathway
+            </button>
+        </div>
+    </header>
+
+    <p id="pathway-library-status" class="pathway-library__status" role="status" aria-live="polite"></p>
+
+    <div id="pathway-library-list" class="pathway-library__list"></div>
+
+    <div id="pathway-library-empty" class="pathway-library__empty" hidden>
+        <p>No pathways yet. Add one, or reload to restore platform defaults.</p>
+    </div>
+
+    <!-- Styles reference panel -->
+    <aside id="pathway-cta-styles-panel" class="pathway-library__styles-panel" hidden>
+        <div class="pathway-library__styles-panel-inner">
+            <h2>CTA button styles</h2>
+            <p>These styles appear under pathway replies in student chat.</p>
+            <ul class="pathway-library__style-swatches">
+                <li><span class="pathway-cta pathway-cta--primary">Primary</span></li>
+                <li><span class="pathway-cta pathway-cta--secondary">Secondary</span></li>
+                <li><span class="pathway-cta pathway-cta--tertiary">Tertiary</span></li>
+                <li><span class="pathway-cta pathway-cta--quaternary">Quaternary</span></li>
+                <li><span class="pathway-cta pathway-cta--link">Link</span></li>
+            </ul>
+            <button type="button" id="pathway-cta-styles-close" class="pathway-library__btn">Close</button>
+        </div>
+    </aside>
+</section>
+
+<template id="pathway-block-template">
+    <article class="pathway-block" data-pathway-id="">
+        <label class="pathway-block__enable">
+            <input type="checkbox" class="pathway-block__enabled" />
+            <span>Enabled globally</span>
+        </label>
+
+        <div class="pathway-block__field">
+            <label class="pathway-block__label">Trigger description</label>
+            <textarea class="pathway-block__trigger" rows="4" placeholder="Describe when this pathway should fire…"></textarea>
+        </div>
+
+        <div class="pathway-block__ctas-section">
+            <div class="pathway-block__ctas-header">
+                <span class="pathway-block__label">CTAs</span>
+                <button type="button" class="pathway-block__see-styles">see styles →</button>
+            </div>
+            <div class="pathway-block__cta-list"></div>
+            <button type="button" class="pathway-block__add-cta">+ Add CTA</button>
+        </div>
+
+        <div class="pathway-block__field">
+            <div class="pathway-block__response-header">
+                <label class="pathway-block__label">Assistant response (optional)</label>
+                <span class="pathway-block__hint">Supports Markdown. If set, skips the AI model call entirely and uses this text as the reply.</span>
+            </div>
+            <textarea class="pathway-block__response" rows="6" placeholder="Predetermined assistant reply…"></textarea>
+        </div>
+
+        <div class="pathway-block__actions">
+            <button type="button" class="pathway-library__btn pathway-block__up">↑ Up</button>
+            <button type="button" class="pathway-library__btn pathway-block__down">↓ Down</button>
+            <button type="button" class="pathway-library__btn pathway-library__btn--danger pathway-block__remove">Remove</button>
+            <button type="button" class="pathway-library__btn pathway-library__btn--primary pathway-block__save">Save</button>
+            <span class="pathway-block__save-status" aria-live="polite"></span>
+        </div>
+    </article>
+</template>
+
+<template id="pathway-cta-row-template">
+    <div class="pathway-cta-row" data-cta-id="">
+        <input type="text" class="pathway-cta-row__label" placeholder="Button text" aria-label="CTA label" />
+        <input type="url" class="pathway-cta-row__url" placeholder="https://…" aria-label="CTA URL" />
+        <select class="pathway-cta-row__style" aria-label="CTA style">
+            <option value="primary">Primary</option>
+            <option value="secondary">Secondary</option>
+            <option value="tertiary">Tertiary</option>
+            <option value="quaternary">Quaternary</option>
+            <option value="link">Link</option>
+        </select>
+        <button type="button" class="pathway-cta-row__delete" aria-label="Remove CTA">×</button>
+    </div>
+</template>

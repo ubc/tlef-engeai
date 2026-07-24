@@ -19,12 +19,12 @@ export function getCourseIdFromURL(): string | null {
  * Extract instructor view from current URL
  * Example: /course/abc123/instructor/documents -> 'documents'
  */
-export function getInstructorViewFromURL(): 'documents' | 'flags' | 'monitor' | 'chat' | 'assistant-prompts' | 'system-prompts' | 'scenario-questions' | 'course-information' | 'about' | 'welcoming-message' | null {
+export function getInstructorViewFromURL(): 'documents' | 'flags' | 'monitor' | 'chat' | 'assistant-prompts' | 'system-prompts' | 'scenario-questions' | 'pathway-library' | 'course-information' | 'about' | 'welcoming-message' | null {
     const pathMatch = window.location.pathname.match(/^\/course\/[a-f0-9]{12}\/instructor\/([^\/]+)/);
     if (!pathMatch) return null;
     
     const view = pathMatch[1];
-    const validViews = ['documents', 'flags', 'monitor', 'chat', 'assistant-prompts', 'system-prompts', 'scenario-questions', 'course-information', 'about', 'welcoming-message'];
+    const validViews = ['documents', 'flags', 'monitor', 'chat', 'assistant-prompts', 'system-prompts', 'scenario-questions', 'pathway-library', 'course-information', 'about', 'welcoming-message'];
     return validViews.includes(view) ? view as any : null;
 }
 

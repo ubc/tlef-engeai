@@ -8,7 +8,9 @@ jest.mock('../collection-registry-mongo', () => ({
         users: 'TestCourse_users',
         flags: 'TestCourse_flags',
         memoryAgent: 'TestCourse_memory-agent',
-        scheduledTasks: 'TestCourse_scheduled_tasks'
+        scheduledTasks: 'TestCourse_scheduled_tasks',
+        scenarioQuestions: 'TestCourse_scenario_questions',
+        pathways: 'TestCourse_pathways',
     })
 }));
 

@@ -28,6 +28,7 @@ import { inactivityTracker } from '../services/inactivity-tracker.js';
 import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from '../feature/assistant-prompts.js';
 import { initializeSystemPrompts, flushSystemPromptOnLeave } from '../feature/system-prompts.js';
 import { initializeScenarioQuestionsInstructor, isScenarioQuestionsMounted, syncScenarioQuestionsFromURL } from '../feature/scenario-questions-instructor.js';
+import { initializePathwayLibrary } from '../feature/pathway-library.js';
 import { 
     getCourseIdFromURL, 
     getInstructorViewFromURL, 
@@ -65,6 +66,7 @@ function mapViewToStateEvent(view: string): StateEvent {
         case 'assistant-prompts': return StateEvent.AssistantPrompts;
         case 'system-prompts': return StateEvent.SystemPrompts;
         case 'scenario-questions': return StateEvent.ScenarioQuestions;
+        case 'pathway-library': return StateEvent.PathwayLibrary;
         default: return StateEvent.Documents;
     }
 }
@@ -76,7 +78,8 @@ const enum StateEvent {
     Chat,
     AssistantPrompts,
     SystemPrompts,
-    ScenarioQuestions
+    ScenarioQuestions,
+    PathwayLibrary
 }
 
 let currentClass : activeCourse =
@@ -474,6 +477,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const assistantPromptsStateEl = document.getElementById('assistant-prompts-state');
     const systemPromptsStateEl = document.getElementById('system-prompts-state');
     const scenarioQuestionsStateEl = document.getElementById('scenario-questions-state');
+    const pathwayLibraryStateEl = document.getElementById('pathway-library-state');
 
     chatStateEl?.addEventListener('click', async () => {
         navigateToInstructorView('chat');
@@ -503,6 +507,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     scenarioQuestionsStateEl?.addEventListener('click', () => {
         navigateToInstructorView('scenario-questions');
     });
+
+    pathwayLibraryStateEl?.addEventListener('click', () => {
+        navigateToInstructorView('pathway-library');
+    });
     
     // Handle browser back/forward navigation
     window.addEventListener('popstate', async () => {
@@ -526,7 +534,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 currentState = StateEvent.Chat;
                 await showChatContent();
             } else if (
-                (view === 'monitor' || view === 'assistant-prompts' || view === 'system-prompts' || view === 'scenario-questions') &&
+                (view === 'monitor' || view === 'assistant-prompts' || view === 'system-prompts' || view === 'scenario-questions' || view === 'pathway-library') &&
                 window.innerWidth < 768
             ) {
                 // Desktop-first warning on mobile/tablet
@@ -598,6 +606,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         | 'assistant-prompts-instructor'
                         | 'system-prompts-instructor'
                         | 'scenario-questions-instructor'
+                        | 'pathway-library-instructor'
         ) => {
 
 
@@ -652,6 +661,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             else if (componentName === 'scenario-questions-instructor') {
                 await initializeScenarioQuestionsInstructor(currentClass);
+            }
+            else if (componentName === 'pathway-library-instructor') {
+                await initializePathwayLibrary(currentClass);
             }
             
             renderFeatherIcons();
@@ -758,6 +770,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             expandFeatureSidebar();
             hideChatList(); // Ensure chat list is hidden
         }
+        else if ( currentState === StateEvent.PathwayLibrary){
+            loadComponent('pathway-library-instructor');
+            updateSidebarState();
+            expandFeatureSidebar();
+            hideChatList();
+        }
     }
 
     /**
@@ -801,6 +819,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         assistantPromptsStateEl?.classList.remove('active');
         systemPromptsStateEl?.classList.remove('active');
         scenarioQuestionsStateEl?.classList.remove('active');
+        pathwayLibraryStateEl?.classList.remove('active');
 
         // Add active class to the current state's menu item
         switch(currentState) {
@@ -824,6 +843,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 break;
             case StateEvent.ScenarioQuestions:
                 scenarioQuestionsStateEl?.classList.add('active');
+                break;
+            case StateEvent.PathwayLibrary:
+                pathwayLibraryStateEl?.classList.add('active');
                 break;
         }
     }
@@ -1486,7 +1508,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentState = StateEvent.Chat;
         await showChatContent();
     } else if (
-        (viewFromURL === 'monitor' || viewFromURL === 'assistant-prompts' || viewFromURL === 'system-prompts' || viewFromURL === 'scenario-questions') &&
+        (viewFromURL === 'monitor' || viewFromURL === 'assistant-prompts' || viewFromURL === 'system-prompts' || viewFromURL === 'scenario-questions' || viewFromURL === 'pathway-library') &&
         window.innerWidth < 768
     ) {
         // Desktop-first warning for Monitor, Assistant Prompts, System Prompts on mobile/tablet

@@ -8,11 +8,13 @@ describe('memory-agent-prompt', () => {
         const xml = formatStruggleCatalogForPrompt([
             {
                 struggleTopic: 'Phase diagrams',
+                topicOrWeekId: 'week-1',
                 topicOrWeekTitle: 'Week 1',
                 itemTitle: 'Lecture 1'
             },
             {
                 struggleTopic: 'Enthalpy',
+                topicOrWeekId: 'week-1',
                 topicOrWeekTitle: 'Week 1',
                 itemTitle: 'Lecture 2'
             }
@@ -27,7 +29,7 @@ describe('memory-agent-prompt', () => {
 
     it('buildMemoryAgentSystemPrompt includes empty existing block when none stored', () => {
         const prompt = buildMemoryAgentSystemPrompt(
-            [{ struggleTopic: 'Vectors', topicOrWeekTitle: 'Week 2', itemTitle: 'Lab' }],
+            [{ struggleTopic: 'Vectors', topicOrWeekId: 'week-2', topicOrWeekTitle: 'Week 2', itemTitle: 'Lab' }],
             []
         );
 
@@ -40,7 +42,7 @@ describe('memory-agent-prompt', () => {
 
     it('buildMemoryAgentSystemPrompt lists existing student topics', () => {
         const prompt = buildMemoryAgentSystemPrompt(
-            [{ struggleTopic: 'Vectors', topicOrWeekTitle: 'Week 2', itemTitle: 'Lab' }],
+            [{ struggleTopic: 'Vectors', topicOrWeekId: 'week-2', topicOrWeekTitle: 'Week 2', itemTitle: 'Lab' }],
             ['Vectors']
         );
 

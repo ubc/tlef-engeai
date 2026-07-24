@@ -49,6 +49,7 @@ import * as CourseEnrollmentMongo from './mongo/course-enrollment-mongo';
 import * as CourseRosterMongo from './mongo/course-roster-mongo';
 import * as InstructorPeriodAllowanceMongo from './mongo/instructor-period-allowance-mongo';
 import * as ScenarioQuestionsMongo from './mongo/scenario-questions-mongo';
+import * as PathwaysMongo from './mongo/pathways-mongo';
 import type {
     ScenarioQuestionStatus,
     ScenarioStudentResponse
@@ -72,7 +73,14 @@ export class EngEAI_MongoDB {
 
     private collectionNamesCache: Map<
         string,
-        { users: string; flags: string; memoryAgent: string; scheduledTasks: string; scenarioQuestions: string }
+        {
+            users: string;
+            flags: string;
+            memoryAgent: string;
+            scheduledTasks: string;
+            scenarioQuestions: string;
+            pathways: string;
+        }
     > = new Map();
 
     private scheduledTasksIndexesEnsured = new Set<string>();
@@ -460,6 +468,34 @@ export class EngEAI_MongoDB {
 
     public getLearningObjectivesForTopicOrWeek = async (courseId: string, topicOrWeekId: string) =>
         TopicWeekMongo.getLearningObjectivesForTopicOrWeek(this.ctx(), courseId, topicOrWeekId);
+
+    /**
+     * #########################################################
+     * Guided Pathways — pathways-mongo.ts
+     * #########################################################
+     */
+    public ensurePathwaysCollection = async (courseId: string) =>
+        PathwaysMongo.ensurePathwaysCollection(this.ctx(), courseId);
+
+    public listPathways = async (courseName: string) => PathwaysMongo.listPathways(this.ctx(), courseName);
+
+    public listPathwaysForEvaluation = async (courseName: string) =>
+        PathwaysMongo.listPathwaysForEvaluation(this.ctx(), courseName);
+
+    public createPathway = async (courseName: string, input: PathwaysMongo.CreatePathwayInput) =>
+        PathwaysMongo.createPathway(this.ctx(), courseName, input);
+
+    public updatePathway = async (
+        courseName: string,
+        pathwayId: string,
+        input: PathwaysMongo.UpdatePathwayInput
+    ) => PathwaysMongo.updatePathway(this.ctx(), courseName, pathwayId, input);
+
+    public deletePathway = async (courseName: string, pathwayId: string) =>
+        PathwaysMongo.deletePathway(this.ctx(), courseName, pathwayId);
+
+    public reorderPathways = async (courseName: string, orderedIds: string[]) =>
+        PathwaysMongo.reorderPathways(this.ctx(), courseName, orderedIds);
 
     /**
      * #########################################################

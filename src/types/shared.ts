@@ -68,6 +68,37 @@ export interface UpdateChatConversationModeResponse {
     error?: string;
 }
 
+/** Visual priority for a pathway CTA button rendered in student chat. */
+export type PathwayCtaStyle = 'primary' | 'secondary' | 'tertiary' | 'quaternary' | 'link';
+
+/**
+ * One call-to-action button attached to a guided pathway (and snapshotted onto ChatMessage).
+ *
+ * Used by the Pathway Library instructor UI and student chat CTA row.
+ */
+export interface PathwayCta {
+    id: string; // stable CTA id within the pathway
+    label: string; // button label shown to the student
+    url: string; // http(s) destination opened in a new tab
+    style: PathwayCtaStyle; // Primary → Link visual priority
+}
+
+/**
+ * One instructor-configurable guided pathway stored in `{courseName}_pathways`.
+ *
+ * Evaluated pre-LLM on Socratic/Explanatory sends. List `order` is classifier priority.
+ * Empty `assistantResponse` makes the pathway ineligible to intercept.
+ */
+export interface GuidedPathway {
+    id: string; // stable pathway id (seed keeps mental-health-crisis etc.)
+    order: number; // ascending = evaluator priority
+    enabledGlobally: boolean; // active for this course (mockup: Enabled globally)
+    triggerDescription: string; // fed into the dynamic evaluator prompt
+    assistantResponse: string; // markdown reply; empty => cannot intercept
+    ctas: PathwayCta[]; // resource buttons shown with the predetermined reply
+    updatedAt: number; // Unix epoch ms of last instructor edit
+}
+
 /**
  * One persisted turn in a chat thread.
  *
@@ -89,6 +120,8 @@ export interface ChatMessage {
     text: string;
     /** Unix epoch milliseconds. */
     timestamp: number;
+    /** Snapshot of pathway CTAs when a guided pathway intercept fired; omitted otherwise. */
+    ctas?: PathwayCta[];
 }
 
 /**
@@ -190,6 +223,8 @@ export interface activeCourse {
         scheduledTasks?: string;
         /** Per-course Practice Scenarios question bank (e.g. `${courseName}_scenario_questions`); SQ-001 lazy-provisions on existing courses */
         scenarioQuestions?: string;
+        /** Per-course Guided Pathway Library (e.g. `${courseName}_pathways`); lazy-provisions on existing courses */
+        pathways?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
     /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */

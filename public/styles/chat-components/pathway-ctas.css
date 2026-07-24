@@ -1,0 +1,53 @@
+/* public/styles/chat-components/pathway-ctas.css — student chat CTA row */
+
+.pathway-cta-row-chat {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.pathway-cta-row-chat .pathway-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.45rem 0.9rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+    border: 1px solid transparent;
+}
+
+.pathway-cta-row-chat .pathway-cta--primary {
+    background: var(--color-chbe-green, #4d7a2f);
+    color: #fff;
+    border-color: var(--color-chbe-green, #4d7a2f);
+}
+
+.pathway-cta-row-chat .pathway-cta--secondary {
+    background: var(--color-ubc-blue, #2F5F8F);
+    color: #fff;
+    border-color: var(--color-ubc-blue, #2F5F8F);
+}
+
+.pathway-cta-row-chat .pathway-cta--tertiary {
+    background: #fff;
+    color: var(--color-navy-blue, #1B365D);
+    border-color: var(--color-navy-blue, #1B365D);
+}
+
+.pathway-cta-row-chat .pathway-cta--quaternary {
+    background: var(--bot-message-bg, #f1f1f1);
+    color: var(--text-primary, #1a1a1a);
+    border-color: var(--border-color, #c8c8c8);
+}
+
+.pathway-cta-row-chat .pathway-cta--link {
+    background: transparent;
+    color: var(--color-ubc-blue, #2F5F8F);
+    border-color: transparent;
+    text-decoration: underline;
+    padding-left: 0.15rem;
+    padding-right: 0.15rem;
+}

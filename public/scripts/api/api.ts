@@ -76,6 +76,7 @@ export async function loadComponentHTML(
                     | 'system-prompts-instructor'
                     | 'scenarios-student'
                     | 'scenario-questions-instructor'
+                    | 'pathway-library-instructor'
 ): Promise<string> {
 
     let response: Response;
@@ -122,6 +123,9 @@ export async function loadComponentHTML(
         case 'scenarios-student':
         case 'scenario-questions-instructor':
             response = await fetch(`/components/scenarios/${componentName}.html`);
+            break;
+        case 'pathway-library-instructor':
+            response = await fetch(`/components/pathways/${componentName}.html`);
             break;
         default:
             throw new Error("Invalid component name: " + componentName);
