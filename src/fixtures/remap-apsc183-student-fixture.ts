@@ -19,6 +19,7 @@ const REMAP_PATH = path.join(__dirname, 'APSC183-struggle-topic-remap.json');
 type StudentFixture = Record<string, string[]>;
 
 interface RemapFile {
+    courseName?: string;
     mappings: Record<string, string>;
 }
 
@@ -38,8 +39,12 @@ function dedupePreserveOrder(labels: string[]): string[] {
     return result;
 }
 
-function remapFixture(input: StudentFixture, mappings: Record<string, string>): StudentFixture {
-    const catalogLabels = new Set(getAllPredeterminedCatalogLabels());
+function remapFixture(
+    input: StudentFixture,
+    mappings: Record<string, string>,
+    courseName: string
+): StudentFixture {
+    const catalogLabels = new Set(getAllPredeterminedCatalogLabels(courseName));
     const output: StudentFixture = {};
     let unmappedCount = 0;
 
@@ -79,8 +84,13 @@ function main(): void {
     }
 
     const remapFile = loadJson<RemapFile>(REMAP_PATH);
+    const courseName = process.argv[4]?.trim() || remapFile.courseName;
+    if (!courseName) {
+        console.error('courseName is required (remap JSON courseName field or 4th CLI arg)');
+        process.exit(1);
+    }
     const input = loadJson<StudentFixture>(inputPath);
-    const output = remapFixture(input, remapFile.mappings);
+    const output = remapFixture(input, remapFile.mappings, courseName);
 
     fs.writeFileSync(outputPath, `${JSON.stringify(output, null, 2)}\n`, 'utf8');
     console.log(`Wrote ${Object.keys(output).length} students to ${outputPath}`);

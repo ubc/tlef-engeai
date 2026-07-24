@@ -19,7 +19,7 @@ import { conversationModePrompts } from '../chat/compose-system-prompt';
 
 import { getRandomNoResponse } from '../memory-agent/unstruggle-responses';
 import { memoryAgent } from '../memory-agent/memory-agent';
-import { unstruggleYesFollowup } from '../memory-agent/unstruggle-yes-followup';
+import { suggestPracticeAfterUnstruggleYes } from '../memory-agent/unstruggle-yes-followup';
 import { stripQuestionUnstruggleTag } from '../utils/message-utils';
 import { appLogger } from '../utils/logger';
 import { normalizeRouteParams } from '../helpers/route-params';
@@ -764,7 +764,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                     }
 
                     const recentMessages = chatApp.formatRecentChatExcerpt(chatId);
-                    const followUp = await unstruggleYesFollowup.suggestPracticeAfterUnstruggleYes({
+                    const followUp = await suggestPracticeAfterUnstruggleYes({
                         userId: userId.toString(),
                         courseName,
                         clearedStruggleTopic: topic,

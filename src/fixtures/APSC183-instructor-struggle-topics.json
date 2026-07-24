@@ -1,6 +1,8 @@
 {
   "courseName": "Test 3",
   "source": "EngE-AI-RAG-Document-examples/APSC 183/",
+  "topicNumberPattern": "Topic\\s*(\\d+)",
+  "maxStruggleTopics": 5,
   "topics": [
     {
       "topicNumber": 1,

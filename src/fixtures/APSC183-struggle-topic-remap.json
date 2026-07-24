@@ -1,5 +1,6 @@
 {
   "description": "Maps legacy LLM-generated student struggle labels to predetermined APSC183 instructor catalog labels (verbatim).",
+  "courseName": "Test 3",
   "mappings": {
     "standard cell potential": "standard cell potential from standard reduction potentials",
     "standard reduction potentials": "standard cell potential from standard reduction potentials",
