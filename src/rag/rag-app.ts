@@ -18,7 +18,7 @@ import { DocumentParsingModule } from "ubc-genai-toolkit-document-parsing";
 import { AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem } from "../types/shared";
 import { EngEAI_MongoDB } from "../db/enge-ai-mongodb";
 import { IDGenerator } from "../utils/unique-id-generator";
-import { isDeveloperMode } from "../helpers/developer-mode";
+import { isMockResponse } from "../helpers/mock-response";
 import path from "path";
 import fs from "fs";
 
@@ -132,7 +132,7 @@ export class RAGApp {
     /**
      * Retrieves relevant document chunks for a student chat turn.
      *
-     * Filters to published course items only. Skips retrieval in developer mode
+     * Filters to published course items only. Skips retrieval when MOCK_RESPONSE is enabled
      * or when the RAG module is unavailable.
      * 
      * @param query - The query to search for
@@ -149,8 +149,8 @@ export class RAGApp {
         const limit = options.limit ?? DEFAULT_RETRIEVE_LIMIT;
         const scoreThreshold = options.scoreThreshold ?? DEFAULT_RETRIEVE_SCORE_THRESHOLD;
 
-        if (isDeveloperMode()) {
-            appLogger.log('[DEVELOPER-MODE] 🧪 Skipping RAG document retrieval');
+        if (isMockResponse()) {
+            appLogger.log('[MOCK-RESPONSE] Skipping RAG document retrieval');
             return [];
         }
 

@@ -13,7 +13,7 @@
 import { LLMModule, type Message } from 'ubc-genai-toolkit-llm';
 import { loadConfig } from '../utils/config';
 import { appLogger } from '../utils/logger';
-import { isDeveloperMode, getMockPathwayEvaluation } from '../helpers/developer-mode';
+import { isMockResponse, getMockPathwayEvaluation } from '../helpers/mock-response';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import {
     buildPathwayEvaluationSchema,
@@ -74,20 +74,20 @@ export async function evaluatePathways(input: PathwayEvaluationInput): Promise<P
     try {
         const pathways = await loadEvaluablePathways(input.courseName);
 
-        // If developer mode is enabled, get the mock evaluation
-        if (isDeveloperMode()) {
+        // Empty library / no evaluable pathways — bypass classifier (STEP 0 no-op)
+        if (pathways.length === 0) {
+            return noPathwayTriggerResult();
+        }
+
+        // If mock response is enabled, get the mock evaluation
+        if (isMockResponse()) {
             const mock = getMockPathwayEvaluation(input.courseName, pathways);
             if (mock) {
                 appLogger.log(
-                    `[PATHWAYS] Developer mode — mock trigger: ${mock.winningPathwayId ?? 'none'}`
+                    `[PATHWAYS] Mock response — mock trigger: ${mock.winningPathwayId ?? 'none'}`
                 );
                 return mock;
             }
-        }
-
-        // If there are no pathways, return no pathway trigger result
-        if (pathways.length === 0) {
-            return noPathwayTriggerResult();
         }
 
         // Build the schema, system prompt, and user turn

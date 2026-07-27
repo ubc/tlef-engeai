@@ -22,7 +22,7 @@ import {
     filterGeneratedStruggleTopics,
     struggleGenerationResponseSchema,
 } from './struggle-generation-schema';
-import { isDeveloperMode, getMockGeneratedStruggleTopics } from '../helpers/developer-mode';
+import { isMockResponse, getMockGeneratedStruggleTopics } from '../helpers/mock-response';
 import {
     getPredeterminedLabels,
     resolveTopicNumber,
@@ -184,8 +184,8 @@ export class StruggleTopicGenerator {
         }
 
         if (rawTopics === undefined) {
-            if (isDeveloperMode()) {
-                appLogger.log('[STRUGGLE-GEN] Developer mode — using mock generated struggle topics');
+            if (isMockResponse()) {
+                appLogger.log('[STRUGGLE-GEN] Mock response — using mock generated struggle topics');
                 rawTopics = getMockGeneratedStruggleTopics();
             } else {
                 const systemPrompt = buildStruggleGenerationSystemPrompt();

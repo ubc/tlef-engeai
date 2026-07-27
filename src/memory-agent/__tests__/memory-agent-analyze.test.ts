@@ -8,8 +8,8 @@ jest.mock('ubc-genai-toolkit-llm', () => ({
         sendStructuredConversation: jest.fn()
     }))
 }));
-jest.mock('../../helpers/developer-mode', () => ({
-    isDeveloperMode: () => false,
+jest.mock('../../helpers/mock-response', () => ({
+    isMockResponse: () => false,
     getMockStruggleWords: () => []
 }));
 

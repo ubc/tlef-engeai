@@ -26,7 +26,7 @@ import {
     filterVerbatimStruggleTopics,
     struggleAnalysisResponseSchema
 } from './struggle-analysis-schema';
-import { isDeveloperMode, getMockStruggleWords } from '../helpers/developer-mode';
+import { isMockResponse, getMockStruggleWords } from '../helpers/mock-response';
 import { getStruggleLabelsFromEntry, sanitizeStruggleLabels } from '../helpers/struggle-chapter-normalize';
 import { appLogger } from '../utils/logger';
 
@@ -289,10 +289,10 @@ export class MemoryAgent {
             );
             appLogger.log(userMessages);
 
-            if (isDeveloperMode()) {
-                appLogger.log(`[MEMORY-AGENT] 🧪 Developer mode active - skipping LLM analysis, using mock struggle words`);
+            if (isMockResponse()) {
+                appLogger.log(`[MEMORY-AGENT] Mock response active - skipping LLM analysis, using mock struggle words`);
                 const mockStruggleWords = getMockStruggleWords();
-                appLogger.log(`[MEMORY-AGENT] ✅ Using mock struggle words:`, mockStruggleWords);
+                appLogger.log(`[MEMORY-AGENT] Using mock struggle words:`, mockStruggleWords);
                 
                 if (mockStruggleWords.length > 0) {
                     await this.updateStruggleWords(userId, courseName, mockStruggleWords);

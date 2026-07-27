@@ -37,7 +37,7 @@ Focus: **critical thinking, completeness, correctness** of EngE-AI chat/agent pr
 
 ## References
 
-- `DEVELOPING_MODE` / mock LLM behavior in config — do not break dev escape hatches without approval
+- `MOCK_RESPONSE` / mock LLM behavior in config — do not break mock escape hatches without approval
 
 ## Do not
 

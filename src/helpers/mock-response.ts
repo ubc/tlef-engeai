@@ -1,14 +1,14 @@
 /**
- * Developer Mode Module
+ * Mock Response Module
  *
  * Utilities for bypassing LLM API calls during development to reduce costs.
- * When DEVELOPING_MODE is 'true', the system uses hardcoded mock responses.
+ * When MOCK_RESPONSE is 'true', the system uses hardcoded mock responses.
  *
  * Optional PATHWAY_MOCK_TRIGGER / GUARDRAIL_MOCK_TRIGGER forces a pathway intercept
  * without calling the classifier LLM.
  *
  * @author: EngE-AI Team
- * @version: 1.1.0
+ * @version: 1.2.0
  * @since: 2025-01-27
  */
 
@@ -21,12 +21,12 @@ import type { GuidedPathway } from '../types/shared';
 import { buildPlatformPathwaySeeds } from '../guided-pathways/pathway-seed';
 
 /**
- * Check if developer mode is enabled
+ * Check if mock responses are enabled
  *
- * @returns boolean - True if DEVELOPING_MODE environment variable is set to 'true'
+ * @returns boolean - True if MOCK_RESPONSE environment variable is set to 'true'
  */
-export function isDeveloperMode(): boolean {
-    return process.env.DEVELOPING_MODE === 'true';
+export function isMockResponse(): boolean {
+    return process.env.MOCK_RESPONSE === 'true';
 }
 
 /**
@@ -41,11 +41,11 @@ export function isDeveloperMode(): boolean {
 export async function generateMockStreamingResponse(
     onChunk: (chunk: string) => void
 ): Promise<string> {
-    const mockResponse = 'This is a test response in developer mode.';
+    const mockResponse = 'This is a test response in mock-response mode.';
     const chunkSize = 15;
     const delayMs = 30;
 
-    appLogger.log('[DEVELOPER-MODE] 🧪 Generating mock streaming response...');
+    appLogger.log('[MOCK-RESPONSE] Generating mock streaming response...');
 
     let fullResponse = '';
 
@@ -59,7 +59,7 @@ export async function generateMockStreamingResponse(
         }
     }
 
-    appLogger.log('[DEVELOPER-MODE] ✅ Mock streaming response completed');
+    appLogger.log('[MOCK-RESPONSE] Mock streaming response completed');
 
     return fullResponse;
 }
@@ -76,7 +76,7 @@ export function getMockStruggleWords(): string[] {
 /**
  * Get mock generated instructor struggle-topic labels (upload-time generation).
  *
- * @returns string[] - MTRL-style lowercase descriptive phrases for dev mode
+ * @returns string[] - MTRL-style lowercase descriptive phrases for mock mode
  */
 export function getMockGeneratedStruggleTopics(): string[] {
     return [
@@ -86,7 +86,7 @@ export function getMockGeneratedStruggleTopics(): string[] {
 }
 
 /**
- * Force a pathway trigger in developer mode without calling the evaluator LLM.
+ * Force a pathway trigger in mock-response mode without calling the evaluator LLM.
  *
  * Reads `PATHWAY_MOCK_TRIGGER` or legacy `GUARDRAIL_MOCK_TRIGGER`. When unset,
  * returns null and the orchestrator proceeds to a real structured call.
@@ -99,7 +99,7 @@ export function getMockPathwayEvaluation(
     courseName: string,
     pathways: readonly GuidedPathway[]
 ): PathwayEvaluationResult | null {
-    if (!isDeveloperMode()) {
+    if (!isMockResponse()) {
         return null;
     }
 
@@ -113,7 +113,7 @@ export function getMockPathwayEvaluation(
     const pool = pathways.length > 0 ? pathways : buildPlatformPathwaySeeds();
     const match = pool.find((p) => p.id === triggerId);
     if (!match) {
-        appLogger.warn(`[DEVELOPER-MODE] Invalid PATHWAY/GUARDRAIL_MOCK_TRIGGER: ${triggerId}`);
+        appLogger.warn(`[MOCK-RESPONSE] Invalid PATHWAY/GUARDRAIL_MOCK_TRIGGER: ${triggerId}`);
         return null;
     }
 

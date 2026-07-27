@@ -107,6 +107,12 @@ describe('pathways-mongo', () => {
         expect(store[0].triggerDescription).toMatch(/^Detects if/);
     });
 
+    it('listPathways on empty collection does not auto-seed', async () => {
+        const list = await listPathways(ctx, 'Test');
+        expect(list).toEqual([]);
+        expect(store).toHaveLength(0);
+    });
+
     it('listPathways returns sorted docs and restores platform titles when missing', async () => {
         store.push(
             {

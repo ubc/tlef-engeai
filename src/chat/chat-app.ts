@@ -21,8 +21,13 @@ import { assembleCourseSystemPrompt } from './system-prompts/assemble-course-sys
 import { getDefaultAssistantMessage } from './initial-assistant-prompt-default';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { memoryAgent } from '../memory-agent/memory-agent';
-import { isDeveloperMode, generateMockStreamingResponse } from '../helpers/developer-mode';
+import { isMockResponse, generateMockStreamingResponse } from '../helpers/mock-response';
 import { evaluatePathways } from '../guided-pathways/pathway-orchestrator';
+import {
+    buildDebugModeSystemPrompt,
+    ensureDebugModeTemplate,
+    isDebugToggleMessage,
+} from './system-prompts/debug-mode-prompt';
 
 /**
  * Shown to students who try to send a new message in a retired scenario-generation chat.
@@ -31,6 +36,16 @@ import { evaluatePathways } from '../guided-pathways/pathway-orchestrator';
 export const RETIRED_CONVERSATION_MODE_MESSAGE =
     'Scenario Generation is no longer available in chat. Please use Practice Scenarios from the sidebar to work on troubleshooting cases.';
 
+/** Thrown when a non-admin sends `/DEBUG`; route maps this to HTTP 403. */
+export const DEBUG_MODE_FORBIDDEN = 'DEBUG_MODE_FORBIDDEN';
+
+/**
+ * Optional flags for {@link ChatApp.sendUserMessage}.
+ */
+export interface SendUserMessageOptions {
+    /** Platform admin (`GlobalUser.isAdmin`); required for `/DEBUG` and sticky debug turns. */
+    isAdmin?: boolean;
+}
 /**
  * Interface for initializing a new chat conversation
  */
@@ -57,9 +72,10 @@ export interface initChatRequest {
  * - Support for conversational message history
  * - Real-time response streaming for better UX
  * - Chat inactivity timer management
+ * - Admin `/DEBUG` sticky prompt-engineer inspection per chat
  * 
  * @author: EngE-AI Team
- * @version: 2.0.0
+ * @version: 2.1.0
  * @since: 2026-03-16
  */
 export class ChatApp {
@@ -73,18 +89,20 @@ export class ChatApp {
     private llmProvider: any;
     private chatTimers: Map<string, NodeJS.Timeout>; // Maps chatId to cleanup timer
     private chatConversationModes: Map<string, PersistedConversationModeId>; // Maps chatId to persisted teaching mode
+    private debugModeByChat: Map<string, boolean>; // Sticky admin /DEBUG flag per chat (in-memory only)
     private chatInactivityTimeout: number = 5 * 60 * 1000; // 5 minutes in milliseconds
 
     constructor(config: AppConfig) {
         this.llmModule = new LLMModule(config.llmConfig);
         this.debug = config.debug;
-        this.conversations = new Map(); 
+        this.conversations = new Map();
         this.chatHistory = new Map();
         this.chatID = [];
         this.chatIDGenerator = IDGenerator.getInstance();
         this.llmProvider = config.llmConfig.provider;
         this.chatTimers = new Map();
         this.chatConversationModes = new Map();
+        this.debugModeByChat = new Map();
     }
 
     /**
@@ -152,6 +170,7 @@ export class ChatApp {
         // Remove timer from chatTimers map
         this.chatTimers.delete(chatId);
         this.chatConversationModes.delete(chatId);
+        this.debugModeByChat.delete(chatId);
 
         // Log state after cleanup
         const stateAfterCleanup = {
@@ -311,6 +330,7 @@ export class ChatApp {
      * @param userId - The user ID
      * @param courseName - The course name for RAG context
      * @param onChunk - Optional callback function for streaming chunks (defaults to no-op)
+     * @param options - Optional flags (e.g. platform admin for `/DEBUG`)
      * @returns Promise<ChatMessage> - The complete assistant's response message
      */
     public async sendUserMessage(
@@ -318,7 +338,8 @@ export class ChatApp {
         chatId: string, 
         userId: string, 
         courseName: string,
-        onChunk: (chunk: string) => void
+        onChunk: (chunk: string) => void,
+        options?: SendUserMessageOptions
     ): Promise<ChatMessage> {
         // Reset the inactivity timer since user is actively using this chat
         this.resetChatTimer(chatId);
@@ -339,6 +360,29 @@ export class ChatApp {
         const conversation = this.conversations.get(chatId);
         if (!conversation) {
             throw new Error('Conversation not found');
+        }
+
+        const isAdmin = options?.isAdmin === true;
+
+        // ====================================================================
+        // ADMIN /DEBUG TOGGLE (sticky per-chat flag)
+        // ====================================================================
+
+        if (isDebugToggleMessage(message)) {
+            if (!isAdmin) {
+                throw new Error(DEBUG_MODE_FORBIDDEN);
+            }
+            return this.toggleDebugMode(chatId, message, userId, courseName);
+        }
+
+        // Sticky debug turns: prompt-engineer path with full teaching system prompt
+        if (isAdmin && this.debugModeByChat.get(chatId) === true) {
+            return this.sendDebugModeMessage(message, chatId, userId, courseName, onChunk, conversation);
+        }
+
+        // Non-admin must not keep a stale debug flag
+        if (!isAdmin && this.debugModeByChat.get(chatId) === true) {
+            this.debugModeByChat.delete(chatId);
         }
 
         // ====================================================================
@@ -529,9 +573,9 @@ export class ChatApp {
 
         let assistantResponse = '';
 
-        // Check if developer mode is enabled - use mock response instead of real LLM
-        if (isDeveloperMode()) {
-            appLogger.log('[DEVELOPER-MODE] 🧪 Using mock streaming response instead of LLM');
+        // Check if mock response is enabled - use mock instead of real LLM
+        if (isMockResponse()) {
+            appLogger.log('[MOCK-RESPONSE] Using mock streaming response instead of LLM');
             assistantResponse = await generateMockStreamingResponse(onChunk);
             appLogger.log(`\n✅ Mock streaming completed. Full response length: ${assistantResponse.length}`);
             appLogger.log(`Full response: "${assistantResponse}"`);
@@ -1233,6 +1277,139 @@ export class ChatApp {
     }
 
     /**
+     * toggleDebugMode - Flip the sticky per-chat admin `/DEBUG` flag and return a confirmation.
+     *
+     * @param chatId - Active chat
+     * @param message - Exact `/DEBUG` toggle text (stored in history)
+     * @param userId - Sender user id
+     * @param courseName - Active course
+     * @returns Confirmation assistant message wrapped in the DEBUG MODE template
+     */
+    private toggleDebugMode(
+        chatId: string,
+        message: string,
+        userId: string,
+        courseName: string
+    ): ChatMessage {
+        const enabled = !(this.debugModeByChat.get(chatId) === true);
+        this.debugModeByChat.set(chatId, enabled);
+
+        this.addUserMessageToHistoryOnly(chatId, message, userId, courseName);
+
+        const body = enabled
+            ? 'Debug mode enabled for this chat. Ask anything about the conversation context or the active teaching system prompt. Send `/DEBUG` again to disable.'
+            : 'Debug mode disabled. This chat has returned to normal teaching mode.';
+
+        const reply = ensureDebugModeTemplate(body);
+        appLogger.log(`[DEBUG-MODE] Chat ${chatId} debugMode=${enabled}`);
+        return this.addAssistantMessage(chatId, reply, userId, courseName);
+    }
+
+    /**
+     * sendDebugModeMessage - Admin prompt-engineer turn with full teaching system prompt visibility.
+     *
+     * Skips pathways, RAG, struggle tags, and MOCK_RESPONSE so the real LLM can inspect prompts.
+     *
+     * @param message - Admin question about conversation / system prompt
+     * @param chatId - Active chat
+     * @param userId - Sender user id
+     * @param courseName - Active course
+     * @param onChunk - Streaming chunk callback
+     * @param conversation - In-memory LLM conversation for this chat
+     * @returns Assistant message with DEBUG MODE template enforced
+     */
+    private async sendDebugModeMessage(
+        message: string,
+        chatId: string,
+        userId: string,
+        courseName: string,
+        onChunk: (chunk: string) => void,
+        conversation: Conversation
+    ): Promise<ChatMessage> {
+        this.addUserMessage(chatId, message, userId, courseName);
+
+        const conversationMode = conversationModePrompts.resolveModeId(
+            this.chatConversationModes.get(chatId)
+        );
+
+        const assembledSystemPrompt = await this.getAssembledTeachingSystemPrompt(
+            chatId,
+            courseName,
+            conversationMode
+        );
+
+        const debugSystemPrompt = buildDebugModeSystemPrompt({
+            assembledSystemPrompt,
+            courseName,
+            conversationMode,
+        });
+
+        // Fork: debug system prompt + non-system history (teaching system replaced for this call only)
+        const forkedConversation = this.llmModule.createConversation();
+        forkedConversation.addMessage('system', debugSystemPrompt);
+        for (const msg of conversation.getHistory() as Message[]) {
+            if (msg.role === 'system') {
+                continue;
+            }
+            forkedConversation.addMessage(msg.role, msg.content);
+        }
+
+        let assistantResponse = '';
+        const conversationConfig: any = { temperature: 0.3 };
+        if (this.llmProvider === 'ollama') {
+            conversationConfig.num_ctx = 32768;
+        }
+
+        appLogger.log(`[DEBUG-MODE] Streaming prompt-engineer reply for chat ${chatId}`);
+        await forkedConversation.stream((chunk: string) => {
+            assistantResponse += chunk;
+            onChunk(chunk);
+        }, conversationConfig);
+
+        assistantResponse = ensureDebugModeTemplate(assistantResponse);
+        const assistantMessage = this.addAssistantMessage(chatId, assistantResponse, userId, courseName);
+        conversation.addMessage('assistant', assistantResponse);
+        await this.updateChatTitleIfNeeded(chatId, assistantResponse, courseName, userId);
+        return assistantMessage;
+    }
+
+    /**
+     * getAssembledTeachingSystemPrompt - Rebuild or read the teaching system prompt for debug injection.
+     *
+     * Prefers the first system message already on the conversation; falls back to assembleCourseSystemPrompt.
+     *
+     * @param chatId - Active chat
+     * @param courseName - Course for config / LOs
+     * @param mode - Resolved conversation mode
+     * @returns Full teaching system prompt text
+     */
+    private async getAssembledTeachingSystemPrompt(
+        chatId: string,
+        courseName: string,
+        mode: ConversationModeId
+    ): Promise<string> {
+        const conversation = this.conversations.get(chatId);
+        const history = conversation?.getHistory() as Message[] | undefined;
+        const existingSystem = history?.find((m) => m.role === 'system')?.content;
+        if (existingSystem && existingSystem.trim().length > 0) {
+            return existingSystem;
+        }
+
+        let learningObjectives: LearningObjectiveForDisplay[] = [];
+        try {
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const course = await mongoDB.getCourseByName(courseName);
+            if (course?.id) {
+                learningObjectives = await mongoDB.getAllLearningObjectives(course.id);
+            }
+        } catch (error) {
+            appLogger.error('[DEBUG-MODE] Failed to load learning objectives:', error);
+        }
+
+        return this.buildCourseSystemPromptXml(courseName, mode, learningObjectives);
+    }
+
+    /**
      * getGuardrailConversationMode - Returns the conversation mode when guardrails apply (Socratic or Explanatory only).
      * 
      * @param chatId - The chat ID
@@ -1488,6 +1665,7 @@ export class ChatApp {
             // Remove from chat history map
             const historyDeleted = this.chatHistory.delete(chatId);
             this.chatConversationModes.delete(chatId);
+            this.debugModeByChat.delete(chatId);
 
             // Remove from chatID array
             const index = this.chatID.indexOf(chatId);

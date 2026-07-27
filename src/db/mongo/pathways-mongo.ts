@@ -121,6 +121,8 @@ export async function createPathwayIndexes(collection: Collection, courseName: s
 
 /**
  * seedPathwaysIfEmpty - Insert platform defaults when the collection has zero docs (idempotent).
+ *
+ * Used by new-course provision and Reset to defaults — not by ensure/list (empty stays empty).
  */
 export async function seedPathwaysIfEmpty(ctx: MongoDalContext, courseName: string): Promise<number> {
     const collection = await getPathwaysCollection(ctx, courseName);
@@ -134,7 +136,9 @@ export async function seedPathwaysIfEmpty(ctx: MongoDalContext, courseName: stri
 }
 
 /**
- * ensurePathwaysCollection - Lazy migration: create collection, register name, seed defaults.
+ * ensurePathwaysCollection - Lazy migration: create collection and register name (no auto-seed).
+ *
+ * Empty collections stay empty until new-course seed, instructor add, or Reset to defaults.
  *
  * @param ctx - Mongo DAL context
  * @param courseId - activeCourse.id
@@ -149,7 +153,6 @@ export async function ensurePathwaysCollection(ctx: MongoDalContext, courseId: s
     const courseName = course.courseName;
 
     if (course.collections?.pathways) {
-        await seedPathwaysIfEmpty(ctx, courseName);
         return courseName;
     }
 
@@ -169,7 +172,6 @@ export async function ensurePathwaysCollection(ctx: MongoDalContext, courseId: s
 
     const collection = await getPathwaysCollection(ctx, courseName);
     await createPathwayIndexes(collection, courseName);
-    await seedPathwaysIfEmpty(ctx, courseName);
     return courseName;
 }
 
@@ -189,7 +191,6 @@ export async function ensurePathwaysCollectionByCourseName(
         } catch {
             /* index may already exist */
         }
-        await seedPathwaysIfEmpty(ctx, courseName);
         return;
     }
     await ensurePathwaysCollection(ctx, course.id);

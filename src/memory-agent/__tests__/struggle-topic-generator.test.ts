@@ -14,8 +14,8 @@ jest.mock('ubc-genai-toolkit-llm', () => ({
         sendStructuredConversation: jest.fn(),
     })),
 }));
-jest.mock('../../helpers/developer-mode', () => ({
-    isDeveloperMode: jest.fn(() => false),
+jest.mock('../../helpers/mock-response', () => ({
+    isMockResponse: jest.fn(() => false),
     getMockGeneratedStruggleTopics: jest.fn(() => ['mock topic one', 'mock topic two']),
 }));
 
@@ -126,9 +126,9 @@ describe('StruggleTopicGenerator', () => {
         ).rejects.toThrow('LLM unavailable');
     });
 
-    it('uses developer-mode mock labels without calling LLM', async () => {
-        const { isDeveloperMode } = jest.requireMock('../../helpers/developer-mode');
-        isDeveloperMode.mockReturnValue(true);
+    it('uses mock-response labels without calling LLM', async () => {
+        const { isMockResponse } = jest.requireMock('../../helpers/mock-response');
+        isMockResponse.mockReturnValue(true);
         mockGetActiveCourse.mockResolvedValue(baseCourse);
 
         const generator = new StruggleTopicGenerator({
