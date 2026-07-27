@@ -46,12 +46,29 @@ export function mountPathwaysRoutes(router: Router): void {
             const courseName = await instance.ensurePathwaysCollection(courseId);
             const body = req.body ?? {};
             const data = await instance.createPathway(courseName, {
+                title: typeof body.title === 'string' ? body.title : undefined,
                 triggerDescription: typeof body.triggerDescription === 'string' ? body.triggerDescription : '',
                 assistantResponse: typeof body.assistantResponse === 'string' ? body.assistantResponse : '',
-                enabledGlobally: body.enabledGlobally !== false,
+                enabledGlobally: true,
                 ctas: Array.isArray(body.ctas) ? body.ctas : [],
             });
             res.status(201).json({ success: true, data });
+        })
+    );
+
+    /**
+     * POST /:courseId/pathways/reset — wipe and re-seed platform defaults.
+     * Registered before :pathwayId so "reset" is not captured as an id.
+     */
+    router.post(
+        '/:courseId/pathways/reset',
+        requireInstructorForCourseAPI(['params']),
+        asyncHandlerWithAuth(async (req: Request, res: Response) => {
+            const { courseId } = normalizeRouteParams(req.params);
+            const instance = await EngEAI_MongoDB.getInstance();
+            const courseName = await instance.ensurePathwaysCollection(courseId);
+            const data = await instance.resetPathwaysToDefaults(courseName);
+            res.json({ success: true, data });
         })
     );
 
@@ -97,8 +114,10 @@ export function mountPathwaysRoutes(router: Router): void {
             const courseName = await instance.ensurePathwaysCollection(courseId);
             const body = req.body ?? {};
             const patch: Record<string, unknown> = {};
+            if (typeof body.title === 'string') patch.title = body.title;
             if (typeof body.triggerDescription === 'string') patch.triggerDescription = body.triggerDescription;
             if (typeof body.assistantResponse === 'string') patch.assistantResponse = body.assistantResponse;
+            // UI no longer exposes enable toggle — keep pathways active when patched from library
             if (typeof body.enabledGlobally === 'boolean') patch.enabledGlobally = body.enabledGlobally;
             if (Array.isArray(body.ctas)) patch.ctas = body.ctas;
 

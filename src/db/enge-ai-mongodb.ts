@@ -497,6 +497,9 @@ export class EngEAI_MongoDB {
     public reorderPathways = async (courseName: string, orderedIds: string[]) =>
         PathwaysMongo.reorderPathways(this.ctx(), courseName, orderedIds);
 
+    public resetPathwaysToDefaults = async (courseName: string) =>
+        PathwaysMongo.resetPathwaysToDefaults(this.ctx(), courseName);
+
     /**
      * #########################################################
      * Course users roster — course-user-mongo.ts

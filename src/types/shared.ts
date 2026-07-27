@@ -68,19 +68,17 @@ export interface UpdateChatConversationModeResponse {
     error?: string;
 }
 
-/** Visual priority for a pathway CTA button rendered in student chat. */
-export type PathwayCtaStyle = 'primary' | 'secondary' | 'tertiary' | 'quaternary' | 'link';
-
 /**
  * One call-to-action button attached to a guided pathway (and snapshotted onto ChatMessage).
  *
  * Used by the Pathway Library instructor UI and student chat CTA row.
+ * `color` is `#RRGGBB`. Legacy docs may still store `style` (primary/secondary/…); normalize maps those to defaults.
  */
 export interface PathwayCta {
     id: string; // stable CTA id within the pathway
     label: string; // button label shown to the student
     url: string; // http(s) destination opened in a new tab
-    style: PathwayCtaStyle; // Primary → Link visual priority
+    color: string; // button fill #RRGGBB (defaults: primary green, secondary blue, …)
 }
 
 /**
@@ -92,7 +90,8 @@ export interface PathwayCta {
 export interface GuidedPathway {
     id: string; // stable pathway id (seed keeps mental-health-crisis etc.)
     order: number; // ascending = evaluator priority
-    enabledGlobally: boolean; // active for this course (mockup: Enabled globally)
+    title: string; // instructor-facing card title (library UI)
+    enabledGlobally: boolean; // active for this course (UI always on; kept for evaluator)
     triggerDescription: string; // fed into the dynamic evaluator prompt
     assistantResponse: string; // markdown reply; empty => cannot intercept
     ctas: PathwayCta[]; // resource buttons shown with the predetermined reply

@@ -2306,7 +2306,11 @@ export class ChatManager {
             if (!cta.label || !cta.url) continue;
             if (!/^https?:\/\//i.test(cta.url)) continue;
             const link = document.createElement('a');
-            link.className = `pathway-cta pathway-cta--${cta.style || 'primary'}`;
+            link.className = 'pathway-cta';
+            const fill = this.resolvePathwayCtaColor(cta);
+            link.style.backgroundColor = fill;
+            link.style.borderColor = fill;
+            link.style.color = this.pathwayCtaTextColor(fill);
             link.href = cta.url;
             link.target = '_blank';
             link.rel = 'noopener noreferrer';
@@ -2316,6 +2320,46 @@ export class ChatManager {
         if (row.childElementCount > 0) {
             contentEl.appendChild(row);
         }
+    }
+
+    /** Resolve CTA fill: prefer `color`, else legacy `style` map, else CHBE green. */
+    private resolvePathwayCtaColor(cta: PathwayCta & { style?: string }): string {
+        if (typeof cta.color === 'string' && cta.color.trim()) {
+            return this.normalizePathwayCtaColor(cta.color);
+        }
+        const legacy: Record<string, string> = {
+            primary: '#4d7a2f',
+            secondary: '#2f5f8f',
+            tertiary: '#1b365d',
+            quaternary: '#f1f1f1',
+            link: '#2f5f8f',
+        };
+        if (cta.style && legacy[cta.style]) return legacy[cta.style];
+        return '#4d7a2f';
+    }
+
+    /** Coerce CTA color to #rrggbb; default CHBE green. */
+    private normalizePathwayCtaColor(raw?: string): string {
+        if (typeof raw === 'string') {
+            const m6 = /^#([0-9a-fA-F]{6})$/.exec(raw.trim());
+            if (m6) return `#${m6[1].toLowerCase()}`;
+            const m3 = /^#([0-9a-fA-F]{3})$/.exec(raw.trim());
+            if (m3) {
+                const [r, g, b] = m3[1].toLowerCase().split('');
+                return `#${r}${r}${g}${g}${b}${b}`;
+            }
+        }
+        return '#4d7a2f';
+    }
+
+    /** White text on dark fills; near-black on light fills (relative luminance). */
+    private pathwayCtaTextColor(hex: string): string {
+        const n = parseInt(hex.slice(1), 16);
+        const r = (n >> 16) & 0xff;
+        const g = (n >> 8) & 0xff;
+        const b = n & 0xff;
+        const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+        return luminance > 0.55 ? '#1a1a1a' : '#ffffff';
     }
 
     private createMessageElement(

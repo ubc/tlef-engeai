@@ -25,9 +25,10 @@ export function buildPlatformPathwaySeeds(now: number = Date.now()): GuidedPathw
         {
             id: 'mental-health-crisis',
             order: 0,
+            title: 'Mental health crisis',
             enabledGlobally: true,
             triggerDescription:
-                'Triggers when: suicidal ideation, self-harm intent, severe hopelessness, or acute crisis language indicating the student may be at risk. Does NOT trigger: normal frustration with coursework, exam stress, or struggling with a topic without self-harm or crisis signals.',
+                'Detects if the user message expresses suicidal ideation, thoughts of self-harm, severe hopelessness, or a mental health crisis.',
             assistantResponse: `Thank you for telling me this — it sounds like a genuinely hard moment, and I want to take it seriously rather than brush past it.
 
 I'm an AI study assistant for {courseName}, and I'm not equipped to support you through this safely. Please reach out to one of the people or services below right now.
@@ -40,19 +41,19 @@ You don't have to handle this on your own. I'll be here for the course whenever 
                     id: 'cta-988',
                     label: 'Call or text 9-8-8',
                     url: 'https://988.ca',
-                    style: 'primary',
+                    color: '#4d7a2f',
                 },
                 {
                     id: 'cta-here2talk',
                     label: 'Here2Talk',
                     url: 'https://here2talk.ca',
-                    style: 'secondary',
+                    color: '#2f5f8f',
                 },
                 {
                     id: 'cta-counselling',
                     label: 'UBC Counselling',
                     url: 'https://students.ubc.ca/health/counselling-services',
-                    style: 'tertiary',
+                    color: '#1b365d',
                 },
             ],
             updatedAt: now,
@@ -60,9 +61,10 @@ You don't have to handle this on your own. I'll be here for the course whenever 
         {
             id: 'inappropriate-content',
             order: 1,
+            title: 'Inappropriate content',
             enabledGlobally: true,
             triggerDescription:
-                'Triggers when: harassment, hate speech, explicit sexual content, threats, or abusive language directed at people. Does NOT trigger: strong disagreement, blunt academic criticism, or mild profanity about the problem itself (not directed at people).',
+                'Detects if the user message contains harassment, hate speech, explicit content, threats, or abusive language.',
             assistantResponse: `I'm not able to respond to that. EngE-AI is here to support your learning in {courseName}, and I need to keep our conversation focused and respectful to do that well.
 
 If there's an actual question about course material, an assignment, or an engineering concept underneath this, I'm glad to help — just rephrase it and send it my way.`,
@@ -72,9 +74,10 @@ If there's an actual question about course material, an assignment, or an engine
         {
             id: 'off-topic',
             order: 2,
+            title: 'Off-topic',
             enabledGlobally: true,
             triggerDescription:
-                'Triggers when: request clearly unrelated to course engineering content — different subject homework, personal advice, or general-purpose queries with no course link. Does NOT trigger: course concepts, lab reports, engineering ethics tied to the course, or clarifying questions about the assignment frame.',
+                'Detects if the user message is unrelated to the course material. This includes requests for help with a completely different subject, personal questions, or general-purpose queries that have no connection to the course.',
             assistantResponse: `That's outside what I can help with — I'm scoped specifically to {courseName} Engineering coursework, not general topics.
 
 If there's a way this connects to something in the course (a concept, an assignment, or a problem you're working through), tell me more and I'll help you work through that part.`,

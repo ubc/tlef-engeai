@@ -74,6 +74,7 @@ export async function evaluatePathways(input: PathwayEvaluationInput): Promise<P
     try {
         const pathways = await loadEvaluablePathways(input.courseName);
 
+        // If developer mode is enabled, get the mock evaluation
         if (isDeveloperMode()) {
             const mock = getMockPathwayEvaluation(input.courseName, pathways);
             if (mock) {
@@ -84,10 +85,12 @@ export async function evaluatePathways(input: PathwayEvaluationInput): Promise<P
             }
         }
 
+        // If there are no pathways, return no pathway trigger result
         if (pathways.length === 0) {
             return noPathwayTriggerResult();
         }
 
+        // Build the schema, system prompt, and user turn
         const schema = buildPathwayEvaluationSchema(pathways.map((p) => p.id));
         const systemPrompt = buildPathwayEvaluationSystemPrompt(pathways);
         const userTurn = buildPathwayEvaluationUserTurn(input.message, {
@@ -95,19 +98,23 @@ export async function evaluatePathways(input: PathwayEvaluationInput): Promise<P
             conversationMode: input.conversationMode,
         });
 
+        // Build the messages
         const messages: Message[] = [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userTurn },
         ];
 
+        // Send the messages to the LLM
         const llmModule = getLlmModule();
         const response = await llmModule.sendStructuredConversation(messages, schema, {
             structuredOutputName: 'pathway_evaluation',
         });
 
+        // Build the result
         const pathwayType = response?.parsed?.pathwayType ?? 'none';
         const result = buildPathwayResult(pathwayType, input.courseName, pathways);
 
+        // Log the result
         if (result.triggered) {
             appLogger.log(
                 `[PATHWAYS] Triggered: ${result.winningPathwayId} (course=${input.courseName})`

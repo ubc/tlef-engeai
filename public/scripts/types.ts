@@ -38,20 +38,18 @@ export type PersistedConversationModeId = ConversationModeId | RetiredConversati
 export type ConversationModeStatus = 'active' | 'coming_soon';
 
 /** Must match src/types/shared.ts. */
-export type PathwayCtaStyle = 'primary' | 'secondary' | 'tertiary' | 'quaternary' | 'link';
-
-/** Must match src/types/shared.ts. */
 export interface PathwayCta {
     id: string;
     label: string;
     url: string;
-    style: PathwayCtaStyle;
+    color: string; // #RRGGBB
 }
 
 /** Must match src/types/shared.ts — one pathway in `{courseName}_pathways`. */
 export interface GuidedPathway {
     id: string;
     order: number;
+    title: string;
     enabledGlobally: boolean;
     triggerDescription: string;
     assistantResponse: string;

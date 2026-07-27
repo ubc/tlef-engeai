@@ -11,6 +11,8 @@ import {
     updatePathway,
     deletePathway,
     reorderPathways,
+    resetPathwaysToDefaults,
+    normalizeCtaColor,
 } from '../pathways-mongo';
 import { isPathwayEvaluable } from '../../../guided-pathways/pathway-schema';
 import { buildPlatformPathwaySeeds } from '../../../guided-pathways/pathway-seed';
@@ -60,6 +62,11 @@ function makeCollection(store: any[] = []): Collection & { _store: any[] } {
             store.splice(idx, 1);
             return { deletedCount: 1 };
         }),
+        deleteMany: jest.fn(async () => {
+            const n = store.length;
+            store.splice(0, store.length);
+            return { deletedCount: n };
+        }),
         createIndex: jest.fn(async () => 'ok'),
     };
     return col;
@@ -91,32 +98,56 @@ describe('pathways-mongo', () => {
         const n2 = await seedPathwaysIfEmpty(ctx, 'Test');
         expect(n2).toBe(0);
         expect(store).toHaveLength(3);
+        expect(store[0].title).toBe('Mental health crisis');
+        expect(store[0].triggerDescription).toMatch(/^Detects if/);
     });
 
-    it('listPathways returns sorted docs', async () => {
+    it('listPathways returns sorted docs and restores platform titles when missing', async () => {
         store.push(
-            { id: 'b', order: 2, enabledGlobally: true, triggerDescription: '', assistantResponse: 'x', ctas: [], updatedAt: 1 },
-            { id: 'a', order: 0, enabledGlobally: true, triggerDescription: '', assistantResponse: 'y', ctas: [], updatedAt: 1 }
+            {
+                id: 'mental-health-crisis',
+                order: 0,
+                enabledGlobally: true,
+                triggerDescription: '',
+                assistantResponse: 'x',
+                ctas: [],
+                updatedAt: 1,
+            },
+            {
+                id: 'custom-row',
+                order: 1,
+                enabledGlobally: true,
+                triggerDescription: '',
+                assistantResponse: 'y',
+                ctas: [],
+                updatedAt: 1,
+            }
         );
         const list = await listPathways(ctx, 'Test');
-        expect(list.map((p) => p.id)).toEqual(['a', 'b']);
+        expect(list.map((p) => p.id)).toEqual(['mental-health-crisis', 'custom-row']);
+        expect(list[0].title).toBe('Mental health crisis');
+        expect(list[1].title).toBe('Untitled');
     });
 
     it('create/update/delete pathway', async () => {
         const created = await createPathway(ctx, 'Test', {
             triggerDescription: 'spill',
             assistantResponse: 'Call safety',
-            ctas: [{ id: 'c1', label: 'Safety', url: 'https://example.com', style: 'primary' }],
+            ctas: [{ id: 'c1', label: 'Safety', url: 'https://example.com', color: '#4d7a2f' }],
         });
         expect(created.id).toMatch(/^pathway-/);
         expect(created.order).toBe(0);
+        expect(created.title).toBe('Untitled');
+        expect(created.ctas[0].color).toBe('#4d7a2f');
 
         const updated = await updatePathway(ctx, 'Test', created.id, {
+            title: 'Spill response',
             assistantResponse: 'Updated',
             enabledGlobally: false,
         });
         expect(updated?.assistantResponse).toBe('Updated');
         expect(updated?.enabledGlobally).toBe(false);
+        expect(updated?.title).toBe('Spill response');
 
         const deleted = await deletePathway(ctx, 'Test', created.id);
         expect(deleted).toBe(true);
@@ -125,8 +156,26 @@ describe('pathways-mongo', () => {
 
     it('reorderPathways rewrites order', async () => {
         store.push(
-            { id: 'a', order: 0, enabledGlobally: true, triggerDescription: '', assistantResponse: 'a', ctas: [], updatedAt: 1 },
-            { id: 'b', order: 1, enabledGlobally: true, triggerDescription: '', assistantResponse: 'b', ctas: [], updatedAt: 1 }
+            {
+                id: 'a',
+                order: 0,
+                title: 'A',
+                enabledGlobally: true,
+                triggerDescription: '',
+                assistantResponse: 'a',
+                ctas: [],
+                updatedAt: 1,
+            },
+            {
+                id: 'b',
+                order: 1,
+                title: 'B',
+                enabledGlobally: true,
+                triggerDescription: '',
+                assistantResponse: 'b',
+                ctas: [],
+                updatedAt: 1,
+            }
         );
         const list = await reorderPathways(ctx, 'Test', ['b', 'a']);
         expect(list.map((p) => p.id)).toEqual(['b', 'a']);
@@ -138,6 +187,7 @@ describe('pathways-mongo', () => {
         store.push({
             id: 'a',
             order: 0,
+            title: 'A',
             enabledGlobally: true,
             triggerDescription: '',
             assistantResponse: 'a',
@@ -147,9 +197,57 @@ describe('pathways-mongo', () => {
         await expect(reorderPathways(ctx, 'Test', ['a', 'missing'])).rejects.toThrow(/permutation/i);
     });
 
-    it('seed defaults are evaluable', () => {
+    it('resetPathwaysToDefaults wipes and re-seeds platform defaults', async () => {
+        store.push({
+            id: 'custom',
+            order: 0,
+            title: 'Custom',
+            enabledGlobally: true,
+            triggerDescription: 'x',
+            assistantResponse: 'y',
+            ctas: [],
+            updatedAt: 1,
+        });
+        const list = await resetPathwaysToDefaults(ctx, 'Test');
+        expect(list).toHaveLength(3);
+        expect(list.map((p) => p.id)).toEqual([
+            'mental-health-crisis',
+            'inappropriate-content',
+            'off-topic',
+        ]);
+        expect(list[1].title).toBe('Inappropriate content');
+        expect(list[2].triggerDescription).toMatch(/unrelated to the course/);
+    });
+
+    it('seed defaults are evaluable and titled', () => {
         for (const seed of buildPlatformPathwaySeeds()) {
             expect(isPathwayEvaluable(seed)).toBe(true);
+            expect(seed.title.trim().length).toBeGreaterThan(0);
         }
+    });
+
+    it('normalizeCtaColor accepts hex and maps legacy style', () => {
+        expect(normalizeCtaColor('#2F5F8F')).toBe('#2f5f8f');
+        expect(normalizeCtaColor('#abc')).toBe('#aabbcc');
+        expect(normalizeCtaColor(undefined, 'secondary')).toBe('#2f5f8f');
+        expect(normalizeCtaColor('nope', 'tertiary')).toBe('#1b365d');
+        expect(normalizeCtaColor(undefined, undefined)).toBe('#4d7a2f');
+    });
+
+    it('createPathway maps legacy style to color', async () => {
+        const created = await createPathway(ctx, 'Test', {
+            triggerDescription: 'legacy',
+            assistantResponse: 'ok',
+            ctas: [
+                {
+                    id: 'c-legacy',
+                    label: 'Help',
+                    url: 'https://example.com',
+                    style: 'secondary',
+                } as any,
+            ],
+        });
+        expect(created.ctas[0].color).toBe('#2f5f8f');
+        expect((created.ctas[0] as any).style).toBeUndefined();
     });
 });

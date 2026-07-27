@@ -42,6 +42,7 @@ export async function updatePathway(
     courseId: string,
     pathwayId: string,
     body: {
+        title?: string;
         triggerDescription?: string;
         assistantResponse?: string;
         enabledGlobally?: boolean;
@@ -72,6 +73,15 @@ export async function reorderPathways(courseId: string, orderedIds: string[]): P
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderedIds }),
+    });
+    const json = await parseJson(response);
+    return (json.data ?? []) as GuidedPathway[];
+}
+
+export async function resetPathways(courseId: string): Promise<GuidedPathway[]> {
+    const response = await fetch(`${apiBase(courseId)}/reset`, {
+        method: 'POST',
+        credentials: 'include',
     });
     const json = await parseJson(response);
     return (json.data ?? []) as GuidedPathway[];

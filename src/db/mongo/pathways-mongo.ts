@@ -11,7 +11,7 @@
  */
 
 import type { Collection } from 'mongodb';
-import type { activeCourse, GuidedPathway, PathwayCta, PathwayCtaStyle } from '../../types/shared';
+import type { activeCourse, GuidedPathway, PathwayCta } from '../../types/shared';
 import { getCollectionNames } from './collection-registry-mongo';
 import { activeCourseListCollection } from './mongo-collections';
 import type { MongoDalContext } from './mongo-context';
@@ -19,16 +19,54 @@ import { fetchActiveCourseDocById, fetchActiveCourseDocByCourseName } from './ac
 import { buildPlatformPathwaySeeds } from '../../guided-pathways/pathway-seed';
 import { appLogger } from '../../utils/logger';
 
-const CTA_STYLES: readonly PathwayCtaStyle[] = [
-    'primary',
-    'secondary',
-    'tertiary',
-    'quaternary',
-    'link',
-];
+/** Default CTA fill when color/style missing — matches former primary (CHBE green). */
+export const DEFAULT_CTA_COLOR = '#4d7a2f';
+
+/** Legacy style → hex (preserves former CSS tokens). */
+const LEGACY_STYLE_COLORS: Record<string, string> = {
+    primary: '#4d7a2f',
+    secondary: '#2f5f8f',
+    tertiary: '#1b365d',
+    quaternary: '#f1f1f1',
+    link: '#2f5f8f',
+};
+
+const DEFAULT_PATHWAY_TITLE = 'Untitled';
+
+/**
+ * normalizeCtaColor - Coerce a CTA color to `#RRGGBB`.
+ *
+ * Accepts `#RGB` / `#RRGGBB` (any case). Falls back to legacy `style` map, then DEFAULT_CTA_COLOR.
+ *
+ * @param rawColor - Stored or submitted color string
+ * @param legacyStyle - Former PathwayCtaStyle value when color absent
+ * @returns Normalized `#RRGGBB` (lowercase hex digits except preserved from expand)
+ */
+export function normalizeCtaColor(rawColor: unknown, legacyStyle?: unknown): string {
+    if (typeof rawColor === 'string') {
+        const trimmed = rawColor.trim();
+        const m6 = /^#([0-9a-fA-F]{6})$/.exec(trimmed);
+        if (m6) return `#${m6[1].toLowerCase()}`;
+        const m3 = /^#([0-9a-fA-F]{3})$/.exec(trimmed);
+        if (m3) {
+            const [r, g, b] = m3[1].toLowerCase().split('');
+            return `#${r}${r}${g}${g}${b}${b}`;
+        }
+    }
+    if (typeof legacyStyle === 'string' && LEGACY_STYLE_COLORS[legacyStyle]) {
+        return LEGACY_STYLE_COLORS[legacyStyle];
+    }
+    return DEFAULT_CTA_COLOR;
+}
+
+/** Platform seed titles by id — used when legacy docs were seeded before `title` existed. */
+function platformTitleById(pathwayId: string): string | undefined {
+    return buildPlatformPathwaySeeds(0).find((p) => p.id === pathwayId)?.title;
+}
 
 /** Input for creating a pathway — server assigns id/order/updatedAt when omitted. */
 export interface CreatePathwayInput {
+    title?: string;
     triggerDescription?: string;
     assistantResponse?: string;
     enabledGlobally?: boolean;
@@ -37,10 +75,26 @@ export interface CreatePathwayInput {
 
 /** Patch fields accepted by updatePathway. */
 export interface UpdatePathwayInput {
+    title?: string;
     triggerDescription?: string;
     assistantResponse?: string;
     enabledGlobally?: boolean;
     ctas?: PathwayCta[];
+}
+
+/**
+ * normalizeTitle - Prefer stored title; for known platform ids fall back to seed title (not Untitled).
+ */
+function normalizeTitle(raw: unknown, pathwayId?: string): string {
+    if (typeof raw === 'string') {
+        const trimmed = raw.trim();
+        if (trimmed.length > 0) return trimmed;
+    }
+    if (pathwayId) {
+        const platform = platformTitleById(pathwayId);
+        if (platform) return platform;
+    }
+    return DEFAULT_PATHWAY_TITLE;
 }
 
 async function getPathwaysCollection(ctx: MongoDalContext, courseName: string): Promise<Collection> {
@@ -140,14 +194,12 @@ function normalizeCta(raw: unknown, index: number): PathwayCta | null {
     const url = typeof c.url === 'string' ? c.url.trim() : '';
     if (!label || !url) return null;
     if (!/^https?:\/\//i.test(url)) return null;
-    const style = CTA_STYLES.includes(c.style as PathwayCtaStyle)
-        ? (c.style as PathwayCtaStyle)
-        : 'primary';
+    const color = normalizeCtaColor(c.color, c.style);
     const id =
         typeof c.id === 'string' && c.id.trim()
             ? c.id.trim()
             : `cta-${Date.now()}-${index}`;
-    return { id, label, url, style };
+    return { id, label, url, color };
 }
 
 function normalizeCtas(raw: unknown): PathwayCta[] {
@@ -156,9 +208,11 @@ function normalizeCtas(raw: unknown): PathwayCta[] {
 }
 
 function docToPathway(doc: any): GuidedPathway {
+    const id = String(doc.id);
     return {
-        id: String(doc.id),
+        id,
         order: typeof doc.order === 'number' ? doc.order : 0,
+        title: normalizeTitle(doc.title, id),
         enabledGlobally: doc.enabledGlobally !== false,
         triggerDescription: typeof doc.triggerDescription === 'string' ? doc.triggerDescription : '',
         assistantResponse: typeof doc.assistantResponse === 'string' ? doc.assistantResponse : '',
@@ -203,6 +257,7 @@ export async function createPathway(
     const pathway: GuidedPathway = {
         id: `pathway-${ctx.idGenerator.uniqueIDGenerator(`${courseName}-${triggerDescription}-${now}`)}`,
         order: maxOrder + 1,
+        title: normalizeTitle(input.title),
         enabledGlobally: input.enabledGlobally !== false,
         triggerDescription,
         assistantResponse: (input.assistantResponse ?? '').trim(),
@@ -228,6 +283,9 @@ export async function updatePathway(
     if (!existing) return null;
 
     const $set: Record<string, unknown> = { updatedAt: Date.now() };
+    if (typeof input.title === 'string') {
+        $set.title = normalizeTitle(input.title);
+    }
     if (typeof input.triggerDescription === 'string') {
         $set.triggerDescription = input.triggerDescription.trim();
     }
@@ -279,6 +337,29 @@ export async function reorderPathways(
     for (let i = 0; i < orderedIds.length; i++) {
         await collection.updateOne({ id: orderedIds[i] }, { $set: { order: i, updatedAt: now } });
     }
+    return listPathways(ctx, courseName);
+}
+
+/**
+ * resetPathwaysToDefaults - Wipe all course pathways and re-insert platform seeds.
+ *
+ * Destructive instructor action (confirm in UI). Returns the fresh sorted list.
+ *
+ * @param ctx - Mongo DAL context
+ * @param courseName - Course whose pathways collection to reset
+ * @returns Platform default pathways after re-seed
+ */
+export async function resetPathwaysToDefaults(
+    ctx: MongoDalContext,
+    courseName: string
+): Promise<GuidedPathway[]> {
+    const collection = await getPathwaysCollection(ctx, courseName);
+    await collection.deleteMany({});
+    const seeds = buildPlatformPathwaySeeds();
+    if (seeds.length > 0) {
+        await collection.insertMany(seeds as any[]);
+    }
+    appLogger.log(`[pathways] Reset ${courseName} to ${seeds.length} platform default pathway(s)`);
     return listPathways(ctx, courseName);
 }
 

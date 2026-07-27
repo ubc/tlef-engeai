@@ -344,9 +344,12 @@ export class ChatApp {
         // ====================================================================
         // STEP 0: GUIDED PATHWAYS (pre-LLM intercept)
         // ====================================================================
+
+        // Get the conversation mode
         const conversationMode = this.getGuardrailConversationMode(chatId);
 
         if (conversationMode) {
+
             const pathwayResult = await evaluatePathways({
                 message,
                 courseName,
@@ -1230,7 +1233,10 @@ export class ChatApp {
     }
 
     /**
-     * Returns the conversation mode when guardrails apply (Socratic or Explanatory only).
+     * getGuardrailConversationMode - Returns the conversation mode when guardrails apply (Socratic or Explanatory only).
+     * 
+     * @param chatId - The chat ID
+     * @returns 'socratic' | 'explanatory' | undefined - The conversation mode when guardrails apply
      */
     private getGuardrailConversationMode(
         chatId: string
