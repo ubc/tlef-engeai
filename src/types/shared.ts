@@ -84,14 +84,14 @@ export interface PathwayCta {
 /**
  * One instructor-configurable guided pathway stored in `{courseName}_pathways`.
  *
- * Evaluated pre-LLM on Socratic/Explanatory sends. List `order` is classifier priority.
- * Empty `assistantResponse` makes the pathway ineligible to intercept.
+ * Evaluated pre-LLM on Socratic/Explanatory sends. List `order` is library list position.
+ * Empty `assistantResponse` or `enabled: false` makes the pathway ineligible to intercept.
  */
 export interface GuidedPathway {
     id: string; // stable pathway id (seed keeps mental-health-crisis etc.)
-    order: number; // ascending = evaluator priority
+    order: number; // library list position (ascending)
     title: string; // instructor-facing card title (library UI)
-    enabledGlobally: boolean; // active for this course (UI always on; kept for evaluator)
+    enabled: boolean; // on for this course; false = listed but not evaluated
     triggerDescription: string; // fed into the dynamic evaluator prompt
     assistantResponse: string; // markdown reply; empty => cannot intercept
     ctas: PathwayCta[]; // resource buttons shown with the predetermined reply

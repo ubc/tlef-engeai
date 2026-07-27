@@ -1,7 +1,7 @@
 // public/scripts/feature/pathway-library.ts
 
 /**
- * Pathway Library instructor feature — list/edit/reorder/delete course pathways.
+ * Pathway Library instructor feature — list/edit/reorder/enable/delete course pathways.
  */
 
 import type { activeCourse, GuidedPathway, PathwayCta } from '../types.js';
@@ -153,6 +153,7 @@ function renderList(): void {
         const node = blockTpl.content.cloneNode(true) as DocumentFragment;
         const article = node.querySelector('.pathway-block') as HTMLElement;
         article.dataset.pathwayId = pathway.id;
+        applyEnabledVisual(article, pathway.enabled !== false);
 
         const titleText = article.querySelector('.pathway-block__title-text') as HTMLElement;
         const titleInput = article.querySelector('.pathway-block__title-input') as HTMLInputElement;
@@ -167,6 +168,7 @@ function renderList(): void {
             if (article.classList.contains('is-editing-title')) return;
             const target = e.target as HTMLElement;
             if (target.closest('.pathway-block__drag-handle')) return;
+            if (target.closest('.pathway-block__header-controls')) return;
             if (target.closest('.pathway-block__expand')) return;
             // title-text / edit / input stopPropagation; empty wrap space bubbles here
             toggleExpanded(article);
@@ -201,8 +203,14 @@ function renderList(): void {
         upBtn.addEventListener('click', () => void movePathway(pathway.id, -1));
         downBtn.addEventListener('click', () => void movePathway(pathway.id, 1));
 
-        article.querySelector('.pathway-block__remove')?.addEventListener('click', () => {
+        article.querySelector('.pathway-block__remove')?.addEventListener('click', (e) => {
+            e.stopPropagation();
             void onRemove(pathway.id);
+        });
+
+        article.querySelector('.pathway-block__toggle-enabled')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            void onToggleEnabled(article, pathway.id);
         });
 
         article.querySelector('.pathway-block__save')?.addEventListener('click', () => {
@@ -508,6 +516,35 @@ function readCtasFromBlock(article: HTMLElement): PathwayCta[] {
     return ctas;
 }
 
+function applyEnabledVisual(article: HTMLElement, enabled: boolean): void {
+    article.dataset.enabled = enabled ? 'true' : 'false';
+    article.classList.toggle('pathway-block--inactive', !enabled);
+    const badge = article.querySelector('.pathway-block__inactive-badge') as HTMLElement | null;
+    if (badge) badge.hidden = enabled;
+    const toggleBtn = article.querySelector('.pathway-block__toggle-enabled') as HTMLButtonElement | null;
+    if (toggleBtn) {
+        toggleBtn.setAttribute('aria-checked', enabled ? 'true' : 'false');
+        toggleBtn.title = enabled ? 'Active' : 'Inactive';
+        toggleBtn.setAttribute('aria-label', enabled ? 'Pathway active' : 'Pathway inactive');
+    }
+}
+
+function isArticleEnabled(article: HTMLElement): boolean {
+    return article.dataset.enabled !== 'false';
+}
+
+async function onToggleEnabled(article: HTMLElement, pathwayId: string): Promise<void> {
+    const nextEnabled = !isArticleEnabled(article);
+    try {
+        const updated = await updatePathway(courseId, pathwayId, { enabled: nextEnabled });
+        pathways = pathways.map((p) => (p.id === pathwayId ? updated : p));
+        applyEnabledVisual(article, updated.enabled !== false);
+        showSuccessToast(updated.enabled ? 'Pathway activated' : 'Pathway deactivated');
+    } catch (error: any) {
+        showErrorToast(error?.message || 'Failed to update pathway status');
+    }
+}
+
 async function onSave(article: HTMLElement, pathwayId: string): Promise<void> {
     const status = article.querySelector('.pathway-block__save-status') as HTMLElement | null;
     if (status) status.textContent = 'Saving…';
@@ -520,7 +557,7 @@ async function onSave(article: HTMLElement, pathwayId: string): Promise<void> {
         const ctas = readCtasFromBlock(article);
         const updated = await updatePathway(courseId, pathwayId, {
             title,
-            enabledGlobally: true,
+            enabled: isArticleEnabled(article),
             triggerDescription,
             assistantResponse,
             ctas,
@@ -530,6 +567,7 @@ async function onSave(article: HTMLElement, pathwayId: string): Promise<void> {
         const titleInput = article.querySelector('.pathway-block__title-input') as HTMLInputElement | null;
         if (titleText) titleText.textContent = updated.title;
         if (titleInput) titleInput.value = updated.title;
+        applyEnabledVisual(article, updated.enabled !== false);
         article.classList.remove('is-editing-title');
         if (status) status.textContent = 'Saved';
         showSuccessToast('Pathway saved');
@@ -546,7 +584,7 @@ async function onAddPathway(): Promise<void> {
     try {
         const created = await createPathway(courseId, {
             title: DEFAULT_TITLE,
-            enabledGlobally: true,
+            enabled: true,
             triggerDescription: '',
             assistantResponse: '',
             ctas: [],

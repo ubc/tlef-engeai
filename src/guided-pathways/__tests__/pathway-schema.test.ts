@@ -26,7 +26,7 @@ describe('pathway-schema', () => {
         expect(
             isPathwayEvaluable({
                 ...seeds[0],
-                enabledGlobally: false,
+                enabled: false,
             })
         ).toBe(false);
     });
@@ -75,9 +75,12 @@ describe('pathway-schema', () => {
         expect(() => schema.parse({ pathwayType: 'inappropriate-content' })).toThrow();
     });
 
-    it('prompt lists pathways in priority order', () => {
+    it('prompt lists pathway ids and triggers without priority language', () => {
         const prompt = buildPathwayEvaluationSystemPrompt(seeds);
         expect(prompt.indexOf('mental-health-crisis')).toBeLessThan(prompt.indexOf('inappropriate-content'));
-        expect(prompt).toContain('mental-health-crisis > inappropriate-content > off-topic');
+        expect(prompt).toContain('### `mental-health-crisis`');
+        expect(prompt).not.toContain('Priority rule');
+        expect(prompt).not.toContain('priority 1');
+        expect(prompt).not.toContain('mental-health-crisis > inappropriate-content > off-topic');
     });
 });

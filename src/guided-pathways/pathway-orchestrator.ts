@@ -51,7 +51,7 @@ export function resetPathwayLlmModuleForTests(): void {
 }
 
 /**
- * loadEvaluablePathways - Fetch course pathways sorted by order, filtered for intercept eligibility.
+ * loadEvaluablePathways - Fetch course pathways sorted by library order, filtered for intercept eligibility.
  *
  * @param courseName - Logical course name
  * @returns Evaluable GuidedPathway list (may be empty)

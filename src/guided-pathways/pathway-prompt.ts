@@ -2,11 +2,11 @@
  * pathway-prompt.ts
  *
  * Builds system and user turns for the Guided Pathway classifier. Trigger rules come from
- * each pathway's `triggerDescription`; priority is list order (first = highest).
+ * each pathway's `triggerDescription`.
  *
  * @author: EngE-AI Team
  * @date: 2026-07-24
- * @version: 1.0.0
+ * @version: 1.1.0
  * @description: Dynamic pathway evaluator prompts from course pathway docs.
  */
 
@@ -19,23 +19,15 @@ export interface PathwayEvaluationMetadata {
 }
 
 /**
- * buildPathwayEvaluationSystemPrompt - System prompt listing evaluable pathways in priority order.
+ * buildPathwayEvaluationSystemPrompt - System prompt listing evaluable pathways.
  *
- * @param pathways - Evaluable pathways sorted by `order` ascending
+ * @param pathways - Evaluable pathways (stable list order from library `order`)
  * @returns System prompt for structured pathway evaluation
  */
 export function buildPathwayEvaluationSystemPrompt(pathways: readonly GuidedPathway[]): string {
     const sections = pathways
-        .map(
-            (p, index) => `### \`${p.id}\` (priority ${index + 1})
-${p.triggerDescription.trim()}`
-        )
+        .map((p) => `### \`${p.id}\`\n${p.triggerDescription.trim()}`)
         .join('\n\n');
-
-    const priorityLine =
-        pathways.length > 0
-            ? pathways.map((p) => p.id).join(' > ')
-            : '(none configured)';
 
     return `You are a safety and relevance evaluator for an engineering study assistant (Guided Pathways).
 
@@ -46,7 +38,7 @@ ${sections || '(No pathways configured.)'}
 ### \`none\`
 - Message is appropriate and on-topic for the course; no pathway above applies.
 
-**Priority rule:** If multiple pathways could apply, return only the highest-priority match (earliest in this list): ${priorityLine}.
+Pick the single pathway whose trigger best matches the message. If none apply, return \`none\`.
 
 ## Calibration reminders
 

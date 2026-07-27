@@ -16,7 +16,7 @@ import type { GuidedPathway } from '../types/shared';
 /**
  * buildPlatformPathwaySeeds - Platform defaults used when a course pathways collection is empty.
  *
- * Order is classifier priority (mental health first). Fully editable after seed.
+ * Default list order (mental health first). Fully editable after seed.
  *
  * @returns Fresh GuidedPathway array (new objects / timestamps each call)
  */
@@ -26,7 +26,7 @@ export function buildPlatformPathwaySeeds(now: number = Date.now()): GuidedPathw
             id: 'mental-health-crisis',
             order: 0,
             title: 'Mental health crisis',
-            enabledGlobally: true,
+            enabled: true,
             triggerDescription:
                 'Detects if the user message expresses suicidal ideation, thoughts of self-harm, severe hopelessness, or a mental health crisis.',
             assistantResponse: `Thank you for telling me this — it sounds like a genuinely hard moment, and I want to take it seriously rather than brush past it.
@@ -62,7 +62,7 @@ You don't have to handle this on your own. I'll be here for the course whenever 
             id: 'inappropriate-content',
             order: 1,
             title: 'Inappropriate content',
-            enabledGlobally: true,
+            enabled: true,
             triggerDescription:
                 'Detects if the user message contains harassment, hate speech, explicit content, threats, or abusive language.',
             assistantResponse: `I'm not able to respond to that. EngE-AI is here to support your learning in {courseName}, and I need to keep our conversation focused and respectful to do that well.
@@ -75,7 +75,7 @@ If there's an actual question about course material, an assignment, or an engine
             id: 'off-topic',
             order: 2,
             title: 'Off-topic',
-            enabledGlobally: true,
+            enabled: true,
             triggerDescription:
                 'Detects if the user message is unrelated to the course material. This includes requests for help with a completely different subject, personal questions, or general-purpose queries that have no connection to the course.',
             assistantResponse: `That's outside what I can help with — I'm scoped specifically to {courseName} Engineering coursework, not general topics.

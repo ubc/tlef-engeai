@@ -35,7 +35,7 @@ const NO_TRIGGER_RESULT: PathwayEvaluationResult = {
  * @returns true when the classifier may return this pathway's id
  */
 export function isPathwayEvaluable(pathway: GuidedPathway): boolean {
-    return pathway.enabledGlobally === true && pathway.assistantResponse.trim().length > 0;
+    return pathway.enabled === true && pathway.assistantResponse.trim().length > 0;
 }
 
 /**

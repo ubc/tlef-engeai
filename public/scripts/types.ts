@@ -48,9 +48,9 @@ export interface PathwayCta {
 /** Must match src/types/shared.ts — one pathway in `{courseName}_pathways`. */
 export interface GuidedPathway {
     id: string;
-    order: number;
+    order: number; // library list position
     title: string;
-    enabledGlobally: boolean;
+    enabled: boolean; // on for this course; false = listed but not evaluated
     triggerDescription: string;
     assistantResponse: string;
     ctas: PathwayCta[];

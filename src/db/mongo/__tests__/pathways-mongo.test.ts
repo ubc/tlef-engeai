@@ -54,6 +54,11 @@ function makeCollection(store: any[] = []): Collection & { _store: any[] } {
             const doc = store.find((d) => d.id === q.id);
             if (!doc) return { matchedCount: 0 };
             Object.assign(doc, update.$set || {});
+            if (update.$unset) {
+                for (const key of Object.keys(update.$unset)) {
+                    delete doc[key];
+                }
+            }
             return { matchedCount: 1 };
         }),
         deleteOne: jest.fn(async (q: any) => {
@@ -107,7 +112,7 @@ describe('pathways-mongo', () => {
             {
                 id: 'mental-health-crisis',
                 order: 0,
-                enabledGlobally: true,
+                enabled: true,
                 triggerDescription: '',
                 assistantResponse: 'x',
                 ctas: [],
@@ -116,7 +121,7 @@ describe('pathways-mongo', () => {
             {
                 id: 'custom-row',
                 order: 1,
-                enabledGlobally: true,
+                enabled: true,
                 triggerDescription: '',
                 assistantResponse: 'y',
                 ctas: [],
@@ -127,6 +132,21 @@ describe('pathways-mongo', () => {
         expect(list.map((p) => p.id)).toEqual(['mental-health-crisis', 'custom-row']);
         expect(list[0].title).toBe('Mental health crisis');
         expect(list[1].title).toBe('Untitled');
+    });
+
+    it('listPathways maps legacy enabledGlobally to enabled', async () => {
+        store.push({
+            id: 'legacy-off',
+            order: 0,
+            enabledGlobally: false,
+            triggerDescription: '',
+            assistantResponse: 'x',
+            ctas: [],
+            updatedAt: 1,
+        });
+        const list = await listPathways(ctx, 'Test');
+        expect(list[0].enabled).toBe(false);
+        expect((list[0] as any).enabledGlobally).toBeUndefined();
     });
 
     it('create/update/delete pathway', async () => {
@@ -143,10 +163,10 @@ describe('pathways-mongo', () => {
         const updated = await updatePathway(ctx, 'Test', created.id, {
             title: 'Spill response',
             assistantResponse: 'Updated',
-            enabledGlobally: false,
+            enabled: false,
         });
         expect(updated?.assistantResponse).toBe('Updated');
-        expect(updated?.enabledGlobally).toBe(false);
+        expect(updated?.enabled).toBe(false);
         expect(updated?.title).toBe('Spill response');
 
         const deleted = await deletePathway(ctx, 'Test', created.id);
@@ -160,7 +180,7 @@ describe('pathways-mongo', () => {
                 id: 'a',
                 order: 0,
                 title: 'A',
-                enabledGlobally: true,
+                enabled: true,
                 triggerDescription: '',
                 assistantResponse: 'a',
                 ctas: [],
@@ -170,7 +190,7 @@ describe('pathways-mongo', () => {
                 id: 'b',
                 order: 1,
                 title: 'B',
-                enabledGlobally: true,
+                enabled: true,
                 triggerDescription: '',
                 assistantResponse: 'b',
                 ctas: [],
@@ -188,7 +208,7 @@ describe('pathways-mongo', () => {
             id: 'a',
             order: 0,
             title: 'A',
-            enabledGlobally: true,
+            enabled: true,
             triggerDescription: '',
             assistantResponse: 'a',
             ctas: [],
@@ -202,7 +222,7 @@ describe('pathways-mongo', () => {
             id: 'custom',
             order: 0,
             title: 'Custom',
-            enabledGlobally: true,
+            enabled: true,
             triggerDescription: 'x',
             assistantResponse: 'y',
             ctas: [],

@@ -69,7 +69,7 @@ export interface CreatePathwayInput {
     title?: string;
     triggerDescription?: string;
     assistantResponse?: string;
-    enabledGlobally?: boolean;
+    enabled?: boolean;
     ctas?: PathwayCta[];
 }
 
@@ -78,8 +78,16 @@ export interface UpdatePathwayInput {
     title?: string;
     triggerDescription?: string;
     assistantResponse?: string;
-    enabledGlobally?: boolean;
+    enabled?: boolean;
     ctas?: PathwayCta[];
+}
+
+/**
+ * resolveEnabled - Prefer `enabled`; fall back to legacy `enabledGlobally`; default true.
+ */
+function resolveEnabled(doc: any): boolean {
+    if (typeof doc.enabled === 'boolean') return doc.enabled;
+    return doc.enabledGlobally !== false;
 }
 
 /**
@@ -213,7 +221,7 @@ function docToPathway(doc: any): GuidedPathway {
         id,
         order: typeof doc.order === 'number' ? doc.order : 0,
         title: normalizeTitle(doc.title, id),
-        enabledGlobally: doc.enabledGlobally !== false,
+        enabled: resolveEnabled(doc),
         triggerDescription: typeof doc.triggerDescription === 'string' ? doc.triggerDescription : '',
         assistantResponse: typeof doc.assistantResponse === 'string' ? doc.assistantResponse : '',
         ctas: normalizeCtas(doc.ctas),
@@ -258,7 +266,7 @@ export async function createPathway(
         id: `pathway-${ctx.idGenerator.uniqueIDGenerator(`${courseName}-${triggerDescription}-${now}`)}`,
         order: maxOrder + 1,
         title: normalizeTitle(input.title),
-        enabledGlobally: input.enabledGlobally !== false,
+        enabled: input.enabled !== false,
         triggerDescription,
         assistantResponse: (input.assistantResponse ?? '').trim(),
         ctas: normalizeCtas(input.ctas),
@@ -292,14 +300,15 @@ export async function updatePathway(
     if (typeof input.assistantResponse === 'string') {
         $set.assistantResponse = input.assistantResponse.trim();
     }
-    if (typeof input.enabledGlobally === 'boolean') {
-        $set.enabledGlobally = input.enabledGlobally;
+    if (typeof input.enabled === 'boolean') {
+        $set.enabled = input.enabled;
     }
     if (input.ctas !== undefined) {
         $set.ctas = normalizeCtas(input.ctas);
     }
 
-    await collection.updateOne({ id: pathwayId }, { $set });
+    // Self-heal legacy field name on every patch
+    await collection.updateOne({ id: pathwayId }, { $set, $unset: { enabledGlobally: '' } });
     const updated = await collection.findOne({ id: pathwayId });
     return updated ? docToPathway(updated) : null;
 }

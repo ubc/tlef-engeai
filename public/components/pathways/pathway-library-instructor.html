@@ -32,7 +32,7 @@
         </div>
         <p class="pathway-library__subtitle">
             Configure guided pathways that intercept chat before the teaching assistant responds.
-            List order is priority (top wins when multiple could match).
+            Drag to reorder the library list. Deactivate a pathway to keep it without evaluating it.
         </p>
     </header>
 
@@ -66,9 +66,32 @@
             <button type="button" class="pathway-block__drag-handle" aria-label="Drag to reorder" aria-grabbed="false" title="Drag to reorder">⋮⋮</button>
             <div class="pathway-block__title-wrap">
                 <span class="pathway-block__title-text"></span>
+                <span class="pathway-block__inactive-badge" hidden>Inactive</span>
                 <input type="text" class="pathway-block__title-input" placeholder="Untitled" aria-label="Pathway title" />
                 <button type="button" class="pathway-block__title-edit" aria-label="Edit title" title="Edit title">
                     <i data-feather="edit-2"></i>
+                </button>
+            </div>
+            <div class="pathway-block__header-controls">
+                <button
+                    type="button"
+                    class="pathway-block__toggle-enabled"
+                    role="switch"
+                    aria-checked="true"
+                    aria-label="Pathway active"
+                    title="Active"
+                >
+                    <span class="pathway-block__toggle-track" aria-hidden="true">
+                        <span class="pathway-block__toggle-thumb"></span>
+                    </span>
+                </button>
+                <button
+                    type="button"
+                    class="pathway-block__remove icon-btn"
+                    aria-label="Remove pathway"
+                    title="Remove pathway"
+                >
+                    <i data-feather="trash-2"></i>
                 </button>
             </div>
             <button type="button" class="pathway-block__expand" aria-expanded="false" aria-label="Expand pathway">
@@ -105,7 +128,6 @@
                         <button type="button" class="pathway-library__btn pathway-block__down">↓ Down</button>
                     </div>
                     <div class="pathway-block__actions-right">
-                        <button type="button" class="pathway-library__btn pathway-library__btn--danger pathway-block__remove">Remove</button>
                         <button type="button" class="pathway-library__btn pathway-library__btn--primary pathway-block__save">Save</button>
                         <span class="pathway-block__save-status" aria-live="polite"></span>
                     </div>

@@ -49,7 +49,7 @@ export function mountPathwaysRoutes(router: Router): void {
                 title: typeof body.title === 'string' ? body.title : undefined,
                 triggerDescription: typeof body.triggerDescription === 'string' ? body.triggerDescription : '',
                 assistantResponse: typeof body.assistantResponse === 'string' ? body.assistantResponse : '',
-                enabledGlobally: true,
+                enabled: typeof body.enabled === 'boolean' ? body.enabled : true,
                 ctas: Array.isArray(body.ctas) ? body.ctas : [],
             });
             res.status(201).json({ success: true, data });
@@ -117,8 +117,7 @@ export function mountPathwaysRoutes(router: Router): void {
             if (typeof body.title === 'string') patch.title = body.title;
             if (typeof body.triggerDescription === 'string') patch.triggerDescription = body.triggerDescription;
             if (typeof body.assistantResponse === 'string') patch.assistantResponse = body.assistantResponse;
-            // UI no longer exposes enable toggle — keep pathways active when patched from library
-            if (typeof body.enabledGlobally === 'boolean') patch.enabledGlobally = body.enabledGlobally;
+            if (typeof body.enabled === 'boolean') patch.enabled = body.enabled;
             if (Array.isArray(body.ctas)) patch.ctas = body.ctas;
 
             const data = await instance.updatePathway(courseName, pathwayId, patch);
