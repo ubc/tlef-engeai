@@ -115,13 +115,15 @@ body {
 
 .instructor-feature-sidebar.collapsed {
     padding: 0.5rem;
-    width: 56px; /* Set width to auto when collapsed */
+    /* 64px leaves a 48px content column, wide enough to centre the 24px logo and
+       20-24px nav icons instead of pinning them to the left edge. */
+    width: 64px;
 }
 
 /* Chat List Styles - INSIDE instructor-sidebar, OUTSIDE instructor-feature-sidebar */
 .instructor-sidebar .chat-list {
     top: 0;
-    left: 60px; /* Start slightly to the right of collapsed feature sidebar (56px + 4px gap) */
+    left: 68px; /* Start slightly to the right of collapsed feature sidebar (64px + 4px gap) */
     width: 214px;
     height: 100%;
     background-color: var(--background-2);
@@ -317,7 +319,7 @@ body {
 .instructor-feature-sidebar.collapsed .instructor-course-info-btn,
 .instructor-feature-sidebar.collapsed .instructor-course-selection-btn {
     padding: 0.5rem;
-    justify-content: flex-start;
+    justify-content: center;
     gap: 0;
 }
 
@@ -384,6 +386,16 @@ body {
     max-width: 0;
 }
 
+/* Collapsed rail: drop the horizontal padding and gap that the hidden text needed so
+   the logo mark centres in the rail instead of sitting against the left edge. */
+.instructor-feature-sidebar.collapsed .logo-box,
+.logo-box.collapsed {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+    gap: 0;
+}
+
 .logo-box .feather,
 .logo-box .logo-brain-icon {
     flex-shrink: 0;
@@ -412,8 +424,11 @@ body {
 }
 
 
-.instructor-sidebar.collapsed .sidebar-collapse-icon{
-    margin:10px 0px 0px 5px ;
+/* The `collapsed` class is set on .instructor-feature-sidebar, so the toggle button is
+   centred from there; the .instructor-sidebar variant never matched. */
+.instructor-feature-sidebar.collapsed .sidebar-collapse-icon {
+    margin: 10px 0px 0px 0px;
+    justify-content: center;
 }
 
 .sidebar-collapse-icon .feather {
@@ -449,9 +464,11 @@ body {
     width: 100%;
 }
 
+/* Fill the collapsed rail so each item can centre its icon; a fixed 38px column
+   left the icons off-centre inside the 48px content area. */
 .sidebar-menu-list.collapsed {
-    flex: 0 0 38px;
-    width: 38px;
+    flex: 0 0 100%;
+    width: 100%;
 }
 
 .sidebar-menu-list ul{
@@ -470,7 +487,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    width: 38px;
+    width: 100%;
 }
 
 
@@ -541,8 +558,10 @@ body {
 }
 
 .sidebar-menu-list.collapsed .menu-list-item {
-    padding: 0px 0px 0px 7px;
+    padding: 0;
     gap: 0; /* Remove gap when collapsed */
+    /* Centre the icon so the active item's larger 24px glyph does not shift sideways. */
+    justify-content: center;
 }
 
 /* Menu list item text smooth fade + slide animation when sidebar collapses */

@@ -101,7 +101,9 @@ body {
 
 /* Collapsed sidebar to widen main chat area while keeping message content max width constant */
 .sidebar.collapsed {
-    width: 56px;
+    /* 64px leaves a 48px content column, wide enough to centre the logo mark and the
+       20-24px nav icons instead of pinning them to the left edge. */
+    width: 64px;
     padding: 0.5rem;
 }
 
@@ -109,6 +111,15 @@ body {
 .sidebar.collapsed .logo-text {
     opacity: 0;
     max-width: 0;
+}
+
+/* Collapsed rail: drop the horizontal padding and gap that the hidden text needed so
+   the logo mark centres in the rail instead of sitting against the left edge. */
+.sidebar.collapsed .sidebar-header .logo-box {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+    gap: 0;
 }
 
 
@@ -217,8 +228,10 @@ body {
 }
 
 .sidebar.collapsed .student-tool-btn {
-    padding: 0 0 0 7px;
+    padding: 0;
     gap: 0;
+    /* Centre the icon so the active item's larger 24px glyph does not shift sideways. */
+    justify-content: center;
 }
 
 /* Add chat button text hide when sidebar collapses */
@@ -242,7 +255,7 @@ body {
 .sidebar.collapsed .about-btn,
 .sidebar.collapsed .course-selection-btn {
     padding: 0.5rem; /* Square padding when collapsed */
-    justify-content: flex-start;
+    justify-content: center;
     gap: 0; /* Remove gap when collapsed */
 }
 
@@ -259,7 +272,9 @@ body {
 }
 
 .sidebar.collapsed .sidebar-collapse-icon {
-    margin: 10px 0 10px 5px;
+    margin: 10px 0 10px 0;
+    justify-content: center;
+    padding: 0;
 }
 
 /* Hide chat list action buttons when collapsed, EXCEPT show the pinned star */

@@ -596,24 +596,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sidebarCollapseToggle = () => {
         if (!sidebarCollapseButton) return;
         sidebarCollapseButton.addEventListener('click', () => {
-            // Disable hamburger button when in chat mode
-            if (currentState === StateEvent.Chat) {
-                return; // Hamburger button is non-functional in chat mode
-            }
-            
-            // Toggle the instructor-feature-sidebar (not the entire instructor-sidebar)
+            // Toggle the instructor-feature-sidebar (not the entire instructor-sidebar).
             if (!instructorFeatureSidebarEl) return;
-            instructorFeatureSidebarEl.classList.toggle('collapsed');
-            
-            if(!logoBox) return;
-            logoBox.classList.toggle('collapsed');
-            
-            // Update the collapse state tracking
-            isSidebarCollapsed = instructorFeatureSidebarEl.classList.contains('collapsed');
-            
-            if(!sidebarMenuListEl) return;
-            sidebarMenuListEl.classList.toggle('collapsed');
-            
+
+            if (instructorFeatureSidebarEl.classList.contains('collapsed')) {
+                // Expanding hides the chat list, which is positioned against the collapsed
+                // rail and would otherwise sit underneath the widened sidebar.
+                expandFeatureSidebar();
+            } else {
+                collapseFeatureSidebar();
+                // Chat mode keeps the chat list docked beside the collapsed rail, so
+                // restore it whenever the sidebar returns to its collapsed width.
+                if (currentState === StateEvent.Chat) showChatList();
+            }
         } );
     }
     
@@ -940,6 +935,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             //START DEBUG LOG : DEBUG-CODE(013)
             // console.log('🚫 Chat list hidden (not in chat mode)');
             //END DEBUG LOG : DEBUG-CODE(013)
+        }
+    }
+
+    const showChatList = () => {
+        if (chatListEl) {
+            chatListEl.classList.add('active');
         }
     }
 
@@ -1293,9 +1294,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         
         // Show chat list (slides in from left to right)
-        if (chatListEl) {
-            chatListEl.classList.add('active');
-        }
+        showChatList();
         
         // Check if there's a chatId in URL
         const chatIdFromURL = getChatIdFromURL();
