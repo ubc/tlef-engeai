@@ -17,6 +17,8 @@ import { canManageCourseRoster, isCourseStaff } from '../utils/course-staff';
 import { appLogger } from '../utils/logger';
 import { asRouteParam } from '../helpers/route-params';
 import type { activeCourse, GlobalUser } from '../types/shared';
+// @rdschrs: Implemented RBAC-ordered optional course capability enforcement.
+import { CourseFeatureId, isCourseFeatureEnabled } from '../helpers/course-features';
 
 type CourseIdSource = 'params' | 'paramsId' | 'body' | 'query' | 'session';
 
@@ -153,6 +155,42 @@ export function requireRosterManageAPI(sources: CourseIdSource[] = ['params', 'p
             next();
         } catch (error) {
             appLogger.error('[RBAC] Error in requireRosterManageAPI:', error);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    };
+}
+
+/**
+ * requireCourseFeatureAPI — blocks operational APIs for disabled course capabilities.
+ *
+ * Mount after a course-role middleware: this gate confirms product availability,
+ * not identity or authorization. Missing capability configuration is disabled.
+ *
+ * @param feature - Optional capability that must be explicitly enabled
+ * @param sources - Ordered request locations used to resolve the course id
+ * @returns Express middleware returning 403 for a disabled or missing capability
+ */
+export function requireCourseFeatureAPI(
+    feature: CourseFeatureId,
+    sources: CourseIdSource[] = ['params', 'paramsId', 'body', 'session']
+) {
+    return async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const ctx = await loadCourseContext(req, sources);
+            if (!ctx.ok) {
+                return res.status(ctx.status).json({ error: ctx.error });
+            }
+
+            // Require an explicit opt-in; legacy course records have no feature map.
+            if (!isCourseFeatureEnabled(ctx.course, feature)) {
+                return res.status(403).json({
+                    error: 'Course feature is disabled',
+                    feature
+                });
+            }
+            next();
+        } catch (error) {
+            appLogger.error('[RBAC] Error in requireCourseFeatureAPI:', error);
             res.status(500).json({ error: 'Internal server error' });
         }
     };

@@ -5,21 +5,18 @@ alwaysApply: false
 
 # Testing Policy
 
-**Do not provide tests by default.** After changes, ask:
+Run risk-proportional verification for changed behavior. Do not require a separate request for tests that are part of an approved implementation.
 
-- Backend: "Would you like testing for the backend implementation?"
-- Frontend: "Would you like blackbox validation for the frontend changes?"
-- Both: "Would you like integrated testing for frontend and backend?"
+## Required by change type
 
-## If user says yes
-
-- **Backend:** Jest in `src/**/__tests__/**/*.test.ts` (preferred for db/mongo). Legacy `/test` + `npx ts-node` only if user requests — do not change `package.json` / `nodemon.json`.
-- **Frontend:** MD checklist (manual blackbox).
-- **Both:** MD integrated checklist.
+- **Backend:** Jest in `src/**/__tests__/**/*.test.ts` (preferred for db/mongo), plus backend TypeScript build.
+- **Frontend:** frontend TypeScript build and a focused manual blackbox/accessibility checklist.
+- **Both:** targeted Jest, both builds, and an integrated manual workflow check.
+- If a test cannot run, state the exact blocker and leave the implementation in a safely reviewable state.
 
 ## Backend QA (docs-only pass)
 
-After non-trivial BE work, Orchestrator may invoke `01-backend-qa-docs-only.mdc` — tests derived from `documentation/` only, no source reads.
+After non-trivial BE work, Orchestrator may invoke `01-backend-qa-docs-only.mdc` — tests derived from `documents/` only, no source reads.
 
 ## Tooling priority (future)
 
