@@ -31,6 +31,9 @@
 .toast-notification {
     pointer-events: auto;
     padding: 1rem 1.5rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
     background-color: white;
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -42,6 +45,41 @@
     transform: translateX(100%);
     transition: opacity 0.3s ease, transform 0.3s ease;
     cursor: pointer;
+}
+
+/* @rdschrs: Added accessible message and dismiss presentation for feature toasts. */
+.toast-message {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.toast-dismiss {
+    flex: 0 0 auto;
+    width: 1.75rem;
+    height: 1.75rem;
+    margin: -0.35rem -0.75rem -0.35rem 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 0.25rem;
+    background: transparent;
+    color: currentColor;
+    font: inherit;
+    font-size: 1.35rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.toast-dismiss:hover {
+    background-color: rgba(0, 0, 0, 0.07);
+}
+
+.toast-dismiss:focus-visible {
+    outline: 3px solid currentColor;
+    outline-offset: 2px;
 }
 
 .toast-container.toast-top-left .toast-notification,
@@ -87,4 +125,16 @@
 
 .toast-notification.toast-error:hover {
     background-color: var(--background-2, #ECE5DD);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .toast-notification,
+    .toast-container.toast-top-left .toast-notification,
+    .toast-container.toast-bottom-left .toast-notification,
+    .toast-notification.hide,
+    .toast-container.toast-top-left .toast-notification.hide,
+    .toast-container.toast-bottom-left .toast-notification.hide {
+        transition-duration: 0.01ms;
+        transform: none;
+    }
 }

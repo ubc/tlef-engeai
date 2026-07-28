@@ -107,6 +107,15 @@ export interface InstructorInfo {
     name: string;
 }
 
+// @rdschrs: Added the opt-in Writing Feedback capability contract to course state.
+export interface CourseFeatures {
+    writingFeedback?: {
+        enabled: boolean;
+        enabledAt?: Date;
+        enabledBy?: string;
+    };
+}
+
 /**
  * Must match src/types/shared.ts
  */
@@ -138,6 +147,8 @@ export interface activeCourse {
     systemPromptConfig?: CourseSystemPromptConfig;
     /** FK to `academic-periods.id`; lazy-migrated via AP-001 when missing */
     academicPeriodId?: string;
+    /** Optional course capabilities. Missing entries are disabled for backward compatibility. */
+    features?: CourseFeatures;
 }
 
 /**

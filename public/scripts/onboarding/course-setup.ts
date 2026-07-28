@@ -166,7 +166,13 @@ function setNavigationSubmitting(isSubmitting: boolean): void {
 
 export const renderOnCourseSetup = async (instructorCourse: activeCourse): Promise<void> => {
     try {
-        const onBoardingCourse: activeCourse = { ...instructorCourse };
+        // @rdschrs: Added Writing Feedback opt-in collection to course setup.
+        const onBoardingCourse: activeCourse = {
+            ...instructorCourse,
+            features: instructorCourse.features ?? {
+                writingFeedback: { enabled: false }
+            }
+        };
 
         const state: OnboardingState = {
             currentStep: 1,
@@ -284,6 +290,14 @@ function setupReviewFormListeners(state: OnboardingState, onBoardingCourse: acti
         const target = e.target as HTMLInputElement;
         onBoardingCourse.tilesNumber = parseInt(target.value) || 12;
         updateStepIndicators(state);
+    });
+
+    const writingFeedbackInput = document.getElementById('reviewWritingFeedbackEnabled') as HTMLInputElement;
+    writingFeedbackInput?.addEventListener('change', () => {
+        onBoardingCourse.features = {
+            ...onBoardingCourse.features,
+            writingFeedback: { enabled: writingFeedbackInput.checked }
+        };
     });
 }
 
@@ -526,6 +540,12 @@ function updateReviewContent(onBoardingCourse: activeCourse): void {
         reviewContentCountInput.value = onBoardingCourse.tilesNumber.toString();
     }
 
+
+    const writingFeedbackInput = document.getElementById('reviewWritingFeedbackEnabled') as HTMLInputElement;
+    if (writingFeedbackInput) {
+        writingFeedbackInput.checked = onBoardingCourse.features?.writingFeedback?.enabled === true;
+    }
+
     updateReviewContentCountDescription(onBoardingCourse);
 }
 
@@ -551,7 +571,8 @@ async function handleDatabaseSubmission(
             submittedCourse = await completeCourseSetupOnExisting(
                 onBoardingCourse.id,
                 onBoardingCourse.frameType,
-                onBoardingCourse.tilesNumber
+                onBoardingCourse.tilesNumber,
+                onBoardingCourse.features
             );
         } else {
             const courseData: activeCourse = {
@@ -566,7 +587,10 @@ async function handleDatabaseSubmission(
                 teachingAssistants: [],
                 frameType: onBoardingCourse.frameType,
                 tilesNumber: onBoardingCourse.tilesNumber,
-                topicOrWeekInstances: []
+                topicOrWeekInstances: [],
+                features: onBoardingCourse.features ?? {
+                    writingFeedback: { enabled: false }
+                }
             };
             submittedCourse = await postCourseToDatabase(courseData);
         }
@@ -591,13 +615,14 @@ function handleWindowReset(): void {
 async function completeCourseSetupOnExisting(
     courseId: string,
     frameType: 'byWeek' | 'byTopic',
-    tilesNumber: number
+    tilesNumber: number,
+    features: activeCourse['features']
 ): Promise<activeCourse> {
     const response = await fetch(`/api/courses/${courseId}/complete-course-setup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ frameType, tilesNumber })
+        body: JSON.stringify({ frameType, tilesNumber, features })
     });
 
     if (!response.ok) {
@@ -634,4 +659,3 @@ async function postCourseToDatabase(courseData: activeCourse): Promise<activeCou
 function generateUniqueId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
-

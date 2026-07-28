@@ -29,8 +29,8 @@ Write `planner/<slug>-architecture.md` containing:
 
 ## References
 
-- `documentation/ENDPOINT_ARCHITECTURE.md`
-- `documentation/MONGO_DATA_LAYER.md`
+- `documents/ENDPOINT_ARCHITECTURE.md`
+- `documents/MONGO_DATA_LAYER.md`
 - `02-feature-catalog.mdc`
 
 Human approval required before handoff to Generator.

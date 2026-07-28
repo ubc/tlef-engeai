@@ -1,6 +1,6 @@
 ---
 description: File naming, coding style, and TypeScript conventions
-globs: "**/*.{ts,tsx,html,css, md, mdc}"
+globs: "**/*.{ts,tsx,html,css,md,mdc}"
 alwaysApply: false
 ---
 

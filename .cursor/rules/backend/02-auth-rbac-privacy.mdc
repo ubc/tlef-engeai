@@ -34,5 +34,5 @@ Security and privacy playbook for identity and course roles.
 
 ## References
 
-- `documentation/ENDPOINT_ARCHITECTURE.md`
+- `documents/ENDPOINT_ARCHITECTURE.md`
 - `src/middleware/passport.ts`, `require-course-role.ts`

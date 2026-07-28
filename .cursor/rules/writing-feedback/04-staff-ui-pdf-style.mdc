@@ -1,0 +1,22 @@
+---
+description: Writing Feedback instructor UI, responsive review, accessibility, and PDF rules
+globs: public/components/writing-feedback/**,public/scripts/**/*writing-feedback*,public/styles/**/*writing-feedback*,src/writing-feedback/**/*pdf*
+alwaysApply: false
+---
+
+# Staff UI and Student PDF
+
+- Show Writing Feedback after Documents only for enabled courses.
+- Desktop uses queue/detail split view; smaller viewports use one panel with an explicit back action.
+- Preserve visible focus, semantic labels, keyboard operation, and existing instructor-shell behavior.
+- Reuse the exact EngE-AI variables `--color-chbe-green`, `--color-ubc-blue`, `--color-navy-blue`, `--background-2`, `--border-color`, `--text-primary`, `--text-secondary`, `--hover-bg`, `--sidebar-bg`, and `--chat-bg`; do not create near-duplicate token names.
+- Keep the task-first action order: Import from Canvas, Upload files, Add text, then Edit rubric (or read-only View rubric for TAs).
+- Use inline import/rubric panels with loading, empty, not-configured/demo, error/retry, dirty, saved-draft, approved-version, preview, and released states. Do not use browser alerts/confirms for normal workflow.
+- Use existing toast patterns only as a supplement to durable inline state. Add suitable live-region semantics and never expose raw errors or student text.
+- At 900px and below, only the active queue/detail panel may remain visible/focusable; preserve filter/scroll/focus context on Back to submissions.
+- Use text plus color for statuses, `:focus-visible`, 44px touch targets, and `prefers-reduced-motion`; never use `transition: all`.
+- Clearly separate extracted/verified student text, model draft, staff revision, approval, and release.
+- Show approved rubric version separately from unsaved/saved draft state; saving never implies approval, and approval never implies Canvas synchronization.
+- Destructive or external actions require explicit confirmation; generation is not release.
+- Student PDFs contain approved levels/grade, strengths, evidence, revision priorities, and next goals.
+- PDFs exclude confidence, internal flags, model/prompt metadata, and staff-only notes.

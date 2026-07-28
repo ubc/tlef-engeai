@@ -38,4 +38,4 @@ Do **not** add business logic to `route-mongo.ts` — delegate to `mongo/` and f
 
 ## References
 
-- `documentation/MONGO_DATA_LAYER.md`
+- `documents/MONGO_DATA_LAYER.md`

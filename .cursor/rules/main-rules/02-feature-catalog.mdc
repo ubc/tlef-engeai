@@ -1,0 +1,24 @@
+---
+description: EngE-AI feature catalog and optional course-capability conventions
+alwaysApply: false
+---
+
+# Feature Catalog
+
+Use this rule when locating an existing feature or adding a course-level capability.
+
+## Product areas
+
+- Course setup and content: `src/routes/route-mongo.ts`, `src/db/mongo/course-mongo.ts`, instructor onboarding and Documents UI.
+- Student learning assistant: chat modes, RAG course materials, flags, and memory-agent struggle topics.
+- Instructor operations: Documents, Monitor, Flags, prompts, reports, and course information.
+- Writing Feedback: optional instructor/TA assessment workspace under `src/writing-feedback/` and `.cursor/rules/writing-feedback/`.
+
+## Optional capability convention
+
+- Persist capability configuration on `activeCourse.features`; missing values mean disabled.
+- Default new capabilities to disabled for backward compatibility.
+- Hide disabled UI and enforce the same gate server-side; UI hiding is never authorization.
+- Only instructors/admins change course capabilities. Course staff may operate enabled capabilities according to their role.
+- Disabling a capability preserves records and audit history unless a separately approved deletion workflow exists.
+- Document the capability endpoint, type change, migration/default behavior, and navigation entry.

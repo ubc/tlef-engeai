@@ -28,7 +28,7 @@ Act as adversary: probe APIs, auth boundaries, data leaks. **Advisory only** —
 
 ## Methods
 
-- Trace `documentation/ENDPOINT_ARCHITECTURE.md` RBAC vs actual route middleware
+- Trace `documents/ENDPOINT_ARCHITECTURE.md` RBAC vs actual route middleware
 - curl/httpie scenarios (read-only where possible)
 - Do not run destructive admin resets without explicit human approval
 

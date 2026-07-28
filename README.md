@@ -24,6 +24,8 @@ EngE-AI is an AI-powered learning assistant for UBC Engineering courses which em
 - Flags management and responses
 - Student chat monitoring
 - Assistant and system prompts configuration
+<!-- @rdschrs: Implemented the optional Writing Feedback workspace and reviewer documentation. -->
+- Optional Writing Feedback workspace for staff-reviewed, evidence-based feedback and PDFs (A2 LLED 200 MVP; Canvas/OCR production integrations are gated)
 
 ### Student
 - Course-aware AI chat
@@ -107,6 +109,9 @@ For API reference, see [documents/ENDPOINT_ARCHITECTURE.md](documents/ENDPOINT_A
 
 - [Endpoint Architecture](documents/ENDPOINT_ARCHITECTURE.md)
 - [Responsive Design](documents/RESPONSIVE_DESIGN.md)
+- [Writing Feedback Architecture](documents/WRITING_FEEDBACK_ARCHITECTURE.md)
+- [Writing Feedback Assessment Logic](documents/WRITING_FEEDBACK_ASSESSMENT_LOGIC.md)
+- [Writing Feedback Style Guide](documents/WRITING_FEEDBACK_STYLE_GUIDE.md)
 - [Git Worktrees and Cursor Workflow](documents/GIT_WORKTREES_AND_CURSOR.md)
 - [docker-simple-saml](https://github.com/ubc/docker-simple-saml) — Containerized SAML 2.0 IdP for local development
 

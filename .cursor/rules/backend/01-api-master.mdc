@@ -1,6 +1,6 @@
 ---
 description: API Master — FE/BE/DB handshake, routes, contracts, SSE
-globs: src/routes/**,public/scripts/api/**,documentation/ENDPOINT_ARCHITECTURE.md
+globs: src/routes/**,public/scripts/api/**,documents/ENDPOINT_ARCHITECTURE.md
 alwaysApply: false
 ---
 
@@ -10,7 +10,7 @@ Contracts between frontend, backend, MongoDB, and RAG.
 
 ## New or changed routes
 
-1. Document in `documentation/ENDPOINT_ARCHITECTURE.md`
+1. Document in `documents/ENDPOINT_ARCHITECTURE.md`
 2. Apply RBAC middleware (`requireInstructorForCourseAPI`, `requireStudentForCourseAPI`, etc.)
 3. JSON error shape consistent: 401 unauthenticated, 403 forbidden, 4xx/5xx with message
 4. Unauthenticated pages redirect; APIs return JSON
@@ -34,4 +34,4 @@ API request/response changes → update **both** `src/types/shared.ts` and `publ
 
 ## Reference
 
-- `documentation/ENDPOINT_ARCHITECTURE.md` § RBAC
+- `documents/ENDPOINT_ARCHITECTURE.md` § RBAC
