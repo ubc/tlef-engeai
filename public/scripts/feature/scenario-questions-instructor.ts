@@ -16,11 +16,15 @@ import {
     ScenarioQuestionExtended,
     ScenarioLearningObjectiveSnapshot,
     ScenarioLearningObjectiveOption,
-    ScenarioSubQuestion
+    ScenarioSubQuestion,
+    ScenarioMode,
+    ScenarioInstructorStudentResponseRow,
 } from '../types.js';
 import {
     fetchScenarioQuestions,
     fetchScenarioQuestion,
+    fetchInstructorStudentResponses,
+    INSTRUCTOR_RESPONSES_FETCH_BATCH_SIZE,
     updateScenarioQuestion,
     patchScenarioQuestionStatus,
     deleteScenarioQuestion,
@@ -43,6 +47,13 @@ import {
     SUB_QUESTION_TYPE_LABELS
 } from './scenario-answer-flashcard.js';
 import {
+    getPageSlice,
+    getTotalPages,
+    INSTRUCTOR_RESPONSES_DISPLAY_PAGE_SIZE,
+    needsFetch,
+    shouldPrefetch,
+} from '../utils/instructor-response-carousel.js';
+import {
     getScenarioQuestionsParamsFromURL,
     navigateToScenarioQuestions,
     type ScenarioQuestionsUrlOptions,
@@ -51,6 +62,23 @@ import {
 const ALL_TYPES: ScenarioSubQuestionType[] = ['calculation', 'troubleshoot', 'action', 'corrective'];
 const DEFAULT_SELECTED_TYPES: ScenarioSubQuestionType[] = ['calculation', 'troubleshoot', 'action'];
 const AUTO_SAVE_MS = 5000;
+
+interface PartResponseState {
+    buffer: ScenarioInstructorStudentResponseRow[];
+    currentPage: number;
+    total: number;
+    loading: boolean;
+    prefetching: boolean;
+    error?: string;
+}
+
+const partResponseState = new Map<string, PartResponseState>();
+const partResponseCollapsed = new Map<string, boolean>();
+const partResponseDownloading = new Set<string>();
+/** Student-response panels start collapsed so the editor stays scannable. */
+const PART_RESPONSES_DEFAULT_COLLAPSED = true;
+
+const INSTRUCTOR_RESPONSES_DOWNLOAD_BATCH_SIZE = 50;
 
 const lastEditedDateFmt = new Intl.DateTimeFormat(undefined, {
     year: 'numeric',
@@ -486,8 +514,9 @@ function attachStaticListeners(): void {
         if (e.target === e.currentTarget) closeTypeHelpModal();
     }, { signal });
 
-    // Answer-key info icons are re-rendered with parts — delegate from the parts host
+    // Parts host is re-rendered — delegate clicks (student responses, answer-key help)
     document.getElementById('sg-instructor-editor-parts')?.addEventListener('click', (e) => {
+        handleEditorPartsClick(e);
         const btn = (e.target as HTMLElement).closest('.sg-instructor-answer-key-help-btn');
         if (btn) openFlashcardHelpModal();
     }, { signal });
@@ -556,6 +585,454 @@ function formatLastEditedLabel(isoDate: string | null): string {
     const date = new Date(isoDate);
     if (Number.isNaN(date.getTime())) return 'Last edited: Not updated yet';
     return `Last edited: ${lastEditedDateFmt.format(date)}`;
+}
+
+function formatResponseTimestamp(isoDate: string): string {
+    const date = new Date(isoDate);
+    if (Number.isNaN(date.getTime())) return '';
+    return lastEditedDateFmt.format(date);
+}
+
+function renderModeBadge(mode: ScenarioMode): string {
+    const label = mode === 'practice' ? 'Practice' : 'Exam';
+    return `<span class="sg-mode-badge sg-mode-badge--${mode}">${escapeHtml(label)}</span>`;
+}
+
+function getSubQuestionResponseCount(sq: ScenarioSubQuestion): number {
+    if (typeof sq.studentResponseCount === 'number') return sq.studentResponseCount;
+    return sq.studentResponses?.length ?? 0;
+}
+
+function renderResponseCardHtml(row: ScenarioInstructorStudentResponseRow): string {
+    const feedbackId = `sg-instructor-feedback-${row.id}`;
+    return `
+        <article class="sg-instructor-response-card sg-instructor-response-card--${row.mode}" data-response-id="${escapeHtml(row.id)}">
+            <div class="sg-instructor-response-card-header">
+                ${renderModeBadge(row.mode)}
+                <span class="sg-instructor-response-student">${escapeHtml(row.studentName)}</span>
+                <time class="sg-instructor-response-time" datetime="${escapeHtml(row.submittedAt)}">${escapeHtml(formatResponseTimestamp(row.submittedAt))}</time>
+            </div>
+            <div class="sg-instructor-response-answer-label">Answer</div>
+            <div class="sg-instructor-response-answer">${escapeHtml(row.studentAnswer)}</div>
+            <div class="sg-instructor-response-feedback-label">Feedback</div>
+            <div class="sg-instructor-response-feedback sg-instructor-response-feedback--${row.mode} message-content" id="${escapeHtml(feedbackId)}"></div>
+        </article>
+    `;
+}
+
+function paintResponseFeedbackBodies(list: HTMLElement, items: ScenarioInstructorStudentResponseRow[]): void {
+    items.forEach((row) => {
+        const el = list.querySelector<HTMLElement>(`#sg-instructor-feedback-${row.id}`);
+        if (el) renderMarkdownInto(el, row.feedback, `sg-instructor-response-${row.id}`);
+    });
+}
+
+function studentResponsesBodyId(partKey: string): string {
+    return `sg-instructor-responses-body-${partKey}`;
+}
+
+function renderStudentResponsePagerHtml(subQuestionId: string, placement: 'header' | 'footer'): string {
+    const placementClass =
+        placement === 'footer'
+            ? ' sg-instructor-response-pager--footer'
+            : ' sg-instructor-response-pager--header';
+    return `
+        <div class="sg-instructor-response-pager${placementClass}" hidden>
+            <button type="button" class="sg-instructor-response-pager-btn" data-action="prev" data-sub-question-id="${escapeHtml(subQuestionId)}" aria-label="Previous responses page">
+                <i data-feather="chevron-left"></i>
+            </button>
+            <span class="sg-instructor-response-page-label">Page 1 of 1</span>
+            <button type="button" class="sg-instructor-response-pager-btn" data-action="next" data-sub-question-id="${escapeHtml(subQuestionId)}" aria-label="Next responses page">
+                <i data-feather="chevron-right"></i>
+            </button>
+        </div>
+    `;
+}
+
+function removeFooterPager(section: HTMLElement): void {
+    section.querySelector('.sg-instructor-response-pager--footer')?.remove();
+}
+
+function syncResponsePagers(section: HTMLElement, subQuestionId: string, state: PartResponseState): void {
+    const showPagers = state.total > 0 && getTotalPages(state.total) > 1;
+    const headerPager = section.querySelector<HTMLElement>('.sg-instructor-response-pager--header');
+    const body = section.querySelector<HTMLElement>('.sg-instructor-student-responses-body');
+
+    if (headerPager) {
+        headerPager.hidden = !showPagers;
+        headerPager.classList.toggle('sg-instructor-response-pager--visible', showPagers);
+    }
+
+    let footerPager = section.querySelector<HTMLElement>('.sg-instructor-response-pager--footer');
+    if (!showPagers) {
+        footerPager?.remove();
+        return;
+    }
+
+    if (body && !footerPager) {
+        body.insertAdjacentHTML('beforeend', renderStudentResponsePagerHtml(subQuestionId, 'footer'));
+        footerPager = section.querySelector<HTMLElement>('.sg-instructor-response-pager--footer');
+        if (footerPager) {
+            requestAnimationFrame(() => {
+                footerPager?.classList.add('sg-instructor-response-pager--visible');
+            });
+        }
+    }
+    if (footerPager) {
+        footerPager.hidden = false;
+        footerPager.classList.add('sg-instructor-response-pager--visible');
+    }
+
+    const totalPages = getTotalPages(state.total);
+    const pageText = `Page ${state.currentPage + 1} of ${totalPages}`;
+    const onLastPage = state.currentPage >= totalPages - 1;
+    section.querySelectorAll<HTMLElement>('.sg-instructor-response-page-label').forEach((label) => {
+        label.textContent = pageText;
+    });
+    section.querySelectorAll<HTMLButtonElement>('.sg-instructor-response-pager-btn[data-action="prev"]').forEach((btn) => {
+        btn.disabled = state.currentPage === 0 || state.loading;
+    });
+    section.querySelectorAll<HTMLButtonElement>('.sg-instructor-response-pager-btn[data-action="next"]').forEach((btn) => {
+        btn.disabled = onLastPage || state.loading || state.prefetching;
+        btn.setAttribute('aria-busy', String(state.loading || state.prefetching));
+    });
+}
+
+function expandPartStudentResponses(subQuestionId: string): void {
+    partResponseCollapsed.set(subQuestionId, false);
+    paintPartStudentResponses(subQuestionId);
+    const state = partResponseState.get(subQuestionId);
+    if (state && state.total > 0 && !state.buffer.length && !state.loading && !state.prefetching) {
+        void loadInitialPartResponses(subQuestionId);
+    }
+}
+
+function collapsePartStudentResponses(subQuestionId: string): void {
+    partResponseCollapsed.set(subQuestionId, true);
+    paintPartStudentResponses(subQuestionId);
+}
+
+function handleEditorPartsClick(event: Event): void {
+    const target = event.target as HTMLElement;
+
+    const collapsedBar = target.closest<HTMLButtonElement>('.sg-instructor-student-responses-collapsed-bar');
+    if (collapsedBar?.dataset.subQuestionId) {
+        expandPartStudentResponses(collapsedBar.dataset.subQuestionId);
+        return;
+    }
+
+    const headerStart = target.closest<HTMLButtonElement>('.sg-instructor-student-responses-header-start');
+    if (headerStart?.dataset.subQuestionId) {
+        collapsePartStudentResponses(headerStart.dataset.subQuestionId);
+        return;
+    }
+
+    const downloadBtn = target.closest<HTMLButtonElement>('.sg-instructor-student-responses-download-btn');
+    if (downloadBtn?.dataset.subQuestionId) {
+        void downloadPartStudentResponsesJson(
+            downloadBtn.dataset.subQuestionId,
+            downloadBtn.dataset.partLabel ?? 'part'
+        );
+        return;
+    }
+
+    const btn = target.closest<HTMLButtonElement>('.sg-instructor-response-pager-btn');
+    if (!btn?.dataset.subQuestionId || !btn.dataset.action) return;
+    const subQuestionId = btn.dataset.subQuestionId;
+    const state = partResponseState.get(subQuestionId);
+    if (!state) return;
+    if (btn.dataset.action === 'prev') {
+        void goToResponsePage(subQuestionId, state.currentPage - 1);
+    } else if (btn.dataset.action === 'next') {
+        void goToResponsePage(subQuestionId, state.currentPage + 1);
+    }
+}
+
+function paintPartStudentResponses(subQuestionId: string): void {
+    const section = document.querySelector<HTMLElement>(
+        `.sg-instructor-student-responses[data-sub-question-id="${subQuestionId}"]`
+    );
+    if (!section) return;
+
+    const state = partResponseState.get(subQuestionId) ?? {
+        buffer: [],
+        currentPage: 0,
+        total: 0,
+        loading: false,
+        prefetching: false,
+    };
+    const collapsed = partResponseCollapsed.get(subQuestionId) ?? PART_RESPONSES_DEFAULT_COLLAPSED;
+    const collapsedBar = section.querySelector<HTMLButtonElement>('.sg-instructor-student-responses-collapsed-bar');
+    const collapsedHeader = section.querySelector<HTMLElement>('.sg-instructor-student-responses-collapsed-header');
+    const expandedShell = section.querySelector<HTMLElement>('.sg-instructor-student-responses-expanded-shell');
+    const expandedHeader = section.querySelector<HTMLElement>('.sg-instructor-student-responses-header');
+    const body = section.querySelector<HTMLElement>('.sg-instructor-student-responses-body');
+    const list = section.querySelector<HTMLElement>('.sg-instructor-response-list');
+    const countEl = section.querySelector<HTMLElement>('.sg-instructor-student-responses-count');
+    const headerStartBtn = section.querySelector<HTMLButtonElement>('.sg-instructor-student-responses-header-start');
+    const downloadBtn = section.querySelector<HTMLButtonElement>('.sg-instructor-student-responses-download-btn');
+
+    section.classList.toggle('sg-instructor-student-responses--expanded', !collapsed);
+
+    if (collapsed) {
+        if (collapsedBar) {
+            collapsedBar.setAttribute('aria-expanded', 'false');
+            collapsedBar.removeAttribute('aria-hidden');
+        }
+        if (collapsedHeader) collapsedHeader.removeAttribute('aria-hidden');
+        if (expandedHeader) expandedHeader.setAttribute('aria-hidden', 'true');
+        if (expandedShell) expandedShell.setAttribute('aria-hidden', 'true');
+        if (body) body.setAttribute('aria-hidden', 'true');
+        removeFooterPager(section);
+        return;
+    }
+
+    if (collapsedBar) {
+        collapsedBar.setAttribute('aria-expanded', 'true');
+        collapsedBar.setAttribute('aria-hidden', 'true');
+    }
+    if (collapsedHeader) collapsedHeader.setAttribute('aria-hidden', 'true');
+    if (expandedHeader) expandedHeader.removeAttribute('aria-hidden');
+    if (expandedShell) expandedShell.removeAttribute('aria-hidden');
+    if (body) body.removeAttribute('aria-hidden');
+    if (headerStartBtn) {
+        headerStartBtn.setAttribute('aria-expanded', 'true');
+        headerStartBtn.setAttribute('aria-label', 'Collapse student responses');
+    }
+    if (downloadBtn) {
+        const busy = partResponseDownloading.has(subQuestionId);
+        downloadBtn.disabled = busy || state.total === 0 || (state.loading && !state.buffer.length);
+        downloadBtn.setAttribute('aria-busy', String(busy));
+    }
+    if (countEl) {
+        const label = state.total === 1 ? '1 response' : `${state.total} responses`;
+        countEl.textContent = state.loading && !state.buffer.length ? 'Loading…' : label;
+    }
+
+    if (!list) return;
+
+    if (state.loading && !state.buffer.length) {
+        list.innerHTML = '<p class="sg-instructor-response-loading">Loading student responses…</p>';
+        syncResponsePagers(section, subQuestionId, state);
+        renderFeatherIcons();
+        return;
+    }
+
+    if (state.error && !state.buffer.length) {
+        list.innerHTML = `<p class="sg-instructor-response-error">${escapeHtml(state.error)}</p>`;
+        syncResponsePagers(section, subQuestionId, state);
+        renderFeatherIcons();
+        return;
+    }
+
+    if (!state.total) {
+        list.innerHTML = '<p class="sg-instructor-response-empty">No student responses yet.</p>';
+        syncResponsePagers(section, subQuestionId, state);
+        renderFeatherIcons();
+        return;
+    }
+
+    const visibleItems = getPageSlice(state.buffer, state.currentPage);
+    if (!visibleItems.length && state.loading) {
+        list.innerHTML = '<p class="sg-instructor-response-loading">Loading student responses…</p>';
+    } else if (!visibleItems.length) {
+        list.innerHTML = state.total > 0
+            ? '<p class="sg-instructor-response-loading">Loading student responses…</p>'
+            : '<p class="sg-instructor-response-empty">No student responses yet.</p>';
+    } else {
+        list.innerHTML = visibleItems.map((row) => renderResponseCardHtml(row)).join('');
+        paintResponseFeedbackBodies(list, visibleItems);
+    }
+
+    syncResponsePagers(section, subQuestionId, state);
+    renderFeatherIcons();
+}
+
+type ResponseFetchMode = 'initial' | 'append' | 'prefetch';
+
+async function fetchResponseBatch(
+    subQuestionId: string,
+    offset: number,
+    mode: ResponseFetchMode
+): Promise<void> {
+    if (!currentCourse || !editorQuestionId) return;
+
+    const prior = partResponseState.get(subQuestionId);
+    if (!prior) return;
+    if (prior.loading || (mode === 'prefetch' && prior.prefetching)) return;
+
+    partResponseState.set(subQuestionId, {
+        ...prior,
+        buffer: mode === 'initial' ? [] : prior.buffer,
+        loading: mode !== 'prefetch',
+        prefetching: mode === 'prefetch',
+        error: undefined,
+    });
+    paintPartStudentResponses(subQuestionId);
+
+    try {
+        const page = await fetchInstructorStudentResponses(
+            currentCourse.id,
+            editorQuestionId,
+            subQuestionId,
+            { limit: INSTRUCTOR_RESPONSES_FETCH_BATCH_SIZE, offset }
+        );
+        const current = partResponseState.get(subQuestionId);
+        if (!current) return;
+
+        const buffer = mode === 'initial' ? page.items : [...current.buffer, ...page.items];
+        partResponseState.set(subQuestionId, {
+            ...current,
+            buffer,
+            total: page.total,
+            loading: false,
+            prefetching: false,
+        });
+    } catch (error) {
+        const current = partResponseState.get(subQuestionId);
+        if (!current) return;
+        partResponseState.set(subQuestionId, {
+            ...current,
+            loading: false,
+            prefetching: false,
+            error: errorMessage(error, 'Could not load student responses.'),
+        });
+    }
+
+    paintPartStudentResponses(subQuestionId);
+}
+
+async function prefetchAhead(subQuestionId: string): Promise<void> {
+    const state = partResponseState.get(subQuestionId);
+    if (!state || state.prefetching || state.loading) return;
+    if (!shouldPrefetch(state.buffer.length, state.currentPage, state.total)) return;
+    await fetchResponseBatch(subQuestionId, state.buffer.length, 'prefetch');
+}
+
+function scrollToPartStudentResponses(subQuestionId: string): void {
+    const section = document.querySelector<HTMLElement>(
+        `.sg-instructor-student-responses[data-sub-question-id="${subQuestionId}"]`
+    );
+    if (!section) return;
+
+    const scrollRoot = document.querySelector<HTMLElement>('.sg-instructor-container');
+    if (!scrollRoot) {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+    }
+
+    const stickyChrome = document.querySelector<HTMLElement>('.sg-instructor-editor-sticky-chrome');
+    const anchorBottom = stickyChrome?.getBoundingClientRect().bottom
+        ?? scrollRoot.getBoundingClientRect().top;
+    const offset = section.getBoundingClientRect().top - anchorBottom - 8;
+
+    if (Math.abs(offset) > 2) {
+        scrollRoot.scrollBy({ top: offset, behavior: 'smooth' });
+    }
+}
+
+async function goToResponsePage(subQuestionId: string, page: number): Promise<void> {
+    const prior = partResponseState.get(subQuestionId);
+    if (!prior || prior.loading) return;
+
+    const totalPages = getTotalPages(prior.total);
+    const nextPage = Math.max(0, Math.min(page, Math.max(totalPages - 1, 0)));
+    if (nextPage === prior.currentPage) return;
+
+    partResponseState.set(subQuestionId, { ...prior, currentPage: nextPage });
+    paintPartStudentResponses(subQuestionId);
+    scrollToPartStudentResponses(subQuestionId);
+
+    const updated = partResponseState.get(subQuestionId);
+    if (!updated) return;
+
+    const pageStart = nextPage * INSTRUCTOR_RESPONSES_DISPLAY_PAGE_SIZE;
+    if (needsFetch(updated.buffer.length, pageStart, updated.total)) {
+        await fetchResponseBatch(subQuestionId, updated.buffer.length, 'append');
+        scrollToPartStudentResponses(subQuestionId);
+    }
+    void prefetchAhead(subQuestionId);
+}
+
+async function loadInitialPartResponses(subQuestionId: string): Promise<void> {
+    await fetchResponseBatch(subQuestionId, 0, 'initial');
+    void prefetchAhead(subQuestionId);
+}
+
+function seedPartStudentResponseState(question: ScenarioQuestionExtended): void {
+    partResponseState.clear();
+    partResponseCollapsed.clear();
+    partResponseDownloading.clear();
+    question.subQuestions.forEach((sq, index) => {
+        const subQuestionId = sq.subQuestionId || subQuestionKey(sq, index);
+        const count = getSubQuestionResponseCount(sq);
+        partResponseState.set(subQuestionId, {
+            buffer: [],
+            currentPage: 0,
+            total: count,
+            loading: false,
+            prefetching: false,
+        });
+        paintPartStudentResponses(subQuestionId);
+    });
+}
+
+function sanitizeDownloadFilenamePart(value: string): string {
+    return value.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'part';
+}
+
+async function downloadPartStudentResponsesJson(subQuestionId: string, partLabel: string): Promise<void> {
+    if (!currentCourse || !editorQuestionId || partResponseDownloading.has(subQuestionId)) return;
+
+    const state = partResponseState.get(subQuestionId);
+    if (!state?.total) {
+        showErrorToast('No student responses to download.');
+        return;
+    }
+
+    partResponseDownloading.add(subQuestionId);
+    paintPartStudentResponses(subQuestionId);
+
+    try {
+        const responses: ScenarioInstructorStudentResponseRow[] = [];
+        let offset = 0;
+        let total = state.total;
+
+        while (responses.length < total) {
+            const page = await fetchInstructorStudentResponses(
+                currentCourse.id,
+                editorQuestionId,
+                subQuestionId,
+                { limit: INSTRUCTOR_RESPONSES_DOWNLOAD_BATCH_SIZE, offset }
+            );
+            total = page.total;
+            if (!page.items.length) break;
+            responses.push(...page.items);
+            offset += page.items.length;
+        }
+
+        const payload = {
+            questionId: editorQuestionId,
+            subQuestionId,
+            partLabel,
+            exportedAt: new Date().toISOString(),
+            total: responses.length,
+            responses,
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `student-responses-${sanitizeDownloadFilenamePart(partLabel)}-${editorQuestionId}.json`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+        showSuccessToast('Student responses downloaded.');
+    } catch (error) {
+        showErrorToast(errorMessage(error, 'Could not download student responses.'));
+    } finally {
+        partResponseDownloading.delete(subQuestionId);
+        paintPartStudentResponses(subQuestionId);
+    }
 }
 
 function getTopicTitle(topicOrWeekId: string): string {
@@ -1352,6 +1829,7 @@ async function openEditorView(questionId: string, skipUrlSync = false): Promise<
     updateExpectedTimeDisplay(expectedSecondsFromMinutes(question.expectedTimeMinutes ?? 25));
     renderLearningObjectives(normalizeLearningObjectives(question.learningObjectives));
     renderEditorParts(question);
+    seedPartStudentResponseState(question);
     setQuestionBodyViewMode('edit');
     updateEditorStatusButton(question.status);
 
@@ -1376,6 +1854,8 @@ function renderEditorParts(question: ScenarioQuestionExtended): void {
         const promptMode = partPromptModes.get(partKey) ?? 'edit';
 
         const typeLabel = SUB_QUESTION_TYPE_LABELS[sq.subQuestionType] ?? sq.subQuestionType;
+        const subQuestionId = sq.subQuestionId || partKey;
+        const responsesBodyId = studentResponsesBodyId(partKey);
 
         return `
             <div class="sg-instructor-part-card" data-part-id="${escapeHtml(partKey)}">
@@ -1404,6 +1884,35 @@ function renderEditorParts(question: ScenarioQuestionExtended): void {
                     <textarea class="sg-instructor-editor-textarea sg-instructor-part-answer sg-instructor-part-answer-edit" data-part-id="${escapeHtml(partKey)}" rows="6">${escapeHtml(sq.modelAnswer)}</textarea>
                     <div class="sg-instructor-flashcard-panel" data-part-id="${escapeHtml(partKey)}"></div>
                 </div>
+                <section class="sg-instructor-student-responses" data-sub-question-id="${escapeHtml(subQuestionId)}" aria-label="Student responses for Part ${escapeHtml(partLabel)}">
+                    <div class="sg-instructor-student-responses-collapsed-header">
+                        <button type="button" class="sg-instructor-student-responses-collapsed-bar" data-sub-question-id="${escapeHtml(subQuestionId)}" aria-expanded="false" aria-controls="${escapeHtml(responsesBodyId)}" aria-label="Expand student responses">
+                            <i data-feather="chevron-right"></i>
+                            <span class="sg-instructor-editor-section-label">Student responses</span>
+                        </button>
+                    </div>
+                    <div class="sg-instructor-student-responses-expanded-shell" aria-hidden="true">
+                        <div class="sg-instructor-student-responses-expanded-shell-inner">
+                            <div class="sg-instructor-student-responses-header">
+                                <button type="button" class="sg-instructor-student-responses-header-start" data-sub-question-id="${escapeHtml(subQuestionId)}" aria-expanded="true" aria-controls="${escapeHtml(responsesBodyId)}" aria-label="Collapse student responses">
+                                    <i data-feather="chevron-down"></i>
+                                    <span class="sg-instructor-editor-section-label">Student responses</span>
+                                    <span class="sg-instructor-student-responses-count"></span>
+                                </button>
+                                <div class="sg-instructor-student-responses-header-actions">
+                                    ${renderStudentResponsePagerHtml(subQuestionId, 'header')}
+                                    <button type="button" class="sg-instructor-student-responses-download-btn" data-sub-question-id="${escapeHtml(subQuestionId)}" data-part-label="${escapeHtml(partLabel)}" aria-label="Download student responses as JSON" title="Download JSON">
+                                        <i data-feather="download"></i>
+                                        <span class="sg-instructor-student-responses-download-label">JSON</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="sg-instructor-student-responses-body" id="${escapeHtml(responsesBodyId)}">
+                                <div class="sg-instructor-response-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
             </div>
         `;
     }).join('');
@@ -1963,7 +2472,6 @@ function collectEditorPatch(): Partial<ScenarioQuestionExtended> {
             subQuestionType: sq.subQuestionType,
             prompt,
             modelAnswer,
-            studentResponses: sq.studentResponses ?? [],
         };
     });
 

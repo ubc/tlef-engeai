@@ -1047,18 +1047,44 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         });
     };
 
-    window.addEventListener('engeai-student-open-chat-draft', () => {
+    window.addEventListener('engeai-student-open-chat-draft', (event: Event) => {
         void (async () => {
+            const detail = (event as CustomEvent<{ courseId?: string; text?: string }>).detail;
+            const text = detail?.text?.trim();
+            if (!text) return;
+
+            if (isScenarioWorkspaceActive()) {
+                const ok = await confirmLeaveScenarioWorkspace();
+                if (!ok) return;
+            }
+
             if (isNavigating) return;
             isNavigating = true;
             try {
                 setStudentToolActive(null);
-                navigateToStudentView('chat');
-                await loadComponent('chat-window');
-                if (!chatManager.getActiveChat()) {
-                    await chatManager.createNewChat();
+                const handoff = await chatManager.openScenarioHandoff({
+                    text,
+                    conversationMode: 'explanatory',
+                });
+                if (!handoff.success) {
+                    await showSimpleErrorModal(
+                        handoff.error || 'Could not open chat from this scenario.',
+                        'Chat'
+                    );
+                    return;
                 }
-                chatManager.applyPendingChatDraftPrefill();
+
+                const courseId = getCourseIdFromURL();
+                const newChatId = chatManager.getActiveChatId();
+                if (courseId && newChatId) {
+                    navigateToStudentChat(courseId, newChatId);
+                } else {
+                    navigateToStudentView('chat');
+                }
+                await loadComponent('chat-window');
+                if (!chatManager.applyPendingChatDraftPrefill()) {
+                    queueMicrotask(() => chatManager.applyPendingChatDraftPrefill());
+                }
             } finally {
                 isNavigating = false;
             }

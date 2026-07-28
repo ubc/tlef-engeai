@@ -408,6 +408,50 @@ export async function getAllLearningObjectives(
 }
 
 /**
+ * getAllLearningObjectivesWithIds — flatten every LO with parent titles and catalog objectiveId.
+ */
+export async function getAllLearningObjectivesWithIds(
+    ctx: MongoDalContext,
+    courseId: string
+): Promise<
+    Array<{
+        objectiveId: string;
+        text: string;
+        topicOrWeekTitle: string;
+        itemTitle: string;
+    }>
+> {
+    const results = await activeCourseListCollection(ctx.db)
+        .aggregate<{
+            objectiveId: string;
+            text: string;
+            topicOrWeekTitle: string;
+            itemTitle: string;
+        }>([
+            { $match: { id: courseId } },
+            { $unwind: '$topicOrWeekInstances' },
+            { $unwind: '$topicOrWeekInstances.items' },
+            { $unwind: '$topicOrWeekInstances.items.learningObjectives' },
+            {
+                $project: {
+                    _id: 0,
+                    objectiveId: '$topicOrWeekInstances.items.learningObjectives.id',
+                    text: '$topicOrWeekInstances.items.learningObjectives.LearningObjective',
+                    topicOrWeekTitle: { $ifNull: ['$topicOrWeekInstances.title', ''] },
+                    itemTitle: {
+                        $ifNull: [
+                            '$topicOrWeekInstances.items.itemTitle',
+                            { $ifNull: ['$topicOrWeekInstances.items.title', ''] },
+                        ],
+                    },
+                },
+            },
+        ])
+        .toArray();
+    return results.filter((r) => !!r.objectiveId && !!r.text?.trim());
+}
+
+/**
  * getLearningObjectivesForTopicOrWeek — flatten LOs for one topic/week for Scenario Questions catalog UI.
  *
  * @returns ScenarioLearningObjectiveOption[] with objectiveId, text, and parent titles

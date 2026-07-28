@@ -21,12 +21,15 @@ import {
     InitialAssistantPrompt,
     MemoryAgentEntry,
     SystemPromptItem,
-    ConversationModeId
+    ScenarioMode,
+    ScenarioQuestionStatus,
+    ScenarioStudentResponse,
+    ConversationModeId,
 } from '../types/shared';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { appLogger } from '../utils/logger';
 
-import type { MongoDalContext } from './mongo/mongo-context';
+import type { MongoDalContext, CourseCollectionNames } from './mongo/mongo-context';
 import * as ChatMongo from './mongo/chat-mongo';
 import * as CollectionRegistryMongo from './mongo/collection-registry-mongo';
 import * as CourseMongo from './mongo/course-mongo';
@@ -59,10 +62,7 @@ import type {
     WritingSubmission
 } from '../writing-feedback/contracts';
 import * as ScenarioQuestionsMongo from './mongo/scenario-questions-mongo';
-import type {
-    ScenarioQuestionStatus,
-    ScenarioStudentResponse
-} from '../types/shared';
+import * as ScenarioProgressMongo from './mongo/scenario-progress-mongo';
 
 dotenv.config();
 
@@ -80,10 +80,7 @@ export class EngEAI_MongoDB {
     public db!: Db;
     public idGenerator: IDGenerator;
 
-    private collectionNamesCache: Map<
-        string,
-        { users: string; flags: string; memoryAgent: string; scheduledTasks: string; scenarioQuestions: string }
-    > = new Map();
+    private collectionNamesCache: Map<string, CourseCollectionNames> = new Map();
 
     private scheduledTasksIndexesEnsured = new Set<string>();
 
@@ -557,6 +554,33 @@ export class EngEAI_MongoDB {
     public getAllLearningObjectives = async (courseId: string) =>
         TopicWeekMongo.getAllLearningObjectives(this.ctx(), courseId);
 
+    public getAllLearningObjectivesWithIds = async (courseId: string) =>
+        TopicWeekMongo.getAllLearningObjectivesWithIds(this.ctx(), courseId);
+
+    public findPublishedScenariosByObjectiveIds = async (
+        courseName: string,
+        objectiveIds: string[],
+        limit?: number
+    ) =>
+        ScenarioQuestionsMongo.findPublishedScenariosByObjectiveIds(
+            this.ctx(),
+            courseName,
+            objectiveIds,
+            limit
+        );
+
+    public findPublishedScenariosByObjectiveTexts = async (
+        courseName: string,
+        objectiveTexts: string[],
+        limit?: number
+    ) =>
+        ScenarioQuestionsMongo.findPublishedScenariosByObjectiveTexts(
+            this.ctx(),
+            courseName,
+            objectiveTexts,
+            limit
+        );
+
     /** Instructor struggle catalog CRUD — delegates to topic-week-mongo.ts */
     public addInstructorStruggleTopic = async (
         courseId: string,
@@ -774,6 +798,42 @@ export class EngEAI_MongoDB {
 
     public getScenarioStudentResponses = async (courseName: string, questionId: string, studentUserId: string) =>
         ScenarioQuestionsMongo.getStudentResponsesForQuestion(this.ctx(), courseName, questionId, studentUserId);
+
+    public getInstructorStudentResponsesPage = async (
+        courseName: string,
+        questionId: string,
+        subQuestionId: string,
+        options?: { limit?: number; offset?: number }
+    ) =>
+        ScenarioQuestionsMongo.getInstructorStudentResponsesPage(
+            this.ctx(),
+            courseName,
+            questionId,
+            subQuestionId,
+            options
+        );
+
+    public ensureScenarioProgressCollection = async (courseId: string) =>
+        ScenarioProgressMongo.ensureScenarioProgressCollection(this.ctx(), courseId);
+
+    public upsertScenarioStudentProgress = async (
+        courseName: string,
+        input: ScenarioProgressMongo.UpsertScenarioStudentProgressInput
+    ) => ScenarioProgressMongo.upsertScenarioStudentProgress(this.ctx(), courseName, input);
+
+    public getScenarioStudentProgress = async (
+        courseName: string,
+        userId: string,
+        questionId: string,
+        mode: ScenarioMode
+    ) => ScenarioProgressMongo.getScenarioStudentProgress(this.ctx(), courseName, userId, questionId, mode);
+
+    public deleteScenarioStudentProgress = async (
+        courseName: string,
+        userId: string,
+        questionId: string,
+        mode: ScenarioMode
+    ) => ScenarioProgressMongo.deleteScenarioStudentProgress(this.ctx(), courseName, userId, questionId, mode);
 
     public getLearningObjectivesForTopicOrWeek = async (courseId: string, topicOrWeekId: string) =>
         TopicWeekMongo.getLearningObjectivesForTopicOrWeek(this.ctx(), courseId, topicOrWeekId);

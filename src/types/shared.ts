@@ -205,6 +205,8 @@ export interface activeCourse {
         scheduledTasks?: string;
         /** Per-course Practice Scenarios question bank (e.g. `${courseName}_scenario_questions`); SQ-001 lazy-provisions on existing courses */
         scenarioQuestions?: string;
+        /** Per-course student scenario draft answers (e.g. `${courseName}_scenario_progress`); SQ-004 lazy-provisions on first save */
+        scenarioProgress?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
     /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */
@@ -383,6 +385,20 @@ export interface LearningObjectiveForDisplay {
     LearningObjective: string;
     topicOrWeekTitle: string;
     itemTitle: string;
+}
+
+/** Flattened LO text for unstruggle-yes follow-up LLM selection (text is the canonical key). */
+export interface LearningObjectiveForLLM {
+    text: string;
+    topicOrWeekTitle: string;
+    itemTitle: string;
+}
+
+/** Minimal scenario row embedded in chat `<scenarioSuggestions>` tag. */
+export interface ScenarioSuggestionForChat {
+    id: string;
+    title: string;
+    difficulty: ScenarioDifficulty; // color-coded badge in unstruggle Yes follow-up list
 }
 
 /**
@@ -779,6 +795,68 @@ export type ScenarioQuestionForStudent = Omit<ScenarioQuestion, 'solutionBody' |
     learningObjectives: ScenarioLearningObjectiveSnapshot[];
     subQuestions: Array<Omit<ScenarioSubQuestion, 'modelAnswer' | 'studentResponses'>>;
 };
+
+/** Instructor editor projection — omits embedded response arrays; includes per-part counts only. */
+export type ScenarioSubQuestionForInstructor = Omit<ScenarioSubQuestion, 'studentResponses'> & {
+    studentResponseCount: number; // total submissions for this part — paginated fetch via instructor responses API
+};
+
+export type ScenarioQuestionForInstructor = Omit<ScenarioQuestion, 'subQuestions'> & {
+    subQuestions: ScenarioSubQuestionForInstructor[];
+};
+
+/** One row in the instructor paginated student-responses API (roster name hydrated server-side). */
+export interface ScenarioInstructorStudentResponseRow {
+    id: string; // response id
+    studentUserId: string; // roster id — never PUID
+    studentName: string; // from course users; fallback when dropped from roster
+    mode: ScenarioMode; // practice vs exam — drives badge color in editor UI
+    studentAnswer: string; // submitted text
+    feedback: string; // TA or exam feedback shown to instructor
+    submittedAt: string; // ISO 8601 for display sorting
+}
+
+/** Paginated instructor view of embedded student responses for one sub-question. */
+export interface ScenarioInstructorStudentResponsesPage {
+    items: ScenarioInstructorStudentResponseRow[];
+    total: number; // full count for this sub-question (all modes)
+    hasMore: boolean; // true when offset + items.length < total
+    limit: number; // applied page size (capped server-side)
+    offset: number; // slice start into newest-first list
+}
+
+/** One saved draft answer for a sub-question (in-progress only — never submitted). */
+export interface ScenarioProgressAnswer {
+    subQuestionId: string; // must match a sub-question on the published question
+    studentAnswer: string; // raw textarea text; trim only for empty detection, store as typed
+}
+
+/**
+ * Student draft progress for one question in one mode.
+ * Collection: `{courseName}_scenario_progress`. One doc per (userId, questionId, mode).
+ * Never exposed to instructor APIs.
+ */
+export interface ScenarioStudentProgress {
+    userId: string; // roster id — never PUID
+    questionId: string; // ScenarioQuestion.id
+    mode: ScenarioMode; // practice vs exam — separate drafts per mode
+    answers: ScenarioProgressAnswer[];
+    updatedAt: Date;
+}
+
+/** Request body for `PUT .../progress`. */
+export interface ScenarioSaveProgressRequest {
+    mode: ScenarioMode;
+    answers: ScenarioProgressAnswer[];
+}
+
+/** Response for `GET .../progress`. */
+export interface ScenarioProgressResponse {
+    questionId: string;
+    mode: ScenarioMode;
+    answers: ScenarioProgressAnswer[];
+    updatedAt: string; // ISO 8601
+}
 
 /** Request body for `POST .../check-answer`. */
 export interface ScenarioCheckAnswerRequest {

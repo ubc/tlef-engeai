@@ -27,10 +27,13 @@ import {
     submitScenarioExam,
     submitScenarioStudentResponse,
 } from '../../scenario-generation/scenario-service';
-import { hasCompletedSubQuestion } from '../../db/mongo/scenario-questions-mongo';
+import { hasCompletedSubQuestion, toInstructorProjection } from '../../db/mongo/scenario-questions-mongo';
 import {
     checkScenarioAnswerRequestSchema,
     scenarioGenerateRequestSchema,
+    scenarioInstructorStudentResponsesQuerySchema,
+    scenarioProgressQuerySchema,
+    scenarioSaveProgressRequestSchema,
     submitScenarioExamRequestSchema,
 } from '../../scenario-generation/scenario-schemas';
 
@@ -140,7 +143,10 @@ export function mountScenarioQuestionRoutes(router: Router): void {
                     status,
                     topicOrWeekId,
                 });
-                return res.json({ success: true, data });
+                return res.json({
+                    success: true,
+                    data: data.map((q) => toInstructorProjection(q)),
+                });
             }
 
             const data = await instance.listPublishedScenarioQuestionsForStudent(
@@ -165,7 +171,7 @@ export function mountScenarioQuestionRoutes(router: Router): void {
                 if (!question) {
                     return res.status(404).json({ success: false, error: 'Question not found' });
                 }
-                return res.json({ success: true, data: question });
+                return res.json({ success: true, data: toInstructorProjection(question) });
             }
 
             const question = await instance.getPublishedScenarioQuestionForStudent(
@@ -283,7 +289,7 @@ export function mountScenarioQuestionRoutes(router: Router): void {
             if (!updated) {
                 return res.status(404).json({ success: false, error: 'Question not found' });
             }
-            res.json({ success: true, data: updated });
+            res.json({ success: true, data: toInstructorProjection(updated) });
         })
     );
 
@@ -313,7 +319,10 @@ export function mountScenarioQuestionRoutes(router: Router): void {
                 const notFound = result.error === 'Question not found';
                 return res.status(notFound ? 404 : 400).json({ success: false, error: result.error });
             }
-            res.json({ success: true, data: result.question });
+            res.json({
+                success: true,
+                data: result.question ? toInstructorProjection(result.question) : result.question,
+            });
         })
     );
 
@@ -491,6 +500,123 @@ export function mountScenarioQuestionRoutes(router: Router): void {
                 return res.status(status).json(result);
             }
             res.json(result);
+        })
+    );
+
+    /**
+     * GET /:courseId/scenario-questions/:questionId/sub-questions/:subQuestionId/student-responses
+     * Instructor-only paginated view of embedded student submissions for one sub-question.
+     */
+    router.get(
+        '/:courseId/scenario-questions/:questionId/sub-questions/:subQuestionId/student-responses',
+        requireInstructorForCourseAPI(['params']),
+        asyncHandlerWithAuth(async (req: Request, res: Response) => {
+            const { courseId, questionId, subQuestionId } = normalizeRouteParams(req.params);
+            const parsed = scenarioInstructorStudentResponsesQuerySchema.safeParse(req.query ?? {});
+            if (!parsed.success) {
+                return res.status(400).json({
+                    success: false,
+                    error: parsed.error.issues[0]?.message || 'Invalid query parameters',
+                });
+            }
+
+            const instance = await EngEAI_MongoDB.getInstance();
+            const course = await instance.getActiveCourse(courseId);
+            if (!course) {
+                return res.status(404).json({ success: false, error: 'Course not found' });
+            }
+            await instance.ensureScenarioQuestionsCollection(courseId);
+
+            const page = await instance.getInstructorStudentResponsesPage(
+                (course as activeCourse).courseName,
+                questionId,
+                subQuestionId,
+                parsed.data
+            );
+            if (!page) {
+                return res.status(404).json({ success: false, error: 'Question or sub-question not found' });
+            }
+            res.json({ success: true, data: page });
+        })
+    );
+
+    /**
+     * GET /:courseId/scenario-questions/:questionId/progress?mode=
+     * Returns only the caller's draft answers (students only).
+     */
+    router.get(
+        '/:courseId/scenario-questions/:questionId/progress',
+        requireCourseMemberForScenarioAPI(),
+        asyncHandlerWithAuth(async (req: Request, res: Response) => {
+            const { course, globalUser, isInstructor } = scenarioCtx(res);
+            if (isInstructor) {
+                return res.status(403).json({ success: false, error: 'Progress is for enrolled students only' });
+            }
+
+            const { questionId } = normalizeRouteParams(req.params);
+            const parsed = scenarioProgressQuerySchema.safeParse(req.query ?? {});
+            if (!parsed.success) {
+                return res.status(400).json({
+                    success: false,
+                    error: parsed.error.issues[0]?.message || 'Invalid progress query',
+                });
+            }
+
+            const instance = await EngEAI_MongoDB.getInstance();
+            await instance.ensureScenarioQuestionsCollection(course.id);
+            await instance.ensureScenarioProgressCollection(course.id);
+
+            const question = await instance.getScenarioQuestionById(course.courseName, questionId);
+            if (!question || question.status !== 'published') {
+                return res.status(404).json({ success: false, error: 'Question not found' });
+            }
+
+            const data = await getScenarioService().getStudentProgress(
+                course.courseName,
+                questionId,
+                globalUser.userId,
+                parsed.data.mode
+            );
+            res.json({ success: true, data });
+        })
+    );
+
+    /**
+     * PUT /:courseId/scenario-questions/:questionId/progress
+     * Upsert caller's draft answers (students only).
+     */
+    router.put(
+        '/:courseId/scenario-questions/:questionId/progress',
+        requireCourseMemberForScenarioAPI(),
+        asyncHandlerWithAuth(async (req: Request, res: Response) => {
+            const { course, globalUser, isInstructor } = scenarioCtx(res);
+            if (isInstructor) {
+                return res.status(403).json({ success: false, error: 'Progress is for enrolled students only' });
+            }
+
+            const { questionId } = normalizeRouteParams(req.params);
+            const parsed = scenarioSaveProgressRequestSchema.safeParse(req.body ?? {});
+            if (!parsed.success) {
+                return res.status(400).json({
+                    success: false,
+                    error: parsed.error.issues[0]?.message || 'Invalid progress request',
+                });
+            }
+
+            const instance = await EngEAI_MongoDB.getInstance();
+            await instance.ensureScenarioQuestionsCollection(course.id);
+            await instance.ensureScenarioProgressCollection(course.id);
+
+            const data = await getScenarioService().saveStudentProgress(
+                course.courseName,
+                questionId,
+                globalUser.userId,
+                parsed.data
+            );
+            if (!data) {
+                return res.status(404).json({ success: false, error: 'Question not found' });
+            }
+            res.json({ success: true, data });
         })
     );
 

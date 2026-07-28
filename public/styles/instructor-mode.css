@@ -55,6 +55,7 @@ body {
     flex-direction: row;
     height: 100%;
     width: 100%;
+    overflow: hidden;
     opacity: 1;
     background-color: var(--chat-bg);
 }
@@ -62,6 +63,12 @@ body {
 .instructor-sidebar {
     display: flex; 
     flex-direction: row;
+    position: sticky;
+    top: 10px;
+    align-self: flex-start;
+    flex-shrink: 0;
+    height: calc(100vh - 20px);
+    max-height: calc(100vh - 20px);
     border-radius: 10px;
     margin: 10px 5px 10px 10px;
     border: 1px solid var(--border-color);
@@ -155,6 +162,22 @@ body {
     flex: 1;
     overflow-y: auto;
     min-height: 0;
+    scrollbar-gutter: stable;
+    scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+.instructor-sidebar .chat-list .chat-list-ul::-webkit-scrollbar {
+    width: 8px;
+    background: transparent;
+}
+
+.instructor-sidebar .chat-list .chat-list-ul::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.instructor-sidebar .chat-list .chat-list-ul::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.22);
+    border-radius: 4px;
 }
 
 .instructor-sidebar .chat-list .chat-item {
@@ -521,7 +544,6 @@ body {
     flex: 1 1 0;
     min-width: 0;
     margin: 10px;
-    overflow: scroll;
 }
 
 #main-content-area:focus-visible {

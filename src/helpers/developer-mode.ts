@@ -129,3 +129,14 @@ export function getMockGuardrailEvaluation(courseName: string): GuardrailResult 
     return buildGuardrailResult(triggerId, courseName);
 }
 
+/**
+ * Mock unstruggle Yes follow-up structured output (first up to 3 catalog objective texts).
+ */
+export function getMockUnstruggleYesFollowup(catalog: Array<{ text: string }>): {
+    learningObjectiveTexts: string[];
+} {
+    return {
+        learningObjectiveTexts: catalog.slice(0, 3).map((row) => row.text),
+    };
+}
+

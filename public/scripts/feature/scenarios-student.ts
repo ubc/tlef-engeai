@@ -21,6 +21,7 @@ import {
     ScenarioExamPartResult,
     ScenarioLearningObjectiveSnapshot,
     ScenarioPartFeedbackResponse,
+    ScenarioProgressAnswer,
 } from '../types.js';
 import {
     fetchPublishedScenarioQuestions,
@@ -29,14 +30,15 @@ import {
     fetchScenarioResponseHistory,
     fetchScenarioSolution,
     submitScenarioExam,
+    fetchScenarioProgress,
+    saveScenarioProgress,
 } from '../api/scenario-questions-api.js';
 import { renderFeatherIcons } from '../api/api.js';
 import { closeModal, showConfirmModal, showCustomModal, showWarningModal } from '../ui/modal-overlay.js';
-import { showErrorToast } from '../ui/toast-notification.js';
+import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
 import { flashcardToneIndex, parseAnswerKeyToFlashcards, SUB_QUESTION_TYPE_LABELS } from './scenario-answer-flashcard.js';
 import { RenderChat } from './render-chat.js';
 import { renderLatexInHtmlContent } from './chat.js';
-import { stashChatDraftPrefill } from '../utils/chat-draft-prefill.js';
 import {
     getStudentScenariosParamsFromURL,
     navigateToStudentScenarios,
@@ -130,24 +132,56 @@ function clearPracticeLimitTimers(): void {
     lastFeedbackAtByPart.clear();
 }
 
-function buildScenarioChatPrefill(question: StudentQuestionView, part: StudentPartView, studentAnswer: string): string {
+function buildScenarioChatPrefill(
+    question: StudentQuestionView,
+    part: StudentPartView,
+    studentAnswer: string,
+    answerKey: string
+): string {
     const partIndex = question.parts.findIndex((p) => p.id === part.id);
     const partLabel = partIndex >= 0 ? `Part ${partIndex + 1}` : 'this part';
-    const answerBlock = studentAnswer.trim()
-        ? `\n\nMy current answer:\n${studentAnswer.trim()}`
-        : '';
+    const answerText = studentAnswer.trim() || '(not entered yet)';
+    const answerKeyText = answerKey.trim() || '(not available)';
     return [
-        `I'm working on the practice scenario **${question.title}**.`,
+        "I'm working on a practice scenario and would like help thinking through this part.",
         '',
-        '**Scenario:**',
+        '**Scenario**',
         question.narrative.trim(),
         '',
-        `**${partLabel}:**`,
+        `**${partLabel}**`,
         part.prompt.trim(),
-        answerBlock,
         '',
-        'Can you help me think through this step by step?',
+        '**Answer Key**',
+        answerKeyText,
+        '',
+        '**My answer**',
+        answerText,
+        '',
+        'Please help me work through this step by step.',
     ].join('\n');
+}
+
+async function resolvePartAnswerKey(part: StudentPartView): Promise<string> {
+    if (part.modelAnswer.trim()) return part.modelAnswer;
+    if (!currentCourse || !activeQuestion || activeMode !== 'practice') return '';
+
+    try {
+        const solution = await fetchScenarioSolution(
+            currentCourse.id,
+            activeQuestion.id,
+            'practice',
+            part.id
+        );
+        if (!solution?.subQuestions?.length) return '';
+
+        const modelAnswer = solution.subQuestions[0]?.modelAnswer?.trim() ?? '';
+        if (modelAnswer) {
+            part.modelAnswer = modelAnswer;
+        }
+        return modelAnswer;
+    } catch {
+        return '';
+    }
 }
 
 async function openConversationForPart(part: StudentPartView): Promise<void> {
@@ -156,10 +190,12 @@ async function openConversationForPart(part: StudentPartView): Promise<void> {
         `.sg-student-answer-input[data-sub-question-id="${part.id}"]`
     );
     const answer = textarea?.value?.trim() || '';
-    const draft = buildScenarioChatPrefill(activeQuestion, part, answer);
-    stashChatDraftPrefill(currentCourse.id, draft);
+    const answerKey = await resolvePartAnswerKey(part);
+    const draft = buildScenarioChatPrefill(activeQuestion, part, answer, answerKey);
     window.dispatchEvent(
-        new CustomEvent('engeai-student-open-chat-draft', { detail: { courseId: currentCourse.id } })
+        new CustomEvent('engeai-student-open-chat-draft', {
+            detail: { courseId: currentCourse.id, text: draft },
+        })
     );
 }
 
@@ -590,23 +626,85 @@ export function expandStudentSidebar(): void {
     document.querySelector('.sidebar')?.classList.remove('collapsed');
 }
 
+function collectWorkspaceAnswers(): ScenarioProgressAnswer[] {
+    if (!activeQuestion) return [];
+    return activeQuestion.parts.map((part) => {
+        const textarea = document.querySelector<HTMLTextAreaElement>(
+            `.sg-student-answer-input[data-sub-question-id="${part.id}"]`
+        );
+        return {
+            subQuestionId: part.id,
+            studentAnswer: textarea?.value ?? '',
+        };
+    });
+}
+
+function hasUnsavedWorkspaceAnswers(): boolean {
+    return collectWorkspaceAnswers().some((a) => a.studentAnswer.trim().length > 0);
+}
+
+async function saveCurrentWorkspaceProgress(): Promise<void> {
+    if (!currentCourse || !activeQuestion || !activeMode) return;
+    const answers = collectWorkspaceAnswers();
+    await saveScenarioProgress(currentCourse.id, activeQuestion.id, {
+        mode: activeMode,
+        answers,
+    });
+}
+
+async function loadAndApplyWorkspaceProgress(questionId: string, mode: ScenarioMode): Promise<void> {
+    if (!currentCourse || lastExamSubmission) return;
+    try {
+        const progress = await fetchScenarioProgress(currentCourse.id, questionId, mode);
+        if (!progress.answers.length) return;
+        const byPart = new Map(progress.answers.map((a) => [a.subQuestionId, a.studentAnswer]));
+        for (const part of activeQuestion?.parts ?? []) {
+            const saved = byPart.get(part.id);
+            if (saved === undefined) continue;
+            const textarea = document.querySelector<HTMLTextAreaElement>(
+                `.sg-student-answer-input[data-sub-question-id="${part.id}"]`
+            );
+            if (textarea && !textarea.disabled) {
+                textarea.value = saved;
+            }
+        }
+    } catch {
+        // ponytail: workspace still usable if progress load fails
+    }
+}
+
 export async function confirmLeaveScenarioWorkspace(): Promise<boolean> {
     if (!activeMode) {
         expandStudentSidebar();
         return true;
     }
 
-    const modeLabel = activeMode === 'exam' ? 'exam' : 'practice';
+    if (lastExamSubmission || !hasUnsavedWorkspaceAnswers()) {
+        showListView();
+        return true;
+    }
+
     const result = await showWarningModal(
-        'Leave this session?',
-        `Are you sure you want to leave this ${modeLabel}? Your current attempt may be lost.`,
+        'Save your progress?',
+        'Save your current answer before leaving, or leave without saving.',
         [
-            { text: 'Stay', type: 'secondary', closeOnClick: true },
-            { text: 'Leave', type: 'danger', closeOnClick: true }
+            { text: 'Leave', type: 'danger', closeOnClick: true },
+            { text: 'Save', type: 'primary', closeOnClick: true },
         ]
     );
 
-    if (result.action !== 'leave') return false;
+    if (result.action !== 'save' && result.action !== 'leave') return false;
+
+    if (result.action === 'save') {
+        try {
+            await saveCurrentWorkspaceProgress();
+            showSuccessToast('Progress saved.');
+        } catch (error) {
+            showErrorToast(error instanceof Error ? error.message : 'Could not save progress.');
+            return false;
+        }
+    }
+
     showListView();
     return true;
 }
@@ -849,6 +947,7 @@ async function startWorkspace(listItem: StudentQuestionView, mode: ScenarioMode,
     if (mode === 'practice') {
         await loadPracticeResponseHistory(question.id);
     }
+    await loadAndApplyWorkspaceProgress(question.id, mode);
     setupTimerForMode(mode, question.expectedTimeMinutes);
     showWorkspaceView();
     collapseStudentSidebar();

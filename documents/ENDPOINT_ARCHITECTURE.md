@@ -310,16 +310,19 @@ Two auth tiers: `requireCourseMemberForScenarioAPI` (enrolled student **or** sta
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
 | GET | `/api/courses/:courseId/scenario-questions/learning-objectives?topicOrWeekId=` | Yes | Instructor | Topic-scoped LO catalog for generate/editor selectors |
-| GET | `/api/courses/:courseId/scenario-questions` | Yes | Member | Instructor: all statuses, `?status=`/`?topicOrWeekId=` filters. Student: published only |
-| GET | `/api/courses/:courseId/scenario-questions/:questionId` | Yes | Member | Instructor: full document any status. Student: 404 unless published (no model answers / response history) |
+| GET | `/api/courses/:courseId/scenario-questions` | Yes | Member | Instructor: all statuses, `?status=`/`?topicOrWeekId=` filters (projection omits embedded `studentResponses`; includes `studentResponseCount` per part). Student: published only |
+| GET | `/api/courses/:courseId/scenario-questions/:questionId` | Yes | Member | Instructor: editor projection (no embedded `studentResponses`; `studentResponseCount` per part). Student: 404 unless published (no model answers / response history) |
 | POST | `/api/courses/:courseId/scenario-questions` | Yes | Instructor | Manual create (draft) |
 | PUT | `/api/courses/:courseId/scenario-questions/:questionId` | Yes | Instructor | Edit title/chapter/narrative/parts/LOs (does not change `status`) |
 | PATCH | `/api/courses/:courseId/scenario-questions/:questionId/status` | Yes | Instructor | `{ status: 'draft' \| 'published' \| 'rejected' }` — publish re-validates server-side |
 | DELETE | `/api/courses/:courseId/scenario-questions/:questionId` | Yes | Instructor | Hard delete |
 | POST | `/api/courses/:courseId/scenario-questions/generate` | Yes | Instructor | `{ mode, sourcePrompt, topicOrWeekId, learningObjectiveIds?, subQuestionTypes?, difficulty?, title?, count? }` — RAG-grounded AI drafts |
 | POST | `/api/courses/:courseId/scenario-questions/:questionId/check-answer` | Yes | Member | `{ subQuestionId, studentAnswer, mode }` → practice: `{ responseId, feedback, feedbackTier?, feedbackSource?, blockReason?, attemptNumber?, attemptsRemaining?, maxAttemptsPerDay?, retryAfterSeconds?, resetsAt?, answerRevealed? }` (no grade). Socratic attempts 1–2/day; descriptive 3–6 with server-attached model answer; 7+ same day blocked; 30s cooldown between attempts. Canned responses when gated (no persist, no LLM). Instructor preview skips limits. Appends embedded history on allowed LLM responses |
-| POST | `/api/courses/:courseId/scenario-questions/:questionId/submit-exam` | Yes | Student | `{ answers: [{ subQuestionId, studentAnswer }] }` → `{ overallGrade, results[] }` — batch grade + atomic append |
+| POST | `/api/courses/:courseId/scenario-questions/:questionId/submit-exam` | Yes | Student | `{ answers: [{ subQuestionId, studentAnswer }] }` → `{ overallGrade, results[] }` — batch grade + atomic append; clears exam draft progress on success |
+| GET | `/api/courses/:courseId/scenario-questions/:questionId/progress?mode=` | Yes | Student | Caller's draft answers for one question+mode; `{ answers: [] }` when none. Instructors receive `403` |
+| PUT | `/api/courses/:courseId/scenario-questions/:questionId/progress` | Yes | Student | `{ mode, answers: [{ subQuestionId, studentAnswer }] }` — upsert draft (explicit save on leave). At least one non-whitespace answer required. Instructors receive `403` |
 | GET | `/api/courses/:courseId/scenario-questions/:questionId/responses` | Yes | Member | Caller's own embedded response history only |
+| GET | `/api/courses/:courseId/scenario-questions/:questionId/sub-questions/:subQuestionId/student-responses?limit=&offset=` | Yes | Instructor | Paginated student submissions for one sub-question (newest first; default `limit=10`, max `50`). Instructor editor prefetches with `limit=20` and displays 10 per carousel page. `total` is the live embedded-array count on every response. Returns roster `studentName`, `mode`, `studentAnswer`, `feedback`, `submittedAt` |
 | GET | `/api/courses/:courseId/scenario-questions/:questionId/solution?mode=` | Yes | Member | Gated reveal — 403 until every sub-question has a response in `mode` (`practice` \| `exam`) |
 
 **Errors:** `400` invalid body / missing-or-duplicate exam answers; `401` unauthenticated; `403` non-member, instructor on submit-exam, or unmet solution gate; `404` course/question not found (including drafts for students); `422` generation/grading failure; `500` server error.
@@ -352,7 +355,7 @@ All chat endpoints require auth. Access is scoped by session `currentCourse` and
 | POST | `/api/chat/newchat` | Yes | Any | Create new welcome-only chat with persisted `conversationMode: 'undeclared'` |
 | POST | `/api/chat/restore/:chatId` | Yes | Any | Restore chat into server memory; lazy mode migration uses message history |
 | PATCH | `/api/chat/:chatId/conversation-mode` | Yes | Any | Update teaching mode before the first user message; rejects chats that already contain a user turn |
-| POST | `/api/chat/:chatId` | Yes | Any | Send message; first user message finalizes an undeclared chat to `socratic` or `explanatory` before LLM processing |
+| POST | `/api/chat/:chatId` | Yes | Any | Send message; first user message finalizes an undeclared chat to `socratic` or `explanatory` before LLM processing. Unstruggle **Yes** (`yes, I am confident with "topic"`) removes the struggle label, strips the prior bot `<questionUnstruggle>` tag, runs a forked LLM call to pick up to 3 verbatim learning-objective **texts** (not ids), randomly samples up to 3 published scenario questions matching those LO texts, and returns a bot message with a random preconfigured encouragement (`{topic}` substitution) plus optional `<scenarioSuggestions>` JSON tag (no main chat LLM). |
 | POST | `/api/chat/:chatId/dismiss-unstruggle` | Yes | Any | Dismiss unstruggle |
 | GET | `/api/chat/:chatId/history` | Yes | Any | Get chat history |
 | GET | `/api/chat/:chatId/message/:messageId` | Yes | Any | Get single message |

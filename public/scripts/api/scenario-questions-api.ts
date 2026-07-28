@@ -15,6 +15,7 @@
 import type {
     ScenarioQuestion,
     ScenarioQuestionForStudent,
+    ScenarioQuestionForInstructor,
     ScenarioQuestionStatus,
     ScenarioPartFeedbackResponse,
     ScenarioGenerateRequest,
@@ -25,6 +26,9 @@ import type {
     ScenarioExamSubmitResponse,
     ScenarioLearningObjectiveOption,
     ScenarioStudentResponse,
+    ScenarioInstructorStudentResponsesPage,
+    ScenarioSaveProgressRequest,
+    ScenarioProgressResponse,
 } from '../types.js';
 import { defaultExpectedTimeMinutes } from '../types.js';
 
@@ -52,7 +56,7 @@ async function parseJsonOrThrow(response: Response): Promise<any> {
 export async function fetchScenarioQuestions(
     courseId: string,
     filters?: { status?: ScenarioQuestionStatus; topicOrWeekId?: string }
-): Promise<ScenarioQuestion[]> {
+): Promise<ScenarioQuestionForInstructor[]> {
     const params = new URLSearchParams();
     if (filters?.status) params.set('status', filters.status);
     if (filters?.topicOrWeekId) params.set('topicOrWeekId', filters.topicOrWeekId);
@@ -62,7 +66,7 @@ export async function fetchScenarioQuestions(
         credentials: 'same-origin',
     });
     const data = await parseJsonOrThrow(response);
-    return (data.data ?? []) as ScenarioQuestion[];
+    return (data.data ?? []) as ScenarioQuestionForInstructor[];
 }
 
 /** Student list — published only, optionally scoped to one chapter. */
@@ -87,7 +91,7 @@ export async function fetchPublishedScenarioQuestions(
 export async function fetchScenarioQuestion(
     courseId: string,
     questionId: string
-): Promise<ScenarioQuestion | ScenarioQuestionForStudent | null> {
+): Promise<ScenarioQuestionForInstructor | ScenarioQuestionForStudent | null> {
     const response = await fetch(`${apiBase(courseId)}/${questionId}`, {
         method: 'GET',
         credentials: 'same-origin',
@@ -96,7 +100,38 @@ export async function fetchScenarioQuestion(
         return null;
     }
     const data = await parseJsonOrThrow(response);
-    return data.data as ScenarioQuestion | ScenarioQuestionForStudent;
+    return data.data as ScenarioQuestionForInstructor | ScenarioQuestionForStudent;
+}
+
+const INSTRUCTOR_RESPONSES_DEFAULT_LIMIT = 10;
+export const INSTRUCTOR_RESPONSES_FETCH_BATCH_SIZE = 20;
+
+/** Instructor editor — paginated student submissions for one sub-question. */
+export async function fetchInstructorStudentResponses(
+    courseId: string,
+    questionId: string,
+    subQuestionId: string,
+    options?: { limit?: number; offset?: number }
+): Promise<ScenarioInstructorStudentResponsesPage> {
+
+    // build the URL params
+    const params = new URLSearchParams();
+
+    // set the limit and offset
+    params.set('limit', String(options?.limit ?? INSTRUCTOR_RESPONSES_DEFAULT_LIMIT));
+    params.set('offset', String(options?.offset ?? 0));
+
+    // fetch the data
+    const response = await fetch(
+        `${apiBase(courseId)}/${questionId}/sub-questions/${encodeURIComponent(subQuestionId)}/student-responses?${params}`,
+        { method: 'GET', credentials: 'same-origin' }
+    );
+
+    // parse the response
+    const data = await parseJsonOrThrow(response);
+
+    // return the data
+    return data.data as ScenarioInstructorStudentResponsesPage;
 }
 
 export async function createScenarioQuestion(
@@ -117,7 +152,7 @@ export async function updateScenarioQuestion(
     courseId: string,
     questionId: string,
     patch: Partial<ScenarioQuestion>
-): Promise<ScenarioQuestion> {
+): Promise<ScenarioQuestionForInstructor> {
     const response = await fetch(`${apiBase(courseId)}/${questionId}`, {
         method: 'PUT',
         credentials: 'same-origin',
@@ -125,14 +160,14 @@ export async function updateScenarioQuestion(
         body: JSON.stringify(patch),
     });
     const data = await parseJsonOrThrow(response);
-    return data.data as ScenarioQuestion;
+    return data.data as ScenarioQuestionForInstructor;
 }
 
 export async function patchScenarioQuestionStatus(
     courseId: string,
     questionId: string,
     status: ScenarioQuestionStatus
-): Promise<ScenarioQuestion> {
+): Promise<ScenarioQuestionForInstructor> {
     const response = await fetch(`${apiBase(courseId)}/${questionId}/status`, {
         method: 'PATCH',
         credentials: 'same-origin',
@@ -140,9 +175,15 @@ export async function patchScenarioQuestionStatus(
         body: JSON.stringify({ status }),
     });
     const data = await parseJsonOrThrow(response);
-    return data.data as ScenarioQuestion;
+    return data.data as ScenarioQuestionForInstructor;
 }
 
+/**
+ * Delete a scenario question.
+ * @param courseId - The ID of the course.
+ * @param questionId - The ID of the question.
+ * @returns The void.
+ */
 export async function deleteScenarioQuestion(courseId: string, questionId: string): Promise<void> {
     const response = await fetch(`${apiBase(courseId)}/${questionId}`, {
         method: 'DELETE',
@@ -221,6 +262,37 @@ export async function fetchScenarioResponseHistory(
     });
     const data = await parseJsonOrThrow(response);
     return (data.data ?? []) as Array<ScenarioStudentResponse & { subQuestionId: string }>;
+}
+
+/** Load caller's saved draft answers for one question and mode. */
+export async function fetchScenarioProgress(
+    courseId: string,
+    questionId: string,
+    mode: ScenarioMode
+): Promise<ScenarioProgressResponse> {
+    const params = new URLSearchParams({ mode });
+    const response = await fetch(`${apiBase(courseId)}/${questionId}/progress?${params}`, {
+        method: 'GET',
+        credentials: 'same-origin',
+    });
+    const data = await parseJsonOrThrow(response);
+    return (data.data ?? { questionId, mode, answers: [], updatedAt: '' }) as ScenarioProgressResponse;
+}
+
+/** Upsert caller's draft answers (explicit save on leave). */
+export async function saveScenarioProgress(
+    courseId: string,
+    questionId: string,
+    body: ScenarioSaveProgressRequest
+): Promise<ScenarioProgressResponse> {
+    const response = await fetch(`${apiBase(courseId)}/${questionId}/progress`, {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    const data = await parseJsonOrThrow(response);
+    return data.data as ScenarioProgressResponse;
 }
 
 /** Gated reveal — `null` on 403 (solution not unlocked yet). Optional `subQuestionId` for practice per-part reveal. */
