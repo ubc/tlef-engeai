@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import express from 'express';
+import fs from 'fs';
 import path from 'path';
 // import cors from 'cors';
 import { loadConfig } from './utils/config';
@@ -24,11 +25,9 @@ import { EngEAI_MongoDB } from './db/enge-ai-mongodb';
 import { initAcademicPeriods } from './helpers/init-academic-periods';
 import { migrateInstructorAllowances } from './helpers/migrate-instructor-allowances';
 import { migrateOnboardingFlags } from './helpers/migrate-onboarding-flags';
-import { migratePlatformAdmins } from './helpers/migrate-platform-admins';
-import { finalizeGlobalUserAfterAuth } from './helpers/auth-global-user';
 import { getCourseSelectionRedirectPath } from './helpers/course-selection-redirect';
-import { resolveAffiliation, isFacultyOverridePuid } from './utils/affiliation';
-import { isAdminUser, isPlatformAdminPuid } from './utils/admin';
+import { resolveAffiliation, isFacultyOverrideName } from './utils/affiliation';
+import { isAdminUser, isAdminName } from './utils/admin';
 
 dotenv.config();
 
@@ -56,6 +55,28 @@ app.use(passport.session());
 // When running from dist/server.js, __dirname is .../dist
 // The correct relative path to public is one level up, then into public.
 const publicPath = path.join(__dirname, '../public');
+
+/** Login-page bundle; must exist under public/dist after `npm run build:frontend`. */
+const frontendBuildSentinel = path.join(
+    publicPath,
+    'dist/public/scripts/auth/auth-manager.js'
+);
+
+function assertFrontendBuilt(): void {
+    if (process.env.NODE_ENV !== 'production') {
+        return;
+    }
+    if (fs.existsSync(frontendBuildSentinel)) {
+        return;
+    }
+    logger.error(
+        '[STARTUP] Frontend not built (missing %s). Run `npm run build` or `npm run start:prod` before production start.',
+        frontendBuildSentinel
+    );
+    process.exit(1);
+}
+
+assertFrontendBuilt();
 
 // Request logging middleware
 app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -115,12 +136,12 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
         // Check if GlobalUser exists in active-users collection
         let globalUser = await mongoDB.findGlobalUserByPUID(puid);
 
-        // Resolve affiliation: CWL takes precedence over DB when they differ (except PUID overrides)
-        const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, puid);
+        // Resolve affiliation: CWL takes precedence over DB when they differ (except admin overrides)
+        const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, name);
         const affiliation = resolution.affiliation;
 
-        if (isFacultyOverridePuid(puid) && cwlAffiliation !== affiliation) {
-            logger.info(`[AUTH] 🔄 Affiliation override: PUID ${puid} set to faculty`);
+        if (isFacultyOverrideName(name) && cwlAffiliation !== affiliation) {
+            logger.info(`[AUTH] 🔄 Affiliation override: ${name} set to faculty`);
         }
 
         logger.info('[AUTH] ✅ SAML authentication successful');
@@ -138,7 +159,7 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
                 coursesEnrolled: [],
                 affiliation: affiliation as 'student' | 'faculty' | 'staff' | 'empty',
                 status: 'active',
-                ...(isPlatformAdminPuid(puid) ? { isAdmin: true as const } : {})
+                isAdmin: isAdminName(name)
             });
 
             logger.info(`[AUTH] ✅ GlobalUser created: ${globalUser.userId}`);
@@ -152,9 +173,14 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
                 (req.user as any).affiliation = affiliation;
                 logger.info(`[AUTH] ✅ GlobalUser affiliation updated: ${globalUser.userId}`);
             }
-        }
 
-        globalUser = await finalizeGlobalUserAfterAuth(mongoDB, globalUser, puid);
+            // Reconcile admin status against the ADMINS allowlist
+            const shouldBeAdmin = isAdminName(name);
+            if (globalUser.isAdmin !== shouldBeAdmin) {
+                logger.info(`[AUTH] 🔄 Updating GlobalUser isAdmin: was ${globalUser.isAdmin}, now ${shouldBeAdmin}`);
+                globalUser = await mongoDB.updateGlobalUser(globalUser.puid, { isAdmin: shouldBeAdmin });
+            }
+        }
 
         // Store GlobalUser in session
         (req.session as any).globalUser = globalUser;
@@ -272,12 +298,6 @@ app.listen(port, async () => {
         await migrateOnboardingFlags();
     } catch (err) {
         logger.error('Onboarding migration failed:', err as any);
-    }
-
-    try {
-        await migratePlatformAdmins();
-    } catch (err) {
-        logger.error('Platform admin migration failed:', err as any);
     }
 
 });

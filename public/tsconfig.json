@@ -7,11 +7,7 @@
     "rootDir": "..",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true,
-    "paths": {
-      "@/*": ["./scripts/*"],
-      "@/lib": ["./scripts/index"]
-    }
+    "skipLibCheck": true
   },
-  "include": ["scripts/**/*", "../src/types/shared.ts"]
+  "include": ["scripts/**/*"]
 }

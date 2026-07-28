@@ -69,6 +69,7 @@ export async function createGlobalUser(
         coursesEnrolled: userData.coursesEnrolled || [],
         affiliation: userData.affiliation!,
         status: userData.status || 'active',
+        isAdmin: userData.isAdmin === true,
         createdAt: new Date(),
         updatedAt: new Date()
     };
@@ -182,5 +183,17 @@ export async function searchFacultyUsersByName(
         })
         .limit(limit)
         .toArray();
+    return docs as unknown as GlobalUser[];
+}
+
+/**
+ * findAdminGlobalUsers
+ *
+ * Returns all GlobalUsers with isAdmin: true. Used to auto-add current admins
+ * as instructors on every course.
+ */
+export async function findAdminGlobalUsers(ctx: MongoDalContext): Promise<GlobalUser[]> {
+    const collection = activeUsersMongoCollection(ctx.db);
+    const docs = await collection.find({ isAdmin: true }).toArray();
     return docs as unknown as GlobalUser[];
 }
