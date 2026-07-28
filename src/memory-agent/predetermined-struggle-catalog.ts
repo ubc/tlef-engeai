@@ -1,73 +1,124 @@
 /**
- * predetermined-struggle-catalog.ts
+ * Predetermined struggle catalog — fixture-backed instructor struggle labels
  *
- * Loads fixed APSC 183 instructor struggle-topic labels for Test 3 uploads
- * (deterministic replacement for LLM generation).
+ * Discovers `*-instructor-struggle-topics.json` files under `src/fixtures/` and
+ * `dist/fixtures/`, indexes them by `courseName`, and supplies deterministic labels
+ * for post-upload struggle generation when a catalog exists (skips LLM generation).
+ *
+ * @author: EngE-AI Team
+ * @date: 2026-07-23
+ * @version: 2.0.0
+ * @description: Fixture discovery, parse, cache, and lookup for predetermined struggle-topic catalogs.
  */
 
 import fs from 'fs';
 import path from 'path';
-import { MAX_STRUGGLE_TOPICS } from './struggle-generation-schema';
 
-export const PREDETERMINED_STRUGGLE_COURSE_NAME = 'Test 3';
+const CATALOG_FILENAME_SUFFIX = '-instructor-struggle-topics.json';
 
-const TOPIC_NUMBER_PATTERN = /Topic\s*(\d+)/i;
-
+/** One topic/chapter row in a fixture catalog JSON file. */
 export interface PredeterminedStruggleTopicEntry {
-    topicNumber: number;
-    topicTitle: string;
-    struggleTopics: string[];
+    topicNumber: number; // 1-based chapter index used for upload matching
+    topicTitle: string; // display title; defaults to `Topic N` when omitted in JSON
+    struggleTopics: string[]; // verbatim instructor labels for this chapter
 }
 
+/**
+ * Parsed fixture catalog for one course.
+ *
+ * Loaded from JSON at startup (lazy) and cached in memory. `topicNumberPattern` and
+ * `maxStruggleTopics` are required in the fixture file — not hardcoded in this module.
+ */
 export interface PredeterminedStruggleCatalog {
-    courseName: string;
-    source: string;
-    topics: PredeterminedStruggleTopicEntry[];
+    courseName: string; // must match active course `courseName` for lookup
+    source: string; // optional provenance string from JSON (informational)
+    topicNumberPattern: RegExp; // compiled from JSON `topicNumberPattern` (case-insensitive)
+    maxStruggleTopics: number; // per-upload cap when appending labels from this catalog
+    topics: PredeterminedStruggleTopicEntry[]; // chapter rows in fixture order
 }
 
-let cachedCatalog: PredeterminedStruggleCatalog | null = null;
-let cachedByTopicNumber: Map<number, string[]> | null = null;
+let catalogsByCourseName: Map<string, PredeterminedStruggleCatalog> | null = null;
+let labelsByCourseAndTopic: Map<string, Map<number, string[]>> | null = null;
 
-function resolveCatalogPath(): string {
-    const candidates = [
-        path.join(process.cwd(), 'dist/fixtures/APSC183-instructor-struggle-topics.json'),
-        path.join(process.cwd(), 'src/fixtures/APSC183-instructor-struggle-topics.json'),
-    ];
+function discoverCatalogFiles(): string[] {
+    // Prefer src/fixtures in dev so edits win over stale dist copies
+    const fixtureDirs = [
+        path.join(process.cwd(), 'src/fixtures'),
+        path.join(process.cwd(), 'dist/fixtures'),
+    ].filter((dir) => fs.existsSync(dir));
 
-    for (const filePath of candidates) {
-        if (fs.existsSync(filePath)) {
-            return filePath;
+    const seenFilenames = new Set<string>();
+    const files: string[] = [];
+
+    for (const dir of fixtureDirs) {
+        for (const entry of fs.readdirSync(dir)) {
+            if (!entry.endsWith(CATALOG_FILENAME_SUFFIX)) {
+                continue;
+            }
+            // Skip duplicate filenames across dirs (first dir wins)
+            if (seenFilenames.has(entry)) {
+                continue;
+            }
+            seenFilenames.add(entry);
+            files.push(path.join(dir, entry));
         }
     }
 
-    throw new Error(
-        `APSC183-instructor-struggle-topics.json not found. Expected one of: ${candidates.join(', ')}`
-    );
+    return files;
 }
 
-function parseCatalog(raw: unknown): PredeterminedStruggleCatalog {
+function parseTopicNumberPattern(raw: unknown, filePath: string): RegExp {
+    if (typeof raw !== 'string' || !raw.trim()) {
+        throw new Error(
+            `Invalid instructor struggle catalog ${filePath}: topicNumberPattern must be a non-empty string`
+        );
+    }
+    try {
+        return new RegExp(raw, 'i');
+    } catch {
+        throw new Error(
+            `Invalid instructor struggle catalog ${filePath}: topicNumberPattern is not a valid RegExp`
+        );
+    }
+}
+
+function parseMaxStruggleTopics(raw: unknown, filePath: string): number {
+    if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1) {
+        throw new Error(
+            `Invalid instructor struggle catalog ${filePath}: maxStruggleTopics must be a positive integer`
+        );
+    }
+    return raw;
+}
+
+function parseCatalog(raw: unknown, filePath: string): PredeterminedStruggleCatalog {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-        throw new Error('Invalid APSC183 instructor struggle catalog: root must be an object');
+        throw new Error(`Invalid instructor struggle catalog ${filePath}: root must be an object`);
     }
 
     const body = raw as Record<string, unknown>;
+    const courseName = body.courseName;
+    if (typeof courseName !== 'string' || !courseName.trim()) {
+        throw new Error(`Invalid instructor struggle catalog ${filePath}: courseName must be a non-empty string`);
+    }
+
     const topicsRaw = body.topics;
     if (!Array.isArray(topicsRaw)) {
-        throw new Error('Invalid APSC183 instructor struggle catalog: topics must be an array');
+        throw new Error(`Invalid instructor struggle catalog ${filePath}: topics must be an array`);
     }
 
     const topics: PredeterminedStruggleTopicEntry[] = topicsRaw.map((entry, index) => {
         if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-            throw new Error(`Invalid catalog topic at index ${index}`);
+            throw new Error(`Invalid catalog topic at index ${index} in ${filePath}`);
         }
         const row = entry as Record<string, unknown>;
         const topicNumber = row.topicNumber;
         const struggleTopics = row.struggleTopics;
         if (typeof topicNumber !== 'number' || !Number.isInteger(topicNumber) || topicNumber < 1) {
-            throw new Error(`Invalid topicNumber at index ${index}`);
+            throw new Error(`Invalid topicNumber at index ${index} in ${filePath}`);
         }
         if (!Array.isArray(struggleTopics) || !struggleTopics.every((t) => typeof t === 'string')) {
-            throw new Error(`Invalid struggleTopics at index ${index}`);
+            throw new Error(`Invalid struggleTopics at index ${index} in ${filePath}`);
         }
         return {
             topicNumber,
@@ -77,47 +128,101 @@ function parseCatalog(raw: unknown): PredeterminedStruggleCatalog {
     });
 
     return {
-        courseName: typeof body.courseName === 'string' ? body.courseName : PREDETERMINED_STRUGGLE_COURSE_NAME,
+        courseName: courseName.trim(),
         source: typeof body.source === 'string' ? body.source : '',
+        topicNumberPattern: parseTopicNumberPattern(body.topicNumberPattern, filePath),
+        maxStruggleTopics: parseMaxStruggleTopics(body.maxStruggleTopics, filePath),
         topics,
     };
 }
 
-function buildTopicNumberMap(catalog: PredeterminedStruggleCatalog): Map<number, string[]> {
-    const map = new Map<number, string[]>();
-    for (const entry of catalog.topics) {
-        map.set(entry.topicNumber, [...entry.struggleTopics]);
+function buildLabelsByCourseAndTopic(
+    catalogs: Map<string, PredeterminedStruggleCatalog>
+): Map<string, Map<number, string[]>> {
+    const outer = new Map<string, Map<number, string[]>>();
+    for (const [courseName, catalog] of catalogs) {
+        const inner = new Map<number, string[]>();
+        for (const entry of catalog.topics) {
+            inner.set(entry.topicNumber, [...entry.struggleTopics]);
+        }
+        outer.set(courseName, inner);
     }
-    return map;
+    return outer;
 }
 
-/** Clears cached catalog (for tests). */
+function ensureCatalogsLoaded(): void {
+    if (catalogsByCourseName) {
+        return;
+    }
+
+    const catalogs = new Map<string, PredeterminedStruggleCatalog>();
+
+    // Parse each discovered fixture; reject duplicate courseName across files
+    for (const filePath of discoverCatalogFiles()) {
+        const raw = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
+        const catalog = parseCatalog(raw, filePath);
+        if (catalogs.has(catalog.courseName)) {
+            throw new Error(
+                `Duplicate instructor struggle catalog for course "${catalog.courseName}" (${filePath})`
+            );
+        }
+        catalogs.set(catalog.courseName, catalog);
+    }
+
+    catalogsByCourseName = catalogs;
+    labelsByCourseAndTopic = buildLabelsByCourseAndTopic(catalogs);
+}
+
+/**
+ * clearPredeterminedStruggleCatalogCache - Reset in-memory catalog caches.
+ *
+ * Used by tests and scripts that swap fixture files between lookups.
+ *
+ * @returns void
+ */
 export function clearPredeterminedStruggleCatalogCache(): void {
-    cachedCatalog = null;
-    cachedByTopicNumber = null;
+    catalogsByCourseName = null;
+    labelsByCourseAndTopic = null;
 }
 
 /**
- * Loads and caches the committed APSC183 instructor struggle catalog.
+ * loadPredeterminedStruggleCatalogs - Load and cache all discovered fixture catalogs.
+ *
+ * Scans fixture directories once per process (unless cache cleared). Each catalog is
+ * keyed by its JSON `courseName`. Subsequent calls return the same map without re-reading disk.
+ *
+ * @returns Read-only map of `courseName` → parsed {@link PredeterminedStruggleCatalog}
+ * @throws Error when a fixture file is invalid or two files declare the same `courseName`
  */
-export function loadPredeterminedStruggleCatalog(): PredeterminedStruggleCatalog {
-    if (cachedCatalog) {
-        return cachedCatalog;
+export function loadPredeterminedStruggleCatalogs(): ReadonlyMap<string, PredeterminedStruggleCatalog> {
+    ensureCatalogsLoaded();
+    return catalogsByCourseName!;
+}
+
+/**
+ * resolveTopicNumber - Extract chapter index from upload section title or material filename.
+ *
+ * Uses the catalog's `topicNumberPattern` for the given course. Tries `topicOrWeekTitle`
+ * first, then `materialName`. The first positive integer capture group wins.
+ *
+ * @param courseName - Active course name; must match a loaded catalog's `courseName`
+ * @param topicOrWeekTitle - Topic/week section title from the upload target (e.g. "Topic 7")
+ * @param materialName - Uploaded material filename used as fallback for pattern matching
+ * @returns 1-based topic number, or `null` when no catalog exists or pattern does not match
+ */
+export function resolveTopicNumber(
+    courseName: string,
+    topicOrWeekTitle: string,
+    materialName: string
+): number | null {
+    ensureCatalogsLoaded();
+    const catalog = catalogsByCourseName!.get(courseName);
+    if (!catalog) {
+        return null;
     }
 
-    const filePath = resolveCatalogPath();
-    const raw = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
-    cachedCatalog = parseCatalog(raw);
-    cachedByTopicNumber = buildTopicNumberMap(cachedCatalog);
-    return cachedCatalog;
-}
-
-/**
- * Extracts topic number from section title or material filename (e.g. "Topic 7", "APSC 183 Topic 7.md").
- */
-export function resolveTopicNumber(topicOrWeekTitle: string, materialName: string): number | null {
     for (const source of [topicOrWeekTitle, materialName]) {
-        const match = source.match(TOPIC_NUMBER_PATTERN);
+        const match = source.match(catalog.topicNumberPattern);
         if (match) {
             const n = Number.parseInt(match[1], 10);
             if (Number.isInteger(n) && n > 0) {
@@ -129,18 +234,24 @@ export function resolveTopicNumber(topicOrWeekTitle: string, materialName: strin
 }
 
 /**
- * Returns predetermined catalog labels for a chapter, excluding FIFO prior labels.
- * At most {@link MAX_STRUGGLE_TOPICS} labels are returned (upload product rule).
+ * getPredeterminedLabels - Return fixture struggle labels for one chapter, FIFO-filtered.
+ *
+ * Walks the catalog row for `topicNumber` in fixture order, skips labels in `excludedSet`
+ * (prior FIFO sections), and stops at the catalog's `maxStruggleTopics` count.
+ *
+ * @param courseName - Active course name; must match a loaded catalog's `courseName`
+ * @param topicNumber - 1-based chapter index from {@link resolveTopicNumber}
+ * @param excludedSet - Prior + current-section labels to omit (exact match, case-sensitive)
+ * @returns Verbatim label strings to append; empty when no catalog, unknown topic, or all excluded
  */
 export function getPredeterminedLabels(
+    courseName: string,
     topicNumber: number,
     excludedSet: ReadonlySet<string>
 ): string[] {
-    if (!cachedByTopicNumber) {
-        loadPredeterminedStruggleCatalog();
-    }
-
-    const labels = cachedByTopicNumber?.get(topicNumber) ?? [];
+    ensureCatalogsLoaded();
+    const labels = labelsByCourseAndTopic!.get(courseName)?.get(topicNumber) ?? [];
+    const maxTopics = catalogsByCourseName!.get(courseName)?.maxStruggleTopics ?? 0;
     const result: string[] = [];
 
     for (const label of labels) {
@@ -148,7 +259,7 @@ export function getPredeterminedLabels(
             continue;
         }
         result.push(label);
-        if (result.length >= MAX_STRUGGLE_TOPICS) {
+        if (result.length >= maxTopics) {
             break;
         }
     }
@@ -157,15 +268,34 @@ export function getPredeterminedLabels(
 }
 
 /**
- * Returns true when the course should use predetermined struggle labels instead of LLM generation.
+ * usesPredeterminedStruggleCatalog - Whether post-upload struggle generation should skip the LLM.
+ *
+ * True when a valid fixture catalog was discovered for `courseName`. Callers should still
+ * resolve a topic number and confirm labels exist before bypassing LLM generation.
+ *
+ * @param courseName - Active course `courseName` to look up in loaded fixture catalogs
+ * @returns `true` when a fixture catalog exists for this course name
  */
 export function usesPredeterminedStruggleCatalog(courseName: string): boolean {
-    return courseName === PREDETERMINED_STRUGGLE_COURSE_NAME;
+    ensureCatalogsLoaded();
+    return catalogsByCourseName!.has(courseName);
 }
 
-/** All catalog labels (flat, for validation). */
-export function getAllPredeterminedCatalogLabels(): string[] {
-    const catalog = loadPredeterminedStruggleCatalog();
+/**
+ * getAllPredeterminedCatalogLabels - Flatten all fixture labels for one course.
+ *
+ * Used by fixture remap/validation scripts to verify mapped labels exist in the catalog.
+ * Does not apply FIFO exclusion or per-upload caps.
+ *
+ * @param courseName - Active course `courseName` to look up in loaded fixture catalogs
+ * @returns All `struggleTopics` strings across every chapter row; empty when no catalog exists
+ */
+export function getAllPredeterminedCatalogLabels(courseName: string): string[] {
+    ensureCatalogsLoaded();
+    const catalog = catalogsByCourseName!.get(courseName);
+    if (!catalog) {
+        return [];
+    }
     const labels: string[] = [];
     for (const entry of catalog.topics) {
         labels.push(...entry.struggleTopics);

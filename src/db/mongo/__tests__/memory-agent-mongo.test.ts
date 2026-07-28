@@ -78,7 +78,8 @@ function makeCtx(docs: MemoryDoc[], courseName = 'TestCourse'): MongoDalContext 
                     flags: `${courseName}_flags`,
                     memoryAgent: memoryCollectionName,
                     scheduledTasks: `${courseName}_scheduled-tasks`,
-                    scenarioQuestions: `${courseName}_scenario_questions`
+                    scenarioQuestions: `${courseName}_scenario_questions`,
+                    scenarioProgress: `${courseName}_scenario_progress`,
                 }
             ]
         ]),

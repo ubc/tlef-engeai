@@ -28,6 +28,7 @@ Operational startup migrations (OB-001) are documented here but are **not** tied
 | **IPA-001** | Instructor allow-list period scope | Startup (once) | `migrateInstructorAllowances` in `src/helpers/migrate-instructor-allowances.ts` | `instructor-allowed-courses` → `instructor-period-allowances` for `2025W2` | Operational after first successful run |
 | **ADM-001** | Platform admin `isAdmin` backfill | Startup | `migratePlatformAdmins` in `src/helpers/migrate-platform-admins.ts` | GlobalUsers matching `CHARISMA_RUSDIYANTO_PUID` / `RICHARD_TAPE_PUID` → `isAdmin: true` | Operational — keep unless product changes |
 | **SQ-001** | Scenario Questions collection backfill | Lazy (first API call) | `ensureScenarioQuestionsCollection` in `src/db/mongo/scenario-questions-mongo.ts` | missing `activeCourse.collections.scenarioQuestions` → creates `{courseName}_scenario_questions` + `$set` the field | Keep while any pre-feature course document may lack `collections.scenarioQuestions` |
+| **SQ-004** | Scenario Progress collection backfill | Lazy (first progress API call) | `ensureScenarioProgressCollection` in `src/db/mongo/scenario-progress-mongo.ts` | missing `activeCourse.collections.scenarioProgress` → creates `{courseName}_scenario_progress` + `$set` the field | Keep while any course may lack `collections.scenarioProgress` |
 
 ---
 
@@ -158,6 +159,30 @@ No-op once `activeCourse.collections.scenarioQuestions` is set — subsequent ca
 ### Rollback
 
 Not applicable — the collection is additive (new feature, no legacy field it replaces). Dropping `{courseName}_scenario_questions` and unsetting `collections.scenarioQuestions` would simply remove the practice bank for that course.
+
+---
+
+## SQ-004: Scenario Progress collection backfill
+
+**Status:** Active (lazy migrate on first progress API call)
+
+**Collection:** `active-course-list` (`collections.scenarioProgress`) + new per-course `{courseName}_scenario_progress`
+
+### Behavior
+
+Student draft answers (in-progress work before check-answer or exam submit) are stored separately from embedded `studentResponses[]` so instructors never see them. `ensureScenarioProgressCollection` runs on the first `GET` or `PUT` to `.../scenario-questions/:questionId/progress`, creates `{courseName}_scenario_progress` if missing, `$set`s `activeCourse.collections.scenarioProgress`, invalidates the collection-name cache, and creates a unique index on `(userId, questionId, mode)`.
+
+### Triggers
+
+`GET` and `PUT` progress routes in `src/routes/mongo/scenario-questions-routes.ts`.
+
+### Idempotency
+
+No-op once `activeCourse.collections.scenarioProgress` is set.
+
+### Rollback
+
+Dropping `{courseName}_scenario_progress` and unsetting `collections.scenarioProgress` removes saved drafts only; submitted `studentResponses[]` history is unaffected.
 
 ---
 
