@@ -23,7 +23,6 @@ import { CONVERSATION_MODE_IDS, ConversationModeId } from '../src/types/shared';
 const SAMPLE_OUTPUT_FILES: Record<ConversationModeId, string> = {
     socratic: 'socratic-system-prompt.md',
     explanatory: 'explanatory-system-prompt.md',
-    'scenario-generation': 'scenario-generation-system-prompt.md',
 };
 
 function resolveSampleOutputDir(): string {

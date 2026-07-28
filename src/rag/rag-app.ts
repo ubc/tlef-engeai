@@ -27,6 +27,8 @@ const config = loadConfig();
 export interface RetrieveForChatOptions {
     limit?: number;
     scoreThreshold?: number;
+    /** When set, only published items from this topic/week instance id are searched. */
+    topicOrWeekId?: string;
 }
 
 const DEFAULT_RETRIEVE_LIMIT = 5;
@@ -169,12 +171,16 @@ export class RAGApp {
 
             const publishedItemTitles: string[] = [];
             if (course.topicOrWeekInstances) {
-                course.topicOrWeekInstances
-                    .filter(
+                let publishedInstances = course.topicOrWeekInstances.filter(
+                    (instanceTopicOrWeek: TopicOrWeekInstance) => instanceTopicOrWeek.published === true
+                );
+                if (options.topicOrWeekId) {
+                    publishedInstances = publishedInstances.filter(
                         (instanceTopicOrWeek: TopicOrWeekInstance) =>
-                            instanceTopicOrWeek.published === true
-                    )
-                    .forEach((instanceTopicOrWeek: TopicOrWeekInstance) => {
+                            instanceTopicOrWeek.id === options.topicOrWeekId
+                    );
+                }
+                publishedInstances.forEach((instanceTopicOrWeek: TopicOrWeekInstance) => {
                         if (instanceTopicOrWeek.items) {
                             instanceTopicOrWeek.items.forEach((item: TopicOrWeekItem) => {
                                 if (item.itemTitle && !publishedItemTitles.includes(item.itemTitle)) {

@@ -1,0 +1,77 @@
+<div class="sg-student-container">
+    <link rel="stylesheet" href="/styles/scenario-generation/sg-shared.css">
+    <link rel="stylesheet" href="/styles/student-components/scenarios.css">
+
+    <!-- List view -->
+    <div id="sg-student-list-view" class="sg-student-view">
+        <header class="sg-student-page-header">
+            <div class="sg-student-header mobile-header-bar">
+                <button id="hamburger-btn" class="mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
+                    <i data-feather="menu"></i>
+                </button>
+                <h1 class="mobile-header-title">Scenario Questions</h1>
+            </div>
+            <div class="sg-student-page-header-row">
+                <h1 class="sg-student-page-title">Scenario Questions</h1>
+            </div>
+        </header>
+
+        <div class="sg-student-filters" aria-label="Filters">
+            <span class="sg-student-filters-label">Filters:</span>
+            <button type="button" class="sg-student-filter-pill" data-filter="all" aria-pressed="true">All</button>
+            <button type="button" class="sg-student-filter-pill" data-filter="attempted" aria-pressed="false">Attempted</button>
+            <button type="button" class="sg-student-filter-pill" data-filter="unsolved" aria-pressed="false">Unsolved</button>
+            <button type="button" class="sg-student-filter-pill" data-filter="chapter" disabled title="Coming soon">Chapter</button>
+            <button type="button" class="sg-student-filter-pill" data-filter="topic" disabled title="Coming soon">Topic</button>
+        </div>
+
+        <div id="sg-student-question-list" class="sg-student-question-list" role="list">
+            <!-- Question cards rendered by scenarios-student.ts -->
+        </div>
+    </div>
+
+    <!-- Question workspace (practice + exam) -->
+    <div id="sg-student-workspace-view" class="sg-student-view sg-student-workspace-view" data-artefact-inline style="display: none;">
+        <button id="sg-student-back-btn" class="sg-student-back-btn" type="button">
+            <i data-feather="arrow-left"></i>
+            <span>Scenario Questions</span>
+        </button>
+
+        <header class="sg-student-workspace-header">
+            <h1 id="sg-student-question-title" class="sg-student-page-title sg-student-question-title"></h1>
+        </header>
+
+        <div class="sg-student-layout">
+            <div class="sg-student-main">
+                <div id="sg-student-narrative" class="sg-student-narrative"></div>
+                <div id="sg-student-parts" class="sg-student-parts">
+                    <!-- Parts rendered by scenarios-student.ts -->
+                </div>
+            </div>
+
+            <aside class="sg-student-side-panel" aria-label="Question status">
+                <div class="sg-student-status-row">
+                    <span id="sg-student-status-badge" class="sg-student-status-badge">On Going</span>
+                </div>
+                <div class="sg-student-meta-field">
+                    <span class="sg-student-meta-label">Topic</span>
+                    <p id="sg-student-topic-label" class="sg-student-meta-value"></p>
+                </div>
+                <div class="sg-student-meta-field">
+                    <span class="sg-student-meta-label">Learning objectives</span>
+                    <div id="sg-student-llo-list" class="sg-student-llo-list"></div>
+                </div>
+                <div id="sg-student-timer-block" class="sg-student-timer-block" style="display: none;">
+                    <div class="sg-student-meta-field">
+                        <span id="sg-student-timer-label" class="sg-student-meta-label">Time Remaining</span>
+                        <p id="sg-student-timer-display" class="sg-student-timer-display" aria-live="polite">25:00</p>
+                        <p id="sg-student-time-up" class="sg-student-time-up" style="display: none;">Time’s up — answers are locked.</p>
+                    </div>
+                    <button id="sg-student-submit-btn" type="button" class="sg-student-submit-btn">
+                        <span>Submit</span>
+                    </button>
+                </div>
+            </aside>
+        </div>
+    </div>
+</div>

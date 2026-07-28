@@ -17,16 +17,11 @@ import { getActiveCourse } from '../course-mongo';
 import { activeCourseListCollection } from '../mongo-collections';
 import { ensureSystemPromptConfig } from '../system-prompt-config-mongo';
 
-const existingConfigTwoModes = {
+const existingConfigOneMode = {
     schemaVersion: 1 as const,
     defaultConversationMode: 'socratic' as const,
     modes: {
         socratic: {
-            usePlatformDefault: true,
-            modules: [],
-            updatedAt: '2026-06-03T00:00:00.000Z',
-        },
-        explanatory: {
             usePlatformDefault: true,
             modules: [],
             updatedAt: '2026-06-03T00:00:00.000Z',
@@ -38,7 +33,21 @@ const existingConfigAllModes: CourseSystemPromptConfig = {
     schemaVersion: 1,
     defaultConversationMode: 'socratic',
     modes: {
-        ...existingConfigTwoModes.modes,
+        ...existingConfigOneMode.modes,
+        explanatory: {
+            usePlatformDefault: true,
+            modules: [],
+            updatedAt: '2026-06-03T00:00:00.000Z',
+        },
+    },
+};
+
+/** Simulates a course document persisted before scenario-generation was retired (SP-003). */
+const existingConfigWithRetiredMode = {
+    schemaVersion: 1 as const,
+    defaultConversationMode: 'socratic' as const,
+    modes: {
+        ...existingConfigAllModes.modes,
         'scenario-generation': {
             usePlatformDefault: true,
             modules: [],
@@ -97,7 +106,7 @@ describe('ensureSystemPromptConfig SP-001 lazy migration', () => {
 
         const config = await ensureSystemPromptConfig(makeCtx(), courseId);
 
-        expect(config.modes['scenario-generation']).toBeDefined();
+        expect(config.modes.explanatory).toBeDefined();
         expect(updateOne).toHaveBeenCalledTimes(1);
         expect(updateOne).toHaveBeenCalledWith(
             { id: courseId },
@@ -105,16 +114,16 @@ describe('ensureSystemPromptConfig SP-001 lazy migration', () => {
         );
     });
 
-    it('SP-002: backfills missing scenario-generation mode state', async () => {
+    it('SP-002: backfills missing explanatory mode state', async () => {
         (getActiveCourse as jest.Mock).mockResolvedValue({
             id: courseId,
             courseName: 'TestCourse',
-            systemPromptConfig: existingConfigTwoModes as unknown as CourseSystemPromptConfig,
+            systemPromptConfig: existingConfigOneMode as unknown as CourseSystemPromptConfig,
         } as unknown as activeCourse);
 
         const config = await ensureSystemPromptConfig(makeCtx(), courseId);
 
-        expect(config.modes['scenario-generation']).toEqual(
+        expect(config.modes.explanatory).toEqual(
             expect.objectContaining({
                 usePlatformDefault: true,
                 modules: [],
@@ -136,7 +145,32 @@ describe('ensureSystemPromptConfig SP-001 lazy migration', () => {
 
         const config = await ensureSystemPromptConfig(makeCtx(), courseId);
 
-        expect(config.modes['scenario-generation']).toBeDefined();
+        expect(config.modes.explanatory).toBeDefined();
         expect(updateOne).not.toHaveBeenCalled();
+    });
+
+    it('SP-003: strips retired scenario-generation mode state from stored config', async () => {
+        (getActiveCourse as jest.Mock).mockResolvedValue({
+            id: courseId,
+            courseName: 'TestCourse',
+            systemPromptConfig: existingConfigWithRetiredMode as unknown as CourseSystemPromptConfig,
+        } as unknown as activeCourse);
+
+        const config = await ensureSystemPromptConfig(makeCtx(), courseId);
+
+        expect((config.modes as Record<string, unknown>)['scenario-generation']).toBeUndefined();
+        expect(config.modes.socratic).toBeDefined();
+        expect(config.modes.explanatory).toBeDefined();
+        expect(updateOne).toHaveBeenCalledTimes(1);
+        expect(updateOne).toHaveBeenCalledWith(
+            { id: courseId },
+            {
+                $set: {
+                    systemPromptConfig: expect.objectContaining({
+                        modes: expect.not.objectContaining({ 'scenario-generation': expect.anything() }),
+                    }),
+                },
+            }
+        );
     });
 });

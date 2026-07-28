@@ -29,6 +29,7 @@ import { initializeCourseSummary, summonCourseSummary, configureCourseSummaryFab
 import { inactivityTracker } from '../services/inactivity-tracker.js';
 import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from '../feature/assistant-prompts.js';
 import { initializeSystemPrompts, flushSystemPromptOnLeave } from '../feature/system-prompts.js';
+import { initializeScenarioQuestionsInstructor, isScenarioQuestionsMounted, syncScenarioQuestionsFromURL } from '../feature/scenario-questions-instructor.js';
 import { 
     getCourseIdFromURL, 
     getInstructorViewFromURL, 
@@ -66,6 +67,7 @@ function mapViewToStateEvent(view: string): StateEvent {
         case 'chat': return StateEvent.Chat;
         case 'assistant-prompts': return StateEvent.AssistantPrompts;
         case 'system-prompts': return StateEvent.SystemPrompts;
+        case 'scenario-questions': return StateEvent.ScenarioQuestions;
         default: return StateEvent.Documents;
     }
 }
@@ -77,7 +79,8 @@ const enum StateEvent {
     WritingFeedback,
     Chat,
     AssistantPrompts,
-    SystemPrompts
+    SystemPrompts,
+    ScenarioQuestions
 }
 
 let currentClass : activeCourse =
@@ -484,6 +487,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const chatStateEl = document.getElementById('chat-state');
     const assistantPromptsStateEl = document.getElementById('assistant-prompts-state');
     const systemPromptsStateEl = document.getElementById('system-prompts-state');
+    const scenarioQuestionsStateEl = document.getElementById('scenario-questions-state');
 
     chatStateEl?.addEventListener('click', async () => {
         navigateToInstructorView('chat');
@@ -512,6 +516,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     systemPromptsStateEl?.addEventListener('click', () => {
         navigateToInstructorView('system-prompts');
+    });
+
+    scenarioQuestionsStateEl?.addEventListener('click', () => {
+        navigateToInstructorView('scenario-questions');
     });
     
     // Handle browser back/forward navigation
@@ -542,7 +550,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 );
                 navigateToInstructorView('documents');
             } else if (
-                (view === 'monitor' || view === 'assistant-prompts' || view === 'system-prompts') &&
+                (view === 'monitor' || view === 'assistant-prompts' || view === 'system-prompts' || view === 'scenario-questions') &&
                 window.innerWidth < 768
             ) {
                 // Desktop-first warning on mobile/tablet
@@ -558,6 +566,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 } else {
                     navigateToInstructorView('documents');
                 }
+            } else if (
+                view === 'scenario-questions' &&
+                currentState === StateEvent.ScenarioQuestions &&
+                isScenarioQuestionsMounted()
+            ) {
+                await syncScenarioQuestionsFromURL(true);
             } else {
                 // Load component for current view
                 currentState = mapViewToStateEvent(view);
@@ -608,6 +622,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         | 'course-information'
                         | 'assistant-prompts-instructor'
                         | 'system-prompts-instructor'
+                        | 'scenario-questions-instructor'
         ) => {
 
 
@@ -662,6 +677,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             else if (componentName === 'system-prompts-instructor') {
                 // console.log(`🔧 [INSTRUCTOR-DEBUG] Initializing system prompts...`);
                 await initializeSystemPrompts(currentClass);
+            }
+            else if (componentName === 'scenario-questions-instructor') {
+                await initializeScenarioQuestionsInstructor(currentClass);
             }
             
             renderFeatherIcons();
@@ -772,6 +790,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             expandFeatureSidebar();
             hideChatList(); // Ensure chat list is hidden
         }
+        else if ( currentState === StateEvent.ScenarioQuestions){
+            loadComponent('scenario-questions-instructor');
+            updateSidebarState();
+            expandFeatureSidebar();
+            hideChatList(); // Ensure chat list is hidden
+        }
     }
 
     /**
@@ -815,6 +839,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         monitorStateEl?.classList.remove('active');
         assistantPromptsStateEl?.classList.remove('active');
         systemPromptsStateEl?.classList.remove('active');
+        scenarioQuestionsStateEl?.classList.remove('active');
         [
             documentsStateEl,
             writingFeedbackStateEl,
@@ -822,7 +847,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             flagStateEl,
             monitorStateEl,
             assistantPromptsStateEl,
-            systemPromptsStateEl
+            systemPromptsStateEl,
+            scenarioQuestionsStateEl
         ].forEach((item) => item?.removeAttribute('aria-current'));
 
         // Add active class to the current state's menu item
@@ -848,6 +874,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             case StateEvent.SystemPrompts:
                 systemPromptsStateEl?.classList.add('active');
                 break;
+            case StateEvent.ScenarioQuestions:
+                scenarioQuestionsStateEl?.classList.add('active');
+                break;
         }
         [
             documentsStateEl,
@@ -856,7 +885,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             flagStateEl,
             monitorStateEl,
             assistantPromptsStateEl,
-            systemPromptsStateEl
+            systemPromptsStateEl,
+            scenarioQuestionsStateEl
         ].find((item) => item?.classList.contains('active'))?.setAttribute('aria-current', 'page');
     }
 
@@ -1537,7 +1567,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentState = StateEvent.Chat;
         await showChatContent();
     } else if (
-        (viewFromURL === 'monitor' || viewFromURL === 'assistant-prompts' || viewFromURL === 'system-prompts') &&
+        (viewFromURL === 'monitor' || viewFromURL === 'assistant-prompts' || viewFromURL === 'system-prompts' || viewFromURL === 'scenario-questions') &&
         window.innerWidth < 768
     ) {
         // Desktop-first warning for Monitor, Assistant Prompts, System Prompts on mobile/tablet

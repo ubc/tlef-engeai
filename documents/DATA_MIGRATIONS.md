@@ -21,11 +21,13 @@ Operational startup migrations (OB-001) are documented here but are **not** tied
 |----|------|------|---------|-----------------|----------------|
 | **SP-001** | System prompt v1 → v2 | Lazy (request) | `ensureSystemPromptConfig` in `src/db/mongo/system-prompt-config-mongo.ts` | `collectionOfSystemPromptItems` → `systemPromptConfig`; then `$unset` legacy field | **Remove by 2026-06-30** — see [SP-001](#sp-001-system-prompt-v1--v2) |
 | **SP-002** | System prompt mode backfill | Lazy (request) | `ensureAllModeStates` in `system-prompt-config-mongo.ts` | missing `systemPromptConfig.modes[mode]` → `seedModeState(mode)` for each `CONVERSATION_MODE_IDS` entry | Keep while new modes ship; audit when mode list stabilizes |
+| **SP-003** | Retired conversation-mode state cleanup | Lazy (request) | `stripRetiredModeStates` in `system-prompt-config-mongo.ts` | `systemPromptConfig.modes['scenario-generation']` (and future `RETIRED_CONVERSATION_MODE_IDS`) → removed | Keep while any retired mode key may exist on old course documents |
 | **CM-001** | Chat `conversationMode` backfill | Lazy (restore) | `ChatApp.ensureLegacyChatModePersisted` in `src/chat/chat-app.ts` | missing/invalid → `socratic` or `undeclared` | Optional later; audit before removal |
 | **OB-001** | Onboarding flags backfill | Startup | `migrateOnboardingFlags` in `src/helpers/migrate-onboarding-flags.ts` | GlobalUser flags from course/CourseUser data | Operational — keep unless product changes |
 | **AP-001** | Course `academicPeriodId` backfill | Lazy (request) | `lazyMigrateCourseAcademicPeriod` in `src/db/mongo/academic-period-mongo.ts` via `getActiveCourse` / `getAllActiveCourses` | missing `academicPeriodId` → default `2025W2` period; `$addToSet` on period `courseIds` | **Remove by 2026-06-30** — see [AP-001](#ap-001-academic-period-lazy-link) |
 | **IPA-001** | Instructor allow-list period scope | Startup (once) | `migrateInstructorAllowances` in `src/helpers/migrate-instructor-allowances.ts` | `instructor-allowed-courses` → `instructor-period-allowances` for `2025W2` | Operational after first successful run |
 | **ADM-001** | Platform admin `isAdmin` backfill | Startup | `migratePlatformAdmins` in `src/helpers/migrate-platform-admins.ts` | GlobalUsers matching `CHARISMA_RUSDIYANTO_PUID` / `RICHARD_TAPE_PUID` → `isAdmin: true` | Operational — keep unless product changes |
+| **SQ-001** | Scenario Questions collection backfill | Lazy (first API call) | `ensureScenarioQuestionsCollection` in `src/db/mongo/scenario-questions-mongo.ts` | missing `activeCourse.collections.scenarioQuestions` → creates `{courseName}_scenario_questions` + `$set` the field | Keep while any pre-feature course document may lack `collections.scenarioQuestions` |
 
 ---
 
@@ -95,7 +97,7 @@ Target before **2026-06-30:** `0` in each environment (or documented exceptions)
 
 When `systemPromptConfig.schemaVersion === 1` but a key from `CONVERSATION_MODE_IDS` is missing under `modes`, `ensureAllModeStates` adds `seedModeState(mode)` for each missing slug and persists with `$set: { systemPromptConfig }`.
 
-Introduced for **scenario-generation** (third conversation mode).
+Originally introduced for **scenario-generation** (third conversation mode, since retired — see SP-003).
 
 ### Triggers
 
@@ -108,6 +110,54 @@ Once all catalog modes exist on the document, no further writes.
 ### Rollback
 
 Remove the added mode key from Mongo manually if needed; chat runtime falls back to platform defaults when `usePlatformDefault: true`.
+
+---
+
+## SP-003: Retired conversation-mode state cleanup
+
+**Status:** Active (lazy migrate)
+
+**Collection:** `active-course-list` (`systemPromptConfig.modes`)
+
+### Behavior
+
+`scenario-generation` was removed from `CONVERSATION_MODE_IDS` and replaced by the standalone Practice Scenarios / Scenario Questions feature (`planner/improved-scenario-generation-deliverables.md`). `stripRetiredModeStates` in `system-prompt-config-mongo.ts` removes any `RETIRED_CONVERSATION_MODE_IDS` key (currently `scenario-generation`) still present under `systemPromptConfig.modes` and persists with `$set: { systemPromptConfig }` alongside SP-002 in the same write.
+
+### Triggers
+
+Same as SP-001/SP-002 (`ensureSystemPromptConfig`).
+
+### Idempotency
+
+Once no retired keys remain on the document, no further writes for this migration.
+
+### Rollback
+
+Not applicable — retired mode prompt bodies are not needed at runtime; legacy chat history and `Chat.conversationMode === 'scenario-generation'` on `{courseName}_users` documents are untouched by this migration.
+
+---
+
+## SQ-001: Scenario Questions collection backfill
+
+**Status:** Active (lazy migrate on first API call)
+
+**Collection:** `active-course-list` (`collections.scenarioQuestions`) + new per-course `{courseName}_scenario_questions`
+
+### Behavior
+
+Practice Scenarios / Scenario Questions (`planner/improved-scenario-generation-deliverables.md`) persists one document per question in a dedicated per-course collection, not embedded on `activeCourse`. Courses created after this feature shipped get the collection **eagerly** in `postActiveCourse` (`src/db/mongo/course-mongo.ts`). Courses created before it ship the collection **lazily**: `ensureScenarioQuestionsCollection` runs on the first hit to any `/api/courses/:courseId/scenario-questions*` route (not on course entry — a locked product decision), creates `{courseName}_scenario_questions` if it does not already exist, `$set`s `activeCourse.collections.scenarioQuestions`, invalidates the cached collection-name lookup, and best-effort creates supporting indexes (`id` unique, `topicOrWeekId`+`status`+`sortOrder`, `status`).
+
+### Triggers
+
+Every scenario-questions route in `src/routes/mongo/scenario-questions-routes.ts` calls `ensureScenarioQuestionsCollection` before touching the collection.
+
+### Idempotency
+
+No-op once `activeCourse.collections.scenarioQuestions` is set — subsequent calls return the cached `courseName` immediately.
+
+### Rollback
+
+Not applicable — the collection is additive (new feature, no legacy field it replaces). Dropping `{courseName}_scenario_questions` and unsetting `collections.scenarioQuestions` would simply remove the practice bank for that course.
 
 ---
 

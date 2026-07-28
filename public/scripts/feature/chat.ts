@@ -23,6 +23,8 @@ import {
 import { ConversationModePicker } from "./conversation-mode-picker.js";
 import { RenderChat } from "./render-chat.js";
 import { showDisclaimerModal, showDeleteConfirmationModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
+import { getCourseIdFromURL } from "../utils/url-parser.js";
+import { consumeChatDraftPrefill, stashChatDraftPrefill } from "../utils/chat-draft-prefill.js";
 
 /**
  * Chat Metadata Interface - Lightweight chat information without full message history
@@ -144,6 +146,10 @@ export function renderLatexInHtmlContent(element: HTMLElement): void {
  */
 export class ChatManager {
     private static instance: ChatManager | null = null;
+
+    /** Shown in place of an LLM reply when a user sends on a retired scenario-generation chat. */
+    private static readonly RETIRED_SCENARIO_GENERATION_NOTICE =
+        'Scenario Generation is no longer available in chat. Please use Practice Scenarios from the sidebar to work on troubleshooting cases.';
     
     private chats: Chat[] = [];
     private activeChatId: string | null = null;
@@ -331,6 +337,7 @@ export class ChatManager {
             this.log('INFO', '📭 Setting active chat to null');
             this.activeChatId = null;
             this.syncConversationModeComposer();
+            this.renderChatList(); // drop .active highlight when leaving chat for a tool
             this.logActiveChatState('ACTIVE_CHAT_CLEARED');
             return;
         }
@@ -670,6 +677,14 @@ export class ChatManager {
         // Add messages to DOM incrementally
         this.addMessageToDOM(userMessage, activeChat);
         this.addMessageToDOM(botMessage, activeChat);
+
+        // Legacy scenario-generation chats keep their history but can no longer send new
+        // messages — show the retirement notice locally instead of calling the LLM.
+        if (activeChat.conversationMode === 'scenario-generation') {
+            botMessage.text = ChatManager.RETIRED_SCENARIO_GENERATION_NOTICE;
+            onComplete?.(botMessage);
+            return;
+        }
 
         // Show loading state immediately
         onChunk?.('Thinking...', false);
@@ -1569,8 +1584,10 @@ export class ChatManager {
                     this.renderChatList();
                     this.scrollToBottom();
                     
-                    // Notify instructor mode that a new chat was created
-                    this.callModeSpecificCallback('new-chat-created', { chat: result.chat });
+                    this.callModeSpecificCallback('new-chat-created', {
+                        chat: result.chat,
+                        chatId: result.chat?.id,
+                    });
                 }
             });
         });
@@ -1613,6 +1630,41 @@ export class ChatManager {
         this.lastRenderedMessageCount = 0;
     }
 
+    /**
+     * Inserts a scenario-sourced draft into the chat composer when present in sessionStorage.
+     *
+     * @returns true when a draft was applied
+     */
+    public applyPendingChatDraftPrefill(afterResize?: () => void): boolean {
+        const courseId = getCourseIdFromURL();
+        if (!courseId) return false;
+        const draft = consumeChatDraftPrefill(courseId);
+        if (!draft) return false;
+        const inputEl = document.getElementById('chat-input') as HTMLTextAreaElement | null;
+        if (!inputEl) return false;
+        inputEl.value = draft;
+        afterResize?.();
+        inputEl.focus();
+        const len = inputEl.value.length;
+        inputEl.setSelectionRange(len, len);
+        return true;
+    }
+
+    /**
+     * Opens chat (creating one if needed) and prefills the composer for scenario handoff.
+     */
+    public async openChatComposerWithDraft(text: string): Promise<void> {
+        const courseId = getCourseIdFromURL();
+        if (!courseId) return;
+        stashChatDraftPrefill(courseId, text);
+        if (!this.getActiveChat()) {
+            const created = await this.createNewChat();
+            if (!created.success) return;
+        }
+        this.notifyUIUpdate();
+        queueMicrotask(() => this.applyPendingChatDraftPrefill());
+    }
+
     public bindMessageEvents(): void {
         this.initConversationModePicker();
 
@@ -1635,6 +1687,8 @@ export class ChatManager {
         };
         inputEl?.addEventListener('input', autoGrow);
         autoGrow();
+
+        this.applyPendingChatDraftPrefill(autoGrow);
 
         sendBtn?.addEventListener('click', () => this.handleSendMessage());
         inputEl?.addEventListener('keydown', (e: KeyboardEvent) => {

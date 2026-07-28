@@ -14,7 +14,7 @@ import { IDGenerator } from '../utils/unique-id-generator';
 import { ChatMessage, Chat, ConversationModeId, UpdateChatConversationModeRequest, UpdateChatConversationModeResponse } from '../types/shared';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
-import { ChatApp } from '../chat/chat-app';
+import { ChatApp, RETIRED_CONVERSATION_MODE_MESSAGE } from '../chat/chat-app';
 import { conversationModePrompts } from '../chat/compose-system-prompt';
 
 import { getRandomYesResponse, getRandomNoResponse } from '../memory-agent/unstruggle-responses';
@@ -673,6 +673,15 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             return res.status(400).json({
                 success: false,
                 error: 'No active course selected'
+            });
+        }
+
+        // Legacy scenario-generation chats keep their history but can no longer send new
+        // messages — the feature was replaced by the standalone Practice Scenarios bank.
+        if (chatApp.getPersistedConversationMode(chatId) === 'scenario-generation') {
+            return res.status(400).json({
+                success: false,
+                error: RETIRED_CONVERSATION_MODE_MESSAGE
             });
         }
 

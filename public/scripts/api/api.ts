@@ -76,6 +76,8 @@ export async function loadComponentHTML(
                     | 'course-information'
                     | 'assistant-prompts-instructor'
                     | 'system-prompts-instructor'
+                    | 'scenarios-student'
+                    | 'scenario-questions-instructor'
 ): Promise<string> {
 
     // @rdschrs: Added Writing Feedback to the shared component loader.
@@ -122,6 +124,10 @@ export async function loadComponentHTML(
             break;
         case 'system-prompts-instructor':
             response = await fetch(`/components/system-prompts/${componentName}.html`);
+            break;
+        case 'scenarios-student':
+        case 'scenario-questions-instructor':
+            response = await fetch(`/components/scenarios/${componentName}.html`);
             break;
         default:
             throw new Error("Invalid component name: " + componentName);

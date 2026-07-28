@@ -1,0 +1,50 @@
+    <div id="sg-instructor-generate-view" class="sg-instructor-generate-view" style="display: none;">
+        <button id="sg-instructor-generate-back-btn" class="sg-instructor-topic-detail-back-btn" type="button">
+            <i data-feather="arrow-left"></i>
+            <span id="sg-instructor-generate-back-label"></span>
+        </button>
+        <header class="sg-instructor-generate-page-header sg-instructor-editor-page-header">
+            <h1 class="sg-instructor-page-title">New scenario question</h1>
+        </header>
+
+        <p class="sg-instructor-generate-hint"><em>*Describe the scenario in the base question field below, then choose subquestion types and difficulty before generating.</em></p>
+
+        <div class="sg-instructor-generate-card">
+            <label class="sg-instructor-sr-only" for="sg-instructor-generate-prompt">Base question</label>
+            <textarea id="sg-instructor-generate-prompt" class="sg-instructor-generate-prompt" rows="8" placeholder="Write your base question here."></textarea>
+
+            <div class="sg-instructor-generate-controls">
+                <div id="sg-instructor-generate-lo-block" class="sg-instructor-generate-lo-block" style="width: 100%; margin-bottom: 12px;">
+                    <span class="sg-instructor-editor-section-label">Learning objectives (optional)</span>
+                    <div id="sg-instructor-generate-lo-catalog" class="sg-instructor-lo-modal-catalog" role="group" aria-label="Learning objectives for generation"></div>
+                </div>
+                <div class="sg-instructor-type-pills-row">
+                    <button id="sg-instructor-type-help-btn" type="button" class="sg-instructor-type-help-btn" aria-label="About subquestion types" title="About subquestion types">
+                        <i data-feather="help-circle"></i>
+                    </button>
+                    <div id="sg-instructor-type-pills" class="sg-instructor-type-pills" role="group" aria-label="Subquestion types"></div>
+                    <div class="sg-instructor-type-add-wrap">
+                        <button id="sg-instructor-type-add-btn" type="button" class="sg-instructor-type-add-btn" aria-label="Add subquestion type" aria-expanded="false" aria-haspopup="true">+</button>
+                        <div id="sg-instructor-type-popover" class="sg-instructor-type-popover" style="display: none;" role="menu"></div>
+                    </div>
+                </div>
+
+                <div class="sg-instructor-generate-controls-right">
+                    <div class="sg-instructor-difficulty-wrap">
+                        <button id="sg-instructor-difficulty-btn" type="button" class="sg-instructor-difficulty-btn sg-instructor-difficulty-btn-medium" aria-haspopup="listbox" aria-expanded="false">
+                            <i data-feather="chevron-right"></i>
+                            <span id="sg-instructor-difficulty-label">Medium</span>
+                        </button>
+                        <div id="sg-instructor-difficulty-menu" class="sg-instructor-difficulty-menu" style="display: none;" role="listbox">
+                            <button type="button" class="sg-instructor-difficulty-option" data-difficulty="hard">Hard</button>
+                            <button type="button" class="sg-instructor-difficulty-option sg-instructor-difficulty-option--active" data-difficulty="medium">Medium</button>
+                            <button type="button" class="sg-instructor-difficulty-option" data-difficulty="easy">Easy</button>
+                        </div>
+                    </div>
+                    <button id="sg-instructor-generate-submit-btn" type="button" class="sg-instructor-generate-submit-btn">Generate</button>
+                </div>
+            </div>
+
+            <p id="sg-instructor-generate-error" class="sg-instructor-form-error" style="display: none;"></p>
+        </div>
+    </div>

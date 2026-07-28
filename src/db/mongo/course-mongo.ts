@@ -73,8 +73,17 @@ export async function postActiveCourse(ctx: MongoDalContext, course: activeCours
         const flagsCollection = `${courseName}_flags`;
         const memoryAgentCollection = `${courseName}_memory-agent`;
         const scheduledTasksCollection = `${courseName}_scheduled_tasks`;
+        // SQ-001: created eagerly for new courses; existing courses get it lazily via
+        // ensureScenarioQuestionsCollection on first scenario-questions API call (scenario-questions-mongo.ts).
+        const scenarioQuestionsCollection = `${courseName}_scenario_questions`;
 
-        for (const colName of [userCollection, flagsCollection, memoryAgentCollection, scheduledTasksCollection]) {
+        for (const colName of [
+            userCollection,
+            flagsCollection,
+            memoryAgentCollection,
+            scheduledTasksCollection,
+            scenarioQuestionsCollection
+        ]) {
             try {
                 await ctx.db.createCollection(colName);
             } catch (error: any) {
@@ -89,7 +98,8 @@ export async function postActiveCourse(ctx: MongoDalContext, course: activeCours
                 users: userCollection,
                 flags: flagsCollection,
                 memoryAgent: memoryAgentCollection,
-                scheduledTasks: scheduledTasksCollection
+                scheduledTasks: scheduledTasksCollection,
+                scenarioQuestions: scenarioQuestionsCollection
             }
         };
 

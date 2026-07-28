@@ -25,6 +25,7 @@ Implements server logic. Masters auto-attach when editing their domains.
 - `04-qdrant-master.mdc`, `05-rag-vector-engineer.mdc` — `src/rag/**`
 - `02-auth-rbac-privacy.mdc` — middleware, auth routes
 - `01-api-master.mdc` — routes, API docs
+- `06-backend-inline-documentation.mdc` — class/method JSDoc and step comments (`chat-app.ts` style)
 - `01-migration-analyst.mdc` — `src/helpers/migrate*.ts`
 
 ## After implement

@@ -26,7 +26,7 @@ import { appLogger } from '../../utils/logger';
 export async function getCollectionNames(
     ctx: MongoDalContext,
     courseName: string
-): Promise<{ users: string; flags: string; memoryAgent: string; scheduledTasks: string }> {
+): Promise<{ users: string; flags: string; memoryAgent: string; scheduledTasks: string; scenarioQuestions: string }> {
     if (ctx.collectionNamesCache.has(courseName)) {
         return ctx.collectionNamesCache.get(courseName)!;
     }
@@ -42,11 +42,14 @@ export async function getCollectionNames(
             c.collections.memoryAgent
         ) {
             const scheduledTasks = c.collections.scheduledTasks ?? `${courseName}_scheduled_tasks`;
+            // SQ-001: computed fallback until ensureScenarioQuestionsCollection lazily provisions + persists the name.
+            const scenarioQuestions = c.collections.scenarioQuestions ?? `${courseName}_scenario_questions`;
             const collectionNames = {
                 users: c.collections.users,
                 flags: c.collections.flags,
                 memoryAgent: c.collections.memoryAgent,
-                scheduledTasks
+                scheduledTasks,
+                scenarioQuestions
             };
             ctx.collectionNamesCache.set(courseName, collectionNames);
             return collectionNames;
@@ -62,7 +65,8 @@ export async function getCollectionNames(
         users: `${courseName}_users`,
         flags: `${courseName}_flags`,
         memoryAgent: `${courseName}_memory-agent`,
-        scheduledTasks: `${courseName}_scheduled_tasks`
+        scheduledTasks: `${courseName}_scheduled_tasks`,
+        scenarioQuestions: `${courseName}_scenario_questions`
     };
     ctx.collectionNamesCache.set(courseName, computedNames);
     return computedNames;

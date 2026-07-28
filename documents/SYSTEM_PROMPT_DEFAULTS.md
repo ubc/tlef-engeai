@@ -1,6 +1,8 @@
 # Platform system prompt defaults
 
-Shipped defaults for **Socratic**, **Explanatory**, and **Scenario Generation** conversation modes. Courses with `usePlatformDefault: true` load these at runtime; customized courses store inline `body` strings in MongoDB instead.
+Shipped defaults for **Socratic** and **Explanatory** conversation modes. Courses with `usePlatformDefault: true` load these at runtime; customized courses store inline `body` strings in MongoDB instead.
+
+`scenario-generation` was retired as a chat conversation mode (see `planner/improved-scenario-generation-deliverables.md`) and replaced by the standalone Practice Scenarios / Scenario Questions feature. `scenario-generation-default/` is kept on disk and repurposed for that feature's authoring prompts — it is no longer loaded by `system-prompt-defaults-loader.ts`.
 
 ## Layout
 
@@ -11,7 +13,7 @@ Under `src/chat/system-prompts/`:
 | [`shared-default/`](../src/chat/system-prompts/shared-default/) | Shared `.md` modules (guidance, formatting, correctness, course main intro) |
 | [`socratic-default/`](../src/chat/system-prompts/socratic-default/) | `socratic.json` + Socratic-only `.md` files (flat — no subfolders) |
 | [`explanatory-default/`](../src/chat/system-prompts/explanatory-default/) | `explanatory.json` + Explanatory-only `.md` files (flat — no subfolders) |
-| [`scenario-generation-default/`](../src/chat/system-prompts/scenario-generation-default/) | `scenario-generation.json` + scenario-only `.md` files (flat — no subfolders) |
+| [`scenario-generation-default/`](../src/chat/system-prompts/scenario-generation-default/) | Repurposed for the Practice Scenarios feature's AI generation authoring prompt — not a chat mode; not loaded by `system-prompt-defaults-loader.ts` |
 
 Each `*-default` directory contains **only** its manifest JSON and mode-specific Markdown files. Manifests use **`instructorModules` only** (v1.3.0+); `systemModules` is empty and there is no runtime suffix module.
 

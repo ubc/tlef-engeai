@@ -16,6 +16,7 @@ import type {
 } from '../../types/shared';
 import {
     CONVERSATION_MODE_IDS,
+    RETIRED_CONVERSATION_MODE_IDS,
     DEFAULT_BASE_PROMPT_ID,
 } from '../../types/shared';
 import {
@@ -70,6 +71,29 @@ function ensureAllModeStates(config: CourseSystemPromptConfig): CourseSystemProm
     }
     appLogger.log('[system-prompt-config] SP-002 lazy migration: backfilled missing conversation mode states');
     return { ...config, modes };
+}
+
+/**
+ * SP-003 lazy migration: strip retired conversation-mode states (e.g. `scenario-generation`,
+ * removed when the standalone Practice Scenarios feature replaced the chat mode) from a course's
+ * stored config. Runs alongside SP-002 on every {@link ensureSystemPromptConfig} call.
+ */
+function stripRetiredModeStates(config: CourseSystemPromptConfig): CourseSystemPromptConfig {
+    const modes = config.modes as unknown as Record<string, ModeSystemPromptState>;
+    const retiredKeysPresent = RETIRED_CONVERSATION_MODE_IDS.filter((mode) =>
+        Object.prototype.hasOwnProperty.call(modes, mode)
+    );
+    if (retiredKeysPresent.length === 0) {
+        return config;
+    }
+    const cleanedModes = { ...modes };
+    for (const mode of retiredKeysPresent) {
+        delete cleanedModes[mode];
+    }
+    appLogger.log(
+        `[system-prompt-config] SP-003 lazy migration: stripped retired mode state(s) [${retiredKeysPresent.join(', ')}]`
+    );
+    return { ...config, modes: cleanedModes as unknown as CourseSystemPromptConfig['modes'] };
 }
 
 function legacyDefaultBaseContent(): string {
@@ -133,7 +157,6 @@ function migrateFromLegacyItems(items: SystemPromptItem[]): CourseSystemPromptCo
                 platformDefaultVersion: getPlatformDefaultVersion('socratic'),
             },
             explanatory: seedModeState('explanatory'),
-            'scenario-generation': seedModeState('scenario-generation'),
         },
     };
 }
@@ -178,14 +201,15 @@ export async function ensureSystemPromptConfig(
         if (hasLegacySystemPromptItemsField(courseData)) {
             await unsetLegacySystemPromptItems(ctx, courseId, 'cleanup-only');
         }
-        const patched = ensureAllModeStates(courseData.systemPromptConfig);
+        const withAllModes = ensureAllModeStates(courseData.systemPromptConfig);
+        const patched = stripRetiredModeStates(withAllModes);
         if (patched !== courseData.systemPromptConfig) {
             await activeCourseListCollection(ctx.db).updateOne(
                 { id: courseId },
                 { $set: { systemPromptConfig: patched } }
             );
             appLogger.log(
-                `[system-prompt-config] SP-002 lazy migration: $set systemPromptConfig (courseId=${courseId})`
+                `[system-prompt-config] SP-002/SP-003 lazy migration: $set systemPromptConfig (courseId=${courseId})`
             );
         }
         return patched;

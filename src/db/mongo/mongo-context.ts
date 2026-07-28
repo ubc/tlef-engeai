@@ -18,6 +18,8 @@ export interface CourseCollectionNames {
     flags: string;
     memoryAgent: string;
     scheduledTasks: string;
+    /** `{courseName}_scenario_questions` — SQ-001 lazy-provisioned, see `scenario-questions-mongo.ts`. */
+    scenarioQuestions: string;
 }
 
 /**

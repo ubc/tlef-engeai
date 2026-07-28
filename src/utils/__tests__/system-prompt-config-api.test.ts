@@ -21,8 +21,11 @@ describe('ConversationModePrompts.isValidConversationMode', () => {
     it('accepts catalog slugs only', () => {
         expect(conversationModePrompts.isValidConversationMode('socratic')).toBe(true);
         expect(conversationModePrompts.isValidConversationMode('explanatory')).toBe(true);
-        expect(conversationModePrompts.isValidConversationMode('scenario-generation')).toBe(true);
         expect(conversationModePrompts.isValidConversationMode('undeclared')).toBe(false);
         expect(conversationModePrompts.isValidConversationMode('typo')).toBe(false);
+    });
+
+    it('rejects the retired scenario-generation slug for new chats', () => {
+        expect(conversationModePrompts.isValidConversationMode('scenario-generation')).toBe(false);
     });
 });
