@@ -13,6 +13,7 @@ import { lazyMigrateCourseAcademicPeriod } from './academic-period-mongo';
 import { createFlagIndexes } from './flag-mongo';
 import type { MongoDalContext } from './mongo-context';
 import { activeCourseListCollection, activeUsersMongoCollection } from './mongo-collections';
+import { seedPathwaysForNewCourse } from './pathways-mongo';
 import { appLogger } from '../../utils/logger';
 
 /**
@@ -76,13 +77,15 @@ export async function postActiveCourse(ctx: MongoDalContext, course: activeCours
         // SQ-001: created eagerly for new courses; existing courses get it lazily via
         // ensureScenarioQuestionsCollection on first scenario-questions API call (scenario-questions-mongo.ts).
         const scenarioQuestionsCollection = `${courseName}_scenario_questions`;
+        const pathwaysCollection = `${courseName}_pathways`;
 
         for (const colName of [
             userCollection,
             flagsCollection,
             memoryAgentCollection,
             scheduledTasksCollection,
-            scenarioQuestionsCollection
+            scenarioQuestionsCollection,
+            pathwaysCollection,
         ]) {
             try {
                 await ctx.db.createCollection(colName);
@@ -99,11 +102,18 @@ export async function postActiveCourse(ctx: MongoDalContext, course: activeCours
                 flags: flagsCollection,
                 memoryAgent: memoryAgentCollection,
                 scheduledTasks: scheduledTasksCollection,
-                scenarioQuestions: scenarioQuestionsCollection
+                scenarioQuestions: scenarioQuestionsCollection,
+                pathways: pathwaysCollection,
             }
         };
 
         await activeCourseListCollection(ctx.db).insertOne(courseWithCollections as any);
+
+        try {
+            await seedPathwaysForNewCourse(ctx, courseName);
+        } catch (pathwaySeedError) {
+            appLogger.warn(`⚠️ Pathway seed failed for course: ${courseName}`, pathwaySeedError);
+        }
 
         try {
             const indexResult = await createFlagIndexes(ctx, courseName);

@@ -22,20 +22,20 @@ export interface AppConfig {
 	ragConfig: RAGConfig;
 	logger: LoggerInterface;
 	debug: boolean;
-	developingMode: boolean;
+	mockResponse: boolean;
 }
 
 export function loadConfig(): AppConfig {
 	const debug = process.env.DEBUG === 'true';
-	const developingMode = process.env.DEVELOPING_MODE === 'true';
+	const mockResponse = process.env.MOCK_RESPONSE === 'true';
 	const logger = appLogger;
 	if (debug) {
 		//logger.debug('Loading configuration from environment variables...');
 	}
 	
-	// Log warning when developer mode is enabled
-	if (developingMode) {
-		//logger.warn('⚠️ DEVELOPING_MODE is enabled - LLM calls will be bypassed with mock responses');
+	// Log warning when mock responses are enabled
+	if (mockResponse) {
+		//logger.warn('⚠️ MOCK_RESPONSE is enabled - LLM calls will be bypassed with mock responses');
 	}
 
 	// --- LLM Module Config ---
@@ -198,6 +198,6 @@ export function loadConfig(): AppConfig {
 		ragConfig,
 		logger,
 		debug,
-		developingMode,
+		mockResponse,
 	};
 }

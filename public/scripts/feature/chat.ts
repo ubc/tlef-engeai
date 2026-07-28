@@ -19,6 +19,7 @@ import {
     activeCourse,
     ChatManagerConfig,
     CreateChatRequest,
+    PathwayCta,
 } from "../types.js";
 import { ConversationModePicker } from "./conversation-mode-picker.js";
 import { RenderChat } from "./render-chat.js";
@@ -1026,7 +1027,8 @@ export class ChatManager {
                     activeChat.pinnedMessageId = msg.id;
                 }
                 this.renderActiveChatIncremental();
-            }
+            },
+            msg.ctas
         );
         
         messageAreaEl.appendChild(messageEl);
@@ -1995,6 +1997,7 @@ export class ChatManager {
                     // NEW: Markdown + LaTeX rendering with messageId for artifacts
                     (botContentElement as HTMLElement).innerHTML = this.renderChat.render(message.text, message.id);
                     renderLatexInHtmlContent(botContentElement as HTMLElement);
+                    this.appendPathwayCtas(botContentElement as HTMLElement, message.ctas);
                     
                     this.scrollToBottom();
                     
@@ -2360,13 +2363,83 @@ export class ChatManager {
         return li;
     }
 
+    /**
+     * Append pathway CTA buttons under a bot message content element.
+     */
+    private appendPathwayCtas(contentEl: HTMLElement, ctas?: PathwayCta[]): void {
+        contentEl.querySelector('.pathway-cta-row-chat')?.remove();
+        if (!ctas || ctas.length === 0) return;
+
+        const row = document.createElement('div');
+        row.className = 'pathway-cta-row-chat';
+        for (const cta of ctas) {
+            if (!cta.label || !cta.url) continue;
+            if (!/^https?:\/\//i.test(cta.url)) continue;
+            const link = document.createElement('a');
+            link.className = 'pathway-cta';
+            const fill = this.resolvePathwayCtaColor(cta);
+            link.style.backgroundColor = fill;
+            link.style.borderColor = fill;
+            link.style.color = this.pathwayCtaTextColor(fill);
+            link.href = cta.url;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = cta.label;
+            row.appendChild(link);
+        }
+        if (row.childElementCount > 0) {
+            contentEl.appendChild(row);
+        }
+    }
+
+    /** Resolve CTA fill: prefer `color`, else legacy `style` map, else CHBE green. */
+    private resolvePathwayCtaColor(cta: PathwayCta & { style?: string }): string {
+        if (typeof cta.color === 'string' && cta.color.trim()) {
+            return this.normalizePathwayCtaColor(cta.color);
+        }
+        const legacy: Record<string, string> = {
+            primary: '#4d7a2f',
+            secondary: '#2f5f8f',
+            tertiary: '#1b365d',
+            quaternary: '#f1f1f1',
+            link: '#2f5f8f',
+        };
+        if (cta.style && legacy[cta.style]) return legacy[cta.style];
+        return '#4d7a2f';
+    }
+
+    /** Coerce CTA color to #rrggbb; default CHBE green. */
+    private normalizePathwayCtaColor(raw?: string): string {
+        if (typeof raw === 'string') {
+            const m6 = /^#([0-9a-fA-F]{6})$/.exec(raw.trim());
+            if (m6) return `#${m6[1].toLowerCase()}`;
+            const m3 = /^#([0-9a-fA-F]{3})$/.exec(raw.trim());
+            if (m3) {
+                const [r, g, b] = m3[1].toLowerCase().split('');
+                return `#${r}${r}${g}${g}${b}${b}`;
+            }
+        }
+        return '#4d7a2f';
+    }
+
+    /** White text on dark fills; near-black on light fills (relative luminance). */
+    private pathwayCtaTextColor(hex: string): string {
+        const n = parseInt(hex.slice(1), 16);
+        const r = (n >> 16) & 0xff;
+        const g = (n >> 8) & 0xff;
+        const b = n & 0xff;
+        const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+        return luminance > 0.55 ? '#1a1a1a' : '#ffffff';
+    }
+
     private createMessageElement(
         messageId: string,
         sender: 'user' | 'bot',
         text: string,
         timestamp: number | undefined,
         isPinned: boolean,
-        onTogglePin: () => void
+        onTogglePin: () => void,
+        ctas?: PathwayCta[]
     ): HTMLElement {
         const messageWrapper = document.createElement('div');
         messageWrapper.classList.add('message', `${sender}-message`);
@@ -2377,41 +2450,10 @@ export class ChatManager {
         
         // Process artefacts for all messages (including initial messages)
         if (sender === 'bot') {
-            // COMMENTED OUT: Artifact processing to show plain LLM responses
-            // //START DEBUG LOG : DEBUG-CODE(ARTEFACT-DEBUG)
-            // console.log('🎨 Processing bot message for artefacts:', messageId);
-            // console.log('🎨 Message text length:', text.length);
-            // console.log('🎨 Contains <Artefact> tag:', text.includes('<Artefact>'));
-            // console.log('🎨 Contains </Artefact> tag:', text.includes('</Artefact>'));
-            // //END DEBUG LOG : DEBUG-CODE(ARTEFACT-DEBUG)
-            
-            // const parsed = this.artefactHandler.parseArtefacts(text, messageId);
-            
-            // //START DEBUG LOG : DEBUG-CODE(022)
-            // console.log('🎨 createMessageElement - Parsed artefacts:', parsed);
-            // console.log('🎨 Has artefacts:', parsed.hasArtefacts);
-            // console.log('🎨 Elements count:', parsed.elements.length);
-            // //END DEBUG LOG : DEBUG-CODE(022)
-            
-            // if (parsed.hasArtefacts) {
-            //     // Add all elements (text + buttons) directly to content
-            //     parsed.elements.forEach(element => {
-            //         contentEl.appendChild(element);
-            //     });
-                
-            //     // Render LaTeX safely in the content that may contain HTML
-            //     renderLatexInHtmlContent(contentEl);
-                
-            //     // Re-render icons for any buttons that were added
-            //     renderFeatherIcons();
-            // } else {
-            //     // No artefacts, render normally
-            //     renderLatexInElement(text, contentEl);
-            // }
-            
             // NEW: Direct markdown + LaTeX rendering with messageId for artifacts
             contentEl.innerHTML = this.renderChat.render(text, messageId);
             renderLatexInHtmlContent(contentEl);
+            this.appendPathwayCtas(contentEl, ctas);
         } else {
             // User messages don't have artefacts
             renderLatexInElement(text, contentEl);

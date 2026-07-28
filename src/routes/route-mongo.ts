@@ -91,6 +91,7 @@ import { contentDispositionAttachmentPdf } from '../report-generation';
 import type { ConversationZipExportRow } from '../db/mongo/conversation-export-mongo';
 import { mountSystemPromptConfigRoutes } from './mongo/system-prompt-config-routes';
 import { mountScenarioQuestionRoutes } from './mongo/scenario-questions-routes';
+import { mountPathwaysRoutes } from './mongo/pathways-routes';
 
 const router = express.Router();
 export default router;
@@ -4607,3 +4608,8 @@ mountSystemPromptConfigRoutes(router);
 // ========= SCENARIO QUESTIONS API =========
 // ===========================================
 mountScenarioQuestionRoutes(router);
+
+// ===========================================
+// ========= GUIDED PATHWAY LIBRARY API =====
+// ===========================================
+mountPathwaysRoutes(router);

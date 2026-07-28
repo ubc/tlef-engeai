@@ -1,0 +1,147 @@
+<!-- public/components/pathways/pathway-library-instructor.html -->
+<section class="pathway-library" aria-labelledby="pathway-library-title">
+    <header class="pathway-library__header">
+        <div class="pathway-library__header-row">
+            <h1 id="pathway-library-title" class="pathway-library__title">Pathway Library</h1>
+            <div class="pathway-library__header-actions">
+                <button type="button" id="pathway-library-add-btn" class="pathway-library__btn pathway-library__btn--primary">
+                    + Add Pathway
+                </button>
+                <div class="pathway-library__kebab" id="pathway-library-kebab">
+                    <button
+                        type="button"
+                        id="pathway-library-kebab-btn"
+                        class="pathway-library__kebab-btn icon-btn"
+                        title="More actions"
+                        aria-label="More actions"
+                        aria-haspopup="menu"
+                        aria-expanded="false"
+                        aria-controls="pathway-library-kebab-menu"
+                    >
+                        <i data-feather="more-vertical"></i>
+                    </button>
+                    <ul id="pathway-library-kebab-menu" class="pathway-library__kebab-menu hidden" role="menu">
+                        <li role="none">
+                            <button type="button" class="pathway-library__kebab-item" data-kebab-action="reset" role="menuitem">
+                                Reset to defaults
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <p class="pathway-library__subtitle">
+            Configure guided pathways that intercept chat before the teaching assistant responds.
+            Drag to reorder the library list. Deactivate a pathway to keep it without evaluating it.
+        </p>
+    </header>
+
+    <p id="pathway-library-status" class="pathway-library__status" role="status" aria-live="polite"></p>
+
+    <div id="pathway-library-list" class="pathway-library__list"></div>
+
+    <div id="pathway-library-empty" class="pathway-library__empty" hidden>
+        <p>No pathways yet. Add one, or reset to restore platform defaults.</p>
+    </div>
+
+    <!-- Color defaults reference panel -->
+    <aside id="pathway-cta-styles-panel" class="pathway-library__styles-panel" hidden>
+        <div class="pathway-library__styles-panel-inner">
+            <h2>Call to Action button colors</h2>
+            <p>Pick any color per button. Defaults match the former style presets:</p>
+            <ul class="pathway-library__style-swatches">
+                <li><span class="pathway-cta pathway-cta-swatch pathway-cta-swatch--primary">Primary #4d7a2f</span></li>
+                <li><span class="pathway-cta pathway-cta-swatch pathway-cta-swatch--secondary">Secondary #2F5F8F</span></li>
+                <li><span class="pathway-cta pathway-cta-swatch pathway-cta-swatch--tertiary">Tertiary #1B365D</span></li>
+                <li><span class="pathway-cta pathway-cta-swatch pathway-cta-swatch--quaternary">Quaternary #f1f1f1</span></li>
+            </ul>
+            <button type="button" id="pathway-cta-styles-close" class="pathway-library__btn">Close</button>
+        </div>
+    </aside>
+</section>
+
+<template id="pathway-block-template">
+    <article class="pathway-block" data-pathway-id="" draggable="false">
+        <div class="pathway-block__header">
+            <button type="button" class="pathway-block__drag-handle" aria-label="Drag to reorder" aria-grabbed="false" title="Drag to reorder">⋮⋮</button>
+            <div class="pathway-block__title-wrap">
+                <span class="pathway-block__title-text"></span>
+                <span class="pathway-block__inactive-badge" hidden>Inactive</span>
+                <input type="text" class="pathway-block__title-input" placeholder="Untitled" aria-label="Pathway title" />
+                <button type="button" class="pathway-block__title-edit" aria-label="Edit title" title="Edit title">
+                    <i data-feather="edit-2"></i>
+                </button>
+            </div>
+            <div class="pathway-block__header-controls">
+                <button
+                    type="button"
+                    class="pathway-block__toggle-enabled"
+                    role="switch"
+                    aria-checked="true"
+                    aria-label="Pathway active"
+                    title="Active"
+                >
+                    <span class="pathway-block__toggle-track" aria-hidden="true">
+                        <span class="pathway-block__toggle-thumb"></span>
+                    </span>
+                </button>
+                <button
+                    type="button"
+                    class="pathway-block__remove icon-btn"
+                    aria-label="Remove pathway"
+                    title="Remove pathway"
+                >
+                    <i data-feather="trash-2"></i>
+                </button>
+            </div>
+            <button type="button" class="pathway-block__expand" aria-expanded="false" aria-label="Expand pathway">
+                <i data-feather="chevron-down"></i>
+            </button>
+        </div>
+        <div class="pathway-block__collapse">
+            <div class="pathway-block__body">
+                <div class="pathway-block__field">
+                    <label class="pathway-block__label">Trigger description</label>
+                    <textarea class="pathway-block__trigger" rows="4" placeholder="Describe when this pathway should fire…"></textarea>
+                </div>
+
+                <div class="pathway-block__ctas-section">
+                    <div class="pathway-block__ctas-header">
+                        <span class="pathway-block__label">Call to Action</span>
+                        <button type="button" class="pathway-block__see-styles">see colors →</button>
+                    </div>
+                    <div class="pathway-block__cta-list"></div>
+                    <button type="button" class="pathway-block__add-cta">+ Add Call to Action</button>
+                </div>
+
+                <div class="pathway-block__field">
+                    <div class="pathway-block__response-header">
+                        <label class="pathway-block__label">Assistant response (optional)</label>
+                        <span class="pathway-block__hint">Supports Markdown. If set, skips the AI model call entirely and uses this text as the reply.</span>
+                    </div>
+                    <textarea class="pathway-block__response" rows="6" placeholder="Predetermined assistant reply…"></textarea>
+                </div>
+
+                <div class="pathway-block__actions">
+                    <div class="pathway-block__actions-left">
+                        <button type="button" class="pathway-library__btn pathway-block__up">↑ Up</button>
+                        <button type="button" class="pathway-library__btn pathway-block__down">↓ Down</button>
+                    </div>
+                    <div class="pathway-block__actions-right">
+                        <button type="button" class="pathway-library__btn pathway-library__btn--primary pathway-block__save">Save</button>
+                        <span class="pathway-block__save-status" aria-live="polite"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </article>
+</template>
+
+<template id="pathway-cta-row-template">
+    <div class="pathway-cta-row" data-cta-id="">
+        <input type="text" class="pathway-cta-row__label" placeholder="Button text" aria-label="Call to Action label" />
+        <input type="url" class="pathway-cta-row__url" placeholder="https://…" aria-label="Call to Action URL" />
+        <input type="color" class="pathway-cta-row__color" value="#4d7a2f" aria-label="Call to Action color" title="Button color" />
+        <button type="button" class="pathway-cta-row__delete" aria-label="Remove Call to Action">×</button>
+    </div>
+</template>

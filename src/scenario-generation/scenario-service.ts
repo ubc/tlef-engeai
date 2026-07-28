@@ -33,6 +33,12 @@ import type {
     ScenarioSubQuestionType,
 } from '../types/shared';
 import { filterProgressAnswers } from '../db/mongo/scenario-progress-mongo';
+import {
+    isMockResponse,
+    getMockGeneratedScenario,
+    getMockScenarioFeedback,
+    getMockScenarioPracticeFeedback,
+} from '../helpers/mock-response';
 import { computeScenarioOverallGrade, defaultExpectedTimeMinutes } from '../types/shared';
 import { buildScenarioGenerationSystemPrompt } from './prompts/scenario-generation-prompt';
 import {
@@ -164,15 +170,21 @@ export class ScenarioService {
                 : (['calculation', 'troubleshoot', 'action'] as ScenarioSubQuestionType[]);
 
             // ====================================================================
-            // STEP 2: Generate via LLM
+            // STEP 2: Generate via LLM (or mock-response mock)
             // ====================================================================
-            const rawResults = await this.generateViaLLM(
-                input,
-                requestedCount,
-                types,
-                difficulty,
-                learningObjectives.map((lo) => lo.text)
-            );
+            let rawResults: GeneratedScenario[];
+            if (isMockResponse()) {
+                appLogger.log('[SCENARIO-SERVICE] Mock-response mode — mock generated scenario(s)');
+                rawResults = Array.from({ length: requestedCount }, () => getMockGeneratedScenario(types));
+            } else {
+                rawResults = await this.generateViaLLM(
+                    input,
+                    requestedCount,
+                    types,
+                    difficulty,
+                    learningObjectives.map((lo) => lo.text)
+                );
+            }
 
             // ====================================================================
             // STEP 3: Sanitize LLM output — drop incomplete parts, remap types
@@ -755,6 +767,15 @@ export class ScenarioService {
         tier: PracticeFeedbackPromptTier = 'socratic'
     ): Promise<{ feedback: string }> {
 
+        // if in mock-response mode, return the mock feedback
+        if (isMockResponse()) {
+            const mock = getMockScenarioPracticeFeedback();
+            if (tier === 'descriptive') {
+                return { feedback: assemblePracticeDescriptiveFeedback(mock.feedback, subQuestion.modelAnswer) };
+            }
+            return mock;
+        }
+
         // build the system prompt
         const systemPrompt =
             tier === 'descriptive'
@@ -823,6 +844,11 @@ export class ScenarioService {
         const modelAnswersBySubQuestionId = Object.fromEntries(
             question.subQuestions.map((s) => [s.subQuestionId, s.modelAnswer])
         );
+
+        if (isMockResponse()) {
+            const mock = getMockScenarioFeedback();
+            return expectedIds.map((subQuestionId) => ({ subQuestionId, ...mock }));
+        }
 
         // One structured LLM call grades every part — shared narrative, independent judgments
         const systemPrompt = buildScenarioExamFeedbackSystemPrompt();

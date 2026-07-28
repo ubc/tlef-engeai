@@ -12,7 +12,7 @@
  */
 
 import { LLMModule, type Message } from 'ubc-genai-toolkit-llm';
-import { isDeveloperMode } from '../helpers/developer-mode';
+import { isMockResponse } from '../helpers/mock-response';
 import {
     a2FeedbackSchema,
     MAX_EVIDENCE_QUOTE_LENGTH,
@@ -90,7 +90,7 @@ export class A2WritingFeedbackEngine implements WritingFeedbackEngine {
      * @param llm - Optional LLM adapter for tests or controlled runtime composition
      */
     constructor(llm?: LLMModule) {
-        this.llm = llm ?? (isDeveloperMode()
+        this.llm = llm ?? (isMockResponse()
             ? undefined
             : new LLMModule({
                 provider: (process.env.LLM_PROVIDER || 'ollama') as never,
@@ -113,7 +113,7 @@ export class A2WritingFeedbackEngine implements WritingFeedbackEngine {
         if (!input.assignment.rubric || input.assignment.rubric.status !== 'approved') {
             throw new Error('An approved rubric is required before feedback generation');
         }
-        if (isDeveloperMode() || !this.llm) {
+        if (isMockResponse() || !this.llm) {
             return validateExactEvidence(deterministicFeedback(input.verifiedText), input.verifiedText);
         }
         // Delimit untrusted student content beneath the system-owned approved rubric.

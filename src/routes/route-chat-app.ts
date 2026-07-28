@@ -14,8 +14,10 @@ import { IDGenerator } from '../utils/unique-id-generator';
 import { ChatMessage, Chat, ConversationModeId, UpdateChatConversationModeRequest, UpdateChatConversationModeResponse } from '../types/shared';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
-import { ChatApp, RETIRED_CONVERSATION_MODE_MESSAGE } from '../chat/chat-app';
+import { ChatApp, RETIRED_CONVERSATION_MODE_MESSAGE, DEBUG_MODE_FORBIDDEN } from '../chat/chat-app';
 import { conversationModePrompts } from '../chat/compose-system-prompt';
+import { isAdminUser } from '../utils/admin';
+import { isDebugToggleMessage } from '../chat/system-prompts/debug-mode-prompt';
 
 import { getRandomNoResponse } from '../memory-agent/unstruggle-responses';
 import { memoryAgent } from '../memory-agent/memory-agent';
@@ -845,13 +847,23 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                     error: 'No active course selected'
                 });
             }
+
+            const isAdmin = isAdminUser(globalUser);
+
+            if (isDebugToggleMessage(message) && !isAdmin) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Debug mode is admin-only',
+                });
+            }
             
             const assistantMessage = await chatApp.sendUserMessage(
                 message,
                 chatId,
                 userId.toString(), // Use userId from MongoDB (consistent source)
                 courseName,
-                () => {} // Empty callback - not streaming to client
+                () => {}, // Empty callback - not streaming to client
+                { isAdmin }
             );
 
             //START DEBUG LOG : DEBUG-CODE(SEND-MSG-006)
@@ -922,6 +934,13 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             //START DEBUG LOG : DEBUG-CODE(SEND-MSG-010)
             appLogger.error('❌ AI Communication Error:', { error: aiError });
             //END DEBUG LOG : DEBUG-CODE(SEND-MSG-010)
+
+            if (aiError instanceof Error && aiError.message === DEBUG_MODE_FORBIDDEN) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Debug mode is admin-only',
+                });
+            }
             
             return res.status(500).json({ 
                 success: false, 

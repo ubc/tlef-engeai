@@ -270,6 +270,10 @@ body {
 
 .sidebar-header {
     flex-shrink: 0; /* Prevent header from shrinking */
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background-color: var(--background-2);
 }
 
 .sidebar-header .logo-box {

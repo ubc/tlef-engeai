@@ -25,6 +25,8 @@
     <link rel="stylesheet" href="/styles/about.css">
     <link rel="stylesheet" href="/styles/toast-notification.css">
     <link rel="stylesheet" href="/styles/instructor-components/scenario-questions-instructor.css">
+    <link rel="stylesheet" href="/styles/instructor-components/pathway-library.css">
+    <link rel="stylesheet" href="/styles/chat-components/pathway-ctas.css">
     <link rel="stylesheet" href="/styles/scenario-generation/sg-shared.css">
     
     
@@ -41,7 +43,7 @@
     <div class="main-dashboard">
         <aside class="instructor-sidebar" aria-label="Instructor workspace navigation">
             <div class="instructor-feature-sidebar">
-                <div class="sidebar-main-content" >
+                <div class="sidebar-sticky-header">
                     <div class="logo-box">
                         <i data-feather="box"></i>
                         <div class="logo-text">
@@ -52,6 +54,8 @@
                     <button class="sidebar-collapse-icon" aria-label="Toggle sidebar">
                         <i data-feather="menu"></i>
                     </button>
+                </div>
+                <div class="sidebar-main-content">
                     <div class="sidebar-content" id="sidebar-content">
                         <div class="sidebar-menu-list">
                             <ul>
@@ -86,6 +90,10 @@
                                 <li><button id="scenario-questions-state" class="menu-list-item" type="button">
                                     <i data-feather="clipboard" aria-hidden="true"></i>
                                     <p>Scenario Questions</p>
+                                </button></li>
+                                <li><button id="pathway-library-state" class="menu-list-item" type="button">
+                                    <i data-feather="git-branch" aria-hidden="true"></i>
+                                    <p>Pathway Library</p>
                                 </button></li>
                             </ul>
                         </div>

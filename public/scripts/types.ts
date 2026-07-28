@@ -37,6 +37,26 @@ export type PersistedConversationModeId = ConversationModeId | RetiredConversati
 /** Must match src/types/shared.ts */
 export type ConversationModeStatus = 'active' | 'coming_soon';
 
+/** Must match src/types/shared.ts. */
+export interface PathwayCta {
+    id: string;
+    label: string;
+    url: string;
+    color: string; // #RRGGBB
+}
+
+/** Must match src/types/shared.ts — one pathway in `{courseName}_pathways`. */
+export interface GuidedPathway {
+    id: string;
+    order: number; // library list position
+    title: string;
+    enabled: boolean; // on for this course; false = listed but not evaluated
+    triggerDescription: string;
+    assistantResponse: string;
+    ctas: PathwayCta[];
+    updatedAt: number;
+}
+
 /**
  * Must match src/types/shared.ts.
  * Persisted turn — plain UI text only (no RAG/struggle tags in MongoDB).
@@ -48,6 +68,7 @@ export interface ChatMessage {
     courseName: string;
     text: string;
     timestamp: number;
+    ctas?: PathwayCta[];
 }
 
 /** Catalog item from GET /api/chat/conversation-modes */
@@ -140,6 +161,8 @@ export interface activeCourse {
         scheduledTasks?: string;
         /** Per-course Practice Scenarios question bank; SQ-001 lazy-provisions on existing courses */
         scenarioQuestions?: string;
+        /** Per-course Guided Pathway Library; lazy-provisions on existing courses */
+        pathways?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
     /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */

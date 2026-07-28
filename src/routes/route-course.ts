@@ -308,6 +308,12 @@ router.get('/course/:courseId/instructor/system-prompts', validateCourseAccess, 
 router.get('/course/:courseId/instructor/scenario-questions', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
 
 /**
+ * GET /course/:courseId/instructor/pathway-library
+ * Guided Pathway Library — instructor-configurable pre-LLM intercepts.
+ */
+router.get('/course/:courseId/instructor/pathway-library', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+/**
  * GET /course/:courseId/instructor/course-information
  * Serves course information page. Requires course access and instructor role.
  *

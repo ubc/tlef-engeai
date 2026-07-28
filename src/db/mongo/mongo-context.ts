@@ -22,6 +22,8 @@ export interface CourseCollectionNames {
     scenarioQuestions: string;
     /** `{courseName}_scenario_progress` — SQ-004 lazy-provisioned, see `scenario-progress-mongo.ts`. */
     scenarioProgress: string;
+    /** `{courseName}_pathways` — lazy-provisioned, see `pathways-mongo.ts`. */
+    pathways: string;
 }
 
 /**

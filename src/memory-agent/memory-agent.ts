@@ -22,7 +22,7 @@ import { z } from 'zod';
 import { LLMModule, type Message } from 'ubc-genai-toolkit-llm';
 import { AppConfig, loadConfig } from '../utils/config';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
-import { isDeveloperMode, getMockStruggleWords } from '../helpers/developer-mode';
+import { isMockResponse, getMockStruggleWords } from '../helpers/mock-response';
 import { getStruggleLabelsFromEntry, sanitizeStruggleLabels } from '../helpers/struggle-chapter-normalize';
 import type { InstructorStruggleTopicForDisplay } from '../types/shared';
 import { appLogger } from '../utils/logger';
@@ -462,8 +462,8 @@ export class MemoryAgent {
             );
             appLogger.log(userMessages);
 
-            if (isDeveloperMode()) {
-                appLogger.log(`[MEMORY-AGENT] 🧪 Developer mode active - skipping LLM analysis, using mock struggle words`);
+            if (isMockResponse()) {
+                appLogger.log(`[MEMORY-AGENT] Mock response active - skipping LLM analysis, using mock struggle words`);
                 const mockStruggleWords = getMockStruggleWords();
                 appLogger.log(`[MEMORY-AGENT] ✅ Using mock struggle words:`, mockStruggleWords);
 

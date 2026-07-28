@@ -63,6 +63,7 @@ import type {
 } from '../writing-feedback/contracts';
 import * as ScenarioQuestionsMongo from './mongo/scenario-questions-mongo';
 import * as ScenarioProgressMongo from './mongo/scenario-progress-mongo';
+import * as PathwaysMongo from './mongo/pathways-mongo';
 
 dotenv.config();
 
@@ -837,6 +838,37 @@ export class EngEAI_MongoDB {
 
     public getLearningObjectivesForTopicOrWeek = async (courseId: string, topicOrWeekId: string) =>
         TopicWeekMongo.getLearningObjectivesForTopicOrWeek(this.ctx(), courseId, topicOrWeekId);
+
+    /**
+     * #########################################################
+     * Guided Pathways — pathways-mongo.ts
+     * #########################################################
+     */
+    public ensurePathwaysCollection = async (courseId: string) =>
+        PathwaysMongo.ensurePathwaysCollection(this.ctx(), courseId);
+
+    public listPathways = async (courseName: string) => PathwaysMongo.listPathways(this.ctx(), courseName);
+
+    public listPathwaysForEvaluation = async (courseName: string) =>
+        PathwaysMongo.listPathwaysForEvaluation(this.ctx(), courseName);
+
+    public createPathway = async (courseName: string, input: PathwaysMongo.CreatePathwayInput) =>
+        PathwaysMongo.createPathway(this.ctx(), courseName, input);
+
+    public updatePathway = async (
+        courseName: string,
+        pathwayId: string,
+        input: PathwaysMongo.UpdatePathwayInput
+    ) => PathwaysMongo.updatePathway(this.ctx(), courseName, pathwayId, input);
+
+    public deletePathway = async (courseName: string, pathwayId: string) =>
+        PathwaysMongo.deletePathway(this.ctx(), courseName, pathwayId);
+
+    public reorderPathways = async (courseName: string, orderedIds: string[]) =>
+        PathwaysMongo.reorderPathways(this.ctx(), courseName, orderedIds);
+
+    public resetPathwaysToDefaults = async (courseName: string) =>
+        PathwaysMongo.resetPathwaysToDefaults(this.ctx(), courseName);
 
     /**
      * #########################################################

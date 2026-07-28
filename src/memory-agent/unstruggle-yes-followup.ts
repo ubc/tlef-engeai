@@ -20,7 +20,7 @@ import {
     getRandomYesNoScenariosMessage,
     getRandomYesWithScenariosMessage,
 } from './unstruggle-responses';
-import { isDeveloperMode, getMockUnstruggleYesFollowup } from '../helpers/developer-mode';
+import { isMockResponse, getMockUnstruggleYesFollowup } from '../helpers/mock-response';
 import { appendScenarioSuggestionsTag } from '../utils/message-utils';
 import { appLogger } from '../utils/logger';
 
@@ -245,10 +245,10 @@ export async function suggestPracticeAfterUnstruggleYes(
     // Select learning objective texts (mock, empty catalog, or LLM)
     let objectiveTexts: string[] = [];
 
-    if (isDeveloperMode()) {
+    if (isMockResponse()) {
         const mock = getMockUnstruggleYesFollowup(catalog);
         objectiveTexts = filterVerbatimObjectiveTexts(mock.learningObjectiveTexts, allowedTexts);
-        appLogger.log('[UNSTRUGGLE-YES] Developer mode — using mock LO text selection');
+        appLogger.log('[UNSTRUGGLE-YES] Mock-response mode — using mock LO text selection');
     } else if (catalog.length === 0) {
         return noScenariosResult(topic);
     } else {

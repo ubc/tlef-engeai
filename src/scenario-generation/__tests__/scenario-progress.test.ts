@@ -21,8 +21,8 @@ jest.mock('../../db/enge-ai-mongodb', () => ({
     },
 }));
 
-jest.mock('../../helpers/developer-mode', () => ({
-    isDeveloperMode: () => true,
+jest.mock('../../helpers/mock-response', () => ({
+    isMockResponse: () => true,
     getMockGeneratedScenario: jest.fn(),
     getMockScenarioFeedback: () => ({ grade: 8, feedback: 'Good work.' }),
     getMockScenarioPracticeFeedback: jest.fn(),

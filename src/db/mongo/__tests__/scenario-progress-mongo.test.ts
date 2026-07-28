@@ -77,6 +77,7 @@ function makeCtx(docs: ProgressDoc[], courseName = 'TestCourse'): MongoDalContex
                     scheduledTasks: `${courseName}_scheduled_tasks`,
                     scenarioQuestions: `${courseName}_scenario_questions`,
                     scenarioProgress: progressCollectionName,
+                    pathways: `${courseName}_pathways`,
                 },
             ],
         ]),

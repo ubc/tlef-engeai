@@ -8,7 +8,10 @@
  */
 
 .sg-instructor-container {
+    /* Match Document/Monitor page shell: ~20px pad + Monitor-style centered cap */
     width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -51,12 +54,11 @@
 }
 
 .sg-instructor-page-title {
-    margin: 0;
+    margin: 0 0 1.25rem;
     font-size: 2rem;
     font-weight: 700;
     color: var(--color-chbe-green);
     line-height: 1.2;
-    margin-bottom: 3rem;
 }
 
 .sg-instructor-view-toggles {

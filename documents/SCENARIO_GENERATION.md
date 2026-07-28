@@ -180,7 +180,7 @@ Implemented in `ScenarioService.generateDrafts()`:
 
 ```text
 1. Resolve and validate learning objectives
-2. Invoke LLM (or developer-mode mock)
+2. Invoke LLM (or mock-response fixture)
       a. Build RAG query from sourcePrompt and learning-objective text
       b. RAGApp.retrieveForChat(limit: 5, scoreThreshold: 0.4, topicOrWeekId)
       c. buildScenarioGenerationSystemPrompt(mode, LO texts)
@@ -256,7 +256,7 @@ Sanitizers in `scenario-schemas.ts`:
 - Replace feedback that reproduces the model answer verbatim
 - Exam batch: require exactly one result per `subQuestionId`
 
-In developer mode, `isDeveloperMode()` bypasses live LLM calls and returns fixtures from `helpers/developer-mode.ts`.
+When `MOCK_RESPONSE=true`, `isMockResponse()` bypasses live LLM calls and returns fixtures from `helpers/mock-response.ts` for chat/RAG/memory paths (scenario generation does not currently wire this helper).
 
 ---
 

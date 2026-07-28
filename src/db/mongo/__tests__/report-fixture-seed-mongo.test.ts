@@ -198,6 +198,7 @@ function makeCtx(state: {
                     scheduledTasks: `${REPORT_FIXTURE_TARGET_COURSE_NAME}_scheduled-tasks`,
                     scenarioQuestions: `${REPORT_FIXTURE_TARGET_COURSE_NAME}_scenario_questions`,
                     scenarioProgress: `${REPORT_FIXTURE_TARGET_COURSE_NAME}_scenario_progress`,
+                    pathways: `${REPORT_FIXTURE_TARGET_COURSE_NAME}_pathways`,
                 }
             ]
         ]),
