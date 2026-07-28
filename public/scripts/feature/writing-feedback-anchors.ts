@@ -153,37 +153,7 @@ function renderAnchoredText(host: HTMLElement, context: AnnotationContext, reren
         host.append(span);
     };
 
-    anchored.forEach((comment) => {
-        // Overlapping spans stay list-only; rendering one deterministic anchor
-        // prevents nested marks from corrupting selection-to-offset calculations.
-        if (comment.startOffset < cursor) return;
-        appendGap(cursor, comment.startOffset);
-
-        const filteredOut = !matchesFilters(comment);
-        const mark = document.createElement('mark');
-        mark.className = 'wf-anchor';
-        mark.dataset.offset = String(comment.startOffset);
-        mark.dataset.commentId = comment.id;
-        mark.setAttribute('tabindex', '0');
-        mark.setAttribute('role', 'button');
-        mark.setAttribute('aria-describedby', `wf-comment-${comment.id}`);
-        mark.textContent = text.slice(comment.startOffset, comment.endOffset);
-        if (comment.id === activeCommentId) mark.classList.add('is-active');
-        if (filteredOut) mark.classList.add('is-filtered-out');
-        const activate = () => {
-            // Clicking a dimmed anchor clears the filters so its card is reachable.
-            if (!matchesFilters(comment)) filters = { fn: 'all', level: 'all' };
-            activateComment(comment.id, rerender);
-        };
-        mark.addEventListener('click', activate);
-        mark.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                activate();
-            }
-        });
-        host.append(mark);
-
+    const buildMarker = (comment: AnchoredComment, filteredOut: boolean, activate: () => void): HTMLElement => {
         const marker = document.createElement('sup');
         marker.className = 'wf-marker';
         marker.textContent = String(numbers.get(comment.id) ?? '');
@@ -199,7 +169,44 @@ function renderAnchoredText(host: HTMLElement, context: AnnotationContext, reren
                 activate();
             }
         });
-        host.append(marker);
+        return marker;
+    };
+
+    anchored.forEach((comment) => {
+        const filteredOut = !matchesFilters(comment);
+        const activate = () => {
+            // Clicking a dimmed anchor clears the filters so its card is reachable.
+            if (!matchesFilters(comment)) filters = { fn: 'all', level: 'all' };
+            activateComment(comment.id, rerender);
+        };
+
+        // Overlapping spans keep a numbered marker in reading order, but only the
+        // first anchor's mark wraps the shared text: nested marks would corrupt
+        // selection-to-offset calculations.
+        if (comment.startOffset < cursor) {
+            host.append(buildMarker(comment, filteredOut, activate));
+            return;
+        }
+        appendGap(cursor, comment.startOffset);
+
+        const mark = document.createElement('mark');
+        mark.className = 'wf-anchor';
+        mark.dataset.offset = String(comment.startOffset);
+        mark.dataset.commentId = comment.id;
+        mark.setAttribute('tabindex', '0');
+        mark.setAttribute('role', 'button');
+        mark.setAttribute('aria-describedby', `wf-comment-${comment.id}`);
+        mark.textContent = text.slice(comment.startOffset, comment.endOffset);
+        if (comment.id === activeCommentId) mark.classList.add('is-active');
+        if (filteredOut) mark.classList.add('is-filtered-out');
+        mark.addEventListener('click', activate);
+        mark.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                activate();
+            }
+        });
+        host.append(mark, buildMarker(comment, filteredOut, activate));
         cursor = comment.endOffset;
     });
     appendGap(cursor, text.length);
@@ -346,7 +353,9 @@ function renderAnnotationList(context: AnnotationContext, rerender: () => void):
         .sort((a, b) => {
             const aStale = a.stale ? 1 : 0;
             const bStale = b.stale ? 1 : 0;
-            return aStale - bStale || a.startOffset - b.startOffset;
+            // Match the annotationNumbers comparator exactly (start, then end) so
+            // numbered cards always render in ascending order.
+            return aStale - bStale || a.startOffset - b.startOffset || a.endOffset - b.endOffset;
         });
     if (workingComments.length && !visible.length) {
         list.append(createText('p', 'No annotations match the selected filters.', 'wf-muted-note'));
@@ -382,7 +391,11 @@ function renderAnnotationCard(
     if (comment.functionTag) header.append(chip(FUNCTION_TAG_LABELS[comment.functionTag], FUNCTION_TAG_TONES[comment.functionTag]));
     if (comment.levelTag) header.append(chip(LEVEL_TAG_LABELS[comment.levelTag], 'neutral'));
     if (comment.priority) header.append(chip(PRIORITY_LABELS[comment.priority], PRIORITY_TONES[comment.priority]));
-    header.append(chip(comment.origin === 'model_seed' ? 'Model suggested' : 'Staff', comment.origin === 'model_seed' ? 'blue' : 'neutral'));
+    // Staff comments carry the server-stamped author name; the generic label is a fallback.
+    header.append(chip(
+        comment.origin === 'model_seed' ? 'Model suggested' : (comment.authorName || 'Staff'),
+        comment.origin === 'model_seed' ? 'blue' : 'neutral'
+    ));
     card.append(header);
 
     if (comment.stale) {

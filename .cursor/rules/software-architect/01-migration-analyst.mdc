@@ -24,7 +24,7 @@ Safe data and schema migrations.
 
 1. Architect packet describes current vs target schema
 2. Migration script with dry-run or limited batch if feasible
-3. Update `documentation/MONGO_DATA_LAYER.md`
+3. Update `documents/MONGO_DATA_LAYER.md`
 4. Rollback strategy — even if manual — must be stated
 
 ## Coordination

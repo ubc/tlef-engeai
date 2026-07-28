@@ -7,7 +7,7 @@ alwaysApply: true
 
 ## Principle
 
-Only change code when you and the human have agreed. Check in before every edit.
+Only change code when you and the human have agreed. Once a plan or implementation request is approved, execute its in-scope edits without repeated check-ins; ask again for scope expansion or destructive/external actions.
 
 ## Agentic engineering (how this system works)
 
@@ -15,7 +15,7 @@ Only change code when you and the human have agreed. Check in before every edit.
 
 | Actor | Responsibility |
 |-------|----------------|
-| **Developer** | Chooses chat, `@` role/skill rules, execution mode, when to plan, when to spawn subagents, approval at each gate |
+| **Developer** | Chooses chat, `@` role/skill rules, execution mode, when to plan, when to spawn subagents, and approves implementation scope |
 | **AI agent** | Reads attached rules, reasons with evidence, proposes plans, implements **after approval**, runs tests when agreed, documents last |
 | **Rules (`.mdc`)** | Contract — kernel always on; roles/skills attach when developer adds them or globs match open files |
 | **`planner/` artifacts** | Shared memory between steps — plans, architecture, handoffs across chats or subagent runs |
@@ -42,7 +42,7 @@ The AI **does not** open a new Cursor mode, switch chats, or attach rules on its
 | Open `@orchestrator`, `@backend/00-*`, `@software-architect/00-*`, etc. | Behave per attached role; do not impersonate a role not attached |
 | Approve plans before implement | Write plans/handoffs when asked; wait at gates |
 | Start Task subagents (or ask parent agent to) | Subagents implement assigned slice only; parent integrates when directed |
-| Name specific `documentation/` files to read | Read code + named paths only (context discipline) |
+| Name specific `documents/` files to read | Read code + named paths only (context discipline) |
 | Waive test or document steps | Follow P → I → T → D unless developer skips a phase |
 
 ## Precedence
@@ -60,7 +60,7 @@ Skills constrain *how*; roles constrain *who* and *what*. Do not duplicate skill
 ## Context discipline
 
 - Read **code** paths implied by the task, open files, and developer-named paths.
-- Do **not** open `documents/**` unless the developer names a specific file.
+- Do **not** open unrelated `documents/**` files unless the developer names them or the changed contract requires them.
 - Do **not** load `02-feature-catalog.mdc` unless the developer attaches it or asks for feature discovery.
 
 ## Core sequence
@@ -69,7 +69,7 @@ Skills constrain *how*; roles constrain *who* and *what*. Do not duplicate skill
 |-------|--------|
 | **Plan** | Scope, risks, files — chat and/or `planner/` artifact |
 | **Implement** | Minimal diff; skills attach via `globs` |
-| **Test** | Opt-in — ask per `tester/00-testing-policy.mdc`; run or verify before documenting |
+| **Test** | Risk-based required — run relevant tests/builds; document only what cannot run |
 | **Document** | TSDoc + docs per `05-code-docs.mdc` — after test pass or developer waives testing |
 
 **Advisory** (non-blocking): `tester/01-backend-qa-docs-only`, `red-teams/00-red-team` — when developer attaches or requests.
@@ -90,7 +90,7 @@ The **developer** chooses the mode by prompt style and attached `@` rules. The a
 |------|------------|
 | Open | Restate task and files; confirm before edits |
 | Implement | Work within attached role/skills; globs auto-attach skills |
-| Close | Ask about tests; run if developer agrees; then version bump, TSDoc, docs if needed |
+| Close | Run risk-proportional tests/builds; then version bump, TSDoc, and docs if needed |
 
 **No** `planner/` file unless developer asks.
 
@@ -107,7 +107,7 @@ The **developer** chooses the mode by prompt style and attached `@` rules. The a
 | Plan | Short plan in chat, or `planner/<slug>-plan.md` when touch surface is large |
 | Gate | Wait for developer approval |
 | Implement | Follow approved plan only |
-| Test / Document | Test before document — same as mode 1 |
+| Test / Document | Run relevant verification before documenting — same as mode 1 |
 
 Same agent owns plan through verify. No redesign mid-implement without check-in.
 
@@ -123,7 +123,7 @@ Same agent owns plan through verify. No redesign mid-implement without check-in.
 2. Spawn subagents **one role per task** — pass only that slice’s files and constraints
 3. **Sequential** when layers depend; parallel only for non-overlapping files
 4. **Never** assign the same files to concurrent subagents
-5. After subagents return: integrate → **test** (if developer agrees) → **document** / advisory
+5. After subagents return: integrate → **test** → **document** / advisory
 
 **Subagent:** Implement assigned files only; return summary; no further subagents unless parent/directed.
 
@@ -157,6 +157,7 @@ Architect does **not** write production code. Subagents do **not** redesign.
 | `public/` UI, Designer | `frontend/00-*` | `01-css`, `02-accessibility`, `03-catalog-modal`, `backend/01-api` |
 | `src/` server | `backend/00-*` | `01-api`, `02-auth`, `03-mongodb`, `04-qdrant`, `05-rag`, `01-migration-analyst` |
 | Prompts / chat | `prompt-engineer/00-*` | `01-conversation-modes-docs` |
+| Writing assessment | `writing-feedback/00-*` | rubric/SFL, intake/privacy, Canvas release, staff UI/PDF |
 | Software Architecture and Design | `software-architect/00-*` | — |
 | Clarify / delegate | `orchestrator/00-*` | — |
 

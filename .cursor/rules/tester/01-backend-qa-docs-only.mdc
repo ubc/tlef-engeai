@@ -1,6 +1,6 @@
 ---
 description: Backend QA — validate implementation against documentation only (no source reads)
-globs: documentation/**,test/**
+globs: documents/**,test/**
 alwaysApply: false
 ---
 
@@ -10,7 +10,7 @@ Validate that implementation matches **documentation** — derive tests from spe
 
 ## Input allowed
 
-- `documentation/*.md` (sections listed in handoff)
+- `documents/*.md` (sections listed in handoff)
 - `README.md` env/setup sections if relevant
 - Generated doc bundles (future: `scripts/agent-doc-bundle.sh`)
 

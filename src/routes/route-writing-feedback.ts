@@ -401,7 +401,7 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
             studentFeedback,
             internalNote: typeof req.body?.internalNote === 'string' ? req.body.internalNote.slice(0, 4000) : undefined,
             comments
-        });
+        }, globalUser.name);
         res.status(201).json({ success: true, data: revision });
     } catch (error) {
         res.status(400).json({ success: false, error: safeError(error) });

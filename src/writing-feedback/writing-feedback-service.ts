@@ -24,7 +24,7 @@ import type {
     WritingFeedbackRun,
     WritingSubmission
 } from './contracts';
-import { seedCommentsFromRun, validateAnchoredComments, withStaleFlags, type AnchoredCommentWithState } from './anchored-comments';
+import { seedCommentsFromRun, stampCommentAuthors, validateAnchoredComments, withStaleFlags, type AnchoredCommentWithState } from './anchored-comments';
 import { A2WritingFeedbackEngine } from './feedback-engine';
 import { StudentWritingFeedbackPdfService } from './pdf-service';
 import { resolveNumericGrade } from './feedback-schema';
@@ -128,23 +128,30 @@ export class WritingFeedbackService {
      * @param courseId - Course authorization/persistence boundary
      * @param submissionId - Submission being reviewed
      * @param revision - Staff-authored narrative and optional complete comment snapshot
+     * @param staffName - Display name of the saving staff member; attributes their new comments
      * @returns Persisted append-only review revision
      * @throws Error when feedback is already released or any anchor is stale
      */
     async appendReview(
         courseId: string,
         submissionId: string,
-        revision: Omit<StaffReviewRevision, 'id' | 'createdAt' | 'submissionId'>
+        revision: Omit<StaffReviewRevision, 'id' | 'createdAt' | 'submissionId'>,
+        staffName?: string
     ): Promise<StaffReviewRevision> {
         const submission = await this.requireSubmission(courseId, submissionId);
         if (submission.status === 'released') {
             throw new Error('Released feedback cannot be edited; create a new attempt for a revised release');
         }
-        if (revision.comments?.length) {
+        let comments = revision.comments;
+        if (comments?.length) {
+            // Attribution is server-derived: carried from the prior snapshot or stamped
+            // with the saving staff member for comments new to this revision.
+            const previous = [...(submission.reviews ?? [])].reverse().find((review) => review.comments)?.comments ?? [];
+            comments = stampCommentAuthors(comments, previous, staffName);
             // Validate offsets against the current verified text immediately before persistence.
-            validateAnchoredComments(revision.comments, submission.verifiedText ?? '');
+            validateAnchoredComments(comments, submission.verifiedText ?? '');
         }
-        return this.mongo.appendWritingReview(courseId, submissionId, revision);
+        return this.mongo.appendWritingReview(courseId, submissionId, { ...revision, comments });
     }
 
     /**

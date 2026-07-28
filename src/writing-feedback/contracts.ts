@@ -178,6 +178,12 @@ export interface AnchoredComment {
     /** Seeded from immutable model evidence or authored by staff. */
     origin: 'model_seed' | 'staff';
     /**
+     * Display name of the staff member who authored the comment. Stamped
+     * server-side at save time (never client-controlled) and carried forward
+     * across revisions; unset for model seeds. Roster display name, never a PUID.
+     */
+    authorName?: string;
+    /**
      * Staff-facing triage metadata mirroring the Academic Writing Matrix
      * taxonomy. Never printed in the student PDF.
      */

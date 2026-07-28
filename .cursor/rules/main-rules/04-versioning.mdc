@@ -1,0 +1,13 @@
+---
+description: EngE-AI package versioning for merge-worthy changes
+alwaysApply: false
+---
+
+# Versioning
+
+- Patch: fixes and backward-compatible feature slices (`npm run version:patch`).
+- Minor: a completed backward-compatible product capability (`npm run version:minor`).
+- Major: explicit breaking release only.
+- Update both `package.json` and `package-lock.json`; do not create a git tag.
+- Bump once after implementation and verification, not during intermediate edits.
+- Documentation-only or planning-only changes do not require a bump unless requested.

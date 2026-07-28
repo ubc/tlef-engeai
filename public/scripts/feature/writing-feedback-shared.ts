@@ -114,6 +114,8 @@ export interface AnchoredComment {
     courseMaterialLink?: string; // optional staff-selected learning resource
     glossaryDefinition?: { term: string; definition: string }; // optional disciplinary-language support
     origin: 'model_seed' | 'staff'; // provenance label preserved in review history
+    /** Server-stamped display name of the staff comment author; unset for model seeds. */
+    authorName?: string;
     /** Staff-facing triage metadata (Academic Writing Matrix taxonomy); excluded from the student PDF. */
     functionTag?: WfFunctionTag;
     levelTag?: WfLevelTag;

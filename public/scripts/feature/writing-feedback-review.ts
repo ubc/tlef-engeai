@@ -819,7 +819,7 @@ function renderSummaryTab(
                 line.append(
                     createText('strong', `${label}: `),
                     createText('span', `"${comment.quote}" — ${comment.comment}`),
-                    chip(comment.origin === 'staff' ? 'Staff' : 'Model seed', comment.origin === 'staff' ? 'green' : 'neutral')
+                    chip(comment.origin === 'staff' ? (comment.authorName || 'Staff') : 'Model seed', comment.origin === 'staff' ? 'green' : 'neutral')
                 );
                 return line;
             };

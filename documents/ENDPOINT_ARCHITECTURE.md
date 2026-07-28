@@ -106,7 +106,7 @@ Canvas endpoints report their integration mode honestly. `demo` with `integratio
 | DELETE | `/submissions/:submissionId` | Deletes a submission at any status (including `released`) and cascades its feedback runs, releases, and queued jobs. Any course staff |
 | POST | `/submissions/:submissionId/verify` | Saves staff-verified transcript |
 | POST | `/submissions/:submissionId/generate` | Generates validated structured feedback; never releases |
-| POST | `/submissions/:submissionId/reviews` | Appends a staff review revision; optional `comments` array of anchored comments is schema-validated and every anchor re-checked as an exact slice of the verified text |
+| POST | `/submissions/:submissionId/reviews` | Appends a staff review revision; optional `comments` array of anchored comments is schema-validated and every anchor re-checked as an exact slice of the verified text. `authorName` is server-stamped (prior attribution carried by comment id; new staff comments attributed to the saving user's display name) — any client-sent value is discarded |
 | POST | `/submissions/:submissionId/approve` | Explicit staff approval |
 | GET | `/submissions/:submissionId/feedback.pdf` | Student-safe feedback PDF; `?include=general\|annotated\|both` selects the summary document, the verified text with Canvas-style `/Highlight` popup annotations, or both (default `general`; legacy `specific` maps to `annotated`) |
 | POST | `/submissions/:submissionId/release-preview` | Dry-run Canvas payload preview |

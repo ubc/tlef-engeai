@@ -19,7 +19,9 @@
  * `Contents` with an empty string, killing the popup; raw `doc.annotate()` is used instead.
  * `QuadPoints` use PDF bottom-left coordinates, bottom edge first (Canvas order).
  * Chrome hover behavior is verified; other viewers may require a click or tap because
- * popup activation belongs to the viewer, not the PDF file.
+ * popup activation belongs to the viewer, not the PDF file. The complete comment stays
+ * in `Contents`, but Chrome/PDFium also owns the popup rectangle and can clip long text;
+ * a portable PDF cannot force that viewer-generated box to grow.
  *
  * @author: @rdschrs
  * @date: 2026-07-22
@@ -194,9 +196,64 @@ function renderGeneralSections(
 }
 
 /**
- * The full verified text with `/Highlight` annotations. One annotation per (comment, page):
- * all of a comment's line rectangles on a page share one QuadPoints list so viewers show a
- * single popup, exactly like a Canvas SpeedGrader annotated download.
+ * Comments whose spans overlap, grouped so they can share one popup annotation.
+ * Stacked separate annotations over the same text let a viewer surface only the
+ * topmost popup, hiding every other comment on that span.
+ */
+interface CommentCluster {
+    comments: AnchoredComment[];
+    startOffset: number;
+    endOffset: number;
+}
+
+/** Groups position-sorted comments into chains of overlapping spans. */
+function clusterOverlappingComments(comments: AnchoredComment[]): CommentCluster[] {
+    const sorted = [...comments].sort((a, b) => a.startOffset - b.startOffset || a.endOffset - b.endOffset);
+    const clusters: CommentCluster[] = [];
+    for (const comment of sorted) {
+        const current = clusters[clusters.length - 1];
+        if (current && comment.startOffset < current.endOffset) {
+            current.comments.push(comment);
+            current.endOffset = Math.max(current.endOffset, comment.endOffset);
+        } else {
+            clusters.push({ comments: [comment], startOffset: comment.startOffset, endOffset: comment.endOffset });
+        }
+    }
+    return clusters;
+}
+
+/** Popup author precedence: comment author, then approving staff, then the team label. */
+function resolveAuthor(comment: AnchoredComment, annotationAuthor?: string): string {
+    return comment.authorName?.trim() || annotationAuthor?.trim() || 'Teaching Team';
+}
+
+/**
+ * Popup body for one cluster. A single comment keeps its plain student-safe text;
+ * merged popups separate each comment and name its author when authors differ,
+ * so no feedback disappears behind a stacked annotation.
+ */
+function clusterPopupText(cluster: CommentCluster, annotationAuthor?: string): string {
+    if (cluster.comments.length === 1) return popupText(cluster.comments[0]);
+    const authors = new Set(cluster.comments.map((comment) => resolveAuthor(comment, annotationAuthor)));
+    // ASCII separator keeps PDFKit emitting Latin-1 literal strings for ASCII feedback.
+    return cluster.comments
+        .map((comment) => authors.size > 1
+            ? `${resolveAuthor(comment, annotationAuthor)}:\n${popupText(comment)}`
+            : popupText(comment))
+        .join('\n\n---\n\n');
+}
+
+/** Annotation author (`/T`) for a cluster: the shared author, or the team label when mixed. */
+function clusterAuthor(cluster: CommentCluster, annotationAuthor?: string): string {
+    const authors = new Set(cluster.comments.map((comment) => resolveAuthor(comment, annotationAuthor)));
+    return authors.size === 1 ? authors.values().next().value! : 'Teaching Team';
+}
+
+/**
+ * The full verified text with `/Highlight` annotations. Overlapping comment spans are
+ * merged into one cluster annotation per page: all of a cluster's line rectangles on a
+ * page share one QuadPoints list so viewers show a single popup containing every
+ * comment, exactly like a Canvas SpeedGrader annotated download.
  */
 function renderAnnotatedText(
     doc: PDFKit.PDFDocument,
@@ -226,14 +283,14 @@ function renderAnnotatedText(
         paragraphGap: 8
     });
 
-    // Pre-compute every comment's line rectangles so the fills can be painted under the
+    // Pre-compute every cluster's line rectangles so the fills can be painted under the
     // text of each page as it is rendered.
-    const sorted = [...comments].sort((a, b) => a.startOffset - b.startOffset);
-    const commentRects = sorted.map((comment) => highlightRectsForSpan(
-        lines, comment.startOffset, comment.endOffset, measure, PAGE_MARGIN, highlightHeight
+    const clusters = clusterOverlappingComments(comments);
+    const clusterRects = clusters.map((cluster) => highlightRectsForSpan(
+        lines, cluster.startOffset, cluster.endOffset, measure, PAGE_MARGIN, highlightHeight
     ));
     const fillsByPage = new Map<number, HighlightRect[]>();
-    for (const rects of commentRects) {
+    for (const rects of clusterRects) {
         for (const rect of rects) {
             const group = fillsByPage.get(rect.page) ?? [];
             group.push(rect);
@@ -261,13 +318,12 @@ function renderAnnotatedText(
             .text(line.text, PAGE_MARGIN, line.y, { lineBreak: false });
     }
 
-    // Emit popup-carrying annotations after all pages exist, one per (comment, page).
-    const author = annotationAuthor?.trim() || 'Teaching Team';
+    // Emit popup-carrying annotations after all pages exist, one per (cluster, page).
     const annotationDate = new Date();
     const lastPage = doc.bufferedPageRange().count - 1;
-    sorted.forEach((comment, index) => {
+    clusters.forEach((cluster, index) => {
         const byPage = new Map<number, HighlightRect[]>();
-        for (const rect of commentRects[index]) {
+        for (const rect of clusterRects[index]) {
             const group = byPage.get(rect.page) ?? [];
             group.push(rect);
             byPage.set(rect.page, group);
@@ -275,7 +331,14 @@ function renderAnnotatedText(
         for (const [layoutPage, group] of byPage) {
             const pageIndex = firstAnnotatedPage + layoutPage;
             doc.switchToPage(pageIndex);
-            emitHighlightAnnotation(doc, group, popupText(comment), author, pageIndex, annotationDate);
+            emitHighlightAnnotation(
+                doc,
+                group,
+                clusterPopupText(cluster, annotationAuthor),
+                clusterAuthor(cluster, annotationAuthor),
+                pageIndex,
+                annotationDate
+            );
         }
     });
     doc.switchToPage(lastPage);

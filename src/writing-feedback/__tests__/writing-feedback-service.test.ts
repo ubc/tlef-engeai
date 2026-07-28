@@ -195,6 +195,71 @@ describe('WritingFeedbackService anchored comments', () => {
             expect.objectContaining({ comments: [expect.objectContaining({ id: 'comment-1' })] }));
     });
 
+    it('appendReview stamps author names: carries prior attribution and names new staff comments', async () => {
+        const sub = submission('approved');
+        const priorReview: StaffReviewRevision = {
+            id: 'review-1', submissionId: sub.id, feedbackRunId: 'run-1', staffUserId: 'instructor-1',
+            studentFeedback: 'Nice work.',
+            comments: [storedComment({ authorName: 'Pat Lee' })],
+            createdAt: new Date()
+        };
+        const appendWritingReview = jest.fn(async (_courseId, _submissionId, revision) => revision);
+        const mongo = {
+            getWritingSubmission: jest.fn(async () => ({ ...sub, reviews: [priorReview] })),
+            appendWritingReview
+        } as unknown as EngEAI_MongoDB;
+
+        await new WritingFeedbackService(mongo, engine).appendReview('course-1', 'submission-1', {
+            feedbackRunId: 'run-1',
+            staffUserId: 'instructor-2',
+            studentFeedback: 'Updated.',
+            comments: [
+                // Echoed prior comment: the client never controls attribution.
+                storedComment(),
+                storedComment({ id: 'comment-new-staff', quote: 'student', startOffset: 9, endOffset: 16 }),
+                storedComment({ id: 'comment-new-seed', quote: 'text.', startOffset: 17, endOffset: 22, origin: 'model_seed' })
+            ]
+        }, 'Jamie Rivera');
+
+        const persisted = appendWritingReview.mock.calls[0][2].comments as AnchoredComment[];
+        expect(persisted.find((c) => c.id === 'comment-1')?.authorName).toBe('Pat Lee');
+        expect(persisted.find((c) => c.id === 'comment-new-staff')?.authorName).toBe('Jamie Rivera');
+        expect(persisted.find((c) => c.id === 'comment-new-seed')?.authorName).toBeUndefined();
+    });
+
+    it('renderPdf uses the newest revision comments after a save-approve-save-approve cycle', async () => {
+        const sub = submission('approved');
+        const firstCycle: StaffReviewRevision = {
+            id: 'review-1', submissionId: sub.id, feedbackRunId: 'run-1', staffUserId: 'instructor-1',
+            studentFeedback: 'First pass.', comments: [storedComment()], createdAt: new Date('2026-07-25T10:00:00Z')
+        };
+        const secondCycle: StaffReviewRevision = {
+            id: 'review-2', submissionId: sub.id, feedbackRunId: 'run-1', staffUserId: 'instructor-1',
+            studentFeedback: 'Second pass.',
+            comments: [
+                storedComment(),
+                storedComment({ id: 'comment-added-later', quote: 'student', startOffset: 9, endOffset: 16 })
+            ],
+            createdAt: new Date('2026-07-26T10:00:00Z')
+        };
+        const assignment = buildA2Assignment('course-1', 'assignment-1');
+        const mongo = {
+            getWritingSubmission: jest.fn(async () => ({ ...sub, reviews: [firstCycle, secondCycle] })),
+            getWritingAssignment: jest.fn(async () => assignment),
+            getLatestWritingFeedbackRun: jest.fn(async () => ({ ...runFor(sub), rubricVersion: assignment.rubric.version }))
+        } as unknown as EngEAI_MongoDB;
+        const pdfService = { render: jest.fn(async () => Buffer.from('pdf')) };
+
+        await new WritingFeedbackService(mongo, engine, pdfService).renderPdf('course-1', 'submission-1', 'annotated');
+
+        expect(pdfService.render).toHaveBeenCalledWith(expect.objectContaining({
+            comments: [
+                expect.objectContaining({ id: 'comment-1' }),
+                expect.objectContaining({ id: 'comment-added-later' })
+            ]
+        }));
+    });
+
     it('renderPdf forwards only valid anchored comments with the include flag', async () => {
         const sub = submission('approved');
         const drifted = storedComment({ id: 'comment-2', quote: 'No longer present.', startOffset: 0, endOffset: 18 });

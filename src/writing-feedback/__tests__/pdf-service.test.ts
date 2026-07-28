@@ -187,6 +187,106 @@ describe('StudentWritingFeedbackPdfService', () => {
         expect(text).not.toContain('needs_review');
     });
 
+    it('merges comments with overlapping spans into one annotation carrying every popup', async () => {
+        const first = comment({ comment: 'First observation about this sentence.' });
+        const second = comment({
+            id: 'comment-2',
+            comment: 'Second, separate observation about the same sentence.'
+        });
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: feedback(),
+            comments: [first, second],
+            include: 'annotated',
+            annotationAuthor: 'Jamie Rivera'
+        });
+        const text = searchableText(pdf);
+        // One merged /Highlight annotation, not two stacked ones the viewer hides.
+        expect(text.match(/\/Subtype \/Highlight/g)).toHaveLength(1);
+        expect(text).toContain('First observation about this sentence.');
+        expect(text).toContain('Second, separate observation about the same sentence.');
+    });
+
+    it('keeps separate annotations for non-overlapping comments', async () => {
+        const firstQuote = 'The centrifugal pump moves fluid';
+        const second = comment({ id: 'comment-2', comment: 'Different sentence, different popup.' });
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: feedback(),
+            comments: [
+                comment({
+                    quote: firstQuote,
+                    startOffset: verifiedText.indexOf(firstQuote),
+                    endOffset: verifiedText.indexOf(firstQuote) + firstQuote.length
+                }),
+                second
+            ],
+            include: 'annotated'
+        });
+        expect(searchableText(pdf).match(/\/Subtype \/Highlight/g)).toHaveLength(2);
+    });
+
+    it('labels a staff comment popup with its author name over the approver fallback', async () => {
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: feedback(),
+            comments: [comment({ authorName: 'Pat Lee' })],
+            include: 'annotated',
+            annotationAuthor: 'Jamie Rivera'
+        });
+        expect(searchableText(pdf)).toContain('/T (Pat Lee)');
+    });
+
+    it('attributes each popup inside a merged annotation when authors differ', async () => {
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: feedback(),
+            comments: [
+                comment({ authorName: 'Pat Lee', comment: 'First observation.' }),
+                comment({ id: 'comment-2', authorName: 'Jamie Rivera', comment: 'Second observation.' })
+            ],
+            include: 'annotated'
+        });
+        const text = searchableText(pdf);
+        expect(text).toContain('Pat Lee');
+        expect(text).toContain('Jamie Rivera');
+        expect(text).toContain('First observation.');
+        expect(text).toContain('Second observation.');
+    });
+
+    it('stores a complete long comment in annotation Contents without duplicating it as page text', async () => {
+        const longFeedback = 'This paragraph needs a clearer topic sentence. '.repeat(20).trim();
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: feedback(),
+            comments: [
+                comment({ comment: longFeedback, authorName: 'Pat Lee' }),
+                comment({
+                    id: 'comment-2',
+                    quote: 'A volute casing',
+                    startOffset: verifiedText.indexOf('A volute casing'),
+                    endOffset: verifiedText.indexOf('A volute casing') + 'A volute casing'.length,
+                    comment: 'Second full comment body.'
+                })
+            ],
+            include: 'annotated',
+            annotationAuthor: 'Jamie Rivera'
+        });
+        const text = searchableText(pdf);
+        // The complete value remains in /Contents for the viewer-controlled popup.
+        expect(text).toContain(longFeedback);
+        // Comment bodies and the former trailing Comments section are not drawn as page text.
+        const drawnOnly = text.split('\n').pop() ?? '';
+        expect(drawnOnly).not.toContain('This paragraph needs a clearer topic sentence.');
+        expect(drawnOnly).not.toContain('Second full comment body.');
+        expect(drawnOnly).not.toContain('Comments');
+    });
+
     it('emits multi-line QuadPoints (multiple of 8) for a span crossing a wrap', async () => {
         // Span long enough to guarantee at least one wrap at LETTER width.
         const start = verifiedText.indexOf('converting rotational');

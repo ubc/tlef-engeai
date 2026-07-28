@@ -1,3 +1,15 @@
 ---
+description: Project documentation locations and update policy
 alwaysApply: true
 ---
+
+# Project Documentation
+
+Project documentation lives in `documents/`.
+
+- API and RBAC changes: update `documents/ENDPOINT_ARCHITECTURE.md`.
+- Collections, indexes, persistence, and retention: update `documents/MONGO_DATA_LAYER.md`.
+- Layout and breakpoint changes: update `documents/RESPONSIVE_DESIGN.md`.
+- Schema migrations: update `documents/DATA_MIGRATIONS.md` with idempotency and rollback.
+- Writing Feedback architecture, assessment logic, and visual rules live in the three `WRITING_FEEDBACK_*.md` documents.
+- Document actual behavior after tests/builds pass. Mark deferred or gated behavior explicitly; do not describe mocks as production integrations.

@@ -39,13 +39,14 @@ Rules live in `.cursor/rules/`. Only this file is always on.
 |-------|--------|------------|
 | **Kernel** | `main-rules/00-kernel` | Universal conduct (this file) |
 | **Policies** | `main-rules/01`–`06` | Workflow, naming, versioning, docs — load when relevant |
-| **Roles** | `orchestrator/`, `software-architect/`, `backend/00-*`, `frontend/00-*`, `prompt-engineer/00-*` | Who owns a kind of work |
+| **Roles** | `orchestrator/`, `software-architect/`, `backend/00-*`, `frontend/00-*`, `prompt-engineer/00-*`, `writing-feedback/00-*` | Who owns a kind of work |
 | **Skills** | `01+` inside each role folder | Domain playbooks — auto-attached by `globs` while editing matching files |
 | **Advisory** | `tester/`, `red-teams/` | Testing, QA, and security review — on human or role request |
 
 ## Do
 
-- **Check in** before code changes; agree on scope first.
+- **Agree on scope** before code changes; an approved plan authorizes its listed edits.
+- **Reconfirm only on scope change** — do not repeatedly ask for approval inside an approved implementation slice.
 - **Minimal diff** — touch only what the task requires.
 - **State assumptions and risks** before implementing.
 - **Explain tradeoffs** — senior-engineer bar, not vibe coding.

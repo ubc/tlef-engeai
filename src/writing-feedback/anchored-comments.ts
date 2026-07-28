@@ -115,6 +115,36 @@ export function seedCommentsFromRun(run: WritingFeedbackRun, verifiedText: strin
 }
 
 /**
+ * stampCommentAuthors — applies server-authoritative comment attribution.
+ *
+ * The client never controls `authorName`: any client-sent value is discarded by
+ * the input schema, and this stamp re-derives attribution on every save. A
+ * comment keeps the author recorded in the previous snapshot; a comment new to
+ * this save is attributed to the saving staff member when staff-authored.
+ * Model seeds stay unattributed so student output never implies a person wrote them.
+ *
+ * @param comments - Incoming complete comment snapshot for one revision
+ * @param previousComments - Comments from the newest prior revision that stored any
+ * @param staffName - Display name of the staff member saving this revision
+ * @returns Cloned comments with authoritative `authorName` values
+ */
+export function stampCommentAuthors(
+    comments: AnchoredComment[],
+    previousComments: AnchoredComment[],
+    staffName?: string
+): AnchoredComment[] {
+    const previousAuthor = new Map(previousComments.map((comment) => [comment.id, comment.authorName]));
+    return comments.map((comment) => {
+        // Drop any client-supplied attribution before re-deriving it.
+        const { authorName: _clientAuthor, ...rest } = comment;
+        const carried = previousAuthor.has(comment.id)
+            ? previousAuthor.get(comment.id)
+            : comment.origin === 'staff' ? staffName?.trim() || undefined : undefined;
+        return carried ? { ...rest, authorName: carried } : rest;
+    });
+}
+
+/**
  * validateAnchoredComments — rejects comments whose offsets and quote checksum diverge.
  *
  * @param comments - Complete comment snapshot proposed for a staff revision
