@@ -351,11 +351,15 @@ body {
     color: white;
     padding: 0.75rem;
     height: 56px;
+    width: 100%;
+    border: none;
     border-radius: 8px;
     gap: 0.75rem;
     display: flex;
     align-items: center;
     justify-content: flex-start;
+    font: inherit;
+    text-align: left;
     overflow: hidden; /* Critical for clipping text during animation */
     cursor: pointer; /* Make logo clickable */
     transition: background-color 0.2s ease,
@@ -366,6 +370,11 @@ body {
 .instructor-feature-sidebar .logo-box:hover {
     background-color: #5a8a35; /* Slightly lighter green on hover */
     transform: translateY(-1px); /* Subtle lift effect */
+}
+
+.instructor-feature-sidebar .logo-box:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
 }
 
 .logo-box .logo-text {
@@ -406,8 +415,10 @@ body {
     font-size: 1.1rem;
 }
 
-.logo-text p {
+.logo-text p,
+.logo-text .logo-subtitle {
     font-size: 0.75rem;
+    font-weight: 400;
     opacity: 1; /* Increase opacity for better contrast */
     margin: 0;
     color: #ffffff; /* Ensure white for better contrast */
@@ -415,19 +426,35 @@ body {
 
 .instructor-feature-sidebar .sidebar-collapse-icon {
     background-color: transparent;
-    margin:10px 0px 0px 0px ;
-    color: var(--text-secondary) ;
+    margin: 10px 0 0;
+    color: var(--text-secondary);
     cursor: pointer;
     border: none;
+    border-radius: 8px;
     display: flex;
-    justify-content : left;
+    align-items: center;
+    justify-content: flex-start;
+    flex-shrink: 0;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 6px;
+    transition: background-color 0.1s ease-in-out;
+}
+
+.instructor-feature-sidebar .sidebar-collapse-icon:hover {
+    background-color: var(--hover-bg);
+}
+
+.instructor-feature-sidebar .sidebar-collapse-icon:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
 }
 
 
 /* The `collapsed` class is set on .instructor-feature-sidebar, so the toggle button is
    centred from there; the .instructor-sidebar variant never matched. */
 .instructor-feature-sidebar.collapsed .sidebar-collapse-icon {
-    margin: 10px 0px 0px 0px;
+    margin: 10px 0 0;
     justify-content: center;
 }
 

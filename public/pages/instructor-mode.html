@@ -41,17 +41,31 @@
     <!-- Sidebar overlay for mobile - click to close sidebar -->
     <div id="instructor-sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
     <div class="main-dashboard">
-        <aside class="instructor-sidebar" aria-label="Instructor workspace navigation">
-            <div class="instructor-feature-sidebar">
+        <aside class="instructor-sidebar" id="instructor-sidebar" aria-label="Instructor workspace navigation">
+            <div class="instructor-feature-sidebar" id="instructor-feature-sidebar">
                 <div class="sidebar-sticky-header">
-                    <div class="logo-box">
+                    <button
+                        class="logo-box sidebar-logo-toggle"
+                        type="button"
+                        aria-controls="instructor-feature-sidebar"
+                        aria-expanded="true"
+                        aria-label="Collapse sidebar"
+                        title="Collapse sidebar"
+                    >
                         <i data-feather="box"></i>
-                        <div class="logo-text">
+                        <span class="logo-text">
                             <span>EngE-AI</span>
-                            <p>Instructor Mode</p>
-                        </div>
-                    </div>
-                    <button class="sidebar-collapse-icon" aria-label="Toggle sidebar">
+                            <span class="logo-subtitle">Instructor Mode</span>
+                        </span>
+                    </button>
+                    <button
+                        class="sidebar-collapse-icon"
+                        type="button"
+                        aria-controls="instructor-feature-sidebar"
+                        aria-expanded="true"
+                        aria-label="Collapse sidebar"
+                        title="Collapse sidebar"
+                    >
                         <i data-feather="menu"></i>
                     </button>
                 </div>

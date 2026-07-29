@@ -265,16 +265,29 @@ body {
     color: var(--text-secondary);
     cursor: pointer;
     border: none;
+    border-radius: 8px;
     display: flex;
-    justify-content: left;
-    padding: 0 0 0 5px;
-    transition: all 0.3s ease;
+    align-items: center;
+    justify-content: flex-start;
+    flex-shrink: 0;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 6px;
+    transition: background-color 0.1s ease-in-out;
+}
+
+.sidebar .sidebar-collapse-icon:hover {
+    background-color: var(--hover-bg);
+}
+
+.sidebar .sidebar-collapse-icon:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
 }
 
 .sidebar.collapsed .sidebar-collapse-icon {
     margin: 10px 0 10px 0;
     justify-content: center;
-    padding: 0;
 }
 
 /* Hide chat list action buttons when collapsed, EXCEPT show the pinned star */
@@ -296,14 +309,31 @@ body {
     align-items: center;
     gap: 0.75rem;
     padding: 0.6rem;
+    width: 100%;
+    border: none;
     border-radius: 8px;
     background-color: var(--color-chbe-green); 
     color: white;
     height: 56px;              /* keep constant height expanded/collapsed */
     box-sizing: border-box;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
     margin-bottom: 5px;
     overflow: hidden; /* Critical for clipping text during animation */
-    transition: gap 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background-color 0.2s ease,
+                transform 0.2s ease,
+                gap 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-header .logo-box:hover {
+    background-color: #5a8a35;
+    transform: translateY(-1px);
+}
+
+.sidebar-header .logo-box:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
 }
 
 .logo-box .logo-text { 
@@ -327,8 +357,10 @@ body {
     font-size: 1.1rem; 
 }
 
-.logo-text p { 
+.logo-text p,
+.logo-text .logo-subtitle {
     font-size: 0.75rem; 
+    font-weight: 400;
     margin: 0; 
     opacity: 1; /* Increased opacity for better contrast on green background */
     color: #ffffff; /* Ensure white for better contrast */
