@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500">
+  <rect width="800" height="500" fill="#e8efe3"/>
+  <rect x="40" y="40" width="720" height="420" rx="12" fill="#fff" stroke="#4d7a2f" stroke-opacity="0.35"/>
+  <circle cx="400" cy="210" r="48" fill="#2F5F8F" opacity="0.85"/>
+  <text x="400" y="320" text-anchor="middle" fill="#1B365D" font-family="system-ui,sans-serif" font-size="22">Diagram creation</text>
+  <text x="400" y="355" text-anchor="middle" fill="#5a6b5a" font-family="system-ui,sans-serif" font-size="14">Screenshot placeholder</text>
+</svg>

@@ -3,48 +3,271 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>EngE-AI | Login</title>
-		<link rel="preconnect" href="https://fonts.googleapis.com">
-		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-		<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-		
-		<!-- Global styles -->
+		<title>EngE-AI | We help engineering students to solve problems</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Poppins:wght@500;600;700&display=swap"
+			rel="stylesheet"
+		/>
 		<link rel="stylesheet" href="/styles/style.css" />
-		<!-- Page-specific styles -->
-		<link rel="stylesheet" href="/styles/login.css" />
+		<link rel="stylesheet" href="/styles/home.css" />
+		<script>
+			(function () {
+				try {
+					var t = localStorage.getItem('engeai-home-theme');
+					document.documentElement.setAttribute(
+						'data-home-theme',
+						t === 'light' || t === 'dark' ? t : 'dark'
+					);
+				} catch (e) {
+					document.documentElement.setAttribute('data-home-theme', 'dark');
+				}
+			})();
+		</script>
 	</head>
-	<body class="main-login-page">
-		<div id="version-display" class="version-display" aria-label="Version information"></div>
-		<div class="login-container">
-			<div class="login-box">
-				<h1>EngE-AI</h1>
-				<p class="subtitle">AI-powered Engineering Education Assistant</p>
+	<body class="home-page">
+		<header class="home-topbar" id="home-topbar">
+			<div class="home-topbar-inner">
+				<a class="home-brand" href="/">
+					<svg class="home-brand-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+						<polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+						<line x1="12" y1="22.08" x2="12" y2="12"></line>
+					</svg>
+					<span>EngE-AI</span>
+				</a>
+				<div class="home-topbar-actions">
+					<button
+						type="button"
+						class="home-theme-toggle"
+						id="home-theme-toggle"
+						aria-pressed="true"
+						aria-label="Switch to light mode"
+						title="Toggle color theme"
+					>
+						<svg class="home-theme-toggle-icon home-theme-toggle-sun" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<circle cx="12" cy="12" r="4"></circle>
+							<path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
+						</svg>
+						<svg class="home-theme-toggle-icon home-theme-toggle-moon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M21 14.5A8.5 8.5 0 0 1 9.5 3 7 7 0 1 0 21 14.5z"></path>
+						</svg>
+					</button>
+					<button type="button" id="login-cwl-btn" class="home-btn home-btn-cwl js-login-cwl">
+						Login with CWL
+					</button>
+				</div>
+			</div>
+		</header>
 
-				<!-- Authentication Section -->
-				<div id="auth-section" class="auth-section">
-					<div id="login-prompt" class="login-prompt">
-						<h2>Authentication Required</h2>
-						<p>Please log in to access EngE-AI</p>
-						<div class="login-buttons">
-							<!-- <button id="login-btn" class="login-btn login-btn-green">Login</button> -->
-							<button id="login-cwl-btn" class="login-btn login-btn-blue">Login with CWL</button>
+		<main>
+			<!-- Scroll buffer: sticky hero while user scrolls through scrub distance -->
+			<section class="home-scrub" id="home-scrub" aria-label="Product introduction">
+				<div class="home-hero" id="home-hero">
+					<div class="home-hero-copy">
+						<h1 class="home-headline">
+							<span class="home-headline-line">We help engineering students</span>
+							<span class="home-headline-line">to solve problems</span>
+						</h1>
+						<p class="home-subslogan">
+							Consult and practice with EngE-AI. See how you can improve.
+						</p>
+						<div class="home-cta-group">
+							<button type="button" class="home-btn home-btn-cwl js-login-cwl">
+								Login with CWL
+							</button>
 						</div>
 					</div>
-					<div id="user-info" class="user-info" style="display: none;">
-						<h2>Welcome!</h2>
-						<div id="user-details"></div>
-						<button id="logout-btn" class="logout-btn">Logout</button>
-					</div>
-					<div id="auth-loading" class="auth-loading" style="display: none;">
-						<p>Checking authentication...</p>
+
+					<div class="home-hero-visual">
+						<div class="home-video-stage">
+							<div class="home-video-glow" id="home-video-glow">
+								<div
+									class="home-video-frame home-demo-placeholder"
+									id="home-video-frame"
+									role="img"
+									aria-label="Product demo placeholder"
+								></div>
+							</div>
+						</div>
+						<div class="home-learn-more-wrap">
+							<button type="button" class="home-btn home-btn-secondary" id="home-learn-more">
+								Learn more
+							</button>
+						</div>
 					</div>
 				</div>
+			</section>
 
-				<p class="footer-text">University of British Columbia</p>
+			<div id="home-more" class="home-more" hidden inert>
+				<section class="home-section" id="features" aria-labelledby="features-heading">
+					<div class="home-section-inner">
+						<h2 id="features-heading">Built for how engineers learn</h2>
+						<p class="home-section-lead">
+							Guided critical thinking, course context, and safeguards — not answer dumps.
+						</p>
+
+						<article class="home-feature">
+							<div class="home-feature-media">
+								<img src="/assets/home/feature-tone.svg" alt="" width="800" height="500" />
+							</div>
+							<div class="home-feature-copy">
+								<h3>Auto-adjusting tone</h3>
+								<p>
+									EngE-AI's memory agent tracks the topics you're struggling with across a
+									conversation and adjusts its tone in response.
+								</p>
+							</div>
+						</article>
+
+						<article class="home-feature home-feature--reverse">
+							<div class="home-feature-media">
+								<img src="/assets/home/feature-pathway.svg" alt="" width="800" height="500" />
+							</div>
+							<div class="home-feature-copy">
+								<h3>Guided pathway</h3>
+								<p>
+									Every message is screened. If a conversation veers towards crisis, harm, or
+									something outside the course, EngE-AI pauses the lesson and responds with real
+									UBC support resources.
+								</p>
+							</div>
+						</article>
+
+						<article class="home-feature">
+							<div class="home-feature-media">
+								<img src="/assets/home/feature-scenario.svg" alt="" width="800" height="500" />
+							</div>
+							<div class="home-feature-copy">
+								<h3>Scenario generation</h3>
+								<p>
+									EngE-AI helps instructors create multi-part scenario-based, exam-like questions
+									for students to work through. Students get instant feedback on their answers.
+								</p>
+							</div>
+						</article>
+					</div>
+				</section>
+
+				<section class="home-section home-section--muted" id="supporting" aria-labelledby="supporting-heading">
+					<div class="home-section-inner">
+						<h2 id="supporting-heading">More that helps you practice</h2>
+						<ul class="home-support-list">
+							<li>
+								<img src="/assets/home/feature-diagram.svg" alt="" width="400" height="250" />
+								<h3>Diagram creation</h3>
+								<p>Ask about a process or system and EngE-AI sketches it as a flowchart.</p>
+							</li>
+							<li>
+								<h3>Multiple modes</h3>
+								<p>Manually adjusts the tutor's tone based on students' understanding.</p>
+							</li>
+							<li>
+								<h3>Writing feedback for instructors <span class="home-badge">Coming soon</span></h3>
+								<p>
+									Instructors will be able to use AI to help review and give feedback on student
+									essays and written work. In development now.
+								</p>
+							</li>
+						</ul>
+					</div>
+				</section>
+
+				<section class="home-section" id="security" aria-labelledby="security-heading">
+					<div class="home-section-inner home-section-inner--narrow">
+						<h2 id="security-heading">Hosted on UBC's own infrastructure — not sent out to a third party.</h2>
+						<p>
+							Course material, chat history, and student data live in instances that UBC runs and
+							controls. EngE-AI was built to keep UBC community data inside the university's own walls.
+						</p>
+					</div>
+				</section>
+
+				<section class="home-section home-section--grant" id="funding" aria-labelledby="funding-heading">
+					<div class="home-section-inner home-section-inner--narrow">
+						<h2 id="funding-heading">Built with UBC students' own investment in teaching.</h2>
+						<p>
+							EngE-AI is funded by the Teaching and Learning Enhancement Fund (TLEF), supported by the
+							students of the University of British Columbia, in 2025.
+						</p>
+					</div>
+				</section>
+
+				<section class="home-section" id="investigators" aria-labelledby="investigators-heading">
+					<div class="home-section-inner">
+						<h2 id="investigators-heading">From the investigators</h2>
+						<div class="home-quotes">
+							<blockquote class="home-quote">
+								<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor.</p>
+								<footer>
+									<cite>Alireza Bagherzadeh</cite>
+									<span>Principal Investigator; Associate Professor of Teaching, CHBE</span>
+								</footer>
+							</blockquote>
+							<blockquote class="home-quote">
+								<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut enim ad minim veniam.</p>
+								<footer>
+									<cite>Amir M. Dehkhoda</cite>
+									<span>Co-Investigator; Assistant Professor of Teaching, Materials Engineering</span>
+								</footer>
+							</blockquote>
+						</div>
+					</div>
+				</section>
+
+				<section class="home-section home-section--muted" id="feedback" aria-labelledby="feedback-heading">
+					<div class="home-section-inner">
+						<h2 id="feedback-heading">What students are saying</h2>
+						<ul class="home-testimonials">
+							<li>
+								<blockquote>
+									<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+									<footer>— <cite>3rd-year, Chemical Engineering</cite></footer>
+								</blockquote>
+							</li>
+							<li>
+								<blockquote>
+									<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+									<footer>— <cite>4th-year, Materials Engineering</cite></footer>
+								</blockquote>
+							</li>
+							<li>
+								<blockquote>
+									<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+									<footer>— <cite>2nd-year, Engineering</cite></footer>
+								</blockquote>
+							</li>
+						</ul>
+					</div>
+				</section>
+
+				<footer class="home-footer" id="contact">
+					<div class="home-footer-inner">
+						<div class="home-footer-brand">
+							<a class="home-brand" href="/">EngE-AI</a>
+							<p>AI-powered Engineering Education Assistant</p>
+						</div>
+						<nav class="home-footer-nav" aria-label="Footer">
+							<a href="#features">About</a>
+							<a href="#funding">Funding</a>
+							<a href="#contact">Contact</a>
+							<a href="/team">Team</a>
+							<a href="https://apsc.ubc.ca/" target="_blank" rel="noopener noreferrer"
+								>UBC Faculty of Applied Science</a
+							>
+							<a href="https://lthub.ubc.ca/" target="_blank" rel="noopener noreferrer">UBC LT Hub</a>
+						</nav>
+						<p class="home-footer-funding">
+							Funded by the UBC Teaching and Learning Enhancement Fund (TLEF), 2025.
+						</p>
+						<p class="home-footer-copy">© 2026 EngE-AI, University of British Columbia.</p>
+					</div>
+				</footer>
 			</div>
-		</div>
-        
-        <script type="module" src="/dist/public/scripts/auth/auth-manager.js"></script>
-		<script type="module" src="/dist/public/scripts/ui/version-display.js"></script>
+		</main>
+
+		<script type="module" src="/dist/public/scripts/auth/auth-manager.js"></script>
+		<script type="module" src="/dist/public/scripts/home/home-page.js"></script>
 	</body>
 </html>

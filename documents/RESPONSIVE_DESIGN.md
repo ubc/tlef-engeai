@@ -188,6 +188,26 @@ The student mode uses a consistent mobile header pattern across welcome screen, 
 
 ---
 
+## Marketing homepage (`/` and `/team`)
+
+Public marketing shell (not the course app). Styles live in `public/styles/home.css`.
+
+| Concern | Behavior |
+|---------|----------|
+| Breakpoints | Mobile-first; **centered** GitHub-style hero (copy above video) at all widths. Support list and testimonials multi-column at **768px**. Team roster grid at **480px**. |
+| Theme | Dark by default (`data-home-theme`); topbar sun/moon toggle persists in `localStorage` (`engeai-home-theme`). Light tokens reuse the prior green wash palette. |
+| Topbar | Sticky; brand + theme toggle + Login always visible. **Team** link appears after Learn more (or when session already revealed). Glassy background/border after scroll. |
+| Hero video | Centered full-width (max ~960px); 16:9 frame; green/blue **top-edge glow**. Scroll-buffer zoom (~160vh track) is disabled under `prefers-reduced-motion`. |
+| Touch targets | Login / Learn more / Play / theme toggle use ≥ ~44px targets. |
+
+### Testing additions
+
+- [ ] 375px: centered hero; video readable; CTAs wrap cleanly
+- [ ] 1280px: centered hero; scrub zoom works; theme toggle flips dark/light
+- [ ] `/team` readable at phone and desktop; theme preference shared with `/`
+
+---
+
 ## Testing Checklist
 
 - [ ] 320px (small phone)

@@ -102,6 +102,11 @@ app.get('/', (req: any, res: any) => {
     return res.sendFile(path.join(publicPath, 'index.html'));
 });
 
+// Public marketing team page (no auth)
+app.get('/team', (_req: any, res: any) => {
+    res.sendFile(path.join(publicPath, 'pages/team.html'));
+});
+
 // Serve static files from the 'public' directory (but not for root path)
 app.use(express.static(publicPath));
 

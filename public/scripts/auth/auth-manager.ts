@@ -31,6 +31,7 @@ class AuthManager {
     private authLoading: HTMLElement | null = null;
     private loginBtn: HTMLElement | null = null;
     private loginCwlBtn: HTMLElement | null = null;
+    private loginCwlButtons: HTMLElement[] = [];
     private logoutBtn: HTMLElement | null = null;
     private userDetails: HTMLElement | null = null;
     private samlAvailable: boolean = true; // Default to true
@@ -51,6 +52,9 @@ class AuthManager {
         this.authLoading = document.getElementById('auth-loading');
         this.loginBtn = document.getElementById('login-btn');
         this.loginCwlBtn = document.getElementById('login-cwl-btn');
+        // Marketing home can expose multiple CWL CTAs (topbar + hero)
+        const cwlNodes = document.querySelectorAll<HTMLElement>('.js-login-cwl, #login-cwl-btn');
+        this.loginCwlButtons = Array.from(cwlNodes);
         this.logoutBtn = document.getElementById('logout-btn');
         this.userDetails = document.getElementById('user-details');
     }
@@ -96,8 +100,11 @@ class AuthManager {
             });
         }
 
-        if (this.loginCwlBtn) {
-            this.loginCwlBtn.addEventListener('click', () => {
+        const cwlTargets = this.loginCwlButtons.length > 0
+            ? this.loginCwlButtons
+            : (this.loginCwlBtn ? [this.loginCwlBtn] : []);
+        for (const btn of cwlTargets) {
+            btn.addEventListener('click', () => {
                 authService.loginCWL();
             });
         }
