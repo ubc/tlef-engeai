@@ -201,6 +201,13 @@ export interface InstructorInfo {
 }
 
 // @rdschrs: Implemented backward-compatible Writing Feedback course capability types.
+/** One optional course capability with first-enable provenance. */
+export interface CourseFeatureCapability {
+    enabled: boolean; // explicit availability switch checked by page and API gates
+    enabledAt?: Date; // first-enable timestamp retained across later toggles
+    enabledBy?: string;
+}
+
 /**
  * Optional capability metadata persisted on an active course.
  *
@@ -208,11 +215,9 @@ export interface InstructorInfo {
  * records cannot expose newly introduced functionality without staff opt-in.
  */
 export interface CourseFeatures {
-    writingFeedback?: {
-        enabled: boolean; // explicit availability switch checked by page and API gates
-        enabledAt?: Date; // first-enable timestamp retained across later toggles
-        enabledBy?: string; // internal enabling staff user id for provenance, never a PUID
-    }; // Writing Feedback workspace capability; absence means disabled
+    writingFeedback?: CourseFeatureCapability; // Writing Feedback workspace; absence means disabled
+    memoryAgent?: CourseFeatureCapability; // Struggle-topic memory agent; absence means disabled
+    guidedPathway?: CourseFeatureCapability; // Guided Pathway Library + chat intercept; absence means disabled
 }
 
 export interface activeCourse {

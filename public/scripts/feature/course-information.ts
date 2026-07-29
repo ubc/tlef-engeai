@@ -122,55 +122,6 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
 
         updateContentCountDescription(currentClass.frameType);
 
-        // @rdschrs: Implemented authorized course-level Writing Feedback capability controls.
-        const featureInput = document.getElementById('courseInfoWritingFeedback') as HTMLInputElement;
-        const featureSave = document.getElementById('saveWritingFeedbackFeature') as HTMLButtonElement;
-        const featureStatus = document.getElementById('writingFeedbackFeatureStatus');
-        if (featureInput) {
-            featureInput.checked = currentClass.features?.writingFeedback?.enabled === true;
-        }
-
-        const currentUserResponse = await fetch('/auth/current-user', { credentials: 'same-origin' });
-        const currentUserData = currentUserResponse.ok ? await currentUserResponse.json() : {};
-        const currentUser = currentUserData.globalUser;
-        const instructorIds = (currentClass.instructors ?? []).map((item) =>
-            typeof item === 'string' ? item : item.userId
-        );
-        const canManageFeature = Boolean(
-            currentUser?.isAdmin === true || instructorIds.includes(currentUser?.userId)
-        );
-        if (featureInput) featureInput.disabled = !canManageFeature;
-        if (featureSave) featureSave.disabled = !canManageFeature;
-        if (!canManageFeature && featureStatus) {
-            featureStatus.textContent = 'Only an instructor or platform admin can change this setting.';
-        }
-
-        featureSave?.addEventListener('click', async () => {
-            featureSave.disabled = true;
-            if (featureStatus) featureStatus.textContent = 'Saving…';
-            try {
-                const response = await fetch(`/api/courses/${encodeURIComponent(currentClass.id)}/features/writing-feedback`, {
-                    method: 'PATCH',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ enabled: featureInput.checked })
-                });
-                const result = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(result.error || 'Failed to save feature setting');
-                currentClass.features = result.data?.features ?? currentClass.features;
-                if (featureStatus) featureStatus.textContent = result.message || 'Feature setting saved.';
-                window.dispatchEvent(new CustomEvent('course-feature-changed', {
-                    detail: { feature: 'writingFeedback', enabled: featureInput.checked }
-                }));
-            } catch (error) {
-                featureInput.checked = currentClass.features?.writingFeedback?.enabled === true;
-                await showErrorModal('Save Failed', error instanceof Error ? error.message : 'Failed to save feature setting.');
-                if (featureStatus) featureStatus.textContent = 'The feature setting was not changed.';
-            } finally {
-                featureSave.disabled = !canManageFeature;
-            }
-        });
-
         // Display course code
         const courseCodeDisplay = document.getElementById('courseCodeDisplay');
         if (courseCodeDisplay) {
@@ -179,7 +130,6 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
             } else {
                 courseCodeDisplay.textContent = 'Not Set';
                 courseCodeDisplay.style.color = '#999';
-                // console.warn('[COURSE-INFO] ⚠️ Course code not found for course:', currentClass.courseName); // 🟡 HIGH: Course name exposure
             }
         }
 
@@ -189,7 +139,6 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
             copyCodeBtn.addEventListener('click', async () => {
                 try {
                     await navigator.clipboard.writeText(currentClass.courseCode!);
-                    // console.log('[COURSE-INFO] ✅ Course code copied to clipboard');
 
                     // Show visual feedback
                     const originalHTML = copyCodeBtn.innerHTML;
@@ -210,7 +159,6 @@ export const initializeCourseInformation = async (currentClass: activeCourse): P
                         }
                     }, 2000);
                 } catch (error) {
-                    // console.error('[COURSE-INFO] ❌ Failed to copy course code:', error);
                     await showErrorModal('Copy Failed', 'Failed to copy course code to clipboard. Please try again.');
                 }
             });

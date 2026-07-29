@@ -24,6 +24,7 @@ Operational startup migrations (OB-001) are documented here but are **not** tied
 | **SP-003** | Retired conversation-mode state cleanup | Lazy (request) | `stripRetiredModeStates` in `system-prompt-config-mongo.ts` | `systemPromptConfig.modes['scenario-generation']` (and future `RETIRED_CONVERSATION_MODE_IDS`) → removed | Keep while any retired mode key may exist on old course documents |
 | **CM-001** | Chat `conversationMode` backfill | Lazy (restore) | `ChatApp.ensureLegacyChatModePersisted` in `src/chat/chat-app.ts` | missing/invalid → `socratic` or `undeclared` | Optional later; audit before removal |
 | **OB-001** | Onboarding flags backfill | Startup | `migrateOnboardingFlags` in `src/helpers/migrate-onboarding-flags.ts` | GlobalUser flags from course/CourseUser data | Operational — keep unless product changes |
+| **CF-001** | Course feature defaults (memory/pathway) | Startup | `migrateCourseFeatureDefaults` in `src/helpers/migrate-course-feature-defaults.ts` | missing `features.memoryAgent` / `features.guidedPathway` → `{ enabled: true }` (legacy always-on) | Operational — keep while pre-toggle courses remain |
 | **AP-001** | Course `academicPeriodId` backfill | Lazy (request) | `lazyMigrateCourseAcademicPeriod` in `src/db/mongo/academic-period-mongo.ts` via `getActiveCourse` / `getAllActiveCourses` | missing `academicPeriodId` → default `2025W2` period; `$addToSet` on period `courseIds` | **Remove by 2026-06-30** — see [AP-001](#ap-001-academic-period-lazy-link) |
 | **IPA-001** | Instructor allow-list period scope | Startup (once) | `migrateInstructorAllowances` in `src/helpers/migrate-instructor-allowances.ts` | `instructor-allowed-courses` → `instructor-period-allowances` for `2025W2` | Operational after first successful run |
 | **ADM-001** | Platform admin `isAdmin` backfill | Startup | `migratePlatformAdmins` in `src/helpers/migrate-platform-admins.ts` | GlobalUsers matching `CHARISMA_RUSDIYANTO_PUID` / `RICHARD_TAPE_PUID` → `isAdmin: true` | Operational — keep unless product changes |
@@ -239,6 +240,28 @@ See `documentation/ENDPOINT_ARCHITECTURE.md` (lazy restore migration note).
 **Status:** Active (startup)
 
 Sets `instructorOnboardingCompleted` and `studentOnboardingCompleted` on `active-users` from existing course and roster data. Idempotent; runs every server restart.
+
+See `migrateOnboardingFlags` in `src/helpers/migrate-onboarding-flags.ts`.
+
+---
+
+## CF-001: Course feature defaults (Memory Agent / Guided Pathway)
+
+**Status:** Active (startup)
+
+**Collection:** `active-course-list`
+
+**Why:** Memory Agent and Guided Pathway were always-on before course-level toggles. Absent keys would fail closed (`enabled !== true`) and silently disable both for every existing course.
+
+**Behavior:** For each active course, if `features.memoryAgent` or `features.guidedPathway` is **missing**, set `{ enabled: true, enabledAt, enabledBy: 'platform-migration' }`. Never overrides an explicit `enabled: false`.
+
+**Source:** `migrateCourseFeatureDefaults` in `src/helpers/migrate-course-feature-defaults.ts` (called from `src/server.ts` on listen).
+
+**Idempotency:** Safe to re-run; courses with either key already present are unchanged.
+
+**Rollback:** Manually `$unset` the backfilled keys or set `enabled: false` per course.
+
+**New courses:** Create and course-setup default both capabilities to disabled until staff opt in via Settings.
 
 ---
 

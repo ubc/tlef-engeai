@@ -474,6 +474,11 @@ body {
 }
 
 
+.sidebar-menu-list li[hidden],
+.sidebar-menu-list .menu-list-item[hidden] {
+    display: none !important;
+}
+
 .sidebar-menu-list .menu-list-item {
     height: 45px;
     width: 100%;

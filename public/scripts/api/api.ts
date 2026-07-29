@@ -66,6 +66,8 @@ export async function loadComponentHTML(
                     | 'flag-instructor'
                     | 'monitor-instructor'
                     | 'documents-instructor'
+                    | 'dashboard-instructor'
+                    | 'settings-instructor'
                     | 'writing-feedback'
                     | 'course-setup'
                     | 'document-setup'
@@ -103,6 +105,12 @@ export async function loadComponentHTML(
             break;
         case 'documents-instructor':
             response = await fetch(`/components/documents/${componentName}.html`);
+            break;
+        case 'dashboard-instructor':
+            response = await fetch(`/components/dashboard/${componentName}.html`);
+            break;
+        case 'settings-instructor':
+            response = await fetch(`/components/settings/${componentName}.html`);
             break;
         case 'writing-feedback':
             response = await fetch(`/components/writing-feedback/${componentName}.html`);

@@ -5,15 +5,21 @@
  *
  * @author: EngE-AI Team
  * @date: 2026-07-24
- * @version: 1.0.0
+ * @version: 1.1.0
  * @description: Instructor CRUD for course pathways.
  */
 
 import { Router, Request, Response } from 'express';
 import { asyncHandlerWithAuth } from '../../middleware/async-handler';
-import { requireInstructorForCourseAPI } from '../../middleware/require-course-role';
+import { requireCourseFeatureAPI, requireInstructorForCourseAPI } from '../../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../../db/enge-ai-mongodb';
 import { normalizeRouteParams } from '../../helpers/route-params';
+
+/** Staff pathway APIs require instructor role and Guided Pathway capability. */
+const pathwayGates = [
+    requireInstructorForCourseAPI(['params']),
+    requireCourseFeatureAPI('guidedPathway', ['params'])
+];
 
 /**
  * Registers Guided Pathway Library routes on the courses router.
@@ -24,7 +30,7 @@ export function mountPathwaysRoutes(router: Router): void {
      */
     router.get(
         '/:courseId/pathways',
-        requireInstructorForCourseAPI(['params']),
+        ...pathwayGates,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { courseId } = normalizeRouteParams(req.params);
             const instance = await EngEAI_MongoDB.getInstance();
@@ -39,7 +45,7 @@ export function mountPathwaysRoutes(router: Router): void {
      */
     router.post(
         '/:courseId/pathways',
-        requireInstructorForCourseAPI(['params']),
+        ...pathwayGates,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { courseId } = normalizeRouteParams(req.params);
             const instance = await EngEAI_MongoDB.getInstance();
@@ -62,7 +68,7 @@ export function mountPathwaysRoutes(router: Router): void {
      */
     router.post(
         '/:courseId/pathways/reset',
-        requireInstructorForCourseAPI(['params']),
+        ...pathwayGates,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { courseId } = normalizeRouteParams(req.params);
             const instance = await EngEAI_MongoDB.getInstance();
@@ -78,7 +84,7 @@ export function mountPathwaysRoutes(router: Router): void {
      */
     router.put(
         '/:courseId/pathways/reorder',
-        requireInstructorForCourseAPI(['params']),
+        ...pathwayGates,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { courseId } = normalizeRouteParams(req.params);
             const orderedIds = req.body?.orderedIds;
@@ -101,7 +107,7 @@ export function mountPathwaysRoutes(router: Router): void {
      */
     router.put(
         '/:courseId/pathways/:pathwayId',
-        requireInstructorForCourseAPI(['params']),
+        ...pathwayGates,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { courseId, pathwayId } = normalizeRouteParams(req.params) as {
                 courseId: string;
@@ -133,7 +139,7 @@ export function mountPathwaysRoutes(router: Router): void {
      */
     router.delete(
         '/:courseId/pathways/:pathwayId',
-        requireInstructorForCourseAPI(['params']),
+        ...pathwayGates,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { courseId, pathwayId } = normalizeRouteParams(req.params) as {
                 courseId: string;

@@ -47,16 +47,19 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 
 | Path | Description |
 |------|-------------|
-| `GET /course/:courseId/instructor` | Redirects to documents |
+| `GET /course/:courseId/instructor` | Redirects to dashboard |
+| `GET /course/:courseId/instructor/dashboard` | Instructor home (feature cards) |
 | `GET /course/:courseId/instructor/documents` | Document management |
-| `GET /course/:courseId/instructor/writing-feedback` | Capability-gated Writing Feedback; redirects to Documents when disabled |
+| `GET /course/:courseId/instructor/settings` | Course capability toggles (Writing Feedback, Memory Agent, Guided Pathway) |
+| `GET /course/:courseId/instructor/writing-feedback` | Capability-gated Writing Feedback; redirects to Dashboard when disabled (`?notice=feature-disabled&feature=writingFeedback`) |
 | `GET /course/:courseId/instructor/flags` | Flag reports |
 | `GET /course/:courseId/instructor/monitor` | Student chat monitoring |
 | `GET /course/:courseId/instructor/chat` | Instructor chat |
 | `GET /course/:courseId/instructor/assistant-prompts` | Assistant prompts |
 | `GET /course/:courseId/instructor/system-prompts` | System prompts |
 | `GET /course/:courseId/instructor/scenario-questions` | Scenario Questions (Practice Scenarios authoring). Query: `?browse=questions`, `?topicOrWeekId=`, `?generate=1`, `?questionId=` |
-| `GET /course/:courseId/instructor/course-information` | Course info |
+| `GET /course/:courseId/instructor/pathway-library` | Capability-gated Guided Pathway Library; redirects to Dashboard when disabled |
+| `GET /course/:courseId/instructor/course-information` | Course info (metadata only) |
 | `GET /course/:courseId/instructor/about` | About page |
 | `GET /course/:courseId/instructor/onboarding/course-setup` | Onboarding |
 | `GET /course/:courseId/instructor/onboarding/document-setup` | Onboarding |
@@ -80,10 +83,25 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 
 ## 4. API Routes by Domain
 
-<!-- @rdschrs: Implemented the course-scoped Writing Feedback API boundary. -->
-### 4.0 Writing Feedback (`/api/courses/:courseId/writing-feedback`)
+### 4.0 Course capabilities (`/api/courses/:courseId/features/*`)
 
-Every endpoint requires course-staff RBAC followed by `requireCourseFeatureAPI('writingFeedback')`. Feature configuration is separate: `PATCH /api/courses/:courseId/features/writing-feedback` requires instructor/admin roster-management permission. Instructors and TAs can operate intake/review endpoints after enablement; rubric mutation and future Canvas connection configuration add instructor/admin roster-management permission.
+Optional course capabilities live on `activeCourse.features`. Missing entries are disabled. Only roster managers (faculty instructors / platform admins) may toggle them. Disabling hides UI and blocks operational APIs; domain records are preserved.
+
+| Method | Path | Description |
+|---|---|---|
+| PATCH | `/api/courses/:courseId/features/writing-feedback` | Body `{ enabled: boolean }` — Writing Feedback workspace |
+| PATCH | `/api/courses/:courseId/features/memory-agent` | Body `{ enabled: boolean }` — Memory Agent / struggle topics |
+| PATCH | `/api/courses/:courseId/features/guided-pathway` | Body `{ enabled: boolean }` — Pathway Library + chat intercept |
+
+**Success (200):** `{ success: true, data: activeCourse, message }`  
+**Errors:** `400` invalid body, `403` non–roster-manager, `404` course missing
+
+Struggle-topic document APIs require `requireCourseFeatureAPI('memoryAgent')`. Pathway Library APIs require `requireCourseFeatureAPI('guidedPathway')`.
+
+<!-- @rdschrs: Implemented the course-scoped Writing Feedback API boundary. -->
+### 4.0.1 Writing Feedback (`/api/courses/:courseId/writing-feedback`)
+
+Every endpoint requires course-staff RBAC followed by `requireCourseFeatureAPI('writingFeedback')`. Feature configuration is separate: `PATCH /api/courses/:courseId/features/writing-feedback` (see §4.0). Instructors and TAs can operate intake/review endpoints after enablement; rubric mutation and future Canvas connection configuration add instructor/admin roster-management permission.
 
 Canvas endpoints report their integration mode honestly. `demo` with `integration: mock_canvas` lists/imports synthetic local data without contacting Canvas; `not_configured` with `integration: none` explains the institutional OAuth gate. No endpoint in the current local slice establishes live OAuth or writes a rubric/grade/comment to Canvas without a separate explicit release action.
 

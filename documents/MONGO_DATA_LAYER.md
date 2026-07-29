@@ -40,7 +40,10 @@
   - **Runtime assembly** — chat uses JSON defaults when `usePlatformDefault: true`; learning objectives are injected into the `course main intro` module at compose time via `{{course_learning_objectives}}` (not stored in instructor config).
 - **Topic/week embedded content** (`topic-week-mongo.ts` on `active-course-list`):
   - **`learningObjectives[]`** per `items[]` — instructor CRUD; flattened via `getAllLearningObjectives` for system-prompt injection.
-  - **`instructorStruggleTopics[]`** per `items[]` — instructor CRUD (`/struggle-topics` API); flattened via `getAllInstructorStruggleTopics` for memory-agent catalog only (not main chat system prompt).
+  - **`instructorStruggleTopics[]`** per `items[]` — instructor CRUD (`/struggle-topics` API); gated by `features.memoryAgent`; flattened via `getAllInstructorStruggleTopics` for memory-agent catalog only (not main chat system prompt).
+- **Course capabilities** (`activeCourse.features` on `active-course-list`):
+  - Keys: `writingFeedback`, `memoryAgent`, `guidedPathway` — each `{ enabled, enabledAt?, enabledBy? }`; missing = disabled.
+  - Startup backfill **CF-001** enables `memoryAgent` / `guidedPathway` where absent (legacy always-on). New courses stay off until Settings or course-setup.
 - **Memory agent** (`memory-agent-mongo.ts` on `{courseName}_memory-agent`):
   - **`struggleTopics[]`** — canonical flat distinct labels per user (written by memory-agent analyze).
   - **Legacy `struggleTopicsByChapter[]`** — superseded; lazily removed on read/write (`$unset`) with labels merged into `struggleTopics[]`.

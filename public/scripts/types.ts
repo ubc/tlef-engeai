@@ -128,13 +128,18 @@ export interface InstructorInfo {
     name: string;
 }
 
+/** One optional course capability with first-enable provenance. */
+export interface CourseFeatureCapability {
+    enabled: boolean;
+    enabledAt?: Date;
+    enabledBy?: string;
+}
+
 // @rdschrs: Added the opt-in Writing Feedback capability contract to course state.
 export interface CourseFeatures {
-    writingFeedback?: {
-        enabled: boolean;
-        enabledAt?: Date;
-        enabledBy?: string;
-    };
+    writingFeedback?: CourseFeatureCapability;
+    memoryAgent?: CourseFeatureCapability;
+    guidedPathway?: CourseFeatureCapability;
 }
 
 /**

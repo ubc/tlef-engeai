@@ -202,7 +202,7 @@
                         <p class="form-help" id="reviewCountDescription">How many weeks are in your course?</p>
                     </div>
 
-                    <!-- @rdschrs: Added Writing Feedback as an explicit course-setup opt-in. -->
+                    <!-- Course capability opt-ins (also editable later in Settings) -->
                     <fieldset class="form-group">
                         <legend>Course Features</legend>
                         <label class="radio-option" for="reviewWritingFeedbackEnabled">
@@ -210,6 +210,20 @@
                             <span class="radio-content">
                                 <strong>Enable writing feedback and assessment tools for this course.</strong>
                                 <span>Instructors and TAs will receive a review workspace for evidence-based feedback and staff-approved release.</span>
+                            </span>
+                        </label>
+                        <label class="radio-option" for="reviewMemoryAgentEnabled">
+                            <input type="checkbox" id="reviewMemoryAgentEnabled">
+                            <span class="radio-content">
+                                <strong>Enable Memory Agent for this course.</strong>
+                                <span>Detects student struggle topics in Socratic chat and uses instructor struggle catalogs.</span>
+                            </span>
+                        </label>
+                        <label class="radio-option" for="reviewGuidedPathwayEnabled">
+                            <input type="checkbox" id="reviewGuidedPathwayEnabled">
+                            <span class="radio-content">
+                                <strong>Enable Guided Pathway for this course.</strong>
+                                <span>Unlocks the Pathway Library and guided pathway responses in chat.</span>
                             </span>
                         </label>
                     </fieldset>

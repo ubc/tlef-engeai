@@ -6,15 +6,21 @@
  *
  * @author: @rdschrs
  * @date: 2026-07-12
- * @version: 1.0.0
- * @description: Regression coverage for Writing Feedback course capability state.
+ * @version: 1.1.0
+ * @description: Regression coverage for course capability state.
  */
 
-import { isCourseFeatureEnabled, updateWritingFeedbackCapability } from '../course-features';
+import {
+    isCourseFeatureEnabled,
+    updateCourseCapability,
+    updateWritingFeedbackCapability
+} from '../course-features';
 
 describe('writing feedback course capability', () => {
     it('treats legacy courses without feature configuration as disabled', () => {
         expect(isCourseFeatureEnabled({ features: undefined }, 'writingFeedback')).toBe(false);
+        expect(isCourseFeatureEnabled({ features: undefined }, 'memoryAgent')).toBe(false);
+        expect(isCourseFeatureEnabled({ features: undefined }, 'guidedPathway')).toBe(false);
     });
 
     it('enables writing feedback with an auditable actor and timestamp', () => {
@@ -32,5 +38,18 @@ describe('writing feedback course capability', () => {
             'faculty-1'
         );
         expect(result.writingFeedback).toEqual({ enabled: false, enabledAt, enabledBy: 'faculty-1' });
+    });
+
+    it('updates memoryAgent without clearing writingFeedback', () => {
+        const now = new Date('2026-07-29T00:00:00.000Z');
+        const result = updateCourseCapability(
+            { writingFeedback: { enabled: true, enabledAt: now, enabledBy: 'staff-1' } },
+            'memoryAgent',
+            true,
+            'staff-2',
+            now
+        );
+        expect(result.writingFeedback?.enabled).toBe(true);
+        expect(result.memoryAgent).toEqual({ enabled: true, enabledAt: now, enabledBy: 'staff-2' });
     });
 });

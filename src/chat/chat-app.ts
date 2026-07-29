@@ -23,6 +23,7 @@ import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import { isMockResponse, generateMockStreamingResponse } from '../helpers/mock-response';
 import { evaluatePathways } from '../guided-pathways/pathway-orchestrator';
+import { isCourseFeatureEnabled } from '../helpers/course-features';
 import {
     buildDebugModeSystemPrompt,
     ensureDebugModeTemplate,
@@ -392,7 +393,9 @@ export class ChatApp {
         // Get the conversation mode
         const conversationMode = this.getGuardrailConversationMode(chatId);
 
-        if (conversationMode) {
+        // Skip pathway evaluation when the course capability is off.
+        const pathwayCourse = await this.getCourseFeatures(courseName);
+        if (conversationMode && isCourseFeatureEnabled(pathwayCourse, 'guidedPathway')) {
 
             const pathwayResult = await evaluatePathways({
                 message,
@@ -476,8 +479,11 @@ export class ChatApp {
             additionalContext = RAG_NO_DOCS_MESSAGE;
         }
 
-        // Phase note: struggle topics apply to Socratic chats only (see isStruggleTopicsEnabledForChat).
-        if (this.isStruggleTopicsEnabledForChat(chatId)) {
+        // Phase note: struggle topics apply to Socratic chats only when Memory Agent is enabled.
+        if (
+            this.isStruggleTopicsEnabledForChat(chatId) &&
+            isCourseFeatureEnabled(await this.getCourseFeatures(courseName), 'memoryAgent')
+        ) {
             const struggleTopics = await memoryAgent.getStruggleWords(userId, courseName);
 
             if (struggleTopics.length > 0) {
@@ -635,7 +641,11 @@ export class ChatApp {
         
         // Memory agent activates after 4 messages
 
-        if (this.isStruggleTopicsEnabledForChat(chatId)) {
+        // Memory agent activates after threshold when Socratic + course capability on
+        if (
+            this.isStruggleTopicsEnabledForChat(chatId) &&
+            isCourseFeatureEnabled(await this.getCourseFeatures(courseName), 'memoryAgent')
+        ) {
             try {
                 if (messageCount > MEMORY_AGENT_MIN_MESSAGES_THRESHOLD) {
                     const lastMessages = conversationHistory.slice(-3);
@@ -1300,9 +1310,28 @@ export class ChatApp {
      *
      * Current product phase: struggle topics are a Socratic-mode overlay only. Explanatory and
      * future modes do not receive struggle instructions, memory-agent analysis, or unstruggle tags.
+     * Course-level Memory Agent capability is checked separately at call sites.
      */
     private isStruggleTopicsEnabledForChat(chatId: string): boolean {
         return this.chatConversationModes.get(chatId) === 'socratic';
+    }
+
+    /**
+     * getCourseFeatures - load active course by name for capability checks.
+     *
+     * @param courseName - Human-readable course name used in chat pipelines
+     * @returns Feature-bearing course projection or null when missing
+     */
+    private async getCourseFeatures(
+        courseName: string
+    ): Promise<Pick<activeCourse, 'features'> | null> {
+        try {
+            const instance = await EngEAI_MongoDB.getInstance();
+            const course = await instance.getCourseByName(courseName);
+            return (course as activeCourse | null) ?? null;
+        } catch {
+            return null;
+        }
     }
 
     /**

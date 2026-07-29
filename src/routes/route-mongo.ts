@@ -33,7 +33,7 @@
 import express, { Request, Response } from 'express';
 import archiver from 'archiver';
 import { asyncHandler, asyncHandlerWithAuth } from '../middleware/async-handler';
-import { requireAdminForCourseAPI, requireInstructorForCourseAPI, requireInstructorGlobal, requirePostPeriodAnalyticsAPI, requireRosterManageAPI } from '../middleware/require-course-role';
+import { requireAdminForCourseAPI, requireCourseFeatureAPI, requireInstructorForCourseAPI, requireInstructorGlobal, requirePostPeriodAnalyticsAPI, requireRosterManageAPI } from '../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import {
     InvalidInstructorStruggleTopicReorderError,
@@ -64,7 +64,12 @@ import {
     shouldAutoDisplayCourseSummaryModal
 } from '../helpers/academic-period-access';
 // @rdschrs: Implemented protected Writing Feedback capability configuration for courses.
-import { updateWritingFeedbackCapability } from '../helpers/course-features';
+import {
+    CourseFeatureId,
+    COURSE_FEATURE_LABELS,
+    updateCourseCapability,
+    updateWritingFeedbackCapability
+} from '../helpers/course-features';
 import { CourseRosterError } from '../db/mongo/course-roster-mongo';
 import { scheduledPublishAudit } from '../jobs/scheduled-publish-audit';
 import {
@@ -385,6 +390,18 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
                 writingFeedback: {
                     enabled: req.body.features?.writingFeedback?.enabled === true,
                     ...(req.body.features?.writingFeedback?.enabled === true
+                        ? { enabledAt: new Date(), enabledBy: creatorUserId }
+                        : {})
+                },
+                memoryAgent: {
+                    enabled: req.body.features?.memoryAgent?.enabled === true,
+                    ...(req.body.features?.memoryAgent?.enabled === true
+                        ? { enabledAt: new Date(), enabledBy: creatorUserId }
+                        : {})
+                },
+                guidedPathway: {
+                    enabled: req.body.features?.guidedPathway?.enabled === true,
+                    ...(req.body.features?.guidedPathway?.enabled === true
                         ? { enabledAt: new Date(), enabledBy: creatorUserId }
                         : {})
                 }
@@ -842,18 +859,32 @@ router.post(
             updatedInstructors.push({ userId: creatorUserId, name: creatorName });
         }
 
+        // Apply each capability from setup; absent keys stay disabled for new courses.
+        let features = updateWritingFeedbackCapability(
+            courseData.features,
+            req.body?.features?.writingFeedback?.enabled === true,
+            creatorUserId
+        );
+        features = updateCourseCapability(
+            features,
+            'memoryAgent',
+            req.body?.features?.memoryAgent?.enabled === true,
+            creatorUserId
+        );
+        features = updateCourseCapability(
+            features,
+            'guidedPathway',
+            req.body?.features?.guidedPathway?.enabled === true,
+            creatorUserId
+        );
+
         await instance.updateActiveCourse(courseId, {
             courseSetup: true,
             frameType,
             tilesNumber,
             topicOrWeekInstances,
             instructors: updatedInstructors,
-            // Preserve initial enable provenance when setup submits the capability again.
-            features: updateWritingFeedbackCapability(
-                courseData.features,
-                req.body?.features?.writingFeedback?.enabled === true,
-                creatorUserId
-            )
+            features
         } as Partial<activeCourse>);
 
         let updatedCourse = (await instance.getActiveCourse(courseId)) as unknown as activeCourse;
@@ -928,36 +959,84 @@ router.patch(
     '/:courseId/features/writing-feedback',
     requireRosterManageAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
-        if (typeof req.body?.enabled !== 'boolean') {
-            return res.status(400).json({ success: false, error: 'enabled must be a boolean' });
-        }
-
-        const instance = await EngEAI_MongoDB.getInstance();
-        const courseId = routeParam(req.params, 'courseId');
-        const course = await instance.getActiveCourse(courseId) as unknown as activeCourse | null;
-        if (!course) {
-            return res.status(404).json({ success: false, error: 'Course not found' });
-        }
-
-        const globalUser = (req.session as any).globalUser;
-
-        // Change capability metadata only; never cascade into Writing Feedback records.
-        const features = updateWritingFeedbackCapability(
-            course.features,
-            req.body.enabled,
-            globalUser.userId
-        );
-        const updatedCourse = await instance.updateActiveCourse(courseId, { features });
-
-        return res.status(200).json({
-            success: true,
-            data: updatedCourse,
-            message: req.body.enabled
-                ? 'Writing Feedback enabled'
-                : 'Writing Feedback disabled; existing review records were preserved'
-        });
+        return patchCourseFeature(req, res, 'writingFeedback');
     })
 );
+
+/**
+ * PATCH /:courseId/features/memory-agent
+ * Enables or disables the Memory Agent struggle-topic capability for the course.
+ *
+ * @route PATCH /api/courses/:courseId/features/memory-agent
+ */
+router.patch(
+    '/:courseId/features/memory-agent',
+    requireRosterManageAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        return patchCourseFeature(req, res, 'memoryAgent');
+    })
+);
+
+/**
+ * PATCH /:courseId/features/guided-pathway
+ * Enables or disables the Guided Pathway Library and chat intercept for the course.
+ *
+ * @route PATCH /api/courses/:courseId/features/guided-pathway
+ */
+router.patch(
+    '/:courseId/features/guided-pathway',
+    requireRosterManageAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        return patchCourseFeature(req, res, 'guidedPathway');
+    })
+);
+
+/**
+ * patchCourseFeature - shared PATCH body for course capability toggles.
+ *
+ * Validates `enabled`, loads the course, updates one capability key, and returns
+ * the updated course. Records are never deleted when disabling.
+ *
+ * @param req - Authenticated request with courseId param and boolean body.enabled
+ * @param res - Express response
+ * @param feature - Capability identifier to toggle
+ */
+async function patchCourseFeature(
+    req: Request,
+    res: Response,
+    feature: CourseFeatureId
+): Promise<Response> {
+    if (typeof req.body?.enabled !== 'boolean') {
+        return res.status(400).json({ success: false, error: 'enabled must be a boolean' });
+    }
+
+    const instance = await EngEAI_MongoDB.getInstance();
+    const courseId = routeParam(req.params, 'courseId');
+    const course = await instance.getActiveCourse(courseId) as unknown as activeCourse | null;
+    if (!course) {
+        return res.status(404).json({ success: false, error: 'Course not found' });
+    }
+
+    const globalUser = (req.session as any).globalUser;
+    const label = COURSE_FEATURE_LABELS[feature];
+
+    // Change capability metadata only; never cascade into feature domain records.
+    const features = updateCourseCapability(
+        course.features,
+        feature,
+        req.body.enabled,
+        globalUser.userId
+    );
+    const updatedCourse = await instance.updateActiveCourse(courseId, { features });
+
+    return res.status(200).json({
+        success: true,
+        data: updatedCourse,
+        message: req.body.enabled
+            ? `${label} enabled`
+            : `${label} disabled; existing records were preserved`
+    });
+}
 
 /**
  * PUT /:id
@@ -1817,7 +1896,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/o
  * @response 404 - Course, topic/week instance, or content item not found
  * @response 500 - Failed to get struggle topics
  */
-router.get('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics', asyncHandler(async (req: Request, res: Response) => {
+router.get('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics', requireCourseFeatureAPI('memoryAgent', ['params']), asyncHandler(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, topicOrWeekId, itemId } = normalizeRouteParams(req.params);
@@ -1863,7 +1942,7 @@ router.get('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/stru
  * @response 403 - Instructor access required for course
  * @response 500 - Failed to add struggle topic
  */
-router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics', requireInstructorForCourseAPI(['params']), requireCourseFeatureAPI('memoryAgent', ['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, topicOrWeekId, itemId } = normalizeRouteParams(req.params);
@@ -1915,7 +1994,7 @@ router.post('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/str
  * @response 404 - Course, topic/week instance, or content item not found
  * @response 500 - Failed to reorder struggle topics
  */
-router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/reorder', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/reorder', requireInstructorForCourseAPI(['params']), requireCourseFeatureAPI('memoryAgent', ['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, topicOrWeekId, itemId } = normalizeRouteParams(req.params);
@@ -1966,7 +2045,7 @@ router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/stru
  * @response 403 - Instructor access required for course
  * @response 500 - Failed to update struggle topic
  */
-router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId', requireInstructorForCourseAPI(['params']), requireCourseFeatureAPI('memoryAgent', ['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, topicOrWeekId, itemId, struggleTopicId } = normalizeRouteParams(req.params);
@@ -2015,7 +2094,7 @@ router.put('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/stru
  * @response 403 - Instructor access required for course
  * @response 500 - Failed to delete struggle topic
  */
-router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId', requireInstructorForCourseAPI(['params']), requireCourseFeatureAPI('memoryAgent', ['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, topicOrWeekId, itemId, struggleTopicId } = normalizeRouteParams(req.params);

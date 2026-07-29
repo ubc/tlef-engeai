@@ -170,7 +170,9 @@ export const renderOnCourseSetup = async (instructorCourse: activeCourse): Promi
         const onBoardingCourse: activeCourse = {
             ...instructorCourse,
             features: instructorCourse.features ?? {
-                writingFeedback: { enabled: false }
+                writingFeedback: { enabled: false },
+                memoryAgent: { enabled: false },
+                guidedPathway: { enabled: false }
             }
         };
 
@@ -297,6 +299,22 @@ function setupReviewFormListeners(state: OnboardingState, onBoardingCourse: acti
         onBoardingCourse.features = {
             ...onBoardingCourse.features,
             writingFeedback: { enabled: writingFeedbackInput.checked }
+        };
+    });
+
+    const memoryAgentInput = document.getElementById('reviewMemoryAgentEnabled') as HTMLInputElement;
+    memoryAgentInput?.addEventListener('change', () => {
+        onBoardingCourse.features = {
+            ...onBoardingCourse.features,
+            memoryAgent: { enabled: memoryAgentInput.checked }
+        };
+    });
+
+    const guidedPathwayInput = document.getElementById('reviewGuidedPathwayEnabled') as HTMLInputElement;
+    guidedPathwayInput?.addEventListener('change', () => {
+        onBoardingCourse.features = {
+            ...onBoardingCourse.features,
+            guidedPathway: { enabled: guidedPathwayInput.checked }
         };
     });
 }
@@ -546,6 +564,16 @@ function updateReviewContent(onBoardingCourse: activeCourse): void {
         writingFeedbackInput.checked = onBoardingCourse.features?.writingFeedback?.enabled === true;
     }
 
+    const memoryAgentInput = document.getElementById('reviewMemoryAgentEnabled') as HTMLInputElement;
+    if (memoryAgentInput) {
+        memoryAgentInput.checked = onBoardingCourse.features?.memoryAgent?.enabled === true;
+    }
+
+    const guidedPathwayInput = document.getElementById('reviewGuidedPathwayEnabled') as HTMLInputElement;
+    if (guidedPathwayInput) {
+        guidedPathwayInput.checked = onBoardingCourse.features?.guidedPathway?.enabled === true;
+    }
+
     updateReviewContentCountDescription(onBoardingCourse);
 }
 
@@ -589,7 +617,9 @@ async function handleDatabaseSubmission(
                 tilesNumber: onBoardingCourse.tilesNumber,
                 topicOrWeekInstances: [],
                 features: onBoardingCourse.features ?? {
-                    writingFeedback: { enabled: false }
+                    writingFeedback: { enabled: false },
+                memoryAgent: { enabled: false },
+                guidedPathway: { enabled: false }
                 }
             };
             submittedCourse = await postCourseToDatabase(courseData);

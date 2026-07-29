@@ -2156,7 +2156,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
         item.appendChild(header);
         item.appendChild(objectivesContainer);
-        item.appendChild(struggleContainer);
+        // Hide struggle-topic catalog when Memory Agent capability is off.
+        if (currentClass.features?.memoryAgent?.enabled === true) {
+            item.appendChild(struggleContainer);
+        }
         item.appendChild(uploadWrap);
         // Append uploaded files list directly under the upload box
         if (materialsEl) item.appendChild(materialsEl);
