@@ -68,7 +68,7 @@
 					<div class="home-hero-copy">
 						<h1 class="home-headline">
 							<span class="home-headline-line">We help engineering students</span>
-							<span class="home-headline-line">to solve problems</span>
+							<span class="home-headline-line">solve problems</span>
 						</h1>
 						<p class="home-subslogan">
 							Consult and practice with EngE-AI. See how you can improve.
@@ -83,12 +83,16 @@
 					<div class="home-hero-visual">
 						<div class="home-video-stage">
 							<div class="home-video-glow" id="home-video-glow">
-								<div
-									class="home-video-frame home-demo-placeholder"
-									id="home-video-frame"
-									role="img"
-									aria-label="Product demo placeholder"
-								></div>
+								<div class="home-video-frame" id="home-video-frame">
+									<img
+										src="/assets/home/main-image.png"
+										alt="EngE-AI chat interface with Socratic mode and guided learning"
+										width="2998"
+										height="1476"
+										loading="eager"
+										decoding="async"
+									/>
+								</div>
 							</div>
 						</div>
 						<div class="home-learn-more-wrap">
@@ -101,96 +105,237 @@
 			</section>
 
 			<div id="home-more" class="home-more" hidden inert>
-				<section class="home-section" id="features" aria-labelledby="features-heading">
-					<div class="home-section-inner">
-						<h2 id="features-heading">Built for how engineers learn</h2>
-						<p class="home-section-lead">
-							Guided critical thinking, course context, and safeguards — not answer dumps.
-						</p>
+				<section
+					class="home-section home-features-scrub"
+					id="features"
+					aria-labelledby="features-heading"
+				>
+					<div class="home-features-sticky">
+						<div class="home-section-inner home-features-header">
+							<h2 id="features-heading">Built for how engineers learn</h2>
+						</div>
 
-						<article class="home-feature">
-							<div class="home-feature-media">
-								<img src="/assets/home/feature-tone.svg" alt="" width="800" height="500" />
+						<div class="home-section-inner home-features-stage" data-active-step="0">
+							<div class="home-features-nav">
+								<div class="home-features-indicator" aria-hidden="true"></div>
+								<ol class="home-features-steps">
+									<li class="home-features-step is-active" data-step="0" aria-current="step">
+										<button type="button" class="home-features-step-trigger">
+											Guided pathway
+										</button>
+										<p class="home-features-step-body">
+											Every message is screened. If a conversation veers towards crisis, harm, or
+											something outside the course, EngE-AI pauses the lesson and responds with real
+											UBC support resources.
+										</p>
+									</li>
+									<li class="home-features-step" data-step="1">
+										<button type="button" class="home-features-step-trigger">
+											Scenario generation
+										</button>
+										<p class="home-features-step-body" hidden>
+											EngE-AI helps instructors create multi-part scenario-based, exam-like questions
+											for students to work through. Students get instant feedback on their answers.
+										</p>
+									</li>
+									<li class="home-features-step" data-step="2">
+										<button type="button" class="home-features-step-trigger">
+											Writing feedback for instructors
+										</button>
+										<p class="home-features-step-body" hidden>
+											Instructors use AI to help review and give feedback on student essays and written
+											work.
+										</p>
+									</li>
+								</ol>
 							</div>
-							<div class="home-feature-copy">
+
+							<div class="home-features-visual" aria-live="polite">
+								<figure class="home-features-panel is-active" data-step="0" aria-hidden="false">
+									<div class="home-features-panel-frame home-features-panel-frame--pathway">
+										<img
+											src="/assets/home/feature-pathway.png"
+											alt="EngE-AI guided pathway with safety screening"
+											width="754"
+											height="403"
+										/>
+									</div>
+								</figure>
+								<figure class="home-features-panel" data-step="1" aria-hidden="true">
+									<div class="home-features-panel-frame home-features-panel-frame--scenario">
+										<img
+											src="/assets/home/feature-scenario.png"
+											alt="EngE-AI scenario generation for instructors"
+											width="1112"
+											height="601"
+										/>
+									</div>
+								</figure>
+								<figure class="home-features-panel" data-step="2" aria-hidden="true">
+									<div class="home-features-panel-frame home-features-panel-frame--writing">
+										<img
+											src="/assets/home/feature-writing-feedback.png"
+											alt="EngE-AI writing feedback for instructors"
+											width="1550"
+											height="822"
+										/>
+									</div>
+								</figure>
+							</div>
+						</div>
+					</div>
+				</section>
+
+				<section class="home-section home-section--chbe" id="supporting" aria-labelledby="supporting-heading">
+					<div class="home-section-inner">
+						<h2 id="supporting-heading">More that helps you practice</h2>
+						<ul class="home-support-list">
+							<li class="home-support-item">
 								<h3>Auto-adjusting tone</h3>
 								<p>
 									EngE-AI's memory agent tracks the topics you're struggling with across a
 									conversation and adjusts its tone in response.
 								</p>
-							</div>
-						</article>
-
-						<article class="home-feature home-feature--reverse">
-							<div class="home-feature-media">
-								<img src="/assets/home/feature-pathway.svg" alt="" width="800" height="500" />
-							</div>
-							<div class="home-feature-copy">
-								<h3>Guided pathway</h3>
-								<p>
-									Every message is screened. If a conversation veers towards crisis, harm, or
-									something outside the course, EngE-AI pauses the lesson and responds with real
-									UBC support resources.
-								</p>
-							</div>
-						</article>
-
-						<article class="home-feature">
-							<div class="home-feature-media">
-								<img src="/assets/home/feature-scenario.svg" alt="" width="800" height="500" />
-							</div>
-							<div class="home-feature-copy">
-								<h3>Scenario generation</h3>
-								<p>
-									EngE-AI helps instructors create multi-part scenario-based, exam-like questions
-									for students to work through. Students get instant feedback on their answers.
-								</p>
-							</div>
-						</article>
-					</div>
-				</section>
-
-				<section class="home-section home-section--muted" id="supporting" aria-labelledby="supporting-heading">
-					<div class="home-section-inner">
-						<h2 id="supporting-heading">More that helps you practice</h2>
-						<ul class="home-support-list">
-							<li>
-								<img src="/assets/home/feature-diagram.svg" alt="" width="400" height="250" />
+								<div class="home-support-graphic">
+									<img
+										src="/assets/home/feature-tone.png"
+										alt="EngE-AI memory agent adjusting tone based on struggle topics"
+										width="740"
+										height="371"
+									/>
+								</div>
+							</li>
+							<li class="home-support-item">
 								<h3>Diagram creation</h3>
 								<p>Ask about a process or system and EngE-AI sketches it as a flowchart.</p>
+								<div class="home-support-graphic">
+									<img
+										src="/assets/home/feature-diagram.png"
+										alt="EngE-AI flowchart diagram generated from a student question"
+										width="485"
+										height="344"
+									/>
+								</div>
 							</li>
-							<li>
+							<li class="home-support-item">
 								<h3>Multiple modes</h3>
 								<p>Manually adjusts the tutor's tone based on students' understanding.</p>
-							</li>
-							<li>
-								<h3>Writing feedback for instructors <span class="home-badge">Coming soon</span></h3>
-								<p>
-									Instructors will be able to use AI to help review and give feedback on student
-									essays and written work. In development now.
-								</p>
+								<div class="home-support-graphic">
+									<img
+										src="/assets/home/feature-multiple-modes.png"
+										alt="EngE-AI conversation mode picker with Socratic and explanatory modes"
+										width="808"
+										height="598"
+									/>
+								</div>
 							</li>
 						</ul>
 					</div>
 				</section>
 
-				<section class="home-section" id="security" aria-labelledby="security-heading">
-					<div class="home-section-inner home-section-inner--narrow">
-						<h2 id="security-heading">Hosted on UBC's own infrastructure — not sent out to a third party.</h2>
-						<p>
-							Course material, chat history, and student data live in instances that UBC runs and
-							controls. EngE-AI was built to keep UBC community data inside the university's own walls.
-						</p>
+				<section class="home-section home-section--security" id="security" aria-labelledby="security-heading">
+					<div class="home-section-inner home-security-layout">
+						<div class="home-security-icon" aria-hidden="true">
+							<svg
+								class="home-security-icon-svg"
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.5"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								focusable="false"
+							>
+								<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+								<path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+								<path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"></path>
+							</svg>
+						</div>
+						<div class="home-security-copy">
+							<h2 id="security-heading">Hosted on UBC's own infrastructure</h2>
+							<p>
+								Course material, chat history, and student data live in instances that UBC runs and
+								controls. EngE-AI was built to keep UBC community data inside the university's own walls.
+							</p>
+						</div>
 					</div>
 				</section>
 
 				<section class="home-section home-section--grant" id="funding" aria-labelledby="funding-heading">
-					<div class="home-section-inner home-section-inner--narrow">
-						<h2 id="funding-heading">Built with UBC students' own investment in teaching.</h2>
-						<p>
+					<div class="home-section-inner">
+						<h2 id="funding-heading" class="home-grant-title">
 							EngE-AI is funded by the Teaching and Learning Enhancement Fund (TLEF), supported by the
 							students of the University of British Columbia, in 2025.
-						</p>
+							<a
+								class="home-grant-title-link"
+								href="https://tlef.ubc.ca/funded-proposals/entry/986/"
+								rel="noopener noreferrer"
+								target="_blank"
+								aria-label="View on UBC TLEF funded proposals (opens in a new tab)"
+							>
+								<svg
+									class="home-grant-title-icon"
+									xmlns="http://www.w3.org/2000/svg"
+									width="24"
+									height="24"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									aria-hidden="true"
+									focusable="false"
+								>
+									<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+									<polyline points="15 3 21 3 21 9"></polyline>
+									<line x1="10" y1="14" x2="21" y2="3"></line>
+								</svg>
+							</a>
+						</h2>
+						<div class="home-grant-stat" id="home-grant-stat">
+							<div class="home-grant-period" id="home-grant-period" aria-hidden="true">
+								Total TLEF funding
+							</div>
+							<div class="home-grant-amount" id="home-grant-amount" aria-live="off">$0</div>
+							<div class="home-grant-selector" role="group" aria-label="TLEF funding period">
+								<span class="home-grant-selector-ink" aria-hidden="true"></span>
+								<button
+									type="button"
+									class="home-grant-option"
+									data-grant-key="year1"
+									data-grant-amount="87198"
+									data-grant-label="Year 1 (2025/26)"
+									aria-pressed="false"
+									aria-label="Show Year 1 TLEF funding"
+								>
+									Year 1
+								</button>
+								<button
+									type="button"
+									class="home-grant-option"
+									data-grant-key="year2"
+									data-grant-amount="94122"
+									data-grant-label="Year 2 (2026/27)"
+									aria-pressed="false"
+									aria-label="Show Year 2 TLEF funding"
+								>
+									Year 2
+								</button>
+								<button
+									type="button"
+									class="home-grant-option is-active"
+									data-grant-key="total"
+									data-grant-amount="181320"
+									data-grant-label="Total TLEF funding"
+									aria-pressed="true"
+									aria-label="Show total TLEF funding"
+								>
+									Total
+								</button>
+							</div>
+						</div>
 					</div>
 				</section>
 
@@ -219,51 +364,126 @@
 				<section class="home-section home-section--muted" id="feedback" aria-labelledby="feedback-heading">
 					<div class="home-section-inner">
 						<h2 id="feedback-heading">What students are saying</h2>
-						<ul class="home-testimonials">
-							<li>
-								<blockquote>
-									<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
-									<footer>— <cite>3rd-year, Chemical Engineering</cite></footer>
-								</blockquote>
-							</li>
-							<li>
-								<blockquote>
-									<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
-									<footer>— <cite>4th-year, Materials Engineering</cite></footer>
-								</blockquote>
-							</li>
-							<li>
-								<blockquote>
-									<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
-									<footer>— <cite>2nd-year, Engineering</cite></footer>
-								</blockquote>
-							</li>
-						</ul>
+					</div>
+					<div class="home-testimonials-marquee" aria-label="Student testimonials">
+						<div class="home-testimonials-track">
+							<ul class="home-testimonials-row">
+								<li class="home-testimonial-card">
+									<blockquote>
+										<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+										<footer class="home-testimonial-author">
+											<img
+												class="home-testimonial-avatar"
+												src="/assets/home/avatar-placeholder.svg"
+												alt=""
+												width="48"
+												height="48"
+											/>
+											<div>
+												<cite>Anonymous student</cite>
+												<span>3rd-year, Chemical Engineering</span>
+											</div>
+										</footer>
+									</blockquote>
+								</li>
+								<li class="home-testimonial-card">
+									<blockquote>
+										<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+										<footer class="home-testimonial-author">
+											<img
+												class="home-testimonial-avatar"
+												src="/assets/home/avatar-placeholder.svg"
+												alt=""
+												width="48"
+												height="48"
+											/>
+											<div>
+												<cite>Anonymous student</cite>
+												<span>4th-year, Materials Engineering</span>
+											</div>
+										</footer>
+									</blockquote>
+								</li>
+								<li class="home-testimonial-card">
+									<blockquote>
+										<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+										<footer class="home-testimonial-author">
+											<img
+												class="home-testimonial-avatar"
+												src="/assets/home/avatar-placeholder.svg"
+												alt=""
+												width="48"
+												height="48"
+											/>
+											<div>
+												<cite>Anonymous student</cite>
+												<span>2nd-year, Engineering</span>
+											</div>
+										</footer>
+									</blockquote>
+								</li>
+							</ul>
+							<ul class="home-testimonials-row" aria-hidden="true">
+								<li class="home-testimonial-card">
+									<blockquote>
+										<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+										<footer class="home-testimonial-author">
+											<img
+												class="home-testimonial-avatar"
+												src="/assets/home/avatar-placeholder.svg"
+												alt=""
+												width="48"
+												height="48"
+											/>
+											<div>
+												<cite>Anonymous student</cite>
+												<span>3rd-year, Chemical Engineering</span>
+											</div>
+										</footer>
+									</blockquote>
+								</li>
+								<li class="home-testimonial-card">
+									<blockquote>
+										<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+										<footer class="home-testimonial-author">
+											<img
+												class="home-testimonial-avatar"
+												src="/assets/home/avatar-placeholder.svg"
+												alt=""
+												width="48"
+												height="48"
+											/>
+											<div>
+												<cite>Anonymous student</cite>
+												<span>4th-year, Materials Engineering</span>
+											</div>
+										</footer>
+									</blockquote>
+								</li>
+								<li class="home-testimonial-card">
+									<blockquote>
+										<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+										<footer class="home-testimonial-author">
+											<img
+												class="home-testimonial-avatar"
+												src="/assets/home/avatar-placeholder.svg"
+												alt=""
+												width="48"
+												height="48"
+											/>
+											<div>
+												<cite>Anonymous student</cite>
+												<span>2nd-year, Engineering</span>
+											</div>
+										</footer>
+									</blockquote>
+								</li>
+							</ul>
+						</div>
 					</div>
 				</section>
 
-				<footer class="home-footer" id="contact">
-					<div class="home-footer-inner">
-						<div class="home-footer-brand">
-							<a class="home-brand" href="/">EngE-AI</a>
-							<p>AI-powered Engineering Education Assistant</p>
-						</div>
-						<nav class="home-footer-nav" aria-label="Footer">
-							<a href="#features">About</a>
-							<a href="#funding">Funding</a>
-							<a href="#contact">Contact</a>
-							<a href="/team">Team</a>
-							<a href="https://apsc.ubc.ca/" target="_blank" rel="noopener noreferrer"
-								>UBC Faculty of Applied Science</a
-							>
-							<a href="https://lthub.ubc.ca/" target="_blank" rel="noopener noreferrer">UBC LT Hub</a>
-						</nav>
-						<p class="home-footer-funding">
-							Funded by the UBC Teaching and Learning Enhancement Fund (TLEF), 2025.
-						</p>
-						<p class="home-footer-copy">© 2026 EngE-AI, University of British Columbia.</p>
-					</div>
-				</footer>
+				<div id="home-footer-mount"></div>
 			</div>
 		</main>
 
