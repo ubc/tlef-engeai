@@ -10,6 +10,7 @@ import { createStudent, findStudentByUserId } from './course-user-mongo';
 import { addCourseToGlobalUser, findGlobalUserByUserId } from './global-user-mongo';
 import type { MongoDalContext } from './mongo-context';
 import { appLogger } from '../../utils/logger';
+import { isAdminUser } from '../../utils/admin';
 
 /**
  * Idempotent enroll: `$addToSet` on global user + create faculty CourseUser when absent.
@@ -76,7 +77,7 @@ export async function enrollInstructorsOnCourse(
             appLogger.warn(`[enrollment] Skipping unknown instructor userId: ${userId}`);
             continue;
         }
-        if (globalUser.affiliation !== 'faculty') {
+        if (globalUser.affiliation !== 'faculty' && !isAdminUser(globalUser)) {
             appLogger.warn(`[enrollment] Skipping non-faculty user ${userId} as instructor`);
             continue;
         }

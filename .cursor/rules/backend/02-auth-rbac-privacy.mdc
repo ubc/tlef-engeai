@@ -19,7 +19,7 @@ Security and privacy playbook for identity and course roles.
 - Affiliations: student, faculty, staff, empty — staff/empty blocked appropriately
 - Page gates: `validateCourseAccess`, `requireInstructorForCourse`, `requireStudentForCourse`
 - API gates: `requireInstructorForCourseAPI`, `requireStudentForCourseAPI`, `requireInstructorGlobal`
-- Platform admin: `GlobalUser.isAdmin` — env PUID seeds; admins bypass instructor checks
+- Platform admin: `GlobalUser.isAdmin` — set from the `ADMINS` env allowlist (matched by name via `src/utils/admin.ts`, not PUID) and reconciled on every login. Every affiliation-based authorization check must OR in `isAdminUser(...)` so admins pass regardless of their affiliation.
 
 ## Privacy
 

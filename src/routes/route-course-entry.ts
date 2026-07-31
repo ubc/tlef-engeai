@@ -11,6 +11,7 @@ import { GlobalUser, CourseUser, User, activeCourse } from '../types/shared';
 import { appLogger } from '../utils/logger';
 import { refreshSessionGlobalUser } from '../helpers/session-global-user';
 import { isCourseStaff, isInCourseTAs } from '../utils/course-staff';
+import { isAdminUser } from '../utils/admin';
 import { resolveInstructorModeRedirect } from '../helpers/instructor-onboarding-redirect';
 
 const router = express.Router();
@@ -55,7 +56,7 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
         appLogger.log(`[COURSE-ENTRY] Course found: ${course.courseName}`);
         
         // 1.5. Handle instructor joining existing course
-        if (globalUser.affiliation === 'faculty') {
+        if (globalUser.affiliation === 'faculty' || isAdminUser(globalUser)) {
             const courseData = course as any;
             const instructorUserId = globalUser.userId;
             const instructorName = globalUser.name;
@@ -279,7 +280,7 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
         const courseId = course.id;
         
         // 2.5. Handle instructor joining existing course
-        if (globalUser.affiliation === 'faculty') {
+        if (globalUser.affiliation === 'faculty' || isAdminUser(globalUser)) {
             const courseData = course as any;
             const instructorUserId = globalUser.userId;
             const instructorName = globalUser.name;
