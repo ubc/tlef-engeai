@@ -3,13 +3,13 @@
 /**
  * HomePage — marketing homepage interactions
  *
- * Owns theme toggle, scroll-buffer panel zoom, Learn more reveal,
- * scroll-driven features section, shared footer injection, glassy topbar,
- * shared footer injection, glassy topbar, TLEF grant count-up, and testimonials marquee.
+ * Owns theme toggle, Learn more reveal, features scrub (tablet+) / static
+ * title→desc→image cards (phone), shared footer injection, glassy topbar,
+ * TLEF grant count-up, hero video autoplay + scroll zoom-to-max, and testimonials marquee.
  *
  * @author: EngE-AI Team
  * @date: 2026-07-31
- * @version: 1.7.0
+ * @version: 1.9.2
  * @description: Client behavior for the public EngE-AI hero homepage.
  */
 
@@ -17,33 +17,34 @@ const REVEAL_STORAGE_KEY = 'engeai-home-more-revealed';
 const THEME_STORAGE_KEY = 'engeai-home-theme';
 const SCROLL_GLASS_THRESHOLD_PX = 24;
 const GRANT_COUNT_DURATION_MS = 1100;
-/** Fraction of the hero scrub track where zoom finishes; lower = more scroll for same zoom. */
-const HERO_ZOOM_COMPLETE_AT = 0.65;
+/** Resting hero video scale (matches CSS). */
+const HERO_ZOOM_BASE = 1.06;
+/** Max hero video scale reached during scroll zoom. */
+const HERO_ZOOM_MAX = 1.22;
 /** Tablet+ breakpoint — matches CSS min-width: 768px for sticky features scrub. */
 const FEATURES_SCRUB_MIN_WIDTH_PX = 768;
+/** Footer / hash targets inside #home-more (About → features, Funding → funding). */
+const HOME_SECTION_HASHES = ['features', 'funding'] as const;
+type HomeSectionHash = (typeof HOME_SECTION_HASHES)[number];
 
 type HomeTheme = 'dark' | 'light';
 
 /**
- * initHomePage - wires theme, footer, grant counter, features scrub; hero when scrub exists.
+ * initHomePage - wires theme, footer, grant counter, features scrub, and hero video.
  */
 function initHomePage(): void {
 	setupThemeToggle();
 	setupTopbarGlass();
-	void setupHomeFooter();
 	setupGrantFunding();
 	setupTestimonialsMarquee();
 
 	const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+	setupHeroVideo(reducedMotion);
+	setupHeroScrollZoom(reducedMotion);
 	setupFeaturesScroll(reducedMotion);
-
-	const scrub = document.getElementById('home-scrub');
-	if (!scrub) {
-		return;
-	}
-
-	setupScrollScrub(scrub, reducedMotion);
 	setupLearnMore();
+	setupHashNavigation(reducedMotion);
+	void setupHomeFooter();
 }
 
 /**
@@ -61,6 +62,8 @@ function afterNextPaint(fn: () => void): void {
 
 /**
  * preferStaticFeatures - true when sticky scrub should not run (reduced motion or phone).
+ *
+ * Phone and reduced-motion use CSS card stack (title → description → image per step).
  *
  * @param reducedMotion - prefers-reduced-motion: reduce
  * @returns whether to use the static expanded stack
@@ -89,6 +92,7 @@ async function setupHomeFooter(): Promise<void> {
 			return;
 		}
 		mount.innerHTML = await response.text();
+		wireFooterSectionLinks();
 	} catch {
 		/* leave mount empty on network/parse failure */
 	}
@@ -171,47 +175,53 @@ function setupTopbarGlass(): void {
 }
 
 /**
- * setupScrollScrub - maps scroll through the sticky hero buffer to panel scale.
+ * setupHeroVideo - autoplays the muted hero loop when motion is allowed.
  *
- * Glow box-shadow stays visually constant: pixel lengths are divided by scale so
- * transform does not enlarge the bleed.
+ * Browsers require muted + playsinline for autoplay. When reduced motion is on,
+ * the poster frame stays visible and playback is not started.
  *
- * @param scrub - tall track element that contains the sticky hero
- * @param reducedMotion - skip transform when the user prefers reduced motion
+ * @param reducedMotion - prefers-reduced-motion: reduce
  */
-function setupScrollScrub(scrub: HTMLElement, reducedMotion: boolean): void {
-	const glow = document.getElementById('home-video-glow');
-	if (!glow || reducedMotion) {
+function setupHeroVideo(reducedMotion: boolean): void {
+	const video = document.getElementById('home-hero-video') as HTMLVideoElement | null;
+	if (!video || reducedMotion) {
 		return;
 	}
 
-	const BASE_SCALE = 1.2;
+	video.muted = true;
+	void video.play().catch(() => {
+		/* poster remains if autoplay is blocked */
+	});
+}
+
+/**
+ * setupHeroScrollZoom - zooms hero video to a max size while page scroll remains natural.
+ *
+ * Non-sticky: the page scrolls normally; only `#home-video-glow` transform changes.
+ * Progress is anchored to the hero section's scroll window and clamps at 1, so
+ * the video scales up until max and then holds that size for the rest of the page scroll.
+ * Skipped under prefers-reduced-motion (CSS resting scale remains).
+ *
+ * @param reducedMotion - prefers-reduced-motion: reduce
+ */
+function setupHeroScrollZoom(reducedMotion: boolean): void {
+	const glow = document.getElementById('home-video-glow');
+	const scrub = document.getElementById('home-scrub');
+	if (!glow || !scrub || reducedMotion) {
+		return;
+	}
+
 	let ticking = false;
 
 	const update = () => {
 		ticking = false;
-		const rect = scrub.getBoundingClientRect();
-		const track = scrub.offsetHeight - window.innerHeight;
-		if (track <= 0) {
-			glow.style.transform = 'scale(1)';
-			return;
-		}
-
-		// Progress 0 → 1 while the scrub section is pinning the hero
-		const scrolled = Math.min(Math.max(-rect.top, 0), track);
-		const progress = scrolled / track;
-		// Zoom completes early in the track, then holds at max scale
-		const zoomProgress = Math.min(1, progress / HERO_ZOOM_COMPLETE_AT);
-		const scale = BASE_SCALE + zoomProgress * 0.12;
-		// Counteract transform so the glow bleed keeps its on-screen size
-		const s = BASE_SCALE / scale;
+		const scrubTop = scrub.getBoundingClientRect().top + window.scrollY;
+		const startY = Math.max(0, scrubTop - window.innerHeight * 0.15);
+		const endY = scrubTop + Math.max(scrub.offsetHeight * 0.8, window.innerHeight * 0.9);
+		const travel = Math.max(endY - startY, 1) * 0.5 ;
+		const progress = Math.min(Math.max((window.scrollY - startY) / travel, 0), 1);
+		const scale = HERO_ZOOM_BASE + progress * (HERO_ZOOM_MAX - HERO_ZOOM_BASE);
 		glow.style.transform = `scale(${scale.toFixed(4)})`;
-		glow.style.boxShadow = [
-			`0 ${(-32 * s).toFixed(2)}px ${(90 * s).toFixed(2)}px ${(-8 * s).toFixed(2)}px rgba(111, 158, 74, 0.5)`,
-			`0 ${(-14 * s).toFixed(2)}px ${(48 * s).toFixed(2)}px ${(-6 * s).toFixed(2)}px rgba(61, 122, 176, 0.4)`,
-			'0 0 0 1px rgba(255, 255, 255, 0.12) inset',
-			`0 ${(24 * s).toFixed(2)}px ${(60 * s).toFixed(2)}px rgba(0, 0, 0, 0.45)`,
-		].join(', ');
 	};
 
 	const onScroll = () => {
@@ -232,11 +242,20 @@ let refreshFeaturesScroll: (() => void) | null = null;
 /** Callback set by setupGrantFunding so Learn more can position the ink bar after reveal. */
 let refreshGrantInk: (() => void) | null = null;
 
+/** Callback set by setupLearnMore — reveals #home-more; optional section id scrolls there instead of block top. */
+let revealHomeMore: ((scrollTo?: HomeSectionHash) => void) | null = null;
+
+/** navigateToHomeSection - set by setupHashNavigation for footer link wiring after async footer fetch. */
+let navigateToHomeSection: ((id: HomeSectionHash) => void) | null = null;
+
 /**
- * expandStaticFeatures - shows all step bodies and panels (phone / reduced-motion fallback).
+ * expandStaticFeatures - marks every step/panel visible for phone / reduced-motion CSS.
+ *
+ * Bodies and panels stay in the document (no [hidden]); CSS shows the card stack.
+ * Clears aria-current so the static list is not announced as a scrub step.
  *
  * @param steps - feature step list items
- * @param panels - right-side panel figures
+ * @param panels - panel figures nested inside each step
  */
 function expandStaticFeatures(
 	steps: HTMLElement[],
@@ -245,8 +264,6 @@ function expandStaticFeatures(
 	for (const step of steps) {
 		step.classList.add('is-active');
 		step.removeAttribute('aria-current');
-		const body = step.querySelector('.home-features-step-body');
-		body?.removeAttribute('hidden');
 	}
 	for (const panel of panels) {
 		panel.classList.add('is-active');
@@ -258,9 +275,10 @@ function expandStaticFeatures(
  * setupFeaturesScroll - maps scroll through the features scrub track to active step.
  *
  * Progress through `#features` advances steps 0→N; syncs left indicator, step body
- * visibility, aria-current, and right-side panels. Clicking a step jumps scroll
- * to that step's scrub offset. Skipped under prefers-reduced-motion or below 768px
- * (CSS static stack). Lazy-wires listeners on first successful measure after reveal.
+ * visibility (via `.is-active` + CSS), aria-current, and nested panels. Clicking a
+ * step title jumps scroll to that step's scrub offset. Skipped under
+ * prefers-reduced-motion or below 768px (CSS static title→desc→image cards).
+ * Lazy-wires listeners on first successful measure after reveal.
  *
  * Track length uses the sticky stage height (not raw viewport) so pin range matches CSS.
  * Exposes refreshFeaturesScroll for post-reveal re-measure when `#home-more` was hidden.
@@ -289,19 +307,17 @@ function setupFeaturesScroll(reducedMotion: boolean): void {
 	let onScroll: (() => void) | null = null;
 	let ro: ResizeObserver | null = null;
 
-	const nav = scrub?.querySelector('.home-features-nav') as HTMLElement | null;
-
 	const syncIndicator = () => {
 		const activeEl = steps[activeStep];
-		if (!indicator || !activeEl || !nav) {
+		if (!indicator || !activeEl || !stage) {
 			return;
 		}
-		const trigger = activeEl.querySelector('.home-features-step-trigger') as HTMLElement | null;
-		const target = trigger ?? activeEl;
-		// Measure against nav — offsetTop sums are wrong when li + button share the same offsetParent
-		const navRect = nav.getBoundingClientRect();
+		const title = activeEl.querySelector('.home-features-step-title') as HTMLElement | null;
+		const target = title ?? activeEl;
+		// Measure against stage — panels and indicator share this containing block on desktop
+		const stageRect = stage.getBoundingClientRect();
 		const targetRect = target.getBoundingClientRect();
-		const top = targetRect.top - navRect.top;
+		const top = targetRect.top - stageRect.top;
 		const height = targetRect.height;
 		indicator.style.transform = `translateY(${Math.max(0, top)}px)`;
 		indicator.style.height = `${Math.max(height, 24)}px`;
@@ -321,17 +337,9 @@ function setupFeaturesScroll(reducedMotion: boolean): void {
 				} else {
 					step.removeAttribute('aria-current');
 				}
-				const body = step.querySelector('.home-features-step-body');
-				if (body) {
-					if (isActive) {
-						body.removeAttribute('hidden');
-					} else {
-						body.setAttribute('hidden', '');
-					}
-				}
 			});
 
-			// Class + aria only — avoid [hidden] (UA display:none !important breaks stacked panels)
+			// Class + aria only — body visibility is CSS (.is-active); panels use opacity
 			panels.forEach((panel, i) => {
 				const isActive = i === index;
 				panel.classList.toggle('is-active', isActive);
@@ -404,8 +412,8 @@ function setupFeaturesScroll(reducedMotion: boolean): void {
 		};
 
 		steps.forEach((step, i) => {
-			const trigger = step.querySelector('.home-features-step-trigger');
-			trigger?.addEventListener('click', () => jumpToStep(i));
+			const title = step.querySelector('.home-features-step-title');
+			title?.addEventListener('click', () => jumpToStep(i));
 		});
 
 		window.addEventListener('scroll', onScroll, { passive: true });
@@ -450,10 +458,10 @@ function setupFeaturesScroll(reducedMotion: boolean): void {
  * formatGrantCurrency - formats a non-negative integer as a CAD dollar string.
  *
  * @param value - amount in whole dollars
- * @returns e.g. "$87,198"
+ * @returns e.g. "CA$87,198"
  */
 function formatGrantCurrency(value: number): string {
-	return `$${Math.max(0, Math.floor(value)).toLocaleString('en-CA')}`;
+	return `CA$${Math.max(0, Math.floor(value)).toLocaleString('en-CA')}`;
 }
 
 /**
@@ -730,6 +738,97 @@ function setupTestimonialsMarquee(): void {
 }
 
 /**
+ * isHomeSectionHash - true when hash id is a footer About / Funding target.
+ *
+ * @param id - location hash without leading #
+ */
+function isHomeSectionHash(id: string): id is HomeSectionHash {
+	return (HOME_SECTION_HASHES as readonly string[]).includes(id);
+}
+
+/**
+ * scrollBehaviorForHome - smooth scroll unless the user prefers reduced motion.
+ *
+ * @param reducedMotion - prefers-reduced-motion: reduce
+ */
+function scrollBehaviorForHome(reducedMotion: boolean): ScrollBehavior {
+	return reducedMotion ? 'instant' : 'smooth';
+}
+
+/**
+ * wireFooterSectionLinks - intercepts About / Funding footer links on the homepage.
+ *
+ * Team and other pages keep native navigation to `/#features` and `/#funding`.
+ */
+function wireFooterSectionLinks(): void {
+	for (const link of document.querySelectorAll<HTMLAnchorElement>(
+		'a[href="/#features"], a[href="/#funding"]'
+	)) {
+		link.addEventListener('click', (event) => {
+			if (!document.getElementById('home-more')) {
+				return;
+			}
+			const id = new URL(link.href, window.location.origin).hash.slice(1);
+			if (!isHomeSectionHash(id)) {
+				return;
+			}
+			event.preventDefault();
+			navigateToHomeSection?.(id);
+		});
+	}
+}
+
+/**
+ * setupHashNavigation - smooth scroll to About / Funding; reveals #home-more when collapsed.
+ *
+ * Handles initial `/#features` and `/#funding` on load and hashchange (back/forward).
+ *
+ * @param reducedMotion - skip animation when the user prefers reduced motion
+ */
+function setupHashNavigation(reducedMotion: boolean): void {
+	const more = document.getElementById('home-more');
+	if (!more) {
+		return;
+	}
+
+	const scrollToSection = (id: HomeSectionHash): void => {
+		const target = document.getElementById(id);
+		if (!target) {
+			return;
+		}
+		const behavior = scrollBehaviorForHome(reducedMotion);
+		target.scrollIntoView({ behavior, block: 'start' });
+	};
+
+	const goToSection = (id: HomeSectionHash): void => {
+		if (more.hidden) {
+			revealHomeMore?.(id);
+			return;
+		}
+		scrollToSection(id);
+		if (window.location.hash !== `#${id}`) {
+			history.replaceState(null, '', `#${id}`);
+		}
+	};
+
+	navigateToHomeSection = goToSection;
+
+	const initialId = window.location.hash.slice(1);
+	if (isHomeSectionHash(initialId)) {
+		// Avoid a flash jump to a hidden target before reveal + smooth scroll
+		window.scrollTo(0, 0);
+		afterNextPaint(() => goToSection(initialId));
+	}
+
+	window.addEventListener('hashchange', () => {
+		const id = window.location.hash.slice(1);
+		if (isHomeSectionHash(id)) {
+			goToSection(id);
+		}
+	});
+}
+
+/**
  * setupLearnMore - toggles #home-more visibility; label switches Learn more / See less.
  */
 function setupLearnMore(): void {
@@ -755,7 +854,9 @@ function setupLearnMore(): void {
 		/* ignore */
 	}
 
-	const reveal = (): void => {
+	const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+	const reveal = (scrollTo?: HomeSectionHash): void => {
 		more.hidden = false;
 		more.removeAttribute('inert');
 		document.body.classList.add('home-more-open');
@@ -764,14 +865,28 @@ function setupLearnMore(): void {
 		afterNextPaint(() => {
 			refreshFeaturesScroll?.();
 			refreshGrantInk?.();
-			more.scrollIntoView({ behavior: 'smooth', block: 'start' });
-			// Re-measure once smooth scroll settles near the scrub
+			const behavior = scrollBehaviorForHome(reducedMotion);
+			if (scrollTo) {
+				const target = document.getElementById(scrollTo);
+				target?.scrollIntoView({ behavior, block: 'start' });
+				if (window.location.hash !== `#${scrollTo}`) {
+					history.replaceState(null, '', `#${scrollTo}`);
+				}
+			} else {
+				more.scrollIntoView({ behavior, block: 'start' });
+			}
+			// Re-measure once layout / smooth scroll settles
 			window.setTimeout(() => {
 				refreshFeaturesScroll?.();
 				refreshGrantInk?.();
+				if (scrollTo) {
+					document.getElementById(scrollTo)?.scrollIntoView({ behavior, block: 'start' });
+				}
 			}, 450);
 		});
 	};
+
+	revealHomeMore = reveal;
 
 	const collapse = (): void => {
 		more.hidden = true;

@@ -53,6 +53,32 @@ async function checkAuthentication(): Promise<boolean> {
     return await authService.checkAuthenticationAndRedirect(redirectPath, 'INSTRUCTOR-MODE');
 }
 
+/** Extract userId from InstructorInfo or legacy string entry. */
+function instructorEntryUserId(entry: { userId: string } | string): string {
+    return typeof entry === 'string' ? entry : entry.userId;
+}
+
+/** True when userId is in course.teachingAssistants[]. */
+function isInCourseTAs(course: activeCourse, userId: string): boolean {
+    return (course.teachingAssistants ?? []).some((ta) => instructorEntryUserId(ta) === userId);
+}
+
+/**
+ * updateSidebarCompanionText — sets sidebar subtitle to `{firstName} (Instructor|TA)`.
+ *
+ * @param name — Full display name from auth
+ * @param userId — Auth user id for TA roster lookup
+ * @param course — Loaded course (teachingAssistants used for role)
+ */
+function updateSidebarCompanionText(name: string, userId: string, course: activeCourse): void {
+    const companionText = document.getElementById('companion-text');
+    if (!companionText || !name) return;
+
+    const firstName = name.trim().split(/\s+/)[0] || name;
+    const role = isInCourseTAs(course, userId) ? 'TA' : 'Instructor';
+    companionText.textContent = `${firstName} (${role})`;
+}
+
 /**
  * mapViewToStateEvent
  * 
@@ -214,6 +240,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Load the current course
     await loadCurrentCourse();
+
+    // Sidebar header: `{firstName} (Instructor|TA)`
+    const authUser = authService.getAuthState().user;
+    if (authUser) {
+        updateSidebarCompanionText(authUser.name, authUser.userId, currentClass);
+    }
 
     // Make currentClass globally accessible for onboarding completion
     window.currentClass = currentClass;

@@ -84,14 +84,17 @@
 						<div class="home-video-stage">
 							<div class="home-video-glow" id="home-video-glow">
 								<div class="home-video-frame" id="home-video-frame">
-									<img
-										src="/assets/home/main-image.png"
-										alt="EngE-AI chat interface with Socratic mode and guided learning"
-										width="2998"
-										height="1476"
-										loading="eager"
-										decoding="async"
-									/>
+									<video
+										id="home-hero-video"
+										class="home-hero-video"
+										src="/assets/home/EngE-AI-front-page.mov"
+										poster="/assets/home/main-image.png"
+										muted
+										loop
+										playsinline
+										preload="metadata"
+										aria-label="EngE-AI chat interface with Socratic mode and guided learning"
+									></video>
 								</div>
 							</div>
 						</div>
@@ -116,71 +119,62 @@
 						</div>
 
 						<div class="home-section-inner home-features-stage" data-active-step="0">
+							<div class="home-features-indicator" aria-hidden="true"></div>
 							<div class="home-features-nav">
-								<div class="home-features-indicator" aria-hidden="true"></div>
 								<ol class="home-features-steps">
 									<li class="home-features-step is-active" data-step="0" aria-current="step">
-										<button type="button" class="home-features-step-trigger">
-											Guided pathway
-										</button>
+										<h3 class="home-features-step-title">Guided pathway</h3>
 										<p class="home-features-step-body">
 											Every message is screened. If a conversation veers towards crisis, harm, or
 											something outside the course, EngE-AI pauses the lesson and responds with real
 											UBC support resources.
 										</p>
+										<figure class="home-features-panel is-active" data-step="0" aria-hidden="false">
+											<div class="home-features-panel-frame home-features-panel-frame--pathway">
+												<img
+													src="/assets/home/feature-pathway.png"
+													alt="EngE-AI guided pathway with safety screening"
+													width="754"
+													height="403"
+												/>
+											</div>
+										</figure>
 									</li>
 									<li class="home-features-step" data-step="1">
-										<button type="button" class="home-features-step-trigger">
-											Scenario generation
-										</button>
-										<p class="home-features-step-body" hidden>
+										<h3 class="home-features-step-title">Scenario generation</h3>
+										<p class="home-features-step-body">
 											EngE-AI helps instructors create multi-part scenario-based, exam-like questions
 											for students to work through. Students get instant feedback on their answers.
 										</p>
+										<figure class="home-features-panel" data-step="1" aria-hidden="true">
+											<div class="home-features-panel-frame home-features-panel-frame--scenario">
+												<img
+													src="/assets/home/feature-scenario.png"
+													alt="EngE-AI scenario generation for instructors"
+													width="1112"
+													height="601"
+												/>
+											</div>
+										</figure>
 									</li>
 									<li class="home-features-step" data-step="2">
-										<button type="button" class="home-features-step-trigger">
-											Writing feedback for instructors
-										</button>
-										<p class="home-features-step-body" hidden>
+										<h3 class="home-features-step-title">Writing feedback for instructors</h3>
+										<p class="home-features-step-body">
 											Instructors use AI to help review and give feedback on student essays and written
 											work.
 										</p>
+										<figure class="home-features-panel" data-step="2" aria-hidden="true">
+											<div class="home-features-panel-frame home-features-panel-frame--writing">
+												<img
+													src="/assets/home/feature-writing-feedback.png"
+													alt="EngE-AI writing feedback for instructors"
+													width="1550"
+													height="822"
+												/>
+											</div>
+										</figure>
 									</li>
 								</ol>
-							</div>
-
-							<div class="home-features-visual" aria-live="polite">
-								<figure class="home-features-panel is-active" data-step="0" aria-hidden="false">
-									<div class="home-features-panel-frame home-features-panel-frame--pathway">
-										<img
-											src="/assets/home/feature-pathway.png"
-											alt="EngE-AI guided pathway with safety screening"
-											width="754"
-											height="403"
-										/>
-									</div>
-								</figure>
-								<figure class="home-features-panel" data-step="1" aria-hidden="true">
-									<div class="home-features-panel-frame home-features-panel-frame--scenario">
-										<img
-											src="/assets/home/feature-scenario.png"
-											alt="EngE-AI scenario generation for instructors"
-											width="1112"
-											height="601"
-										/>
-									</div>
-								</figure>
-								<figure class="home-features-panel" data-step="2" aria-hidden="true">
-									<div class="home-features-panel-frame home-features-panel-frame--writing">
-										<img
-											src="/assets/home/feature-writing-feedback.png"
-											alt="EngE-AI writing feedback for instructors"
-											width="1550"
-											height="822"
-										/>
-									</div>
-								</figure>
 							</div>
 						</div>
 					</div>
@@ -298,7 +292,7 @@
 							<div class="home-grant-period" id="home-grant-period" aria-hidden="true">
 								Total TLEF funding
 							</div>
-							<div class="home-grant-amount" id="home-grant-amount" aria-live="off">$0</div>
+							<div class="home-grant-amount" id="home-grant-amount" aria-live="off">CA$0</div>
 							<div class="home-grant-selector" role="group" aria-label="TLEF funding period">
 								<span class="home-grant-selector-ink" aria-hidden="true"></span>
 								<button
@@ -342,21 +336,45 @@
 				<section class="home-section" id="investigators" aria-labelledby="investigators-heading">
 					<div class="home-section-inner">
 						<h2 id="investigators-heading">From the investigators</h2>
-						<div class="home-quotes">
-							<blockquote class="home-quote">
-								<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor.</p>
-								<footer>
-									<cite>Alireza Bagherzadeh</cite>
-									<span>Principal Investigator; Associate Professor of Teaching, CHBE</span>
-								</footer>
-							</blockquote>
-							<blockquote class="home-quote">
-								<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut enim ad minim veniam.</p>
-								<footer>
-									<cite>Amir M. Dehkhoda</cite>
-									<span>Co-Investigator; Assistant Professor of Teaching, Materials Engineering</span>
-								</footer>
-							</blockquote>
+						<div class="home-investigators">
+							<figure class="home-investigator home-investigator--start">
+								<blockquote class="home-investigator-quote">
+									<p>
+										Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor.
+									</p>
+									<footer>
+										<cite>Alireza Bagherzadeh</cite>
+										<span>Principal Investigator; Associate Professor of Teaching, CHBE</span>
+									</footer>
+								</blockquote>
+								<div class="home-investigator-photo">
+									<img
+										src="/assets/home/avatar-placeholder.svg"
+										alt="Alireza Bagherzadeh"
+										width="160"
+										height="160"
+									/>
+								</div>
+							</figure>
+							<figure class="home-investigator home-investigator--end">
+								<div class="home-investigator-photo">
+									<img
+										src="/assets/home/avatar-placeholder.svg"
+										alt="Amir M. Dehkhoda"
+										width="160"
+										height="160"
+									/>
+								</div>
+								<blockquote class="home-investigator-quote">
+									<p>
+										Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut enim ad minim veniam.
+									</p>
+									<footer>
+										<cite>Amir M. Dehkhoda</cite>
+										<span>Co-Investigator; Assistant Professor of Teaching, Materials Engineering</span>
+									</footer>
+								</blockquote>
+							</figure>
 						</div>
 					</div>
 				</section>
