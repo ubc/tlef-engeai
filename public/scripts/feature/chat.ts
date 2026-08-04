@@ -8,7 +8,7 @@
  */
 
 import { loadComponentHTML, renderFeatherIcons } from "../api/api.js";
-import { createNewChat, sendMessageToChat, deleteChat, updateChatPinStatus, dismissUnstruggleBlock, updateChatConversationMode } from "../api/chat-api.js";
+import { createNewChat, sendMessageToChat, deleteChat, dismissUnstruggleBlock, updateChatConversationMode } from "../api/chat-api.js";
 import {
     Chat,
     ChatMessage,
@@ -38,7 +38,6 @@ interface ChatMetadata {
     id: string;
     courseName: string;
     itemTitle: string;
-    isPinned: boolean;
     pinnedMessageId: string | null;
     lastMessageTimestamp: number;
     messageCount: number;
@@ -211,15 +210,13 @@ export class ChatManager {
             chatMetadata: this.chatMetadata.map(m => ({
                 id: m.id,
                 title: m.itemTitle,
-                isPinned: m.isPinned,
                 messageCount: m.messageCount,
                 lastMessageTime: new Date(m.lastMessageTimestamp).toISOString()
             })),
             loadedChats: this.chats.map(c => ({
                 id: c.id,
                 title: c.itemTitle,
-                messageCount: c.messages?.length || 0,
-                isPinned: c.isPinned
+                messageCount: c.messages?.length || 0
             }))
         };
     }
@@ -581,7 +578,6 @@ export class ChatManager {
                     text: response.initAssistantMessage.text,
                     timestamp: response.initAssistantMessage.timestamp,
                 }] : [],
-                isPinned: false,
                 conversationMode: 'undeclared',
             };
 
@@ -601,7 +597,6 @@ export class ChatManager {
                 id: newChat.id,
                 courseName: newChat.courseName,
                 itemTitle: newChat.itemTitle,
-                isPinned: newChat.isPinned,
                 pinnedMessageId: newChat.pinnedMessageId || null,
                 messageCount: newChat.messages ? newChat.messages.length : 0,
                 lastMessageTimestamp: newChat.messages && newChat.messages.length > 0 
@@ -784,18 +779,6 @@ export class ChatManager {
     }
 
     /**
-     * Toggle pin status
-     */
-    public togglePin(chatId: string): void {
-        const chat = this.chats.find(c => c.id === chatId);
-        if (chat) {
-            chat.isPinned = !chat.isPinned;
-            // Update on server
-            updateChatPinStatus(chatId, chat.isPinned);
-        }
-    }
-
-    /**
      * Delete a chat
      */
     public async deleteChat(chatId: string): Promise<void> {
@@ -827,9 +810,10 @@ export class ChatManager {
             // Update active chat if needed
             if (this.activeChatId === chatId) {
                 if (this.chatMetadata.length > 0) {
-                    // Try to find a pinned chat first, otherwise use first chat
-                    const lastPinned = this.chatMetadata.filter(m => m.isPinned).pop();
-                    this.activeChatId = lastPinned ? lastPinned.id : this.chatMetadata[0].id;
+                    // Continue with the most recently active remaining conversation.
+                    const nextChat = [...this.chatMetadata]
+                        .sort((a, b) => b.lastMessageTimestamp - a.lastMessageTimestamp)[0];
+                    this.activeChatId = nextChat.id;
                     this.log('INFO', `🔄 Switched active chat from deleted ${chatId} to: ${this.activeChatId}`);
                 } else {
                     this.activeChatId = null;
@@ -882,16 +866,9 @@ export class ChatManager {
             return;
         }
         
-        // Sort by pinned status first, then by most recent message timestamp
-        // This ensures chats with recent activity (like updated titles) appear at the top
-        const sortedMetadata = [...this.chatMetadata].sort((a, b) => {
-            // Pinned chats first
-            if (a.isPinned !== b.isPinned) {
-                return b.isPinned ? 1 : -1;
-            }
-            // Then by most recent message timestamp
-            return b.lastMessageTimestamp - a.lastMessageTimestamp;
-        });
+        // Keep the conversation list in most-recent-activity order.
+        const sortedMetadata = [...this.chatMetadata]
+            .sort((a, b) => b.lastMessageTimestamp - a.lastMessageTimestamp);
 
         sortedMetadata.forEach(metadata => {
             const li = this.createChatListItemFromMetadata(metadata);
@@ -908,14 +885,12 @@ export class ChatManager {
         const activeChat = this.getActiveChat();
         const chatTitleEl = document.getElementById('chat-title');
         const messageAreaEl = document.getElementById('message-area');
-        const pinBtn = document.getElementById('pin-chat-btn');
         
-        if (!activeChat || !chatTitleEl || !messageAreaEl || !pinBtn) return;
+        if (!activeChat || !chatTitleEl || !messageAreaEl) return;
 
         this.ensureChatHeaderStructure();
 
         chatTitleEl.textContent = activeChat.itemTitle;
-        pinBtn.classList.toggle('pinned', activeChat.isPinned);
 
         // Full render - clear everything and rebuild
         messageAreaEl.innerHTML = '';
@@ -949,9 +924,8 @@ export class ChatManager {
         const activeChat = this.getActiveChat();
         const chatTitleEl = document.getElementById('chat-title');
         const messageAreaEl = document.getElementById('message-area');
-        const pinBtn = document.getElementById('pin-chat-btn');
         
-        if (!activeChat || !chatTitleEl || !messageAreaEl || !pinBtn) {
+        if (!activeChat || !chatTitleEl || !messageAreaEl) {
             // console.log('🎯 renderActiveChatIncremental: No active chat or missing DOM elements, skipping render'); // 🟢 MEDIUM: Debug info - keep for monitoring
             return;
         }
@@ -959,7 +933,6 @@ export class ChatManager {
         this.ensureChatHeaderStructure();
 
         chatTitleEl.textContent = activeChat.itemTitle;
-        pinBtn.classList.toggle('pinned', activeChat.isPinned);
 
         // Check if we need incremental updates or full render
         if (this.lastRenderedMessageCount === activeChat.messages.length && 
@@ -1538,7 +1511,6 @@ export class ChatManager {
                 id: chat.id,
                 courseName: chat.courseName,
                 itemTitle: chat.itemTitle,
-                isPinned: chat.isPinned,
                 pinnedMessageId: chat.pinnedMessageId || null,
                 messageCount: chat.messages ? chat.messages.length : 0,
                 lastMessageTimestamp: chat.messages && chat.messages.length > 0 
@@ -1724,7 +1696,6 @@ export class ChatManager {
 
         const sendBtn = document.getElementById('send-btn');
         const inputEl = document.getElementById('chat-input') as HTMLTextAreaElement;
-        const pinBtn = document.getElementById('pin-chat-btn');
         const deleteBtn = document.getElementById('delete-chat-btn');
         
         // Debug logging for delete button binding
@@ -1749,16 +1720,6 @@ export class ChatManager {
                 e.preventDefault();
                 this.handleSendMessage();
             }
-        });
-        //START DEBUG LOG : DEBUG-CODE(STAR-001)
-        // console.log('[CHAT] 🔍 Attaching pin button event listener', { pinBtn: pinBtn?.id, exists: !!pinBtn });
-        //END DEBUG LOG : DEBUG-CODE(STAR-001)
-
-        pinBtn?.addEventListener('click', () => {
-            //START DEBUG LOG : DEBUG-CODE(STAR-001)
-            // console.log('[CHAT] ⭐ Pin button clicked - calling handleTogglePin');
-            //END DEBUG LOG : DEBUG-CODE(STAR-001)
-            this.handleTogglePin();
         });
         deleteBtn?.addEventListener('click', () => {
             // console.log('🗑️ Delete button clicked in chat header');
@@ -2025,33 +1986,6 @@ export class ChatManager {
         // this.renderActiveChat(); // Removed - using incremental updates
     }
 
-    private handleTogglePin(): void {
-        //START DEBUG LOG : DEBUG-CODE(STAR-001)
-        // console.log('[CHAT] 🎯 handleTogglePin called');
-        //END DEBUG LOG : DEBUG-CODE(STAR-001)
-
-        const activeChatId = this.getActiveChatId();
-
-        //START DEBUG LOG : DEBUG-CODE(STAR-001)
-        // console.log('[CHAT] 📋 Active chat ID:', activeChatId);
-        //END DEBUG LOG : DEBUG-CODE(STAR-001)
-
-        if (!activeChatId) {
-            //START DEBUG LOG : DEBUG-CODE(STAR-001)
-            // console.log('[CHAT] ⚠️ No active chat ID, returning early');
-            //END DEBUG LOG : DEBUG-CODE(STAR-001)
-            return;
-        }
-
-        //START DEBUG LOG : DEBUG-CODE(STAR-001)
-        // console.log('[CHAT] 🔄 Calling togglePin with ID:', activeChatId);
-        //END DEBUG LOG : DEBUG-CODE(STAR-001)
-
-        this.togglePin(activeChatId);
-        this.renderActiveChatIncremental(); // Use incremental updates for pin toggle
-        this.renderChatList();
-    }
-
     private async handleDeleteActiveChat(): Promise<void> {
         // console.log('🗑️ handleDeleteActiveChat called');
         const activeChatId = this.getActiveChatId();
@@ -2169,39 +2103,7 @@ export class ChatManager {
         rightSide.style.display = 'flex';
         rightSide.style.alignItems = 'center';
         rightSide.style.gap = '6px';
-
-        if (chat.isPinned) {
-            const alwaysPinBtn = document.createElement('button');
-            alwaysPinBtn.className = 'icon-btn';
-            alwaysPinBtn.style.padding = '0';
-            alwaysPinBtn.title = 'Unpin chat';
-            const alwaysPinIcon = document.createElement('i');
-            alwaysPinIcon.setAttribute('data-feather', 'star');
-            alwaysPinIcon.classList.add('pinned');
-            alwaysPinBtn.appendChild(alwaysPinIcon);
-            alwaysPinBtn.addEventListener('click', (ev) => {
-                ev.stopPropagation();
-                this.togglePin(chat.id);
-                this.renderChatList();
-            });
-            rightSide.appendChild(actions);
-            rightSide.appendChild(alwaysPinBtn);
-        } else {
-            const pinBtn = document.createElement('button');
-            pinBtn.className = 'icon-btn';
-            pinBtn.style.padding = '0';
-            pinBtn.title = 'Pin chat';
-            const pinIcon = document.createElement('i');
-            pinIcon.setAttribute('data-feather', 'star');
-            pinBtn.appendChild(pinIcon);
-            pinBtn.addEventListener('click', (ev) => {
-                ev.stopPropagation();
-                this.togglePin(chat.id);
-                this.renderChatList();
-            });
-            actions.appendChild(pinBtn);
-            rightSide.appendChild(actions);
-        }
+        rightSide.appendChild(actions);
 
         li.addEventListener('mouseenter', () => {
             actions.style.visibility = 'visible';
@@ -2292,39 +2194,7 @@ export class ChatManager {
         rightSide.style.display = 'flex';
         rightSide.style.alignItems = 'center';
         rightSide.style.gap = '6px';
-
-        if (metadata.isPinned) {
-            const alwaysPinBtn = document.createElement('button');
-            alwaysPinBtn.className = 'icon-btn';
-            alwaysPinBtn.style.padding = '0';
-            alwaysPinBtn.title = 'Unpin chat';
-            const alwaysPinIcon = document.createElement('i');
-            alwaysPinIcon.setAttribute('data-feather', 'star');
-            alwaysPinIcon.classList.add('pinned');
-            alwaysPinBtn.appendChild(alwaysPinIcon);
-            alwaysPinBtn.addEventListener('click', (ev) => {
-                ev.stopPropagation();
-                this.togglePin(metadata.id);
-                this.renderChatList();
-            });
-            rightSide.appendChild(actions);
-            rightSide.appendChild(alwaysPinBtn);
-        } else {
-            const pinBtn = document.createElement('button');
-            pinBtn.className = 'icon-btn';
-            pinBtn.style.padding = '0';
-            pinBtn.title = 'Pin chat';
-            const pinIcon = document.createElement('i');
-            pinIcon.setAttribute('data-feather', 'star');
-            pinBtn.appendChild(pinIcon);
-            pinBtn.addEventListener('click', (ev) => {
-                ev.stopPropagation();
-                this.togglePin(metadata.id);
-                this.renderChatList();
-            });
-            actions.appendChild(pinBtn);
-            rightSide.appendChild(actions);
-        }
+        rightSide.appendChild(actions);
 
         li.addEventListener('mouseenter', () => {
             actions.style.visibility = 'visible';
@@ -2979,5 +2849,3 @@ export class ChatManager {
 
 
 }
-
-

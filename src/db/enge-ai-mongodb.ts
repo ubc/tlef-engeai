@@ -921,9 +921,6 @@ export class EngEAI_MongoDB {
     public updateChatTitle = async (courseName: string, userId: string, chatId: string, newTitle: string) =>
         ChatMongo.updateChatTitle(this.ctx(), courseName, userId, chatId, newTitle);
 
-    public updateChatPinStatus = async (courseName: string, userId: string, chatId: string, isPinned: boolean) =>
-        ChatMongo.updateChatPinStatus(this.ctx(), courseName, userId, chatId, isPinned);
-
     public updateMessageInChat = async (
         courseName: string,
         userId: string,

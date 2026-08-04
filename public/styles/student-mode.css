@@ -290,10 +290,8 @@ body {
     justify-content: center;
 }
 
-/* Hide chat list action buttons when collapsed, EXCEPT show the pinned star */
+/* Hide chat list action buttons when the navigation is collapsed. */
 .sidebar.collapsed .chat-list .icon-btn { display: none !important; }
-/* Show the button if it contains a pinned star icon */
-.sidebar.collapsed .chat-list .icon-btn:has(.pinned) { display: inline-flex !important; }
 
 
 .sidebar-header {
@@ -798,7 +796,7 @@ body.modal-open {
         padding: 0.5rem 0.5rem;
     }
 
-    /* When sidebar is visible on mobile, show all chat list icons (trash, star) - no hover on touch */
+    /* When the sidebar is visible on mobile, show chat-list delete controls without requiring hover. */
     .sidebar.mobile-open .chat-list .icon-btn {
         display: inline-flex !important;
     }

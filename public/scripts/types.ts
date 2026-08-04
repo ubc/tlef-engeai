@@ -93,7 +93,7 @@ export interface Chat {
     topicOrWeekTitle: string;
     itemTitle: string;
     messages: ChatMessage[];
-    isPinned: boolean;
+    /** Optional id of the one message pinned inside this conversation. */
     pinnedMessageId?: string | null;
     isDeleted?: boolean;
     /** New welcome-only chats start undeclared, then finalize on the first user message */
@@ -108,7 +108,7 @@ export interface ChatMetadataSummary {
     id: string;
     courseName: string;
     itemTitle: string;
-    isPinned: boolean;
+    /** Optional id of the one message pinned inside this conversation. */
     pinnedMessageId?: string | null;
     messageCount: number;
     lastMessageTimestamp: number;

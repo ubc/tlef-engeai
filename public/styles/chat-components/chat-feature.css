@@ -322,10 +322,6 @@
     color: var(--color-chbe-green); 
 }
 
-.icon-btn .pinned { 
-    color: var(--pinned-color); 
-}
-
 .icon-btn .feather { 
     width: 18px; 
     height: 18px; 
