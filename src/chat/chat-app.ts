@@ -24,6 +24,7 @@ import { memoryAgent } from '../memory-agent/memory-agent';
 import { isMockResponse, generateMockStreamingResponse } from '../helpers/mock-response';
 import { evaluatePathways } from '../guided-pathways/pathway-orchestrator';
 import { isCourseFeatureEnabled } from '../helpers/course-features';
+import { buildLlmCallOptions } from '../helpers/course-llm-settings';
 import {
     buildDebugModeSystemPrompt,
     ensureDebugModeTemplate,
@@ -586,15 +587,12 @@ export class ChatApp {
             appLogger.log(`\n✅ Mock streaming completed. Full response length: ${assistantResponse.length}`);
             appLogger.log(`Full response: "${assistantResponse}"`);
         } else {
-            // Normal LLM streaming
-            let conversationConfig: any = {
-                temperature: 0.7,
-            }
-
-            if (this.llmProvider === 'ollama') {
-
-                conversationConfig.num_ctx = 32768;
-            }
+            // Normal LLM streaming — course model + reasoning from llmSettings
+            const courseForLlm = await this.getCourseFeatures(courseName);
+            const conversationConfig = buildLlmCallOptions(
+                courseForLlm,
+                this.llmProvider === 'ollama' ? { num_ctx: 32768 } : undefined
+            );
 
             const response = await forkedConversation.stream(
                 (chunk: string) => {
@@ -1317,14 +1315,12 @@ export class ChatApp {
     }
 
     /**
-     * getCourseFeatures - load active course by name for capability checks.
+     * getCourseFeatures - load active course by name for capability and LLM settings.
      *
      * @param courseName - Human-readable course name used in chat pipelines
-     * @returns Feature-bearing course projection or null when missing
+     * @returns Active course or null when missing
      */
-    private async getCourseFeatures(
-        courseName: string
-    ): Promise<Pick<activeCourse, 'features'> | null> {
+    private async getCourseFeatures(courseName: string): Promise<activeCourse | null> {
         try {
             const instance = await EngEAI_MongoDB.getInstance();
             const course = await instance.getCourseByName(courseName);
@@ -1413,10 +1409,11 @@ export class ChatApp {
         }
 
         let assistantResponse = '';
-        const conversationConfig: any = { temperature: 0.3 };
-        if (this.llmProvider === 'ollama') {
-            conversationConfig.num_ctx = 32768;
-        }
+        const courseForLlm = await this.getCourseFeatures(courseName);
+        const conversationConfig = buildLlmCallOptions(courseForLlm, {
+            temperature: 0.3,
+            ...(this.llmProvider === 'ollama' ? { num_ctx: 32768 } : {}),
+        });
 
         appLogger.log(`[DEBUG-MODE] Streaming prompt-engineer reply for chat ${chatId}`);
         await forkedConversation.stream((chunk: string) => {

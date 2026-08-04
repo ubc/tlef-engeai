@@ -48,9 +48,9 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 | Path | Description |
 |------|-------------|
 | `GET /course/:courseId/instructor` | Redirects to dashboard |
-| `GET /course/:courseId/instructor/dashboard` | Instructor home (feature cards) |
+| `GET /course/:courseId/instructor/dashboard` | Instructor home (feature cards, click-to-reveal course code, Advanced Settings for instructors/admins) |
 | `GET /course/:courseId/instructor/documents` | Document management |
-| `GET /course/:courseId/instructor/settings` | Course capability toggles (Writing Feedback, Memory Agent, Guided Pathway) |
+| `GET /course/:courseId/instructor/settings` | Legacy redirect → dashboard (capability toggles live in Advanced Settings) |
 | `GET /course/:courseId/instructor/writing-feedback` | Capability-gated Writing Feedback; redirects to Dashboard when disabled (`?notice=feature-disabled&feature=writingFeedback`) |
 | `GET /course/:courseId/instructor/flags` | Flag reports |
 | `GET /course/:courseId/instructor/monitor` | Student chat monitoring |
@@ -59,7 +59,7 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 | `GET /course/:courseId/instructor/system-prompts` | System prompts |
 | `GET /course/:courseId/instructor/scenario-questions` | Scenario Questions (Practice Scenarios authoring). Query: `?browse=questions`, `?topicOrWeekId=`, `?generate=1`, `?questionId=` |
 | `GET /course/:courseId/instructor/pathway-library` | Capability-gated Guided Pathway Library; redirects to Dashboard when disabled |
-| `GET /course/:courseId/instructor/course-information` | Course info (metadata only) |
+| `GET /course/:courseId/instructor/course-information` | Legacy redirect → dashboard (metadata in Advanced Settings; course code in topbar) |
 | `GET /course/:courseId/instructor/about` | About page |
 | `GET /course/:courseId/instructor/onboarding/course-setup` | Onboarding |
 | `GET /course/:courseId/instructor/onboarding/document-setup` | Onboarding |
@@ -98,8 +98,29 @@ Optional course capabilities live on `activeCourse.features`. Missing entries ar
 
 Struggle-topic document APIs require `requireCourseFeatureAPI('memoryAgent')`. Pathway Library APIs require `requireCourseFeatureAPI('guidedPathway')`.
 
+### 4.0.1 Course LLM settings (`/api/courses/:courseId/llm-settings`)
+
+Course-wide model and reasoning level for Chat, Writing Feedback, Scenario Generation, and Guided Pathway classifier calls. Stored on `activeCourse.llmSettings`. Only roster managers may update.
+
+| Method | Path | Description |
+|---|---|---|
+| PATCH | `/api/courses/:courseId/llm-settings` | Body `{ modelId, reasoningLevel }` — see catalog below |
+
+**Catalog `modelId` values (UI → provider via env):**
+
+| `modelId` | Display | Env override | Fallback |
+|---|---|---|---|
+| `gpt-5.6-luna` | GPT 5.6 Luna | `LLM_MODEL_GPT_56_LUNA` | `gpt-5.6-luna` |
+| `gpt-5.4-mini` | GPT 5.4 Mini | `LLM_MODEL_GPT_54_MINI` | `LLM_DEFAULT_MODEL` |
+| `gpt-4o-mini` | GPT 4o Mini | `LLM_MODEL_GPT_4O_MINI` | `gpt-4o-mini` |
+
+**`reasoningLevel`:** `low` | `medium` | `high` — persisted instructor intent; mapped to `temperature` (0.3 / 0.7 / 0.9) until provider-native reasoning params exist.
+
+**Success (200):** `{ success: true, data: activeCourse, message }`  
+**Errors:** `400` invalid body, `403` non–roster-manager, `404` course missing
+
 <!-- @rdschrs: Implemented the course-scoped Writing Feedback API boundary. -->
-### 4.0.1 Writing Feedback (`/api/courses/:courseId/writing-feedback`)
+### 4.0.2 Writing Feedback (`/api/courses/:courseId/writing-feedback`)
 
 Every endpoint requires course-staff RBAC followed by `requireCourseFeatureAPI('writingFeedback')`. Feature configuration is separate: `PATCH /api/courses/:courseId/features/writing-feedback` (see §4.0). Instructors and TAs can operate intake/review endpoints after enablement; rubric mutation and future Canvas connection configuration add instructor/admin roster-management permission.
 

@@ -44,6 +44,10 @@
 - **Course capabilities** (`activeCourse.features` on `active-course-list`):
   - Keys: `writingFeedback`, `memoryAgent`, `guidedPathway` — each `{ enabled, enabledAt?, enabledBy? }`; missing = disabled.
   - Startup backfill **CF-001** enables `memoryAgent` / `guidedPathway` where absent (legacy always-on). New courses stay off until Settings or course-setup.
+- **Course LLM settings** (`activeCourse.llmSettings` on `active-course-list`):
+  - `{ modelId, reasoningLevel, updatedAt?, updatedBy? }` — course-wide model + reasoning for Chat, Writing Feedback, Scenario Generation, Guided Pathway.
+  - Catalog ids: `gpt-5.6-luna`, `gpt-5.4-mini`, `gpt-4o-mini`; missing → default `gpt-5.4-mini` + `medium`.
+  - Provider mapping via env (`LLM_MODEL_GPT_56_LUNA`, etc.) with fallbacks documented in `ENDPOINT_ARCHITECTURE.md` §4.0.1.
 - **Memory agent** (`memory-agent-mongo.ts` on `{courseName}_memory-agent`):
   - **`struggleTopics[]`** — canonical flat distinct labels per user (written by memory-agent analyze).
   - **Legacy `struggleTopicsByChapter[]`** — superseded; lazily removed on read/write (`$unset`) with labels merged into `struggleTopics[]`.

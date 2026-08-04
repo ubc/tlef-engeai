@@ -70,6 +70,11 @@ import {
     updateCourseCapability,
     updateWritingFeedbackCapability
 } from '../helpers/course-features';
+import {
+    isCourseLlmModelId,
+    isCourseReasoningLevel,
+    updateCourseLlmSettings,
+} from '../helpers/course-llm-settings';
 import { CourseRosterError } from '../db/mongo/course-roster-mongo';
 import { scheduledPublishAudit } from '../jobs/scheduled-publish-audit';
 import {
@@ -988,6 +993,48 @@ router.patch(
     requireRosterManageAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         return patchCourseFeature(req, res, 'guidedPathway');
+    })
+);
+
+/**
+ * PATCH /:courseId/llm-settings
+ * Updates course-wide LLM model and reasoning level for Chat, Writing Feedback,
+ * Scenario Generation, and Guided Pathway classifier calls.
+ *
+ * @route PATCH /api/courses/:courseId/llm-settings
+ * @param {string} courseId - Owning course id
+ * @param {string} modelId - Catalog model id (`gpt-5.6-luna` | `gpt-5.4-mini` | `gpt-4o-mini`)
+ * @param {string} reasoningLevel - `low` | `medium` | `high`
+ * @returns Updated course with `llmSettings` provenance
+ */
+router.patch(
+    '/:courseId/llm-settings',
+    requireRosterManageAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const { modelId, reasoningLevel } = req.body ?? {};
+        if (!isCourseLlmModelId(modelId)) {
+            return res.status(400).json({ success: false, error: 'modelId must be a supported catalog id' });
+        }
+        if (!isCourseReasoningLevel(reasoningLevel)) {
+            return res.status(400).json({ success: false, error: 'reasoningLevel must be low, medium, or high' });
+        }
+
+        const instance = await EngEAI_MongoDB.getInstance();
+        const courseId = routeParam(req.params, 'courseId');
+        const course = await instance.getActiveCourse(courseId) as unknown as activeCourse | null;
+        if (!course) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+
+        const globalUser = (req.session as any).globalUser;
+        const llmSettings = updateCourseLlmSettings(modelId, reasoningLevel, globalUser.userId);
+        const updatedCourse = await instance.updateActiveCourse(courseId, { llmSettings });
+
+        return res.status(200).json({
+            success: true,
+            data: updatedCourse,
+            message: 'LLM settings updated',
+        });
     })
 );
 

@@ -107,7 +107,11 @@ export class A2WritingFeedbackEngine implements WritingFeedbackEngine {
      * @returns Structured feedback whose evidence maps to exact source substrings
      * @throws Error for blank text, unapproved rubric, invalid structure, or unmapped evidence
      */
-    async generate(input: { assignment: WritingAssignment; verifiedText: string }): Promise<A2FeedbackResult> {
+    async generate(input: {
+        assignment: WritingAssignment;
+        verifiedText: string;
+        llmCallOptions?: Record<string, unknown>;
+    }): Promise<A2FeedbackResult> {
         // Enforce human-verification and rubric-approval gates at the model boundary.
         if (!input.verifiedText.trim()) throw new Error('Verified submission text is required');
         if (!input.assignment.rubric || input.assignment.rubric.status !== 'approved') {
@@ -122,7 +126,8 @@ export class A2WritingFeedbackEngine implements WritingFeedbackEngine {
             { role: 'user', content: `<assignment profile="${input.assignment.profileVersion}">LLED 200 Technical Description Paragraph 1</assignment>\n<verified_student_text>\n${input.verifiedText}\n</verified_student_text>` }
         ];
         const response = await this.llm.sendStructuredConversation(messages, a2FeedbackSchema, {
-            structuredOutputName: 'a2_writing_feedback'
+            structuredOutputName: 'a2_writing_feedback',
+            ...input.llmCallOptions,
         });
         // Repair cosmetic quote drift only when it maps back to one exact source slice.
         return reconcileExactEvidence(response.parsed as A2FeedbackResult, input.verifiedText);

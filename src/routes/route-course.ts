@@ -223,7 +223,13 @@ router.get('/course/:courseId/instructor/dashboard', validateCourseAccess, requi
 
 router.get('/course/:courseId/instructor/documents', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
 
-router.get('/course/:courseId/instructor/settings', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+/**
+ * GET /course/:courseId/instructor/settings
+ * Legacy path — redirects to dashboard (Advanced Settings panel).
+ */
+router.get('/course/:courseId/instructor/settings', validateCourseAccess, requireInstructorForCourse, (req, res) => {
+    res.redirect(302, `/course/${req.params.courseId}/instructor/dashboard`);
+});
 
 /**
  * GET /course/:courseId/instructor/writing-feedback
@@ -335,16 +341,11 @@ router.get(
 
 /**
  * GET /course/:courseId/instructor/course-information
- * Serves course information page. Requires course access and instructor role.
- *
- * @route GET /course/:courseId/instructor/course-information
- * @param {string} courseId - Course ID (path param)
- * @returns {void} Serves instructor-mode.html
- * @response 200 - Course information page
- * @response 301 - Redirect (auth/role failure)
- * @response 404 - Course not found
+ * Legacy path — redirects to dashboard (Advanced Settings + course-code topbar).
  */
-router.get('/course/:courseId/instructor/course-information', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+router.get('/course/:courseId/instructor/course-information', validateCourseAccess, requireInstructorForCourse, (req, res) => {
+    res.redirect(302, `/course/${req.params.courseId}/instructor/dashboard`);
+});
 
 
 /**

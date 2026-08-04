@@ -22,7 +22,6 @@ import { ChatManager } from "../feature/chat.js";
 import { authService } from '../services/auth-service.js';
 import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
 import { renderAbout } from '../about/about.js';
-import { initializeCourseInformation } from '../feature/course-information.js';
 // @rdschrs: Integrated capability-gated Writing Feedback navigation and initialization.
 import { initializeWritingFeedback } from '../feature/writing-feedback.js';
 import { initializeCourseSummary, summonCourseSummary, configureCourseSummaryFabVisibility } from '../feature/course-summary.js';
@@ -32,7 +31,6 @@ import { initializeSystemPrompts, flushSystemPromptOnLeave } from '../feature/sy
 import { initializeScenarioQuestionsInstructor, isScenarioQuestionsMounted, syncScenarioQuestionsFromURL } from '../feature/scenario-questions-instructor.js';
 import { initializePathwayLibrary } from '../feature/pathway-library.js';
 import { initializeDashboard, renderDashboardCards } from '../feature/dashboard.js';
-import { initializeSettings } from '../feature/settings.js';
 import { 
     getCourseIdFromURL, 
     getInstructorViewFromURL, 
@@ -40,7 +38,8 @@ import {
     navigateToInstructorView,
     navigateToChat,
     getInstructorOnboardingStageFromURL,
-    isNewCourseOnboardingURL
+    isNewCourseOnboardingURL,
+    replaceInstructorViewURL
 } from '../utils/url-parser.js';
 
 /**
@@ -73,7 +72,9 @@ function mapViewToStateEvent(view: string): StateEvent {
         case 'system-prompts': return StateEvent.SystemPrompts;
         case 'scenario-questions': return StateEvent.ScenarioQuestions;
         case 'pathway-library': return StateEvent.PathwayLibrary;
-        case 'settings': return StateEvent.Settings;
+        case 'settings':
+        case 'course-information':
+            return StateEvent.Dashboard;
         default: return StateEvent.Dashboard;
     }
 }
@@ -88,8 +89,7 @@ const enum StateEvent {
     AssistantPrompts,
     SystemPrompts,
     ScenarioQuestions,
-    PathwayLibrary,
-    Settings
+    PathwayLibrary
 }
 
 let currentClass : activeCourse =
@@ -459,11 +459,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Don't set currentState - onboarding will be handled in updateUI() based on URL
         // Skip the regular view logic below
     } else if (viewFromURL) {
-        // Handle regular views only if not on onboarding URL
-        // Handle special views that aren't StateEvent enum values
-        if (viewFromURL === 'course-information' || viewFromURL === 'about') {
-            // These will be handled separately in initialization, keep current state as is
-            // Don't change currentState for these special views
+        // Legacy settings / course-information URLs → dashboard (Advanced Settings lives there)
+        if (viewFromURL === 'settings' || viewFromURL === 'course-information') {
+            replaceInstructorViewURL('dashboard');
+            currentState = StateEvent.Dashboard;
+        } else if (viewFromURL === 'about') {
+            // About is handled separately in initialization; keep current state as is
         } else {
             currentState = mapViewToStateEvent(viewFromURL);
         }
@@ -488,7 +489,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const featureKey = noticeParams.get('feature') || (notice === 'writing-feedback-disabled' ? 'writingFeedback' : '');
         const label = FEATURE_NOTICE_LABELS[featureKey] || 'This feature';
         void showSimpleErrorModal(
-            `${label} is not enabled for this course. You can enable it from Settings if you have instructor or admin access.`,
+            `${label} is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.`,
             'Feature unavailable'
         );
         const cleanUrl = `${window.location.pathname}${window.location.hash}`;
@@ -508,7 +509,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const systemPromptsStateEl = document.getElementById('system-prompts-state');
     const scenarioQuestionsStateEl = document.getElementById('scenario-questions-state');
     const pathwayLibraryStateEl = document.getElementById('pathway-library-state');
-    const settingsStateEl = document.getElementById('settings-state');
 
     dashboardStateEl?.addEventListener('click', () => {
         navigateToInstructorView('dashboard');
@@ -549,10 +549,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     pathwayLibraryStateEl?.addEventListener('click', () => {
         navigateToInstructorView('pathway-library');
     });
-
-    settingsStateEl?.addEventListener('click', () => {
-        navigateToInstructorView('settings');
-    });
     
     // Handle browser back/forward navigation
     window.addEventListener('popstate', async () => {
@@ -560,14 +556,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const chatId = getChatIdFromURL();
         
         if (view) {
-            if (view === 'chat') {
+            if (view === 'settings' || view === 'course-information') {
+                replaceInstructorViewURL('dashboard');
+                currentState = StateEvent.Dashboard;
+                updateUI();
+            } else if (view === 'chat') {
                 // Load chat interface
                 await showChatContent();
-            } else if (view === 'course-information') {
-                // Load course information component
-                await loadComponent('course-information');
-                expandFeatureSidebar();
-                hideChatList();
             } else if (view === 'about') {
                 // Load about component
                 await renderAbout({ state: currentState, mode: 'instructor' });
@@ -577,18 +572,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await showChatContent();
             } else if (view === 'writing-feedback' && currentClass.features?.writingFeedback?.enabled !== true) {
                 await showSimpleErrorModal(
-                    'Writing Feedback is not enabled for this course. You can enable it from Settings if you have instructor or admin access.',
+                    'Writing Feedback is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
                 );
                 navigateToInstructorView('dashboard');
             } else if (view === 'pathway-library' && currentClass.features?.guidedPathway?.enabled !== true) {
                 await showSimpleErrorModal(
-                    'Guided Pathway is not enabled for this course. You can enable it from Settings if you have instructor or admin access.',
+                    'Guided Pathway is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
                 );
                 navigateToInstructorView('dashboard');
             } else if (
-                (view === 'monitor' || view === 'assistant-prompts' || view === 'system-prompts' || view === 'scenario-questions' || view === 'pathway-library' || view === 'settings') &&
+                (view === 'monitor' || view === 'assistant-prompts' || view === 'system-prompts' || view === 'scenario-questions' || view === 'pathway-library') &&
                 window.innerWidth < 768
             ) {
                 // Desktop-first warning on mobile/tablet
@@ -654,12 +649,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         | 'monitor-instructor' 
                         | 'documents-instructor'
                         | 'dashboard-instructor'
-                        | 'settings-instructor'
                         | 'writing-feedback'
                         | 'flag-history' 
                         | 'course-setup'
                         | 'document-setup'
-                        | 'course-information'
                         | 'assistant-prompts-instructor'
                         | 'system-prompts-instructor'
                         | 'scenario-questions-instructor'
@@ -688,10 +681,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 initializeDocumentsPage(currentClass);
             }
             else if (componentName === 'dashboard-instructor') {
-                initializeDashboard(currentClass);
-            }
-            else if (componentName === 'settings-instructor') {
-                await initializeSettings(currentClass);
+                await initializeDashboard(currentClass);
             }
             else if (componentName === 'writing-feedback') {
                 await initializeWritingFeedback(currentClass);
@@ -707,9 +697,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             else if (componentName === 'document-setup') {
                 //course setup component - handled by renderDocumentSetup
-            }
-            else if (componentName === 'course-information') {
-                await initializeCourseInformation(currentClass);
             }
             else if (componentName === 'assistant-prompts-instructor') {
                 await initializeAssistantPrompts(currentClass);
@@ -812,7 +799,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         else if (currentState === StateEvent.WritingFeedback) {
             if (currentClass.features?.writingFeedback?.enabled !== true) {
                 void showSimpleErrorModal(
-                    'Writing Feedback is not enabled for this course. You can enable it from Settings if you have instructor or admin access.',
+                    'Writing Feedback is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
                 );
                 navigateToInstructorView('dashboard');
@@ -849,19 +836,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         else if ( currentState === StateEvent.PathwayLibrary){
             if (currentClass.features?.guidedPathway?.enabled !== true) {
                 void showSimpleErrorModal(
-                    'Guided Pathway is not enabled for this course. You can enable it from Settings if you have instructor or admin access.',
+                    'Guided Pathway is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
                 );
                 navigateToInstructorView('dashboard');
                 return;
             }
             loadComponent('pathway-library-instructor');
-            updateSidebarState();
-            expandFeatureSidebar();
-            hideChatList();
-        }
-        else if ( currentState === StateEvent.Settings){
-            loadComponent('settings-instructor');
             updateSidebarState();
             expandFeatureSidebar();
             hideChatList();
@@ -912,7 +893,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         systemPromptsStateEl?.classList.remove('active');
         scenarioQuestionsStateEl?.classList.remove('active');
         pathwayLibraryStateEl?.classList.remove('active');
-        settingsStateEl?.classList.remove('active');
         [
             dashboardStateEl,
             documentsStateEl,
@@ -923,8 +903,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             assistantPromptsStateEl,
             systemPromptsStateEl,
             scenarioQuestionsStateEl,
-            pathwayLibraryStateEl,
-            settingsStateEl
+            pathwayLibraryStateEl
         ].forEach((item) => item?.removeAttribute('aria-current'));
 
         // Add active class to the current state's menu item
@@ -959,9 +938,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             case StateEvent.PathwayLibrary:
                 pathwayLibraryStateEl?.classList.add('active');
                 break;
-            case StateEvent.Settings:
-                settingsStateEl?.classList.add('active');
-                break;
         }
         [
             dashboardStateEl,
@@ -973,8 +949,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             assistantPromptsStateEl,
             systemPromptsStateEl,
             scenarioQuestionsStateEl,
-            pathwayLibraryStateEl,
-            settingsStateEl
+            pathwayLibraryStateEl
         ].find((item) => item?.classList.contains('active'))?.setAttribute('aria-current', 'page');
     }
 
@@ -1571,14 +1546,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // Course Information button listener
-        const courseInfoBtn = document.getElementById('instructor-course-info-btn');
-        if (courseInfoBtn) {
-            courseInfoBtn.addEventListener('click', async () => {
-                navigateToInstructorView('course-information');
-            });
-        }
-
         const courseSummaryFab = document.getElementById('course-summary-summon-fab');
         if (courseSummaryFab) {
             courseSummaryFab.addEventListener('click', () => {
@@ -1635,9 +1602,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Listen for about page close event
     window.addEventListener('about-page-closed', restorePreviousState);
-    
-    // Listen for course info page close event
-    window.addEventListener('course-info-closed', restorePreviousState);
 
     // Artefact functionality moved to chat.ts
 
@@ -1659,11 +1623,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             // console.error('[INSTRUCTOR-MODE] Error loading chat from URL:', err);
             updateUI();
         });
-    } else if (viewFromURL === 'course-information') {
-        // Load course information component
-        await loadComponent('course-information');
-        expandFeatureSidebar();
-        hideChatList();
     } else if (viewFromURL === 'about') {
         // Load about component
         await renderAbout({ state: currentState, mode: 'instructor' });

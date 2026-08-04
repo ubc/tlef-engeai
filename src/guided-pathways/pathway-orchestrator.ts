@@ -14,6 +14,7 @@ import { LLMModule, type Message } from 'ubc-genai-toolkit-llm';
 import { loadConfig } from '../utils/config';
 import { appLogger } from '../utils/logger';
 import { isMockResponse, getMockPathwayEvaluation } from '../helpers/mock-response';
+import { buildLlmCallOptions } from '../helpers/course-llm-settings';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import {
     buildPathwayEvaluationSchema,
@@ -26,7 +27,7 @@ import {
     buildPathwayEvaluationSystemPrompt,
     buildPathwayEvaluationUserTurn,
 } from './pathway-prompt';
-import type { GuidedPathway } from '../types/shared';
+import type { GuidedPathway, activeCourse } from '../types/shared';
 
 /** Input for a single pathway evaluation on a student chat message. */
 export interface PathwayEvaluationInput {
@@ -106,8 +107,12 @@ export async function evaluatePathways(input: PathwayEvaluationInput): Promise<P
 
         // Send the messages to the LLM
         const llmModule = getLlmModule();
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const course = (await mongo.getCourseByName(input.courseName)) as activeCourse | null;
+        const llmOptions = buildLlmCallOptions(course);
         const response = await llmModule.sendStructuredConversation(messages, schema, {
             structuredOutputName: 'pathway_evaluation',
+            ...llmOptions,
         });
 
         // Build the result

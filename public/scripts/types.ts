@@ -142,6 +142,20 @@ export interface CourseFeatures {
     guidedPathway?: CourseFeatureCapability;
 }
 
+/** UI catalog ids for course-wide LLM model selection. */
+export type CourseLlmModelId = 'gpt-5.6-luna' | 'gpt-5.4-mini' | 'gpt-4o-mini';
+
+/** Instructor-selected reasoning effort; mapped to provider params until native support exists. */
+export type CourseReasoningLevel = 'low' | 'medium' | 'high';
+
+/** Course-wide model + reasoning persisted on activeCourse.llmSettings. */
+export interface CourseLlmSettings {
+    modelId: CourseLlmModelId;
+    reasoningLevel: CourseReasoningLevel;
+    updatedAt?: Date;
+    updatedBy?: string;
+}
+
 /**
  * Must match src/types/shared.ts
  */
@@ -177,6 +191,8 @@ export interface activeCourse {
     academicPeriodId?: string;
     /** Optional course capabilities. Missing entries are disabled for backward compatibility. */
     features?: CourseFeatures;
+    /** Course-wide LLM model + reasoning for Chat, Writing Feedback, Scenarios, Guided Pathway. */
+    llmSettings?: CourseLlmSettings;
 }
 
 /**

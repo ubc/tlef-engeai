@@ -259,7 +259,11 @@ export interface OcrProvider {
 /** Structured feedback generator constrained by the assignment's approved rubric. */
 export interface WritingFeedbackEngine {
     /** Generates and validates a model draft from staff-verified text only. */
-    generate(input: { assignment: WritingAssignment; verifiedText: string }): Promise<A2FeedbackResult>;
+    generate(input: {
+        assignment: WritingAssignment;
+        verifiedText: string;
+        llmCallOptions?: Record<string, unknown>;
+    }): Promise<A2FeedbackResult>;
 }
 
 /** Student PDF section selector used by staff download endpoints. */

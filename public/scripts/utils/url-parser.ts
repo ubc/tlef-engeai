@@ -25,8 +25,29 @@ export function getInstructorViewFromURL(): 'dashboard' | 'documents' | 'writing
     if (!pathMatch) return null;
     
     const view = pathMatch[1];
+    // settings + course-information remain recognized so SPA can replaceState → dashboard
     const validViews = ['dashboard', 'documents', 'writing-feedback', 'flags', 'monitor', 'chat', 'assistant-prompts', 'system-prompts', 'scenario-questions', 'pathway-library', 'settings', 'course-information', 'about', 'welcoming-message'];
     return validViews.includes(view) ? view as any : null;
+}
+
+/**
+ * replaceInstructorViewURL - replace the current history entry without firing popstate.
+ *
+ * Used for legacy redirects (settings / course-information → dashboard) without stacking history.
+ *
+ * @param view - Instructor view segment
+ */
+export function replaceInstructorViewURL(view: string): void {
+    const courseId = getCourseIdFromURL();
+    if (!courseId) {
+        console.error('[URL-PARSER] Cannot replace view: courseId not found in URL');
+        return;
+    }
+
+    const url = buildInstructorURL(courseId, view);
+    if (window.location.pathname + window.location.search === url) return;
+
+    window.history.replaceState({ view }, '', url);
 }
 
 /**

@@ -17,7 +17,9 @@ import { RAGApp } from '../rag/rag-app';
 import { ragPrompts } from '../rag/rag-prompts';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { appLogger } from '../utils/logger';
+import { buildLlmCallOptions } from '../helpers/course-llm-settings';
 import type {
+    activeCourse,
     ScenarioDifficulty,
     ScenarioExamAnswerInput,
     ScenarioExamSubmitResponse,
@@ -338,6 +340,7 @@ export class ScenarioService {
             // STEP 2b: Practice feedback via LLM (or mock) — no numeric grade
             // ====================================================================
             const reviewed = await this.feedbackPracticePart(
+                input.courseId,
                 question.questionBody,
                 subQuestion,
                 input.studentAnswer,
@@ -439,7 +442,7 @@ export class ScenarioService {
             // ====================================================================
             // STEP 2: Batch-grade every part in one structured LLM call
             // ====================================================================
-            const graded = await this.gradeExamBatch(question, answerById);
+            const graded = await this.gradeExamBatch(input.courseId, question, answerById);
             if (!graded) {
                 return {
                     success: false,
@@ -672,6 +675,13 @@ export class ScenarioService {
         return snapshots;
     }
 
+    /** Resolve course-wide LLM call options for scenario generation and grading. */
+    private async resolveLlmCallOptions(courseId: string): Promise<Record<string, unknown>> {
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const course = (await mongoDB.getActiveCourse(courseId)) as activeCourse | null;
+        return buildLlmCallOptions(course);
+    }
+
     /**
      * RAG retrieval + structured LLM generation for single or batch mode.
      * 
@@ -735,15 +745,19 @@ export class ScenarioService {
         // log the messages
         this.logLlmPrompts(input.mode === 'batch' ? 'generate-batch' : 'generate-single', messages);
 
+        const llmOptions = await this.resolveLlmCallOptions(input.courseId);
+
         if (input.mode === 'single') {
             const response = await this.llmModule.sendStructuredConversation(messages, singleScenarioSchema, {
                 structuredOutputName: 'scenario_generation_single',
+                ...llmOptions,
             });
             return response?.parsed ? [response.parsed] : [];
         }
 
         const response = await this.llmModule.sendStructuredConversation(messages, batchScenarioSchema, {
             structuredOutputName: 'scenario_generation_batch',
+            ...llmOptions,
         });
         return response?.parsed?.questions ?? [];
     }
@@ -761,6 +775,7 @@ export class ScenarioService {
      * @returns `{ feedback }` TA-facing string; throws when structured LLM output is empty
      */
     private async feedbackPracticePart(
+        courseId: string,
         questionBody: string,
         subQuestion: ScenarioSubQuestion,
         studentAnswer: string,
@@ -799,11 +814,13 @@ export class ScenarioService {
 
         this.logLlmPrompts('feedback-practice', messages);
 
+        const llmOptions = await this.resolveLlmCallOptions(courseId);
+
         // send the messages to the LLM
         const response = await this.llmModule.sendStructuredConversation(
             messages,
             scenarioPracticeFeedbackResponseSchema,
-            { structuredOutputName: 'scenario_practice_feedback' }
+            { structuredOutputName: 'scenario_practice_feedback', ...llmOptions }
         );
         if (!response?.parsed) {
             throw new Error('Empty structured response from LLM');
@@ -825,6 +842,7 @@ export class ScenarioService {
      * @returns Graded parts in expected order, or null when LLM output is incomplete
      */
     private async gradeExamBatch(
+        courseId: string,
         question: ScenarioQuestion,
         answerById: Map<string, string>
     ): Promise<Array<{ subQuestionId: string; grade: number; feedback: string }> | null> {
@@ -861,11 +879,13 @@ export class ScenarioService {
         // log the messages
         this.logLlmPrompts('grade-exam-batch', messages);
 
+        const llmOptions = await this.resolveLlmCallOptions(courseId);
+
         // send the messages to the LLM
         const response = await this.llmModule.sendStructuredConversation(
             messages,
             scenarioExamGradingResponseSchema,
-            { structuredOutputName: 'scenario_exam_grading' }
+            { structuredOutputName: 'scenario_exam_grading', ...llmOptions }
         );
         if (!response?.parsed) return null;
 

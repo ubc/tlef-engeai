@@ -220,6 +220,20 @@ export interface CourseFeatures {
     guidedPathway?: CourseFeatureCapability; // Guided Pathway Library + chat intercept; absence means disabled
 }
 
+/** UI catalog ids for course-wide LLM model selection. */
+export type CourseLlmModelId = 'gpt-5.6-luna' | 'gpt-5.4-mini' | 'gpt-4o-mini';
+
+/** Instructor-selected reasoning effort; mapped to provider params until native support exists. */
+export type CourseReasoningLevel = 'low' | 'medium' | 'high';
+
+/** Course-wide model + reasoning persisted on activeCourse.llmSettings. */
+export interface CourseLlmSettings {
+    modelId: CourseLlmModelId;
+    reasoningLevel: CourseReasoningLevel;
+    updatedAt?: Date;
+    updatedBy?: string;
+}
+
 export interface activeCourse {
     id : string,
     date : Date,
@@ -255,6 +269,8 @@ export interface activeCourse {
     academicPeriodId?: string;
     /** Optional capability map; missing entries remain disabled for legacy courses. */
     features?: CourseFeatures;
+    /** Course-wide LLM model + reasoning for Chat, Writing Feedback, Scenarios, Guided Pathway. */
+    llmSettings?: CourseLlmSettings;
 }
 
 /**
