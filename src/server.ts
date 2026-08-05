@@ -17,6 +17,7 @@ import authRoutes from './routes/route-auth';  // Import authentication routes
 import courseEntryRoutes from './routes/route-course-entry';  // Import course entry routes
 import userManagementRoutes from './routes/route-user-management';  // Import user management routes
 import courseRoutes from './routes/route-course';  // Import course routes
+import { sendHtmlPageWithBuildComment } from './utils/build-info';
 import academicPeriodRoutes from './routes/mongo/academic-period-routes';
 import adminCourseRoutes from './routes/mongo/admin-course-routes';
 
@@ -99,12 +100,12 @@ app.get('/', (req: any, res: any) => {
         return res.redirect(redirectPath);
     }
     logger.info('[ROUTING] Unauthenticated user accessed root, serving index.html');
-    return res.sendFile(path.join(publicPath, 'index.html'));
+    return sendHtmlPageWithBuildComment(res, path.join(publicPath, 'index.html'));
 });
 
 // Public marketing team page (no auth)
 app.get('/team', (_req: any, res: any) => {
-    res.sendFile(path.join(publicPath, 'pages/team.html'));
+    sendHtmlPageWithBuildComment(res, path.join(publicPath, 'pages/team.html'));
 });
 
 // Serve static files from the 'public' directory (but not for root path)
@@ -222,7 +223,7 @@ app.get('/role-restricted', (req: any, res: any) => {
     if (affiliation !== 'staff' && affiliation !== 'empty') {
         return res.redirect('/course-selection');
     }
-    res.sendFile(path.join(publicPath, 'pages/role-restricted.html'));
+    sendHtmlPageWithBuildComment(res, path.join(publicPath, 'pages/role-restricted.html'));
 });
 
 app.get('/course-selection', (req: any, res: any) => {
@@ -234,7 +235,7 @@ app.get('/course-selection', (req: any, res: any) => {
     if (isAdminUser(globalUser)) {
         return res.redirect('/admin/course-selection');
     }
-    res.sendFile(path.join(publicPath, 'pages/course-selection.html'));
+    sendHtmlPageWithBuildComment(res, path.join(publicPath, 'pages/course-selection.html'));
 });
 
 app.get('/admin/course-selection', (req: any, res: any) => {
@@ -249,7 +250,7 @@ app.get('/admin/course-selection', (req: any, res: any) => {
     if (!isAdminUser(globalUser)) {
         return res.redirect('/course-selection');
     }
-    res.sendFile(path.join(publicPath, 'pages/admin-course-selection.html'));
+    sendHtmlPageWithBuildComment(res, path.join(publicPath, 'pages/admin-course-selection.html'));
 });
 
 app.get('/settings', (req: any, res: any) => {
@@ -257,7 +258,7 @@ app.get('/settings', (req: any, res: any) => {
     if (affiliation === 'staff' || affiliation === 'empty') {
         return res.redirect('/role-restricted');
     }
-    res.sendFile(path.join(publicPath, 'pages/settings.html'));
+    sendHtmlPageWithBuildComment(res, path.join(publicPath, 'pages/settings.html'));
 });
 
 // API endpoints

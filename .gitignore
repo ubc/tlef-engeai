@@ -17,6 +17,9 @@ deployments/
 dist/
 public/dist/
 
+# Generated at build time (see scripts/generate-build-info.cjs)
+src/generated/
+
 # Jest coverage output
 coverage/
 
