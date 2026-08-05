@@ -160,6 +160,187 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     isInitialized = true;
 
+    // --- SIDEBAR CONTROLLER ---
+    // Initialize the visible sidebar controls before this callback's first await.
+    // Slow or failed authentication/course setup must never leave the button inert.
+    const sidebarEl = document.getElementById('instructor-sidebar');
+    const logoBox = document.querySelector<HTMLButtonElement>('.logo-box');
+    const sidebarMenuListEl = document.querySelector('.sidebar-menu-list');
+    const sidebarContentEl = document.getElementById('sidebar-content');
+    const mainContentAreaEl = document.getElementById('main-content-area');
+    const instructorFeatureSidebarEl = document.querySelector('.instructor-feature-sidebar');
+    const chatListEl = document.getElementById('chat-list');
+    const instructorSidebarOverlayEl = document.getElementById('instructor-sidebar-overlay');
+    const SIDEBAR_COLLAPSED_KEY = 'instructor-sidebar-collapsed';
+    const MOBILE_BREAKPOINT = 768;
+    const instructorSidebarMediaQuery = window.matchMedia(
+        `(max-width: ${MOBILE_BREAKPOINT}px)`
+    );
+    const isMobileView = (): boolean => instructorSidebarMediaQuery.matches;
+    let instructorMobileSidebarTrigger: HTMLElement | null = null;
+
+    const readSidebarPreference = (): boolean => {
+        try {
+            return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
+        } catch {
+            // Private-mode or blocked storage must not break navigation.
+            return false;
+        }
+    };
+
+    const writeSidebarPreference = (collapsed: boolean): void => {
+        try {
+            window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0');
+        } catch {
+            // Preference is a convenience; ignore quota/permission failures.
+        }
+    };
+
+    let isSidebarCollapsed: boolean = readSidebarPreference();
+
+    const updateSidebarToggleAccessibility = (collapsed: boolean): void => {
+        const expanded = !collapsed;
+        const label = expanded ? 'Collapse sidebar' : 'Expand sidebar';
+        document.querySelectorAll<HTMLButtonElement>('.sidebar-collapse-icon').forEach((control) => {
+            control.setAttribute('aria-expanded', String(expanded));
+            control.setAttribute('aria-label', label);
+            control.setAttribute('aria-controls', 'instructor-feature-sidebar');
+            control.title = label;
+        });
+
+        if (isMobileView()) {
+            const drawerOpen = sidebarEl?.classList.contains('mobile-open') ?? false;
+            if (drawerOpen) {
+                sidebarEl?.removeAttribute('aria-hidden');
+                sidebarEl?.removeAttribute('inert');
+            } else {
+                sidebarEl?.setAttribute('aria-hidden', 'true');
+                sidebarEl?.setAttribute('inert', '');
+            }
+
+            if (logoBox) {
+                logoBox.setAttribute('aria-expanded', String(drawerOpen));
+                logoBox.setAttribute('aria-label', 'Close navigation');
+                logoBox.setAttribute('aria-controls', 'instructor-sidebar');
+                logoBox.title = 'Close navigation';
+            }
+            return;
+        }
+
+        sidebarEl?.removeAttribute('aria-hidden');
+        sidebarEl?.removeAttribute('inert');
+        if (!logoBox) return;
+
+        logoBox.setAttribute('aria-expanded', String(expanded));
+        logoBox.setAttribute('aria-label', label);
+        logoBox.setAttribute('aria-controls', 'instructor-feature-sidebar');
+        logoBox.title = label;
+    };
+
+    const hideChatList = (): void => {
+        chatListEl?.classList.remove('active');
+    };
+
+    const showChatList = (): void => {
+        chatListEl?.classList.add('active');
+    };
+
+    /**
+     * Applies a collapse state to the sidebar DOM.
+     *
+     * @param collapsed - Target width state
+     * @param persist - Whether this reflects a deliberate user choice. Chat mode
+     *                  passes false so its temporary narrowing does not overwrite
+     *                  the preference the reader set on the other tabs.
+     */
+    const setSidebarCollapsed = (collapsed: boolean, persist: boolean): void => {
+        if (!instructorFeatureSidebarEl) return;
+        instructorFeatureSidebarEl.classList.toggle('collapsed', collapsed);
+
+        logoBox?.classList.toggle('collapsed', collapsed);
+        sidebarMenuListEl?.classList.toggle('collapsed', collapsed);
+
+        // The chat list is positioned against the collapsed rail and would sit
+        // underneath an expanded sidebar.
+        if (!collapsed) hideChatList();
+
+        isSidebarCollapsed = collapsed;
+        updateSidebarToggleAccessibility(collapsed);
+        if (persist) writeSidebarPreference(collapsed);
+    };
+
+    const collapseFeatureSidebar = (): void => setSidebarCollapsed(true, true);
+
+    const expandFeatureSidebar = (): void => setSidebarCollapsed(false, true);
+
+    /** Restores the reader's stored width choice when entering a non-chat tab. */
+    const applySidebarPreference = (): void =>
+        setSidebarCollapsed(readSidebarPreference(), false);
+
+    updateSidebarToggleAccessibility(
+        instructorFeatureSidebarEl?.classList.contains('collapsed') ?? false
+    );
+    instructorSidebarMediaQuery.addEventListener('change', (event: MediaQueryListEvent) => {
+        if (!event.matches) {
+            sidebarEl?.classList.remove('mobile-open');
+            instructorSidebarOverlayEl?.classList.remove('show');
+            instructorSidebarOverlayEl?.setAttribute('aria-hidden', 'true');
+            instructorMobileSidebarTrigger = null;
+        }
+        updateSidebarToggleAccessibility(
+            instructorFeatureSidebarEl?.classList.contains('collapsed') ?? false
+        );
+    });
+
+    // Delegation makes both the green logo and menu button—including their
+    // Feather SVG/path children—reliable hit targets.
+    document.addEventListener('click', (event: MouseEvent) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const toggleControl = target.closest(
+            '.sidebar-collapse-icon, .instructor-feature-sidebar .logo-box'
+        );
+        if (!toggleControl) return;
+
+        // On mobile the outer drawer replaces desktop width collapsing. Tapping
+        // the visible logo closes that drawer instead of creating a trapped 64px rail.
+        if (
+            toggleControl.classList.contains('logo-box') &&
+            isMobileView()
+        ) {
+            sidebarEl?.classList.remove('mobile-open');
+            instructorSidebarOverlayEl?.classList.remove('show');
+            instructorSidebarOverlayEl?.setAttribute('aria-hidden', 'true');
+            const focusTarget = instructorMobileSidebarTrigger ??
+                document.querySelector<HTMLElement>(
+                    '#hamburger-btn, #instructor-hamburger-btn, .mobile-hamburger-btn, .instructor-mobile-hamburger-btn'
+                );
+            focusTarget?.focus();
+            instructorMobileSidebarTrigger = null;
+            updateSidebarToggleAccessibility(
+                instructorFeatureSidebarEl?.classList.contains('collapsed') ?? false
+            );
+            return;
+        }
+
+        const featureSidebar = document.querySelector('.instructor-feature-sidebar');
+        if (!featureSidebar) return;
+
+        if (featureSidebar.classList.contains('collapsed')) {
+            expandFeatureSidebar();
+            return;
+        }
+
+        collapseFeatureSidebar();
+        const view = getInstructorViewFromURL();
+        if (view === 'chat' || view === 'welcoming-message') {
+            showChatList();
+        }
+    });
+
     // Check authentication first
     const isAuthenticated = await checkAuthentication();
     if (!isAuthenticated) {
@@ -390,26 +571,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // --- DOM ELEMENT SELECTORS ---
-    const sidebarEl = document.querySelector('.instructor-sidebar') as HTMLElement | null;
-    const logoBox = document.querySelector('.logo-box');
-    const sidebarMenuListEl =document.querySelector('.sidebar-menu-list');
-    const sidebarCollapseButton = document.querySelector('.sidebar-collapse-icon');
-    const sidebarContentEl = document.getElementById('sidebar-content');
-    const mainContentAreaEl = document.getElementById('main-content-area');
-    const instructorFeatureSidebarEl = document.querySelector('.instructor-feature-sidebar');
-    const chatListEl = document.getElementById('chat-list');
-    const instructorSidebarOverlayEl = document.getElementById('instructor-sidebar-overlay');
-
     // --- MOBILE SIDEBAR ---
-    const MOBILE_BREAKPOINT = 768;
-    const isMobileView = (): boolean => window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches;
-
     const openMobileSidebar = (): void => {
         if (!sidebarEl || !instructorSidebarOverlayEl) return;
+
+        // The desktop width preference can otherwise leave a 64px drawer with
+        // hidden labels and no visible collapse control at the mobile breakpoint.
+        // Normalize the two-pane chat layout without overwriting that preference.
+        const view = getInstructorViewFromURL();
+        if (view === 'chat' || view === 'welcoming-message') {
+            setSidebarCollapsed(true, false);
+            showChatList();
+        } else {
+            setSidebarCollapsed(false, false);
+            hideChatList();
+        }
+
         sidebarEl.classList.add('mobile-open');
         instructorSidebarOverlayEl.classList.add('show');
         instructorSidebarOverlayEl.setAttribute('aria-hidden', 'false');
+        updateSidebarToggleAccessibility(
+            instructorFeatureSidebarEl?.classList.contains('collapsed') ?? false
+        );
     };
 
     const closeMobileSidebar = (): void => {
@@ -417,6 +600,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         sidebarEl.classList.remove('mobile-open');
         instructorSidebarOverlayEl.classList.remove('show');
         instructorSidebarOverlayEl.setAttribute('aria-hidden', 'true');
+        updateSidebarToggleAccessibility(
+            instructorFeatureSidebarEl?.classList.contains('collapsed') ?? false
+        );
     };
 
     const toggleMobileSidebar = (): void => {
@@ -431,9 +617,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Event delegation for hamburger (works across all loaded components including chat/welcome)
     document.addEventListener('click', (e: MouseEvent) => {
         const target = e.target as HTMLElement;
-        if (target.closest('#hamburger-btn') || target.closest('#instructor-hamburger-btn') ||
-            target.closest('.mobile-hamburger-btn') || target.closest('.instructor-mobile-hamburger-btn')) {
+        const mobileTrigger = target.closest(
+            '#hamburger-btn, #instructor-hamburger-btn, .mobile-hamburger-btn, .instructor-mobile-hamburger-btn'
+        ) as HTMLElement | null;
+        if (mobileTrigger) {
             if (isMobileView()) {
+                instructorMobileSidebarTrigger = mobileTrigger;
                 toggleMobileSidebar();
             }
         }
@@ -462,7 +651,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Extract courseId and view from URL (after currentState is declared)
     const courseIdFromURL = getCourseIdFromURL();
     const viewFromURL = getInstructorViewFromURL();
-    const chatIdFromURL = getChatIdFromURL();
     const onboardingStageFromURL = getInstructorOnboardingStageFromURL();
     
     // For new course onboarding, skip course validation
@@ -513,8 +701,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- STATE MANAGEMENT ----
-    let isSidebarCollapsed: boolean = false;
-    
     const flagStateEl = document.getElementById('flag-state');
     const monitorStateEl = document.getElementById('monitor-state');
     const documentsStateEl = document.getElementById('documents-state');
@@ -574,7 +760,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else if (view === 'course-information') {
                 // Load course information component
                 await loadComponent('course-information');
-                expandFeatureSidebar();
+                applySidebarPreference();
                 hideChatList();
             } else if (view === 'about') {
                 // Load about component
@@ -624,32 +810,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Artefact functionality moved to chat.ts
 
-    //Ensure sidebar collpase toggle
-    const sidebarCollapseToggle = () => {
-        if (!sidebarCollapseButton) return;
-        sidebarCollapseButton.addEventListener('click', () => {
-            // Disable hamburger button when in chat mode
-            if (currentState === StateEvent.Chat) {
-                return; // Hamburger button is non-functional in chat mode
-            }
-            
-            // Toggle the instructor-feature-sidebar (not the entire instructor-sidebar)
-            if (!instructorFeatureSidebarEl) return;
-            instructorFeatureSidebarEl.classList.toggle('collapsed');
-            
-            if(!logoBox) return;
-            logoBox.classList.toggle('collapsed');
-            
-            // Update the collapse state tracking
-            isSidebarCollapsed = instructorFeatureSidebarEl.classList.contains('collapsed');
-            
-            if(!sidebarMenuListEl) return;
-            sidebarMenuListEl.classList.toggle('collapsed');
-            
-        } );
-    }
-    
-    sidebarCollapseToggle();
 
     const loadComponent = async (
         componentName :'flag-instructor' 
@@ -792,19 +952,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             // console.log('🎯 [INSTRUCTOR-DEBUG] Calling loadComponent("flag-instructor")');
             loadComponent('flag-instructor');
             updateSidebarState();
-            expandFeatureSidebar();
+            applySidebarPreference();
             hideChatList(); // Ensure chat list is hidden
         }
         else if ( currentState === StateEvent.Monitor){
             loadComponent('monitor-instructor');
             updateSidebarState();
-            expandFeatureSidebar();
+            applySidebarPreference();
             hideChatList(); // Ensure chat list is hidden
         }
         else if ( currentState === StateEvent.Documents){
             loadComponent('documents-instructor');
             updateSidebarState();
-            expandFeatureSidebar();
+            applySidebarPreference();
             hideChatList(); // Ensure chat list is hidden
         }
         else if (currentState === StateEvent.WritingFeedback) {
@@ -819,25 +979,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         else if ( currentState === StateEvent.Chat){
             updateSidebarState(); // Update menu active state
-            collapseFeatureSidebar();
+            // Narrow the rail to make room for the chat list, but leave the stored
+            // preference alone so the other tabs still open the way the reader left them.
+            setSidebarCollapsed(true, false);
             // showChatContent is now handled by the click event listener
         }
         else if ( currentState === StateEvent.AssistantPrompts){
             loadComponent('assistant-prompts-instructor');
             updateSidebarState();
-            expandFeatureSidebar();
+            applySidebarPreference();
             hideChatList(); // Ensure chat list is hidden
         }
         else if ( currentState === StateEvent.SystemPrompts){
             loadComponent('system-prompts-instructor');
             updateSidebarState();
-            expandFeatureSidebar();
+            applySidebarPreference();
             hideChatList(); // Ensure chat list is hidden
         }
         else if ( currentState === StateEvent.ScenarioQuestions){
             loadComponent('scenario-questions-instructor');
             updateSidebarState();
-            expandFeatureSidebar();
+            applySidebarPreference();
             hideChatList(); // Ensure chat list is hidden
         }
         else if ( currentState === StateEvent.PathwayLibrary){
@@ -964,48 +1126,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             navigateToInstructorView('documents');
         }
     });
-
-    // Helper functions for chat behavior
-    const hideChatList = () => {
-        if (chatListEl) {
-            chatListEl.classList.remove('active');
-            //START DEBUG LOG : DEBUG-CODE(013)
-            // console.log('🚫 Chat list hidden (not in chat mode)');
-            //END DEBUG LOG : DEBUG-CODE(013)
-        }
-    }
-
-    const collapseFeatureSidebar = () => {
-        if (!instructorFeatureSidebarEl) return;
-        instructorFeatureSidebarEl.classList.add('collapsed');
-        
-        if(!logoBox) return;
-        logoBox.classList.add('collapsed');
-        
-        if(!sidebarMenuListEl) return;
-        sidebarMenuListEl.classList.add('collapsed');
-        
-        // Update the collapse state tracking
-        isSidebarCollapsed = true;
-    }
-
-    const expandFeatureSidebar = () => {
-        if (!instructorFeatureSidebarEl) return;
-        instructorFeatureSidebarEl.classList.remove('collapsed');
-        
-        if(!logoBox) return;
-        logoBox.classList.remove('collapsed');
-        
-        if(!sidebarMenuListEl) return;
-        sidebarMenuListEl.classList.remove('collapsed');
-        
-        // Hide chat list when expanding feature sidebar
-        hideChatList();
-        
-        // Update the collapse state tracking
-        isSidebarCollapsed = false;
-    }
-
 
     /**
      * Initialize ChatManager for instructor mode
@@ -1320,14 +1440,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Update menu active state
         updateSidebarState();
         
-        // Ensure feature sidebar is collapsed when in chat mode
-        collapseFeatureSidebar();
-        
-        
+        // Narrow the rail so the chat list has room, without overwriting the
+        // reader's stored preference for the other tabs.
+        setSidebarCollapsed(true, false);
+
+
         // Show chat list (slides in from left to right)
-        if (chatListEl) {
-            chatListEl.classList.add('active');
-        }
+        showChatList();
         
         // Check if there's a chatId in URL
         const chatIdFromURL = getChatIdFromURL();
@@ -1604,16 +1723,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Onboarding URL detected for existing course - let updateUI() handle it
         // console.log(`[INSTRUCTOR-MODE] 🎓 Loading onboarding stage: ${onboardingStageFromURL}`);
         updateUI();
-    } else if (viewFromURL === 'chat' && chatIdFromURL) {
-        // Load specific chat
-        await loadChatById(chatIdFromURL).catch(err => {
-            // console.error('[INSTRUCTOR-MODE] Error loading chat from URL:', err);
-            updateUI();
-        });
+    } else if (viewFromURL === 'chat') {
+        // Use the same initialization path for empty chat and deep-linked chats so
+        // a hard reload always restores the collapsed rail and visible chat list.
+        await showChatContent();
     } else if (viewFromURL === 'course-information') {
         // Load course information component
         await loadComponent('course-information');
-        expandFeatureSidebar();
+        applySidebarPreference();
         hideChatList();
     } else if (viewFromURL === 'about') {
         // Load about component

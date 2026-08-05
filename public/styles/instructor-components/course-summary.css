@@ -343,23 +343,52 @@
     transform: translateX(-50%);
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    pointer-events: none;
+    gap: 0.05rem;
 }
 
 .course-summary-progress-dot {
+    width: 1.75rem;
+    height: 1.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.course-summary-progress-dot::before {
     width: 0.65rem;
     height: 0.65rem;
-    border-radius: 999px;
+    border-radius: inherit;
     background: rgba(0, 0, 0, 0.22);
+    content: "";
     transition: background 0.2s ease, transform 0.2s ease;
 }
 
-.course-summary-progress-dot--active {
+.course-summary-progress-dot--active::before {
     background: var(--color-chbe-green, #4d7a2f);
     transform: scale(1.2);
 }
 
+.course-summary-progress-dot:hover::before {
+    background: rgba(77, 122, 47, 0.68);
+    transform: scale(1.15);
+}
+
+.course-summary-progress-dot--active:hover::before {
+    transform: scale(1.25);
+}
+
+.course-summary-progress-dot:focus-visible {
+    outline: 2px solid var(--color-chbe-green, #4d7a2f);
+    outline-offset: 1px;
+}
+
+.course-summary-back-btn,
 .course-summary-next-btn {
     position: relative;
     z-index: 1;
@@ -382,16 +411,38 @@
     transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+.course-summary-back-btn {
+    margin-right: auto;
+}
+
+.course-summary-back-btn[hidden] {
+    display: none;
+}
+
+.course-summary-back-btn .feather,
 .course-summary-next-btn .feather {
     width: 1.35rem;
     height: 1.35rem;
     stroke-width: 2.5;
 }
 
+.course-summary-back-btn:hover,
 .course-summary-next-btn:hover {
     background: var(--color-chbe-green, #4d7a2f);
     box-shadow: 0 8px 18px rgba(77, 122, 47, 0.24);
     transform: translateY(-1px);
+}
+
+.course-summary-back-btn:focus-visible,
+.course-summary-next-btn:focus-visible {
+    outline: 3px solid rgba(77, 122, 47, 0.32);
+    outline-offset: 2px;
+}
+
+.course-summary-back-btn:active,
+.course-summary-next-btn:active {
+    box-shadow: none;
+    transform: scale(0.97);
 }
 
 @keyframes courseSummaryStepIn {
@@ -421,9 +472,11 @@
     .course-summary-modal,
     .course-summary-step--active,
     .course-summary-reveal-block--visible,
+    .course-summary-back-btn,
     .course-summary-next-btn,
     .course-summary-download-preview,
-    .course-summary-progress-dot {
+    .course-summary-progress-dot,
+    .course-summary-progress-dot::before {
         animation: none;
         transition: none;
     }
@@ -494,9 +547,10 @@
         padding: 0 1.25rem 1.25rem;
     }
 
+    .course-summary-back-btn,
     .course-summary-next-btn {
-        min-width: 2.5rem;
-        min-height: 2.5rem;
+        min-width: 2.75rem;
+        min-height: 2.75rem;
     }
 }
 

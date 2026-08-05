@@ -169,7 +169,7 @@ The student mode uses a consistent mobile header pattern across welcome screen, 
 ### Structure
 
 - **Welcome screen** (`welcome-screen.html`): `mobile-header-bar` with hamburger button only (no title).
-- **Chat window** (`chat-window.html`): `chat-header` with `mobile-hamburger-btn`, `chat-title`, and actions (artefact, pin, delete).
+- **Chat window** (`chat-window.html`): `chat-header` with `mobile-hamburger-btn`, `chat-title`, and actions (artefact and delete).
 - **Flag history** (`flag-history.html`): `flag-header` with hamburger + `<h1>Flag History</h1>`.
 
 ### CSS (`student-mode.css`)
