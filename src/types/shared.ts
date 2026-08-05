@@ -223,15 +223,77 @@ export interface CourseFeatures {
 /** UI catalog ids for course-wide LLM model selection. */
 export type CourseLlmModelId = 'gpt-5.6-luna' | 'gpt-5.4-mini' | 'gpt-4o-mini';
 
-/** Instructor-selected reasoning effort; mapped to provider params until native support exists. */
-export type CourseReasoningLevel = 'low' | 'medium' | 'high';
+/** Official provider reasoning effort values — aligned with ubc-genai-toolkit-llm `ReasoningEffort`. */
+export type ProviderReasoningLevel =
+    | 'none'
+    | 'minimal'
+    | 'low'
+    | 'medium'
+    | 'high'
+    | 'xhigh'
+    | 'max';
 
-/** Course-wide model + reasoning persisted on activeCourse.llmSettings. */
+/** App UI + persisted reasoning — subset of provider/toolkit levels instructors may pick. */
+export type AppReasoningLevel = 'none' | 'low' | 'medium' | 'high';
+
+/** Feature keys that each have their own model + reasoning selection. */
+export type LlmFeatureKey = 'chat' | 'scenarioGeneration' | 'writingFeedback' | 'guidedPathway';
+
+/** One feature's model + reasoning selection. */
+export interface FeatureLlmSelection {
+    modelId: CourseLlmModelId; // catalog model id for this feature
+    reasoningLevel: AppReasoningLevel; // APP ∩ provider catalog when the model supports reasoning
+}
+
+/**
+ * Course-wide LLM settings: one selection per consuming feature.
+ *
+ * Persisted on `activeCourse.llmSettings`. Legacy flat `{ modelId, reasoningLevel }`
+ * rows are hydrated to all four features at read time by ModelSelectionService.
+ */
 export interface CourseLlmSettings {
-    modelId: CourseLlmModelId;
-    reasoningLevel: CourseReasoningLevel;
+    chat: FeatureLlmSelection;
+    scenarioGeneration: FeatureLlmSelection;
+    writingFeedback: FeatureLlmSelection;
+    guidedPathway: FeatureLlmSelection;
     updatedAt?: Date;
     updatedBy?: string;
+}
+
+/** Server-owned catalog entry returned to the dashboard (capabilities live here, not in Mongo). */
+export interface LlmModelCatalogEntry {
+    id: CourseLlmModelId;
+    label: string;
+    costTier: 'low' | 'medium' | 'high';
+    supportedReasoningLevels: ProviderReasoningLevel[]; // official provider values; empty when unsupported
+}
+
+/** One reasoning row in the dashboard catalog API (ids + labels only; brains are client-side). */
+export interface LlmReasoningCatalogOption {
+    id: AppReasoningLevel;
+    label: string;
+}
+
+/** Model row returned by GET llm-model-catalog for dashboard pickers. */
+export interface LlmModelDashboardCatalogEntry {
+    id: CourseLlmModelId;
+    label: string;
+    costTier: 'low' | 'medium' | 'high';
+    reasoningOptions: LlmReasoningCatalogOption[];
+}
+
+/** GET `/api/courses/:courseId/llm-model-catalog` response body. */
+export interface LlmModelCatalogApiResponse {
+    models: LlmModelDashboardCatalogEntry[];
+    defaultSelection: FeatureLlmSelection;
+}
+
+/** PATCH `/api/courses/:courseId/llm-settings` request body. */
+export interface UpdateCourseLlmSettingsRequest {
+    chat: FeatureLlmSelection;
+    scenarioGeneration: FeatureLlmSelection;
+    writingFeedback: FeatureLlmSelection;
+    guidedPathway: FeatureLlmSelection;
 }
 
 export interface activeCourse {
@@ -269,7 +331,7 @@ export interface activeCourse {
     academicPeriodId?: string;
     /** Optional capability map; missing entries remain disabled for legacy courses. */
     features?: CourseFeatures;
-    /** Course-wide LLM model + reasoning for Chat, Writing Feedback, Scenarios, Guided Pathway. */
+    /** Per-feature LLM model + reasoning for Chat, Writing Feedback, Scenarios, Guided Pathway. */
     llmSettings?: CourseLlmSettings;
 }
 

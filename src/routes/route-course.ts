@@ -13,7 +13,7 @@ import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { isCourseStaff } from '../utils/course-staff';
 import { normalizeRouteParams } from '../helpers/route-params';
 // @rdschrs: Implemented the capability-gated Writing Feedback instructor page.
-import { CourseFeatureId, isCourseFeatureEnabled } from '../helpers/course-features';
+import { CourseFeatureId, isCourseFeatureEnabled } from '../dashboard-setting/course-features';
 
 const router = express.Router();
 

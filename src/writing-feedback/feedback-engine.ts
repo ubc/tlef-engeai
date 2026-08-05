@@ -11,7 +11,7 @@
  * @description: Generates staff-review drafts from approved rubrics and verified text.
  */
 
-import { LLMModule, type Message } from 'ubc-genai-toolkit-llm';
+import { LLMModule, type LLMOptions, type Message } from 'ubc-genai-toolkit-llm';
 import { isMockResponse } from '../helpers/mock-response';
 import {
     a2FeedbackSchema,
@@ -110,7 +110,7 @@ export class A2WritingFeedbackEngine implements WritingFeedbackEngine {
     async generate(input: {
         assignment: WritingAssignment;
         verifiedText: string;
-        llmCallOptions?: Record<string, unknown>;
+        llmCallOptions?: LLMOptions;
     }): Promise<A2FeedbackResult> {
         // Enforce human-verification and rubric-approval gates at the model boundary.
         if (!input.verifiedText.trim()) throw new Error('Verified submission text is required');

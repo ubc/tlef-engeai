@@ -26,7 +26,13 @@ import { resolveNumericGrade } from './feedback-schema';
 export class MockCanvasGateway implements CanvasGateway {
     /** Computes the release fingerprint locally without contacting Canvas. */
     async previewRelease(input: { submissionId: string; pdf: Buffer; grade?: number }): Promise<{ payloadFingerprint: string }> {
-        return { payloadFingerprint: createHash('sha256').update(input.submissionId).update(input.pdf).update(String(input.grade ?? '')).digest('hex') };
+        return { 
+            payloadFingerprint: createHash('sha256')
+                                    .update(input.submissionId)
+                                    .update(input.pdf)
+                                    .update(String(input.grade ?? ''))
+                                    .digest('hex') 
+        };
     }
 
     /** Returns deterministic synthetic Canvas identifiers for local workflow testing. */

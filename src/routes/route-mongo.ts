@@ -69,12 +69,10 @@ import {
     COURSE_FEATURE_LABELS,
     updateCourseCapability,
     updateWritingFeedbackCapability
-} from '../helpers/course-features';
+} from '../dashboard-setting/course-features';
 import {
-    isCourseLlmModelId,
-    isCourseReasoningLevel,
-    updateCourseLlmSettings,
-} from '../helpers/course-llm-settings';
+    ModelSelectionService,
+} from '../dashboard-setting/model-selection-service';
 import { CourseRosterError } from '../db/mongo/course-roster-mongo';
 import { scheduledPublishAudit } from '../jobs/scheduled-publish-audit';
 import {
@@ -997,26 +995,47 @@ router.patch(
 );
 
 /**
+ * GET /:courseId/llm-model-catalog
+ * Returns the server-owned model catalog for dashboard model-settings pickers.
+ *
+ * @route GET /api/courses/:courseId/llm-model-catalog
+ * @param {string} courseId - Owning course id
+ * @returns {LlmModelCatalogApiResponse} Models (costTier + app reasoning options), defaults
+ */
+router.get(
+    '/:courseId/llm-model-catalog',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const courseId = routeParam(req.params, 'courseId');
+        const instance = await EngEAI_MongoDB.getInstance();
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+
+        const catalog = ModelSelectionService.getInstance().getDashboardCatalog();
+        return res.status(200).json({ success: true, data: catalog });
+    })
+);
+
+/**
  * PATCH /:courseId/llm-settings
- * Updates course-wide LLM model and reasoning level for Chat, Writing Feedback,
+ * Updates per-feature LLM model and reasoning for Chat, Writing Feedback,
  * Scenario Generation, and Guided Pathway classifier calls.
  *
  * @route PATCH /api/courses/:courseId/llm-settings
  * @param {string} courseId - Owning course id
- * @param {string} modelId - Catalog model id (`gpt-5.6-luna` | `gpt-5.4-mini` | `gpt-4o-mini`)
- * @param {string} reasoningLevel - `low` | `medium` | `high`
- * @returns Updated course with `llmSettings` provenance
+ * @param {object} body - Full per-feature map: chat, scenarioGeneration, writingFeedback, guidedPathway
+ * @returns Updated course with `llmSettings` provenance; refreshes in-memory model cache
  */
 router.patch(
     '/:courseId/llm-settings',
     requireRosterManageAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
-        const { modelId, reasoningLevel } = req.body ?? {};
-        if (!isCourseLlmModelId(modelId)) {
-            return res.status(400).json({ success: false, error: 'modelId must be a supported catalog id' });
-        }
-        if (!isCourseReasoningLevel(reasoningLevel)) {
-            return res.status(400).json({ success: false, error: 'reasoningLevel must be low, medium, or high' });
+        const modelSelection = ModelSelectionService.getInstance();
+        const parsed = modelSelection.parseUpdateRequest(req.body);
+        if (!parsed.ok) {
+            return res.status(400).json({ success: false, error: parsed.error });
         }
 
         const instance = await EngEAI_MongoDB.getInstance();
@@ -1027,8 +1046,18 @@ router.patch(
         }
 
         const globalUser = (req.session as any).globalUser;
-        const llmSettings = updateCourseLlmSettings(modelId, reasoningLevel, globalUser.userId);
-        const updatedCourse = await instance.updateActiveCourse(courseId, { llmSettings });
+        const llmSettings = modelSelection.updateCourseLlmSettings(parsed.settings, globalUser.userId);
+
+        let updatedCourse: activeCourse;
+        try {
+            updatedCourse = await instance.updateActiveCourse(courseId, { llmSettings }) as unknown as activeCourse;
+        } catch (error) {
+            appLogger.error('[LLM-SETTINGS] Failed to persist course llmSettings:', { error, courseId });
+            return res.status(500).json({ success: false, error: 'Failed to update LLM settings' });
+        }
+
+        // Only refresh cache after Mongo succeeds so Map never leads durable state.
+        modelSelection.setCachedSettings(courseId, llmSettings);
 
         return res.status(200).json({
             success: true,

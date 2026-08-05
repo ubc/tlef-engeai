@@ -14,7 +14,7 @@ import { LLMModule, type Message } from 'ubc-genai-toolkit-llm';
 import { loadConfig } from '../utils/config';
 import { appLogger } from '../utils/logger';
 import { isMockResponse, getMockPathwayEvaluation } from '../helpers/mock-response';
-import { buildLlmCallOptions } from '../helpers/course-llm-settings';
+import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import {
     buildPathwayEvaluationSchema,
@@ -80,15 +80,22 @@ export async function evaluatePathways(input: PathwayEvaluationInput): Promise<P
             return noPathwayTriggerResult();
         }
 
-        // If mock response is enabled, get the mock evaluation
+        // MOCK_RESPONSE: never call the classifier LLM — optional trigger mock or no-op.
         if (isMockResponse()) {
-            const mock = getMockPathwayEvaluation(input.courseName, pathways);
-            if (mock) {
-                appLogger.log(
-                    `[PATHWAYS] Mock response — mock trigger: ${mock.winningPathwayId ?? 'none'}`
-                );
-                return mock;
+            const mongo = await EngEAI_MongoDB.getInstance();
+            const course = (await mongo.getCourseByName(input.courseName)) as activeCourse | null;
+            const modelSelection = ModelSelectionService.getInstance();
+            if (course?.id) {
+                await modelSelection.buildFeatureLlmCallOptions(course.id, 'guidedPathway');
+            } else {
+                modelSelection.buildDefaultProviderOptions('guidedPathway');
             }
+            const mock =
+                getMockPathwayEvaluation(input.courseName, pathways) ?? noPathwayTriggerResult();
+            appLogger.log(
+                `[PATHWAYS] Mock response — mock trigger: ${mock.winningPathwayId ?? 'none'}`
+            );
+            return mock;
         }
 
         // Build the schema, system prompt, and user turn
@@ -109,7 +116,10 @@ export async function evaluatePathways(input: PathwayEvaluationInput): Promise<P
         const llmModule = getLlmModule();
         const mongo = await EngEAI_MongoDB.getInstance();
         const course = (await mongo.getCourseByName(input.courseName)) as activeCourse | null;
-        const llmOptions = buildLlmCallOptions(course);
+        const modelSelection = ModelSelectionService.getInstance();
+        const llmOptions = course?.id
+            ? await modelSelection.buildFeatureLlmCallOptions(course.id, 'guidedPathway')
+            : modelSelection.buildDefaultProviderOptions('guidedPathway');
         const response = await llmModule.sendStructuredConversation(messages, schema, {
             structuredOutputName: 'pathway_evaluation',
             ...llmOptions,

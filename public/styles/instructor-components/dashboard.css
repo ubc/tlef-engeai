@@ -836,13 +836,6 @@
     font-weight: 700;
 }
 
-.model-cost {
-    font-weight: 700;
-    font-size: 0.75rem;
-    color: var(--color-chbe-green);
-    letter-spacing: 0.05em;
-}
-
 .model-reasoning-brains {
     display: inline-flex;
     align-items: center;

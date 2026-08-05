@@ -23,8 +23,8 @@ import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import { isMockResponse, generateMockStreamingResponse } from '../helpers/mock-response';
 import { evaluatePathways } from '../guided-pathways/pathway-orchestrator';
-import { isCourseFeatureEnabled } from '../helpers/course-features';
-import { buildLlmCallOptions } from '../helpers/course-llm-settings';
+import { isCourseFeatureEnabled } from '../dashboard-setting/course-features';
+import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 import {
     buildDebugModeSystemPrompt,
     ensureDebugModeTemplate,
@@ -520,35 +520,35 @@ export class ChatApp {
         // appLogger.log(`Total messages: ${originalConversationHistory.length}`);
         // appLogger.log('='.repeat(80));
 
-        originalConversationHistory.forEach((msg: any, index: number) => {
-            const role = msg.role.toUpperCase();
-            const content = msg.content;
-            const charCount = content.length;
+        // originalConversationHistory.forEach((msg: any, index: number) => {
+        //     const role = msg.role.toUpperCase();
+        //     const content = msg.content;
+        //     const charCount = content.length;
 
-            appLogger.log(`[${index + 1}] ${role} - ${charCount} chars:`);
-            appLogger.log(`${content}`);
-            appLogger.log('-'.repeat(40));
-        });
-        appLogger.log('='.repeat(80));
+        //     appLogger.log(`[${index + 1}] ${role} - ${charCount} chars:`);
+        //     appLogger.log(`${content}`);
+        //     appLogger.log('-'.repeat(40));
+        // });
+        // appLogger.log('='.repeat(80));
 
-        appLogger.log('\n'.repeat(10));
+        // appLogger.log('\n'.repeat(10));
 
         // Log forked conversation (used for LLM call)
-        const forkedConversationHistory : Message[] = forkedConversation.getHistory();
+        // const forkedConversationHistory : Message[] = forkedConversation.getHistory();
         // appLogger.log(`\n📝 FORKED CONVERSATION HISTORY (Chat: ${chatId}, User: ${userId}) - SENT TO LLM:`);
         // appLogger.log(`Total messages: ${forkedConversationHistory.length}`);
         // appLogger.log('='.repeat(80));
 
-        forkedConversationHistory.forEach((msg: Message, index: number) => {
-            const role = msg.role.toUpperCase();
-            const content = msg.content;
-            const charCount = content.length;
+        // forkedConversationHistory.forEach((msg: Message, index: number) => {
+        //     const role = msg.role.toUpperCase();
+        //     const content = msg.content;
+        //     const charCount = content.length;
 
-            appLogger.log(`[${index + 1}] ${role} - ${charCount} chars:`);
-            appLogger.log(`${content}`);
-            appLogger.log('-'.repeat(40));
-        });
-        appLogger.log('='.repeat(80));
+        //     appLogger.log(`[${index + 1}] ${role} - ${charCount} chars:`);
+        //     appLogger.log(`${content}`);
+        //     appLogger.log('-'.repeat(40));
+        // });
+        // appLogger.log('='.repeat(80));
 
         // // printing out the full user prompt from this conversation
         // appLogger.log(`\n\n📝 FULL USER PROMPT FROM THIS CONVERSATION:\n\n`);
@@ -582,17 +582,32 @@ export class ChatApp {
 
         // Check if mock response is enabled - use mock instead of real LLM
         if (isMockResponse()) {
+            // Still resolve course LLM settings so mock logs show model + reasoningEffort.
+            const courseForLlm = await this.getCourseFeatures(courseName);
+            const modelSelection = ModelSelectionService.getInstance();
+            if (courseForLlm?.id) {
+                await modelSelection.buildFeatureLlmCallOptions(courseForLlm.id, 'chat');
+            } else {
+                modelSelection.buildDefaultProviderOptions('chat');
+            }
             appLogger.log('[MOCK-RESPONSE] Using mock streaming response instead of LLM');
             assistantResponse = await generateMockStreamingResponse(onChunk);
             appLogger.log(`\n✅ Mock streaming completed. Full response length: ${assistantResponse.length}`);
             appLogger.log(`Full response: "${assistantResponse}"`);
         } else {
-            // Normal LLM streaming — course model + reasoning from llmSettings
+            // Normal LLM streaming — per-feature chat settings from dashboard-setting cache
             const courseForLlm = await this.getCourseFeatures(courseName);
-            const conversationConfig = buildLlmCallOptions(
-                courseForLlm,
-                this.llmProvider === 'ollama' ? { num_ctx: 32768 } : undefined
-            );
+            const modelSelection = ModelSelectionService.getInstance();
+            const conversationConfig = courseForLlm?.id
+                ? await modelSelection.buildFeatureLlmCallOptions(
+                    courseForLlm.id,
+                    'chat',
+                    this.llmProvider === 'ollama' ? { num_ctx: 32768 } : undefined
+                )
+                : modelSelection.buildDefaultProviderOptions(
+                    'chat',
+                    this.llmProvider === 'ollama' ? { num_ctx: 32768 } : undefined
+                );
 
             const response = await forkedConversation.stream(
                 (chunk: string) => {
@@ -1402,7 +1417,8 @@ export class ChatApp {
         const forkedConversation = this.llmModule.createConversation();
         forkedConversation.addMessage('system', debugSystemPrompt);
         for (const msg of conversation.getHistory() as Message[]) {
-            if (msg.role === 'system') {
+            // Conversation.addMessage only accepts user|assistant|system; skip tool turns.
+            if (msg.role === 'system' || msg.role === 'tool') {
                 continue;
             }
             forkedConversation.addMessage(msg.role, msg.content);
@@ -1410,10 +1426,16 @@ export class ChatApp {
 
         let assistantResponse = '';
         const courseForLlm = await this.getCourseFeatures(courseName);
-        const conversationConfig = buildLlmCallOptions(courseForLlm, {
-            temperature: 0.3,
-            ...(this.llmProvider === 'ollama' ? { num_ctx: 32768 } : {}),
-        });
+        const modelSelection = ModelSelectionService.getInstance();
+        const conversationConfig = courseForLlm?.id
+            ? await modelSelection.buildFeatureLlmCallOptions(courseForLlm.id, 'chat', {
+                temperature: 0.3,
+                ...(this.llmProvider === 'ollama' ? { num_ctx: 32768 } : {}),
+            })
+            : modelSelection.buildDefaultProviderOptions('chat', {
+                temperature: 0.3,
+                ...(this.llmProvider === 'ollama' ? { num_ctx: 32768 } : {}),
+            });
 
         appLogger.log(`[DEBUG-MODE] Streaming prompt-engineer reply for chat ${chatId}`);
         await forkedConversation.stream((chunk: string) => {

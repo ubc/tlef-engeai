@@ -2,13 +2,15 @@
  * Mock Response Module
  *
  * Utilities for bypassing LLM API calls during development to reduce costs.
- * When MOCK_RESPONSE is 'true', the system uses hardcoded mock responses.
+ * When MOCK_RESPONSE is 'true', the system uses hardcoded mock responses and
+ * never calls feature LLMs (admin sticky `/DEBUG` chat is the intentional exception).
  *
- * Optional PATHWAY_MOCK_TRIGGER / GUARDRAIL_MOCK_TRIGGER forces a pathway intercept
- * without calling the classifier LLM.
+ * Optional PATHWAY_MOCK_TRIGGER / GUARDRAIL_MOCK_TRIGGER forces a specific pathway
+ * intercept under mock. When unset under MOCK_RESPONSE, pathways return no-trigger
+ * (they do not fall through to a real classifier call).
  *
  * @author: EngE-AI Team
- * @version: 1.2.0
+ * @version: 1.3.0
  * @since: 2025-01-27
  */
 
@@ -86,14 +88,15 @@ export function getMockGeneratedStruggleTopics(): string[] {
 }
 
 /**
- * Force a pathway trigger in mock-response mode without calling the evaluator LLM.
+ * Optional forced pathway trigger for mock-response mode.
  *
- * Reads `PATHWAY_MOCK_TRIGGER` or legacy `GUARDRAIL_MOCK_TRIGGER`. When unset,
- * returns null and the orchestrator proceeds to a real structured call.
+ * Reads `PATHWAY_MOCK_TRIGGER` or legacy `GUARDRAIL_MOCK_TRIGGER`. When unset (or
+ * invalid), returns null — callers under MOCK_RESPONSE must treat null as
+ * no-trigger mock (`noPathwayTriggerResult`), never as “call the LLM”.
  *
  * @param courseName - Substituted into response templates
  * @param pathways - Evaluable pathways (falls back to platform seeds if empty)
- * @returns Mock {@link PathwayEvaluationResult} when env is set; otherwise null
+ * @returns Mock {@link PathwayEvaluationResult} when env names a valid pathway; otherwise null
  */
 export function getMockPathwayEvaluation(
     courseName: string,

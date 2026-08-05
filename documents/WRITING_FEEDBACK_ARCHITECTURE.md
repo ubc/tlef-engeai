@@ -54,7 +54,7 @@ their original ownership and mark only the Writing Feedback integration seam.
 | 4. Intake and external boundaries | `document-extraction-service.ts`, `canvas-import-*.ts`, `canvas-release-service.ts`, and `job-runner.ts` | Non-RAG extraction, synthetic/not-configured Canvas modes, preview-before-release, and dormant leased-job infrastructure |
 | 5. HTTP and persistence | `src/routes/route-writing-feedback.ts` and `src/db/mongo/writing-feedback-mongo.ts` | Course-scoped API orchestration, append-only review history, indexes, deletion rules, idempotency, and leases |
 | 6. Staff workspace | `public/scripts/feature/writing-feedback*.ts`, the component HTML, and feature CSS | Assignment queue, rubric editor, verified-text review, anchored comments, PDF modes, release preview, and responsive behavior |
-| 7. Regression contract | `src/writing-feedback/__tests__/*.test.ts` and `src/helpers/__tests__/course-features.test.ts` | Executable coverage for the high-risk invariants described above |
+| 7. Regression contract | `src/writing-feedback/__tests__/*.test.ts` and `src/dashboard-setting/__tests__/course-features.test.ts` | Executable coverage for the high-risk invariants described above |
 
 The shared integration path then runs through course capability helpers and
 mirrored types, course/page/API gates, `EngEAI_MongoDB`, the server mount, and the

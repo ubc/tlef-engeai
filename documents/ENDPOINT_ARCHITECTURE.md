@@ -100,24 +100,48 @@ Struggle-topic document APIs require `requireCourseFeatureAPI('memoryAgent')`. P
 
 ### 4.0.1 Course LLM settings (`/api/courses/:courseId/llm-settings`)
 
-Course-wide model and reasoning level for Chat, Writing Feedback, Scenario Generation, and Guided Pathway classifier calls. Stored on `activeCourse.llmSettings`. Only roster managers may update.
+Per-feature model and reasoning for Chat, Writing Feedback, Scenario Generation, and Guided Pathway. Stored on `activeCourse.llmSettings`. Runtime resolution uses `ModelSelectionService` (process Map keyed by `courseId` with 5-minute inactivity eviction). Only roster managers may update. Students/TAs never PATCH; the server applies settings when their feature calls run.
 
 | Method | Path | Description |
 |---|---|---|
-| PATCH | `/api/courses/:courseId/llm-settings` | Body `{ modelId, reasoningLevel }` — see catalog below |
+| GET | `/api/courses/:courseId/llm-model-catalog` | Course staff — dashboard catalog (`costTier` + `reasoningOptions` id/label; brain icons are client-side) |
+| PATCH | `/api/courses/:courseId/llm-settings` | Roster managers — body: full per-feature map (see below) |
 
-**Catalog `modelId` values (UI → provider via env):**
+**GET catalog success (200):** `{ success: true, data: { models, defaultSelection } }`
 
-| `modelId` | Display | Env override | Fallback |
+Platform `defaultSelection` (and per-feature fallback when Mongo has no usable row): `{ "modelId": "gpt-5.6-luna", "reasoningLevel": "none" }`.
+
+Each `models[]` entry: `{ id, label, costTier, reasoningOptions: [{ id, label }] }`. No `costLabel`, no `brainCount`.
+
+**PATCH body:**
+
+```json
+{
+  "chat": { "modelId": "gpt-5.6-luna", "reasoningLevel": "high" },
+  "scenarioGeneration": { "modelId": "gpt-5.4-mini", "reasoningLevel": "medium" },
+  "writingFeedback": { "modelId": "gpt-4o-mini", "reasoningLevel": "low" },
+  "guidedPathway": { "modelId": "gpt-5.4-mini", "reasoningLevel": "medium" }
+}
+```
+
+**Provider catalog** (`supportedReasoningLevels` in `LLM_MODEL_SPECS` / `model-selection-list.ts` — verbatim from OpenAI docs):
+
+| `modelId` | Display | Official `supportedReasoningLevels` | Provider docs |
 |---|---|---|---|
-| `gpt-5.6-luna` | GPT 5.6 Luna | `LLM_MODEL_GPT_56_LUNA` | `gpt-5.6-luna` |
-| `gpt-5.4-mini` | GPT 5.4 Mini | `LLM_MODEL_GPT_54_MINI` | `LLM_DEFAULT_MODEL` |
-| `gpt-4o-mini` | GPT 4o Mini | `LLM_MODEL_GPT_4O_MINI` | `gpt-4o-mini` |
+| `gpt-5.6-luna` | GPT 5.6 Luna | `none`, `low`, `medium`, `high`, `xhigh`, `max` | [GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) · [Reasoning guide](https://developers.openai.com/api/docs/guides/reasoning) |
+| `gpt-5.4-mini` | GPT 5.4 Mini | `none`, `low`, `medium`, `high`, `xhigh` | [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini) |
+| `gpt-4o-mini` | GPT 4o Mini | _(empty)_ | [GPT-4o mini](https://developers.openai.com/api/docs/models/gpt-4o-mini) |
 
-**`reasoningLevel`:** `low` | `medium` | `high` — persisted instructor intent; mapped to `temperature` (0.3 / 0.7 / 0.9) until provider-native reasoning params exist.
+**App picker / PATCH `reasoningLevel`:** `AppReasoningLevel` = `none` \| `low` \| `medium` \| `high` only. Dashboard `reasoningOptions` are APP ∩ provider for that model (`xhigh` / `max` stay on the catalog, not in the picker or Mongo). When `supportedReasoningLevels` is empty, any app level may be stored but provider options omit `reasoningEffort`.
 
-**Success (200):** `{ success: true, data: activeCourse, message }`  
-**Errors:** `400` invalid body, `403` non–roster-manager, `404` course missing
+**Brain UI (client-only):** Model Settings maps `costTier` → 1–3 brain icons and reasoning id → 0–3 brains (`none` = no icon). The API does not send brain counts or `$` labels.
+
+**Toolkit:** Runtime options are `ubc-genai-toolkit-llm` `LLMOptions` (`model` + optional `reasoningEffort`). Emitted efforts are a subset of toolkit `ReasoningEffort` (`none` \| `minimal` \| `low` \| `medium` \| `high` \| `xhigh` \| `max`). When `reasoningEffort` is set, `temperature` is omitted (gpt-5-class models reject the combination).
+
+**Legacy:** flat `{ modelId, reasoningLevel }` on older courses is hydrated to all four features on read.
+
+**Success (200):** `{ success: true, data: activeCourse, message }` — also refreshes the in-memory course cache after Mongo write succeeds.  
+**Errors:** `400` invalid body / unsupported model–reasoning pair, `403` non–roster-manager, `404` course missing, `500` persist failure (cache unchanged)
 
 <!-- @rdschrs: Implemented the course-scoped Writing Feedback API boundary. -->
 ### 4.0.2 Writing Feedback (`/api/courses/:courseId/writing-feedback`)

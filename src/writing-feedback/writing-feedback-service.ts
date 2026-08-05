@@ -26,7 +26,7 @@ import type {
 } from './contracts';
 import { seedCommentsFromRun, stampCommentAuthors, validateAnchoredComments, withStaleFlags, type AnchoredCommentWithState } from './anchored-comments';
 import { A2WritingFeedbackEngine } from './feedback-engine';
-import { buildLlmCallOptions } from '../helpers/course-llm-settings';
+import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 import { StudentWritingFeedbackPdfService } from './pdf-service';
 import { resolveNumericGrade } from './feedback-schema';
 
@@ -80,8 +80,10 @@ export class WritingFeedbackService {
         // Expose a durable in-progress state before the asynchronous model call begins.
         await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'generating');
         try {
-            const course = await this.mongo.getActiveCourse(courseId);
-            const llmCallOptions = buildLlmCallOptions(course);
+            const llmCallOptions = await ModelSelectionService.getInstance().buildFeatureLlmCallOptions(
+                courseId,
+                'writingFeedback'
+            );
             const result = await this.engine.generate({
                 assignment,
                 verifiedText: submission.verifiedText,

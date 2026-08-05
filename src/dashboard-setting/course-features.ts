@@ -4,7 +4,7 @@
  * Centralizes the backward-compatible policy that an absent capability is
  * disabled and preserves first-enable provenance when a capability is toggled.
  *
- * @author: @rdschrs
+ * @author: @gatahcha
  * @date: 2026-07-12
  * @version: 1.1.0
  * @description: Capability policy helpers for optional course features.

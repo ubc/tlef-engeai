@@ -10,16 +10,15 @@
  * @description: Orchestrates scenario generation and student response grading/persistence.
  */
 
-import { LLMModule, type Message } from 'ubc-genai-toolkit-llm';
+import { LLMModule, type LLMOptions, type Message } from 'ubc-genai-toolkit-llm';
 import { AppConfig, loadConfig } from '../utils/config';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { RAGApp } from '../rag/rag-app';
 import { ragPrompts } from '../rag/rag-prompts';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { appLogger } from '../utils/logger';
-import { buildLlmCallOptions } from '../helpers/course-llm-settings';
+import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 import type {
-    activeCourse,
     ScenarioDifficulty,
     ScenarioExamAnswerInput,
     ScenarioExamSubmitResponse,
@@ -177,6 +176,7 @@ export class ScenarioService {
             let rawResults: GeneratedScenario[];
             if (isMockResponse()) {
                 appLogger.log('[SCENARIO-SERVICE] Mock-response mode — mock generated scenario(s)');
+                await this.resolveLlmCallOptions(input.courseId);
                 rawResults = Array.from({ length: requestedCount }, () => getMockGeneratedScenario(types));
             } else {
                 rawResults = await this.generateViaLLM(
@@ -675,11 +675,12 @@ export class ScenarioService {
         return snapshots;
     }
 
-    /** Resolve course-wide LLM call options for scenario generation and grading. */
-    private async resolveLlmCallOptions(courseId: string): Promise<Record<string, unknown>> {
-        const mongoDB = await EngEAI_MongoDB.getInstance();
-        const course = (await mongoDB.getActiveCourse(courseId)) as activeCourse | null;
-        return buildLlmCallOptions(course);
+    /** Resolve scenarioGeneration feature LLM options via dashboard-setting cache. */
+    private async resolveLlmCallOptions(courseId: string): Promise<LLMOptions> {
+        return ModelSelectionService.getInstance().buildFeatureLlmCallOptions(
+            courseId,
+            'scenarioGeneration'
+        );
     }
 
     /**

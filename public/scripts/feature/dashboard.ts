@@ -267,7 +267,7 @@ async function wireAdvancedSettings(currentClass: activeCourse): Promise<void> {
 
     fillCourseMetadata(currentClass);
 
-    initializeModelSettings(currentClass, canManage);
+    await initializeModelSettings(currentClass, canManage);
 
     bindAccordionToggle('dashboard-model-accordion', 'dashboard-model-toggle', 'dashboard-model-body', true);
     bindAccordionToggle('dashboard-features-accordion', 'dashboard-features-toggle', 'dashboard-features-body', canManage);

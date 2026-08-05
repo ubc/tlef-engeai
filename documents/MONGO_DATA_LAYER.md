@@ -45,9 +45,12 @@
   - Keys: `writingFeedback`, `memoryAgent`, `guidedPathway` — each `{ enabled, enabledAt?, enabledBy? }`; missing = disabled.
   - Startup backfill **CF-001** enables `memoryAgent` / `guidedPathway` where absent (legacy always-on). New courses stay off until Settings or course-setup.
 - **Course LLM settings** (`activeCourse.llmSettings` on `active-course-list`):
-  - `{ modelId, reasoningLevel, updatedAt?, updatedBy? }` — course-wide model + reasoning for Chat, Writing Feedback, Scenario Generation, Guided Pathway.
-  - Catalog ids: `gpt-5.6-luna`, `gpt-5.4-mini`, `gpt-4o-mini`; missing → default `gpt-5.4-mini` + `medium`.
-  - Provider mapping via env (`LLM_MODEL_GPT_56_LUNA`, etc.) with fallbacks documented in `ENDPOINT_ARCHITECTURE.md` §4.0.1.
+  - Per-feature map: `chat`, `scenarioGeneration`, `writingFeedback`, `guidedPathway` — each `{ modelId, reasoningLevel }`, plus optional `updatedAt` / `updatedBy`.
+  - Catalog ids: `gpt-5.6-luna`, `gpt-5.4-mini`, `gpt-4o-mini`; missing/invalid → default `gpt-5.6-luna` + `none` per feature.
+  - Persisted `reasoningLevel` is `AppReasoningLevel` (`none` \| `low` \| `medium` \| `high`). Provider-only levels (`xhigh`, `max`) are catalog metadata only and are clamped on read / rejected on PATCH.
+  - Legacy flat `{ modelId, reasoningLevel }` is expanded to all four features at read time by `ModelSelectionService` (no chat-level storage).
+  - Runtime: process-local `Map<courseId, CourseLlmSettings>` with 5-minute inactivity eviction; Mongo is durable source of truth.
+  - Provider model strings match catalog `modelId` values (no per-model env override).
 - **Memory agent** (`memory-agent-mongo.ts` on `{courseName}_memory-agent`):
   - **`struggleTopics[]`** — canonical flat distinct labels per user (written by memory-agent analyze).
   - **Legacy `struggleTopicsByChapter[]`** — superseded; lazily removed on read/write (`$unset`) with labels merged into `struggleTopics[]`.
