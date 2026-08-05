@@ -1259,17 +1259,15 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
 /**
  * updateCompanionText
  * 
- * @param user any — User with courseName
+ * @param user any — User with name
  * @returns void
- * Sets companion-text element to user.courseName or 'Engineering'.
+ * Sets companion-text to `{firstName} (Student)`.
  */
 function updateCompanionText(user: any): void {
-    // console.log('[STUDENT-MODE] 🔍 Updating companion text with user:', user);
     const companionText = document.getElementById('companion-text');
-    // console.log('[STUDENT-MODE] 🔍 Companion text element found:', !!companionText);
-    // console.log('[STUDENT-MODE] 🔍 User courseName:', user?.courseName);
 
-    if (companionText) {
-        companionText.textContent = user?.courseName || 'Engineering';
+    if (companionText && user?.name) {
+        const firstName = String(user.name).trim().split(/\s+/)[0] || user.name;
+        companionText.textContent = `${firstName} (Student)`;
     }
 }
