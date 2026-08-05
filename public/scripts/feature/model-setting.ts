@@ -204,7 +204,10 @@ function renderFeatureRows(): void {
         const modelLabel = modelEntry.label;
         const reasoningPicker =
             modelEntry.reasoningOptions.length > 0
-                ? renderPickerWrap(feature.key, 'reasoning', reasoningLabel, selection.reasoningLevel)
+                ? renderPickerField(
+                      'Reasoning',
+                      renderPickerWrap(feature.key, 'reasoning', reasoningLabel, selection.reasoningLevel)
+                  )
                 : '';
 
         return `
@@ -212,13 +215,25 @@ function renderFeatureRows(): void {
             <span class="model-feature-title">${escapeHtml(feature.label)}</span>
             <div class="model-feature-pickers">
                 ${reasoningPicker}
-                ${renderPickerWrap(feature.key, 'model', modelLabel, selection.modelId)}
+                ${renderPickerField(
+                    'Model',
+                    renderPickerWrap(feature.key, 'model', modelLabel, selection.modelId)
+                )}
             </div>
         </div>`;
     }).join('');
 
     wirePickerInteractions(container);
     updateSaveButtonState();
+}
+
+/** Visible "Reasoning:" / "Model:" prefix beside each picker. */
+function renderPickerField(kindLabel: string, pickerHtml: string): string {
+    return `
+        <div class="model-picker-field">
+            <span class="model-picker-field-label">${escapeHtml(kindLabel)}:</span>
+            ${pickerHtml}
+        </div>`;
 }
 
 function renderPickerWrap(
@@ -230,6 +245,7 @@ function renderPickerWrap(
     const id = pickerId(featureKey, kind);
     const selection = featureSettings![featureKey];
     const modelEntry = findModelEntry(selection.modelId) ?? defaultModelEntry();
+    const kindLabel = kind === 'reasoning' ? 'Reasoning' : 'Model';
 
     const options =
         kind === 'reasoning'
@@ -246,6 +262,7 @@ function renderPickerWrap(
                 type="button"
                 class="model-picker-trigger"
                 id="trigger-${id}"
+                aria-label="${escapeHtml(kindLabel)}: ${escapeHtml(label)}"
                 aria-haspopup="listbox"
                 aria-expanded="false"
                 aria-controls="popover-${id}"
