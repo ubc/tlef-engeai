@@ -111,3 +111,5 @@ planner
 cert/
 output/
 .claude/
+
+/scripts/new-worktree.sh

@@ -28,4 +28,14 @@ try {
 
 fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(outFile, JSON.stringify(buildInfo, null, 2) + '\n');
-console.log('[build:info] Wrote', path.relative(process.cwd(), outFile), '-', buildInfo.commitShort);
+console.log([
+    '*',
+    '*',
+    '*————————— BUILD INFO-------------------',
+    '*',
+    `[build:info] Wrote ${path.relative(process.cwd(), outFile)} - ${buildInfo.commitShort}`,
+    '*',
+    '*—————————BUILD INFO———————————',
+    '*',
+    '*',
+].join('\n'));
