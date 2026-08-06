@@ -100,7 +100,7 @@ Struggle-topic document APIs require `requireCourseFeatureAPI('memoryAgent')`. P
 
 ### 4.0.1 Course LLM settings (`/api/courses/:courseId/llm-settings`)
 
-Per-feature model and reasoning for Chat, Writing Feedback, Scenario Generation, and Guided Pathway. Stored on `activeCourse.llmSettings`. Runtime resolution uses `ModelSelectionService` (process Map keyed by `courseId` with 5-minute inactivity eviction). Only roster managers may update. Students/TAs never PATCH; the server applies settings when their feature calls run.
+Per-feature model and reasoning for Chat, Writing Feedback, Scenario Generation, Guided Pathway, and Memory Agent. Stored on `activeCourse.llmSettings`. Runtime resolution uses `ModelSelectionService`: process-local Map keyed by `courseId` with 5-minute inactivity eviction; cold misses single-flight load Mongo then insert; successful PATCH writes Mongo first then `setCachedSettings` (write-through). Freshness after save is guaranteed for a **single Node process**; multi-worker coherence is out of scope. Only roster managers may update. Students/TAs never PATCH; the server applies settings when their feature calls run. The Model Settings UI always lists all five feature rows; Writing Feedback, Guided Pathway, and Memory Agent rows are shaded and non-interactive until the matching Extra Feature capability is enabled. PATCH still requires all five feature keys.
 
 | Method | Path | Description |
 |---|---|---|
@@ -120,7 +120,8 @@ Each `models[]` entry: `{ id, label, costTier, reasoningOptions: [{ id, label }]
   "chat": { "modelId": "gpt-5.6-luna", "reasoningLevel": "high" },
   "scenarioGeneration": { "modelId": "gpt-5.4-mini", "reasoningLevel": "medium" },
   "writingFeedback": { "modelId": "gpt-4o-mini", "reasoningLevel": "low" },
-  "guidedPathway": { "modelId": "gpt-5.4-mini", "reasoningLevel": "medium" }
+  "guidedPathway": { "modelId": "gpt-5.4-mini", "reasoningLevel": "medium" },
+  "memoryAgent": { "modelId": "gpt-5.4-mini", "reasoningLevel": "low" }
 }
 ```
 
@@ -138,10 +139,10 @@ Each `models[]` entry: `{ id, label, costTier, reasoningOptions: [{ id, label }]
 
 **Toolkit:** Runtime options are `ubc-genai-toolkit-llm` `LLMOptions` (`model` + optional `reasoningEffort`). Emitted efforts are a subset of toolkit `ReasoningEffort` (`none` \| `minimal` \| `low` \| `medium` \| `high` \| `xhigh` \| `max`). When `reasoningEffort` is set, `temperature` is omitted (gpt-5-class models reject the combination).
 
-**Legacy:** flat `{ modelId, reasoningLevel }` on older courses is hydrated to all four features on read.
+**Legacy:** flat `{ modelId, reasoningLevel }` on older courses is hydrated to all five features on read.
 
-**Success (200):** `{ success: true, data: activeCourse, message }` — also refreshes the in-memory course cache after Mongo write succeeds.  
-**Errors:** `400` invalid body / unsupported model–reasoning pair, `403` non–roster-manager, `404` course missing, `500` persist failure (cache unchanged)
+**Success (200):** `{ success: true, data: activeCourse, message }`  
+**Errors:** `400` invalid body / unsupported model–reasoning pair, `403` non–roster-manager, `404` course missing, `500` persist failure
 
 <!-- @rdschrs: Implemented the course-scoped Writing Feedback API boundary. -->
 ### 4.0.2 Writing Feedback (`/api/courses/:courseId/writing-feedback`)

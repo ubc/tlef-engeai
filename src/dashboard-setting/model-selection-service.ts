@@ -2,15 +2,15 @@
  * ModelSelectionService — course per-feature LLM catalog, cache, and provider options.
  *
  * Owns the server catalog (models + supported reasoning), validates instructor
- * selections, persists resolution via EngEAI_MongoDB on cold miss, and keeps a
- * process-local Map keyed by courseId with 5-minute inactivity eviction
- * (ChatApp timer pattern). Callers must not re-read llmSettings from Mongo when
- * the Map already has the course.
+ * selections, and resolves `activeCourse.llmSettings` via a process-local Map
+ * keyed by courseId with 5-minute inactivity eviction. Concurrent cold misses
+ * share one in-flight Mongo load. After a successful instructor PATCH, callers
+ * must write Mongo first then {@link setCachedSettings} (single-process freshness).
  *
  * @author: gatahcha
  * @date: 2026-08-04
- * @version: 1.1.0
- * @description: Singleton model selection catalog + courseId cache for LLM features.
+ * @version: 2.1.0
+ * @description: Singleton model selection catalog + courseId Map cache for LLM features.
  */
 
 import type {
@@ -32,8 +32,9 @@ import {
     DEFAULT_FEATURE_SELECTION,
     LLM_MODEL_CATALOG,
     toDashboardCatalogEntry,
+    VALID_MODEL_IDS,
+    VALID_REASONING_LEVELS,
 } from './model-selection-list';
-import { VALID_MODEL_IDS, VALID_REASONING_LEVELS } from '../model-selection/model-selection-service';
 import { isMockResponse } from '../helpers/mock-response';
 import { appLogger } from '../utils/logger';
 
@@ -43,6 +44,7 @@ export const LLM_FEATURE_KEYS: readonly LlmFeatureKey[] = [
     'scenarioGeneration',
     'writingFeedback',
     'guidedPathway',
+    'memoryAgent',
 ] as const;
 
 /** Platform default when Mongo has no usable settings — one copy of DEFAULT_FEATURE_SELECTION per feature. */
@@ -51,6 +53,7 @@ export const DEFAULT_COURSE_LLM_SETTINGS: CourseLlmSettings = {
     scenarioGeneration: { ...DEFAULT_FEATURE_SELECTION },
     writingFeedback: { ...DEFAULT_FEATURE_SELECTION },
     guidedPathway: { ...DEFAULT_FEATURE_SELECTION },
+    memoryAgent: { ...DEFAULT_FEATURE_SELECTION },
 };
 
 export {
@@ -69,11 +72,12 @@ type CourseLoader = (courseId: string) => Promise<Pick<activeCourse, 'id' | 'llm
  * Key Features:
  * - Server-owned model catalog with per-model supported reasoning levels
  * - Cache-first Map keyed by courseId with 5-minute inactivity eviction
- * - Legacy flat llmSettings hydration to all four features
+ * - Cold-miss single-flight dedupe; write-through via setCachedSettings after PATCH
+ * - Legacy flat llmSettings hydration to all five features
  * - Toolkit LLMOptions construction (model + optional reasoningEffort; no temperature with reasoning)
  *
  * @author: EngE-AI Team
- * @version: 1.1.0
+ * @version: 2.1.0
  * @since: 2026-08-04
  */
 export class ModelSelectionService {
@@ -81,9 +85,12 @@ export class ModelSelectionService {
 
     /** courseId → validated per-feature settings currently used by this process */
     private courseSettingsById = new Map<string, CourseLlmSettings>();
-    /** courseId → inactivity cleanup timer (5 minutes, ChatApp pattern) */
+    /** courseId → inactivity cleanup timer (5 minutes) */
     private courseSettingsTimers = new Map<string, NodeJS.Timeout>();
     private courseSettingsInactivityTimeout = 5 * 60 * 1000;
+
+    /** courseId → in-flight Mongo normalize Promise (cleared when settled) */
+    private inflightLoads = new Map<string, Promise<CourseLlmSettings>>();
 
     /** Injectable for tests; defaults to EngEAI_MongoDB.getActiveCourse. */
     private courseLoader: CourseLoader | null = null;
@@ -93,12 +100,9 @@ export class ModelSelectionService {
     /**
      * getInstance - returns the process-wide ModelSelectionService singleton.
      *
-     * Creates the instance on first call; subsequent callers share the same cache Maps.
-     *
      * @returns Shared singleton instance
      */
     static getInstance(): ModelSelectionService {
-        // Create once if this process has not initialized the singleton yet
         if (!ModelSelectionService.instance) {
             ModelSelectionService.instance = new ModelSelectionService();
         }
@@ -107,11 +111,8 @@ export class ModelSelectionService {
 
     /**
      * resetInstanceForTests - drops the singleton and clears caches (tests only).
-     *
-     * Clears inactivity timers first so leftover timeouts cannot mutate a new instance.
      */
     static resetInstanceForTests(): void {
-        // Evict all cached courses and clear timers before dropping the singleton
         if (ModelSelectionService.instance) {
             ModelSelectionService.instance.clearAllCaches();
         }
@@ -119,7 +120,7 @@ export class ModelSelectionService {
     }
 
     /**
-     * setCourseLoaderForTests - injects a Mongo stub for cache-hit assertions.
+     * setCourseLoaderForTests - injects a Mongo stub for load assertions.
      *
      * @param loader - Async course loader, or null to restore EngEAI_MongoDB default
      */
@@ -130,9 +131,6 @@ export class ModelSelectionService {
     /**
      * getCatalog - returns the server-owned model catalog for validation and internals.
      *
-     * Includes verbatim provider `supportedReasoningLevels` (may include xhigh/max).
-     * Dashboard UI should use {@link getDashboardCatalog} instead.
-     *
      * @returns Catalog entries with provider-supported reasoning levels
      */
     getCatalog(): readonly LlmModelCatalogEntry[] {
@@ -142,13 +140,9 @@ export class ModelSelectionService {
     /**
      * getDashboardCatalog - slim catalog payload for the Model Settings dashboard.
      *
-     * Maps each server catalog row to id/label/costTier plus app-only reasoning options.
-     * Brain icons are client-derived — not included in this response.
-     *
      * @returns Models with reasoningOptions and the platform defaultSelection
      */
     getDashboardCatalog(): LlmModelCatalogApiResponse {
-        // Project each catalog entry into the dashboard API shape
         return {
             models: LLM_MODEL_CATALOG.map(toDashboardCatalogEntry),
             defaultSelection: { ...DEFAULT_FEATURE_SELECTION },
@@ -159,40 +153,47 @@ export class ModelSelectionService {
      * getSettingsForCourse - returns validated per-feature LLM settings for one course.
      *
      * Cache-first: Map hit resets the 5-minute inactivity timer and returns immediately.
-     * On miss, loads `activeCourse.llmSettings` from Mongo, normalizes (legacy flat → four
-     * features), caches under courseId, starts a new timer, then returns.
+     * On miss, single-flight loads Mongo, normalizes, caches under courseId, starts a timer.
      *
      * @param courseId - Active course id used as the Map key
-     * @returns Resolved chat / scenario / writing / pathway selections
+     * @returns Resolved per-feature selections
      * @throws When the course cannot be loaded from Mongo (or the test loader)
      */
     async getSettingsForCourse(courseId: string): Promise<CourseLlmSettings> {
-        // Prefer the in-memory Map entry for this process
         const cached = this.courseSettingsById.get(courseId);
         if (cached) {
-            // Touch the inactivity timer so active courses stay warm
             this.resetCourseSettingsTimer(courseId);
             return cached;
         }
 
-        // Cold miss: load Mongo, normalize, then cache under courseId
-        const fromDb = await this.loadAndNormalizeFromMongo(courseId);
-        this.courseSettingsById.set(courseId, fromDb);
-        this.resetCourseSettingsTimer(courseId);
-        return fromDb;
+        const existing = this.inflightLoads.get(courseId);
+        if (existing) {
+            return existing;
+        }
+
+        const pending = this.loadAndNormalizeFromMongo(courseId)
+            .then((fromDb) => {
+                this.courseSettingsById.set(courseId, fromDb);
+                this.resetCourseSettingsTimer(courseId);
+                return fromDb;
+            })
+            .finally(() => {
+                this.inflightLoads.delete(courseId);
+            });
+        this.inflightLoads.set(courseId, pending);
+        return pending;
     }
 
     /**
      * setCachedSettings - replaces the Map entry after a successful instructor PATCH.
      *
-     * Does not write Mongo — the route must persist first, then call this to refresh
-     * the process cache. Clones settings so callers cannot mutate the Map entry by reference.
+     * Does not write Mongo — the route must persist first, then call this.
+     * Clones settings so callers cannot mutate the Map entry by reference.
      *
      * @param courseId - Course id Map key
      * @param settings - Already-validated per-feature settings
      */
     setCachedSettings(courseId: string, settings: CourseLlmSettings): void {
-        // Store a shallow clone so external mutation cannot corrupt the cache
         this.courseSettingsById.set(courseId, cloneSettings(settings));
         this.resetCourseSettingsTimer(courseId);
     }
@@ -203,19 +204,25 @@ export class ModelSelectionService {
      * @param courseId - Course id to evict
      */
     invalidateCourse(courseId: string): void {
-        // Clear timer first so a pending eviction cannot race a later re-insert
         this.clearTimer(courseId);
         this.courseSettingsById.delete(courseId);
     }
 
     /**
-     * buildFeatureLlmCallOptions - cache-first toolkit LLMOptions for one feature.
+     * hasCachedCourseForTests - whether the course is currently in the process Map (tests only).
      *
-     * Loads settings via {@link getSettingsForCourse}, then delegates to
-     * {@link buildProviderOptions} for model / reasoningEffort assembly.
+     * @param courseId - Course id to probe
+     * @returns True when the Map has an entry for courseId
+     */
+    hasCachedCourseForTests(courseId: string): boolean {
+        return this.courseSettingsById.has(courseId);
+    }
+
+    /**
+     * buildFeatureLlmCallOptions - toolkit LLMOptions for one feature via cache/Mongo settings.
      *
      * @param courseId - Active course id
-     * @param feature - Which feature row to apply (chat, scenario, writing, pathway)
+     * @param feature - Which feature row to apply
      * @param baseOptions - Existing provider options merged first (e.g. Ollama num_ctx)
      * @returns Provider options including model and optional reasoningEffort
      */
@@ -224,19 +231,12 @@ export class ModelSelectionService {
         feature: LlmFeatureKey,
         baseOptions?: LLMOptions
     ): Promise<LLMOptions> {
-        // Resolve (or load) this course's per-feature settings
         const settings = await this.getSettingsForCourse(courseId);
-        // Build toolkit options from the selected feature row
         return this.buildProviderOptions(feature, settings, baseOptions);
     }
 
     /**
      * buildProviderOptions - builds toolkit LLMOptions from already-resolved settings.
-     *
-     * Picks the feature selection, sets `model`, and emits `reasoningEffort` only when
-     * the catalog lists native reasoning for that model and the level is allowed.
-     * When reasoning is set, strips `temperature` (toolkit: gpt-5-class models reject both).
-     * Under MOCK_RESPONSE, logs model + reasoningEffort for verification without a live call.
      *
      * @param feature - Feature key whose selection to apply
      * @param settings - Validated per-feature settings
@@ -248,28 +248,23 @@ export class ModelSelectionService {
         settings: CourseLlmSettings,
         baseOptions?: LLMOptions
     ): LLMOptions {
-        // Fall back to platform default if the feature row is somehow missing
         const selection = settings[feature] ?? DEFAULT_FEATURE_SELECTION;
 
-        // Start from caller base options, then pin the catalog model id as the provider model
         const options: LLMOptions = {
             ...baseOptions,
             model: this.mapModelIdToProviderModel(selection.modelId),
         };
 
-        // Look up provider-supported reasoning for this model
         const entry = LLM_MODEL_CATALOG.find((e) => e.id === selection.modelId);
         if (
             entry &&
             entry.supportedReasoningLevels.length > 0 &&
             entry.supportedReasoningLevels.includes(selection.reasoningLevel)
         ) {
-            // Native reasoning models: pass reasoningEffort and drop temperature
             options.reasoningEffort = selection.reasoningLevel;
             delete options.temperature;
         }
 
-        // Mock mode: log resolved options so instructors can verify settings without an API call
         if (isMockResponse()) {
             appLogger.log(
                 `[MOCK-RESPONSE][${feature}] model=${String(options.model)} reasoningEffort=${
@@ -284,9 +279,6 @@ export class ModelSelectionService {
     /**
      * buildDefaultProviderOptions - platform defaults when course id is unavailable.
      *
-     * Uses {@link DEFAULT_COURSE_LLM_SETTINGS} instead of Mongo — for callers that
-     * cannot resolve a course (e.g. pathway evaluation before course lookup succeeds).
-     *
      * @param feature - Feature key
      * @param baseOptions - Existing provider options merged first
      * @returns Options from DEFAULT_COURSE_LLM_SETTINGS for that feature
@@ -296,24 +288,18 @@ export class ModelSelectionService {
     }
 
     /**
-     * normalizeStoredSettings - expands legacy flat or partial Mongo rows to all four features.
-     *
-     * Never throws: invalid or missing input becomes {@link DEFAULT_COURSE_LLM_SETTINGS}.
-     * Legacy flat `{ modelId, reasoningLevel }` is cloned onto every feature key.
-     * Per-feature objects are sanitized independently via {@link sanitizeFeatureSelection}.
+     * normalizeStoredSettings - expands legacy flat or partial Mongo rows to all five features.
      *
      * @param stored - Raw llmSettings from Mongo (unknown shape)
-     * @returns Validated CourseLlmSettings ready for cache / callers
+     * @returns Validated CourseLlmSettings ready for callers
      */
     normalizeStoredSettings(stored: unknown): CourseLlmSettings {
-        // Missing or non-object → full platform defaults
         if (!stored || typeof stored !== 'object') {
             return cloneSettings(DEFAULT_COURSE_LLM_SETTINGS);
         }
 
         const record = stored as Record<string, unknown>;
 
-        // Legacy flat shape: one model/reasoning applied to all four features
         if (isLegacyFlatSettings(record)) {
             const seed = sanitizeFeatureSelection({
                 modelId: record.modelId,
@@ -324,17 +310,18 @@ export class ModelSelectionService {
                 scenarioGeneration: { ...seed },
                 writingFeedback: { ...seed },
                 guidedPathway: { ...seed },
+                memoryAgent: { ...seed },
                 updatedAt: record.updatedAt instanceof Date ? record.updatedAt : undefined,
                 updatedBy: typeof record.updatedBy === 'string' ? record.updatedBy : undefined,
             };
         }
 
-        // Modern per-feature shape: sanitize each feature independently
         return {
             chat: sanitizeFeatureSelection(record.chat),
             scenarioGeneration: sanitizeFeatureSelection(record.scenarioGeneration),
             writingFeedback: sanitizeFeatureSelection(record.writingFeedback),
             guidedPathway: sanitizeFeatureSelection(record.guidedPathway),
+            memoryAgent: sanitizeFeatureSelection(record.memoryAgent),
             updatedAt: record.updatedAt instanceof Date ? record.updatedAt : undefined,
             updatedBy: typeof record.updatedBy === 'string' ? record.updatedBy : undefined,
         };
@@ -343,29 +330,27 @@ export class ModelSelectionService {
     /**
      * parseUpdateRequest - validates a full per-feature PATCH body or returns an error.
      *
-     * Requires all four feature keys. Each feature must pass
-     * {@link parseFeatureSelectionStrict} (AppReasoningLevel ∩ provider catalog).
+     * Requires all five feature keys.
      *
      * @param body - Request body from PATCH llm-settings
-     * @returns `{ ok: true, settings }` or `{ ok: false, error }` with a feature-prefixed message
+     * @returns `{ ok: true, settings }` or `{ ok: false, error }`
      */
     parseUpdateRequest(
         body: unknown
     ):
         | { ok: true; settings: UpdateCourseLlmSettingsRequest }
         | { ok: false; error: string } {
-        // Reject non-objects before reading feature keys
         if (!body || typeof body !== 'object') {
             return {
                 ok: false,
-                error: 'Request body must include chat, scenarioGeneration, writingFeedback, and guidedPathway',
+                error:
+                    'Request body must include chat, scenarioGeneration, writingFeedback, guidedPathway, and memoryAgent',
             };
         }
 
         const record = body as Record<string, unknown>;
         const result: Partial<UpdateCourseLlmSettingsRequest> = {};
 
-        // Validate every feature key; fail fast on the first invalid selection
         for (const key of LLM_FEATURE_KEYS) {
             const parsed = parseFeatureSelectionStrict(record[key]);
             if (!parsed.ok) {
@@ -379,8 +364,6 @@ export class ModelSelectionService {
 
     /**
      * updateCourseLlmSettings - builds the next persisted settings object for PATCH.
-     *
-     * Copies validated feature selections and stamps provenance. Does not write Mongo.
      *
      * @param features - Validated per-feature selections from parseUpdateRequest
      * @param actorUserId - Roster user id of the instructor/admin who saved
@@ -397,6 +380,7 @@ export class ModelSelectionService {
             scenarioGeneration: { ...features.scenarioGeneration },
             writingFeedback: { ...features.writingFeedback },
             guidedPathway: { ...features.guidedPathway },
+            memoryAgent: { ...features.memoryAgent },
             updatedAt: now,
             updatedBy: actorUserId,
         };
@@ -404,8 +388,6 @@ export class ModelSelectionService {
 
     /**
      * mapModelIdToProviderModel - maps UI catalog ids to provider model strings.
-     *
-     * Today catalog ids match OpenAI model strings 1:1; keep this hook if mapping diverges.
      *
      * @param modelId - Catalog id from FeatureLlmSelection
      * @returns Provider model string passed to ubc-genai-toolkit-llm
@@ -427,8 +409,6 @@ export class ModelSelectionService {
     /**
      * isAppReasoningLevel - type guard for app UI / persisted reasoning levels.
      *
-     * App levels are none|low|medium|high only — not provider-only xhigh/max.
-     *
      * @param value - Candidate from request body or storage
      * @returns True when value is an AppReasoningLevel
      */
@@ -438,8 +418,6 @@ export class ModelSelectionService {
 
     /**
      * isReasoningSupported - whether the provider catalog advertises this model–reasoning pair.
-     *
-     * Checks the full provider list (may include xhigh/max), not only APP_REASONING_LEVELS.
      *
      * @param modelId - Catalog model
      * @param level - Requested reasoning (may include provider-only levels)
@@ -451,29 +429,17 @@ export class ModelSelectionService {
     }
 
     /**
-     * hasCachedCourseForTests - whether the course is currently in the process Map (tests only).
-     *
-     * @param courseId - Course id to probe
-     * @returns True when the Map has an entry for courseId
-     */
-    hasCachedCourseForTests(courseId: string): boolean {
-        return this.courseSettingsById.has(courseId);
-    }
-
-    /**
-     * loadAndNormalizeFromMongo - cold-path load: fetch course then normalize llmSettings.
+     * loadAndNormalizeFromMongo - fetch course then normalize llmSettings.
      *
      * @param courseId - Active course id
-     * @returns Normalized settings for caching
+     * @returns Normalized settings
      * @throws When the course document is missing
      */
     private async loadAndNormalizeFromMongo(courseId: string): Promise<CourseLlmSettings> {
-        // Load the course document (or test stub)
         const course = await this.loadCourse(courseId);
         if (!course) {
             throw new Error(`Course not found: ${courseId}`);
         }
-        // Expand legacy / clamp invalid selections before caching
         return this.normalizeStoredSettings(course.llmSettings);
     }
 
@@ -486,11 +452,9 @@ export class ModelSelectionService {
     private async loadCourse(
         courseId: string
     ): Promise<Pick<activeCourse, 'id' | 'llmSettings'> | null> {
-        // Prefer injectable loader in tests
         if (this.courseLoader) {
             return this.courseLoader(courseId);
         }
-        // Production: read active-course-list via the Mongo façade
         const mongo = await EngEAI_MongoDB.getInstance();
         return (await mongo.getActiveCourse(courseId)) as Pick<
             activeCourse,
@@ -499,29 +463,35 @@ export class ModelSelectionService {
     }
 
     /**
-     * resetCourseSettingsTimer - replaces the 5-minute inactivity eviction timer for a course.
+     * clearAllCaches - clears Map, timers, and in-flight loads (tests / reset).
+     */
+    private clearAllCaches(): void {
+        for (const courseId of this.courseSettingsTimers.keys()) {
+            this.clearTimer(courseId);
+        }
+        this.courseSettingsById.clear();
+        this.inflightLoads.clear();
+    }
+
+    /**
+     * resetCourseSettingsTimer - (re)starts the 5-minute inactivity eviction timer.
      *
-     * @param courseId - Course whose cache entry should expire after inactivity
+     * @param courseId - Course id whose Map lifetime to renew
      */
     private resetCourseSettingsTimer(courseId: string): void {
-        // Cancel any existing timer before scheduling a fresh one
         this.clearTimer(courseId);
         const timer = setTimeout(() => {
-            // Evict Map entry and timer bookkeeping after inactivity
             this.courseSettingsById.delete(courseId);
             this.courseSettingsTimers.delete(courseId);
         }, this.courseSettingsInactivityTimeout);
-        // Unref so idle cache timers do not keep the process alive in tests/scripts
-        if (typeof timer.unref === 'function') {
-            timer.unref();
-        }
+        timer.unref?.();
         this.courseSettingsTimers.set(courseId, timer);
     }
 
     /**
-     * clearTimer - clears one course's inactivity timeout if present.
+     * clearTimer - cancels and drops the inactivity timer for one course.
      *
-     * @param courseId - Course whose timer to clear
+     * @param courseId - Course id whose timer to clear
      */
     private clearTimer(courseId: string): void {
         const existing = this.courseSettingsTimers.get(courseId);
@@ -530,21 +500,10 @@ export class ModelSelectionService {
             this.courseSettingsTimers.delete(courseId);
         }
     }
-
-    /**
-     * clearAllCaches - clears every course timer and empties the settings Map (tests / reset).
-     */
-    private clearAllCaches(): void {
-        // Clear timers first so none fire after the Map is emptied
-        for (const courseId of Array.from(this.courseSettingsTimers.keys())) {
-            this.clearTimer(courseId);
-        }
-        this.courseSettingsById.clear();
-    }
 }
 
 /**
- * cloneSettings - shallow-clones CourseLlmSettings so Map entries are not shared by reference.
+ * cloneSettings - shallow-clones CourseLlmSettings.
  *
  * @param settings - Settings to clone
  * @returns New object with cloned feature rows
@@ -555,6 +514,7 @@ function cloneSettings(settings: CourseLlmSettings): CourseLlmSettings {
         scenarioGeneration: { ...settings.scenarioGeneration },
         writingFeedback: { ...settings.writingFeedback },
         guidedPathway: { ...settings.guidedPathway },
+        memoryAgent: { ...settings.memoryAgent },
         updatedAt: settings.updatedAt,
         updatedBy: settings.updatedBy,
     };
@@ -563,10 +523,8 @@ function cloneSettings(settings: CourseLlmSettings): CourseLlmSettings {
 /**
  * isLegacyFlatSettings - detects pre-per-feature `{ modelId, reasoningLevel }` Mongo rows.
  *
- * True only when flat keys exist and no modern feature key is present.
- *
  * @param record - Raw llmSettings object
- * @returns True when the row should be expanded to all four features
+ * @returns True when the row should be expanded to all five features
  */
 function isLegacyFlatSettings(
     record: Record<string, unknown>
@@ -589,31 +547,24 @@ function appAllowedReasoningLevels(entry: LlmModelCatalogEntry): AppReasoningLev
 /**
  * sanitizeFeatureSelection - clamps one feature selection to a valid catalog pair (lenient).
  *
- * Used on read paths (normalize). Invalid model/reasoning fall back to defaults;
- * reasoning outside APP ∩ provider is clamped to default or the first allowed level.
- *
  * @param value - Unknown feature row from Mongo or legacy seed
  * @returns Always a valid FeatureLlmSelection (never throws)
  */
 function sanitizeFeatureSelection(value: unknown): FeatureLlmSelection {
-    // Non-object → full platform default selection
     if (!value || typeof value !== 'object') {
         return { ...DEFAULT_FEATURE_SELECTION };
     }
 
     const record = value as Record<string, unknown>;
 
-    // Accept catalog model id or fall back to default
     const modelId = isCourseLlmModelIdValue(record.modelId)
         ? record.modelId
         : DEFAULT_FEATURE_SELECTION.modelId;
 
-    // Accept app reasoning level or fall back to default
     let reasoningLevel = isAppReasoningLevelValue(record.reasoningLevel)
         ? record.reasoningLevel
         : DEFAULT_FEATURE_SELECTION.reasoningLevel;
 
-    // When the model supports reasoning, clamp to APP ∩ provider for that model
     const entry = LLM_MODEL_CATALOG.find((e) => e.id === modelId);
     if (entry && entry.supportedReasoningLevels.length > 0) {
         const allowed = appAllowedReasoningLevels(entry);
@@ -630,33 +581,26 @@ function sanitizeFeatureSelection(value: unknown): FeatureLlmSelection {
 /**
  * parseFeatureSelectionStrict - validates one feature selection for PATCH (strict).
  *
- * Rejects unknown model ids, non-app reasoning levels, and app levels not listed
- * on the model's provider catalog when the model supports reasoning.
- *
  * @param value - One feature object from the PATCH body
- * @returns `{ ok: true, selection }` or `{ ok: false, error }` with a human-readable reason
+ * @returns `{ ok: true, selection }` or `{ ok: false, error }`
  */
 function parseFeatureSelectionStrict(
     value: unknown
 ): { ok: true; selection: FeatureLlmSelection } | { ok: false; error: string } {
-    // Require a plain object with the expected fields
     if (!value || typeof value !== 'object') {
         return { ok: false, error: 'must be an object with modelId and reasoningLevel' };
     }
 
     const record = value as Record<string, unknown>;
 
-    // modelId must be in the server catalog
     if (!isCourseLlmModelIdValue(record.modelId)) {
         return { ok: false, error: 'modelId must be a supported catalog id' };
     }
 
-    // reasoningLevel must be an app-persisted level (not xhigh/max)
     if (!isAppReasoningLevelValue(record.reasoningLevel)) {
         return { ok: false, error: 'reasoningLevel must be none, low, medium, or high' };
     }
 
-    // When the model lists provider reasoning, the app level must be in that intersection
     const entry = LLM_MODEL_CATALOG.find((e) => e.id === record.modelId);
     if (
         entry &&

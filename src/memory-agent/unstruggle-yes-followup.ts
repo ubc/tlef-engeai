@@ -23,6 +23,7 @@ import {
 import { isMockResponse, getMockUnstruggleYesFollowup } from '../helpers/mock-response';
 import { appendScenarioSuggestionsTag } from '../utils/message-utils';
 import { appLogger } from '../utils/logger';
+import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 
 const llmModule = new LLMModule(loadConfig().llmConfig);
 
@@ -249,6 +250,7 @@ export async function suggestPracticeAfterUnstruggleYes(
         const mock = getMockUnstruggleYesFollowup(catalog);
         objectiveTexts = filterVerbatimObjectiveTexts(mock.learningObjectiveTexts, allowedTexts);
         appLogger.log('[UNSTRUGGLE-YES] Mock-response mode — using mock LO text selection');
+        await ModelSelectionService.getInstance().buildFeatureLlmCallOptions(course.id, 'memoryAgent');
     } else if (catalog.length === 0) {
         return noScenariosResult(topic);
     } else {
@@ -261,10 +263,14 @@ export async function suggestPracticeAfterUnstruggleYes(
         ];
 
         try {
+            const llmCallOptions = await ModelSelectionService.getInstance().buildFeatureLlmCallOptions(
+                course.id,
+                'memoryAgent'
+            );
             const response = await llmModule.sendStructuredConversation(
                 messages,
                 unstruggleYesFollowupResponseSchema,
-                { structuredOutputName: 'unstruggle_yes_followup' }
+                { structuredOutputName: 'unstruggle_yes_followup', ...llmCallOptions }
             );
             objectiveTexts = filterVerbatimObjectiveTexts(
                 response?.parsed?.learningObjectiveTexts ?? [],

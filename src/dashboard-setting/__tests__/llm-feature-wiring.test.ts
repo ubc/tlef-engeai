@@ -38,6 +38,11 @@ const FEATURE_CALL_SITES: Record<LlmFeatureKey, readonly string[]> = {
     scenarioGeneration: ['src/scenario-generation/scenario-service.ts'],
     writingFeedback: ['src/writing-feedback/writing-feedback-service.ts'],
     guidedPathway: ['src/guided-pathways/pathway-orchestrator.ts'],
+    memoryAgent: [
+        'src/memory-agent/memory-agent.ts',
+        'src/memory-agent/struggle-topic-generator.ts',
+        'src/memory-agent/unstruggle-yes-followup.ts',
+    ],
 };
 
 const repoRoot = path.resolve(__dirname, '../../..');
@@ -55,6 +60,7 @@ describe('LLM feature wiring (toolkit reasoningEffort)', () => {
                 scenarioGeneration: { modelId: 'gpt-5.4-mini', reasoningLevel: 'none' },
                 writingFeedback: { modelId: 'gpt-4o-mini', reasoningLevel: 'medium' },
                 guidedPathway: { modelId: 'gpt-5.4-mini', reasoningLevel: 'low' },
+                memoryAgent: { modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' },
             },
         }));
     });
@@ -91,6 +97,7 @@ describe('LLM feature wiring (toolkit reasoningEffort)', () => {
             scenarioGeneration: { model: 'gpt-5.4-mini', reasoningEffort: 'none' },
             writingFeedback: { model: 'gpt-4o-mini', reasoningEffort: undefined },
             guidedPathway: { model: 'gpt-5.4-mini', reasoningEffort: 'low' },
+            memoryAgent: { model: 'gpt-5.4-mini', reasoningEffort: 'medium' },
         };
 
         for (const feature of LLM_FEATURE_KEYS) {

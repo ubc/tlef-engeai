@@ -1,5 +1,5 @@
 /**
- * ModelSelectionService — catalog, cache, timer, and provider-option tests.
+ * ModelSelectionService — catalog, 5m Map cache, single-flight, and provider-option tests.
  */
 
 import {
@@ -8,15 +8,47 @@ import {
     LLM_MODEL_CATALOG,
     ModelSelectionService,
 } from '../model-selection-service';
-import type { AppReasoningLevel, CourseLlmModelId, FeatureLlmSelection, ProviderReasoningLevel } from '../../types/shared';
+import type {
+    AppReasoningLevel,
+    CourseLlmModelId,
+    CourseLlmSettings,
+    FeatureLlmSelection,
+    ProviderReasoningLevel,
+} from '../../types/shared';
 import { APP_REASONING_LEVELS } from '../model-selection-list';
+
+const FIVE_MIN_MS = 5 * 60 * 1000;
+
+/** Full five-feature PATCH body helper for tests. */
+function fullBody(
+    selection: FeatureLlmSelection
+): Record<LlmFeatureKeyFromKeys, FeatureLlmSelection> {
+    return Object.fromEntries(LLM_FEATURE_KEYS.map((key) => [key, selection])) as Record<
+        LlmFeatureKeyFromKeys,
+        FeatureLlmSelection
+    >;
+}
+
+type LlmFeatureKeyFromKeys = (typeof LLM_FEATURE_KEYS)[number];
+
+function fiveFeatureSettings(
+    overrides: Partial<Record<LlmFeatureKeyFromKeys, FeatureLlmSelection>> = {}
+): CourseLlmSettings {
+    const seed: FeatureLlmSelection = { modelId: 'gpt-5.6-luna', reasoningLevel: 'high' };
+    return {
+        chat: overrides.chat ?? seed,
+        scenarioGeneration: overrides.scenarioGeneration ?? seed,
+        writingFeedback: overrides.writingFeedback ?? seed,
+        guidedPathway: overrides.guidedPathway ?? seed,
+        memoryAgent: overrides.memoryAgent ?? seed,
+    };
+}
 
 describe('ModelSelectionService', () => {
     let service: ModelSelectionService;
     let mongoLoads: number;
 
     beforeEach(() => {
-        jest.useFakeTimers();
         ModelSelectionService.resetInstanceForTests();
         service = ModelSelectionService.getInstance();
         mongoLoads = 0;
@@ -29,6 +61,7 @@ describe('ModelSelectionService', () => {
                     scenarioGeneration: { modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' },
                     writingFeedback: { modelId: 'gpt-4o-mini', reasoningLevel: 'low' },
                     guidedPathway: { modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' },
+                    memoryAgent: { modelId: 'gpt-5.4-mini', reasoningLevel: 'low' },
                 },
             };
         });
@@ -87,12 +120,9 @@ describe('ModelSelectionService', () => {
                 }
             }
 
-            const rejectXhigh = service.parseUpdateRequest({
-                chat: { modelId: 'gpt-5.6-luna', reasoningLevel: 'xhigh' },
-                scenarioGeneration: { modelId: 'gpt-5.6-luna', reasoningLevel: 'xhigh' },
-                writingFeedback: { modelId: 'gpt-5.6-luna', reasoningLevel: 'xhigh' },
-                guidedPathway: { modelId: 'gpt-5.6-luna', reasoningLevel: 'xhigh' },
-            });
+            const rejectXhigh = service.parseUpdateRequest(
+                fullBody({ modelId: 'gpt-5.6-luna', reasoningLevel: 'xhigh' as unknown as AppReasoningLevel })
+            );
             expect(rejectXhigh.ok).toBe(false);
         });
 
@@ -114,12 +144,9 @@ describe('ModelSelectionService', () => {
         });
 
         it('accepts models without native reasoning when reasoningLevel is still present in the body', () => {
-            const parsed = service.parseUpdateRequest({
-                chat: { modelId: 'gpt-4o-mini', reasoningLevel: 'medium' },
-                scenarioGeneration: { modelId: 'gpt-4o-mini', reasoningLevel: 'medium' },
-                writingFeedback: { modelId: 'gpt-4o-mini', reasoningLevel: 'medium' },
-                guidedPathway: { modelId: 'gpt-4o-mini', reasoningLevel: 'medium' },
-            });
+            const parsed = service.parseUpdateRequest(
+                fullBody({ modelId: 'gpt-4o-mini', reasoningLevel: 'medium' })
+            );
             expect(parsed.ok).toBe(true);
         });
 
@@ -127,23 +154,19 @@ describe('ModelSelectionService', () => {
             expect(service.parseUpdateRequest(null).ok).toBe(false);
             expect(
                 service.parseUpdateRequest({
+                    ...fullBody({ modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' }),
                     chat: { modelId: 'nope', reasoningLevel: 'medium' },
-                    scenarioGeneration: { modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' },
-                    writingFeedback: { modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' },
-                    guidedPathway: { modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' },
                 }).ok
             ).toBe(false);
             expect(
                 service.parseUpdateRequest({
+                    ...fullBody({ modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' }),
                     chat: { modelId: 'gpt-5.4-mini', reasoningLevel: 'ultra' },
-                    scenarioGeneration: { modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' },
-                    writingFeedback: { modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' },
-                    guidedPathway: { modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' },
                 }).ok
             ).toBe(false);
         });
 
-        it('expands legacy flat settings to all four features', () => {
+        it('expands legacy flat settings to all five features', () => {
             const normalized = service.normalizeStoredSettings({
                 modelId: 'gpt-5.6-luna',
                 reasoningLevel: 'high',
@@ -163,6 +186,10 @@ describe('ModelSelectionService', () => {
             expect(service.normalizeStoredSettings({ chat: { modelId: 'bad', reasoningLevel: 'nope' } }).chat).toEqual(
                 DEFAULT_COURSE_LLM_SETTINGS.chat
             );
+            expect(
+                service.normalizeStoredSettings({ chat: { modelId: 'gpt-5.6-luna', reasoningLevel: 'high' } })
+                    .memoryAgent
+            ).toEqual(DEFAULT_COURSE_LLM_SETTINGS.memoryAgent);
         });
 
         it('maps catalog model ids directly to provider model strings', () => {
@@ -188,92 +215,254 @@ describe('ModelSelectionService', () => {
             expect(withoutEffort.temperature).toBeUndefined();
         });
 
-        it('builds independent options per feature key', async () => {
+        it('builds independent options per feature key from one Map load', async () => {
             const chat = await service.buildFeatureLlmCallOptions('c1', 'chat');
             const scenario = await service.buildFeatureLlmCallOptions('c1', 'scenarioGeneration');
             const writing = await service.buildFeatureLlmCallOptions('c1', 'writingFeedback');
             const pathway = await service.buildFeatureLlmCallOptions('c1', 'guidedPathway');
+            const memory = await service.buildFeatureLlmCallOptions('c1', 'memoryAgent');
 
             expect(chat.reasoningEffort).toBe('high');
             expect(scenario.reasoningEffort).toBe('medium');
             expect(writing.reasoningEffort).toBeUndefined();
             expect(pathway.reasoningEffort).toBe('medium');
+            expect(memory.reasoningEffort).toBe('low');
             expect(mongoLoads).toBe(1);
         });
     });
 
-    describe('B. cache + 5-minute timer', () => {
-        it('cold miss loads Mongo once; second get is a Map hit', async () => {
-            await service.getSettingsForCourse('course-a');
+    describe('A. Map identity and isolation', () => {
+        it('A1 cache hit: second get does not reload Mongo', async () => {
+            await service.getSettingsForCourse('c1');
+            await service.getSettingsForCourse('c1');
             expect(mongoLoads).toBe(1);
-            await service.getSettingsForCourse('course-a');
-            expect(mongoLoads).toBe(1);
-            expect(service.hasCachedCourseForTests('course-a')).toBe(true);
+            expect(service.hasCachedCourseForTests('c1')).toBe(true);
         });
 
-        it('evicts after 5 minutes of inactivity and reloads on next get', async () => {
-            await service.getSettingsForCourse('course-a');
-            expect(mongoLoads).toBe(1);
-
-            jest.advanceTimersByTime(5 * 60 * 1000);
-            expect(service.hasCachedCourseForTests('course-a')).toBe(false);
-
-            await service.getSettingsForCourse('course-a');
+        it('A2 per-course key: c1 and c2 load independently', async () => {
+            await service.getSettingsForCourse('c1');
+            await service.getSettingsForCourse('c2');
             expect(mongoLoads).toBe(2);
+            expect(service.hasCachedCourseForTests('c1')).toBe(true);
+            expect(service.hasCachedCourseForTests('c2')).toBe(true);
         });
 
-        it('resets the timer on access so eviction is delayed', async () => {
-            await service.getSettingsForCourse('course-a');
-            jest.advanceTimersByTime(4 * 60 * 1000);
-            await service.getSettingsForCourse('course-a');
-            jest.advanceTimersByTime(4 * 60 * 1000);
-            expect(service.hasCachedCourseForTests('course-a')).toBe(true);
-            expect(mongoLoads).toBe(1);
-
-            jest.advanceTimersByTime(60 * 1000);
-            expect(service.hasCachedCourseForTests('course-a')).toBe(false);
+        it('A3 evict A does not drop B', async () => {
+            await service.getSettingsForCourse('c1');
+            await service.getSettingsForCourse('c2');
+            service.invalidateCourse('c1');
+            expect(service.hasCachedCourseForTests('c1')).toBe(false);
+            expect(service.hasCachedCourseForTests('c2')).toBe(true);
         });
 
-        it('setCachedSettings replaces value and resets timer without Mongo', async () => {
-            await service.getSettingsForCourse('course-a');
-            const next = {
-                ...DEFAULT_COURSE_LLM_SETTINGS,
-                chat: { modelId: 'gpt-4o-mini' as const, reasoningLevel: 'low' as const },
-            };
-            service.setCachedSettings('course-a', next);
-            expect(mongoLoads).toBe(1);
-
-            const loaded = await service.getSettingsForCourse('course-a');
-            expect(loaded.chat).toEqual(next.chat);
-            expect(mongoLoads).toBe(1);
-        });
-
-        it('invalidateCourse clears Map so next get reloads Mongo', async () => {
-            await service.getSettingsForCourse('course-a');
-            service.invalidateCourse('course-a');
-            expect(service.hasCachedCourseForTests('course-a')).toBe(false);
-            await service.getSettingsForCourse('course-a');
-            expect(mongoLoads).toBe(2);
-        });
-
-        it('eviction of course A does not remove course B', async () => {
-            await service.getSettingsForCourse('course-a');
-            await service.getSettingsForCourse('course-b');
-            expect(mongoLoads).toBe(2);
-
-            service.invalidateCourse('course-a');
-            expect(service.hasCachedCourseForTests('course-a')).toBe(false);
-            expect(service.hasCachedCourseForTests('course-b')).toBe(true);
-        });
-
-        it('instructor Save after eviction re-inserts without a prior get', () => {
-            service.setCachedSettings('course-a', DEFAULT_COURSE_LLM_SETTINGS);
-            expect(service.hasCachedCourseForTests('course-a')).toBe(true);
+        it('A4 clone on setCached: mutating caller object does not corrupt Map', async () => {
+            const next = fiveFeatureSettings({
+                chat: { modelId: 'gpt-4o-mini', reasoningLevel: 'low' },
+            });
+            service.setCachedSettings('c1', next);
+            next.chat.modelId = 'gpt-5.6-luna';
+            const cached = await service.getSettingsForCourse('c1');
+            expect(cached.chat.modelId).toBe('gpt-4o-mini');
             expect(mongoLoads).toBe(0);
         });
     });
 
-    describe('C. parseUpdateRequest / updateCourseLlmSettings', () => {
+    describe('B. Timer correctness', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+        });
+
+        it('B1 exact 5m eviction then reload', async () => {
+            await service.getSettingsForCourse('c1');
+            expect(mongoLoads).toBe(1);
+            jest.advanceTimersByTime(FIVE_MIN_MS);
+            expect(service.hasCachedCourseForTests('c1')).toBe(false);
+            await service.getSettingsForCourse('c1');
+            expect(mongoLoads).toBe(2);
+        });
+
+        it('B2 access resets timer', async () => {
+            await service.getSettingsForCourse('c1');
+            jest.advanceTimersByTime(4 * 60 * 1000);
+            await service.getSettingsForCourse('c1');
+            jest.advanceTimersByTime(4 * 60 * 1000);
+            expect(service.hasCachedCourseForTests('c1')).toBe(true);
+            expect(mongoLoads).toBe(1);
+            jest.advanceTimersByTime(60 * 1000 + 1);
+            expect(service.hasCachedCourseForTests('c1')).toBe(false);
+        });
+
+        it('B3 setCached resets timer', async () => {
+            await service.getSettingsForCourse('c1');
+            jest.advanceTimersByTime(4 * 60 * 1000);
+            service.setCachedSettings(
+                'c1',
+                fiveFeatureSettings({ chat: { modelId: 'gpt-4o-mini', reasoningLevel: 'low' } })
+            );
+            jest.advanceTimersByTime(4 * 60 * 1000);
+            expect(service.hasCachedCourseForTests('c1')).toBe(true);
+            expect(mongoLoads).toBe(1);
+        });
+
+        it('B4 just under 5m still cached', async () => {
+            await service.getSettingsForCourse('c1');
+            jest.advanceTimersByTime(FIVE_MIN_MS - 1);
+            expect(service.hasCachedCourseForTests('c1')).toBe(true);
+        });
+    });
+
+    describe('C. Instructor save write-through (freshness)', () => {
+        it('C1 freshness after save without extra Mongo load', async () => {
+            await service.getSettingsForCourse('c1');
+            expect(mongoLoads).toBe(1);
+            service.setCachedSettings(
+                'c1',
+                fiveFeatureSettings({ chat: { modelId: 'gpt-4o-mini', reasoningLevel: 'low' } })
+            );
+            const next = await service.getSettingsForCourse('c1');
+            expect(next.chat.modelId).toBe('gpt-4o-mini');
+            expect(mongoLoads).toBe(1);
+        });
+
+        it('C2 buildFeature after save uses cached model', async () => {
+            await service.getSettingsForCourse('c1');
+            service.setCachedSettings(
+                'c1',
+                fiveFeatureSettings({ chat: { modelId: 'gpt-4o-mini', reasoningLevel: 'low' } })
+            );
+            const opts = await service.buildFeatureLlmCallOptions('c1', 'chat');
+            expect(opts.model).toBe('gpt-4o-mini');
+            expect(mongoLoads).toBe(1);
+        });
+
+        it('C3 all five features updated', async () => {
+            const next = fiveFeatureSettings({
+                chat: { modelId: 'gpt-4o-mini', reasoningLevel: 'low' },
+                scenarioGeneration: { modelId: 'gpt-5.4-mini', reasoningLevel: 'high' },
+                writingFeedback: { modelId: 'gpt-5.6-luna', reasoningLevel: 'medium' },
+                guidedPathway: { modelId: 'gpt-4o-mini', reasoningLevel: 'none' },
+                memoryAgent: { modelId: 'gpt-5.6-luna', reasoningLevel: 'high' },
+            });
+            service.setCachedSettings('c1', next);
+            const got = await service.getSettingsForCourse('c1');
+            for (const key of LLM_FEATURE_KEYS) {
+                expect(got[key]).toEqual(next[key]);
+            }
+            expect(mongoLoads).toBe(0);
+        });
+
+        it('C4 setCached without prior get', async () => {
+            service.setCachedSettings(
+                'c1',
+                fiveFeatureSettings({ chat: { modelId: 'gpt-4o-mini', reasoningLevel: 'low' } })
+            );
+            expect(service.hasCachedCourseForTests('c1')).toBe(true);
+            expect(mongoLoads).toBe(0);
+            const got = await service.getSettingsForCourse('c1');
+            expect(got.chat.modelId).toBe('gpt-4o-mini');
+            expect(mongoLoads).toBe(0);
+        });
+    });
+
+    describe('D. Fail-closed vs Map (service-level)', () => {
+        it('D2 skipping setCached leaves old Map value', async () => {
+            await service.getSettingsForCourse('c1');
+            const before = await service.getSettingsForCourse('c1');
+            expect(before.chat.modelId).toBe('gpt-5.6-luna');
+            // Simulated Mongo failure: route would skip setCachedSettings
+            const after = await service.getSettingsForCourse('c1');
+            expect(after.chat.modelId).toBe('gpt-5.6-luna');
+            expect(mongoLoads).toBe(1);
+        });
+    });
+
+    describe('E. Cold miss / single-flight / invalidate', () => {
+        it('E1 concurrent cold miss shares one Mongo load', async () => {
+            const results = await Promise.all([
+                service.getSettingsForCourse('c1'),
+                service.getSettingsForCourse('c1'),
+                service.getSettingsForCourse('c1'),
+            ]);
+            expect(mongoLoads).toBe(1);
+            expect(results[0].chat).toEqual(results[1].chat);
+            expect(results[1].chat).toEqual(results[2].chat);
+        });
+
+        it('E2 sequential after settle stays Map hit', async () => {
+            await Promise.all([
+                service.getSettingsForCourse('c1'),
+                service.getSettingsForCourse('c1'),
+            ]);
+            await service.getSettingsForCourse('c1');
+            expect(mongoLoads).toBe(1);
+        });
+
+        it('E3 invalidateCourse forces reload', async () => {
+            await service.getSettingsForCourse('c1');
+            service.invalidateCourse('c1');
+            expect(service.hasCachedCourseForTests('c1')).toBe(false);
+            await service.getSettingsForCourse('c1');
+            expect(mongoLoads).toBe(2);
+        });
+
+        it('E4 in-flight cleared on error so next get retries', async () => {
+            let shouldFail = true;
+            service.setCourseLoaderForTests(async (courseId) => {
+                mongoLoads += 1;
+                if (shouldFail) {
+                    shouldFail = false;
+                    throw new Error('mongo down');
+                }
+                return {
+                    id: courseId,
+                    llmSettings: fiveFeatureSettings(),
+                };
+            });
+
+            await expect(service.getSettingsForCourse('c1')).rejects.toThrow('mongo down');
+            const recovered = await service.getSettingsForCourse('c1');
+            expect(recovered.chat.modelId).toBe('gpt-5.6-luna');
+            expect(mongoLoads).toBe(2);
+        });
+    });
+
+    describe('F. Normalize on Map insert', () => {
+        it('F1 legacy flat → five features in cache', async () => {
+            service.setCourseLoaderForTests(async (courseId) => {
+                mongoLoads += 1;
+                return {
+                    id: courseId,
+                    llmSettings: {
+                        modelId: 'gpt-5.6-luna',
+                        reasoningLevel: 'high',
+                    } as unknown as CourseLlmSettings,
+                };
+            });
+            const first = await service.getSettingsForCourse('c1');
+            for (const key of LLM_FEATURE_KEYS) {
+                expect(first[key]).toEqual({ modelId: 'gpt-5.6-luna', reasoningLevel: 'high' });
+            }
+            await service.getSettingsForCourse('c1');
+            expect(mongoLoads).toBe(1);
+        });
+
+        it('F2 invalid stored row clamped to platform default', async () => {
+            service.setCourseLoaderForTests(async (courseId) => {
+                mongoLoads += 1;
+                return {
+                    id: courseId,
+                    llmSettings: {
+                        chat: { modelId: 'bad-model', reasoningLevel: 'nope' },
+                    } as unknown as CourseLlmSettings,
+                };
+            });
+            const got = await service.getSettingsForCourse('c1');
+            expect(got.chat).toEqual(DEFAULT_COURSE_LLM_SETTINGS.chat);
+            expect(service.hasCachedCourseForTests('c1')).toBe(true);
+        });
+    });
+
+    describe('parseUpdateRequest / updateCourseLlmSettings', () => {
         it('builds persisted settings with provenance', () => {
             const features = {
                 chat: { modelId: 'gpt-5.6-luna' as CourseLlmModelId, reasoningLevel: 'high' as AppReasoningLevel },
@@ -289,16 +478,21 @@ describe('ModelSelectionService', () => {
                     modelId: 'gpt-5.4-mini' as CourseLlmModelId,
                     reasoningLevel: 'medium' as AppReasoningLevel,
                 },
+                memoryAgent: {
+                    modelId: 'gpt-5.4-mini' as CourseLlmModelId,
+                    reasoningLevel: 'low' as AppReasoningLevel,
+                },
             };
             const now = new Date('2026-08-04T00:00:00.000Z');
             const settings = service.updateCourseLlmSettings(features, 'instructor-1', now);
             expect(settings.updatedBy).toBe('instructor-1');
             expect(settings.updatedAt).toBe(now);
             expect(settings.chat).toEqual(features.chat);
+            expect(settings.memoryAgent).toEqual(features.memoryAgent);
         });
     });
 
-    describe('E. catalog-derived coverage completeness', () => {
+    describe('catalog-derived coverage completeness', () => {
         it('covers every catalog model id as a valid CourseLlmModelId', () => {
             for (const entry of LLM_MODEL_CATALOG) {
                 expect(service.isCourseLlmModelId(entry.id)).toBe(true);

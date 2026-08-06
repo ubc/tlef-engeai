@@ -149,7 +149,12 @@ export type CourseLlmModelId = 'gpt-5.6-luna' | 'gpt-5.4-mini' | 'gpt-4o-mini';
 export type AppReasoningLevel = 'none' | 'low' | 'medium' | 'high';
 
 /** Feature keys that each have their own model + reasoning selection. */
-export type LlmFeatureKey = 'chat' | 'scenarioGeneration' | 'writingFeedback' | 'guidedPathway';
+export type LlmFeatureKey =
+    | 'chat'
+    | 'scenarioGeneration'
+    | 'writingFeedback'
+    | 'guidedPathway'
+    | 'memoryAgent';
 
 /** One feature's model + reasoning selection. */
 export interface FeatureLlmSelection {
@@ -166,6 +171,7 @@ export interface CourseLlmSettings {
     scenarioGeneration: FeatureLlmSelection;
     writingFeedback: FeatureLlmSelection;
     guidedPathway: FeatureLlmSelection;
+    memoryAgent: FeatureLlmSelection;
     updatedAt?: Date;
     updatedBy?: string;
 }
@@ -196,6 +202,7 @@ export interface UpdateCourseLlmSettingsRequest {
     scenarioGeneration: FeatureLlmSelection;
     writingFeedback: FeatureLlmSelection;
     guidedPathway: FeatureLlmSelection;
+    memoryAgent: FeatureLlmSelection;
 }
 
 /**

@@ -675,7 +675,7 @@ export class ScenarioService {
         return snapshots;
     }
 
-    /** Resolve scenarioGeneration feature LLM options via dashboard-setting cache. */
+    /** Resolve scenarioGeneration feature LLM options via ModelSelectionService (Mongo). */
     private async resolveLlmCallOptions(courseId: string): Promise<LLMOptions> {
         return ModelSelectionService.getInstance().buildFeatureLlmCallOptions(
             courseId,

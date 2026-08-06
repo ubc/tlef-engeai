@@ -237,7 +237,12 @@ export type ProviderReasoningLevel =
 export type AppReasoningLevel = 'none' | 'low' | 'medium' | 'high';
 
 /** Feature keys that each have their own model + reasoning selection. */
-export type LlmFeatureKey = 'chat' | 'scenarioGeneration' | 'writingFeedback' | 'guidedPathway';
+export type LlmFeatureKey =
+    | 'chat'
+    | 'scenarioGeneration'
+    | 'writingFeedback'
+    | 'guidedPathway'
+    | 'memoryAgent';
 
 /** One feature's model + reasoning selection. */
 export interface FeatureLlmSelection {
@@ -249,13 +254,14 @@ export interface FeatureLlmSelection {
  * Course-wide LLM settings: one selection per consuming feature.
  *
  * Persisted on `activeCourse.llmSettings`. Legacy flat `{ modelId, reasoningLevel }`
- * rows are hydrated to all four features at read time by ModelSelectionService.
+ * rows are hydrated to all five features at read time by ModelSelectionService.
  */
 export interface CourseLlmSettings {
     chat: FeatureLlmSelection;
     scenarioGeneration: FeatureLlmSelection;
     writingFeedback: FeatureLlmSelection;
     guidedPathway: FeatureLlmSelection;
+    memoryAgent: FeatureLlmSelection;
     updatedAt?: Date;
     updatedBy?: string;
 }
@@ -294,6 +300,7 @@ export interface UpdateCourseLlmSettingsRequest {
     scenarioGeneration: FeatureLlmSelection;
     writingFeedback: FeatureLlmSelection;
     guidedPathway: FeatureLlmSelection;
+    memoryAgent: FeatureLlmSelection;
 }
 
 export interface activeCourse {

@@ -5,8 +5,9 @@
  * Renders curated navigation cards; Writing Feedback and Pathway Library appear
  * only when their course capabilities are enabled. Owns click-to-reveal course
  * code for all staff, and Advanced Settings (feature toggles + course metadata)
- * for faculty instructors and platform admins. Dispatches `course-feature-changed`
- * after successful capability PATCHes.
+ * for faculty instructors and platform admins. Extra Feature Save is dirty-gated
+ * like Model Settings. Dispatches `course-feature-changed` after successful
+ * capability PATCHes.
  *
  * @author: EngE-AI Team
  * @date: 2026-07-29
@@ -19,7 +20,8 @@ import { navigateToInstructorView } from '../utils/url-parser.js';
 import { renderFeatherIcons } from '../api/api.js';
 import { authService } from '../services/auth-service.js';
 import { showErrorModal } from '../ui/modal-overlay.js';
-import { initializeModelSettings } from './model-setting.js';
+import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
+import { initializeModelSettings, refreshModelSettingsVisibility } from './model-setting.js';
 
 interface DashboardCardDef {
     view: string;
@@ -51,8 +53,6 @@ const FEATURE_INPUT_IDS: Record<FeatureKey, string> = {
     memoryAgent: 'settingsMemoryAgent',
     guidedPathway: 'settingsGuidedPathway'
 };
-
-const EXCLUDED_INSTRUCTOR_NAMES = ['Charisma Rusdiyanto', 'Richard Tape'];
 
 /**
  * initializeDashboard - render greeting, cards, course-code topbar, and Advanced Settings.
@@ -116,8 +116,95 @@ function renderWelcomeHeader(): void {
     }
 }
 
+const CARD_TRANSITION_MS = 320;
+
+/** Cancels overlapping card leave/enter animations when features toggle quickly. */
+let dashboardCardAnimToken = 0;
+
+/**
+ * prefersReducedMotion - honor OS reduced-motion for card appear/disappear.
+ */
+function prefersReducedMotion(): boolean {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/**
+ * createDashboardCard - build one navigable dashboard card button.
+ */
+function createDashboardCard(card: DashboardCardDef): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'dashboard-card';
+    btn.dataset.view = card.view;
+    btn.setAttribute('role', 'listitem');
+    btn.innerHTML = `
+        <span class="dashboard-card-title">${escapeHtml(card.title)}</span>
+        <span class="dashboard-card-cta" aria-hidden="true">Learn more <i data-feather="arrow-right" aria-hidden="true"></i></span>
+        <i class="dashboard-card-icon" data-feather="${card.feather}" aria-hidden="true"></i>`;
+    btn.addEventListener('click', () => {
+        const view = btn.dataset.view;
+        if (view) navigateToInstructorView(view);
+    });
+    return btn;
+}
+
+/**
+ * syncDashboardCardOrder - reorder existing cards and insert missing ones.
+ *
+ * New cards use a keyframe appear animation (avoids rAF class-toggle races).
+ */
+function syncDashboardCardOrder(
+    container: HTMLElement,
+    desired: DashboardCardDef[],
+    animateEnter: boolean
+): void {
+    const byView = new Map(
+        [...container.querySelectorAll<HTMLButtonElement>('.dashboard-card')].map((el) => [
+            el.dataset.view!,
+            el
+        ])
+    );
+
+    const entered: HTMLButtonElement[] = [];
+
+    for (const card of desired) {
+        let el = byView.get(card.view);
+        if (!el) {
+            el = createDashboardCard(card);
+            if (animateEnter) {
+                el.classList.add('dashboard-card--is-appearing');
+            }
+            container.appendChild(el);
+            byView.set(card.view, el);
+            entered.push(el);
+        } else {
+            el.classList.remove('dashboard-card--is-appearing', 'dashboard-card--is-disappearing');
+            container.appendChild(el);
+        }
+    }
+
+    // Replace feather icons after mount so SVG swap does not interrupt the appear keyframe.
+    renderFeatherIcons();
+
+    if (animateEnter) {
+        for (const el of entered) {
+            el.addEventListener(
+                'animationend',
+                (event) => {
+                    if (event.target !== el || event.animationName !== 'dashboard-card-appear') return;
+                    el.classList.remove('dashboard-card--is-appearing');
+                },
+                { once: true }
+            );
+        }
+    }
+}
+
 /**
  * renderDashboardCards - rebuild the card grid from current course features.
+ *
+ * Optional Writing Feedback / Pathway Library cards animate out when disabled
+ * and animate in when enabled (skipped when prefers-reduced-motion).
  *
  * @param currentClass - Active course whose features gate optional cards
  */
@@ -125,30 +212,55 @@ export function renderDashboardCards(currentClass: activeCourse): void {
     const container = document.getElementById('dashboard-cards');
     if (!container) return;
 
-    const cards = CARD_DEFS.filter((card) => {
+    const desired = CARD_DEFS.filter((card) => {
         if (!card.feature) return true;
         return currentClass.features?.[card.feature]?.enabled === true;
     });
+    const desiredViews = new Set(desired.map((card) => card.view));
+    const existing = [...container.querySelectorAll<HTMLButtonElement>('.dashboard-card')];
+    const reduceMotion = prefersReducedMotion();
+    const token = ++dashboardCardAnimToken;
 
-    container.innerHTML = cards
-        .map(
-            (card) => `
-        <button type="button" class="dashboard-card" data-view="${card.view}" role="listitem">
-            <span class="dashboard-card-title">${escapeHtml(card.title)}</span>
-            <span class="dashboard-card-cta" aria-hidden="true">Learn more <i data-feather="arrow-right" aria-hidden="true"></i></span>
-            <i class="dashboard-card-icon" data-feather="${card.feather}" aria-hidden="true"></i>
-        </button>`
-        )
-        .join('');
+    // First paint: mount without per-card appear (grid already has enter animation).
+    if (existing.length === 0) {
+        syncDashboardCardOrder(container, desired, false);
+        return;
+    }
 
-    container.querySelectorAll<HTMLButtonElement>('.dashboard-card').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const view = btn.dataset.view;
-            if (view) navigateToInstructorView(view);
-        });
+    const leaving = existing.filter((el) => !desiredViews.has(el.dataset.view || ''));
+
+    const applyDesired = (): void => {
+        if (token !== dashboardCardAnimToken) return;
+        leaving.forEach((el) => el.remove());
+        syncDashboardCardOrder(container, desired, !reduceMotion);
+    };
+
+    if (leaving.length === 0 || reduceMotion) {
+        leaving.forEach((el) => el.remove());
+        syncDashboardCardOrder(container, desired, !reduceMotion && existing.length > 0);
+        return;
+    }
+
+    let finished = false;
+    const finishOnce = (): void => {
+        if (finished) return;
+        finished = true;
+        applyDesired();
+    };
+
+    leaving.forEach((el) => {
+        el.classList.add('dashboard-card--is-disappearing');
+        // Only the card's own opacity transition — child CTA transitions bubble otherwise.
+        el.addEventListener(
+            'transitionend',
+            (event) => {
+                if (event.target !== el || event.propertyName !== 'opacity') return;
+                finishOnce();
+            },
+            { once: true }
+        );
     });
-
-    renderFeatherIcons();
+    window.setTimeout(finishOnce, CARD_TRANSITION_MS + 50);
 }
 
 /**
@@ -336,29 +448,83 @@ function fillCourseMetadata(currentClass: activeCourse): void {
     }
 }
 
+type FeatureEnabledSnapshot = Record<FeatureKey, boolean>;
+
+/**
+ * readFeatureCheckboxSnapshot - current Extra Feature checkbox enabled flags.
+ */
+function readFeatureCheckboxSnapshot(): FeatureEnabledSnapshot {
+    const snapshot = {} as FeatureEnabledSnapshot;
+    for (const key of Object.keys(FEATURE_INPUT_IDS) as FeatureKey[]) {
+        const input = document.getElementById(FEATURE_INPUT_IDS[key]) as HTMLInputElement | null;
+        snapshot[key] = input?.checked === true;
+    }
+    return snapshot;
+}
+
+/**
+ * featureSnapshotFromCourse - enabled flags from persisted course features.
+ */
+function featureSnapshotFromCourse(currentClass: activeCourse): FeatureEnabledSnapshot {
+    const snapshot = {} as FeatureEnabledSnapshot;
+    for (const key of Object.keys(FEATURE_INPUT_IDS) as FeatureKey[]) {
+        snapshot[key] = currentClass.features?.[key]?.enabled === true;
+    }
+    return snapshot;
+}
+
 /**
  * wireFeatureToggles - bind capability checkboxes and save for roster managers.
+ *
+ * Save stays disabled until checkboxes differ from the last persisted snapshot
+ * (same dirty-gate pattern as Model Settings).
  *
  * @param currentClass - Course whose features are edited
  * @param canManage - Whether inputs should be enabled
  */
 async function wireFeatureToggles(currentClass: activeCourse, canManage: boolean): Promise<void> {
+    let persistedFeatures = featureSnapshotFromCourse(currentClass);
+    let isSaving = false;
+
     for (const key of Object.keys(FEATURE_INPUT_IDS) as FeatureKey[]) {
         const input = document.getElementById(FEATURE_INPUT_IDS[key]) as HTMLInputElement | null;
         if (input) {
-            input.checked = currentClass.features?.[key]?.enabled === true;
+            input.checked = persistedFeatures[key];
             input.disabled = !canManage;
+            input.addEventListener('change', () => updateFeatureSaveButtonState());
         }
     }
 
     const saveBtn = document.getElementById('saveCourseFeatures') as HTMLButtonElement | null;
-    const statusEl = document.getElementById('settingsFeatureStatus');
-    if (saveBtn) saveBtn.disabled = !canManage;
+
+    function updateFeatureSaveButtonState(): void {
+        if (!saveBtn) return;
+        const dirty =
+            JSON.stringify(readFeatureCheckboxSnapshot()) !== JSON.stringify(persistedFeatures);
+        saveBtn.disabled = !canManage || isSaving || !dirty;
+    }
+
+    updateFeatureSaveButtonState();
 
     saveBtn?.addEventListener('click', async () => {
-        if (!canManage) return;
-        saveBtn.disabled = true;
-        if (statusEl) statusEl.textContent = 'Saving…';
+        if (!canManage || isSaving) return;
+        isSaving = true;
+        updateFeatureSaveButtonState();
+
+        const snapshot = currentClass.features
+            ? {
+                  writingFeedback: currentClass.features.writingFeedback
+                      ? { ...currentClass.features.writingFeedback }
+                      : undefined,
+                  memoryAgent: currentClass.features.memoryAgent
+                      ? { ...currentClass.features.memoryAgent }
+                      : undefined,
+                  guidedPathway: currentClass.features.guidedPathway
+                      ? { ...currentClass.features.guidedPathway }
+                      : undefined,
+              }
+            : undefined;
+        let appliedAny = false;
 
         try {
             const keys = Object.keys(FEATURE_ENDPOINTS) as FeatureKey[];
@@ -380,6 +546,7 @@ async function wireFeatureToggles(currentClass: activeCourse, canManage: boolean
                 const result = await response.json().catch(() => ({}));
                 if (!response.ok) throw new Error(result.error || `Failed to update ${key}`);
 
+                appliedAny = true;
                 currentClass.features = result.data?.features ?? {
                     ...currentClass.features,
                     [key]: { enabled: desired }
@@ -390,20 +557,31 @@ async function wireFeatureToggles(currentClass: activeCourse, canManage: boolean
                     })
                 );
             }
-            if (statusEl) statusEl.textContent = 'Feature settings saved.';
+            persistedFeatures = featureSnapshotFromCourse(currentClass);
+            showSuccessToast('Extra Feature settings saved.');
             renderDashboardCards(currentClass);
+            refreshModelSettingsVisibility(currentClass);
         } catch (error) {
+            currentClass.features = snapshot;
             for (const key of Object.keys(FEATURE_INPUT_IDS) as FeatureKey[]) {
                 const input = document.getElementById(FEATURE_INPUT_IDS[key]) as HTMLInputElement | null;
                 if (input) input.checked = currentClass.features?.[key]?.enabled === true;
             }
+            persistedFeatures = featureSnapshotFromCourse(currentClass);
+            renderDashboardCards(currentClass);
+            refreshModelSettingsVisibility(currentClass);
             await showErrorModal(
                 'Save Failed',
                 error instanceof Error ? error.message : 'Failed to save feature settings.'
             );
-            if (statusEl) statusEl.textContent = 'Feature settings were not changed.';
+            showErrorToast(
+                appliedAny
+                    ? 'Some Extra Feature updates may have been applied. Reload and retry.'
+                    : 'Extra Feature settings were not changed.'
+            );
         } finally {
-            saveBtn.disabled = !canManage;
+            isSaving = false;
+            updateFeatureSaveButtonState();
         }
     });
 }
@@ -421,10 +599,7 @@ function formatNamesForDisplay(arr: string[] | InstructorInfo[]): string {
 
 function formatInstructorsForDisplay(arr: string[] | InstructorInfo[]): string {
     if (!arr || arr.length === 0) return 'None';
-    const names = arr
-        .map((item) => getDisplayName(item))
-        .filter((name) => !EXCLUDED_INSTRUCTOR_NAMES.includes(name));
-    return names.length > 0 ? names.join(', ') : 'None';
+    return arr.map((item) => getDisplayName(item)).join(', ');
 }
 
 function escapeHtml(value: string): string {

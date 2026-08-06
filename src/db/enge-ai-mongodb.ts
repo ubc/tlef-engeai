@@ -167,8 +167,10 @@ export class EngEAI_MongoDB {
 
     public getAllActiveCourses = async () => CourseMongo.getAllActiveCourses(this.ctx());
 
-    public updateActiveCourse = async (id: string, updateData: Partial<activeCourse>) =>
-        CourseMongo.updateActiveCourse(this.ctx(), id, updateData);
+    public updateActiveCourse = async (
+        id: string,
+        updateData: Partial<activeCourse>
+    ): Promise<activeCourse | null> => CourseMongo.updateActiveCourse(this.ctx(), id, updateData);
 
     public deleteActiveCourse = async (course: activeCourse) =>
         CourseMongo.deleteActiveCourse(this.ctx(), course);

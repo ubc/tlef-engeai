@@ -5,10 +5,12 @@
  * Catalog (model ids, labels, costTier, app reasoning options) loads from
  * GET `/api/courses/:courseId/llm-model-catalog`. Brain icons are client-derived
  * from costTier and reasoning id — not from the API. Saves via PATCH llm-settings.
+ * Writing Feedback, Guided Pathway, and Memory Agent rows stay visible but are
+ * non-interactive until the matching Extra Feature capability is enabled.
  *
  * @author: EngE-AI Team
  * @date: 2026-08-05
- * @version: 4.0.0
+ * @version: 5.0.0
  * @description: Dashboard Model Settings with per-feature persistence.
  */
 
@@ -24,21 +26,28 @@ import {
     LlmReasoningCatalogOption,
 } from '../types.js';
 import { showErrorModal } from '../ui/modal-overlay.js';
+import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
 
 type PickerKind = 'reasoning' | 'model';
 
 type FeatureLlmSettingsMap = Record<LlmFeatureKey, FeatureLlmSelection>;
 
+/** Course Extra Feature keys that gate Model Settings row interactivity. */
+type GatedCapabilityKey = 'writingFeedback' | 'guidedPathway' | 'memoryAgent';
+
 interface FeatureCatalogEntry {
     key: LlmFeatureKey;
     label: string;
+    /** When set, row is interactive only if that course capability is enabled. */
+    requiresCapability?: GatedCapabilityKey;
 }
 
 const FEATURE_CATALOG: FeatureCatalogEntry[] = [
     { key: 'chat', label: 'Chat' },
     { key: 'scenarioGeneration', label: 'Scenario Generation' },
-    { key: 'writingFeedback', label: 'Writing Feedback' },
-    { key: 'guidedPathway', label: 'Guided Pathway' },
+    { key: 'writingFeedback', label: 'Writing Feedback', requiresCapability: 'writingFeedback' },
+    { key: 'guidedPathway', label: 'Guided Pathway', requiresCapability: 'guidedPathway' },
+    { key: 'memoryAgent', label: 'Memory Agent', requiresCapability: 'memoryAgent' },
 ];
 
 /** Reasoning picker — app levels only; none = no brain icon. */
@@ -74,7 +83,7 @@ let isSaving = false;
  * getAffectedFeaturesCopy — short list of features that consume LLM settings.
  */
 export function getAffectedFeaturesCopy(): string {
-    return 'Chat, Writing Feedback, Scenario Generation, and Guided Pathway';
+    return 'Chat, Writing Feedback, Scenario Generation, Guided Pathway, and Memory Agent';
 }
 
 /**
@@ -120,12 +129,94 @@ export async function initializeModelSettings(currentClass: activeCourse, canMan
     ensureDocumentClickHandler();
 }
 
+/**
+ * refreshModelSettingsVisibility - update row interactivity after capability toggles.
+ *
+ * Keeps in-memory selections and DOM rows so inactive shade can transition;
+ * falls back to a full render when rows are missing.
+ *
+ * @param currentClass - Course with updated features map
+ */
+export function refreshModelSettingsVisibility(currentClass: activeCourse): void {
+    currentCourseRef = currentClass;
+    if (!featureSettings || modelCatalog.length === 0) return;
+
+    const container = document.getElementById('modelSettingFeatures');
+    if (!container?.querySelector('.model-feature-row')) {
+        renderFeatureRows();
+        return;
+    }
+
+    syncFeatureRowInteractivity(container);
+    updateSaveButtonState();
+}
+
+/**
+ * syncFeatureRowInteractivity - toggle inactive shade / picker disabled in place.
+ *
+ * Avoids full innerHTML replace so CSS opacity/background transitions play.
+ */
+function syncFeatureRowInteractivity(container: HTMLElement): void {
+    for (const feature of FEATURE_CATALOG) {
+        const row = container.querySelector(
+            `.model-feature-row[data-feature="${feature.key}"]`
+        ) as HTMLElement | null;
+        if (!row) continue;
+
+        const interactive = isFeatureInteractive(feature);
+        const inactive = !interactive;
+        const hintId = `model-inactive-hint-${feature.key}`;
+
+        row.classList.toggle('model-feature-row--inactive', inactive);
+
+        if (inactive) {
+            row.setAttribute('tabindex', '0');
+            row.setAttribute('aria-disabled', 'true');
+            row.setAttribute('aria-describedby', hintId);
+            row.setAttribute('data-inactive-hint', inactiveHintText(feature.label));
+            if (!row.querySelector(`#${hintId}`)) {
+                const hint = document.createElement('span');
+                hint.id = hintId;
+                hint.className = 'model-feature-inactive-hint';
+                hint.setAttribute('role', 'tooltip');
+                hint.textContent = inactiveHintText(feature.label);
+                row.appendChild(hint);
+            }
+        } else {
+            row.removeAttribute('tabindex');
+            row.removeAttribute('aria-disabled');
+            row.removeAttribute('aria-describedby');
+            row.removeAttribute('data-inactive-hint');
+            row.querySelector(`#${hintId}`)?.remove();
+        }
+
+        row.querySelectorAll<HTMLButtonElement>('.model-picker-trigger').forEach((trigger) => {
+            trigger.disabled = !canManageState || !interactive;
+        });
+    }
+}
+
+/**
+ * isFeatureInteractive - whether Model Settings pickers for this row may open.
+ *
+ * Chat / Scenario Generation are always interactive. Gated Extra Feature rows
+ * require the matching capability enabled.
+ */
+function isFeatureInteractive(feature: FeatureCatalogEntry): boolean {
+    if (!feature.requiresCapability) return true;
+    return currentCourseRef?.features?.[feature.requiresCapability]?.enabled === true;
+}
+
+function inactiveHintText(label: string): string {
+    return `Activate ${label} under Extra Feature to set its model and reasoning.`;
+}
+
 function findModelEntry(modelId: CourseLlmModelId): LlmModelDashboardCatalogEntry | undefined {
     return modelCatalog.find((m) => m.id === modelId);
 }
 
 function defaultModelEntry(): LlmModelDashboardCatalogEntry {
-    return findModelEntry(defaultSelection.modelId) ?? modelCatalog[1] ?? modelCatalog[0];
+    return findModelEntry(defaultSelection.modelId) ?? modelCatalog[0];
 }
 
 function hydrateFeatureSettings(stored: CourseLlmSettings | undefined): FeatureLlmSettingsMap {
@@ -135,6 +226,7 @@ function hydrateFeatureSettings(stored: CourseLlmSettings | undefined): FeatureL
             scenarioGeneration: sanitizeSelection(stored.scenarioGeneration),
             writingFeedback: sanitizeSelection(stored.writingFeedback),
             guidedPathway: sanitizeSelection(stored.guidedPathway),
+            memoryAgent: sanitizeSelection(stored.memoryAgent),
         };
     }
 
@@ -152,6 +244,7 @@ function hydrateFeatureSettings(stored: CourseLlmSettings | undefined): FeatureL
         scenarioGeneration: { ...seed },
         writingFeedback: { ...seed },
         guidedPathway: { ...seed },
+        memoryAgent: { ...seed },
     };
 }
 
@@ -160,18 +253,34 @@ function isPerFeatureSettings(stored: CourseLlmSettings): boolean {
         stored.chat &&
             stored.scenarioGeneration &&
             stored.writingFeedback &&
-            stored.guidedPathway
+            stored.guidedPathway &&
+            stored.memoryAgent
     );
+}
+
+/**
+ * clampReasoningForModel - pick a valid app reasoning level for the selected model.
+ *
+ * Empty reasoningOptions (no native reasoning) → `none`.
+ */
+function clampReasoningForModel(
+    model: LlmModelDashboardCatalogEntry,
+    current: AppReasoningLevel
+): AppReasoningLevel {
+    const allowed = model.reasoningOptions.map((o) => o.id);
+    if (allowed.length === 0) return 'none';
+    if (allowed.includes(current)) return current;
+    return allowed[0] ?? defaultSelection.reasoningLevel;
 }
 
 function sanitizeSelection(selection: FeatureLlmSelection | undefined): FeatureLlmSelection {
     if (!selection) return { ...defaultSelection };
     const model = findModelEntry(selection.modelId) ?? defaultModelEntry();
-    const allowed = model.reasoningOptions.map((o) => o.id);
-    const reasoning = allowed.includes(selection.reasoningLevel)
-        ? selection.reasoningLevel
-        : allowed[0] ?? defaultSelection.reasoningLevel;
-    return { modelId: model.id, reasoningLevel: reasoning };
+    if (!model) return { ...defaultSelection };
+    return {
+        modelId: model.id,
+        reasoningLevel: clampReasoningForModel(model, selection.reasoningLevel),
+    };
 }
 
 function cloneFeatureMap(map: FeatureLlmSettingsMap): FeatureLlmSettingsMap {
@@ -180,6 +289,7 @@ function cloneFeatureMap(map: FeatureLlmSettingsMap): FeatureLlmSettingsMap {
         scenarioGeneration: { ...map.scenarioGeneration },
         writingFeedback: { ...map.writingFeedback },
         guidedPathway: { ...map.guidedPathway },
+        memoryAgent: { ...map.memoryAgent },
     };
 }
 
@@ -202,24 +312,42 @@ function renderFeatureRows(): void {
         const modelEntry = findModelEntry(selection.modelId) ?? defaultModelEntry();
         const reasoningLabel = reasoningLabelFor(modelEntry, selection.reasoningLevel);
         const modelLabel = modelEntry.label;
+        const interactive = isFeatureInteractive(feature);
+        const inactive = !interactive;
+        const hintId = `model-inactive-hint-${feature.key}`;
         const reasoningPicker =
             modelEntry.reasoningOptions.length > 0
                 ? renderPickerField(
                       'Reasoning',
-                      renderPickerWrap(feature.key, 'reasoning', reasoningLabel, selection.reasoningLevel)
+                      renderPickerWrap(
+                          feature.key,
+                          'reasoning',
+                          reasoningLabel,
+                          selection.reasoningLevel,
+                          interactive
+                      )
                   )
                 : '';
 
         return `
-        <div class="model-feature-row" data-feature="${feature.key}">
+        <div
+            class="model-feature-row${inactive ? ' model-feature-row--inactive' : ''}"
+            data-feature="${feature.key}"
+            ${inactive ? `tabindex="0" aria-disabled="true" aria-describedby="${hintId}" data-inactive-hint="${escapeHtml(inactiveHintText(feature.label))}"` : ''}
+        >
             <span class="model-feature-title">${escapeHtml(feature.label)}</span>
             <div class="model-feature-pickers">
                 ${reasoningPicker}
                 ${renderPickerField(
                     'Model',
-                    renderPickerWrap(feature.key, 'model', modelLabel, selection.modelId)
+                    renderPickerWrap(feature.key, 'model', modelLabel, selection.modelId, interactive)
                 )}
             </div>
+            ${
+                inactive
+                    ? `<span id="${hintId}" class="model-feature-inactive-hint" role="tooltip">${escapeHtml(inactiveHintText(feature.label))}</span>`
+                    : ''
+            }
         </div>`;
     }).join('');
 
@@ -240,12 +368,14 @@ function renderPickerWrap(
     featureKey: LlmFeatureKey,
     kind: PickerKind,
     label: string,
-    selectedValue: string
+    selectedValue: string,
+    interactive: boolean
 ): string {
     const id = pickerId(featureKey, kind);
     const selection = featureSettings![featureKey];
     const modelEntry = findModelEntry(selection.modelId) ?? defaultModelEntry();
     const kindLabel = kind === 'reasoning' ? 'Reasoning' : 'Model';
+    const canOpen = canManageState && interactive;
 
     const options =
         kind === 'reasoning'
@@ -266,7 +396,7 @@ function renderPickerWrap(
                 aria-haspopup="listbox"
                 aria-expanded="false"
                 aria-controls="popover-${id}"
-                ${canManageState ? '' : 'disabled'}
+                ${canOpen ? '' : 'disabled'}
             >
                 <span class="model-picker-label">${escapeHtml(label)}</span>
             </button>
@@ -324,7 +454,7 @@ function wirePickerInteractions(container: HTMLElement): void {
     container.querySelectorAll<HTMLButtonElement>('.model-picker-trigger').forEach((trigger) => {
         trigger.addEventListener('click', (event) => {
             event.stopPropagation();
-            if (!canManageState) return;
+            if (!canManageState || trigger.disabled) return;
             const wrap = trigger.closest('.model-picker-wrap');
             const pickerIdAttr = wrap?.getAttribute('data-picker-id');
             if (!pickerIdAttr) return;
@@ -381,13 +511,16 @@ function handleOptionSelect(option: HTMLButtonElement): void {
     const value = option.dataset.value;
     if (!featureKey || !kind || !value || !featureSettings[featureKey]) return;
 
+    const catalogEntry = FEATURE_CATALOG.find((f) => f.key === featureKey);
+    if (catalogEntry && !isFeatureInteractive(catalogEntry)) return;
+
     if (kind === 'model' && isModelId(value)) {
         featureSettings[featureKey].modelId = value;
         const model = findModelEntry(value)!;
-        const allowed = model.reasoningOptions.map((o) => o.id);
-        if (allowed.length > 0 && !allowed.includes(featureSettings[featureKey].reasoningLevel)) {
-            featureSettings[featureKey].reasoningLevel = allowed[0];
-        }
+        featureSettings[featureKey].reasoningLevel = clampReasoningForModel(
+            model,
+            featureSettings[featureKey].reasoningLevel
+        );
     } else if (kind === 'reasoning' && isReasoningLevel(value)) {
         featureSettings[featureKey].reasoningLevel = value;
     } else {
@@ -401,10 +534,8 @@ function handleOptionSelect(option: HTMLButtonElement): void {
 function wireSave(): void {
     const saveBtn = document.getElementById('saveModelSettings') as HTMLButtonElement | null;
     const taNote = document.getElementById('dashboard-model-ta-note');
-    const statusEl = ensureStatusElement();
 
     if (taNote) taNote.hidden = canManageState;
-    if (statusEl) statusEl.textContent = '';
 
     saveBtn?.replaceWith(saveBtn.cloneNode(true));
     const freshSaveBtn = document.getElementById('saveModelSettings') as HTMLButtonElement | null;
@@ -414,7 +545,6 @@ function wireSave(): void {
 
         isSaving = true;
         updateSaveButtonState();
-        if (statusEl) statusEl.textContent = 'Saving…';
 
         try {
             const response = await fetch(
@@ -428,6 +558,7 @@ function wireSave(): void {
                         scenarioGeneration: featureSettings.scenarioGeneration,
                         writingFeedback: featureSettings.writingFeedback,
                         guidedPathway: featureSettings.guidedPathway,
+                        memoryAgent: featureSettings.memoryAgent,
                     }),
                 }
             );
@@ -447,7 +578,7 @@ function wireSave(): void {
             }
             persistedSnapshot = cloneFeatureMap(featureSettings);
             renderFeatureRows();
-            if (statusEl) statusEl.textContent = 'Model settings saved.';
+            showSuccessToast('Model settings saved.');
         } catch (error) {
             if (persistedSnapshot) {
                 featureSettings = cloneFeatureMap(persistedSnapshot);
@@ -457,7 +588,7 @@ function wireSave(): void {
                 'Save Failed',
                 error instanceof Error ? error.message : 'Failed to save model settings.'
             );
-            if (statusEl) statusEl.textContent = 'Model settings were not changed.';
+            showErrorToast('Model settings were not changed.');
         } finally {
             isSaving = false;
             updateSaveButtonState();
@@ -465,26 +596,6 @@ function wireSave(): void {
     });
 
     updateSaveButtonState();
-}
-
-function ensureStatusElement(): HTMLElement | null {
-    const bodyInner = document.querySelector('#dashboard-model-body .dashboard-accordion-body-inner');
-    if (!bodyInner) return document.getElementById('settingsModelStatus');
-
-    let statusEl = document.getElementById('settingsModelStatus');
-    if (!statusEl) {
-        statusEl = document.createElement('p');
-        statusEl.id = 'settingsModelStatus';
-        statusEl.className = 'dashboard-accordion-note';
-        statusEl.setAttribute('aria-live', 'polite');
-        const saveBtn = document.getElementById('saveModelSettings');
-        if (saveBtn?.parentElement) {
-            saveBtn.parentElement.insertBefore(statusEl, saveBtn.nextSibling);
-        } else {
-            bodyInner.appendChild(statusEl);
-        }
-    }
-    return statusEl;
 }
 
 function updateSaveButtonState(): void {

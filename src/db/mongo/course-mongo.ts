@@ -213,7 +213,7 @@ export async function getAllActiveCourses(ctx: MongoDalContext) {
  * @param id - string — target `activeCourse.id`
  * @param updateData - `Partial<activeCourse>` — fields merged with `$set`
  *
- * @returns `findOneAndUpdate` result from the driver (callers may interpret `.ok` / doc shape per driver version)
+ * @returns Updated `activeCourse` document after the write, or `null` when not found
  *
  * Actions:
  * - `$set` merges `updateData` with `updatedAt: Date.now().toString()`.
@@ -222,13 +222,13 @@ export async function updateActiveCourse(
     ctx: MongoDalContext,
     id: string,
     updateData: Partial<activeCourse>
-) {
+): Promise<activeCourse | null> {
     const result = await activeCourseListCollection(ctx.db).findOneAndUpdate(
         { id: id },
         { $set: { ...updateData, updatedAt: Date.now().toString() } },
         { returnDocument: 'after' }
     );
-    return result;
+    return (result as activeCourse | null) ?? null;
 }
 
 /**

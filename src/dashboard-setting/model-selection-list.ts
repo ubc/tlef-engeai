@@ -81,6 +81,12 @@ export const LLM_MODEL_CATALOG: readonly LlmModelCatalogEntry[] = (
     supportedReasoningLevels: [...spec.supportedReasoningLevels],
 }));
 
+/** Valid model IDs derived from the server catalog. */
+export const VALID_MODEL_IDS: readonly CourseLlmModelId[] = LLM_MODEL_CATALOG.map((e) => e.id);
+
+/** App UI / PATCH / persistence reasoning levels (not the full provider catalog). */
+export const VALID_REASONING_LEVELS: readonly AppReasoningLevel[] = APP_REASONING_LEVELS;
+
 /**
  * formatReasoningLabel - human label for an app reasoning level id.
  *

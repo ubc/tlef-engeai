@@ -394,9 +394,9 @@ export class ChatApp {
         // Get the conversation mode
         const conversationMode = this.getGuardrailConversationMode(chatId);
 
-        // Skip pathway evaluation when the course capability is off.
-        const pathwayCourse = await this.getCourseFeatures(courseName);
-        if (conversationMode && isCourseFeatureEnabled(pathwayCourse, 'guidedPathway')) {
+        // Load course once for capability gates and LLM settings (fail-closed on Mongo errors).
+        const course = await this.getCourseFeatures(courseName);
+        if (conversationMode && isCourseFeatureEnabled(course, 'guidedPathway')) {
 
             const pathwayResult = await evaluatePathways({
                 message,
@@ -483,7 +483,7 @@ export class ChatApp {
         // Phase note: struggle topics apply to Socratic chats only when Memory Agent is enabled.
         if (
             this.isStruggleTopicsEnabledForChat(chatId) &&
-            isCourseFeatureEnabled(await this.getCourseFeatures(courseName), 'memoryAgent')
+            isCourseFeatureEnabled(course, 'memoryAgent')
         ) {
             const struggleTopics = await memoryAgent.getStruggleWords(userId, courseName);
 
@@ -579,37 +579,28 @@ export class ChatApp {
         appLogger.log(`\n🚀 Starting LLM streaming...`);
 
         let assistantResponse = '';
+        const modelSelection = ModelSelectionService.getInstance();
+        const ollamaBase = this.llmProvider === 'ollama' ? { num_ctx: 32768 } : undefined;
+
+        // Resolve chat LLM options once for mock logging and live streaming.
+        let conversationConfig;
+        try {
+            conversationConfig = course?.id
+                ? await modelSelection.buildFeatureLlmCallOptions(course.id, 'chat', ollamaBase)
+                : modelSelection.buildDefaultProviderOptions('chat', ollamaBase);
+        } catch (error) {
+            appLogger.error('[CHAT] Failed to resolve chat LLM settings', error as Error);
+            throw error;
+        }
 
         // Check if mock response is enabled - use mock instead of real LLM
         if (isMockResponse()) {
-            // Still resolve course LLM settings so mock logs show model + reasoningEffort.
-            const courseForLlm = await this.getCourseFeatures(courseName);
-            const modelSelection = ModelSelectionService.getInstance();
-            if (courseForLlm?.id) {
-                await modelSelection.buildFeatureLlmCallOptions(courseForLlm.id, 'chat');
-            } else {
-                modelSelection.buildDefaultProviderOptions('chat');
-            }
             appLogger.log('[MOCK-RESPONSE] Using mock streaming response instead of LLM');
             assistantResponse = await generateMockStreamingResponse(onChunk);
             appLogger.log(`\n✅ Mock streaming completed. Full response length: ${assistantResponse.length}`);
             appLogger.log(`Full response: "${assistantResponse}"`);
         } else {
-            // Normal LLM streaming — per-feature chat settings from dashboard-setting cache
-            const courseForLlm = await this.getCourseFeatures(courseName);
-            const modelSelection = ModelSelectionService.getInstance();
-            const conversationConfig = courseForLlm?.id
-                ? await modelSelection.buildFeatureLlmCallOptions(
-                    courseForLlm.id,
-                    'chat',
-                    this.llmProvider === 'ollama' ? { num_ctx: 32768 } : undefined
-                )
-                : modelSelection.buildDefaultProviderOptions(
-                    'chat',
-                    this.llmProvider === 'ollama' ? { num_ctx: 32768 } : undefined
-                );
-
-            const response = await forkedConversation.stream(
+            await forkedConversation.stream(
                 (chunk: string) => {
                     appLogger.log(`📦 Received chunk: "${chunk}"`);
                     assistantResponse += chunk;
@@ -657,7 +648,7 @@ export class ChatApp {
         // Memory agent activates after threshold when Socratic + course capability on
         if (
             this.isStruggleTopicsEnabledForChat(chatId) &&
-            isCourseFeatureEnabled(await this.getCourseFeatures(courseName), 'memoryAgent')
+            isCourseFeatureEnabled(course, 'memoryAgent')
         ) {
             try {
                 if (messageCount > MEMORY_AGENT_MIN_MESSAGES_THRESHOLD) {
@@ -1334,14 +1325,16 @@ export class ChatApp {
      *
      * @param courseName - Human-readable course name used in chat pipelines
      * @returns Active course or null when missing
+     * @throws When Mongo lookup fails (fail-closed — do not silently use platform LLM defaults)
      */
     private async getCourseFeatures(courseName: string): Promise<activeCourse | null> {
         try {
             const instance = await EngEAI_MongoDB.getInstance();
             const course = await instance.getCourseByName(courseName);
             return (course as activeCourse | null) ?? null;
-        } catch {
-            return null;
+        } catch (error) {
+            appLogger.error('[CHAT] Failed to load course for features/LLM settings', error as Error);
+            throw error;
         }
     }
 
@@ -1413,12 +1406,12 @@ export class ChatApp {
             conversationMode,
         });
 
-        // Fork: debug system prompt + non-system history (teaching system replaced for this call only)
+        // Fork: debug system prompt + user/assistant history (teaching system replaced for this call only)
         const forkedConversation = this.llmModule.createConversation();
         forkedConversation.addMessage('system', debugSystemPrompt);
         for (const msg of conversation.getHistory() as Message[]) {
-            // Conversation.addMessage only accepts user|assistant|system; skip tool turns.
-            if (msg.role === 'system' || msg.role === 'tool') {
+            // Teaching system is replaced by the debug prompt; only replay user/assistant turns.
+            if (msg.role !== 'user' && msg.role !== 'assistant') {
                 continue;
             }
             forkedConversation.addMessage(msg.role, msg.content);
@@ -1427,15 +1420,19 @@ export class ChatApp {
         let assistantResponse = '';
         const courseForLlm = await this.getCourseFeatures(courseName);
         const modelSelection = ModelSelectionService.getInstance();
-        const conversationConfig = courseForLlm?.id
-            ? await modelSelection.buildFeatureLlmCallOptions(courseForLlm.id, 'chat', {
-                temperature: 0.3,
-                ...(this.llmProvider === 'ollama' ? { num_ctx: 32768 } : {}),
-            })
-            : modelSelection.buildDefaultProviderOptions('chat', {
-                temperature: 0.3,
-                ...(this.llmProvider === 'ollama' ? { num_ctx: 32768 } : {}),
-            });
+        const debugBase = {
+            temperature: 0.3,
+            ...(this.llmProvider === 'ollama' ? { num_ctx: 32768 } : {}),
+        };
+        let conversationConfig;
+        try {
+            conversationConfig = courseForLlm?.id
+                ? await modelSelection.buildFeatureLlmCallOptions(courseForLlm.id, 'chat', debugBase)
+                : modelSelection.buildDefaultProviderOptions('chat', debugBase);
+        } catch (error) {
+            appLogger.error('[DEBUG-MODE] Failed to resolve chat LLM settings', error as Error);
+            throw error;
+        }
 
         appLogger.log(`[DEBUG-MODE] Streaming prompt-engineer reply for chat ${chatId}`);
         await forkedConversation.stream((chunk: string) => {

@@ -1021,12 +1021,15 @@ router.get(
 /**
  * PATCH /:courseId/llm-settings
  * Updates per-feature LLM model and reasoning for Chat, Writing Feedback,
- * Scenario Generation, and Guided Pathway classifier calls.
+ * Scenario Generation, Guided Pathway, and Memory Agent.
+ *
+ * Persist Mongo first; only on success write-through to the process Map
+ * (`setCachedSettings`) so the next same-process resolve sees fresh settings.
  *
  * @route PATCH /api/courses/:courseId/llm-settings
  * @param {string} courseId - Owning course id
- * @param {object} body - Full per-feature map: chat, scenarioGeneration, writingFeedback, guidedPathway
- * @returns Updated course with `llmSettings` provenance; refreshes in-memory model cache
+ * @param {object} body - Full per-feature map: chat, scenarioGeneration, writingFeedback, guidedPathway, memoryAgent
+ * @returns Updated course with `llmSettings` provenance; refreshes in-memory 5m Map cache
  */
 router.patch(
     '/:courseId/llm-settings',
@@ -1040,7 +1043,7 @@ router.patch(
 
         const instance = await EngEAI_MongoDB.getInstance();
         const courseId = routeParam(req.params, 'courseId');
-        const course = await instance.getActiveCourse(courseId) as unknown as activeCourse | null;
+        const course = await instance.getActiveCourse(courseId);
         if (!course) {
             return res.status(404).json({ success: false, error: 'Course not found' });
         }
@@ -1048,15 +1051,19 @@ router.patch(
         const globalUser = (req.session as any).globalUser;
         const llmSettings = modelSelection.updateCourseLlmSettings(parsed.settings, globalUser.userId);
 
-        let updatedCourse: activeCourse;
+        let updatedCourse: activeCourse | null;
         try {
-            updatedCourse = await instance.updateActiveCourse(courseId, { llmSettings }) as unknown as activeCourse;
+            updatedCourse = await instance.updateActiveCourse(courseId, { llmSettings });
         } catch (error) {
             appLogger.error('[LLM-SETTINGS] Failed to persist course llmSettings:', { error, courseId });
             return res.status(500).json({ success: false, error: 'Failed to update LLM settings' });
         }
 
-        // Only refresh cache after Mongo succeeds so Map never leads durable state.
+        if (!updatedCourse) {
+            return res.status(500).json({ success: false, error: 'Failed to update LLM settings' });
+        }
+
+        // Mongo succeeded — write-through so same-process chat sees new settings immediately
         modelSelection.setCachedSettings(courseId, llmSettings);
 
         return res.status(200).json({
@@ -1088,7 +1095,7 @@ async function patchCourseFeature(
 
     const instance = await EngEAI_MongoDB.getInstance();
     const courseId = routeParam(req.params, 'courseId');
-    const course = await instance.getActiveCourse(courseId) as unknown as activeCourse | null;
+    const course = await instance.getActiveCourse(courseId);
     if (!course) {
         return res.status(404).json({ success: false, error: 'Course not found' });
     }
@@ -1104,6 +1111,9 @@ async function patchCourseFeature(
         globalUser.userId
     );
     const updatedCourse = await instance.updateActiveCourse(courseId, { features });
+    if (!updatedCourse) {
+        return res.status(500).json({ success: false, error: 'Failed to update course features' });
+    }
 
     return res.status(200).json({
         success: true,
