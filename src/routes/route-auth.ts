@@ -13,8 +13,8 @@ import { appLogger } from '../utils/logger';
 import { passport, ubcShibStrategy, isSamlAvailable } from '../middleware/passport';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { sanitizeGlobalUserForFrontend } from '../utils/user-utils';
-import { resolveAffiliation, isFacultyOverrideName } from '../utils/affiliation';
-import { isAdminName } from '../utils/admin';
+import { resolveAffiliation } from '../utils/affiliation';
+import { isAdminName, isAdminUser } from '../utils/admin';
 import { getCourseSelectionRedirectPath } from '../helpers/course-selection-redirect';
 
 const router = express.Router();
@@ -71,13 +71,9 @@ const samlCallbackHandler = [
         // Check if GlobalUser exists in active-users collection
         let globalUser = await mongoDB.findGlobalUserByPUID(puid);
 
-        // Resolve affiliation: CWL takes precedence over DB when they differ (except admin overrides)
-        const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, name);
+        // Resolve affiliation: CWL takes precedence over DB when they differ
+        const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation);
         const affiliation = resolution.affiliation;
-
-        if (isFacultyOverrideName(name) && cwlAffiliation !== affiliation) {
-            appLogger.log('[AUTH] 🔄 Affiliation override:', name, 'set to faculty');
-        }
 
         appLogger.log('[AUTH] ✅ SAML authentication successful');
         appLogger.log('[AUTH] User PUID:', puid);
@@ -103,9 +99,9 @@ const samlCallbackHandler = [
             appLogger.log('[AUTH] ✅ GlobalUser found:', globalUser.userId);
 
             // Reconcile DB with CWL when DB has inconsistent data (e.g. dual student+instructor stored as faculty)
-            if (resolution.needsDbUpdate && (affiliation === 'student' || affiliation === 'faculty')) {
+            if (resolution.needsDbUpdate) {
                 appLogger.log('[AUTH] 🔄 Updating GlobalUser affiliation: DB had', globalUser.affiliation, ', CWL says', affiliation);
-                globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty');
+                globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty' | 'staff' | 'empty');
                 (req.user as any).affiliation = affiliation;
                 appLogger.log('[AUTH] ✅ GlobalUser affiliation updated:', globalUser.userId);
             }
@@ -117,7 +113,7 @@ const samlCallbackHandler = [
                 globalUser = await mongoDB.updateGlobalUser(globalUser.puid, { isAdmin: shouldBeAdmin });
             }
         }
-        
+
         // Store GlobalUser in session (backend only - PUID is safe here)
         // NOTE: PUID is stored in session for backend use only
         // When sending to frontend, we MUST sanitize using sanitizeGlobalUserForFrontend()
@@ -130,7 +126,7 @@ const samlCallbackHandler = [
                 return res.redirect('/');
             }
 
-            const redirectPath = (affiliation === 'staff' || affiliation === 'empty')
+            const redirectPath = (affiliation === 'staff' || affiliation === 'empty') && !isAdminUser(globalUser)
                 ? '/role-restricted'
                 : getCourseSelectionRedirectPath(globalUser);
             appLogger.log('[AUTH] 🚀 Session saved, redirecting to', redirectPath);
@@ -204,13 +200,9 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                     // Check if GlobalUser exists
                     let globalUser = await mongoDB.findGlobalUserByPUID(puid);
 
-                    // Resolve affiliation: CWL/local takes precedence over DB when they differ (except admin overrides)
-                    const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, name);
+                    // Resolve affiliation: CWL/local takes precedence over DB when they differ
+                    const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation);
                     const affiliation = resolution.affiliation;
-
-                    if (isFacultyOverrideName(name) && cwlAffiliation !== affiliation) {
-                        appLogger.log('[AUTH-LOCAL] 🔄 Affiliation override:', name, 'set to faculty');
-                    }
 
                     appLogger.log('[AUTH-LOCAL] ✅ User logged in successfully');
                     appLogger.log('[AUTH-LOCAL] User PUID:', puid);
@@ -233,9 +225,9 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                         appLogger.log('[AUTH-LOCAL] ✅ GlobalUser found:', globalUser.userId);
 
                         // Reconcile DB with local/CWL when DB has inconsistent data
-                        if (resolution.needsDbUpdate && (affiliation === 'student' || affiliation === 'faculty')) {
+                        if (resolution.needsDbUpdate) {
                             appLogger.log('[AUTH-LOCAL] 🔄 Updating GlobalUser affiliation: DB had', globalUser.affiliation, ', local says', affiliation);
-                            globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty');
+                            globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty' | 'staff' | 'empty');
                             (req.user as any).affiliation = affiliation;
                             appLogger.log('[AUTH-LOCAL] ✅ GlobalUser affiliation updated:', globalUser.userId);
                         }
@@ -260,7 +252,7 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                             return next(saveErr);
                         }
 
-                        const redirectPath = (affiliation === 'staff' || affiliation === 'empty')
+                        const redirectPath = (affiliation === 'staff' || affiliation === 'empty') && !isAdminUser(globalUser)
                             ? '/role-restricted'
                             : getCourseSelectionRedirectPath(globalUser);
                         appLogger.log('[AUTH-LOCAL] 🚀 Redirecting to', redirectPath);
@@ -433,8 +425,7 @@ router.get('/current-user', async (req: express.Request, res: express.Response) 
             }
 
             // Validate affiliation (log but don't fail - database is source of truth)
-            // Bypass for faculty override names (from env: ADMINS)
-            if (sessionUser.affiliation !== globalUser.affiliation && !isFacultyOverrideName(globalUser.name)) {
+            if (sessionUser.affiliation !== globalUser.affiliation) {
                 validationErrors.push(`Affiliation mismatch: session=${sessionUser.affiliation}, database=${globalUser.affiliation}`);
                 appLogger.warn('[SERVER] ⚠️ Affiliation mismatch detected, using database value as source of truth');
             }
@@ -540,8 +531,7 @@ router.get('/me', async (req: express.Request, res: express.Response) => {
             }
 
             // Validate affiliation
-            // Bypass for faculty override names (from env: ADMINS)
-            if (sessionUser.affiliation !== globalUser.affiliation && !isFacultyOverrideName(globalUser.name)) {
+            if (sessionUser.affiliation !== globalUser.affiliation) {
                 validationErrors.push(`Affiliation mismatch: session=${sessionUser.affiliation}, database=${globalUser.affiliation}`);
             }
 

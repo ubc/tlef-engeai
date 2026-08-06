@@ -11,6 +11,7 @@ import { appLogger } from '../utils/logger';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { isCourseStaff } from '../utils/course-staff';
+import { isAdminUser } from '../utils/admin';
 import { normalizeRouteParams } from '../helpers/route-params';
 // @rdschrs: Implemented the capability-gated Writing Feedback instructor page.
 import { isCourseFeatureEnabled } from '../helpers/course-features';
@@ -169,7 +170,7 @@ async function validateInstructorAuth(req: Request, res: Response, next: express
             return res.status(401).redirect('/');
         }
         
-        if (globalUser.affiliation !== 'faculty') {
+        if (globalUser.affiliation !== 'faculty' && !isAdminUser(globalUser)) {
             return res.status(403).send('Access denied: Only instructors can create new courses');
         }
         

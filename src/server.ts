@@ -28,7 +28,7 @@ import { initAcademicPeriods } from './helpers/init-academic-periods';
 import { migrateInstructorAllowances } from './helpers/migrate-instructor-allowances';
 import { migrateOnboardingFlags } from './helpers/migrate-onboarding-flags';
 import { getCourseSelectionRedirectPath } from './helpers/course-selection-redirect';
-import { resolveAffiliation, isFacultyOverrideName } from './utils/affiliation';
+import { resolveAffiliation } from './utils/affiliation';
 import { isAdminUser, isAdminName } from './utils/admin';
 
 dotenv.config();
@@ -143,13 +143,9 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
         // Check if GlobalUser exists in active-users collection
         let globalUser = await mongoDB.findGlobalUserByPUID(puid);
 
-        // Resolve affiliation: CWL takes precedence over DB when they differ (except admin overrides)
-        const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation, name);
+        // Resolve affiliation: CWL takes precedence over DB when they differ
+        const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation);
         const affiliation = resolution.affiliation;
-
-        if (isFacultyOverrideName(name) && cwlAffiliation !== affiliation) {
-            logger.info(`[AUTH] 🔄 Affiliation override: ${name} set to faculty`);
-        }
 
         logger.info('[AUTH] ✅ SAML authentication successful');
         logger.info(`[AUTH] User PUID: ${puid}`);
@@ -174,9 +170,9 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
             logger.info(`[AUTH] ✅ GlobalUser found: ${globalUser.userId}`);
 
             // Reconcile DB with CWL when DB has inconsistent data (e.g. dual student+instructor stored as faculty)
-            if (resolution.needsDbUpdate && (affiliation === 'student' || affiliation === 'faculty')) {
+            if (resolution.needsDbUpdate) {
                 logger.info(`[AUTH] 🔄 Updating GlobalUser affiliation: DB had ${globalUser.affiliation}, CWL says ${affiliation}`);
-                globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty');
+                globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty' | 'staff' | 'empty');
                 (req.user as any).affiliation = affiliation;
                 logger.info(`[AUTH] ✅ GlobalUser affiliation updated: ${globalUser.userId}`);
             }
@@ -199,7 +195,7 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
                 return res.redirect('/');
             }
 
-            const redirectPath = (affiliation === 'staff' || affiliation === 'empty')
+            const redirectPath = (affiliation === 'staff' || affiliation === 'empty') && !isAdminUser(globalUser)
                 ? '/role-restricted'
                 : getCourseSelectionRedirectPath(globalUser);
             logger.info(`[AUTH] 🚀 Session saved, redirecting to ${redirectPath}`);
@@ -218,19 +214,20 @@ app.get('/role-restricted', (req: any, res: any) => {
     if (!req.session?.passport?.user) {
         return res.redirect('/');
     }
-    const affiliation = (req.session as any)?.globalUser?.affiliation;
-    if (affiliation !== 'staff' && affiliation !== 'empty') {
+    const globalUser = (req.session as any)?.globalUser;
+    const affiliation = globalUser?.affiliation;
+    if ((affiliation !== 'staff' && affiliation !== 'empty') || isAdminUser(globalUser)) {
         return res.redirect('/course-selection');
     }
     res.sendFile(path.join(publicPath, 'pages/role-restricted.html'));
 });
 
 app.get('/course-selection', (req: any, res: any) => {
-    const affiliation = (req.session as any)?.globalUser?.affiliation;
-    if (affiliation === 'staff' || affiliation === 'empty') {
+    const globalUser = (req.session as any)?.globalUser;
+    const affiliation = globalUser?.affiliation;
+    if ((affiliation === 'staff' || affiliation === 'empty') && !isAdminUser(globalUser)) {
         return res.redirect('/role-restricted');
     }
-    const globalUser = (req.session as any)?.globalUser;
     if (isAdminUser(globalUser)) {
         return res.redirect('/admin/course-selection');
     }
@@ -241,20 +238,21 @@ app.get('/admin/course-selection', (req: any, res: any) => {
     if (!req.session?.passport?.user) {
         return res.redirect('/');
     }
-    const affiliation = (req.session as any)?.globalUser?.affiliation;
-    if (affiliation === 'staff' || affiliation === 'empty') {
-        return res.redirect('/role-restricted');
-    }
     const globalUser = (req.session as any)?.globalUser;
     if (!isAdminUser(globalUser)) {
+        const affiliation = globalUser?.affiliation;
+        if (affiliation === 'staff' || affiliation === 'empty') {
+            return res.redirect('/role-restricted');
+        }
         return res.redirect('/course-selection');
     }
     res.sendFile(path.join(publicPath, 'pages/admin-course-selection.html'));
 });
 
 app.get('/settings', (req: any, res: any) => {
-    const affiliation = (req.session as any)?.globalUser?.affiliation;
-    if (affiliation === 'staff' || affiliation === 'empty') {
+    const globalUser = (req.session as any)?.globalUser;
+    const affiliation = globalUser?.affiliation;
+    if ((affiliation === 'staff' || affiliation === 'empty') && !isAdminUser(globalUser)) {
         return res.redirect('/role-restricted');
     }
     res.sendFile(path.join(publicPath, 'pages/settings.html'));
