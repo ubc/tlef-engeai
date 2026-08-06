@@ -16,6 +16,7 @@ import { sanitizeGlobalUserForFrontend } from '../utils/user-utils';
 import { resolveAffiliation } from '../utils/affiliation';
 import { isAdminName, isAdminUser } from '../utils/admin';
 import { getCourseSelectionRedirectPath } from '../helpers/course-selection-redirect';
+import { sendHtmlPageWithBuildComment } from '../utils/build-info';
 
 const router = express.Router();
 
@@ -42,7 +43,7 @@ router.get('/login', (req: express.Request, res: express.Response, next: express
         appLogger.log('[AUTH] Serving local login page (Development Mode)');
 
         const loginPagePath = path.join(__dirname, '../../public/pages/local-login.html');
-        res.sendFile(loginPagePath);
+        sendHtmlPageWithBuildComment(res, loginPagePath);
     }
 });
 
