@@ -31,11 +31,11 @@ fs.writeFileSync(outFile, JSON.stringify(buildInfo, null, 2) + '\n');
 console.log([
     '*',
     '*',
-    '*————————— BUILD INFO-------------------',
+    '*————————— BUILD INFO —————————',
     '*',
     `[build:info] Wrote ${path.relative(process.cwd(), outFile)} - ${buildInfo.commitShort}`,
     '*',
-    '*—————————BUILD INFO———————————',
+    '*————————— BUILD INFO —————————',
     '*',
     '*',
 ].join('\n'));
