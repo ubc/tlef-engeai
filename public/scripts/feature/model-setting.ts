@@ -33,7 +33,7 @@ type PickerKind = 'reasoning' | 'model';
 type FeatureLlmSettingsMap = Record<LlmFeatureKey, FeatureLlmSelection>;
 
 /** Course Extra Feature keys that gate Model Settings row interactivity. */
-type GatedCapabilityKey = 'writingFeedback' | 'guidedPathway' | 'memoryAgent';
+type GatedCapabilityKey = 'writingFeedback' | 'guidedPathway' | 'memoryAgent' | 'scenarioGeneration';
 
 interface FeatureCatalogEntry {
     key: LlmFeatureKey;
@@ -44,7 +44,7 @@ interface FeatureCatalogEntry {
 
 const FEATURE_CATALOG: FeatureCatalogEntry[] = [
     { key: 'chat', label: 'Chat' },
-    { key: 'scenarioGeneration', label: 'Scenario Generation' },
+    { key: 'scenarioGeneration', label: 'Scenario Generation', requiresCapability: 'scenarioGeneration' },
     { key: 'writingFeedback', label: 'Writing Feedback', requiresCapability: 'writingFeedback' },
     { key: 'guidedPathway', label: 'Guided Pathway', requiresCapability: 'guidedPathway' },
     { key: 'memoryAgent', label: 'Memory Agent', requiresCapability: 'memoryAgent' },

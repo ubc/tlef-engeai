@@ -176,6 +176,12 @@ body {
                 gap 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* display:flex above would otherwise override the HTML hidden attribute */
+.student-tool-btn[hidden],
+.student-tools-box[hidden] {
+    display: none !important;
+}
+
 .student-tool-btn:not(.active):hover {
     background-color: var(--hover-bg);
     cursor: pointer;

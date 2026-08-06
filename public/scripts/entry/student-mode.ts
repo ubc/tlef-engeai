@@ -263,7 +263,37 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         });
     };
 
+    /** Practice Scenarios Extra Feature — fetched on demand (not full course.features). */
+    let scenarioGenerationEnabled = false;
+    const applyPracticeScenariosVisibility = () => {
+        const practiceScenariosBtn = document.getElementById('practice-scenarios-btn');
+        const toolsBox = document.querySelector('.student-tools-box') as HTMLElement | null;
+        if (practiceScenariosBtn) {
+            practiceScenariosBtn.hidden = !scenarioGenerationEnabled;
+        }
+        // Hide the whole tools strip so an empty border/gap does not remain.
+        if (toolsBox) {
+            toolsBox.hidden = !scenarioGenerationEnabled;
+        }
+    };
     
+
+    // 
+    try {
+        const courseId = user.courseId || getCourseIdFromURL();
+        if (courseId) {
+            const capsRes = await fetch(
+                `/api/courses/${encodeURIComponent(courseId)}/student-capabilities`,
+                { credentials: 'same-origin' }
+            );
+            const capsJson = capsRes.ok ? await capsRes.json() : null;
+            scenarioGenerationEnabled = capsJson?.data?.scenarioGeneration === true;
+        }
+    } catch {
+        scenarioGenerationEnabled = false;
+    }
+    applyPracticeScenariosVisibility();
+
     const chatManager = ChatManager.getInstance({
         isInstructor: false,
         userContext: user,
@@ -647,6 +677,11 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         } else if (view === 'flag-history') {
             await loadComponent('flag-history');
         } else if (view === 'scenarios') {
+            if (!scenarioGenerationEnabled) {
+                navigateToStudentView('welcoming-message');
+                await loadComponent('welcome-screen');
+                return;
+            }
             await loadComponent('scenarios');
         } else if (view === 'about') {
             await renderAbout({ component: currentComponent, mode: 'student' });
@@ -981,9 +1016,19 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         } else if (view === 'flag-history') {
             await loadComponent('flag-history');
         } else if (view === 'scenarios' && currentComponent === 'scenarios' && isScenariosStudentMounted()) {
-            await syncStudentScenariosFromURL(true);
+            if (!scenarioGenerationEnabled) {
+                navigateToStudentView('welcoming-message');
+                await loadComponent('welcome-screen');
+            } else {
+                await syncStudentScenariosFromURL(true);
+            }
         } else if (view === 'scenarios') {
-            await loadComponent('scenarios');
+            if (!scenarioGenerationEnabled) {
+                navigateToStudentView('welcoming-message');
+                await loadComponent('welcome-screen');
+            } else {
+                await loadComponent('scenarios');
+            }
         } else if (view === 'about') {
             await renderAbout({ component: currentComponent, mode: 'student' });
         }
@@ -1041,6 +1086,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         }
 
         practiceScenariosBtn.addEventListener('click', async () => {
+            if (!scenarioGenerationEnabled) return;
             await clearSelectedChatForTool();
             setStudentToolActive('practice-scenarios-btn');
             navigateToStudentView('scenarios');

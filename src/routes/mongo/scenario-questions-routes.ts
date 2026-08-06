@@ -15,7 +15,7 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { asyncHandlerWithAuth } from '../../middleware/async-handler';
-import { requireInstructorForCourseAPI } from '../../middleware/require-course-role';
+import { requireCourseFeatureAPI, requireInstructorForCourseAPI } from '../../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../../db/enge-ai-mongodb';
 import { isCourseStaff } from '../../utils/course-staff';
 import { normalizeRouteParams } from '../../helpers/route-params';
@@ -91,6 +91,9 @@ function parseMode(value: unknown): ScenarioMode | null {
     return value === 'practice' || value === 'exam' ? value : null;
 }
 
+/** Extra Feature gate — Practice Scenarios / Scenario Questions require scenarioGeneration. */
+const scenarioFeatureGate = requireCourseFeatureAPI('scenarioGeneration', ['params']);
+
 /**
  * Registers Practice Scenarios / Scenario Questions routes on the courses router.
  */
@@ -102,6 +105,7 @@ export function mountScenarioQuestionRoutes(router: Router): void {
     router.get(
         '/:courseId/scenario-questions/learning-objectives',
         requireInstructorForCourseAPI(['params']),
+        scenarioFeatureGate,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { courseId } = normalizeRouteParams(req.params);
             const topicOrWeekId =
@@ -126,6 +130,7 @@ export function mountScenarioQuestionRoutes(router: Router): void {
     router.get(
         '/:courseId/scenario-questions',
         requireCourseMemberForScenarioAPI(),
+        scenarioFeatureGate,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { course, isInstructor } = scenarioCtx(res);
             const instance = await EngEAI_MongoDB.getInstance();
@@ -160,6 +165,7 @@ export function mountScenarioQuestionRoutes(router: Router): void {
     router.get(
         '/:courseId/scenario-questions/:questionId',
         requireCourseMemberForScenarioAPI(),
+        scenarioFeatureGate,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { course, isInstructor } = scenarioCtx(res);
             const { questionId } = normalizeRouteParams(req.params);
@@ -188,6 +194,7 @@ export function mountScenarioQuestionRoutes(router: Router): void {
     router.post(
         '/:courseId/scenario-questions',
         requireInstructorForCourseAPI(['params']),
+        scenarioFeatureGate,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { courseId } = normalizeRouteParams(req.params);
             const instance = await EngEAI_MongoDB.getInstance();
@@ -243,6 +250,7 @@ export function mountScenarioQuestionRoutes(router: Router): void {
     router.put(
         '/:courseId/scenario-questions/:questionId',
         requireInstructorForCourseAPI(['params']),
+        scenarioFeatureGate,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { courseId, questionId } = normalizeRouteParams(req.params);
             const instance = await EngEAI_MongoDB.getInstance();
@@ -296,6 +304,7 @@ export function mountScenarioQuestionRoutes(router: Router): void {
     router.patch(
         '/:courseId/scenario-questions/:questionId/status',
         requireInstructorForCourseAPI(['params']),
+        scenarioFeatureGate,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { courseId, questionId } = normalizeRouteParams(req.params);
             const { status } = req.body ?? {};
@@ -329,6 +338,7 @@ export function mountScenarioQuestionRoutes(router: Router): void {
     router.delete(
         '/:courseId/scenario-questions/:questionId',
         requireInstructorForCourseAPI(['params']),
+        scenarioFeatureGate,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { courseId, questionId } = normalizeRouteParams(req.params);
             const instance = await EngEAI_MongoDB.getInstance();
@@ -353,6 +363,7 @@ export function mountScenarioQuestionRoutes(router: Router): void {
     router.post(
         '/:courseId/scenario-questions/generate',
         requireInstructorForCourseAPI(['params']),
+        scenarioFeatureGate,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { courseId } = normalizeRouteParams(req.params);
             const parsed = scenarioGenerateRequestSchema.safeParse(req.body ?? {});
@@ -408,6 +419,7 @@ export function mountScenarioQuestionRoutes(router: Router): void {
     router.post(
         '/:courseId/scenario-questions/:questionId/check-answer',
         requireCourseMemberForScenarioAPI(),
+        scenarioFeatureGate,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { course, globalUser, isInstructor } = scenarioCtx(res);
             const { questionId } = normalizeRouteParams(req.params);
@@ -459,6 +471,7 @@ export function mountScenarioQuestionRoutes(router: Router): void {
     router.post(
         '/:courseId/scenario-questions/:questionId/submit-exam',
         requireCourseMemberForScenarioAPI(),
+        scenarioFeatureGate,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { course, globalUser, isInstructor } = scenarioCtx(res);
             if (isInstructor) {
@@ -510,6 +523,7 @@ export function mountScenarioQuestionRoutes(router: Router): void {
     router.get(
         '/:courseId/scenario-questions/:questionId/sub-questions/:subQuestionId/student-responses',
         requireInstructorForCourseAPI(['params']),
+        scenarioFeatureGate,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { courseId, questionId, subQuestionId } = normalizeRouteParams(req.params);
             const parsed = scenarioInstructorStudentResponsesQuerySchema.safeParse(req.query ?? {});
@@ -547,6 +561,7 @@ export function mountScenarioQuestionRoutes(router: Router): void {
     router.get(
         '/:courseId/scenario-questions/:questionId/progress',
         requireCourseMemberForScenarioAPI(),
+        scenarioFeatureGate,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { course, globalUser, isInstructor } = scenarioCtx(res);
             if (isInstructor) {
@@ -588,6 +603,7 @@ export function mountScenarioQuestionRoutes(router: Router): void {
     router.put(
         '/:courseId/scenario-questions/:questionId/progress',
         requireCourseMemberForScenarioAPI(),
+        scenarioFeatureGate,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { course, globalUser, isInstructor } = scenarioCtx(res);
             if (isInstructor) {
@@ -627,6 +643,7 @@ export function mountScenarioQuestionRoutes(router: Router): void {
     router.get(
         '/:courseId/scenario-questions/:questionId/responses',
         requireCourseMemberForScenarioAPI(),
+        scenarioFeatureGate,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { course, globalUser } = scenarioCtx(res);
             const { questionId } = normalizeRouteParams(req.params);
@@ -654,6 +671,7 @@ export function mountScenarioQuestionRoutes(router: Router): void {
     router.get(
         '/:courseId/scenario-questions/:questionId/solution',
         requireCourseMemberForScenarioAPI(),
+        scenarioFeatureGate,
         asyncHandlerWithAuth(async (req: Request, res: Response) => {
             const { course, globalUser, isInstructor } = scenarioCtx(res);
             const { questionId } = normalizeRouteParams(req.params);

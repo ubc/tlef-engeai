@@ -17,6 +17,7 @@ import { loadConfig } from '../utils/config';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import type { LearningObjectiveForLLM, ScenarioSuggestionForChat } from '../types/shared';
 import {
+    getRandomNoResponse,
     getRandomYesNoScenariosMessage,
     getRandomYesWithScenariosMessage,
 } from './unstruggle-responses';
@@ -24,6 +25,7 @@ import { isMockResponse, getMockUnstruggleYesFollowup } from '../helpers/mock-re
 import { appendScenarioSuggestionsTag } from '../utils/message-utils';
 import { appLogger } from '../utils/logger';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
+import { isCourseFeatureEnabled } from '../dashboard-setting/course-features';
 
 const llmModule = new LLMModule(loadConfig().llmConfig);
 
@@ -236,6 +238,15 @@ export async function suggestPracticeAfterUnstruggleYes(
     const course = await mongoDB.getCourseByName(input.courseName);
     if (!course?.id) {
         return noScenariosResult(topic);
+    }
+
+    // Scenario Generation Extra Feature off → No-style hardcoded reply, no chips.
+    if (!isCourseFeatureEnabled(course, 'scenarioGeneration')) {
+        return {
+            displayText: getRandomNoResponse(),
+            scenarioSuggestions: [],
+            learningObjectiveTexts: [],
+        };
     }
 
     // detemrine the allowed texts

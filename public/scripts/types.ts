@@ -140,6 +140,7 @@ export interface CourseFeatures {
     writingFeedback?: CourseFeatureCapability;
     memoryAgent?: CourseFeatureCapability;
     guidedPathway?: CourseFeatureCapability;
+    scenarioGeneration?: CourseFeatureCapability;
 }
 
 /** UI catalog ids for course-wide LLM model selection (API contract). */

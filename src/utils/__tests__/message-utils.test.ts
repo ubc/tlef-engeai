@@ -1,6 +1,7 @@
 import {
     appendScenarioSuggestionsTag,
     parseScenarioSuggestionsTag,
+    stripAllQuestionUnstruggleTags,
     stripQuestionUnstruggleTag,
     stripScenarioSuggestionsTag,
 } from '../message-utils';
@@ -37,5 +38,11 @@ describe('message-utils scenario suggestions', () => {
     it('stripQuestionUnstruggleTag still works', () => {
         const raw = 'Answer here <questionUnstruggle Topic="pH">';
         expect(stripQuestionUnstruggleTag(raw, 'pH')).toBe('Answer here');
+    });
+
+    it('stripAllQuestionUnstruggleTags removes every tag', () => {
+        const raw =
+            'Answer <questionUnstruggle Topic="pH"> more <questionUnstruggle Topic="buffers">';
+        expect(stripAllQuestionUnstruggleTags(raw)).toBe('Answer more');
     });
 });

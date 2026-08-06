@@ -25,6 +25,7 @@ import { isMockResponse, generateMockStreamingResponse } from '../helpers/mock-r
 import { evaluatePathways } from '../guided-pathways/pathway-orchestrator';
 import { isCourseFeatureEnabled } from '../dashboard-setting/course-features';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
+import { stripAllQuestionUnstruggleTags } from '../utils/message-utils';
 import {
     buildDebugModeSystemPrompt,
     ensureDebugModeTemplate,
@@ -616,6 +617,11 @@ export class ChatApp {
         // ====================================================================
         // STEP 5: ADD ASSISTANT MESSAGE TO CONVERSATION AND HISTORY
         // ====================================================================
+
+        // Memory Agent off → never persist unstruggle tags even if the model emits them.
+        if (!isCourseFeatureEnabled(course, 'memoryAgent')) {
+            assistantResponse = stripAllQuestionUnstruggleTags(assistantResponse);
+        }
 
         // Note: userId parameter is string but we'll parse it - should be numeric from session
         const assistantMessage = this.addAssistantMessage(chatId, assistantResponse, userId, courseName);

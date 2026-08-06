@@ -172,7 +172,8 @@ export const renderOnCourseSetup = async (instructorCourse: activeCourse): Promi
             features: instructorCourse.features ?? {
                 writingFeedback: { enabled: false },
                 memoryAgent: { enabled: false },
-                guidedPathway: { enabled: false }
+                guidedPathway: { enabled: false },
+                scenarioGeneration: { enabled: false }
             }
         };
 
@@ -618,8 +619,9 @@ async function handleDatabaseSubmission(
                 topicOrWeekInstances: [],
                 features: onBoardingCourse.features ?? {
                     writingFeedback: { enabled: false },
-                memoryAgent: { enabled: false },
-                guidedPathway: { enabled: false }
+                    memoryAgent: { enabled: false },
+                    guidedPathway: { enabled: false },
+                    scenarioGeneration: { enabled: false }
                 }
             };
             submittedCourse = await postCourseToDatabase(courseData);

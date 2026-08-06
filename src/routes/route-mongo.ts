@@ -53,7 +53,7 @@ import { RAGApp } from '../rag/rag-app';
 import { addAdminsToCourse } from '../helpers/instructor-helpers';
 import { appLogger } from '../utils/logger';
 import { isAdminUser } from '../utils/admin';
-import { filterAccessibleCourses, buildCourseSelectionByPeriod } from '../helpers/course-access';
+import { filterAccessibleCourses, buildCourseSelectionByPeriod, isCourseAccessible } from '../helpers/course-access';
 import { validateCourseSetupFields } from '../helpers/instructor-onboarding-redirect';
 import { buildTopicOrWeekInstances } from '../helpers/build-default-course-content';
 import {
@@ -67,9 +67,10 @@ import {
 import {
     CourseFeatureId,
     COURSE_FEATURE_LABELS,
+    normalizeCourseFeaturesInput,
     updateCourseCapability,
-    updateWritingFeedbackCapability
 } from '../dashboard-setting/course-features';
+import { coursePayloadForViewer, getStudentCapabilities } from '../dashboard-setting/course-student-view';
 import {
     ModelSelectionService,
 } from '../dashboard-setting/model-selection-service';
@@ -387,28 +388,8 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
             onBoarded: true, // default to false for new courses
             instructors: updatedInstructors,
             teachingAssistants: req.body.teachingAssistants || [],
-            // Record first-enable provenance while defaulting absent or false input to disabled.
-            features: {
-                ...req.body.features,
-                writingFeedback: {
-                    enabled: req.body.features?.writingFeedback?.enabled === true,
-                    ...(req.body.features?.writingFeedback?.enabled === true
-                        ? { enabledAt: new Date(), enabledBy: creatorUserId }
-                        : {})
-                },
-                memoryAgent: {
-                    enabled: req.body.features?.memoryAgent?.enabled === true,
-                    ...(req.body.features?.memoryAgent?.enabled === true
-                        ? { enabledAt: new Date(), enabledBy: creatorUserId }
-                        : {})
-                },
-                guidedPathway: {
-                    enabled: req.body.features?.guidedPathway?.enabled === true,
-                    ...(req.body.features?.guidedPathway?.enabled === true
-                        ? { enabledAt: new Date(), enabledBy: creatorUserId }
-                        : {})
-                }
-            },
+            // Normalize Extra Features via dashboard-setting defaults (new courses all off unless opted in).
+            features: normalizeCourseFeaturesInput(req.body.features, creatorUserId),
             tilesNumber: req.body.tilesNumber || 0,
             courseSetup: req.body.courseSetup ?? true
         };
@@ -708,12 +689,14 @@ router.get('/', asyncHandlerWithAuth(async (req: Request, res: Response) => {
 
         return res.status(200).json({
             success: true,
-            data: course
+            data: coursePayloadForViewer(course as activeCourse, globalUser)
         });
     }
 
     const allCourses = await instance.getAllActiveCourses();
-    const courses = filterAccessibleCourses(allCourses as activeCourse[], globalUser);
+    const courses = filterAccessibleCourses(allCourses as activeCourse[], globalUser).map((c) =>
+        coursePayloadForViewer(c, globalUser)
+    );
 
     res.status(200).json({
         success: true,
@@ -758,7 +741,8 @@ router.get('/course-selection', asyncHandlerWithAuth(async (req: Request, res: R
 
 /**
  * GET /:id
- * Get a course by ID.
+ * Get a course by ID. Course staff receive the full document; students and
+ * unauthenticated callers receive a projection without Extra Features / llmSettings.
  *
  * @route GET /api/courses/:id
  * @param {string} id - Course ID (path param)
@@ -777,9 +761,16 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
         });
     }
 
+    const courseData = course as unknown as activeCourse;
+    let globalUser = null;
+    const sessionUser = (req as { user?: { puid?: string } }).user;
+    if (sessionUser?.puid) {
+        globalUser = await instance.findGlobalUserByPUID(sessionUser.puid);
+    }
+
     res.status(200).json({
         success: true,
-        data: course
+        data: coursePayloadForViewer(courseData, globalUser)
     });
 }));
 
@@ -862,24 +853,8 @@ router.post(
             updatedInstructors.push({ userId: creatorUserId, name: creatorName });
         }
 
-        // Apply each capability from setup; absent keys stay disabled for new courses.
-        let features = updateWritingFeedbackCapability(
-            courseData.features,
-            req.body?.features?.writingFeedback?.enabled === true,
-            creatorUserId
-        );
-        features = updateCourseCapability(
-            features,
-            'memoryAgent',
-            req.body?.features?.memoryAgent?.enabled === true,
-            creatorUserId
-        );
-        features = updateCourseCapability(
-            features,
-            'guidedPathway',
-            req.body?.features?.guidedPathway?.enabled === true,
-            creatorUserId
-        );
+        // Apply Extra Features from setup body via shared normalizer (defaults all off).
+        const features = normalizeCourseFeaturesInput(req.body?.features, creatorUserId);
 
         await instance.updateActiveCourse(courseId, {
             courseSetup: true,
@@ -991,6 +966,53 @@ router.patch(
     requireRosterManageAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         return patchCourseFeature(req, res, 'guidedPathway');
+    })
+);
+
+/**
+ * PATCH /:courseId/features/scenario-generation
+ * Enables or disables Scenario Generation Extra Feature (Practice Scenarios + unstruggle Yes chips).
+ *
+ * @route PATCH /api/courses/:courseId/features/scenario-generation
+ */
+router.patch(
+    '/:courseId/features/scenario-generation',
+    requireRosterManageAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        return patchCourseFeature(req, res, 'scenarioGeneration');
+    })
+);
+
+/**
+ * GET /:courseId/student-capabilities
+ * Student-safe Extra Feature booleans for shell UI (on demand). No guidedPathway / llmSettings.
+ *
+ * @route GET /api/courses/:courseId/student-capabilities
+ */
+router.get(
+    '/:courseId/student-capabilities',
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const sessionUser = (req as { user?: { puid?: string } }).user;
+        if (!sessionUser?.puid) {
+            return res.status(401).json({ success: false, error: 'Not authenticated' });
+        }
+        const globalUser = await instance.findGlobalUserByPUID(sessionUser.puid);
+        if (!globalUser) {
+            return res.status(401).json({ success: false, error: 'Not authenticated' });
+        }
+        const courseId = routeParam(req.params, 'courseId');
+        const course = (await instance.getActiveCourse(courseId)) as activeCourse | null;
+        if (!course) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+        if (!isCourseAccessible(course, globalUser)) {
+            return res.status(403).json({ success: false, error: 'Course membership required' });
+        }
+        return res.status(200).json({
+            success: true,
+            data: getStudentCapabilities(course),
+        });
     })
 );
 

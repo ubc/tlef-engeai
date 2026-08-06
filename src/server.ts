@@ -27,7 +27,6 @@ import { EngEAI_MongoDB } from './db/enge-ai-mongodb';
 import { initAcademicPeriods } from './helpers/init-academic-periods';
 import { migrateInstructorAllowances } from './helpers/migrate-instructor-allowances';
 import { migrateOnboardingFlags } from './helpers/migrate-onboarding-flags';
-import { migrateCourseFeatureDefaults } from './helpers/migrate-course-feature-defaults';
 import { getCourseSelectionRedirectPath } from './helpers/course-selection-redirect';
 import { resolveAffiliation, isFacultyOverrideName } from './utils/affiliation';
 import { isAdminUser, isAdminName } from './utils/admin';
@@ -303,12 +302,6 @@ app.listen(port, async () => {
         await migrateOnboardingFlags();
     } catch (err) {
         logger.error('Onboarding migration failed:', err as any);
-    }
-
-    try {
-        await migrateCourseFeatureDefaults();
-    } catch (err) {
-        logger.error('Course feature defaults migration failed:', err as any);
     }
 
 });

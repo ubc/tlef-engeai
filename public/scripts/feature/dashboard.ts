@@ -45,13 +45,15 @@ const CARD_DEFS: DashboardCardDef[] = [
 const FEATURE_ENDPOINTS: Record<FeatureKey, string> = {
     writingFeedback: 'writing-feedback',
     memoryAgent: 'memory-agent',
-    guidedPathway: 'guided-pathway'
+    guidedPathway: 'guided-pathway',
+    scenarioGeneration: 'scenario-generation'
 };
 
 const FEATURE_INPUT_IDS: Record<FeatureKey, string> = {
     writingFeedback: 'settingsWritingFeedback',
     memoryAgent: 'settingsMemoryAgent',
-    guidedPathway: 'settingsGuidedPathway'
+    guidedPathway: 'settingsGuidedPathway',
+    scenarioGeneration: 'settingsScenarioGeneration'
 };
 
 /**
@@ -521,6 +523,9 @@ async function wireFeatureToggles(currentClass: activeCourse, canManage: boolean
                       : undefined,
                   guidedPathway: currentClass.features.guidedPathway
                       ? { ...currentClass.features.guidedPathway }
+                      : undefined,
+                  scenarioGeneration: currentClass.features.scenarioGeneration
+                      ? { ...currentClass.features.scenarioGeneration }
                       : undefined,
               }
             : undefined;

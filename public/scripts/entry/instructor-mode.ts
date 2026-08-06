@@ -481,7 +481,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const FEATURE_NOTICE_LABELS: Record<string, string> = {
         writingFeedback: 'Writing Feedback',
         memoryAgent: 'Memory Agent',
-        guidedPathway: 'Guided Pathway'
+        guidedPathway: 'Guided Pathway',
+        scenarioGeneration: 'Scenario Generation'
     };
     const noticeParams = new URLSearchParams(window.location.search);
     const notice = noticeParams.get('notice');
@@ -579,6 +580,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else if (view === 'pathway-library' && currentClass.features?.guidedPathway?.enabled !== true) {
                 await showSimpleErrorModal(
                     'Guided Pathway is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
+                    'Feature unavailable'
+                );
+                navigateToInstructorView('dashboard');
+            } else if (view === 'scenario-questions' && currentClass.features?.scenarioGeneration?.enabled !== true) {
+                await showSimpleErrorModal(
+                    'Scenario Generation is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
                 );
                 navigateToInstructorView('dashboard');
@@ -828,6 +835,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             hideChatList(); // Ensure chat list is hidden
         }
         else if ( currentState === StateEvent.ScenarioQuestions){
+            if (currentClass.features?.scenarioGeneration?.enabled !== true) {
+                void showSimpleErrorModal(
+                    'Scenario Generation is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
+                    'Feature unavailable'
+                );
+                navigateToInstructorView('dashboard');
+                return;
+            }
             loadComponent('scenario-questions-instructor');
             updateSidebarState();
             expandFeatureSidebar();
@@ -956,6 +971,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const updateFeatureNavigation = () => {
         const wfEnabled = currentClass.features?.writingFeedback?.enabled === true;
         const pathwayEnabled = currentClass.features?.guidedPathway?.enabled === true;
+        const scenarioEnabled = currentClass.features?.scenarioGeneration?.enabled === true;
 
         // Hide the whole sidebar list item (not only the button) when a capability is off.
         if (writingFeedbackStateEl) {
@@ -967,6 +983,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             pathwayLibraryStateEl.hidden = !pathwayEnabled;
             const pathwayItem = pathwayLibraryStateEl.closest('li');
             if (pathwayItem) pathwayItem.hidden = !pathwayEnabled;
+        }
+        if (scenarioQuestionsStateEl) {
+            scenarioQuestionsStateEl.hidden = !scenarioEnabled;
+            const scenarioItem = scenarioQuestionsStateEl.closest('li');
+            if (scenarioItem) scenarioItem.hidden = !scenarioEnabled;
         }
         if (currentState === StateEvent.Dashboard) {
             renderDashboardCards(currentClass);
@@ -986,6 +1007,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             navigateToInstructorView('dashboard');
         }
         if (detail.feature === 'guidedPathway' && !detail.enabled && currentState === StateEvent.PathwayLibrary) {
+            navigateToInstructorView('dashboard');
+        }
+        if (detail.feature === 'scenarioGeneration' && !detail.enabled && currentState === StateEvent.ScenarioQuestions) {
             navigateToInstructorView('dashboard');
         }
     });

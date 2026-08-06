@@ -31,6 +31,21 @@ export function stripQuestionUnstruggleTag(text: string, topic: string): string 
     return text.replace(tagRegex, '').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+const ANY_QUESTION_UNSTRUGGLE_TAG_REGEX = /\s*<questionUnstruggle\s+Topic=["'][^"']+["']\s*>\s*/gi;
+
+/**
+ * stripAllQuestionUnstruggleTags - remove every unstruggle tag regardless of topic.
+ *
+ * Used when Memory Agent is disabled so leftover tags never reach the student UI.
+ */
+export function stripAllQuestionUnstruggleTags(text: string): string {
+    return text
+        .replace(ANY_QUESTION_UNSTRUGGLE_TAG_REGEX, ' ')
+        .replace(/[ \t]{2,}/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
 const SCENARIO_SUGGESTIONS_TAG_REGEX =
     /\s*<scenarioSuggestions>([\s\S]*?)<\/scenarioSuggestions>\s*/gi;
 

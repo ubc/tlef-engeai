@@ -57,7 +57,7 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 | `GET /course/:courseId/instructor/chat` | Instructor chat |
 | `GET /course/:courseId/instructor/assistant-prompts` | Assistant prompts |
 | `GET /course/:courseId/instructor/system-prompts` | System prompts |
-| `GET /course/:courseId/instructor/scenario-questions` | Scenario Questions (Practice Scenarios authoring). Query: `?browse=questions`, `?topicOrWeekId=`, `?generate=1`, `?questionId=` |
+| `GET /course/:courseId/instructor/scenario-questions` | Scenario Questions (Practice Scenarios authoring). Requires `scenarioGeneration` Extra Feature. Query: `?browse=questions`, `?topicOrWeekId=`, `?generate=1`, `?questionId=` |
 | `GET /course/:courseId/instructor/pathway-library` | Capability-gated Guided Pathway Library; redirects to Dashboard when disabled |
 | `GET /course/:courseId/instructor/course-information` | Legacy redirect → dashboard (metadata in Advanced Settings; course code in topbar) |
 | `GET /course/:courseId/instructor/about` | About page |
@@ -73,7 +73,7 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 |------|-------------|
 | `GET /course/:courseId/student` | Student home |
 | `GET /course/:courseId/student/chat` | Chat interface |
-| `GET /course/:courseId/student/scenarios` | Practice Scenarios. Query: `?questionId=`, `?mode=practice|exam` |
+| `GET /course/:courseId/student/scenarios` | Practice Scenarios. Requires `scenarioGeneration` Extra Feature. Query: `?questionId=`, `?mode=practice|exam` |
 | `GET /course/:courseId/student/profile` | Profile |
 | `GET /course/:courseId/student/flag-history` | Flag history |
 | `GET /course/:courseId/student/about` | About page |
@@ -92,15 +92,23 @@ Optional course capabilities live on `activeCourse.features`. Missing entries ar
 | PATCH | `/api/courses/:courseId/features/writing-feedback` | Body `{ enabled: boolean }` — Writing Feedback workspace |
 | PATCH | `/api/courses/:courseId/features/memory-agent` | Body `{ enabled: boolean }` — Memory Agent / struggle topics |
 | PATCH | `/api/courses/:courseId/features/guided-pathway` | Body `{ enabled: boolean }` — Pathway Library + chat intercept |
+| PATCH | `/api/courses/:courseId/features/scenario-generation` | Body `{ enabled: boolean }` — Scenario Generation Extra Feature (gates Practice Scenarios / Scenario Questions UI+APIs and unstruggle Yes scenario chips) |
+
 
 **Success (200):** `{ success: true, data: activeCourse, message }`  
 **Errors:** `400` invalid body, `403` non–roster-manager, `404` course missing
 
 Struggle-topic document APIs require `requireCourseFeatureAPI('memoryAgent')`. Pathway Library APIs require `requireCourseFeatureAPI('guidedPathway')`.
 
+**Chat unstruggle gating:** When `memoryAgent` is disabled, chat never injects `<questionUnstruggle>` / struggle tags, the Yes/No special send path is skipped, and any model-emitted unstruggle tags are stripped before persistence. When `memoryAgent` is enabled but `scenarioGeneration` is disabled, unstruggle Yes still clears the struggle topic but returns a No-style hardcoded reply with no `<scenarioSuggestions>` list (even if published scenarios exist). Chat FE always renders those tags when present in message text; capability policy is server-side only.
+
+**Scenario Generation Extra Feature:** When off, Practice Scenarios / Scenario Questions APIs return 403 (`requireCourseFeatureAPI('scenarioGeneration')`); instructor and student scenario page routes redirect; student sidebar and instructor nav hide the tool. Unstruggle Yes chips remain gated as above.
+
+**Student course payload:** Non-staff course GETs omit `features` and `llmSettings` so Guided Pathway / Extra Feature / model settings are not console-readable. Staff (instructors, TAs, platform admins for the course) still receive the full document. Students fetch shell UI flags via `GET /api/courses/:courseId/student-capabilities` (`{ scenarioGeneration: boolean }` only).
+
 ### 4.0.1 Course LLM settings (`/api/courses/:courseId/llm-settings`)
 
-Per-feature model and reasoning for Chat, Writing Feedback, Scenario Generation, Guided Pathway, and Memory Agent. Stored on `activeCourse.llmSettings`. Runtime resolution uses `ModelSelectionService`: process-local Map keyed by `courseId` with 5-minute inactivity eviction; cold misses single-flight load Mongo then insert; successful PATCH writes Mongo first then `setCachedSettings` (write-through). Freshness after save is guaranteed for a **single Node process**; multi-worker coherence is out of scope. Only roster managers may update. Students/TAs never PATCH; the server applies settings when their feature calls run. The Model Settings UI always lists all five feature rows; Writing Feedback, Guided Pathway, and Memory Agent rows are shaded and non-interactive until the matching Extra Feature capability is enabled. PATCH still requires all five feature keys.
+Per-feature model and reasoning for Chat, Writing Feedback, Scenario Generation, Guided Pathway, and Memory Agent. Stored on `activeCourse.llmSettings`. Runtime resolution uses `ModelSelectionService`: process-local Map keyed by `courseId` with 5-minute inactivity eviction; cold misses single-flight load Mongo then insert; successful PATCH writes Mongo first then `setCachedSettings` (write-through). Freshness after save is guaranteed for a **single Node process**; multi-worker coherence is out of scope. Only roster managers may update. Students/TAs never PATCH; the server applies settings when their feature calls run. The Model Settings UI always lists all five feature rows; Writing Feedback, Guided Pathway, Memory Agent, and Scenario Generation rows are shaded and non-interactive until the matching Extra Feature capability is enabled. PATCH still requires all five feature keys.
 
 | Method | Path | Description |
 |---|---|---|
@@ -241,7 +249,8 @@ Live Canvas OAuth routes are intentionally absent from this table until the priv
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
-| GET | `/api/courses/:id` | Yes | Any | Get course by ID |
+| GET | `/api/courses/:id` | Yes* | Any | Get course by ID. \*Auth preferred; course staff receive full `features` + `llmSettings`. Students / non-staff / unauthenticated get a projection that **omits** `features` and `llmSettings` (`toStudentCoursePayload`). Same projection applies to `GET /api/courses` (list/by name) and course-selection course cards. |
+| GET | `/api/courses/:courseId/student-capabilities` | Yes | Member | Student-safe booleans only: `{ scenarioGeneration }` — for shell UI; never returns guidedPathway / full features / llmSettings |
 | POST | `/api/courses/:id/complete-course-setup` | Yes | Instructor | Finish course-setup on existing shell (`frameType`, `tilesNumber`); sets `courseSetup: true` |
 | PUT | `/api/courses/:id` | Yes | Instructor | Update course |
 | DELETE | `/api/courses/:id` | Yes | Instructor | Delete course |
@@ -367,7 +376,7 @@ Platform defaults ship in `src/chat/system-prompts/shared-default/`, `socratic-d
 
 #### Scenario Questions (Practice Scenarios / Scenario Questions)
 
-Standalone practice bank (`planner/scenario-generation-recovery-plan.md`). Documents live one-per-question in `{courseName}_scenario_questions` — lazy-provisioned on first request via SQ-001 ([DATA_MIGRATIONS.md](DATA_MIGRATIONS.md#sq-001-scenario-questions-collection-backfill)), never embedded on `activeCourse`. Chapter grouping uses `TopicOrWeekInstance.id`. Mounted from `src/routes/mongo/scenario-questions-routes.ts`; orchestration lives in `src/scenario-generation/scenario-service.ts`.
+Standalone practice bank (`planner/scenario-generation-recovery-plan.md`). Documents live one-per-question in `{courseName}_scenario_questions` — lazy-provisioned on first request via SQ-001 ([DATA_MIGRATIONS.md](DATA_MIGRATIONS.md#sq-001-scenario-questions-collection-backfill)), never embedded on `activeCourse`. Chapter grouping uses `TopicOrWeekInstance.id`. Mounted from `src/routes/mongo/scenario-questions-routes.ts`; orchestration lives in `src/scenario-generation/scenario-service.ts`. All routes require `requireCourseFeatureAPI('scenarioGeneration')`.
 
 Two auth tiers: `requireCourseMemberForScenarioAPI` (enrolled student **or** staff — list/get/check-answer/solution/responses) and `requireInstructorForCourseAPI` (create/edit/status/delete/generate/LO catalog). Drafts are **404**, not 403, for students (D5/E-01 — no draft-existence leakage).
 

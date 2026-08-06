@@ -119,6 +119,21 @@ function requireCourseFeaturePage(feature: CourseFeatureId) {
 }
 
 /**
+ * requireStudentCourseFeaturePage — redirects students to student home when a capability is off.
+ */
+function requireStudentCourseFeaturePage(feature: CourseFeatureId) {
+    return (req: Request, res: Response, next: express.NextFunction) => {
+        const course = (req as any).courseContext?.course;
+
+        if (!isCourseFeatureEnabled(course, feature)) {
+            const { courseId } = normalizeRouteParams(req.params);
+            return res.redirect(`/course/${courseId}/student`);
+        }
+        next();
+    };
+}
+
+/**
  * requireWritingFeedbackFeaturePage — Writing Feedback page gate (delegates to generic).
  */
 function requireWritingFeedbackFeaturePage(req: Request, res: Response, next: express.NextFunction) {
@@ -325,7 +340,13 @@ router.get('/course/:courseId/instructor/system-prompts', validateCourseAccess, 
  * @response 301 - Redirect (auth/role failure)
  * @response 404 - Course not found
  */
-router.get('/course/:courseId/instructor/scenario-questions', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+router.get(
+    '/course/:courseId/instructor/scenario-questions',
+    validateCourseAccess,
+    requireInstructorForCourse,
+    requireCourseFeaturePage('scenarioGeneration'),
+    serveInstructorShell()
+);
 
 /**
  * GET /course/:courseId/instructor/pathway-library
@@ -483,7 +504,13 @@ router.get('/course/:courseId/student/chat', validateCourseAccess, requireStuden
  * @response 301 - Redirect (auth/role failure)
  * @response 404 - Course not found
  */
-router.get('/course/:courseId/student/scenarios', validateCourseAccess, requireStudentForCourse, serveStudentShell());
+router.get(
+    '/course/:courseId/student/scenarios',
+    validateCourseAccess,
+    requireStudentForCourse,
+    requireStudentCourseFeaturePage('scenarioGeneration'),
+    serveStudentShell()
+);
 
 
 /**

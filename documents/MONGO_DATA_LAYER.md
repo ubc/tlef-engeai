@@ -42,14 +42,17 @@
   - **`learningObjectives[]`** per `items[]` — instructor CRUD; flattened via `getAllLearningObjectives` for system-prompt injection.
   - **`instructorStruggleTopics[]`** per `items[]` — instructor CRUD (`/struggle-topics` API); gated by `features.memoryAgent`; flattened via `getAllInstructorStruggleTopics` for memory-agent catalog only (not main chat system prompt).
 - **Course capabilities** (`activeCourse.features` on `active-course-list`):
-  - Keys: `writingFeedback`, `memoryAgent`, `guidedPathway` — each `{ enabled, enabledAt?, enabledBy? }`; missing = disabled.
-  - Startup backfill **CF-001** enables `memoryAgent` / `guidedPathway` where absent (legacy always-on). New courses stay off until Settings or course-setup.
+  - Keys: `writingFeedback`, `memoryAgent`, `guidedPathway`, `scenarioGeneration` — each `{ enabled, enabledAt?, enabledBy? }`; missing = disabled at read time.
+  - New-course defaults live in `src/dashboard-setting/course-feature-defaults.ts` (builders in `course-features.ts`). Create/setup persist a full map with all off unless opted in.
+  - Staff-visible on course GET; student / non-staff course payloads omit `features` entirely (`course-student-view.ts`). Runtime chat/API gates still read Mongo server-side. Students may fetch `{ scenarioGeneration }` only via `GET .../student-capabilities`.
+  - `scenarioGeneration` Extra Feature gates Practice Scenarios / Scenario Questions (pages + APIs) and unstruggle Yes scenario chips.
 - **Course LLM settings** (`activeCourse.llmSettings` on `active-course-list`):
   - Per-feature map: `chat`, `scenarioGeneration`, `writingFeedback`, `guidedPathway`, `memoryAgent` — each `{ modelId, reasoningLevel }`, plus optional `updatedAt` / `updatedBy`.
+  - Staff-visible on course GET; omitted from student / non-staff projections with `features`.
   - Catalog ids: `gpt-5.6-luna`, `gpt-5.4-mini`, `gpt-4o-mini`; missing/invalid → default `gpt-5.6-luna` + `none` per feature.
   - Persisted `reasoningLevel` is `AppReasoningLevel` (`none` \| `low` \| `medium` \| `high`). Provider-only levels (`xhigh`, `max`) are catalog metadata only and are clamped on read / rejected on PATCH.
   - Legacy flat `{ modelId, reasoningLevel }` is expanded to all five features at read time by `ModelSelectionService` (no chat-level storage).
-  - Runtime: process Map keyed by `courseId` (5-minute inactivity eviction) with cold-miss single-flight Mongo load; PATCH write-through via `setCachedSettings` after successful `$set`. Single-process freshness only. Dashboard UI gates the Memory Agent model row on `features.memoryAgent.enabled`.
+  - Runtime: process Map keyed by `courseId` (5-minute inactivity eviction) with cold-miss single-flight Mongo load; PATCH write-through via `setCachedSettings` after successful `$set`. Single-process freshness only. Dashboard UI shades Writing Feedback, Guided Pathway, Memory Agent, and Scenario Generation model rows when the matching Extra Feature is off.
   - Provider model strings match catalog `modelId` values (no per-model env override).
   - Memory Agent settings are shared by conversation struggle analysis, struggle-topic generator, and unstruggle follow-up.- **Memory agent** (`memory-agent-mongo.ts` on `{courseName}_memory-agent`):
   - **`struggleTopics[]`** — canonical flat distinct labels per user (written by memory-agent analyze).

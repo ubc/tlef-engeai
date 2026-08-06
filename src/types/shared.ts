@@ -218,6 +218,7 @@ export interface CourseFeatures {
     writingFeedback?: CourseFeatureCapability; // Writing Feedback workspace; absence means disabled
     memoryAgent?: CourseFeatureCapability; // Struggle-topic memory agent; absence means disabled
     guidedPathway?: CourseFeatureCapability; // Guided Pathway Library + chat intercept; absence means disabled
+    scenarioGeneration?: CourseFeatureCapability; // Practice Scenarios Extra Feature; gates unstruggle Yes scenario chips
 }
 
 /** UI catalog ids for course-wide LLM model selection. */
