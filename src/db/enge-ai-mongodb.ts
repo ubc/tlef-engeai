@@ -971,7 +971,7 @@ export class EngEAI_MongoDB {
 
     public updateGlobalUserAffiliation = async (
         userId: string,
-        affiliation: 'student' | 'faculty'
+        affiliation: 'student' | 'faculty' | 'staff' | 'empty'
     ) => GlobalUserMongo.updateGlobalUserAffiliation(this.ctx(), userId, affiliation);
 
     public findAdminGlobalUsers = async () => GlobalUserMongo.findAdminGlobalUsers(this.ctx());

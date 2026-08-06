@@ -21,4 +21,14 @@ describe('resolveAffiliation', () => {
         const result = resolveAffiliation('staff', 'staff');
         expect(result.affiliation).toBe('staff');
     });
+
+    it('DB faculty, CWL staff — flags DB update to staff (not just student/faculty drift)', () => {
+        const result = resolveAffiliation('staff', 'faculty');
+        expect(result).toEqual({ affiliation: 'staff', needsDbUpdate: true });
+    });
+
+    it('DB faculty, CWL empty — flags DB update to empty', () => {
+        const result = resolveAffiliation('empty', 'faculty');
+        expect(result).toEqual({ affiliation: 'empty', needsDbUpdate: true });
+    });
 });

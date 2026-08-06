@@ -165,9 +165,9 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
             logger.info(`[AUTH] ✅ GlobalUser found: ${globalUser.userId}`);
 
             // Reconcile DB with CWL when DB has inconsistent data (e.g. dual student+instructor stored as faculty)
-            if (resolution.needsDbUpdate && (affiliation === 'student' || affiliation === 'faculty')) {
+            if (resolution.needsDbUpdate) {
                 logger.info(`[AUTH] 🔄 Updating GlobalUser affiliation: DB had ${globalUser.affiliation}, CWL says ${affiliation}`);
-                globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty');
+                globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty' | 'staff' | 'empty');
                 (req.user as any).affiliation = affiliation;
                 logger.info(`[AUTH] ✅ GlobalUser affiliation updated: ${globalUser.userId}`);
             }

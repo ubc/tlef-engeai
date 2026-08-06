@@ -99,9 +99,9 @@ const samlCallbackHandler = [
             appLogger.log('[AUTH] ✅ GlobalUser found:', globalUser.userId);
 
             // Reconcile DB with CWL when DB has inconsistent data (e.g. dual student+instructor stored as faculty)
-            if (resolution.needsDbUpdate && (affiliation === 'student' || affiliation === 'faculty')) {
+            if (resolution.needsDbUpdate) {
                 appLogger.log('[AUTH] 🔄 Updating GlobalUser affiliation: DB had', globalUser.affiliation, ', CWL says', affiliation);
-                globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty');
+                globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty' | 'staff' | 'empty');
                 (req.user as any).affiliation = affiliation;
                 appLogger.log('[AUTH] ✅ GlobalUser affiliation updated:', globalUser.userId);
             }
@@ -113,7 +113,7 @@ const samlCallbackHandler = [
                 globalUser = await mongoDB.updateGlobalUser(globalUser.puid, { isAdmin: shouldBeAdmin });
             }
         }
-        
+
         // Store GlobalUser in session (backend only - PUID is safe here)
         // NOTE: PUID is stored in session for backend use only
         // When sending to frontend, we MUST sanitize using sanitizeGlobalUserForFrontend()
@@ -225,9 +225,9 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                         appLogger.log('[AUTH-LOCAL] ✅ GlobalUser found:', globalUser.userId);
 
                         // Reconcile DB with local/CWL when DB has inconsistent data
-                        if (resolution.needsDbUpdate && (affiliation === 'student' || affiliation === 'faculty')) {
+                        if (resolution.needsDbUpdate) {
                             appLogger.log('[AUTH-LOCAL] 🔄 Updating GlobalUser affiliation: DB had', globalUser.affiliation, ', local says', affiliation);
-                            globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty');
+                            globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty' | 'staff' | 'empty');
                             (req.user as any).affiliation = affiliation;
                             appLogger.log('[AUTH-LOCAL] ✅ GlobalUser affiliation updated:', globalUser.userId);
                         }
