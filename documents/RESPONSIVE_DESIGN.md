@@ -169,7 +169,7 @@ The student mode uses a consistent mobile header pattern across welcome screen, 
 ### Structure
 
 - **Welcome screen** (`welcome-screen.html`): `mobile-header-bar` with hamburger button only (no title).
-- **Chat window** (`chat-window.html`): `chat-header` with `mobile-hamburger-btn`, `chat-title`, and actions (artefact and delete).
+- **Chat window** (`chat-window.html`): `chat-header` with `mobile-hamburger-btn`, `chat-title`, and actions (artefact, pin, delete).
 - **Flag history** (`flag-history.html`): `flag-header` with hamburger + `<h1>Flag History</h1>`.
 
 ### CSS (`student-mode.css`)
@@ -185,6 +185,30 @@ The student mode uses a consistent mobile header pattern across welcome screen, 
 - Hamburger toggles sidebar via `.mobile-open` and overlay.
 - Header lives inside the main content area, not a separate top bar.
 - Breakpoint: **768px**.
+
+---
+
+## Instructor Dashboard
+
+The instructor dashboard (`dashboard-instructor.html`, `dashboard.css`) uses a two-column topbar on desktop and stacks on mobile. `.dashboard-page-header` is `position: sticky` inside `.dashboard-grid-view` (the scrollport), with opaque `var(--chat-bg)` chrome and negative margins matching grid padding so cards cannot peek beside it.
+
+### Desktop (≥768px)
+
+- **Topbar**: sticky flex row — left column (title, welcome, date) + right column (course-code flip widget, 200px).
+- **Advanced Settings**: static section title + divider; three inline accordion cards (Model Settings, Advanced Features, Course Information).
+- **Enter animation**: topbar first, greeting/date at 0.08s, card grid at 0.18s, Advanced Settings section at 0.28s. Topbar keyframes end at `transform: none` so sticky keeps working after the enter anim.
+
+### Mobile (≤768px)
+
+- **Topbar**: sticky; `flex-direction: column`; course-code flip `align-self: flex-start` (left-aligned under greeting block). Sticky bleed margins match the tighter grid padding (`1.25rem` / `1rem`).
+- **Advanced Settings**: three inline accordions (Model Settings, Advanced Features, Course Information) expand inside each card with a smooth height transition; `prefers-reduced-motion` collapses instantly.
+- **Feature rows**: Model pickers and Advanced Feature toggles share a wrapping flex layout at every width. Controls stay beside their title where space permits, wrap internally when possible, then move to a right-aligned line below the title.
+- **Hamburger**: shown in title row via `.dashboard-mobile-menu-btn`.
+- **Accordions**: full-width; toggle min-height 44px for touch.
+
+Course Information was removed from the instructor sidebar footer; course code lives in the dashboard topbar and metadata in the Course Information accordion.
+
+---
 
 ---
 

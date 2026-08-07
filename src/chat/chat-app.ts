@@ -23,6 +23,9 @@ import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import { isMockResponse, generateMockStreamingResponse } from '../helpers/mock-response';
 import { evaluatePathways } from '../guided-pathways/pathway-orchestrator';
+import { isCourseFeatureEnabled } from '../dashboard-setting/course-features';
+import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
+import { stripAllQuestionUnstruggleTags } from '../utils/message-utils';
 import {
     buildDebugModeSystemPrompt,
     ensureDebugModeTemplate,
@@ -380,7 +383,9 @@ export class ChatApp {
         // Get the conversation mode
         const conversationMode = this.getGuardrailConversationMode(chatId);
 
-        if (conversationMode) {
+        // Load course once for capability gates and LLM settings (fail-closed on Mongo errors).
+        const course = await this.getCourseFeatures(courseName);
+        if (conversationMode && isCourseFeatureEnabled(course, 'guidedPathway')) {
 
             const pathwayResult = await evaluatePathways({
                 message,
@@ -439,9 +444,38 @@ export class ChatApp {
             });
             ragContext = ragPrompts.formatRetrievedContext(documents);
             documentsLength = documents.length;
-            
-            // appLogger.log(`📚 Captured ${documents.length} documents for storage`);
-            // appLogger.log(`📚 Retrieved document texts: ${ragContext}`);
+
+            if (documentsLength > 0) {
+                const chunkDump = documents
+                    .map((doc, index) => {
+                        const score =
+                            typeof (doc as { score?: number }).score === 'number'
+                                ? ` score=${(doc as { score: number }).score.toFixed(3)}`
+                                : '';
+                        return `*  --- chunk ${index + 1}${score} ---\n${doc.content}`;
+                    })
+                    .join('\n*\n');
+                appLogger.log(`
+*
+*
+* ########## RAG RETRIEVED CHUNKS (${documentsLength}) ################
+*
+${chunkDump}
+*
+* ###############################################################
+*
+*`);
+            } else {
+                appLogger.log(`
+*
+*
+* ########## RAG RETRIEVED CHUNKS (0) ################
+*
+*
+* ###################################################
+*
+*`);
+            }
         } catch (error) {
             appLogger.log(`❌ RAG Context Error:`, error);
             appLogger.error('Error retrieving RAG documents:', error as any);
@@ -464,16 +498,84 @@ export class ChatApp {
             additionalContext = RAG_NO_DOCS_MESSAGE;
         }
 
-        // Phase note: struggle topics apply to Socratic chats only (see isStruggleTopicsEnabledForChat).
-        if (this.isStruggleTopicsEnabledForChat(chatId)) {
+        // Phase note: struggle topics apply to Socratic chats. Memory Agent on → inject
+        // catalog labels / unstruggle reveal; Memory Agent off → empty-tag Socratic bridge.
+        const struggleTopicsEnabledForChat = this.isStruggleTopicsEnabledForChat(chatId);
+        const memoryAgentEnabled = isCourseFeatureEnabled(course, 'memoryAgent');
+        if (struggleTopicsEnabledForChat && memoryAgentEnabled) {
             const struggleTopics = await memoryAgent.getStruggleWords(userId, courseName);
 
             if (struggleTopics.length > 0) {
+
+                //START DEBUG LOG : DEBUG-CODE(STRUGGLE-TOPICS)
+                appLogger.log(`
+                    *
+                    *
+                    * ########## STRUGGLE TOPICS ################
+                    *
+                    ${struggleTopics.map((topic) => `*  - ${topic}`).join('\n')}
+                    *
+                    * ###########################################
+                    *
+                    *`
+                );
+
+                //END DEBUG LOG : DEBUG-CODE(STRUGGLE-TOPICS)
+
+                // add the struggle topics to the additional context
                 additionalContext += `Based on our conversation, I've identified these topics you might want to focus on: <struggle_topics>${struggleTopics.join(', ')}</struggle_topics>\n\nPlease see the rules int he system prompt for how to covney information about any of these topics if the current user prompt is not asking about any of these topics`;
+
+                // add the questionUnstruggle tag to the additional context
                 additionalContext += '\n<questionUnstruggle reveal="TRUE"> \n by this tag this means that you SHOULD select the most relevant struggle topic from the <struggle_topics> tags, and add the <questionUnstruggle Topic="topic"> tag to the end of the response. ';
             } else {
+
+                appLogger.log(`
+                    *
+                    *
+                    * ########## NO STRUGGLE TOPIC ################
+                    *
+                    *
+                    * #############################################
+                    *
+                    *`);
+
                 additionalContext += '\n<questionUnstruggle reveal="FALSE"> \n by this tag this means that you should NOT add the <questionUnstruggle Topic="topic"> tag to the end of the response';
             }
+        } else if (struggleTopicsEnabledForChat && !memoryAgentEnabled) {
+            // Socratic chat with Memory Agent off: explicit empty struggle list, stay Socratic.
+
+            appLogger.log(`
+                *
+                *
+                * ########## STRUGGLE TOPICS BRIDGE (MEMORY AGENT OFF) ################
+                *
+                * This is a Socratic chat with Memory Agent off.
+                *
+                * ####################################################################
+                *
+                *`
+            );
+
+            additionalContext +=
+                'There are currently no struggle topics for this student: <struggle_topics></struggle_topics>\n\n' +
+                'Please continue in Socratic mode: ask guiding questions to help the student reason through the problem. ' +
+                '<questionUnstruggle reveal="FALSE">\n' +
+                'by this tag this means that you should NOT add the <questionUnstruggle Topic="topic"> tag to the end of the response.';
+        } else {
+            const mode = this.chatConversationModes.get(chatId) ?? 'unset';
+            appLogger.log(`
+                *
+                *
+                * ########## STRUGGLE TOPICS SKIPPED ################
+                *
+                *  reason: gate failed (no injection)
+                *  chatMode: ${mode} (socratic required: ${struggleTopicsEnabledForChat})
+                *  memoryAgentEnabled: ${memoryAgentEnabled}
+                *
+                * ###################################################
+                *
+                *`
+            );
         }
 
         // ====================================================================
@@ -501,35 +603,35 @@ export class ChatApp {
         // appLogger.log(`Total messages: ${originalConversationHistory.length}`);
         // appLogger.log('='.repeat(80));
 
-        originalConversationHistory.forEach((msg: any, index: number) => {
-            const role = msg.role.toUpperCase();
-            const content = msg.content;
-            const charCount = content.length;
+        // originalConversationHistory.forEach((msg: any, index: number) => {
+        //     const role = msg.role.toUpperCase();
+        //     const content = msg.content;
+        //     const charCount = content.length;
 
-            appLogger.log(`[${index + 1}] ${role} - ${charCount} chars:`);
-            appLogger.log(`${content}`);
-            appLogger.log('-'.repeat(40));
-        });
-        appLogger.log('='.repeat(80));
+        //     appLogger.log(`[${index + 1}] ${role} - ${charCount} chars:`);
+        //     appLogger.log(`${content}`);
+        //     appLogger.log('-'.repeat(40));
+        // });
+        // appLogger.log('='.repeat(80));
 
-        appLogger.log('\n'.repeat(10));
+        // appLogger.log('\n'.repeat(10));
 
         // Log forked conversation (used for LLM call)
-        const forkedConversationHistory : Message[] = forkedConversation.getHistory();
+        // const forkedConversationHistory : Message[] = forkedConversation.getHistory();
         // appLogger.log(`\n📝 FORKED CONVERSATION HISTORY (Chat: ${chatId}, User: ${userId}) - SENT TO LLM:`);
         // appLogger.log(`Total messages: ${forkedConversationHistory.length}`);
         // appLogger.log('='.repeat(80));
 
-        forkedConversationHistory.forEach((msg: Message, index: number) => {
-            const role = msg.role.toUpperCase();
-            const content = msg.content;
-            const charCount = content.length;
+        // forkedConversationHistory.forEach((msg: Message, index: number) => {
+        //     const role = msg.role.toUpperCase();
+        //     const content = msg.content;
+        //     const charCount = content.length;
 
-            appLogger.log(`[${index + 1}] ${role} - ${charCount} chars:`);
-            appLogger.log(`${content}`);
-            appLogger.log('-'.repeat(40));
-        });
-        appLogger.log('='.repeat(80));
+        //     appLogger.log(`[${index + 1}] ${role} - ${charCount} chars:`);
+        //     appLogger.log(`${content}`);
+        //     appLogger.log('-'.repeat(40));
+        // });
+        // appLogger.log('='.repeat(80));
 
         // // printing out the full user prompt from this conversation
         // appLogger.log(`\n\n📝 FULL USER PROMPT FROM THIS CONVERSATION:\n\n`);
@@ -560,6 +662,19 @@ export class ChatApp {
         appLogger.log(`\n🚀 Starting LLM streaming...`);
 
         let assistantResponse = '';
+        const modelSelection = ModelSelectionService.getInstance();
+        const ollamaBase = this.llmProvider === 'ollama' ? { num_ctx: 32768 } : undefined;
+
+        // Resolve chat LLM options once for mock logging and live streaming.
+        let conversationConfig;
+        try {
+            conversationConfig = course?.id
+                ? await modelSelection.buildFeatureLlmCallOptions(course.id, 'chat', ollamaBase)
+                : modelSelection.buildDefaultProviderOptions('chat', ollamaBase);
+        } catch (error) {
+            appLogger.error('[CHAT] Failed to resolve chat LLM settings', error as Error);
+            throw error;
+        }
 
         // Check if mock response is enabled - use mock instead of real LLM
         if (isMockResponse()) {
@@ -568,17 +683,7 @@ export class ChatApp {
             appLogger.log(`\n✅ Mock streaming completed. Full response length: ${assistantResponse.length}`);
             appLogger.log(`Full response: "${assistantResponse}"`);
         } else {
-            // Normal LLM streaming
-            let conversationConfig: any = {
-                temperature: 0.7,
-            }
-
-            if (this.llmProvider === 'ollama') {
-
-                conversationConfig.num_ctx = 32768;
-            }
-
-            const response = await forkedConversation.stream(
+            await forkedConversation.stream(
                 (chunk: string) => {
                     appLogger.log(`📦 Received chunk: "${chunk}"`);
                     assistantResponse += chunk;
@@ -594,6 +699,11 @@ export class ChatApp {
         // ====================================================================
         // STEP 5: ADD ASSISTANT MESSAGE TO CONVERSATION AND HISTORY
         // ====================================================================
+
+        // Memory Agent off → never persist unstruggle tags even if the model emits them.
+        if (!isCourseFeatureEnabled(course, 'memoryAgent')) {
+            assistantResponse = stripAllQuestionUnstruggleTags(assistantResponse);
+        }
 
         // Note: userId parameter is string but we'll parse it - should be numeric from session
         const assistantMessage = this.addAssistantMessage(chatId, assistantResponse, userId, courseName);
@@ -623,7 +733,11 @@ export class ChatApp {
         
         // Memory agent activates after 4 messages
 
-        if (this.isStruggleTopicsEnabledForChat(chatId)) {
+        // Memory agent activates after threshold when Socratic + course capability on
+        if (
+            this.isStruggleTopicsEnabledForChat(chatId) &&
+            isCourseFeatureEnabled(course, 'memoryAgent')
+        ) {
             try {
                 if (messageCount > MEMORY_AGENT_MIN_MESSAGES_THRESHOLD) {
                     const lastMessages = conversationHistory.slice(-3);
@@ -1288,9 +1402,28 @@ export class ChatApp {
      *
      * Current product phase: struggle topics are a Socratic-mode overlay only. Explanatory and
      * future modes do not receive struggle instructions, memory-agent analysis, or unstruggle tags.
+     * Course-level Memory Agent capability is checked separately at call sites.
      */
     private isStruggleTopicsEnabledForChat(chatId: string): boolean {
         return this.chatConversationModes.get(chatId) === 'socratic';
+    }
+
+    /**
+     * getCourseFeatures - load active course by name for capability and LLM settings.
+     *
+     * @param courseName - Human-readable course name used in chat pipelines
+     * @returns Active course or null when missing
+     * @throws When Mongo lookup fails (fail-closed — do not silently use platform LLM defaults)
+     */
+    private async getCourseFeatures(courseName: string): Promise<activeCourse | null> {
+        try {
+            const instance = await EngEAI_MongoDB.getInstance();
+            const course = await instance.getCourseByName(courseName);
+            return (course as activeCourse | null) ?? null;
+        } catch (error) {
+            appLogger.error('[CHAT] Failed to load course for features/LLM settings', error as Error);
+            throw error;
+        }
     }
 
     /**
@@ -1361,20 +1494,32 @@ export class ChatApp {
             conversationMode,
         });
 
-        // Fork: debug system prompt + non-system history (teaching system replaced for this call only)
+        // Fork: debug system prompt + user/assistant history (teaching system replaced for this call only)
         const forkedConversation = this.llmModule.createConversation();
         forkedConversation.addMessage('system', debugSystemPrompt);
         for (const msg of conversation.getHistory() as Message[]) {
-            if (msg.role === 'system') {
+            // Teaching system is replaced by the debug prompt; only replay user/assistant turns.
+            if (msg.role !== 'user' && msg.role !== 'assistant') {
                 continue;
             }
             forkedConversation.addMessage(msg.role, msg.content);
         }
 
         let assistantResponse = '';
-        const conversationConfig: any = { temperature: 0.3 };
-        if (this.llmProvider === 'ollama') {
-            conversationConfig.num_ctx = 32768;
+        const courseForLlm = await this.getCourseFeatures(courseName);
+        const modelSelection = ModelSelectionService.getInstance();
+        const debugBase = {
+            temperature: 0.3,
+            ...(this.llmProvider === 'ollama' ? { num_ctx: 32768 } : {}),
+        };
+        let conversationConfig;
+        try {
+            conversationConfig = courseForLlm?.id
+                ? await modelSelection.buildFeatureLlmCallOptions(courseForLlm.id, 'chat', debugBase)
+                : modelSelection.buildDefaultProviderOptions('chat', debugBase);
+        } catch (error) {
+            appLogger.error('[DEBUG-MODE] Failed to resolve chat LLM settings', error as Error);
+            throw error;
         }
 
         appLogger.log(`[DEBUG-MODE] Streaming prompt-engineer reply for chat ${chatId}`);

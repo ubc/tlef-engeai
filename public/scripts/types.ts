@@ -128,13 +128,82 @@ export interface InstructorInfo {
     name: string;
 }
 
+/** One optional course capability with first-enable provenance. */
+export interface CourseFeatureCapability {
+    enabled: boolean;
+    enabledAt?: Date;
+    enabledBy?: string;
+}
+
 // @rdschrs: Added the opt-in Writing Feedback capability contract to course state.
 export interface CourseFeatures {
-    writingFeedback?: {
-        enabled: boolean;
-        enabledAt?: Date;
-        enabledBy?: string;
-    };
+    writingFeedback?: CourseFeatureCapability;
+    memoryAgent?: CourseFeatureCapability;
+    guidedPathway?: CourseFeatureCapability;
+    scenarioGeneration?: CourseFeatureCapability;
+}
+
+/** UI catalog ids for course-wide LLM model selection (API contract). */
+export type CourseLlmModelId = 'gpt-5.6-luna' | 'gpt-5.4-mini' | 'gpt-4o-mini';
+
+/** App UI + persisted reasoning from dashboard catalog / PATCH (API contract). */
+export type AppReasoningLevel = 'none' | 'low' | 'medium' | 'high';
+
+/** Feature keys that each have their own model + reasoning selection. */
+export type LlmFeatureKey =
+    | 'chat'
+    | 'scenarioGeneration'
+    | 'writingFeedback'
+    | 'guidedPathway'
+    | 'memoryAgent';
+
+/** One feature's model + reasoning selection. */
+export interface FeatureLlmSelection {
+    modelId: CourseLlmModelId;
+    reasoningLevel: AppReasoningLevel;
+}
+
+/**
+ * Course-wide LLM settings: one selection per consuming feature.
+ * Must match src/types/shared.ts. Legacy flat rows are hydrated server-side.
+ */
+export interface CourseLlmSettings {
+    chat: FeatureLlmSelection;
+    scenarioGeneration: FeatureLlmSelection;
+    writingFeedback: FeatureLlmSelection;
+    guidedPathway: FeatureLlmSelection;
+    memoryAgent: FeatureLlmSelection;
+    updatedAt?: Date;
+    updatedBy?: string;
+}
+
+/** One reasoning row in the dashboard catalog API (ids + labels only; brains are client-side). */
+export interface LlmReasoningCatalogOption {
+    id: AppReasoningLevel;
+    label: string;
+}
+
+/** Model row returned by GET llm-model-catalog for dashboard pickers. */
+export interface LlmModelDashboardCatalogEntry {
+    id: CourseLlmModelId;
+    label: string;
+    costTier: 'low' | 'medium' | 'high';
+    reasoningOptions: LlmReasoningCatalogOption[];
+}
+
+/** GET `/api/courses/:courseId/llm-model-catalog` response body. */
+export interface LlmModelCatalogApiResponse {
+    models: LlmModelDashboardCatalogEntry[];
+    defaultSelection: FeatureLlmSelection;
+}
+
+/** PATCH `/api/courses/:courseId/llm-settings` request body. */
+export interface UpdateCourseLlmSettingsRequest {
+    chat: FeatureLlmSelection;
+    scenarioGeneration: FeatureLlmSelection;
+    writingFeedback: FeatureLlmSelection;
+    guidedPathway: FeatureLlmSelection;
+    memoryAgent: FeatureLlmSelection;
 }
 
 /**
@@ -172,6 +241,8 @@ export interface activeCourse {
     academicPeriodId?: string;
     /** Optional course capabilities. Missing entries are disabled for backward compatibility. */
     features?: CourseFeatures;
+    /** Per-feature LLM model + reasoning for Chat, Writing Feedback, Scenarios, Guided Pathway. */
+    llmSettings?: CourseLlmSettings;
 }
 
 /**

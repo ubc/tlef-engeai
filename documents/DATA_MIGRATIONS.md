@@ -240,6 +240,8 @@ See `documentation/ENDPOINT_ARCHITECTURE.md` (lazy restore migration note).
 
 Sets `instructorOnboardingCompleted` and `studentOnboardingCompleted` on `active-users` from existing course and roster data. Idempotent; runs every server restart.
 
+See `migrateOnboardingFlags` in `src/helpers/migrate-onboarding-flags.ts`.
+
 ---
 
 ## References

@@ -1,6 +1,6 @@
 {
   "name": "tlef-EngE-AI",
-  "version": "1.6.17",
+  "version": "1.7.13",
   "description": "",
   "main": "dist/server.js",
   "scripts": {
@@ -66,6 +66,7 @@
     "ubc-genai-toolkit-core": "^0.1.0",
     "ubc-genai-toolkit-document-parsing": "^0.1.0",
     "ubc-genai-toolkit-embeddings": "^0.1.0",
+    "ubc-genai-toolkit-llm": "^0.5.0",
     "ubc-genai-toolkit-rag": "^0.1.2",
     "xxhashjs": "^0.2.2",
     "zod": "^3.25.76"

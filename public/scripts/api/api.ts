@@ -50,7 +50,6 @@ export async function sendMessageToServer(text: string): Promise<MessageReply> {
  * monitor-setup, 
  * student-onboarding, 
  * about, 
- * course-information, 
  * assistant-prompts-instructor, 
  * system-prompts-instructor)
  * 
@@ -66,6 +65,7 @@ export async function loadComponentHTML(
                     | 'flag-instructor'
                     | 'monitor-instructor'
                     | 'documents-instructor'
+                    | 'dashboard-instructor'
                     | 'writing-feedback'
                     | 'course-setup'
                     | 'document-setup'
@@ -73,7 +73,6 @@ export async function loadComponentHTML(
                     | 'monitor-setup'
                     | 'student-onboarding'
                     | 'about'
-                    | 'course-information'
                     | 'assistant-prompts-instructor'
                     | 'system-prompts-instructor'
                     | 'scenarios-student'
@@ -104,6 +103,9 @@ export async function loadComponentHTML(
         case 'documents-instructor':
             response = await fetch(`/components/documents/${componentName}.html`);
             break;
+        case 'dashboard-instructor':
+            response = await fetch(`/components/dashboard/${componentName}.html`);
+            break;
         case 'writing-feedback':
             response = await fetch(`/components/writing-feedback/${componentName}.html`);
             break;
@@ -116,9 +118,6 @@ export async function loadComponentHTML(
             break;
         case 'about':
             response = await fetch(`/components/about/${componentName}.html`);
-            break;
-        case 'course-information':
-            response = await fetch(`/components/course-information/${componentName}.html`);
             break;
         case 'assistant-prompts-instructor':
             response = await fetch(`/components/assistant-prompts/${componentName}.html`);

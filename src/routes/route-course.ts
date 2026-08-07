@@ -14,7 +14,7 @@ import { isCourseStaff } from '../utils/course-staff';
 import { isAdminUser } from '../utils/admin';
 import { normalizeRouteParams } from '../helpers/route-params';
 // @rdschrs: Implemented the capability-gated Writing Feedback instructor page.
-import { isCourseFeatureEnabled } from '../helpers/course-features';
+import { CourseFeatureId, isCourseFeatureEnabled } from '../dashboard-setting/course-features';
 import { sendHtmlPageWithBuildComment } from '../utils/build-info';
 
 const router = express.Router();
@@ -101,20 +101,45 @@ function requireInstructorForCourse(req: Request, res: Response, next: express.N
 }
 
 /**
- * requireWritingFeedbackFeaturePage — prevents disabled courses from serving the workspace shell.
+ * requireCourseFeaturePage — redirects to dashboard when a course capability is off.
  *
- * Runs after course access and instructor-role validation. Missing capability
- * configuration is disabled and redirects staff to the existing Documents page.
+ * Runs after course access and instructor-role validation. Uses the generalized
+ * notice query so the SPA can show Feature unavailable.
+ */
+function requireCourseFeaturePage(feature: CourseFeatureId) {
+    return (req: Request, res: Response, next: express.NextFunction) => {
+        const course = (req as any).courseContext?.course;
+
+        if (!isCourseFeatureEnabled(course, feature)) {
+            const { courseId } = normalizeRouteParams(req.params);
+            return res.redirect(
+                `/course/${courseId}/instructor/dashboard?notice=feature-disabled&feature=${feature}`
+            );
+        }
+        next();
+    };
+}
+
+/**
+ * requireStudentCourseFeaturePage — redirects students to student home when a capability is off.
+ */
+function requireStudentCourseFeaturePage(feature: CourseFeatureId) {
+    return (req: Request, res: Response, next: express.NextFunction) => {
+        const course = (req as any).courseContext?.course;
+
+        if (!isCourseFeatureEnabled(course, feature)) {
+            const { courseId } = normalizeRouteParams(req.params);
+            return res.redirect(`/course/${courseId}/student`);
+        }
+        next();
+    };
+}
+
+/**
+ * requireWritingFeedbackFeaturePage — Writing Feedback page gate (delegates to generic).
  */
 function requireWritingFeedbackFeaturePage(req: Request, res: Response, next: express.NextFunction) {
-    const course = (req as any).courseContext?.course;
-
-    // Treat legacy courses without feature metadata as opted out.
-    if (!isCourseFeatureEnabled(course, 'writingFeedback')) {
-        const { courseId } = normalizeRouteParams(req.params);
-        return res.redirect(`/course/${courseId}/instructor/documents?notice=writing-feedback-disabled`);
-    }
-    next();
+    return requireCourseFeaturePage('writingFeedback')(req, res, next);
 }
 
 /**
@@ -211,7 +236,17 @@ function serveStudentShell() {
  * @response 404 - Course not found
  * @response 500 - Server error
  */
+router.get('/course/:courseId/instructor/dashboard', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
 router.get('/course/:courseId/instructor/documents', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+/**
+ * GET /course/:courseId/instructor/settings
+ * Legacy path — redirects to dashboard (Advanced Settings panel).
+ */
+router.get('/course/:courseId/instructor/settings', validateCourseAccess, requireInstructorForCourse, (req, res) => {
+    res.redirect(302, `/course/${req.params.courseId}/instructor/dashboard`);
+});
 
 /**
  * GET /course/:courseId/instructor/writing-feedback
@@ -307,26 +342,33 @@ router.get('/course/:courseId/instructor/system-prompts', validateCourseAccess, 
  * @response 301 - Redirect (auth/role failure)
  * @response 404 - Course not found
  */
-router.get('/course/:courseId/instructor/scenario-questions', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+router.get(
+    '/course/:courseId/instructor/scenario-questions',
+    validateCourseAccess,
+    requireInstructorForCourse,
+    requireCourseFeaturePage('scenarioGeneration'),
+    serveInstructorShell()
+);
 
 /**
  * GET /course/:courseId/instructor/pathway-library
  * Guided Pathway Library — instructor-configurable pre-LLM intercepts.
  */
-router.get('/course/:courseId/instructor/pathway-library', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+router.get(
+    '/course/:courseId/instructor/pathway-library',
+    validateCourseAccess,
+    requireInstructorForCourse,
+    requireCourseFeaturePage('guidedPathway'),
+    serveInstructorShell()
+);
 
 /**
  * GET /course/:courseId/instructor/course-information
- * Serves course information page. Requires course access and instructor role.
- *
- * @route GET /course/:courseId/instructor/course-information
- * @param {string} courseId - Course ID (path param)
- * @returns {void} Serves instructor-mode.html
- * @response 200 - Course information page
- * @response 301 - Redirect (auth/role failure)
- * @response 404 - Course not found
+ * Legacy path — redirects to dashboard (Advanced Settings + course-code topbar).
  */
-router.get('/course/:courseId/instructor/course-information', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+router.get('/course/:courseId/instructor/course-information', validateCourseAccess, requireInstructorForCourse, (req, res) => {
+    res.redirect(302, `/course/${req.params.courseId}/instructor/dashboard`);
+});
 
 
 /**
@@ -464,7 +506,13 @@ router.get('/course/:courseId/student/chat', validateCourseAccess, requireStuden
  * @response 301 - Redirect (auth/role failure)
  * @response 404 - Course not found
  */
-router.get('/course/:courseId/student/scenarios', validateCourseAccess, requireStudentForCourse, serveStudentShell());
+router.get(
+    '/course/:courseId/student/scenarios',
+    validateCourseAccess,
+    requireStudentForCourse,
+    requireStudentCourseFeaturePage('scenarioGeneration'),
+    serveStudentShell()
+);
 
 
 /**
@@ -541,13 +589,13 @@ router.get('/course/:courseId/student/onboarding/student', validateCourseAccess,
  *
  * @route GET /course/:courseId/instructor
  * @param {string} courseId - Course ID (path param)
- * @returns {void} Redirects to /course/:courseId/instructor/documents
- * @response 301 - Redirect to documents
+ * @returns {void} Redirects to /course/:courseId/instructor/dashboard
+ * @response 301 - Redirect to dashboard
  * @response 404 - Course not found
  */
 router.get('/course/:courseId/instructor', validateCourseAccess, requireInstructorForCourse, (req: Request, res: Response) => {
     const { courseId } = normalizeRouteParams(req.params);
-    res.redirect(`/course/${courseId}/instructor/documents`);
+    res.redirect(`/course/${courseId}/instructor/dashboard`);
 });
 
 export default router;

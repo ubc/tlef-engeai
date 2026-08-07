@@ -26,6 +26,7 @@ import {
     buildStruggleGenerationUserTurn,
 } from './struggle-generation-prompt';
 import { isMockResponse, getMockGeneratedStruggleTopics } from '../helpers/mock-response';
+import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 import {
     getPredeterminedLabels,
     resolveTopicNumber,
@@ -335,8 +336,10 @@ export class StruggleTopicGenerator {
         }
 
         if (rawTopics === undefined) {
+            const modelSelection = ModelSelectionService.getInstance();
             if (isMockResponse()) {
                 appLogger.log('[STRUGGLE-GEN] Mock response — using mock generated struggle topics');
+                await modelSelection.buildFeatureLlmCallOptions(input.courseId, 'memoryAgent');
                 rawTopics = getMockGeneratedStruggleTopics();
             } else {
                 const systemPrompt = buildStruggleGenerationSystemPrompt();
@@ -345,10 +348,14 @@ export class StruggleTopicGenerator {
                     { role: 'user', content: userTurn },
                 ];
 
+                const llmCallOptions = await modelSelection.buildFeatureLlmCallOptions(
+                    input.courseId,
+                    'memoryAgent'
+                );
                 const response = await this.llmModule.sendStructuredConversation(
                     messages,
                     struggleGenerationResponseSchema,
-                    { structuredOutputName: 'struggle_generation' }
+                    { structuredOutputName: 'struggle_generation', ...llmCallOptions }
                 );
 
                 rawTopics = response?.parsed?.struggleTopics ?? [];

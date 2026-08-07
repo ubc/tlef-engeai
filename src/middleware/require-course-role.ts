@@ -18,7 +18,7 @@ import { appLogger } from '../utils/logger';
 import { asRouteParam } from '../helpers/route-params';
 import type { activeCourse, GlobalUser } from '../types/shared';
 // @rdschrs: Implemented RBAC-ordered optional course capability enforcement.
-import { CourseFeatureId, isCourseFeatureEnabled } from '../helpers/course-features';
+import { CourseFeatureId, isCourseFeatureEnabled } from '../dashboard-setting/course-features';
 
 type CourseIdSource = 'params' | 'paramsId' | 'body' | 'query' | 'session';
 

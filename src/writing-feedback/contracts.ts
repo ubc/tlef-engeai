@@ -11,6 +11,8 @@
  * @description: Owns the staff-only Writing Feedback domain and port contracts.
  */
 
+import type { LLMOptions } from 'ubc-genai-toolkit-llm';
+
 /** Immutable profile identifier stored with assignments and feedback runs for traceability. */
 export const A2_PROFILE_VERSION = 'lled200-a2-technical-description-v1';
 
@@ -259,7 +261,11 @@ export interface OcrProvider {
 /** Structured feedback generator constrained by the assignment's approved rubric. */
 export interface WritingFeedbackEngine {
     /** Generates and validates a model draft from staff-verified text only. */
-    generate(input: { assignment: WritingAssignment; verifiedText: string }): Promise<A2FeedbackResult>;
+    generate(input: {
+        assignment: WritingAssignment;
+        verifiedText: string;
+        llmCallOptions?: LLMOptions;
+    }): Promise<A2FeedbackResult>;
 }
 
 /** Student PDF section selector used by staff download endpoints. */

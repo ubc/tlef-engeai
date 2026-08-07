@@ -23,7 +23,7 @@ export function resolveInstructorModeRedirect(
     if (!courseData.monitorSetup) {
         return { redirect: `/course/${courseId}/instructor/onboarding/monitor-setup`, requiresOnboarding: true };
     }
-    return { redirect: `/course/${courseId}/instructor/documents`, requiresOnboarding: false };
+    return { redirect: `/course/${courseId}/instructor/dashboard`, requiresOnboarding: false };
 }
 
 /**

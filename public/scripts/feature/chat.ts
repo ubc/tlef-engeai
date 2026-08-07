@@ -16,7 +16,6 @@ import {
     ConversationModeId,
     PersistedConversationModeId,
     CourseUser,
-    activeCourse,
     ChatManagerConfig,
     CreateChatRequest,
     PathwayCta,
@@ -233,6 +232,13 @@ export class ChatManager {
     private constructor(config: ChatManagerConfig) {
         this.config = config;
         this.renderChat = new RenderChat();
+    }
+
+    /**
+     * renderMessageHtml - render bot/user markdown (tags rendered when present; server gates emission).
+     */
+    private renderMessageHtml(text: string, messageId?: string): string {
+        return this.renderChat.render(text, messageId);
     }
 
     /**
@@ -1089,7 +1095,7 @@ export class ChatManager {
         // }
         
         // NEW: Markdown + LaTeX rendering with messageId for artifacts
-        contentEl.innerHTML = this.renderChat.render(newText, messageId);
+        contentEl.innerHTML = this.renderMessageHtml(newText, messageId);
         renderLatexInHtmlContent(contentEl);
         
         this.renderFeatherIconsWithComposerSync();
@@ -1156,7 +1162,7 @@ export class ChatManager {
             
             // Update DOM with accumulated text
             // Use renderChat.render for markdown + LaTeX support
-            contentEl.innerHTML = this.renderChat.render(accumulatedText, messageId);
+            contentEl.innerHTML = this.renderMessageHtml(accumulatedText, messageId);
             renderLatexInHtmlContent(contentEl);
             
             // Scroll to bottom as text streams
@@ -1169,7 +1175,7 @@ export class ChatManager {
         }
 
         // Final render to ensure everything is properly formatted
-        contentEl.innerHTML = this.renderChat.render(fullText, messageId);
+        contentEl.innerHTML = this.renderMessageHtml(fullText, messageId);
         renderLatexInHtmlContent(contentEl);
         this.renderFeatherIconsWithComposerSync();
         this.scrollToBottom();
@@ -1923,7 +1929,7 @@ export class ChatManager {
                         // }
                         
                         // NEW: Markdown + LaTeX rendering with messageId for artifacts
-                        (botContentElement as HTMLElement).innerHTML = this.renderChat.render(content, botMessage.id);
+                        (botContentElement as HTMLElement).innerHTML = this.renderMessageHtml(content, botMessage.id);
                         renderLatexInHtmlContent(botContentElement as HTMLElement);
                         
                         this.scrollToBottom();
@@ -1956,7 +1962,7 @@ export class ChatManager {
                     // }
                     
                     // NEW: Markdown + LaTeX rendering with messageId for artifacts
-                    (botContentElement as HTMLElement).innerHTML = this.renderChat.render(message.text, message.id);
+                    (botContentElement as HTMLElement).innerHTML = this.renderMessageHtml(message.text, message.id);
                     renderLatexInHtmlContent(botContentElement as HTMLElement);
                     this.appendPathwayCtas(botContentElement as HTMLElement, message.ctas);
                     
@@ -2321,7 +2327,7 @@ export class ChatManager {
         // Process artefacts for all messages (including initial messages)
         if (sender === 'bot') {
             // NEW: Direct markdown + LaTeX rendering with messageId for artifacts
-            contentEl.innerHTML = this.renderChat.render(text, messageId);
+            contentEl.innerHTML = this.renderMessageHtml(text, messageId);
             renderLatexInHtmlContent(contentEl);
             this.appendPathwayCtas(contentEl, ctas);
         } else {

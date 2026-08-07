@@ -28,6 +28,7 @@
     <link rel="stylesheet" href="/styles/instructor-components/pathway-library.css">
     <link rel="stylesheet" href="/styles/chat-components/pathway-ctas.css">
     <link rel="stylesheet" href="/styles/scenario-generation/sg-shared.css">
+    <link rel="stylesheet" href="/styles/instructor-components/dashboard.css">
     
     
     <!-- KaTeX CSS -->
@@ -73,6 +74,10 @@
                     <div class="sidebar-content" id="sidebar-content">
                         <div class="sidebar-menu-list">
                             <ul>
+                                <li><button id="dashboard-state" class="menu-list-item" type="button">
+                                    <i data-feather="grid" aria-hidden="true"></i>
+                                    <p>Dashboard</p>
+                                </button></li>
                                 <li><button id="documents-state" class="menu-list-item" type="button">
                                     <i data-feather="file-text" aria-hidden="true"></i>
                                     <p>Document</p>
@@ -94,18 +99,18 @@
                                     <p>Monitor</p>
                                 </button></li>
                                 <li><button id="assistant-prompts-state" class="menu-list-item" type="button">
-                                    <i data-feather="message-square" aria-hidden="true"></i>
+                                    <i data-feather="sun" aria-hidden="true"></i>
                                     <p>Initial Assistant Prompt</p>
                                 </button></li>
                                 <li><button id="system-prompts-state" class="menu-list-item" type="button">
-                                    <i data-feather="settings" aria-hidden="true"></i>
+                                    <i data-feather="sliders" aria-hidden="true"></i>
                                     <p>System Prompt</p>
                                 </button></li>
-                                <li><button id="scenario-questions-state" class="menu-list-item" type="button">
+                                <li><button id="scenario-questions-state" class="menu-list-item" type="button" hidden>
                                     <i data-feather="clipboard" aria-hidden="true"></i>
                                     <p>Scenario Questions</p>
                                 </button></li>
-                                <li><button id="pathway-library-state" class="menu-list-item" type="button">
+                                <li><button id="pathway-library-state" class="menu-list-item" type="button" hidden>
                                     <i data-feather="git-branch" aria-hidden="true"></i>
                                     <p>Pathway Library</p>
                                 </button></li>
@@ -116,10 +121,6 @@
                 
                 <!-- Sidebar Footer with Logout Button - INSIDE instructor-feature-sidebar -->
                 <div class="instructor-sidebar-footer">
-                    <button class="instructor-course-info-btn" id="instructor-course-info-btn">
-                        <i data-feather="settings"></i>
-                        <p>Course Information</p>
-                    </button>
                     <button class="instructor-about-btn" id="instructor-about-btn">
                         <i data-feather="info"></i>
                         <p>About</p>

@@ -24,6 +24,9 @@ export class RenderChat {
      * 2. Artifacts (<Artefact>...</Artefact> → delegated to ArtefactHandler)
      * 3. LaTeX ($...$ and $$...$$ → wrapped for KaTeX)
      * 4. Markdown formatting
+     *
+     * Unstruggle / scenario-suggestion tags are always rendered when present;
+     * server capability gates decide whether those tags are emitted or persisted.
      */
     public render(text: string, messageId?: string): string {
         let html = text;
@@ -42,7 +45,7 @@ export class RenderChat {
         // Step 3.5: Process questionUnstruggle tags
         html = this.processQuestionUnstruggle(html, messageId);
 
-        // Step 3.6: Process scenarioSuggestions tags (unstruggle Yes follow-up)
+        // Step 3.6: Process scenarioSuggestions tags
         html = this.processScenarioSuggestions(html);
         
         // Step 4: Process markdown formatting

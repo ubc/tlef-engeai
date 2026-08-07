@@ -5,6 +5,7 @@
 import type { AcademicPeriodDocument, activeCourse, GlobalUser, InstructorInfo } from '../types/shared';
 import { isAdminUser } from '../utils/admin';
 import { isCourseStaff } from '../utils/course-staff';
+import { coursePayloadForViewer } from '../dashboard-setting/course-student-view';
 
 /** True when user may enter or list this course (non-admin). */
 export function isCourseAccessible(course: activeCourse, globalUser: GlobalUser): boolean {
@@ -79,7 +80,7 @@ export function buildCourseSelectionByPeriod(
             ...period,
             courseCount: periodCourses.length,
             courses: periodCourses.map((c) => ({
-                ...c,
+                ...coursePayloadForViewer(c, globalUser),
                 instructorDisplay: mapInstructorNames(c)
             }))
         };

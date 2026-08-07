@@ -23,6 +23,7 @@ import { getRandomNoResponse } from '../memory-agent/unstruggle-responses';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import { suggestPracticeAfterUnstruggleYes } from '../memory-agent/unstruggle-yes-followup';
 import { stripQuestionUnstruggleTag } from '../utils/message-utils';
+import { isCourseFeatureEnabled } from '../dashboard-setting/course-features';
 import { appLogger } from '../utils/logger';
 import { normalizeRouteParams } from '../helpers/route-params';
 
@@ -703,11 +704,15 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
 
         // Check if this is a questionUnstruggle response (natural language format)
         // Format: "yes, I am confident with [topic]" or "I might need some practice with [topic]"
+        // Memory Agent off → never take the special unstruggle path (fall through to normal chat).
+        const courseForFeatures = await mongoDB.getCourseByName(courseName);
+        const memoryAgentEnabled = isCourseFeatureEnabled(courseForFeatures, 'memoryAgent');
+
         const yesPattern = /yes,?\s+I\s+(?:am\s+)?confident\s+with\s+["'](.+?)["']/i;
         const noPattern = /I\s+might\s+need\s+some\s+practice\s+with\s+["'](.+?)["']/i;
         
-        const yesMatch = message.match(yesPattern);
-        const noMatch = message.match(noPattern);
+        const yesMatch = memoryAgentEnabled ? message.match(yesPattern) : null;
+        const noMatch = memoryAgentEnabled ? message.match(noPattern) : null;
         
         if (yesMatch || noMatch) {
             const topic = yesMatch ? yesMatch[1] : noMatch![1];

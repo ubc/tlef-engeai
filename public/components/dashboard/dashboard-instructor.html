@@ -1,0 +1,204 @@
+<!-- DASHBOARD — instructor home with feature cards + Advanced Settings -->
+<link rel="stylesheet" href="/styles/instructor-components/dashboard.css">
+
+<div class="dashboard-content-area">
+    <div class="dashboard-grid-view">
+        <header class="dashboard-page-header dashboard-topbar" id="dashboard-topbar">
+            <div class="dashboard-topbar-main">
+                <div class="dashboard-topbar-title-row">
+                    <button id="instructor-hamburger-btn" class="instructor-mobile-hamburger-btn icon-btn dashboard-mobile-menu-btn" title="Open menu" aria-label="Open menu">
+                        <i data-feather="menu"></i>
+                    </button>
+                    <h1 class="dashboard-page-title">Dashboard</h1>
+                </div>
+            </div>
+            <div class="dashboard-code-flip" id="dashboard-code-flip">
+                <span class="dashboard-code-title">Course Code</span>
+                <div class="dashboard-code-body-flip">
+                    <div class="dashboard-code-body-flip-inner">
+                        <button
+                            type="button"
+                            class="dashboard-code-flip-front"
+                            id="dashboard-code-flip-btn"
+                            aria-expanded="false"
+                            aria-label="Show course code"
+                        >
+                            <span class="dashboard-code-flip-body">
+                                <span class="dashboard-code-masked" id="dashboardCourseCodeMasked">*****</span>
+                            </span>
+                        </button>
+                        <div class="dashboard-code-flip-back">
+                            <div class="dashboard-code-flip-body">
+                                <button
+                                    type="button"
+                                    class="dashboard-code-revealed-btn"
+                                    id="dashboard-code-hide-btn"
+                                    aria-label="Hide course code"
+                                >
+                                    <span class="dashboard-course-code-value" id="dashboardCourseCodeDisplay">————</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="dashboard-copy-code-btn"
+                                    id="dashboardCopyCourseCodeBtn"
+                                    title="Copy course code"
+                                    aria-label="Copy course code"
+                                >
+                                    <i data-feather="copy"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="dashboard-main-content" id="dashboard-main-content">
+            <div class="dashboard-content-intro">
+                <p id="dashboard-welcome" class="dashboard-welcome"></p>
+                <p id="dashboard-date" class="dashboard-date"></p>
+            </div>
+            <div id="dashboard-cards" class="dashboard-cards" role="list" aria-label="Course tools"></div>
+
+            <section class="dashboard-advanced-settings" id="dashboard-advanced-settings">
+                <h2 class="dashboard-advanced-heading">Advanced Settings</h2>
+                <hr class="dashboard-advanced-divider" aria-hidden="true">
+
+                <div class="dashboard-accordion-item" id="dashboard-model-accordion">
+                    <div class="dashboard-accordion-shell">
+                        <button
+                            type="button"
+                            class="dashboard-accordion-toggle"
+                            id="dashboard-model-toggle"
+                            aria-expanded="false"
+                            aria-controls="dashboard-model-body"
+                        >
+                            <span>Model Settings</span>
+                            <i data-feather="chevron-down" class="dashboard-accordion-chevron" aria-hidden="true"></i>
+                        </button>
+                        <div class="dashboard-accordion-body" id="dashboard-model-body">
+                            <div class="dashboard-accordion-body-inner">
+                                <p id="dashboard-model-ta-note" class="dashboard-accordion-note" hidden>
+                                    Only an instructor or platform admin can change model settings.
+                                </p>
+
+                                <div id="modelSettingFeatures" class="model-setting-features"></div>
+
+                                <button class="dashboard-save-model-btn" id="saveModelSettings" type="button" disabled>Save</button>
+                                <p id="settingsModelStatus" class="dashboard-accordion-note" aria-live="polite"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-accordion-item" id="dashboard-features-accordion">
+                    <div class="dashboard-accordion-shell">
+                        <button
+                            type="button"
+                            class="dashboard-accordion-toggle"
+                            id="dashboard-features-toggle"
+                            aria-expanded="false"
+                            aria-controls="dashboard-features-body"
+                        >
+                            <span>Extra Feature</span>
+                            <i data-feather="chevron-down" class="dashboard-accordion-chevron" aria-hidden="true"></i>
+                        </button>
+                        <div class="dashboard-accordion-body" id="dashboard-features-body">
+                            <div class="dashboard-accordion-body-inner">
+                                <p id="dashboard-features-ta-note" class="dashboard-accordion-note" hidden>
+                                    Only an instructor or platform admin can change extra features.
+                                </p>
+                                <fieldset class="form-group dashboard-features">
+                                    <label class="dashboard-feature-row" for="settingsWritingFeedback">
+                                        <span class="dashboard-feature-title">Writing Feedback</span>
+                                        <span class="dashboard-feature-toggle">
+                                            <input type="checkbox" id="settingsWritingFeedback">
+                                        </span>
+                                    </label>
+
+                                    <label class="dashboard-feature-row" for="settingsMemoryAgent">
+                                        <span class="dashboard-feature-title">Memory Agent</span>
+                                        <span class="dashboard-feature-toggle">
+                                            <input type="checkbox" id="settingsMemoryAgent">
+                                        </span>
+                                    </label>
+
+                                    <label class="dashboard-feature-row" for="settingsGuidedPathway">
+                                        <span class="dashboard-feature-title">Guided Pathway</span>
+                                        <span class="dashboard-feature-toggle">
+                                            <input type="checkbox" id="settingsGuidedPathway">
+                                        </span>
+                                    </label>
+
+                                    <label class="dashboard-feature-row" for="settingsScenarioGeneration">
+                                        <span class="dashboard-feature-title">Scenario Generation</span>
+                                        <span class="dashboard-feature-toggle">
+                                            <input type="checkbox" id="settingsScenarioGeneration">
+                                        </span>
+                                    </label>
+
+                                    <div class="dashboard-features-actions">
+                                        <p id="settingsFeatureStatus" role="status" aria-live="polite"></p>
+                                        <button class="dashboard-save-features-btn" id="saveCourseFeatures" type="button" disabled>Save</button>
+                                    </div>
+                                </fieldset>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-accordion-item" id="dashboard-course-info-accordion">
+                    <div class="dashboard-accordion-shell">
+                        <button
+                            type="button"
+                            class="dashboard-accordion-toggle"
+                            id="dashboard-course-info-toggle"
+                            aria-expanded="false"
+                            aria-controls="dashboard-course-info-body"
+                        >
+                            <span>Course Information</span>
+                            <i data-feather="chevron-down" class="dashboard-accordion-chevron" aria-hidden="true"></i>
+                        </button>
+                        <div class="dashboard-accordion-body" id="dashboard-course-info-body">
+                            <div class="dashboard-accordion-body-inner">
+                                <div class="form-group">
+                                    <label for="courseInfoCourseName">Course Name</label>
+                                    <p id="courseInfoCourseName" class="dashboard-readonly"></p>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="courseInfoInstructors">Instructors</label>
+                                    <p id="courseInfoInstructors" class="dashboard-readonly">None</p>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="courseInfoTAs">Teaching Assistants</label>
+                                    <p id="courseInfoTAs" class="dashboard-readonly">None</p>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Course Organization</label>
+                                    <div class="dashboard-radio-options">
+                                        <div class="dashboard-radio-option">
+                                            <input type="radio" id="courseInfoByWeek" name="courseInfoDivision" value="byWeek" disabled>
+                                            <label for="courseInfoByWeek">By Week</label>
+                                        </div>
+                                        <div class="dashboard-radio-option">
+                                            <input type="radio" id="courseInfoByTopic" name="courseInfoDivision" value="byTopic" disabled>
+                                            <label for="courseInfoByTopic">By Topic</label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="courseInfoContentCount" id="courseInfoCountDescription">Number of Sections</label>
+                                    <input type="number" id="courseInfoContentCount" class="dashboard-form-input" min="1" max="52" readonly>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>

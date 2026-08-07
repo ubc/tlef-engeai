@@ -26,6 +26,7 @@ import { isMockResponse, getMockStruggleWords } from '../helpers/mock-response';
 import { getStruggleLabelsFromEntry, sanitizeStruggleLabels } from '../helpers/struggle-chapter-normalize';
 import type { InstructorStruggleTopicForDisplay } from '../types/shared';
 import { appLogger } from '../utils/logger';
+import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 
 // =====================================================
 // Struggle analysis schema + catalog filter
@@ -462,21 +463,24 @@ export class MemoryAgent {
             );
             appLogger.log(userMessages);
 
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const course = await mongoDB.getCourseByName(courseName);
+            if (!course?.id) {
+                appLogger.warn(`[MEMORY-AGENT] ⚠️ Course not found for name: ${courseName}, skipping analysis`);
+                return;
+            }
+
+            const modelSelection = ModelSelectionService.getInstance();
+
             if (isMockResponse()) {
                 appLogger.log(`[MEMORY-AGENT] Mock response active - skipping LLM analysis, using mock struggle words`);
+                await modelSelection.buildFeatureLlmCallOptions(course.id, 'memoryAgent');
                 const mockStruggleWords = getMockStruggleWords();
                 appLogger.log(`[MEMORY-AGENT] ✅ Using mock struggle words:`, mockStruggleWords);
 
                 if (mockStruggleWords.length > 0) {
                     await this.updateStruggleWords(userId, courseName, mockStruggleWords);
                 }
-                return;
-            }
-
-            const mongoDB = await EngEAI_MongoDB.getInstance();
-            const course = await mongoDB.getCourseByName(courseName);
-            if (!course?.id) {
-                appLogger.warn(`[MEMORY-AGENT] ⚠️ Course not found for name: ${courseName}, skipping analysis`);
                 return;
             }
 
@@ -506,10 +510,14 @@ export class MemoryAgent {
                 { role: 'user', content: userTurn }
             ];
 
+            const llmCallOptions = await modelSelection.buildFeatureLlmCallOptions(
+                course.id,
+                'memoryAgent'
+            );
             const response = await this.llmModule.sendStructuredConversation(
                 messages,
                 struggleAnalysisResponseSchema,
-                { structuredOutputName: 'struggle_analysis' }
+                { structuredOutputName: 'struggle_analysis', ...llmCallOptions }
             );
 
             const rawTopics = response?.parsed?.struggleTopics ?? [];

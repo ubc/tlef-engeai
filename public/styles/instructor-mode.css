@@ -232,7 +232,6 @@ body {
 /* Instructor Sidebar Footer — same collapse animation pattern as student .sidebar-footer */
 .instructor-sidebar-footer .instructor-about-btn,
 .instructor-sidebar-footer .instructor-logout-btn,
-.instructor-sidebar-footer .instructor-course-info-btn,
 .instructor-sidebar-footer .instructor-course-selection-btn {
     width: 100%;
     display: flex;
@@ -254,7 +253,6 @@ body {
 
 .instructor-sidebar-footer .instructor-about-btn .feather,
 .instructor-sidebar-footer .instructor-logout-btn .feather,
-.instructor-sidebar-footer .instructor-course-info-btn .feather,
 .instructor-sidebar-footer .instructor-course-selection-btn .feather {
     width: 16px;
     height: 16px;
@@ -263,7 +261,6 @@ body {
 
 .instructor-sidebar-footer .instructor-about-btn p,
 .instructor-sidebar-footer .instructor-logout-btn p,
-.instructor-sidebar-footer .instructor-course-info-btn p,
 .instructor-sidebar-footer .instructor-course-selection-btn p {
     white-space: nowrap;
     opacity: 1;
@@ -286,12 +283,6 @@ body {
     border-color: var(--color-eng-red); 
 }
 
-.instructor-course-info-btn:hover { 
-    background-color: var(--color-chbe-green); 
-    color: white; 
-    border-color: var(--color-chbe-green); 
-}
-
 .instructor-course-selection-btn:hover { 
     background-color: var(--color-chbe-green); 
     color: white; 
@@ -308,7 +299,6 @@ body {
 /* Footer + logo text fade when feature sidebar collapses (mirrors student .sidebar.collapsed) */
 .instructor-feature-sidebar.collapsed .instructor-logout-btn p,
 .instructor-feature-sidebar.collapsed .instructor-about-btn p,
-.instructor-feature-sidebar.collapsed .instructor-course-info-btn p,
 .instructor-feature-sidebar.collapsed .instructor-course-selection-btn p {
     opacity: 0;
     max-width: 0;
@@ -316,7 +306,6 @@ body {
 
 .instructor-feature-sidebar.collapsed .instructor-logout-btn,
 .instructor-feature-sidebar.collapsed .instructor-about-btn,
-.instructor-feature-sidebar.collapsed .instructor-course-info-btn,
 .instructor-feature-sidebar.collapsed .instructor-course-selection-btn {
     padding: 0.5rem;
     justify-content: center;
@@ -517,6 +506,11 @@ body {
     width: 100%;
 }
 
+
+.sidebar-menu-list li[hidden],
+.sidebar-menu-list .menu-list-item[hidden] {
+    display: none !important;
+}
 
 .sidebar-menu-list .menu-list-item {
     height: 45px;
@@ -859,7 +853,6 @@ body {
     .instructor-sidebar .chat-list,
     .instructor-sidebar-footer .instructor-about-btn,
     .instructor-sidebar-footer .instructor-logout-btn,
-    .instructor-sidebar-footer .instructor-course-info-btn,
     .instructor-sidebar-footer .instructor-course-selection-btn,
     .instructor-sidebar-footer p,
     .instructor-feature-sidebar .logo-box,
