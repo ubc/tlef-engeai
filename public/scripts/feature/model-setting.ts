@@ -174,7 +174,10 @@ function syncFeatureRowInteractivity(container: HTMLElement): void {
             row.setAttribute('aria-disabled', 'true');
             row.setAttribute('aria-describedby', hintId);
             row.setAttribute('data-inactive-hint', inactiveHintText(feature.label));
-            if (!row.querySelector(`#${hintId}`)) {
+            const existingHint = row.querySelector(`#${hintId}`);
+            if (existingHint) {
+                existingHint.textContent = inactiveHintText(feature.label);
+            } else {
                 const hint = document.createElement('span');
                 hint.id = hintId;
                 hint.className = 'model-feature-inactive-hint';
@@ -208,7 +211,7 @@ function isFeatureInteractive(feature: FeatureCatalogEntry): boolean {
 }
 
 function inactiveHintText(label: string): string {
-    return `Activate ${label} under Extra Feature to set its model and reasoning.`;
+    return `${label} is deactivated`;
 }
 
 function findModelEntry(modelId: CourseLlmModelId): LlmModelDashboardCatalogEntry | undefined {

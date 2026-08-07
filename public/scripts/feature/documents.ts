@@ -97,7 +97,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         
         // Load learning objectives from database for all content items
         await loadAllLearningObjectives();
-        await loadAllStruggleTopics();
+        // Struggle-topic catalog API is gated by Memory Agent — skip when off (use embedded course payload).
+        if (currentClass.features?.memoryAgent?.enabled === true) {
+            await loadAllStruggleTopics();
+        }
 
     /**
      * Generate initial data based according to the currentClass
@@ -1218,6 +1221,15 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
             const struggleHeader = target.closest('.struggle-topics .objectives-header') as HTMLElement | null;
             if (struggleHeader) {
+                // Memory Agent off: section is shaded; mutate actions are disabled (expand still allowed).
+                if (struggleHeader.closest('.struggle-topics--inactive')) {
+                    const editBtn = target.closest('.catalog-edit-btn') as HTMLButtonElement | null;
+                    if (editBtn) {
+                        event.stopPropagation();
+                        return;
+                    }
+                }
+
                 const editBtn = target.closest('.catalog-edit-btn') as HTMLButtonElement | null;
                 if (editBtn) {
                     event.stopPropagation();
@@ -1365,6 +1377,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                     const contentId = button.dataset.content || '0';
 
                     if (inStruggleSection && action === 'add') {
+                        if (button.closest('.struggle-topics--inactive')) return;
                         addStruggleTopic(topicOrWeekId, contentId);
                         return;
                     }
@@ -1754,17 +1767,18 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             console.log(`Generated ${uploadResult.chunksGenerated} chunks in Qdrant`);
 
             const generatedCount = uploadResult.generatedStruggleTopics?.length ?? 0;
+            const memoryAgentOn = currentClass.features?.memoryAgent?.enabled === true;
             const sectionTitle = `${instance_topicOrWeek.title} / ${contentItem.title}`;
             const reviewTopicOrWeekId = topicOrWeekId;
             const reviewItemId = material.itemId;
 
-            // Return success info; review modal opens after upload success modal when topics were generated
+            // Return success info; review modal only when Memory Agent is on and topics were generated
             return {
                 success: true,
                 chunksGenerated: uploadResult.chunksGenerated,
                 generatedStruggleTopics: uploadResult.generatedStruggleTopics,
                 afterSuccess:
-                    generatedCount > 0 && courseId
+                    memoryAgentOn && generatedCount > 0 && courseId
                         ? async () => {
                               await loadStruggleTopics(reviewTopicOrWeekId, reviewItemId);
                               const refreshedTopics =
@@ -2140,6 +2154,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 label: topic.struggleTopic,
             }))
         );
+        applyStruggleTopicsInactiveState(struggleContainer);
 
         // Upload
         const uploadWrap = document.createElement('div');
@@ -2156,10 +2171,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
         item.appendChild(header);
         item.appendChild(objectivesContainer);
-        // Hide struggle-topic catalog when Memory Agent capability is off.
-        if (currentClass.features?.memoryAgent?.enabled === true) {
-            item.appendChild(struggleContainer);
-        }
+        // Always show Struggle Topics; shade + hint when Memory Agent is off.
+        item.appendChild(struggleContainer);
         item.appendChild(uploadWrap);
         // Append uploaded files list directly under the upload box
         if (materialsEl) item.appendChild(materialsEl);
@@ -2928,6 +2941,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     async function openStruggleTopicsEditForSection(topicOrWeekId: string, contentId: string): Promise<void> {
+        if (currentClass?.features?.memoryAgent?.enabled !== true) return;
         if (!courseId) {
             await showSimpleErrorModal('Cannot edit struggle topics: Course ID is missing.', 'Edit Struggle Topics');
             return;
@@ -2972,12 +2986,52 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     /**
+     * Shade Struggle Topics when Memory Agent is off; restore interactive controls when on.
+     *
+     * @param container - Root `.struggle-topics` element from the catalog builder
+     */
+    function applyStruggleTopicsInactiveState(container: HTMLElement): void {
+        const inactive = currentClass?.features?.memoryAgent?.enabled !== true;
+        const header = container.querySelector('.objectives-header') as HTMLElement | null;
+        const twId = header?.getAttribute('data-topic-or-week-instance') || '0';
+        const contentId = header?.getAttribute('data-content') || '0';
+        const hintId = `struggle-topics-inactive-hint-${twId}-${contentId}`;
+        container.classList.toggle('struggle-topics--inactive', inactive);
+
+        if (inactive) {
+            container.setAttribute('aria-disabled', 'true');
+            container.setAttribute('tabindex', '0');
+            container.setAttribute('aria-describedby', hintId);
+            if (!document.getElementById(hintId)) {
+                const hint = document.createElement('span');
+                hint.id = hintId;
+                hint.className = 'struggle-topics-inactive-hint';
+                hint.setAttribute('role', 'tooltip');
+                hint.textContent = 'Memory Agent is deactivated';
+                container.appendChild(hint);
+            }
+            container.querySelectorAll<HTMLButtonElement>('button').forEach((btn) => {
+                btn.disabled = true;
+            });
+            container.querySelectorAll<HTMLInputElement>('input').forEach((input) => {
+                input.disabled = true;
+            });
+        } else {
+            container.removeAttribute('aria-disabled');
+            container.removeAttribute('tabindex');
+            container.removeAttribute('aria-describedby');
+            document.getElementById(hintId)?.remove();
+        }
+    }
+
+    /**
      * Load instructor struggle topics from the API for every section on the page.
      *
      * @returns Promise<void>
      */
     async function loadAllStruggleTopics(): Promise<void> {
         if (!currentClass) return;
+        if (currentClass.features?.memoryAgent?.enabled !== true) return;
         try {
             for (const instance_topicOrWeek of courseData) {
                 for (const contentItem of instance_topicOrWeek.items) {
@@ -2993,6 +3047,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * Load instructor struggle topics for one section and refresh its DOM.
      *
      * GET `/api/courses/:courseId/.../struggle-topics` → updates `content.instructorStruggleTopics`.
+     * Quietly skips when Memory Agent is off (403) — catalog already comes from course sync.
      *
      * @param topicOrWeekId - Topic/week instance id
      * @param contentId - Content item id
@@ -3000,6 +3055,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      */
     async function loadStruggleTopics(topicOrWeekId: string, contentId: string): Promise<void> {
         if (!courseId) return;
+        if (currentClass?.features?.memoryAgent?.enabled !== true) return;
         try {
             const response = await fetch(
                 `/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/struggle-topics`,
@@ -3013,6 +3069,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                     content.instructorStruggleTopics = result.data || [];
                     refreshContentItem(topicOrWeekId, contentId);
                 }
+            } else if (response.status === 403 || result.feature === 'memoryAgent') {
+                // Feature gated — do not block Documents with an error modal.
+                return;
             } else {
                 await showSimpleErrorModal('Failed to load struggle topics: ' + result.error, 'Load Struggle Topics Error');
             }
@@ -3029,6 +3088,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @param contentId - Content item id
      */
     async function addStruggleTopic(topicOrWeekId: string, contentId: string) {
+        if (currentClass?.features?.memoryAgent?.enabled !== true) return;
         const input = document.getElementById(`new-struggle-${topicOrWeekId}-${contentId}`) as HTMLInputElement | null;
         if (!input) return;
         const text = input.value.trim();

@@ -759,6 +759,12 @@
     margin-left: -0.5rem;
     margin-right: -0.5rem;
     cursor: not-allowed;
+    transition: opacity 0.15s ease;
+}
+
+.model-feature-row--inactive:hover,
+.model-feature-row--inactive:focus-within {
+    opacity: 1;
 }
 
 .model-feature-inactive-hint {
@@ -791,6 +797,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .model-feature-row--inactive,
     .model-feature-inactive-hint {
         transition: none;
     }

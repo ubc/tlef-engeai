@@ -12,6 +12,7 @@ import { RAGApp } from '../rag/rag-app';
 import { AdditionalMaterial } from '../types/shared';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { requireInstructorForCourseAPI, requireInstructorGlobal } from '../middleware/require-course-role';
+import { isCourseFeatureEnabled } from '../dashboard-setting/course-features';
 import { runPostUploadStruggleGeneration } from './struggle-generation-upload';
 
 // Extend Request interface to include file property from multer
@@ -60,6 +61,17 @@ async function persistMaterialAndGenerateStruggleTopics(
         }
     }
 
+    // Resolve Memory Agent capability — generation must not run when the feature is off.
+    let memoryAgentEnabled = false;
+    if (courseId) {
+        try {
+            const course = await ragApp.mongoDBInstance.getActiveCourse(courseId);
+            memoryAgentEnabled = isCourseFeatureEnabled(course, 'memoryAgent');
+        } catch (featureError) {
+            appLogger.error('Failed to resolve Memory Agent feature for struggle generation:', featureError);
+        }
+    }
+
     return runPostUploadStruggleGeneration({
         courseId,
         topicOrWeekId,
@@ -69,6 +81,7 @@ async function persistMaterialAndGenerateStruggleTopics(
         itemTitle: itemTitle ?? result.itemTitle,
         materialName: result.name,
         mongoMaterialSaved: mongoSaveSucceeded,
+        memoryAgentEnabled,
     });
 }
 

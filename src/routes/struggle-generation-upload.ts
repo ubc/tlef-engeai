@@ -18,10 +18,14 @@ export interface PostUploadStruggleGenerationContext {
     itemTitle: string;
     materialName: string;
     mongoMaterialSaved: boolean;
+    /** When false, skip LLM catalog generation (Memory Agent capability off). */
+    memoryAgentEnabled?: boolean;
 }
 
 /**
  * Invokes struggle-topic generation after a successful material upload when prerequisites are met.
+ *
+ * Skips when Memory Agent is disabled — determination must not run for a deactivated capability.
  *
  * @param ctx - Upload context including Mongo save status and section identifiers.
  * @returns Payload fields to merge into the RAG upload 201 `data` object.
@@ -29,6 +33,14 @@ export interface PostUploadStruggleGenerationContext {
 export async function runPostUploadStruggleGeneration(
     ctx: PostUploadStruggleGenerationContext
 ): Promise<UploadStruggleGenerationPayload> {
+    // Memory Agent off: do not determine or append struggle topics.
+    if (ctx.memoryAgentEnabled !== true) {
+        return {
+            generatedStruggleTopics: [],
+            struggleGenerationSkipped: true,
+        };
+    }
+
     if (!ctx.mongoMaterialSaved) {
         return {
             generatedStruggleTopics: [],

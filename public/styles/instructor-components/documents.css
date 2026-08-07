@@ -591,6 +591,59 @@ button.content-status {
     margin: 10px 0;
 }
 
+.struggle-topics {
+    position: relative;
+}
+
+.struggle-topics--inactive {
+    opacity: 0.55;
+    background-color: rgba(0, 0, 0, 0.03);
+    border-radius: 8px;
+    cursor: not-allowed;
+    transition: opacity 0.15s ease;
+}
+
+.struggle-topics--inactive:hover,
+.struggle-topics--inactive:focus-within {
+    opacity: 1;
+}
+
+.struggle-topics-inactive-hint {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 6px);
+    transform: translateX(-50%);
+    z-index: 40;
+    max-width: min(280px, 90vw);
+    padding: 0.45rem 0.65rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #d8d8d8);
+    background: var(--background-2, #fff);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.35;
+    color: var(--text-primary, #1a1a1a);
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.15s ease, visibility 0.15s ease;
+}
+
+.struggle-topics--inactive:hover .struggle-topics-inactive-hint,
+.struggle-topics--inactive:focus-within .struggle-topics-inactive-hint {
+    opacity: 1;
+    visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .struggle-topics--inactive,
+    .struggle-topics-inactive-hint {
+        transition: none;
+    }
+}
+
 .objectives-accordion {
     background: var(--gingham-color);
     border-radius: 8px;

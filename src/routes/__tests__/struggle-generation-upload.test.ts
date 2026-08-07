@@ -19,6 +19,7 @@ describe('runPostUploadStruggleGeneration', () => {
         itemTitle: 'Lecture notes',
         materialName: 'Week 8 notes',
         mongoMaterialSaved: true,
+        memoryAgentEnabled: true,
     };
 
     beforeEach(() => {
@@ -51,6 +52,25 @@ describe('runPostUploadStruggleGeneration', () => {
             materialName: 'Week 8 notes',
         });
         expect(result.generatedStruggleTopics).toHaveLength(1);
+    });
+
+    it('skips generation when Memory Agent is disabled', async () => {
+        const result = await runPostUploadStruggleGeneration({
+            ...baseCtx,
+            memoryAgentEnabled: false,
+        });
+
+        expect(mockGenerateAndAppend).not.toHaveBeenCalled();
+        expect(result.struggleGenerationSkipped).toBe(true);
+        expect(result.generatedStruggleTopics).toEqual([]);
+    });
+
+    it('skips generation when memoryAgentEnabled is omitted', async () => {
+        const { memoryAgentEnabled: _omit, ...withoutFlag } = baseCtx;
+        const result = await runPostUploadStruggleGeneration(withoutFlag);
+
+        expect(mockGenerateAndAppend).not.toHaveBeenCalled();
+        expect(result.struggleGenerationSkipped).toBe(true);
     });
 
     it('skips generation when Mongo material save failed', async () => {

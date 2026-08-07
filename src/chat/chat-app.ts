@@ -456,9 +456,38 @@ export class ChatApp {
             });
             ragContext = ragPrompts.formatRetrievedContext(documents);
             documentsLength = documents.length;
-            
-            // appLogger.log(`📚 Captured ${documents.length} documents for storage`);
-            // appLogger.log(`📚 Retrieved document texts: ${ragContext}`);
+
+            if (documentsLength > 0) {
+                const chunkDump = documents
+                    .map((doc, index) => {
+                        const score =
+                            typeof (doc as { score?: number }).score === 'number'
+                                ? ` score=${(doc as { score: number }).score.toFixed(3)}`
+                                : '';
+                        return `*  --- chunk ${index + 1}${score} ---\n${doc.content}`;
+                    })
+                    .join('\n*\n');
+                appLogger.log(`
+*
+*
+* ########## RAG RETRIEVED CHUNKS (${documentsLength}) ################
+*
+${chunkDump}
+*
+* ###############################################################
+*
+*`);
+            } else {
+                appLogger.log(`
+*
+*
+* ########## RAG RETRIEVED CHUNKS (0) ################
+*
+*
+* ###################################################
+*
+*`);
+            }
         } catch (error) {
             appLogger.log(`❌ RAG Context Error:`, error);
             appLogger.error('Error retrieving RAG documents:', error as any);
@@ -481,19 +510,84 @@ export class ChatApp {
             additionalContext = RAG_NO_DOCS_MESSAGE;
         }
 
-        // Phase note: struggle topics apply to Socratic chats only when Memory Agent is enabled.
-        if (
-            this.isStruggleTopicsEnabledForChat(chatId) &&
-            isCourseFeatureEnabled(course, 'memoryAgent')
-        ) {
+        // Phase note: struggle topics apply to Socratic chats. Memory Agent on → inject
+        // catalog labels / unstruggle reveal; Memory Agent off → empty-tag Socratic bridge.
+        const struggleTopicsEnabledForChat = this.isStruggleTopicsEnabledForChat(chatId);
+        const memoryAgentEnabled = isCourseFeatureEnabled(course, 'memoryAgent');
+        if (struggleTopicsEnabledForChat && memoryAgentEnabled) {
             const struggleTopics = await memoryAgent.getStruggleWords(userId, courseName);
 
             if (struggleTopics.length > 0) {
+
+                //START DEBUG LOG : DEBUG-CODE(STRUGGLE-TOPICS)
+                appLogger.log(`
+                    *
+                    *
+                    * ########## STRUGGLE TOPICS ################
+                    *
+                    ${struggleTopics.map((topic) => `*  - ${topic}`).join('\n')}
+                    *
+                    * ###########################################
+                    *
+                    *`
+                );
+
+                //END DEBUG LOG : DEBUG-CODE(STRUGGLE-TOPICS)
+
+                // add the struggle topics to the additional context
                 additionalContext += `Based on our conversation, I've identified these topics you might want to focus on: <struggle_topics>${struggleTopics.join(', ')}</struggle_topics>\n\nPlease see the rules int he system prompt for how to covney information about any of these topics if the current user prompt is not asking about any of these topics`;
+
+                // add the questionUnstruggle tag to the additional context
                 additionalContext += '\n<questionUnstruggle reveal="TRUE"> \n by this tag this means that you SHOULD select the most relevant struggle topic from the <struggle_topics> tags, and add the <questionUnstruggle Topic="topic"> tag to the end of the response. ';
             } else {
+
+                appLogger.log(`
+                    *
+                    *
+                    * ########## NO STRUGGLE TOPIC ################
+                    *
+                    *
+                    * #############################################
+                    *
+                    *`);
+
                 additionalContext += '\n<questionUnstruggle reveal="FALSE"> \n by this tag this means that you should NOT add the <questionUnstruggle Topic="topic"> tag to the end of the response';
             }
+        } else if (struggleTopicsEnabledForChat && !memoryAgentEnabled) {
+            // Socratic chat with Memory Agent off: explicit empty struggle list, stay Socratic.
+
+            appLogger.log(`
+                *
+                *
+                * ########## STRUGGLE TOPICS BRIDGE (MEMORY AGENT OFF) ################
+                *
+                * This is a Socratic chat with Memory Agent off.
+                *
+                * ####################################################################
+                *
+                *`
+            );
+
+            additionalContext +=
+                'There are currently no struggle topics for this student: <struggle_topics></struggle_topics>\n\n' +
+                'Please continue in Socratic mode: ask guiding questions to help the student reason through the problem. ' +
+                '<questionUnstruggle reveal="FALSE">\n' +
+                'by this tag this means that you should NOT add the <questionUnstruggle Topic="topic"> tag to the end of the response.';
+        } else {
+            const mode = this.chatConversationModes.get(chatId) ?? 'unset';
+            appLogger.log(`
+                *
+                *
+                * ########## STRUGGLE TOPICS SKIPPED ################
+                *
+                *  reason: gate failed (no injection)
+                *  chatMode: ${mode} (socratic required: ${struggleTopicsEnabledForChat})
+                *  memoryAgentEnabled: ${memoryAgentEnabled}
+                *
+                * ###################################################
+                *
+                *`
+            );
         }
 
         // ====================================================================
