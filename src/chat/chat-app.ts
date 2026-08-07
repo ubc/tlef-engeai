@@ -31,6 +31,7 @@ import {
     ensureDebugModeTemplate,
     isDebugToggleMessage,
 } from './system-prompts/debug-mode-prompt';
+import { generateChatTitleFromResponse } from './chat-title';
 
 /**
  * Shown to students who try to send a new message in a retired scenario-generation chat.
@@ -223,20 +224,7 @@ export class ChatApp {
         //END DEBUG LOG : DEBUG-CODE(GENERATE-TITLE)
         
         try {
-            // Remove LaTeX delimiters ($ and $$)
-            let cleanText = responseText.replace(/\$\$.*?\$\$/g, ''); // Remove block math
-            cleanText = cleanText.replace(/\$.*?\$/g, ''); // Remove inline math
-            
-            // Remove HTML tags and special characters
-            cleanText = cleanText.replace(/<[^>]*>/g, ''); // Remove HTML tags
-            cleanText = cleanText.replace(/[^\w\s]/g, ' '); // Replace special chars with spaces
-            
-            // Clean up multiple spaces and trim
-            cleanText = cleanText.replace(/\s+/g, ' ').trim();
-            
-            // Split into words and take first 10
-            const words = cleanText.split(' ').filter(word => word.length > 0);
-            const title = words.slice(0, 10).join(' ');
+            const title = generateChatTitleFromResponse(responseText);
             
             //START DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-SUCCESS)
             appLogger.log(`[CHAT-APP] ✅ Generated title: "${title}"`);
@@ -1891,4 +1879,3 @@ ${chunkDump}
     }
 
 }
-

@@ -12,7 +12,9 @@
     box-sizing: border-box;
 }
 
-html {
+/* App shell: clip horizontal overflow. Marketing pages override in home.css
+   (overflow-x:hidden on html/body breaks position:sticky for hero/features scrub). */
+html:not(:has(body.home-page)):not(:has(body.team-page)) {
     overflow-x: hidden;
 }
 
@@ -22,6 +24,9 @@ body {
     background-color: var(--color-chbe-green);
     color: #212529;
     line-height: 1.6;
+}
+
+body:not(.home-page):not(.team-page) {
     overflow-x: hidden; /* Prevent horizontal scroll on body */
     height: 100vh;
 }

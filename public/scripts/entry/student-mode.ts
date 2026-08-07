@@ -44,7 +44,118 @@ async function checkAuthentication(): Promise<boolean> {
 let currentComponent: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history' | 'scenarios' = 'welcome-screen';
 let previousComponent: 'welcome-screen' | 'chat-window' | 'profile' | 'flag-history' | 'scenarios' = 'welcome-screen';
 
+const STUDENT_MOBILE_BREAKPOINT = 768;
+const studentSidebarMediaQuery = window.matchMedia(
+    `(max-width: ${STUDENT_MOBILE_BREAKPOINT}px)`
+);
+const isMobileView = (): boolean => studentSidebarMediaQuery.matches;
+let studentMobileSidebarTrigger: HTMLElement | null = null;
+
+const syncStudentSidebarToggleAccessibility = (): void => {
+    const studentSidebarEl = document.getElementById('student-sidebar');
+    if (!studentSidebarEl) return;
+
+    const studentLogoControl = document.querySelector<HTMLButtonElement>(
+        '#student-sidebar .logo-box'
+    );
+    const studentMenuControl = document.getElementById(
+        'collapse-sidebar-btn'
+    ) as HTMLButtonElement | null;
+    const expanded = !studentSidebarEl.classList.contains('collapsed');
+    const label = expanded ? 'Collapse sidebar' : 'Expand sidebar';
+
+    studentMenuControl?.setAttribute('aria-expanded', String(expanded));
+    studentMenuControl?.setAttribute('aria-label', label);
+    studentMenuControl?.setAttribute('aria-controls', 'student-sidebar');
+    if (studentMenuControl) studentMenuControl.title = label;
+
+    if (isMobileView()) {
+        const drawerOpen = studentSidebarEl.classList.contains('mobile-open');
+        if (drawerOpen) {
+            studentSidebarEl.removeAttribute('aria-hidden');
+            studentSidebarEl.removeAttribute('inert');
+        } else {
+            studentSidebarEl.setAttribute('aria-hidden', 'true');
+            studentSidebarEl.setAttribute('inert', '');
+        }
+
+        if (studentLogoControl) {
+            studentLogoControl.setAttribute('aria-expanded', String(drawerOpen));
+            studentLogoControl.setAttribute('aria-label', 'Close navigation');
+            studentLogoControl.setAttribute('aria-controls', 'student-sidebar');
+            studentLogoControl.title = 'Close navigation';
+        }
+        return;
+    }
+
+    studentSidebarEl.removeAttribute('aria-hidden');
+    studentSidebarEl.removeAttribute('inert');
+    if (!studentLogoControl) return;
+
+    studentLogoControl.setAttribute('aria-expanded', String(expanded));
+    studentLogoControl.setAttribute('aria-label', label);
+    studentLogoControl.setAttribute('aria-controls', 'student-sidebar');
+    studentLogoControl.title = label;
+};
+
 document.addEventListener('DOMContentLoaded', async () => {
+    // Initialize the visible desktop sidebar control before this callback's first
+    // await. Slow or failed startup requests must not leave the button inert.
+    const studentSidebarEl = document.getElementById('student-sidebar');
+    const studentSidebarControls = document.querySelectorAll<HTMLButtonElement>(
+        '#collapse-sidebar-btn, #student-sidebar .logo-box'
+    );
+
+    studentSidebarControls.forEach((control) => {
+        control.addEventListener('click', (event: MouseEvent) => {
+            event.stopPropagation();
+
+            // The mobile drawer replaces desktop width collapsing. The logo
+            // remains visible there, so tapping it closes the drawer safely.
+            if (
+                control.classList.contains('logo-box') &&
+                isMobileView()
+            ) {
+                studentSidebarEl?.classList.remove('mobile-open');
+                const overlay = document.getElementById('sidebar-overlay');
+                overlay?.classList.remove('show');
+                overlay?.setAttribute('aria-hidden', 'true');
+                const focusTarget = studentMobileSidebarTrigger ??
+                    document.querySelector<HTMLElement>(
+                        '#hamburger-btn, .mobile-hamburger-btn'
+                    );
+                focusTarget?.focus();
+                studentMobileSidebarTrigger = null;
+                syncStudentSidebarToggleAccessibility();
+                return;
+            }
+
+            studentSidebarEl?.classList.toggle('collapsed');
+            syncStudentSidebarToggleAccessibility();
+        });
+    });
+
+    // Scenario workspaces also collapse and expand the student sidebar
+    // programmatically, so keep the button's accessible state synchronized.
+    if (studentSidebarEl) {
+        const sidebarStateObserver = new MutationObserver(syncStudentSidebarToggleAccessibility);
+        sidebarStateObserver.observe(studentSidebarEl, {
+            attributes: true,
+            attributeFilter: ['class']
+        });
+    }
+    syncStudentSidebarToggleAccessibility();
+    studentSidebarMediaQuery.addEventListener('change', (event: MediaQueryListEvent) => {
+        if (!event.matches) {
+            studentSidebarEl?.classList.remove('mobile-open');
+            const overlay = document.getElementById('sidebar-overlay');
+            overlay?.classList.remove('show');
+            overlay?.setAttribute('aria-hidden', 'true');
+            studentMobileSidebarTrigger = null;
+        }
+        syncStudentSidebarToggleAccessibility();
+    });
+
     // Check authentication first
     const isAuthenticated = await checkAuthentication();
     if (!isAuthenticated) {
@@ -353,20 +464,19 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
     // --- DOM ELEMENT SELECTORS ---
     const mainContentArea = document.getElementById('main-content-area');
     const sidebarEl = document.querySelector('.sidebar') as HTMLElement | null;
-    const sidebarCollapseButton = document.querySelector('.sidebar-collapse-icon');
     const sidebarOverlayEl = document.getElementById('sidebar-overlay');
     const artefactCloseBtn = document.getElementById('close-artefact-btn');
 
     // --- MOBILE SIDEBAR ---
-    const MOBILE_BREAKPOINT = 768;
-
-    const isMobileView = (): boolean => window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches;
-
     const openMobileSidebar = (): void => {
         if (!sidebarEl || !sidebarOverlayEl) return;
+        // Desktop and scenario views may leave the rail collapsed. The mobile
+        // drawer needs its full width because the desktop collapse button is hidden.
+        sidebarEl.classList.remove('collapsed');
         sidebarEl.classList.add('mobile-open');
         sidebarOverlayEl.classList.add('show');
         sidebarOverlayEl.setAttribute('aria-hidden', 'false');
+        syncStudentSidebarToggleAccessibility();
     };
 
     const closeMobileSidebar = (): void => {
@@ -374,6 +484,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         sidebarEl.classList.remove('mobile-open');
         sidebarOverlayEl.classList.remove('show');
         sidebarOverlayEl.setAttribute('aria-hidden', 'true');
+        syncStudentSidebarToggleAccessibility();
     };
 
     const toggleMobileSidebar = (): void => {
@@ -388,8 +499,12 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
     // Event delegation for hamburger (works across all loaded components)
     document.addEventListener('click', (e: MouseEvent) => {
         const target = e.target as HTMLElement;
-        if (target.closest('#hamburger-btn') || target.closest('.mobile-hamburger-btn')) {
+        const mobileTrigger = target.closest(
+            '#hamburger-btn, .mobile-hamburger-btn'
+        ) as HTMLElement | null;
+        if (mobileTrigger) {
             if (isMobileView()) {
+                studentMobileSidebarTrigger = mobileTrigger;
                 toggleMobileSidebar();
             }
         }
@@ -457,6 +572,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         const deltaX = touchEndX - touchStartX;
         // Swipe right: started near left edge and moved right
         if (touchStartX <= EDGE_ZONE && deltaX > SWIPE_THRESHOLD) {
+            studentMobileSidebarTrigger = null;
             openMobileSidebar();
         }
     }, { passive: true });
@@ -1049,16 +1165,6 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
 
     // Chat list and add chat button events are now handled by ChatManager
 
-    const sidebarCollapseToggle = () => {
-        if (!sidebarCollapseButton) return;
-        sidebarCollapseButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (!sidebarEl) return;
-            sidebarEl.classList.toggle('collapsed');
-        });
-    };
-    sidebarCollapseToggle();
-
     const attachProfileButtonListener = () => {
         const profileBtn = document.getElementById('profile-btn');
         if (!profileBtn) {
@@ -1199,20 +1305,15 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
 /**
  * updateCompanionText
  * 
- * @param user any — User with courseName
+ * @param user any — User with name
  * @returns void
- * Sets companion-text element to user.courseName or 'Engineering'.
+ * Sets companion-text to `{firstName} (Student)`.
  */
 function updateCompanionText(user: any): void {
-    // console.log('[STUDENT-MODE] 🔍 Updating companion text with user:', user);
     const companionText = document.getElementById('companion-text');
-    // console.log('[STUDENT-MODE] 🔍 Companion text element found:', !!companionText);
-    // console.log('[STUDENT-MODE] 🔍 User courseName:', user?.courseName);
 
-    if (companionText) {
-        companionText.textContent = user?.courseName || 'Engineering';
+    if (companionText && user?.name) {
+        const firstName = String(user.name).trim().split(/\s+/)[0] || user.name;
+        companionText.textContent = `${firstName} (Student)`;
     }
 }
-
-
-

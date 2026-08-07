@@ -5,7 +5,7 @@
  * 
  * @author: @gatahcha
  * @date: 2025-01-27
- * @description: API helpers for chat CRUD, send message, pin/unpin, dismiss unstruggle block.
+ * @description: API helpers for chat CRUD, sending messages, conversation modes, and unstruggle dismissal.
  */
 
 import {
@@ -258,39 +258,6 @@ export async function dismissUnstruggleBlock(
         return {
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error occurred',
-        };
-    }
-}
-
-/**
- * updateChatPinStatus
- * 
- * @param chatId string — ID of the chat
- * @param isPinned boolean — Pin status
- * @returns Promise<ChatApiResponse> — success or error
- * PUT /api/chat/:chatId/pin. Returns error object on failure.
- */
-export async function updateChatPinStatus(chatId: string, isPinned: boolean): Promise<ChatApiResponse> {
-    try {
-        const response = await fetch(`/api/chat/${chatId}/pin`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ isPinned }),
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const result = await response.json();
-        return result;
-    } catch (error) {
-        console.error('Error updating chat pin status:', error);
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error occurred'
         };
     }
 }

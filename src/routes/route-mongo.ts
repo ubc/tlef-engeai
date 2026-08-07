@@ -1209,10 +1209,10 @@ router.post('/:courseId/instructors', requireInstructorForCourseAPI(['params']),
             });
         }
         
-        if (globalUser.affiliation !== 'faculty') {
-            return res.status(403).json({ 
+        if (globalUser.affiliation !== 'faculty' && !isAdminUser(globalUser)) {
+            return res.status(403).json({
                 success: false,
-                error: 'Only faculty members can join courses as instructors' 
+                error: 'Only faculty members can join courses as instructors'
             });
         }
         

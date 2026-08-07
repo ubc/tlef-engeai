@@ -2,13 +2,22 @@
 /**
  * chat-mongo.ts
  * @author @gatahcha (refactor)
- * @description User-scoped **chat threads** embedded on each `{courseName}_users` document (`chats[]`) with soft-delete and pin metadata.
+ * @description User-scoped **chat threads** embedded on each `{courseName}_users` document (`chats[]`) with soft-delete and message-pin metadata.
  */
 
-import type { Chat, ChatMessage, PersistedConversationModeId } from '../../types/shared';
+import type { Chat, ChatMessage, ChatMetadataSummary, PersistedConversationModeId } from '../../types/shared';
 import type { MongoDalContext } from './mongo-context';
 import { getCourseUsersMongoCollection } from './course-user-mongo';
 import { appLogger } from '../../utils/logger';
+
+type LegacyStarredChat = Chat & { isPinned?: boolean };
+
+/** Returns a detached chat without the retired conversation-level starring field. */
+function withoutLegacyChatStar(chat: LegacyStarredChat): Chat {
+    const activeChat = { ...chat };
+    delete activeChat.isPinned;
+    return activeChat;
+}
 
 /**
  * getUserChats
@@ -37,8 +46,10 @@ export async function getUserChats(
             appLogger.log(`[MONGODB] ⚠️ User not found with userId: ${userId}`);
             return [];
         }
-        const allChats = (user as any).chats || [];
-        const activeChats = allChats.filter((chat: Chat) => !chat.isDeleted);
+        const allChats = ((user as any).chats || []) as LegacyStarredChat[];
+        const activeChats = allChats
+            .filter((chat) => !chat.isDeleted)
+            .map(withoutLegacyChatStar);
         appLogger.log(
             `[MONGODB] ✅ Found ${activeChats.length} active chats (${allChats.length - activeChats.length} deleted) for user`
         );
@@ -55,17 +66,17 @@ export async function getUserChats(
  * @param ctx - MongoDalContext
  * @param courseName - string
  * @param userId - string
- * @returns Promise<any[]>
+ * @returns Metadata without message bodies or retired conversation-star state
  *
  * Lightweight listing without shipping full `messages[]` — sorted by most recent message timestamp.
  *
- * @returns Array of summary objects (`id`, `itemTitle`, pin fields, counts, `lastMessageTimestamp`)
+ * @returns Array of summary objects (`id`, `itemTitle`, optional pinned message, counts, `lastMessageTimestamp`)
  */
 export async function getUserChatsMetadata(
     ctx: MongoDalContext,
     courseName: string,
     userId: string
-): Promise<any[]> {
+): Promise<ChatMetadataSummary[]> {
     appLogger.log(`[MONGODB] 📊 Getting chat metadata for user userId: ${userId} in course: ${courseName}`);
     try {
         const userCollection = await getCourseUsersMongoCollection(ctx, courseName);
@@ -81,7 +92,6 @@ export async function getUserChatsMetadata(
                 id: chat.id,
                 courseName: chat.courseName,
                 itemTitle: chat.itemTitle,
-                isPinned: chat.isPinned,
                 pinnedMessageId: chat.pinnedMessageId,
                 messageCount: chat.messages ? chat.messages.length : 0,
                 lastMessageTimestamp:
@@ -272,7 +282,7 @@ export async function ensureChatConversationMode(
  * @param newTitle - string
  * @returns Promise<void>
  *
- * Updates `itemTitle` (display label) for pinned sidebars / history lists.
+ * Updates `itemTitle` (display label) for chat sidebars and history lists.
  */
 export async function updateChatTitle(
     ctx: MongoDalContext,
@@ -301,42 +311,6 @@ export async function updateChatTitle(
         appLogger.log(`[MONGODB] ✅ Chat title updated successfully to "${newTitle}"`);
     } catch (error) {
         appLogger.error(`[MONGODB] 🚨 Error updating chat title:`, error);
-        throw error;
-    }
-}
-
-/**
- * updateChatPinStatus
- *
- * Toggles `isPinned` for ordering pinned conversations.
- */
-export async function updateChatPinStatus(
-    ctx: MongoDalContext,
-    courseName: string,
-    userId: string,
-    chatId: string,
-    isPinned: boolean
-): Promise<void> {
-    appLogger.log(
-        `[MONGODB] 📌 Updating chat pin status for chat ${chatId} to ${isPinned} for user userId: ${userId} in course: ${courseName}`
-    );
-    try {
-        const userCollection = await getCourseUsersMongoCollection(ctx, courseName);
-        const result = await userCollection.updateOne(
-            { userId, 'chats.id': chatId },
-            {
-                $set: {
-                    'chats.$.isPinned': isPinned,
-                    updatedAt: new Date()
-                }
-            }
-        );
-        if (result.matchedCount === 0) {
-            throw new Error(`Chat not found with ID: ${chatId} for user userId: ${userId}`);
-        }
-        appLogger.log(`[MONGODB] ✅ Chat pin status updated successfully to ${isPinned}`);
-    } catch (error) {
-        appLogger.error(`[MONGODB] 🚨 Error updating chat pin status:`, error);
         throw error;
     }
 }

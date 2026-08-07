@@ -142,7 +142,7 @@ export async function updateGlobalUser(
 export async function updateGlobalUserAffiliation(
     ctx: MongoDalContext,
     userId: string,
-    affiliation: 'student' | 'faculty'
+    affiliation: 'student' | 'faculty' | 'staff' | 'empty'
 ): Promise<GlobalUser> {
     const collection = activeUsersMongoCollection(ctx.db);
     const result = await collection.findOneAndUpdate(

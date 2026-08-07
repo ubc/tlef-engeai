@@ -4,7 +4,7 @@
  * route-chat-app.ts
  * @author: @gatahcha
  * @date: 2026-03-13
- * @description: Express routes for chat CRUD, send message, pin/unpin, dismiss unstruggle, restore. Integrates ChatApp, MongoDB, RAG.
+ * @description: Express routes for chat CRUD, messaging, conversation modes, unstruggle dismissal, and restore. Integrates ChatApp, MongoDB, and RAG.
  */
 
 import dotenv from 'dotenv';
@@ -331,7 +331,6 @@ router.post('/newchat', asyncHandlerWithAuth(async (req: Request, res: Response)
             topicOrWeekTitle: '', // Empty for now, will be set by user later
             itemTitle: 'New Chat', // Set initial title as "New Chat"
             messages: [backendWelcomeMessage], // Use the proper backend welcome message with diagrams
-            isPinned: false,
             pinnedMessageId: null,
             conversationMode,
         };
@@ -1281,128 +1280,6 @@ router.delete('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Respons
 }));
 
 /**
- * PUT /:chatId/pin
- * Update chat pin status in MongoDB.
- *
- * @route PUT /api/chat/:chatId/pin
- * @param {string} chatId - Chat ID (path param)
- * @param {boolean} isPinned - Whether chat should be pinned (body)
- * @returns {object} { success: boolean, message?: string, chatId?: string, isPinned?: boolean, error?: string }
- * @response 200 - Success
- * @response 400 - Chat ID required, isPinned must be boolean, or no active course selected
- * @response 401 - User not authenticated or not found
- * @response 500 - Failed to update pin status or internal server error
- */
-router.put('/:chatId/pin', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const { chatId } = normalizeRouteParams(req.params);
-        const { isPinned } = req.body;
-
-        //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-001)
-        appLogger.log('\n📌 PIN CHAT REQUEST:');
-        appLogger.log('='.repeat(50));
-        appLogger.log(`Chat ID: ${chatId}`);
-        appLogger.log(`Pin Status: ${isPinned}`);
-        appLogger.log('='.repeat(50));
-        //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-001)
-
-        // Validate input
-        if (!chatId) {
-            //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-002)
-            appLogger.log('❌ PIN CHAT FAILED: Chat ID is required');
-            //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-002)
-            return res.status(400).json({
-                success: false,
-                error: 'Chat ID is required'
-            });
-        }
-
-        if (typeof isPinned !== 'boolean') {
-            //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-003)
-            appLogger.log('❌ PIN CHAT FAILED: isPinned must be a boolean');
-            //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-003)
-            return res.status(400).json({
-                success: false,
-                error: 'isPinned must be a boolean value'
-            });
-        }
-
-        // Get user from session
-        const user = (req as any).user;
-        const puid = user?.puid;
-        const currentCourse = (req.session as any).currentCourse;
-        const courseName = currentCourse?.courseName;
-
-        if (!puid) {
-            //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-004)
-            appLogger.log('❌ PIN CHAT FAILED: PUID not found in session');
-            //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-004)
-            return res.status(401).json({
-                success: false,
-                error: 'User not authenticated'
-            });
-        }
-
-        if (!courseName) {
-            //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-005)
-            appLogger.log('❌ PIN CHAT FAILED: Course name not found in session');
-            //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-005)
-            return res.status(400).json({
-                success: false,
-                error: 'No active course selected'
-            });
-        }
-
-        // Update chat pin status in database
-        try {
-            const mongoDB = await EngEAI_MongoDB.getInstance();
-
-            // Get userId from GlobalUser using puid
-            const globalUser = await mongoDB.findGlobalUserByPUID(puid);
-            if (!globalUser || !globalUser.userId) {
-                //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-006)
-                appLogger.log('❌ PIN CHAT FAILED: User not found in database');
-                //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-006)
-                return res.status(401).json({
-                    success: false,
-                    error: 'User not found'
-                });
-            }
-
-            const userId = globalUser.userId;
-            await mongoDB.updateChatPinStatus(courseName, userId, chatId, isPinned);
-
-            //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-007)
-            appLogger.log(`✅ Chat ${chatId} pin status updated to ${isPinned} in database`);
-            //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-007)
-
-            res.json({
-                success: true,
-                message: `Chat ${isPinned ? 'pinned' : 'unpinned'} successfully`,
-                chatId: chatId,
-                isPinned: isPinned
-            });
-        } catch (dbError) {
-            //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-008)
-            appLogger.error('⚠️ Database error during pin update:', { error: dbError });
-            //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-008)
-            res.status(500).json({
-                success: false,
-                error: 'Failed to update chat pin status'
-            });
-        }
-    } catch (error) {
-        //START DEBUG LOG : DEBUG-CODE(PIN-CHAT-009)
-        appLogger.error('🚨 Unexpected error in pin chat endpoint:', { error });
-        //END DEBUG LOG : DEBUG-CODE(PIN-CHAT-009)
-        res.status(500).json({
-            success: false,
-            error: 'Internal server error'
-        });
-    }
-}));
-
-/**
  * GET /test
  * Health check for chat API.
  *
@@ -1421,4 +1298,3 @@ router.get('/test', async (req: Request, res: Response) => {
 
 
 export default router;
-

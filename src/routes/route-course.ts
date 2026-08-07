@@ -11,9 +11,11 @@ import { appLogger } from '../utils/logger';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { isCourseStaff } from '../utils/course-staff';
+import { isAdminUser } from '../utils/admin';
 import { normalizeRouteParams } from '../helpers/route-params';
 // @rdschrs: Implemented the capability-gated Writing Feedback instructor page.
 import { CourseFeatureId, isCourseFeatureEnabled } from '../dashboard-setting/course-features';
+import { sendHtmlPageWithBuildComment } from '../utils/build-info';
 
 const router = express.Router();
 
@@ -41,7 +43,7 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
         if (!course) {
             // Return 404 with error page (not 403) to prevent courseId enumeration
             appLogger.log(`[COURSE-ROUTES] Course ${courseId} not found, serving error page`);
-            return res.status(404).sendFile(path.join(__dirname, '../../public/pages/course-error.html'));
+            return sendHtmlPageWithBuildComment(res, path.join(__dirname, '../../public/pages/course-error.html'), 404);
         }
         
         // Check if user has access
@@ -56,7 +58,7 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
         
         if (!isInstructor && !isEnrolled) {
             appLogger.log(`[COURSE-ROUTES] User ${user.puid} not authorized for course ${courseId}, serving error page`);
-            return res.status(403).sendFile(path.join(__dirname, '../../public/pages/course-error.html'));
+            return sendHtmlPageWithBuildComment(res, path.join(__dirname, '../../public/pages/course-error.html'), 403);
         }
         
         // Set course context in request (including role flags for downstream middleware)
@@ -81,7 +83,7 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
     } catch (error) {
         appLogger.error('[COURSE-ROUTES] Error validating course access:', error);
         // For server errors, still serve the error page but with 500 status
-        res.status(500).sendFile(path.join(__dirname, '../../public/pages/course-error.html'));
+        sendHtmlPageWithBuildComment(res, path.join(__dirname, '../../public/pages/course-error.html'), 500);
     }
 }
 
@@ -166,7 +168,7 @@ function serveInstructorShell() {
         
         // Serve the same HTML shell for all instructor routes
         // Frontend will parse URL and load appropriate component
-        res.sendFile(instructorPagePath);
+        sendHtmlPageWithBuildComment(res, instructorPagePath);
     });
 }
 
@@ -194,7 +196,7 @@ async function validateInstructorAuth(req: Request, res: Response, next: express
             return res.status(401).redirect('/');
         }
         
-        if (globalUser.affiliation !== 'faculty') {
+        if (globalUser.affiliation !== 'faculty' && !isAdminUser(globalUser)) {
             return res.status(403).send('Access denied: Only instructors can create new courses');
         }
         
@@ -218,7 +220,7 @@ function serveStudentShell() {
         
         // Serve the same HTML shell for all student routes
         // Frontend will parse URL and load appropriate component
-        res.sendFile(studentPagePath);
+        sendHtmlPageWithBuildComment(res, studentPagePath);
     });
 }
 

@@ -65,8 +65,11 @@
     </div>
 
     <div class="course-summary-modal__footer">
-        <div class="course-summary-progress" id="course-summary-progress" aria-label="Course summary progress"></div>
-        <button type="button" class="course-summary-next-btn" id="course-summary-next-btn" aria-label="Next">
+        <button type="button" class="course-summary-back-btn" id="course-summary-back-btn" aria-label="Previous slide" hidden>
+            <i data-feather="chevron-left" aria-hidden="true"></i>
+        </button>
+        <div class="course-summary-progress" id="course-summary-progress" role="group" aria-label="Course summary slides"></div>
+        <button type="button" class="course-summary-next-btn" id="course-summary-next-btn" aria-label="Next slide">
             <i data-feather="chevron-right" aria-hidden="true"></i>
         </button>
     </div>

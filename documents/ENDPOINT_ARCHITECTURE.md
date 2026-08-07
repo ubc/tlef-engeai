@@ -420,6 +420,8 @@ Two auth tiers: `requireCourseMemberForScenarioAPI` (enrolled student **or** sta
 
 All chat endpoints require auth. Access is scoped by session `currentCourse` and user ownership of chats.
 
+Chat metadata is ordered by most recent activity and contains no conversation-level starring state. The optional `pinnedMessageId` field is a separate message-level affordance and remains supported.
+
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
 | GET | `/api/chat/user/chats/metadata` | Yes | Any | List chat metadata |
@@ -433,7 +435,6 @@ All chat endpoints require auth. Access is scoped by session `currentCourse` and
 | GET | `/api/chat/:chatId/history` | Yes | Any | Get chat history |
 | GET | `/api/chat/:chatId/message/:messageId` | Yes | Any | Get single message |
 | DELETE | `/api/chat/:chatId` | Yes | Any | Delete chat |
-| PUT | `/api/chat/:chatId/pin` | Yes | Any | Pin/unpin chat |
 | GET | `/api/chat/test` | No | — | Test endpoint |
 
 ### 4.6 User Management (`/api/user`)

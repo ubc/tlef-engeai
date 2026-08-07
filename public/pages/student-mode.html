@@ -36,17 +36,32 @@
     <!-- Sidebar overlay for mobile - click to close sidebar -->
     <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
     <div class="main-dashboard">
-        <aside class="sidebar">
+        <aside class="sidebar" id="student-sidebar">
             <div>
                 <div class="sidebar-header">
-                    <div class="logo-box">
+                    <button
+                        class="logo-box sidebar-logo-toggle"
+                        type="button"
+                        aria-controls="student-sidebar"
+                        aria-expanded="true"
+                        aria-label="Collapse sidebar"
+                        title="Collapse sidebar"
+                    >
                         <i data-feather="box"></i>
-                        <div class="logo-text">
+                        <span class="logo-text">
                             <span>EngE-AI</span>
-                            <p id="companion-text">Engineering</p>
-                        </div>
-                    </div>
-                    <button class="sidebar-collapse-icon collapse-sidebar-btn" id="collapse-sidebar-btn" aria-label="Toggle sidebar" title="Collapse sidebar">
+                            <span class="logo-subtitle" id="companion-text">Engineering</span>
+                        </span>
+                    </button>
+                    <button
+                        class="sidebar-collapse-icon collapse-sidebar-btn"
+                        id="collapse-sidebar-btn"
+                        type="button"
+                        aria-controls="student-sidebar"
+                        aria-expanded="true"
+                        aria-label="Collapse sidebar"
+                        title="Collapse sidebar"
+                    >
                         <i data-feather="menu"></i>
                     </button>
                 </div>

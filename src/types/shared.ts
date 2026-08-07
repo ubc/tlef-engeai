@@ -128,7 +128,8 @@ export interface ChatMessage {
  *
  * **MongoDB path:** `{courseName}_users` document where `userId` matches → `chats[]` element.
  * **Created:** `ChatMongo.addChatToUser` on `POST /api/chat/newchat`.
- * **Updated:** `ChatMongo.updateUserChat` after each message, pin, title, or soft-delete.
+ * **Updated:** Focused `ChatMongo` delegates add/edit messages, set conversation mode,
+ * rename the chat, and mark it deleted.
  *
  * {@link MemoryAgentEntry.struggleTopics} is per-user/per-course, not per-chat. Socratic chats
  * read that collection at runtime; struggle state is never duplicated on this document.
@@ -143,7 +144,7 @@ export interface Chat {
     itemTitle: string;
     /** Ordered transcript; see {@link ChatMessage}. */
     messages: ChatMessage[];
-    isPinned: boolean;
+    /** Optional id of the one message pinned inside this conversation. */
     pinnedMessageId?: string | null;
     /** Soft delete; omitted or false = active. Filtered out by `getUserChats`. */
     isDeleted?: boolean;
@@ -165,7 +166,7 @@ export interface ChatMetadataSummary {
     id: string;
     courseName: string;
     itemTitle: string;
-    isPinned: boolean;
+    /** Optional id of the one message pinned inside this conversation. */
     pinnedMessageId?: string | null;
     messageCount: number;
     lastMessageTimestamp: number;

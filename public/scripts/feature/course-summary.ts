@@ -364,6 +364,7 @@ async function renderCourseSummaryModal(summary: CourseSummaryRecord, currentCla
     let currentStepIndex = 0;
 
     const closeBtn = overlay.querySelector('#course-summary-close-btn') as HTMLButtonElement | null;
+    const backBtn = overlay.querySelector('#course-summary-back-btn') as HTMLButtonElement | null;
     const nextBtn = overlay.querySelector('#course-summary-next-btn') as HTMLButtonElement | null;
 
     const closeModal = async (): Promise<void> => {
@@ -379,21 +380,32 @@ async function renderCourseSummaryModal(summary: CourseSummaryRecord, currentCla
         }, 250);
     };
 
-    const renderStep = async (): Promise<void> => {
+    async function renderStep(): Promise<void> {
         const activeStep = stepOrder[currentStepIndex];
         setActiveStep(overlay, activeStep);
         setSummaryRevealState(overlay, activeStep, hasAnalyticsSections);
-        renderProgress(overlay, activeStep, hasAnalyticsSections);
+        renderProgress(overlay, activeStep, hasAnalyticsSections, (targetStep) => {
+            void goToProgressStep(targetStep);
+        });
+
+        if (backBtn) {
+            const backHadFocus = document.activeElement === backBtn;
+            const isFirst = currentStepIndex === 0;
+            backBtn.hidden = isFirst;
+            if (isFirst && backHadFocus) {
+                nextBtn?.focus();
+            }
+        }
 
         if (nextBtn) {
             const isLast = currentStepIndex === stepOrder.length - 1;
             if (isLast) {
                 nextBtn.innerHTML = '<i data-feather="x" aria-hidden="true"></i>';
-                nextBtn.setAttribute('aria-label', 'Quit');
+                nextBtn.setAttribute('aria-label', 'Close course summary');
                 renderFeatherIcons();
             } else {
                 nextBtn.innerHTML = '<i data-feather="chevron-right" aria-hidden="true"></i>';
-                nextBtn.setAttribute('aria-label', 'Next');
+                nextBtn.setAttribute('aria-label', 'Next slide');
                 renderFeatherIcons();
             }
         }
@@ -405,9 +417,9 @@ async function renderCourseSummaryModal(summary: CourseSummaryRecord, currentCla
         if (stepOrder[currentStepIndex] === 'metrics') {
             triggerMetricCountUpIfNeeded(overlay);
         }
-    };
+    }
 
-    const goNext = async (): Promise<void> => {
+    async function goNext(): Promise<void> {
         if (currentStepIndex >= stepOrder.length - 1) {
             await closeModal();
             return;
@@ -415,7 +427,37 @@ async function renderCourseSummaryModal(summary: CourseSummaryRecord, currentCla
 
         currentStepIndex += 1;
         await renderStep();
-    };
+    }
+
+    async function goPrevious(): Promise<void> {
+        if (currentStepIndex <= 0) {
+            return;
+        }
+
+        currentStepIndex -= 1;
+        await renderStep();
+    }
+
+    async function goToProgressStep(targetStep: CourseSummaryStep): Promise<void> {
+        const activeVisibleStep = getVisibleStep(stepOrder[currentStepIndex]);
+        const targetVisibleStep = getVisibleStep(targetStep);
+        if (activeVisibleStep === targetVisibleStep) {
+            return;
+        }
+
+        const targetStepIndex = stepOrder.indexOf(targetStep);
+        if (targetStepIndex < 0) {
+            return;
+        }
+
+        currentStepIndex = targetStepIndex;
+        await renderStep();
+
+        const targetDot = overlay.querySelector<HTMLButtonElement>(
+            `[data-course-summary-progress-step="${targetVisibleStep}"]`
+        );
+        targetDot?.focus();
+    }
 
     function keyHandler(event: KeyboardEvent): void {
         if (event.key === 'Escape') {
@@ -424,12 +466,20 @@ async function renderCourseSummaryModal(summary: CourseSummaryRecord, currentCla
         }
 
         if (event.key === 'Enter') {
+            const target = event.target;
+            if (
+                target instanceof Element &&
+                target.closest('button, a, input, select, textarea, [contenteditable="true"]')
+            ) {
+                return;
+            }
             event.preventDefault();
             void goNext();
         }
     }
 
     closeBtn?.addEventListener('click', () => void closeModal());
+    backBtn?.addEventListener('click', () => void goPrevious());
     nextBtn?.addEventListener('click', () => void goNext());
     overlay.addEventListener('click', (event) => {
         if (event.target === overlay) {
@@ -540,27 +590,45 @@ function setSummaryRevealState(
     });
 }
 
-/** Renders progress dots: completion / summary / struggle-topics (admin) or completion / summary (instructor). */
+/**
+ * Renders clickable progress dots for the visible panels.
+ * The summary dot targets `overview`, because later summary reveal phases share that same panel.
+ */
 function renderProgress(
     overlay: HTMLElement,
     activeStep: CourseSummaryStep,
-    isPlatformAdmin: boolean
+    isPlatformAdmin: boolean,
+    onSelectStep: (step: CourseSummaryStep) => void
 ): void {
     const progress = overlay.querySelector('#course-summary-progress');
     if (!progress) return;
 
     progress.innerHTML = '';
     const progressSteps = isPlatformAdmin
-        ? (['completion', 'summary', 'struggle-topics'] as const)
-        : (['completion', 'summary'] as const);
+        ? ([
+            { step: 'completion', label: 'Course completion' },
+            { step: 'overview', label: 'Engagement summary' },
+            { step: 'struggle-topics', label: 'Struggle topics' }
+        ] as const)
+        : ([
+            { step: 'completion', label: 'Course completion' },
+            { step: 'overview', label: 'Engagement summary' }
+        ] as const);
     const activeVisibleStep = getVisibleStep(activeStep);
 
-    progressSteps.forEach((step) => {
-        const dot = document.createElement('span');
+    progressSteps.forEach(({ step, label }, index) => {
+        const visibleStep = getVisibleStep(step);
+        const dot = document.createElement('button');
+        dot.type = 'button';
         dot.className = 'course-summary-progress-dot';
-        if (step === activeVisibleStep) {
+        dot.dataset.courseSummaryProgressStep = visibleStep;
+        dot.setAttribute('aria-label', `Go to slide ${index + 1} of ${progressSteps.length}: ${label}`);
+        dot.title = label;
+        if (visibleStep === activeVisibleStep) {
             dot.classList.add('course-summary-progress-dot--active');
+            dot.setAttribute('aria-current', 'step');
         }
+        dot.addEventListener('click', () => onSelectStep(step));
         progress.appendChild(dot);
     });
 }
