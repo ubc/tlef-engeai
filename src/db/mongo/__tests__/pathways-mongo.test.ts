@@ -105,6 +105,7 @@ describe('pathways-mongo', () => {
         expect(n2).toBe(0);
         expect(store).toHaveLength(3);
         expect(store[0].title).toBe('Mental health crisis');
+        expect(store.every((pathway) => pathway.notifyInstructorOnTrigger === true)).toBe(true);
         expect(store[0].triggerDescription).toMatch(/^Detects if/);
     });
 
@@ -139,6 +140,7 @@ describe('pathways-mongo', () => {
         expect(list.map((p) => p.id)).toEqual(['mental-health-crisis', 'custom-row']);
         expect(list[0].title).toBe('Mental health crisis');
         expect(list[1].title).toBe('Untitled');
+        expect(list.every((pathway) => pathway.notifyInstructorOnTrigger === true)).toBe(true);
     });
 
     it('listPathways maps legacy enabledGlobally to enabled', async () => {
@@ -165,15 +167,18 @@ describe('pathways-mongo', () => {
         expect(created.id).toMatch(/^pathway-/);
         expect(created.order).toBe(0);
         expect(created.title).toBe('Untitled');
+        expect(created.notifyInstructorOnTrigger).toBe(true);
         expect(created.ctas[0].color).toBe('#4d7a2f');
 
         const updated = await updatePathway(ctx, 'Test', created.id, {
             title: 'Spill response',
             assistantResponse: 'Updated',
             enabled: false,
+            notifyInstructorOnTrigger: false,
         });
         expect(updated?.assistantResponse).toBe('Updated');
         expect(updated?.enabled).toBe(false);
+        expect(updated?.notifyInstructorOnTrigger).toBe(false);
         expect(updated?.title).toBe('Spill response');
 
         const deleted = await deletePathway(ctx, 'Test', created.id);

@@ -10,7 +10,7 @@ import path from 'path';
 import { appLogger } from '../utils/logger';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
-import { isCourseStaff } from '../utils/course-staff';
+import { canManageCourseRoster, isCourseStaff } from '../utils/course-staff';
 import { isAdminUser } from '../utils/admin';
 import { normalizeRouteParams } from '../helpers/route-params';
 // @rdschrs: Implemented the capability-gated Writing Feedback instructor page.
@@ -55,6 +55,10 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
         // Verify user is enrolled or is course staff (faculty instructor, TA, or platform admin)
         const isInstructor = isCourseStaff(course as import('../types/shared').activeCourse, globalUser);
         const isEnrolled = globalUser.coursesEnrolled.includes(courseId);
+        const canManageCourse = canManageCourseRoster(
+            course as import('../types/shared').activeCourse,
+            globalUser
+        );
         
         if (!isInstructor && !isEnrolled) {
             appLogger.log(`[COURSE-ROUTES] User ${user.puid} not authorized for course ${courseId}, serving error page`);
@@ -67,7 +71,8 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
             courseName: course.courseName,
             course: course,
             isInstructor,
-            isEnrolled
+            isEnrolled,
+            canManageCourse
         };
         
         // Update session if needed
@@ -96,6 +101,25 @@ function requireInstructorForCourse(req: Request, res: Response, next: express.N
     if (!ctx?.isInstructor) {
         appLogger.log(`[COURSE-ROUTES] User attempted instructor route without instructor role, redirecting to course-selection`);
         return res.redirect('/course-selection');
+    }
+    next();
+}
+
+/**
+ * Middleware: Require faculty-instructor or platform-admin access for a course page.
+ *
+ * Runs after {@link validateCourseAccess}. Teaching assistants remain course staff for
+ * the shared instructor shell, but cannot open configuration pages such as Pathway Library.
+ */
+function requireInstructorOrAdminForCourse(
+    req: Request,
+    res: Response,
+    next: express.NextFunction
+) {
+    const ctx = (req as any).courseContext;
+    if (!ctx?.canManageCourse) {
+        const { courseId } = normalizeRouteParams(req.params);
+        return res.redirect(`/course/${courseId}/instructor/dashboard`);
     }
     next();
 }
@@ -358,6 +382,7 @@ router.get(
     '/course/:courseId/instructor/pathway-library',
     validateCourseAccess,
     requireInstructorForCourse,
+    requireInstructorOrAdminForCourse,
     requireCourseFeaturePage('guidedPathway'),
     serveInstructorShell()
 );

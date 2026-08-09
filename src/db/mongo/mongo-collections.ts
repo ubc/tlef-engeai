@@ -12,6 +12,7 @@ import {
     ACADEMIC_PERIODS_COLLECTION,
     ACTIVE_COURSE_LIST_COLLECTION,
     ACTIVE_USERS_COLLECTION,
+    GUIDED_PATHWAY_FLAGS_COLLECTION,
     INSTRUCTOR_PERIOD_ALLOWANCES_COLLECTION
 } from './mongo-constants';
 
@@ -57,4 +58,17 @@ export function academicPeriodsCollection(db: Db): Collection {
  */
 export function instructorPeriodAllowancesCollection(db: Db): Collection {
     return db.collection(INSTRUCTOR_PERIOD_ALLOWANCES_COLLECTION);
+}
+
+/**
+ * guidedPathwayFlagsCollection
+ *
+ * Returns the global alert collection. Every query must still apply an explicit
+ * course or administrator scope and must project identity fields deliberately.
+ *
+ * @param db - Connected Mongo database handle
+ * @returns `Collection` - `guided-pathway-flags`
+ */
+export function guidedPathwayFlagsCollection(db: Db): Collection {
+    return db.collection(GUIDED_PATHWAY_FLAGS_COLLECTION);
 }

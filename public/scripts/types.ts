@@ -51,10 +51,60 @@ export interface GuidedPathway {
     order: number; // library list position
     title: string;
     enabled: boolean; // on for this course; false = listed but not evaluated
+    notifyInstructorOnTrigger: boolean; // creates an anonymous instructor alert when this active pathway wins
     triggerDescription: string;
     assistantResponse: string;
     ctas: PathwayCta[];
     updatedAt: number;
+}
+
+/** Must match src/types/shared.ts. Automatic Guided Pathway alert lifecycle. */
+export type GuidedPathwayFlagStatus = 'pending' | 'escalated' | 'dismissed';
+
+/** Must match src/types/shared.ts. Instructor decision request value. */
+export type GuidedPathwayFlagDecision = 'escalate' | 'dismiss';
+
+/** Must match src/types/shared.ts. Admin review-state filter. */
+export type GuidedPathwayFlagReviewState = 'needs-review' | 'reviewed' | 'all';
+
+/**
+ * Must match src/types/shared.ts. Anonymous alert DTO used by instructor and admin pages.
+ * Restricted student identity and audit fields are deliberately absent.
+ */
+export interface GuidedPathwayFlagView {
+    id: string; // stable alert id for review actions
+    courseId: string; // owning course id
+    courseName: string; // course-name snapshot at trigger time
+    pathwayId: string; // winning pathway id
+    pathwayTitle: string; // winning pathway title snapshot
+    messageText: string; // exact student-authored message
+    status: GuidedPathwayFlagStatus; // instructor decision lifecycle
+    triggeredAt: string; // ISO trigger timestamp
+    decidedAt?: string; // ISO instructor-decision timestamp
+    decidedByName?: string; // staff display-name snapshot
+    adminReviewedAt?: string; // ISO platform-review timestamp
+    adminReviewedByName?: string; // platform-admin display-name snapshot
+}
+
+/** Must match src/types/shared.ts. Safe pathway choice for administrator filtering. */
+export interface GuidedPathwayFlagPathwayFacet {
+    pathwayId: string; // stable winning-pathway id
+    pathwayTitle: string; // instructor-facing title snapshot
+}
+
+/** Must match src/types/shared.ts. Full-queue administrator filter choices. */
+export interface GuidedPathwayFlagFacets {
+    pathways: GuidedPathwayFlagPathwayFacet[]; // all scoped pathways except the active pathway filter
+    reviewers: string[]; // all scoped staff names except the active reviewer filter
+}
+
+/** Must match src/types/shared.ts. Paginated anonymous alert list. */
+export interface GuidedPathwayFlagListPage {
+    items: GuidedPathwayFlagView[]; // safe alerts for this page
+    page: number; // one-based page number
+    pageSize: number; // bounded page size
+    total: number; // total matching alerts
+    facets?: GuidedPathwayFlagFacets; // always present on admin list responses; omitted for course lists
 }
 
 /**

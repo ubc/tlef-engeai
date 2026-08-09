@@ -92,6 +92,7 @@ export interface GuidedPathway {
     order: number; // library list position (ascending)
     title: string; // instructor-facing card title (library UI)
     enabled: boolean; // on for this course; false = listed but not evaluated
+    notifyInstructorOnTrigger: boolean; // creates an anonymous instructor alert when this active pathway wins
     triggerDescription: string; // fed into the dynamic evaluator prompt
     assistantResponse: string; // markdown reply; empty => cannot intercept
     ctas: PathwayCta[]; // resource buttons shown with the predetermined reply
@@ -631,6 +632,57 @@ export interface FlagReport {
     response?: string; // if resolved, the response from the instructor
     createdAt: Date;
     updatedAt: Date;
+}
+
+/** Lifecycle state for an automatic alert created by a Guided Pathway trigger. */
+export type GuidedPathwayFlagStatus = 'pending' | 'escalated' | 'dismissed';
+
+/** Instructor decision accepted by the Guided Pathway alert review API. */
+export type GuidedPathwayFlagDecision = 'escalate' | 'dismiss';
+
+/** Admin queue view selector for escalated alerts that still need platform review. */
+export type GuidedPathwayFlagReviewState = 'needs-review' | 'reviewed' | 'all';
+
+/**
+ * Anonymous Guided Pathway alert returned to instructor and admin interfaces.
+ *
+ * This is an explicit safe projection of the internal Mongo record. Student identity,
+ * deduplication data, chat/request identifiers, and identity-reveal audit events are excluded.
+ */
+export interface GuidedPathwayFlagView {
+    id: string; // stable alert id used for decision and review actions
+    courseId: string; // owning course id for course and admin filtering
+    courseName: string; // course-name snapshot captured when the pathway triggered
+    pathwayId: string; // winning pathway id for filtering
+    pathwayTitle: string; // winning pathway title snapshot shown to reviewers
+    messageText: string; // exact student-authored message; may contain self-identifying text
+    status: GuidedPathwayFlagStatus; // instructor review lifecycle
+    triggeredAt: string; // ISO timestamp for the pathway trigger
+    decidedAt?: string; // ISO timestamp for Escalate or Dismiss
+    decidedByName?: string; // staff display-name snapshot for admin reviewer filtering
+    adminReviewedAt?: string; // ISO timestamp for platform-admin review
+    adminReviewedByName?: string; // platform-admin display-name snapshot
+}
+
+/** One safe Guided Pathway choice returned for administrator queue filtering. */
+export interface GuidedPathwayFlagPathwayFacet {
+    pathwayId: string; // stable winning-pathway id used by the list filter
+    pathwayTitle: string; // instructor-facing title snapshot; contains no student data
+}
+
+/** Full-queue filter choices returned with the administrator alert list. */
+export interface GuidedPathwayFlagFacets {
+    pathways: GuidedPathwayFlagPathwayFacet[]; // choices matching every active filter except pathwayId
+    reviewers: string[]; // staff display names matching every active filter except reviewer
+}
+
+/** Paginated anonymous result returned by Guided Pathway alert list APIs. */
+export interface GuidedPathwayFlagListPage {
+    items: GuidedPathwayFlagView[]; // safe alert rows for the current page
+    page: number; // one-based page number
+    pageSize: number; // bounded number of rows requested per page
+    total: number; // total rows matching the supplied filters
+    facets?: GuidedPathwayFlagFacets; // global-admin full-queue choices; omitted by course list APIs
 }
 
 

@@ -33,7 +33,15 @@
 import express, { Request, Response } from 'express';
 import archiver from 'archiver';
 import { asyncHandler, asyncHandlerWithAuth } from '../middleware/async-handler';
-import { requireAdminForCourseAPI, requireCourseFeatureAPI, requireInstructorForCourseAPI, requireInstructorGlobal, requirePostPeriodAnalyticsAPI, requireRosterManageAPI } from '../middleware/require-course-role';
+import {
+    requireAdminForCourseAPI,
+    requireCourseFeatureAPI,
+    requireInstructorForCourseAPI,
+    requireInstructorGlobal,
+    requireInstructorOrAdminForCourseAPI,
+    requirePostPeriodAnalyticsAPI,
+    requireRosterManageAPI
+} from '../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import {
     InvalidInstructorStruggleTopicReorderError,
@@ -101,6 +109,7 @@ import type { ConversationZipExportRow } from '../db/mongo/conversation-export-m
 import { mountSystemPromptConfigRoutes } from './mongo/system-prompt-config-routes';
 import { mountScenarioQuestionRoutes } from './mongo/scenario-questions-routes';
 import { mountPathwaysRoutes } from './mongo/pathways-routes';
+import { mountGuidedPathwayFlagRoutes } from './mongo/guided-pathway-flag-routes';
 
 const router = express.Router();
 export default router;
@@ -1303,7 +1312,7 @@ router.post('/:courseId/instructors', requireInstructorForCourseAPI(['params']),
  * @response 404 - Course not found
  * @response 500 - Failed to restart onboarding
  */
-router.delete('/:id/restart-onboarding', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.delete('/:id/restart-onboarding', requireInstructorOrAdminForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
     
     try {
@@ -1321,6 +1330,9 @@ router.delete('/:id/restart-onboarding', requireInstructorForCourseAPI(['paramsI
         
         // Get collection names before deleting the course (to use stored names if available)
         const collectionNames = await instance.getCollectionNames(courseName);
+
+        // Remove rows from the global Guided Pathway alert collection before replacing the course id.
+        await instance.deleteGuidedPathwayFlagsForCourse(course.id);
         
         // Remove course from active-course-list
         await instance.deleteActiveCourse(course);
@@ -1517,7 +1529,7 @@ router.delete('/:id/remove', requireInstructorForCourseAPI(['paramsId']), asyncH
  * @response 403 - Instructor access required for course
  * @response 404 - Course not found
  */
-router.delete('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.delete('/:id', requireInstructorOrAdminForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
     
     // First check if course exists
@@ -1529,7 +1541,10 @@ router.delete('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerW
         });
     }
     
-    // Delete the course
+    // Remove rows owned by this course from the global Guided Pathway alert collection.
+    await instance.deleteGuidedPathwayFlagsForCourse(existingCourse.id);
+
+    // Delete the course catalog row.
     await instance.deleteActiveCourse(existingCourse as unknown as activeCourse);
     
     res.status(200).json({
@@ -4459,7 +4474,7 @@ router.get(
 
 /**
  * GET /:courseId/course-backup.zip
- * Instructor-only ZIP: `{CourseName} - Backup/` with five EJSON files (catalog row + four per-course collections).
+ * Admin-only ZIP with the catalog row, four per-course collections, and anonymous Guided Pathway alerts.
  *
  * @route GET /api/courses/:courseId/course-backup.zip
  */
@@ -4506,7 +4521,8 @@ router.get(
                 [`${rootPrefix}${names.flags}`, payloads.flagsJson],
                 [`${rootPrefix}${names.scheduledTasks}`, payloads.scheduledTasksJson],
                 [`${rootPrefix}${names.users}`, payloads.usersJson],
-                [`${rootPrefix}${names.memoryAgent}`, payloads.memoryAgentJson]
+                [`${rootPrefix}${names.memoryAgent}`, payloads.memoryAgentJson],
+                [`${rootPrefix}${names.guidedPathwayFlags}`, payloads.guidedPathwayFlagsJson]
             ];
             for (const [path, body] of entries) {
                 archive.append(Buffer.from(`${body}\n`, 'utf-8'), { name: path });
@@ -4800,3 +4816,8 @@ mountScenarioQuestionRoutes(router);
 // ========= GUIDED PATHWAY LIBRARY API =====
 // ===========================================
 mountPathwaysRoutes(router);
+
+// ===========================================
+// ========= GUIDED PATHWAY ALERTS API ======
+// ===========================================
+mountGuidedPathwayFlagRoutes(router);

@@ -1,5 +1,13 @@
-import { ACTIVE_COURSE_LIST_COLLECTION, ACTIVE_USERS_COLLECTION } from '../mongo-constants';
-import { activeCourseListCollection, activeUsersMongoCollection } from '../mongo-collections';
+import {
+    ACTIVE_COURSE_LIST_COLLECTION,
+    ACTIVE_USERS_COLLECTION,
+    GUIDED_PATHWAY_FLAGS_COLLECTION
+} from '../mongo-constants';
+import {
+    activeCourseListCollection,
+    activeUsersMongoCollection,
+    guidedPathwayFlagsCollection
+} from '../mongo-collections';
 
 describe('mongo collections helpers', () => {
     function mockDb() {
@@ -19,5 +27,11 @@ describe('mongo collections helpers', () => {
 
     it('activeUsersMongoCollection uses canonical name', () => {
         expect(activeUsersMongoCollection(mockDb()).collectionName).toBe(ACTIVE_USERS_COLLECTION);
+    });
+
+    it('guidedPathwayFlagsCollection uses the single global canonical name', () => {
+        expect(guidedPathwayFlagsCollection(mockDb()).collectionName).toBe(
+            GUIDED_PATHWAY_FLAGS_COLLECTION
+        );
     });
 });

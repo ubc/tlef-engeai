@@ -217,6 +217,7 @@ function attachPeriodListeners(): void {
             }
         });
     });
+
 }
 
 async function enterCourseAsAdmin(courseId: string): Promise<void> {

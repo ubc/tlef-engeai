@@ -1,6 +1,45 @@
 <div class="flag-instructor-container">
     <link rel="stylesheet" href="/styles/instructor-components/flag-instructor.css">
+    <link rel="stylesheet" href="/styles/admin-guided-pathway-flags.css">
     <main class="main-content">
+        <div
+            id="flag-management-tabs"
+            class="flag-management-tabs"
+            role="tablist"
+            aria-label="Flag management views"
+            hidden
+        >
+            <button
+                type="button"
+                id="manual-flags-tab"
+                class="flag-management-tab"
+                role="tab"
+                aria-selected="true"
+                aria-controls="manual-flags-panel"
+            >
+                Manual Flags
+            </button>
+            <button
+                type="button"
+                id="guided-pathway-alerts-tab"
+                class="flag-management-tab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="guided-pathway-alerts-panel"
+                tabindex="-1"
+                hidden
+            >
+                Guided Pathway Alerts
+                <span
+                    id="admin-guided-alert-count"
+                    class="admin-guided-alert-count"
+                    aria-label="0 awaiting review"
+                    hidden
+                >0</span>
+            </button>
+        </div>
+
+        <section id="manual-flags-panel" role="tabpanel" aria-labelledby="manual-flags-tab">
         <!-- Header: desktop = title + nav-tiles + time-filter; mobile = hamburger + title + nav-tiles + filter-btn -->
         <header class="flags-header mobile-header-bar">
             <div class="header-left">
@@ -122,6 +161,137 @@
         <!-- Flag list - dynamically populated by TypeScript -->
         <section class="flags-list" id="flags-list">
             <!-- Flag cards will be dynamically generated here -->
+        </section>
+        </section>
+
+        <section
+            id="guided-pathway-alerts-panel"
+            class="guided-pathway-alerts"
+            role="tabpanel"
+            aria-labelledby="guided-pathway-alerts-tab"
+            hidden
+        >
+            <div id="course-guided-pathway-alerts-content">
+                <header class="guided-pathway-alerts__header mobile-header-bar">
+                    <div class="guided-pathway-alerts__heading-row">
+                        <button
+                            class="instructor-mobile-hamburger-btn icon-btn"
+                            type="button"
+                            title="Open menu"
+                            aria-label="Open menu"
+                        >
+                            <i data-feather="menu"></i>
+                        </button>
+                        <div>
+                            <h1>Guided Pathway Alerts</h1>
+                            <p>
+                                Review anonymous messages that triggered an active pathway. Escalating records
+                                your decision for platform administrators; EngE-AI does not contact LTIC. A message
+                                may still identify its author if the student included personal information in its text.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="guided-pathway-alerts__status-filters" aria-label="Filter alerts by status">
+                        <button type="button" data-guided-alert-status="pending" aria-pressed="true">Pending</button>
+                        <button type="button" data-guided-alert-status="escalated" aria-pressed="false">Escalated</button>
+                        <button type="button" data-guided-alert-status="dismissed" aria-pressed="false">Dismissed</button>
+                    </div>
+                </header>
+
+                <p id="guided-pathway-alerts-status" class="guided-pathway-alerts__status" role="status" aria-live="polite"></p>
+                <div id="guided-pathway-alerts-list" class="guided-pathway-alerts__list" aria-live="polite"></div>
+                <nav class="guided-pathway-alerts__pagination" aria-label="Guided Pathway alert pages">
+                    <button type="button" id="guided-pathway-alerts-previous">Previous</button>
+                    <span id="guided-pathway-alerts-page-summary">Page 1 of 1</span>
+                    <button type="button" id="guided-pathway-alerts-next">Next</button>
+                </nav>
+            </div>
+
+            <div id="admin-guided-pathway-alerts-content" class="admin-guided-alerts" hidden>
+                <header class="admin-guided-alerts__header mobile-header-bar">
+                    <div class="admin-guided-alerts__heading-row">
+                        <button
+                            class="instructor-mobile-hamburger-btn icon-btn"
+                            type="button"
+                            title="Open menu"
+                            aria-label="Open menu"
+                        >
+                            <i data-feather="menu"></i>
+                        </button>
+                        <div class="admin-guided-alerts__title-group">
+                            <h1>Guided Pathway Alerts</h1>
+                            <span class="admin-guided-alerts__scope">All courses</span>
+                        </div>
+                    </div>
+                    <button type="button" id="admin-guided-alerts-refresh" class="admin-guided-alerts__refresh">
+                        <i data-feather="refresh-cw"></i>
+                        Refresh
+                    </button>
+                </header>
+
+                <aside class="admin-guided-alerts__notices" aria-label="Important alert information">
+                    <p class="admin-guided-alerts__notice">
+                        <i data-feather="shield"></i>
+                        <span>Messages are anonymous by default. Student-written text may still include identifying details.</span>
+                    </p>
+                    <p class="admin-guided-alerts__notice">
+                        <i data-feather="info"></i>
+                        <span>Escalation records a decision only; EngE-AI does not notify LTIC.</span>
+                    </p>
+                </aside>
+
+                <form id="admin-guided-alert-filters" class="admin-guided-alert-filters">
+                    <div class="admin-guided-alert-filters__heading">
+                        <i data-feather="filter"></i>
+                        <h2>Filters</h2>
+                    </div>
+                    <label>Academic period
+                        <select id="admin-guided-alert-period"><option value="">All periods</option></select>
+                    </label>
+                    <label>Course
+                        <select id="admin-guided-alert-course"><option value="">All courses</option></select>
+                    </label>
+                    <label>Pathway
+                        <select id="admin-guided-alert-pathway"><option value="">All pathways</option></select>
+                    </label>
+                    <label>Decision
+                        <select id="admin-guided-alert-status-filter">
+                            <option value="">All decisions</option>
+                            <option value="pending">Pending</option>
+                            <option value="escalated">Escalated</option>
+                            <option value="dismissed">Dismissed</option>
+                        </select>
+                    </label>
+                    <label>Admin review
+                        <select id="admin-guided-alert-review-state">
+                            <option value="all">All</option>
+                            <option value="needs-review">Needs review</option>
+                            <option value="reviewed">Reviewed</option>
+                        </select>
+                    </label>
+                    <label>Reviewer
+                        <select id="admin-guided-alert-reviewer"><option value="">All reviewers</option></select>
+                    </label>
+                    <label>From
+                        <input type="date" id="admin-guided-alert-date-from">
+                    </label>
+                    <label>To
+                        <input type="date" id="admin-guided-alert-date-to">
+                    </label>
+                    <div class="admin-guided-alert-filters__actions">
+                        <button type="button" id="admin-guided-alert-filters-clear">Clear</button>
+                        <button type="submit">Apply filters</button>
+                    </div>
+                </form>
+
+                <p id="admin-guided-alerts-status" class="admin-guided-alerts__status" role="status" aria-live="polite"></p>
+                <div id="admin-guided-alerts-list" class="admin-guided-alerts__list" aria-live="polite"></div>
+                <nav class="admin-guided-alerts__pagination" aria-label="Admin Guided Pathway alert pages">
+                    <button type="button" id="admin-guided-alerts-previous">Previous</button>
+                    <span id="admin-guided-alerts-page-summary">Page 1 of 1</span>
+                    <button type="button" id="admin-guided-alerts-next">Next</button>
+                </nav>
+            </div>
         </section>
     </main>
 </div>

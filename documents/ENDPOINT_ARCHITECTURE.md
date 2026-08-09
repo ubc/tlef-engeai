@@ -26,6 +26,7 @@ All API routes are prefixed with `/api/`. Page routes are served from `/` and `/
 | `/api/rag` | ragAppRoutes | Document upload, retrieval, search, wipe |
 | `/api/courses` | mongodbRoutes | Courses, flags, objectives, materials, monitor |
 | `/api/courses` | writingFeedbackRoutes | Optional staff writing-feedback workspace |
+| `/api/admin` | adminCourseRoutes | Platform-admin course catalog and cross-course Guided Pathway review |
 | `/api/course` | courseEntryRoutes | Course entry, enter-by-code, current course |
 | `/api/user` | userManagementRoutes | User profile, onboarding, activity |
 | `/api/health` | healthRoutes | Health check |
@@ -58,7 +59,7 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 | `GET /course/:courseId/instructor/assistant-prompts` | Assistant prompts |
 | `GET /course/:courseId/instructor/system-prompts` | System prompts |
 | `GET /course/:courseId/instructor/scenario-questions` | Scenario Questions (Practice Scenarios authoring). Requires `scenarioGeneration` Extra Feature. Query: `?browse=questions`, `?topicOrWeekId=`, `?generate=1`, `?questionId=` |
-| `GET /course/:courseId/instructor/pathway-library` | Capability-gated Guided Pathway Library; redirects to Dashboard when disabled |
+| `GET /course/:courseId/instructor/pathway-library` | Capability-gated Guided Pathway Library for faculty instructors/platform admins; teaching assistants redirect to Dashboard |
 | `GET /course/:courseId/instructor/course-information` | Legacy redirect → dashboard (metadata in Advanced Settings; course code in topbar) |
 | `GET /course/:courseId/instructor/about` | About page |
 | `GET /course/:courseId/instructor/onboarding/course-setup` | Onboarding |
@@ -297,6 +298,46 @@ Live Canvas OAuth routes are intentionally absent from this table until the priv
 | GET | `/api/courses/:courseId/flags/:flagId` | Yes | Instructor | Get flag report |
 | PUT | `/api/courses/:courseId/flags/:flagId` | Yes | Instructor | Update flag |
 | PATCH | `/api/courses/:courseId/flags/:flagId/response` | Yes | Instructor | Update response |
+
+#### Guided Pathway Library and automatic alerts
+
+Guided Pathway configuration is separate from manual student-created flags. Faculty instructors
+and platform admins may configure pathways; teaching assistants cannot. `enabled` controls whether
+a pathway can trigger. The independent `notifyInstructorOnTrigger` setting controls whether a
+successful trigger creates an automatic alert, and defaults to `true` for new, seeded, and legacy
+records where the field is missing.
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| GET | `/api/courses/:courseId/pathways` | Yes | Faculty instructor or **Admin** | List course pathways |
+| POST | `/api/courses/:courseId/pathways` | Yes | Faculty instructor or **Admin** | Create a pathway; notification defaults on |
+| PUT | `/api/courses/:courseId/pathways/reorder` | Yes | Faculty instructor or **Admin** | Reorder pathways |
+| PUT | `/api/courses/:courseId/pathways/:pathwayId` | Yes | Faculty instructor or **Admin** | Update configuration, including either independent switch |
+| DELETE | `/api/courses/:courseId/pathways/:pathwayId` | Yes | Faculty instructor or **Admin** | Delete a pathway definition |
+| POST | `/api/courses/:courseId/pathways/reset` | Yes | Faculty instructor or **Admin** | Restore platform defaults with notification on |
+| GET | `/api/courses/:courseId/guided-pathway-flags` | Yes | Faculty instructor or **Admin** | Paginated anonymous course alert list; optional `status` |
+| PATCH | `/api/courses/:courseId/guided-pathway-flags/:flagId/decision` | Yes | Faculty instructor or **Admin** | Atomic pending decision; body `{ decision: 'escalate' | 'dismiss' }` |
+| GET | `/api/admin/guided-pathway-flags` | Yes | **Admin** | Cross-course anonymous queue with period/course/pathway/status/reviewer/date filters |
+| PATCH | `/api/admin/guided-pathway-flags/:flagId/review` | Yes | **Admin** | Mark an escalated item reviewed without deleting it |
+| POST | `/api/admin/guided-pathway-flags/:flagId/reveal-identity` | Yes | **Admin** | Audit an escalated-item reveal, then return only the current roster display name |
+
+List and action responses use an explicit anonymous projection: pathway/course snapshots, exact
+student message, trigger/decision/review times, state, and staff reviewer display names. They never
+include the student's name or user ID, PUID, chat/request identifiers, deduplication key, or reveal
+audit events. The exact message is not automatically redacted and can still identify its author if
+the student writes personal information in it.
+
+Automatic alerts have `pending`, `escalated`, and `dismissed` states. Instructor decisions are
+final in this version, and completed records remain viewable. Escalation is an internal decision:
+EngE-AI surfaces it to platform admins but does not contact LTIC. Admin identity reveal is available
+only on escalated records, requires confirmation in the client, is re-masked after refresh, and
+fails closed when the audit write fails. Students and teaching assistants cannot call these APIs;
+automatic alerts never enter Student Flag History.
+
+`GET /api/admin/course-selection` also returns
+`data.guidedPathwayEscalationsAwaitingReview`, counting escalated records with no admin review time.
+The dashboard refreshes this count on page load and after review actions; there is no polling, live
+popup, email, or external notification.
 
 #### Monitor (instructor roster; post-period analytics)
 
@@ -579,7 +620,17 @@ console.log(res.status, await res.json());
 
 ### Chat RAG flow (`POST /api/chat/:chatId`)
 
-On each student message, `ChatApp` orchestrates retrieval through two RAG classes (shared `RAGModule` from `RAGApp`):
+The browser includes a stable opaque `clientMessageId` for each deliberate send and reuses it when
+retrying the same failed transport. The server binds it to the authenticated student, course, chat,
+and exact message before hashing it; a unique Mongo key prevents duplicate automatic pathway alerts.
+
+Before RAG, an enabled Guided Pathway may intercept the message and return its predefined response.
+When its independent notification setting is on, the chat route attempts to create one anonymous
+alert in a separate failure boundary. An alert-write failure never blocks the predefined safety or
+redirection response. Trigger metadata remains backend-only and is not stored on `ChatMessage` or
+returned to the student.
+
+When no pathway intercepts, `ChatApp` orchestrates retrieval through two RAG classes (shared `RAGModule` from `RAGApp`):
 
 1. **`RAGApp.retrieveForChat`** — vector search with published-item filter (skipped in developer mode)
 2. **`ragPrompts.formatRetrievedContext`** — wraps chunks in `<course_materials>...</course_materials>`

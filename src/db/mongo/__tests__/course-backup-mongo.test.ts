@@ -22,7 +22,8 @@ jest.mock('../mongo-collections', () => ({
             courseName: 'TestCourse',
             _id: new ObjectId()
         })
-    }))
+    })),
+    guidedPathwayFlagsCollection: jest.fn((db) => db.collection('guided-pathway-flags'))
 }));
 
 import { getCollectionNames } from '../collection-registry-mongo';
@@ -35,14 +36,34 @@ describe('course-backup-mongo loadCourseMongoBackupPayloads', () => {
             TestCourse_users: [{ _id: oid, userId: 'student-1' }],
             TestCourse_flags: [{ id: 'f1' }],
             TestCourse_scheduled_tasks: [],
-            'TestCourse_memory-agent': [{ userId: 'student-1', struggleTopics: ['a'] }]
+            'TestCourse_memory-agent': [{ userId: 'student-1', struggleTopics: ['a'] }],
+            'guided-pathway-flags': [{
+                id: 'gpf-1',
+                courseId: 'course-id-1',
+                courseName: 'TestCourse',
+                pathwayId: 'pathway-1',
+                pathwayTitle: 'Support',
+                messageText: 'I need help',
+                studentUserId: 'student-1',
+                dedupeKey: 'restricted',
+                status: 'pending',
+                triggeredAt: new Date('2026-08-08T12:00:00.000Z'),
+                identityRevealEvents: []
+            }]
         };
 
         const mockDb = {
             collection: (name: string) => ({
-                find: () => ({
-                    toArray: async () => rows[name] ?? []
-                })
+                find: (filter: { courseId?: string } = {}) => {
+                    const matching = (rows[name] ?? []).filter((row: any) =>
+                        !filter.courseId || row.courseId === filter.courseId
+                    );
+                    const cursor = {
+                        sort: () => cursor,
+                        toArray: async () => matching
+                    };
+                    return cursor;
+                }
             })
         };
 
@@ -76,5 +97,16 @@ describe('course-backup-mongo loadCourseMongoBackupPayloads', () => {
         expect(JSON.parse(payloads.scheduledTasksJson)).toEqual([]);
         const mem = EJSON.parse(payloads.memoryAgentJson, { relaxed: false }) as { userId: string }[];
         expect(mem[0].userId).toBe('student-1');
+
+        const pathwayFlags = JSON.parse(payloads.guidedPathwayFlagsJson) as Array<Record<string, unknown>>;
+        expect(pathwayFlags).toHaveLength(1);
+        expect(pathwayFlags[0]).toMatchObject({
+            id: 'gpf-1',
+            messageText: 'I need help',
+            triggeredAt: '2026-08-08T12:00:00.000Z'
+        });
+        expect(pathwayFlags[0]).not.toHaveProperty('studentUserId');
+        expect(pathwayFlags[0]).not.toHaveProperty('dedupeKey');
+        expect(pathwayFlags[0]).not.toHaveProperty('identityRevealEvents');
     });
 });

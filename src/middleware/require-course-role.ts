@@ -109,6 +109,40 @@ export function requireInstructorForCourseAPI(sources: CourseIdSource[] = ['para
 }
 
 /**
+ * requireInstructorOrAdminForCourseAPI - Requires course-owner review permission.
+ *
+ * Platform administrators and faculty listed in `course.instructors` pass.
+ * Teaching assistants remain course staff for other features but are denied here.
+ *
+ * @param sources - Ordered request locations used to resolve the course id
+ * @returns Express middleware with JSON 401/403/404 failures
+ */
+export function requireInstructorOrAdminForCourseAPI(
+    sources: CourseIdSource[] = ['params', 'paramsId', 'body', 'session']
+) {
+    return async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const ctx = await loadCourseContext(req, sources);
+            if (!ctx.ok) {
+                return res.status(ctx.status).json({ error: ctx.error });
+            }
+
+            if (!canManageCourseRoster(ctx.course, ctx.globalUser)) {
+                appLogger.log(
+                    `[RBAC] User ${ctx.globalUser.userId} denied instructor/admin API access for course ${ctx.courseId}`
+                );
+                return res.status(403).json({ error: 'Instructor or administrator access required' });
+            }
+
+            next();
+        } catch (error) {
+            appLogger.error('[RBAC] Error in requireInstructorOrAdminForCourseAPI:', error);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    };
+}
+
+/**
  * Middleware: Require student role for course-scoped API endpoints
  * Returns 403 JSON if user is not enrolled or is course staff.
  */

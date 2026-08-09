@@ -11,13 +11,16 @@
 
 import { Router, Request, Response } from 'express';
 import { asyncHandlerWithAuth } from '../../middleware/async-handler';
-import { requireCourseFeatureAPI, requireInstructorForCourseAPI } from '../../middleware/require-course-role';
+import {
+    requireCourseFeatureAPI,
+    requireInstructorOrAdminForCourseAPI,
+} from '../../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../../db/enge-ai-mongodb';
 import { normalizeRouteParams } from '../../helpers/route-params';
 
-/** Staff pathway APIs require instructor role and Guided Pathway capability. */
+/** Pathway configuration requires a course instructor/admin and the Guided Pathway capability. */
 const pathwayGates = [
-    requireInstructorForCourseAPI(['params']),
+    requireInstructorOrAdminForCourseAPI(['params']),
     requireCourseFeatureAPI('guidedPathway', ['params'])
 ];
 
@@ -56,6 +59,10 @@ export function mountPathwaysRoutes(router: Router): void {
                 triggerDescription: typeof body.triggerDescription === 'string' ? body.triggerDescription : '',
                 assistantResponse: typeof body.assistantResponse === 'string' ? body.assistantResponse : '',
                 enabled: typeof body.enabled === 'boolean' ? body.enabled : true,
+                notifyInstructorOnTrigger:
+                    typeof body.notifyInstructorOnTrigger === 'boolean'
+                        ? body.notifyInstructorOnTrigger
+                        : true,
                 ctas: Array.isArray(body.ctas) ? body.ctas : [],
             });
             res.status(201).json({ success: true, data });
@@ -124,6 +131,9 @@ export function mountPathwaysRoutes(router: Router): void {
             if (typeof body.triggerDescription === 'string') patch.triggerDescription = body.triggerDescription;
             if (typeof body.assistantResponse === 'string') patch.assistantResponse = body.assistantResponse;
             if (typeof body.enabled === 'boolean') patch.enabled = body.enabled;
+            if (typeof body.notifyInstructorOnTrigger === 'boolean') {
+                patch.notifyInstructorOnTrigger = body.notifyInstructorOnTrigger;
+            }
             if (Array.isArray(body.ctas)) patch.ctas = body.ctas;
 
             const data = await instance.updatePathway(courseName, pathwayId, patch);

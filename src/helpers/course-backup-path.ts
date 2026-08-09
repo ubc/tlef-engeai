@@ -20,7 +20,7 @@ export function courseMongoBackupFilenameSlug(courseName: string): string {
 }
 
 /**
- * Five backup JSON filenames (flat under the archive root folder).
+ * Six backup JSON filenames (flat under the archive root folder).
  */
 export function buildCourseMongoBackupJsonFilenames(courseNameSlug: string): {
     activeCourseList: string;
@@ -28,12 +28,14 @@ export function buildCourseMongoBackupJsonFilenames(courseNameSlug: string): {
     scheduledTasks: string;
     users: string;
     memoryAgent: string;
+    guidedPathwayFlags: string;
 } {
     return {
         activeCourseList: `active-courselist_${courseNameSlug}.json`,
         flags: `${courseNameSlug}_flag.json`,
         scheduledTasks: `${courseNameSlug}_scheduled_tasks.json`,
         users: `${courseNameSlug}_users.json`,
-        memoryAgent: `${courseNameSlug}_memory_agent.json`
+        memoryAgent: `${courseNameSlug}_memory_agent.json`,
+        guidedPathwayFlags: `${courseNameSlug}_guided_pathway_flags.json`
     };
 }

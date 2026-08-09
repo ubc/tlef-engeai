@@ -33,8 +33,11 @@ router.get(
     asyncHandlerWithAuth(async (_req: Request, res: Response) => {
         const mongo = await EngEAI_MongoDB.getInstance();
         const defaultPeriodId = await mongo.getDefaultAcademicPeriodId();
-        const periods = await mongo.listAcademicPeriods();
-        const courses = await mongo.getAllActiveCourses();
+        const [periods, courses, guidedPathwayEscalationsAwaitingReview] = await Promise.all([
+            mongo.listAcademicPeriods(),
+            mongo.getAllActiveCourses(),
+            mongo.countGuidedPathwayFlagsAwaitingAdminReview()
+        ]);
 
         const coursesByPeriod = new Map<string, activeCourse[]>();
         for (const period of periods) {
@@ -67,7 +70,8 @@ router.get(
             data: {
                 periods: payload,
                 defaultPeriodId,
-                defaultPeriodTitle: DEFAULT_ACADEMIC_PERIOD_TITLE
+                defaultPeriodTitle: DEFAULT_ACADEMIC_PERIOD_TITLE,
+                guidedPathwayEscalationsAwaitingReview
             }
         });
     })

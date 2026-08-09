@@ -230,7 +230,8 @@
     flex-shrink: 0;
 }
 
-.pathway-block__toggle-enabled {
+.pathway-block__toggle-enabled,
+.pathway-block__toggle-notification {
     appearance: none;
     border: none;
     background: transparent;
@@ -243,11 +244,13 @@
     transform-origin: center;
 }
 
-.pathway-block__toggle-enabled:hover {
+.pathway-block__toggle-enabled:hover,
+.pathway-block__toggle-notification:hover {
     transform: scale(1.12);
 }
 
-.pathway-block__toggle-enabled:focus-visible {
+.pathway-block__toggle-enabled:focus-visible,
+.pathway-block__toggle-notification:focus-visible {
     outline: 2px solid var(--color-chbe-green, #4d7a2f);
     outline-offset: 2px;
 }
@@ -262,7 +265,8 @@
     transition: background 0.15s ease;
 }
 
-.pathway-block__toggle-enabled[aria-checked='true'] .pathway-block__toggle-track {
+.pathway-block__toggle-enabled[aria-checked='true'] .pathway-block__toggle-track,
+.pathway-block__toggle-notification[aria-checked='true'] .pathway-block__toggle-track {
     background: var(--color-chbe-green, #4d7a2f);
 }
 
@@ -278,8 +282,46 @@
     transition: transform 0.15s ease;
 }
 
-.pathway-block__toggle-enabled[aria-checked='true'] .pathway-block__toggle-thumb {
+.pathway-block__toggle-enabled[aria-checked='true'] .pathway-block__toggle-thumb,
+.pathway-block__toggle-notification[aria-checked='true'] .pathway-block__toggle-thumb {
     transform: translateX(1rem);
+}
+
+.pathway-block__notification-setting {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding: 0.8rem;
+    border: 1px solid var(--border-color, #c8c8c8);
+    border-radius: 8px;
+    background: #f7f7f7;
+}
+
+.pathway-block__notification-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.pathway-block__notification-copy .pathway-block__label {
+    padding-top: 0;
+}
+
+.pathway-block__notification-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.pathway-block__notification-state {
+    min-width: 1.8rem;
+    color: var(--text-secondary, #555);
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-align: right;
 }
 
 .pathway-block__remove.icon-btn {
@@ -747,11 +789,13 @@
     .pathway-block__title-input,
     .pathway-block__title-edit,
     .pathway-block__toggle-enabled,
+    .pathway-block__toggle-notification,
     .pathway-block__remove.icon-btn {
         transition: none;
     }
 
     .pathway-block__toggle-enabled:hover,
+    .pathway-block__toggle-notification:hover,
     .pathway-block__remove.icon-btn:hover {
         transform: none;
     }
@@ -770,6 +814,11 @@
     .pathway-block__field,
     .pathway-block__ctas-section {
         grid-template-columns: 1fr;
+    }
+
+    .pathway-block__notification-setting {
+        align-items: flex-start;
+        flex-direction: column;
     }
 
     .pathway-block__add-cta {

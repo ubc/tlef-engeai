@@ -23,6 +23,7 @@ import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import { isMockResponse, generateMockStreamingResponse } from '../helpers/mock-response';
 import { evaluatePathways } from '../guided-pathways/pathway-orchestrator';
+import type { PathwayTriggerSnapshot } from '../guided-pathways/pathway-schema';
 import { isCourseFeatureEnabled } from '../dashboard-setting/course-features';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 import { stripAllQuestionUnstruggleTags } from '../utils/message-utils';
@@ -49,6 +50,12 @@ export const DEBUG_MODE_FORBIDDEN = 'DEBUG_MODE_FORBIDDEN';
 export interface SendUserMessageOptions {
     /** Platform admin (`GlobalUser.isAdmin`); required for `/DEBUG` and sticky debug turns. */
     isAdmin?: boolean;
+}
+
+/** Internal chat result; pathway trigger details are consumed by the route and never sent to students. */
+export interface SendUserMessageResult {
+    assistantMessage: ChatMessage;
+    pathwayTrigger: PathwayTriggerSnapshot | null;
 }
 /**
  * Interface for initializing a new chat conversation
@@ -219,16 +226,8 @@ export class ChatApp {
      * @returns Clean title string with first 10 words
      */
     private generateChatTitleFromResponse(responseText: string): string {
-        //START DEBUG LOG : DEBUG-CODE(GENERATE-TITLE)
-        appLogger.log(`[CHAT-APP] 📝 Generating title from response: "${responseText.substring(0, 100)}..."`);
-        //END DEBUG LOG : DEBUG-CODE(GENERATE-TITLE)
-        
         try {
             const title = generateChatTitleFromResponse(responseText);
-            
-            //START DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-SUCCESS)
-            appLogger.log(`[CHAT-APP] ✅ Generated title: "${title}"`);
-            //END DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-SUCCESS)
             
             return title || 'New Chat'; // Fallback to "New Chat" if empty
         } catch (error) {
@@ -322,7 +321,7 @@ export class ChatApp {
      * @param courseName - The course name for RAG context
      * @param onChunk - Optional callback function for streaming chunks (defaults to no-op)
      * @param options - Optional flags (e.g. platform admin for `/DEBUG`)
-     * @returns Promise<ChatMessage> - The complete assistant's response message
+     * @returns The assistant response plus backend-only Guided Pathway trigger metadata
      */
     public async sendUserMessage(
         message: string, 
@@ -331,7 +330,7 @@ export class ChatApp {
         courseName: string,
         onChunk: (chunk: string) => void,
         options?: SendUserMessageOptions
-    ): Promise<ChatMessage> {
+    ): Promise<SendUserMessageResult> {
         // Reset the inactivity timer since user is actively using this chat
         this.resetChatTimer(chatId);
         
@@ -363,12 +362,25 @@ export class ChatApp {
             if (!isAdmin) {
                 throw new Error(DEBUG_MODE_FORBIDDEN);
             }
-            return this.toggleDebugMode(chatId, message, userId, courseName);
+            return {
+                assistantMessage: this.toggleDebugMode(chatId, message, userId, courseName),
+                pathwayTrigger: null,
+            };
         }
 
         // Sticky debug turns: prompt-engineer path with full teaching system prompt
         if (isAdmin && this.debugModeByChat.get(chatId) === true) {
-            return this.sendDebugModeMessage(message, chatId, userId, courseName, onChunk, conversation);
+            return {
+                assistantMessage: await this.sendDebugModeMessage(
+                    message,
+                    chatId,
+                    userId,
+                    courseName,
+                    onChunk,
+                    conversation
+                ),
+                pathwayTrigger: null,
+            };
         }
 
         // Non-admin must not keep a stale debug flag
@@ -400,13 +412,16 @@ export class ChatApp {
                 appLogger.log(`[CHAT-APP] Pathway: ${pathwayResult.winningPathwayId}`);
                 appLogger.log(`########################################################`);
 
-                return this.addAssistantMessage(
-                    chatId,
-                    pathwayResult.responseText,
-                    userId,
-                    courseName,
-                    pathwayResult.ctas
-                );
+                return {
+                    assistantMessage: this.addAssistantMessage(
+                        chatId,
+                        pathwayResult.responseText,
+                        userId,
+                        courseName,
+                        pathwayResult.ctas
+                    ),
+                    pathwayTrigger: pathwayResult.triggerSnapshot,
+                };
             }
 
             else {
@@ -681,11 +696,9 @@ ${chunkDump}
             appLogger.log('[MOCK-RESPONSE] Using mock streaming response instead of LLM');
             assistantResponse = await generateMockStreamingResponse(onChunk);
             appLogger.log(`\n✅ Mock streaming completed. Full response length: ${assistantResponse.length}`);
-            appLogger.log(`Full response: "${assistantResponse}"`);
         } else {
             await forkedConversation.stream(
                 (chunk: string) => {
-                    appLogger.log(`📦 Received chunk: "${chunk}"`);
                     assistantResponse += chunk;
                     onChunk(chunk);
                 },
@@ -693,7 +706,6 @@ ${chunkDump}
             );
             
             appLogger.log(`\n✅ Streaming completed. Full response length: ${assistantResponse.length}`);
-            appLogger.log(`Full response: "${assistantResponse}"`);
         }
 
         // ====================================================================
@@ -773,7 +785,7 @@ ${chunkDump}
             }
         }
         
-        return assistantMessage;
+        return { assistantMessage, pathwayTrigger: null };
     }
 
     /**

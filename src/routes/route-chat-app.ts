@@ -17,7 +17,9 @@ import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { ChatApp, RETIRED_CONVERSATION_MODE_MESSAGE, DEBUG_MODE_FORBIDDEN } from '../chat/chat-app';
 import { conversationModePrompts } from '../chat/compose-system-prompt';
 import { isAdminUser } from '../utils/admin';
+import { isCourseStaff } from '../utils/course-staff';
 import { isDebugToggleMessage } from '../chat/system-prompts/debug-mode-prompt';
+import { persistGuidedPathwayAlertSafely } from '../guided-pathways/pathway-alert-persistence';
 
 import { getRandomNoResponse } from '../memory-agent/unstruggle-responses';
 import { memoryAgent } from '../memory-agent/memory-agent';
@@ -35,6 +37,18 @@ const router = express.Router();
 const appConfig = loadConfig();
 
 const chatApp = new ChatApp(appConfig);
+
+function safeOperationalErrorMetadata(error: unknown): {
+    errorName: string;
+    errorCode?: string | number;
+} {
+    const errorName = error instanceof Error ? error.name : typeof error;
+    const code = error && typeof error === 'object' ? (error as { code?: unknown }).code : undefined;
+    return {
+        errorName,
+        ...(typeof code === 'string' || typeof code === 'number' ? { errorCode: code } : {})
+    };
+}
 
 /**
  * SIGTERM signal handler
@@ -557,6 +571,7 @@ router.post('/:chatId/dismiss-unstruggle', asyncHandlerWithAuth(async (req: Requ
  * @route POST /api/chat/:chatId
  * @param {string} chatId - Chat ID (path param)
  * @param {string} message - User message text (body)
+ * @param {string} clientMessageId - Opaque client-generated id reused for transport retries (body)
  * @param {string} [userId] - User ID, optional; session/MongoDB used as source of truth (body)
  * @param {string} [conversationMode] - Selected teaching mode used to finalize undeclared chats
  * @returns {object} { success: boolean, userMessage?: object, assistantMessage?: object, error?: string }
@@ -569,7 +584,7 @@ router.post('/:chatId/dismiss-unstruggle', asyncHandlerWithAuth(async (req: Requ
 router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { chatId } = normalizeRouteParams(req.params);
-        const { message, userId: userIdFromBody, conversationMode } = req.body; // Rename to avoid conflict
+        const { message, clientMessageId, conversationMode } = req.body;
         
         // Get user from session
         const user = (req as any).user;
@@ -592,26 +607,26 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
         }
         const userId = globalUserFromDB.userId; // Use this consistently throughout
         
-        //START DEBUG LOG : DEBUG-CODE(SEND-MSG-001)
-        appLogger.log('\n💬 SENDING MESSAGE:');
-        appLogger.log('='.repeat(50));
-        appLogger.log(`Chat ID: ${chatId}`);
-        appLogger.log(`User ID (from body): ${userIdFromBody}`);
-        appLogger.log(`User ID (from MongoDB): ${userId}`);
-        appLogger.log(`PUID: ${puid}`);
-        appLogger.log(`Course: ${courseName}`);
-        appLogger.log(`Message: ${message.substring(0, 100)}...`);
-        appLogger.log('='.repeat(50));
-        //END DEBUG LOG : DEBUG-CODE(SEND-MSG-001)
-        
         // Validate input
-        if (!message) {
+        if (typeof message !== 'string' || message.trim().length === 0) {
             //START DEBUG LOG : DEBUG-CODE(SEND-MSG-002)
             appLogger.log('❌ VALIDATION FAILED: Missing message');
             //END DEBUG LOG : DEBUG-CODE(SEND-MSG-002)
             return res.status(400).json({ 
                 success: false, 
                 error: 'Message is required' 
+            });
+        }
+
+        if (
+            typeof clientMessageId !== 'string' ||
+            clientMessageId.length < 16 ||
+            clientMessageId.length > 128 ||
+            !/^[A-Za-z0-9._:-]+$/.test(clientMessageId)
+        ) {
+            return res.status(400).json({
+                success: false,
+                error: 'A valid clientMessageId is required'
             });
         }
 
@@ -720,8 +735,6 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             
             //START DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-001)
             appLogger.log(`\n🔄 PROCESSING UNSTRUGGLE RESPONSE:`);
-            appLogger.log(`Message: ${message}`);
-            appLogger.log(`Topic: ${topic}`);
             appLogger.log(`Response: ${isConfident ? 'Yes (confident)' : 'No (needs practice)'}`);
             //END DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-001)
             
@@ -829,8 +842,6 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 //START DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-003)
                 appLogger.log('⚠️ Unstruggle pattern detected but validation failed:');
                 appLogger.log(`   Has unstruggle tag: ${hasUnstruggleTag}`);
-                appLogger.log(`   Previous topic: ${prevTopic || 'none'}`);
-                appLogger.log(`   User topic: ${topic}`);
                 appLogger.log('   Treating as regular message.');
                 //END DEBUG LOG : DEBUG-CODE(UNSTRUGGLE-003)
             }
@@ -861,7 +872,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 });
             }
             
-            const assistantMessage = await chatApp.sendUserMessage(
+            const { assistantMessage, pathwayTrigger } = await chatApp.sendUserMessage(
                 message,
                 chatId,
                 userId.toString(), // Use userId from MongoDB (consistent source)
@@ -891,8 +902,6 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
 
             // Save both messages to MongoDB
             // userId already fetched from MongoDB above (consistent source)
-            appLogger.log(`[SEND-MSG] Using userId from MongoDB: ${puid} -> ${userId}`);
-            
             try {
                 // Save user message
                 await mongoDB.addMessageToChat(courseName, userId, chatId, userMessage);
@@ -900,7 +909,6 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 //START DEBUG LOG : DEBUG-CODE(SEND-MSG-007)
                 appLogger.log('✅ User message saved to MongoDB');
                 appLogger.log('   User message ID:', userMessage.id);
-                appLogger.log('   Text:', userMessage.text.substring(0, 50) + '...');
                 //END DEBUG LOG : DEBUG-CODE(SEND-MSG-007)
                 
                 // Save assistant message
@@ -909,7 +917,6 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 //START DEBUG LOG : DEBUG-CODE(SEND-MSG-008)
                 appLogger.log('✅ Assistant message saved to MongoDB');
                 appLogger.log('   Assistant message ID:', assistantMessage.id);
-                appLogger.log('   Text:', assistantMessage.text.substring(0, 50) + '...');
                 //END DEBUG LOG : DEBUG-CODE(SEND-MSG-008)
                 
                 // Check if chat title needs updating (first user-AI exchange)
@@ -920,10 +927,44 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 
             } catch (dbError) {
                 //START DEBUG LOG : DEBUG-CODE(SEND-MSG-009)
-                appLogger.error('⚠️ WARNING: Failed to save messages to MongoDB:', { error: dbError });
+                appLogger.error(
+                    '⚠️ WARNING: Failed to save messages to MongoDB',
+                    safeOperationalErrorMetadata(dbError)
+                );
                 appLogger.log('Messages in memory but not persisted to database');
                 //END DEBUG LOG : DEBUG-CODE(SEND-MSG-009)
                 // Continue execution - messages are still in memory
+            }
+
+            // Persist an anonymous alert only for enrolled students and notification-enabled triggers.
+            const courseId = courseForFeatures?.id;
+            const isEnrolledStudent = Boolean(
+                courseForFeatures &&
+                courseId &&
+                globalUserFromDB.coursesEnrolled.includes(courseId) &&
+                !isCourseStaff(courseForFeatures, globalUserFromDB)
+            );
+
+            const flagResult = await persistGuidedPathwayAlertSafely({
+                writer: mongoDB,
+                trigger: pathwayTrigger,
+                courseId,
+                courseName,
+                messageText: message,
+                studentUserId: userId,
+                chatId,
+                clientMessageId,
+                isEligibleStudent: isEnrolledStudent,
+            });
+            if (flagResult.status === 'failed') {
+                appLogger.error(
+                    '[GUIDED-PATHWAY-FLAGS] Alert persistence failed; returning pathway response',
+                    {
+                        courseId,
+                        pathwayId: pathwayTrigger?.pathwayId,
+                        errorCode: flagResult.errorCode,
+                    }
+                );
             }
 
             // Return the complete response (no streaming)
@@ -936,7 +977,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
 
         } catch (aiError) {
             //START DEBUG LOG : DEBUG-CODE(SEND-MSG-010)
-            appLogger.error('❌ AI Communication Error:', { error: aiError });
+            appLogger.error('❌ AI Communication Error', safeOperationalErrorMetadata(aiError));
             //END DEBUG LOG : DEBUG-CODE(SEND-MSG-010)
 
             if (aiError instanceof Error && aiError.message === DEBUG_MODE_FORBIDDEN) {
@@ -954,7 +995,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
 
     } catch (error) {
         //START DEBUG LOG : DEBUG-CODE(SEND-MSG-011)
-        appLogger.error('❌ ERROR IN SEND MESSAGE ENDPOINT:', { error });
+        appLogger.error('❌ ERROR IN SEND MESSAGE ENDPOINT', safeOperationalErrorMetadata(error));
         //END DEBUG LOG : DEBUG-CODE(SEND-MSG-011)
         res.status(500).json({ 
             success: false, 
