@@ -75,9 +75,24 @@ interface NormalizedText {
     map: number[];
 }
 
-const QUOTE_SINGLE = /[‘’‚‛′]/;
-const QUOTE_DOUBLE = /[“”„‟″]/;
-const DASH = /[–—−]/;
+/** Typographic variants folded to their ASCII equivalent before matching. */
+const CANONICAL_CHARS = new Map<string, string>([
+    ['‘', "'"], // left single quotation mark
+    ['’', "'"], // right single quotation mark
+    ['‚', "'"], // single low-9 quotation mark
+    ['‛', "'"], // single high-reversed-9 quotation mark
+    ['′', "'"], // prime
+    ['“', '"'], // left double quotation mark
+    ['”', '"'], // right double quotation mark
+    ['„', '"'], // double low-9 quotation mark
+    ['‟', '"'], // double high-reversed-9 quotation mark
+    ['″', '"'], // double prime
+    ['–', '-'], // en dash
+    ['—', '-'], // em dash
+    ['−', '-'] // minus sign
+]);
+
+const WHITESPACE = /\s/;
 
 /**
  * Canonicalizes cosmetic variation (typographic quotes/dashes, whitespace runs)
@@ -91,21 +106,22 @@ function normalizeWithMap(source: string): NormalizedText {
     const chars: string[] = [];
     const map: number[] = [];
     let pendingSpace = false;
+    // Indexed loop rather than for...of: iteration must advance one UTF-16 code
+    // unit at a time so recorded indices stay slice()-compatible.
     for (let index = 0; index < source.length; index++) {
-        let char = source[index];
-        if (/\s/.test(char)) {
+        const char = source[index];
+        // Collapse whitespace runs to one space, and drop leading whitespace entirely.
+        if (WHITESPACE.test(char)) {
             pendingSpace = chars.length > 0;
             continue;
         }
-        if (QUOTE_SINGLE.test(char)) char = "'";
-        else if (QUOTE_DOUBLE.test(char)) char = '"';
-        else if (DASH.test(char)) char = '-';
         if (pendingSpace) {
+            // Anchor the collapsed space at the run's first surviving character.
             chars.push(' ');
             map.push(index);
             pendingSpace = false;
         }
-        chars.push(char);
+        chars.push(CANONICAL_CHARS.get(char) ?? char);
         map.push(index);
     }
     return { text: chars.join(''), map };
