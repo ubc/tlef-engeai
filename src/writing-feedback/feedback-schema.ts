@@ -1,54 +1,76 @@
 /**
  * Feedback schema — structured model validation and exact-evidence reconciliation
  *
- * Validates the complete four-criterion A2 result and constrains generated evidence to a
+ * Validates a rubric-complete assignment result and constrains generated evidence to a
  * focused clause or sentence. Cosmetic model drift may be reconciled through a UTF-16
  * source map, but paraphrases and unmatched evidence fail instead of being invented.
  *
  * @author: @rdschrs
  * @date: 2026-07-18
  * @version: 1.0.0
- * @description: Enforces structured A2 output, exact evidence, and safe numeric mapping.
+ * @description: Enforces rubric-driven output, exact evidence, and safe numeric mapping.
  */
 
 import { z } from 'zod';
-import type { A2FeedbackResult } from './contracts';
-
-const level = z.enum(['emerging', 'developing', 'competent', 'strong']);
+import type {
+    WritingFeedbackResult,
+    WritingRubricDefinition
+} from './contracts';
 
 /** Maximum model evidence span so seeded annotations stay clause- or sentence-focused. */
 export const MAX_EVIDENCE_QUOTE_LENGTH = 280;
 
-/** Structured-output contract for one complete, bounded A2 model draft. */
-export const a2FeedbackSchema = z.object({
-    criteria: z.array(z.object({
-        criterion: z.enum(['organization', 'content', 'interpersonal_positioning', 'task_constraints']),
-        suggestedLevel: level,
-        evidence: z.array(z.object({
-            quote: z.string().min(1).max(MAX_EVIDENCE_QUOTE_LENGTH),
-            rationale: z.string().min(1)
-        })).min(1),
-        explanation: z.string().min(1),
-        confidence: z.number().min(0).max(1)
-    })).length(4),
-    strengths: z.array(z.string().min(1)).max(5),
-    revisionGoals: z.array(z.object({
-        skillTag: z.string().min(1),
-        goal: z.string().min(1),
-        guidedQuestion: z.string().min(1)
-    })).max(3),
-    internalFlags: z.array(z.string()).max(8)
-}).superRefine((feedback, ctx) => {
-    // Array length alone is insufficient: require every criterion exactly once.
-    const criterionIds = feedback.criteria.map((criterion) => criterion.criterion);
-    if (new Set(criterionIds).size !== 4) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'Feedback must contain each A2 criterion exactly once',
-            path: ['criteria']
-        });
-    }
+const evidenceSchema = z.object({
+    quote: z.string().min(1).max(MAX_EVIDENCE_QUOTE_LENGTH),
+    rationale: z.string().min(1)
 });
+
+const revisionGoalSchema = z.object({
+    skillTag: z.string().min(1),
+    goal: z.string().min(1),
+    guidedQuestion: z.string().min(1)
+});
+
+/**
+ * buildFeedbackSchema - builds structured output validation from one approved rubric.
+ *
+ * Allowed criterion and level ids come only from the assignment rubric. Output
+ * order is flexible, but every criterion must appear exactly once.
+ *
+ * @param rubric - Assignment rubric governing the pending generation run
+ * @returns Zod schema accepting only a complete result for that rubric
+ * @throws Error when a rubric has no criteria or levels
+ */
+export function buildFeedbackSchema(rubric: WritingRubricDefinition) {
+    const criterionIds = rubric.criteria.map((criterion) => criterion.id);
+    const levelIds = rubric.levels.map((level) => level.id);
+    if (!criterionIds.length || !levelIds.length) {
+        throw new Error('An approved rubric requires criteria and performance levels');
+    }
+    const allowedCriteria = new Set(criterionIds);
+    const allowedLevels = new Set(levelIds);
+    return z.object({
+        criteria: z.array(z.object({
+            criterion: z.string().refine((value) => allowedCriteria.has(value), 'Criterion is not part of the approved rubric'),
+            suggestedLevel: z.string().refine((value) => allowedLevels.has(value), 'Performance level is not part of the approved rubric'),
+            evidence: z.array(evidenceSchema).min(1),
+            explanation: z.string().min(1),
+            confidence: z.number().min(0).max(1)
+        })).length(criterionIds.length),
+        strengths: z.array(z.string().min(1)).max(5),
+        revisionGoals: z.array(revisionGoalSchema).max(3),
+        internalFlags: z.array(z.string()).max(8)
+    }).superRefine((feedback, ctx) => {
+        const returnedIds = feedback.criteria.map((criterion) => criterion.criterion);
+        if (new Set(returnedIds).size !== criterionIds.length) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Feedback must contain each approved criterion exactly once',
+                path: ['criteria']
+            });
+        }
+    });
+}
 
 /**
  * validateExactEvidence — enforces the no-invented-evidence invariant.
@@ -58,7 +80,7 @@ export const a2FeedbackSchema = z.object({
  * @returns The unchanged result when every quote is an exact substring
  * @throws Error when any quote is absent from the verified source
  */
-export function validateExactEvidence(result: A2FeedbackResult, verifiedText: string): A2FeedbackResult {
+export function validateExactEvidence(result: WritingFeedbackResult, verifiedText: string): WritingFeedbackResult {
     for (const criterion of result.criteria) {
         for (const evidence of criterion.evidence) {
             if (!verifiedText.includes(evidence.quote)) {
@@ -140,7 +162,7 @@ function normalizeWithMap(source: string): NormalizedText {
  * @returns Cloned feedback containing exact original source slices
  * @throws Error when a quote cannot be mapped back to verified text
  */
-export function reconcileExactEvidence(result: A2FeedbackResult, verifiedText: string): A2FeedbackResult {
+export function reconcileExactEvidence(result: WritingFeedbackResult, verifiedText: string): WritingFeedbackResult {
     // Normalize the source once, retaining an index back to every original code unit.
     const normalizedText = normalizeWithMap(verifiedText);
     const relocate = (quote: string): string | undefined => {
@@ -161,7 +183,7 @@ export function reconcileExactEvidence(result: A2FeedbackResult, verifiedText: s
         }
         return undefined;
     };
-    const reconciled: A2FeedbackResult = {
+    const reconciled: WritingFeedbackResult = {
         ...result,
         criteria: result.criteria.map((criterion) => ({
             ...criterion,
@@ -185,8 +207,8 @@ export function reconcileExactEvidence(result: A2FeedbackResult, verifiedText: s
  * @returns Two-decimal mean, or undefined when any required mapping is absent
  */
 export function resolveNumericGrade(
-    result: A2FeedbackResult,
-    gradeMapping: Partial<Record<'emerging' | 'developing' | 'competent' | 'strong', number>> | undefined
+    result: WritingFeedbackResult,
+    gradeMapping: Record<string, number> | undefined
 ): number | undefined {
     if (!gradeMapping || result.criteria.some((criterion) => gradeMapping[criterion.suggestedLevel] === undefined)) {
         return undefined;

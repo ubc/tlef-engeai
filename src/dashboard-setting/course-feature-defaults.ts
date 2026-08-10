@@ -26,22 +26,22 @@ export const COURSE_FEATURE_DEFINITIONS = [
     {
         id: 'writingFeedback',
         label: 'Writing Feedback',
-        defaultEnabledForNewCourse: true,
+        defaultEnabledForNewCourse: false,
     },
     {
         id: 'memoryAgent',
         label: 'Memory Agent',
-        defaultEnabledForNewCourse: true,
+        defaultEnabledForNewCourse: false,
     },
     {
         id: 'guidedPathway',
         label: 'Guided Pathway',
-        defaultEnabledForNewCourse: true,
+        defaultEnabledForNewCourse: false,
     },
     {
         id: 'scenarioGeneration',
         label: 'Scenario Generation',
-        defaultEnabledForNewCourse: true,
+        defaultEnabledForNewCourse: false,
     },
 ] as const satisfies readonly CourseFeatureDefinition[];
 

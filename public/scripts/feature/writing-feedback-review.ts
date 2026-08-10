@@ -19,10 +19,13 @@
 import { showConfirmModal } from '../ui/modal-overlay.js';
 import { showSuccessToast } from '../ui/toast-notification.js';
 import {
-    A2CriterionId,
     AnchoredComment,
     Assignment,
+    CriterionFeedback,
+    FeedbackRun,
+    FUNCTION_TAG_LABELS,
     ReviewRevision,
+    RubricDefinition,
     SOURCE_LABELS,
     STATUS_LABELS,
     STATUS_TONES,
@@ -155,21 +158,33 @@ const ACADEMIC_WRITING_MATRIX: AcademicWritingFunction[] = [
     }
 ];
 
-/** SFL presentation order for the summary tab. */
-const SFL_SECTION_ORDER: Array<{ id: A2CriterionId; sflLabel: string }> = [
-    { id: 'organization', sflLabel: 'Organization — textual meaning' },
-    { id: 'content', sflLabel: 'Content — ideational meaning' },
-    { id: 'interpersonal_positioning', sflLabel: 'Interpersonal Positioning — interpersonal meaning' },
-    { id: 'task_constraints', sflLabel: 'Task Constraints — task realization' }
-];
-
 function latestReview(submission: Submission): ReviewRevision | undefined {
     return submission.reviews?.[submission.reviews.length - 1];
 }
 
-function criterionLabel(assignment: Assignment | null, id: A2CriterionId): string {
-    return assignment?.rubric.criteria.find((criterion) => criterion.id === id)?.label
-        ?? id.replace(/_/g, ' ');
+/** Resolves labels against the immutable rubric version used by this model run. */
+function rubricForRun(assignment: Assignment | null, run: FeedbackRun): RubricDefinition | undefined {
+    if (!assignment) return undefined;
+    const candidates = [assignment.rubric, ...(assignment.rubricHistory ?? []), assignment.rubricDraft]
+        .filter((rubric): rubric is RubricDefinition => Boolean(rubric));
+    if (run.rubricVersion === undefined) return assignment.rubric;
+    return candidates.find((rubric) => rubric.version === run.rubricVersion);
+}
+
+function criterionLabel(rubric: RubricDefinition | undefined, id: string): string {
+    return rubric?.criteria.find((criterion) => criterion.id === id)?.label ?? id;
+}
+
+function levelLabel(rubric: RubricDefinition | undefined, id: string): string {
+    return rubric?.levels.find((level) => level.id === id)?.label ?? id;
+}
+
+function orderedCriterionIds(rubric: RubricDefinition | undefined, feedback: CriterionFeedback[]): string[] {
+    const ids = rubric?.criteria.map((criterion) => criterion.id) ?? [];
+    feedback.forEach((criterion) => {
+        if (!ids.includes(criterion.criterion)) ids.push(criterion.criterion);
+    });
+    return ids;
 }
 
 /**
@@ -704,34 +719,38 @@ function renderSummaryTab(
     strengths.append(strengthList);
     children.push(strengths);
 
-    const sflSection = document.createElement('section');
-    sflSection.className = 'wf-feedback-section';
-    sflSection.append(createText('h3', 'Feedback by SFL section'));
+    const rubric = rubricForRun(assignment, feedbackRun);
+    const rubricSection = document.createElement('section');
+    rubricSection.className = 'wf-feedback-section';
+    rubricSection.append(createText('h3', 'Feedback by rubric criterion'));
     const criterionList = document.createElement('div');
     criterionList.className = 'wf-criterion-list';
-    SFL_SECTION_ORDER.forEach((section) => {
-        const criterion = feedbackRun.result.criteria.find((item) => item.criterion === section.id);
-        if (!criterion) return;
+    orderedCriterionIds(rubric, feedbackRun.result.criteria).forEach((criterionId) => {
+        const criterion = feedbackRun.result.criteria.find((item) => item.criterion === criterionId);
+        const definition = rubric?.criteria.find((item) => item.id === criterionId);
         const item = document.createElement('article');
         item.className = 'wf-criterion';
         const criterionHeader = document.createElement('div');
         criterionHeader.className = 'wf-criterion-header';
-        criterionHeader.append(
-            createText('h4', criterionLabel(assignment, criterion.criterion)),
-            chip(criterion.suggestedLevel, 'neutral')
-        );
-        item.append(
-            criterionHeader,
-            createText('p', section.sflLabel, 'wf-sfl-label'),
-            createText('p', criterion.explanation)
-        );
+        criterionHeader.append(createText('h4', criterionLabel(rubric, criterionId)));
+        if (criterion) criterionHeader.append(chip(levelLabel(rubric, criterion.suggestedLevel), 'neutral'));
+        item.append(criterionHeader);
+        const lens = definition?.sflDimension
+            ?? (definition?.functionTag ? `${FUNCTION_TAG_LABELS[definition.functionTag]} function` : undefined);
+        if (lens) item.append(createText('p', lens, 'wf-sfl-label'));
+        if (!criterion) {
+            item.append(createText('p', 'No stored feedback was found for this rubric criterion.', 'wf-muted-note'));
+            criterionList.append(item);
+            return;
+        }
+        item.append(createText('p', criterion.explanation));
         criterion.evidence.forEach((evidence) => {
             item.append(createText('blockquote', `“${evidence.quote}”`, 'wf-evidence'));
         });
         criterionList.append(item);
     });
-    sflSection.append(criterionList);
-    children.push(sflSection);
+    rubricSection.append(criterionList);
+    children.push(rubricSection);
 
     const goalsSection = document.createElement('section');
     goalsSection.className = 'wf-feedback-section';

@@ -13,8 +13,8 @@
 
 import type { LLMOptions } from 'ubc-genai-toolkit-llm';
 
-/** Immutable profile identifier stored with assignments and feedback runs for traceability. */
-export const A2_PROFILE_VERSION = 'lled200-a2-technical-description-v1';
+/** Template identifier stored with new assignments and feedback runs for traceability. */
+export const DEFAULT_WRITING_PROFILE_VERSION = 'writing-feedback-v1';
 
 /** Lifecycle states used by the staff queue and guarded generation/release transitions. */
 export type WritingSubmissionStatus =
@@ -29,26 +29,31 @@ export type WritingSubmissionStatus =
 /** Supported intake provenance; scan sources require explicit staff verification. */
 export type WritingSourceType = 'manual' | 'canvas_text' | 'digital_file' | 'paper_scan';
 
-/** Complete ordinal performance scale supported by the A2 rubric. */
-export type A2Level = 'emerging' | 'developing' | 'competent' | 'strong';
+/** Instructor-authored criterion slug, frozen after its first approval. */
+export type WritingCriterionId = string;
 
-/** Fixed A2 criterion identifiers accepted by schemas, prompts, and PDF output. */
-export type A2CriterionId = 'organization' | 'content' | 'interpersonal_positioning' | 'task_constraints';
+/** Instructor-authored performance-level slug, frozen after its first approval. */
+export type WritingLevelId = string;
+
+/** Academic Writing Matrix axis shared by rubric criteria and anchored comments. */
+export type WritingFunctionTag = 'content' | 'interpersonal' | 'organizational';
 
 /** One instructor-authored criterion in a versioned Writing Feedback rubric. */
 export interface WritingRubricCriterion {
-    id: A2CriterionId; // stable key shared across model output and staff UI
+    id: WritingCriterionId; // stable instructor-authored slug shared across model output and staff UI
     label: string; // staff/student-facing criterion name
     description: string; // instructor-authored assessment meaning
-    sflDimension: string; // pedagogical lens supplied to generation
+    functionTag?: WritingFunctionTag; // optional SFL metafunction used by staff filters
+    sflDimension?: string; // optional instructor-editable linguistic lens supplied to generation
 }
 
 /** One allowed ordinal level, optionally carrying an instructor-approved numeric value. */
 export interface WritingRubricLevel {
-    id: A2Level; // stable key emitted by the feedback engine
+    id: WritingLevelId; // stable instructor-authored slug emitted by the feedback engine
     label: string; // human-readable level shown in review and PDF output
     description: string; // instructor-authored performance descriptor
-    /** Optional instructor-authored points. All four levels are required for numeric release. */
+    rank: number; // explicit worst-to-best position, contiguous from one
+    /** Optional instructor-authored points. Every level is required for numeric release. */
     points?: number;
 }
 
@@ -76,11 +81,13 @@ export interface WritingAssignment {
     id: string; // internal assignment identity
     courseId: string; // authorization and persistence boundary
     title: string; // staff/student-facing assignment label
-    profileVersion: string; // course-profile provenance retained on feedback runs
+    profileVersion: string; // originating platform-template provenance retained on feedback runs
     rubricSource: 'internal_profile' | 'canvas'; // import provenance, not synchronization state
-    /** Canvas-native/approved level-to-points mapping. Omit when feedback is ordinal only. */
-    gradeMapping?: Partial<Record<A2Level, number>>;
-    /** Current approved rubric used by generation, PDF output, and release. */
+    /** Raw instructor-approved assignment directions used as rubric-editor context. */
+    instructions?: string;
+    /** Complete approved level-to-points mapping. Omit when feedback is ordinal only. */
+    gradeMapping?: Record<WritingLevelId, number>;
+    /** Current rubric. New assignments hold a draft here until their first approval. */
     rubric: WritingRubricDefinition;
     /** Editable staff draft. Saving never changes the approved rubric. */
     rubricDraft?: WritingRubricDefinition;
@@ -127,8 +134,8 @@ export interface RubricEvidence {
 
 /** Internal model draft for one rubric criterion; staff reviews it before release. */
 export interface CriterionFeedback {
-    criterion: A2CriterionId; // fixed rubric key
-    suggestedLevel: A2Level; // non-final model suggestion
+    criterion: WritingCriterionId; // assignment-rubric key
+    suggestedLevel: WritingLevelId; // non-final model suggestion
     evidence: RubricEvidence[]; // exact verified-text support for the suggestion
     explanation: string; // formative criterion-level guidance
     confidence: number; // staff-only model signal, excluded from student PDF
@@ -142,7 +149,7 @@ export interface RevisionGoal {
 }
 
 /** Structured model result before staff revision, approval, and release. */
-export interface A2FeedbackResult {
+export interface WritingFeedbackResult {
     criteria: CriterionFeedback[]; // exactly one result for each supported criterion
     strengths: string[]; // concise formative positives safe for staff review
     revisionGoals: RevisionGoal[]; // at most three prioritized next steps
@@ -158,7 +165,7 @@ export interface WritingFeedbackRun {
     profileVersion: string; // immutable course-profile provenance
     /** Approved rubric version used to produce this immutable model result. */
     rubricVersion: number;
-    result: A2FeedbackResult; // validated model draft, never mutated by staff edits
+    result: WritingFeedbackResult; // validated model draft, never mutated by staff edits
     createdAt: Date; // generation timestamp
     /** Model metadata excludes prompt bodies and student text. */
     modelMetadata: { engine: string; promptVersion: string };
@@ -167,7 +174,7 @@ export interface WritingFeedbackRun {
 /** Staff/model comment anchored to an exact UTF-16 span of verified submission text. */
 export interface AnchoredComment {
     id: string; // stable client/revision identity
-    criterion?: A2CriterionId; // optional rubric association for filtering
+    criterion?: WritingCriterionId; // optional rubric association for filtering
     /** Exact substring of the verified text; validation checksum for the offsets. */
     quote: string;
     /** UTF-16 code-unit offsets into the verified text. Offsets are the anchor source of truth. */
@@ -189,7 +196,7 @@ export interface AnchoredComment {
      * Staff-facing triage metadata mirroring the Academic Writing Matrix
      * taxonomy. Never printed in the student PDF.
      */
-    functionTag?: 'content' | 'interpersonal' | 'organizational';
+    functionTag?: WritingFunctionTag;
     levelTag?: 'text' | 'section' | 'clause_word';
     priority?: 'high' | 'medium' | 'low';
 }
@@ -238,10 +245,23 @@ export interface WritingJob {
     updatedAt: Date; // latest lease/completion/failure timestamp
 }
 
+/**
+ * Semantic description of one released payload, used to derive its idempotency key.
+ *
+ * Deliberately excludes the rendered PDF: annotation identifiers and embedded
+ * timestamps differ on every render, so hashing bytes would give the same content
+ * a new fingerprint per attempt and defeat retry deduplication.
+ */
+export interface WritingReleasePayload {
+    submissionId: string; // released submission attempt
+    feedbackRunId: string; // immutable model draft provenance
+    rubricVersion?: number; // approved rubric backing the judgments
+    grade?: number; // instructor-mapped numeric result, when one exists
+    studentFeedback?: string; // staff-approved narrative a re-approval can change
+}
+
 /** Canvas release adapter boundary invoked only after release policy checks succeed. */
 export interface CanvasGateway {
-    /** Derives the exact payload fingerprint before any external mutation. */
-    previewRelease(input: { submissionId: string; pdf: Buffer; grade?: number }): Promise<{ payloadFingerprint: string }>;
     /** Performs one idempotency-keyed external release and returns reconciliation identifiers. */
     release(input: { submissionId: string; pdf: Buffer; grade: number; payloadFingerprint: string }): Promise<{ canvasCommentId: string; canvasSubmissionId: string }>;
 }
@@ -265,7 +285,7 @@ export interface WritingFeedbackEngine {
         assignment: WritingAssignment;
         verifiedText: string;
         llmCallOptions?: LLMOptions;
-    }): Promise<A2FeedbackResult>;
+    }): Promise<WritingFeedbackResult>;
 }
 
 /** Student PDF section selector used by staff download endpoints. */
@@ -277,7 +297,7 @@ export interface WritingFeedbackPdfService {
     render(input: {
         assignment: WritingAssignment;
         submission: WritingSubmission;
-        feedback: A2FeedbackResult;
+        feedback: WritingFeedbackResult;
         grade?: number;
         staffFeedback?: string;
         comments?: AnchoredComment[];
@@ -293,10 +313,21 @@ export interface WritingFeedbackJobRunner {
     runNext(): Promise<boolean>;
 }
 
+/** Inputs shared by release preview and finalization. */
+export interface CanvasReleaseInput {
+    submission: WritingSubmission;
+    assignment: WritingAssignment;
+    feedbackRun: WritingFeedbackRun;
+    /** Student-safe bytes handed to the adapter; never part of the idempotency key. */
+    pdf: Buffer;
+    /** Latest staff-approved narrative, so an edited re-approval releases as new content. */
+    studentFeedback?: string;
+}
+
 /** Release coordinator boundary separating preview persistence from external mutation. */
 export interface CanvasReleaseService {
     /** Persists or reuses an idempotent release preview without external submission. */
-    preview(input: { submission: WritingSubmission; assignment: WritingAssignment; feedbackRun: WritingFeedbackRun; pdf: Buffer }): Promise<WritingRelease>;
+    preview(input: CanvasReleaseInput): Promise<WritingRelease>;
     /** Requires approval and numeric mapping before finalizing an external release. */
-    release(input: { submission: WritingSubmission; assignment: WritingAssignment; feedbackRun: WritingFeedbackRun; pdf: Buffer }): Promise<WritingRelease>;
+    release(input: CanvasReleaseInput): Promise<WritingRelease>;
 }

@@ -55,6 +55,67 @@ import { openReview } from './writing-feedback-review.js';
 // Landing view
 // ---------------------------------------------------------------------------
 
+const SUBMISSION_PANEL_TRANSITION_TIMEOUT_MS = 380;
+const submissionPanelTransitions = new WeakMap<HTMLElement, { finish: () => void }>();
+
+/** Completes the current panel transition once, including its timeout fallback. */
+function waitForSubmissionPanelTransition(panel: HTMLElement, settle: () => void): Promise<void> {
+    submissionPanelTransitions.get(panel)?.finish();
+    return new Promise((resolve) => {
+        let finished = false;
+        const finish = (): void => {
+            if (finished) return;
+            finished = true;
+            window.clearTimeout(timer);
+            panel.removeEventListener('transitionend', onTransitionEnd);
+            submissionPanelTransitions.delete(panel);
+            settle();
+            resolve();
+        };
+        const onTransitionEnd = (event: TransitionEvent): void => {
+            if (event.target === panel && event.propertyName === 'max-height') finish();
+        };
+        const timer = window.setTimeout(finish, SUBMISSION_PANEL_TRANSITION_TIMEOUT_MS);
+        submissionPanelTransitions.set(panel, { finish });
+        panel.addEventListener('transitionend', onTransitionEnd);
+    });
+}
+
+/** Reveals a populated submission panel without leaving a fixed height ceiling. */
+async function expandSubmissionPanel(panel: HTMLElement): Promise<void> {
+    submissionPanelTransitions.get(panel)?.finish();
+    panel.hidden = false;
+    panel.classList.remove('wf-submission-panel--leave');
+    panel.classList.add('wf-submission-panel--enter');
+    panel.style.maxHeight = '0px';
+    const targetHeight = panel.scrollHeight;
+    const completion = waitForSubmissionPanelTransition(panel, () => {
+        panel.classList.remove('wf-submission-panel--enter');
+        panel.style.maxHeight = 'none';
+    });
+    void panel.offsetHeight;
+    panel.classList.remove('wf-submission-panel--enter');
+    panel.style.maxHeight = `${targetHeight}px`;
+    await completion;
+}
+
+/** Collapses a panel and removes it from focus and accessibility trees at rest. */
+async function collapseSubmissionPanel(panel: HTMLElement): Promise<void> {
+    submissionPanelTransitions.get(panel)?.finish();
+    if (panel.hidden) return;
+    panel.style.maxHeight = `${panel.scrollHeight}px`;
+    panel.classList.remove('wf-submission-panel--enter');
+    void panel.offsetHeight;
+    const completion = waitForSubmissionPanelTransition(panel, () => {
+        panel.hidden = true;
+        panel.classList.remove('wf-submission-panel--leave');
+        panel.style.removeProperty('max-height');
+    });
+    panel.classList.add('wf-submission-panel--leave');
+    panel.style.maxHeight = '0px';
+    await completion;
+}
+
 async function loadLanding(): Promise<void> {
     setView('landing');
     setQueryState({ wfSubmission: null, wfView: null });
@@ -73,15 +134,20 @@ function renderLanding(): void {
     if (!state.assignments.length) {
         const empty = document.createElement('div');
         empty.className = 'wf-card';
-        empty.append(
-            createText('p', 'No assignments yet. Pull writing assignments from Canvas, or create one manually and paste student submissions.', 'wf-muted-note')
-        );
+        const canCreate = Boolean(state.workspace?.permissions.canManageRubric);
+        empty.append(createText(
+            'p',
+            canCreate
+                ? 'No assignments yet. Import writing assignments from Canvas, or create one manually with its assignment instructions.'
+                : 'No assignments yet. Import an available Canvas assignment, or ask an instructor to create a manual assignment.',
+            'wf-muted-note'
+        ));
         const actions = document.createElement('div');
         actions.className = 'wf-button-row';
-        actions.append(
-            createButton('Import from Canvas', 'primary', async () => showCanvasImport()),
-            createButton('Add assignment (manually)', 'secondary', async () => showAddAssignment())
-        );
+        actions.append(createButton('Import from Canvas', 'primary', async () => showCanvasImport()));
+        if (canCreate) {
+            actions.append(createButton('Add assignment (manually)', 'secondary', async () => showAddAssignment()));
+        }
         empty.append(actions);
         list.append(empty);
         return;
@@ -127,7 +193,12 @@ function renderAssignmentCard(assignment: Assignment): HTMLElement {
         chip(assignment.canvasAssignmentId ? 'Canvas import' : 'Manual', assignment.canvasAssignmentId ? 'blue' : 'neutral'),
         chip(`${assignment.submissionCount ?? 0} submissions`, 'green')
     );
-    const rubricButton = createButton('Edit rubric', 'secondary', async () => openRubricPage(assignment.id));
+    const canManageRubric = Boolean(state.workspace?.permissions.canManageRubric);
+    const rubricButton = createButton(
+        canManageRubric ? 'Edit rubric' : 'View rubric',
+        'secondary',
+        async () => openRubricPage(assignment.id)
+    );
     rubricButton.addEventListener('click', (event) => event.stopPropagation());
     controls.append(rubricButton);
     const deleteButton = createIconButton('trash-2', `Delete assignment "${assignment.title}"`, 'danger', async () => {
@@ -160,7 +231,8 @@ function renderAssignmentCard(assignment: Assignment): HTMLElement {
     const panel = document.createElement('div');
     panel.className = 'wf-submission-panel';
     panel.id = panelId;
-    panel.hidden = state.expandedAssignmentId !== assignment.id;
+    panel.hidden = true;
+    panel.setAttribute('aria-busy', 'false');
     card.append(panel);
     return card;
 }
@@ -169,15 +241,22 @@ async function toggleAssignmentExpand(assignmentId: string): Promise<void> {
     if (state.expandedAssignmentId === assignmentId) {
         state.expandedAssignmentId = null;
         setQueryState({ wfAssignment: null });
-        renderLanding();
+        const header = document.querySelector<HTMLElement>(`[aria-controls="wf-assignment-panel-${CSS.escape(assignmentId)}"]`);
+        header?.setAttribute('aria-expanded', 'false');
+        const panel = document.getElementById(`wf-assignment-panel-${assignmentId}`);
+        if (panel) await collapseSubmissionPanel(panel);
         return;
     }
+    const previousAssignmentId = state.expandedAssignmentId;
     state.expandedAssignmentId = assignmentId;
     setQueryState({ wfAssignment: assignmentId });
-    document.querySelectorAll<HTMLElement>('.wf-submission-panel').forEach((panel) => { panel.hidden = true; });
     document.querySelectorAll<HTMLElement>('.wf-assignment-header').forEach((header) => {
         header.setAttribute('aria-expanded', String(header.getAttribute('aria-controls') === `wf-assignment-panel-${assignmentId}`));
     });
+    if (previousAssignmentId) {
+        const previousPanel = document.getElementById(`wf-assignment-panel-${previousAssignmentId}`);
+        if (previousPanel) void collapseSubmissionPanel(previousPanel);
+    }
     await expandAssignment(assignmentId);
 }
 
@@ -185,9 +264,25 @@ async function expandAssignment(assignmentId: string): Promise<void> {
     const panel = document.getElementById(`wf-assignment-panel-${assignmentId}`);
     const assignment = state.assignments.find((item) => item.id === assignmentId);
     if (!panel || !assignment) return;
-    panel.hidden = false;
+    panel.setAttribute('aria-busy', 'true');
     panel.replaceChildren(createText('p', 'Loading submissions…', 'wf-muted-note'));
-    const submissions = await request<Submission[]>(`/submissions?assignmentId=${encodeURIComponent(assignmentId)}`);
+    let submissions: Submission[];
+    try {
+        submissions = await request<Submission[]>(`/submissions?assignmentId=${encodeURIComponent(assignmentId)}`);
+    } catch (error) {
+        if (state.expandedAssignmentId !== assignmentId || !panel.isConnected) return;
+        const errorRow = document.createElement('div');
+        errorRow.className = 'wf-submission-row';
+        errorRow.append(
+            createText('p', 'Submissions could not be loaded. Try again.', 'wf-muted-note'),
+            createButton('Retry', 'secondary', async () => expandAssignment(assignmentId))
+        );
+        panel.replaceChildren(errorRow);
+        panel.setAttribute('aria-busy', 'false');
+        await expandSubmissionPanel(panel);
+        throw error;
+    }
+    if (state.expandedAssignmentId !== assignmentId || !panel.isConnected) return;
     panel.replaceChildren();
 
     if (!submissions.length) {
@@ -248,7 +343,9 @@ async function expandAssignment(assignmentId: string): Promise<void> {
     footer.className = 'wf-add-submission-row';
     footer.append(createButton('+ Add submission (manually)', 'quiet', async () => showManualImport(assignment)));
     panel.append(footer);
+    panel.setAttribute('aria-busy', 'false');
     refreshIcons();
+    await expandSubmissionPanel(panel);
 }
 
 // ---------------------------------------------------------------------------
@@ -275,12 +372,15 @@ async function closeActionPanel(confirm = true): Promise<void> {
 }
 
 async function showAddAssignment(): Promise<void> {
+    if (!state.workspace?.permissions.canManageRubric) {
+        throw new Error('Only instructors and administrators can create manual assignments.');
+    }
     if (!(await confirmDiscardDirty('setup'))) return;
     state.panelDirty = false;
     const content = openActionPanel('Add a writing assignment');
     content.append(createText(
         'p',
-        'Manual assignments start from the approved internal rubric profile. You can adjust the rubric before generating feedback.',
+        'Add the directions students receive. The assignment starts with an editable rubric draft that must be approved before feedback can be generated.',
         'wf-panel-intro'
     ));
 
@@ -295,21 +395,69 @@ async function showAddAssignment(): Promise<void> {
         field('Assignment title', title, undefined, true),
         field('Submission deadline', deadline, 'Optional. Used to flag late submissions in the list.')
     );
+    const instructions = textAreaControl('', 10);
+    instructions.placeholder = 'Paste the assignment prompt, requirements, audience, purpose, and any grading directions.';
+    instructions.maxLength = 30000;
+    const instructionsFile = inputControl('', 'file');
+    instructionsFile.accept = '.txt,.docx,.pdf,.html,.htm';
+    const extractionState = createText('p', '', 'wf-help-text');
+    extractionState.setAttribute('role', 'status');
+    extractionState.setAttribute('aria-live', 'polite');
+    let extractedFile: File | null = null;
+    const extractInstructions = async (): Promise<void> => {
+        const selectedFile = instructionsFile.files?.[0];
+        if (!selectedFile) throw new Error('Choose an assignment-instructions file first.');
+        const payload = new FormData();
+        payload.append('file', selectedFile);
+        const extracted = await request<{ text: string }>('/instructions/extract', {
+            method: 'POST',
+            body: payload
+        });
+        instructions.value = extracted.text;
+        extractedFile = selectedFile;
+        state.panelDirty = true;
+        extractionState.textContent = `Extracted ${selectedFile.name}. Review the text before creating the assignment.`;
+        instructions.focus();
+    };
+    instructionsFile.addEventListener('change', () => {
+        extractedFile = null;
+        state.panelDirty = true;
+        extractionState.textContent = instructionsFile.files?.length
+            ? 'File selected. Extract it to review and use its text.'
+            : '';
+    });
+    const fileActions = document.createElement('div');
+    fileActions.className = 'wf-inline-field-actions';
+    fileActions.append(createButton('Extract into instructions', 'secondary', extractInstructions));
+    const instructionsFileField = field(
+        'Assignment instructions file',
+        instructionsFile,
+        'Optional. TXT, DOCX, text-based PDF, or HTML. Extracted text stays editable.'
+    );
+    instructionsFileField.classList.add('wf-field--wide');
+    instructionsFileField.append(fileActions, extractionState);
+    grid.append(
+        field('Assignment instructions', instructions, 'Optional, but recommended so the rubric reflects the actual task.', true),
+        instructionsFileField
+    );
     form.append(grid);
 
     const actions = document.createElement('div');
     actions.className = 'wf-button-row';
     const submit = createButton('Create assignment', 'primary', async () => {
         if (!form.reportValidity()) return;
+        const selectedFile = instructionsFile.files?.[0];
+        if (selectedFile && selectedFile !== extractedFile) await extractInstructions();
         const created = await jsonRequest<Assignment>('/assignments', 'POST', {
-            title: title.value,
+            title: title.value.trim(),
+            instructions: instructions.value.trim() || undefined,
             dueAt: deadline.value ? new Date(deadline.value).toISOString() : undefined
         });
         state.panelDirty = false;
         await closeActionPanel(false);
         state.expandedAssignmentId = created.id;
         await loadLanding();
-        showSuccessToast('Assignment created. Add submissions to begin.');
+        showSuccessToast('Assignment created. Review and approve its rubric before generating feedback.');
     });
     actions.append(submit, createButton('Cancel', 'quiet', async () => closeActionPanel()));
     form.append(actions);
@@ -483,7 +631,7 @@ async function showCanvasImport(): Promise<void> {
 
     content.append(createText(
         'p',
-        'Choose an assignment. Importing adds it to this workspace with an internal A2 rubric; a detected Canvas rubric is shown but is not silently copied or changed.',
+        'Choose an assignment. Importing adds a local rubric draft and carries available assignment directions into this workspace. A detected Canvas rubric is shown but is not silently copied or changed.',
         'wf-panel-intro'
     ));
     const list = document.createElement('div');
@@ -582,6 +730,7 @@ export async function initializeWritingFeedback(currentClass: activeCourse): Pro
         // Workspace context supplies permission and Canvas-mode truth before any
         // deep link is restored, preventing actions from rendering optimistically.
         state.workspace = await request<WorkspaceContext>('/workspace-context');
+        element<HTMLButtonElement>('wf-add-assignment').hidden = !state.workspace.permissions.canManageRubric;
         setWorkspaceMessage(
             state.workspace.canvas.mode === 'demo'
                 ? 'Local demo mode is active: Canvas import and release use synthetic data only. Every student-facing result still requires staff approval.'
