@@ -247,6 +247,70 @@ Accessibility follows the existing patterns in this file: every control is a rea
 accessible name, removal moves focus to a stable neighbour, and reordering announces the new
 position.
 
+### 8b. Grade mapping ownership
+
+`WritingAssignment.gradeMapping` is a denormalized copy of the level points. It is derived by
+`gradeMappingFromApprovedRubric` (`src/writing-feedback/rubric-schema.ts:120`), written when a
+rubric draft is approved (`src/routes/route-writing-feedback.ts:247`), and read by
+`resolveNumericGrade` at five call sites in `writing-feedback-service.ts` and
+`canvas-release-service.ts`.
+
+Because it is keyed by level id, editable levels make stale keys possible: a level that is
+renamed or deleted would leave an entry that no longer corresponds to anything, and a release
+could grade against it.
+
+Rule: `gradeMapping` is derived state with a single writer. On every rubric approval it is
+computed from the approved levels and **replaced wholesale**, never merged. When any level lacks
+points, the field is unset rather than written partially — the existing unset path at
+`src/db/mongo/writing-feedback-mongo.ts:339` already supports this. Nothing outside the approval
+path may write it.
+
+### 8c. Submission panel animation
+
+Today the assignment chevron animates (`transition: transform 0.3s ease`,
+`public/styles/instructor-components/writing-feedback.css:464`) but the submission panel it
+controls does not, because `.wf-submission-panel[hidden] { display: none; }` at line 477 cannot
+be transitioned. Expanding an assignment therefore snaps open while its own chevron glides.
+
+The panel gains an enter/leave transition following the convention already established in
+`public/styles/instructor-components/pathway-library.css:605-622` — `overflow: hidden` plus
+`max-height`, `opacity`, and `transform: translateY(-0.35rem)`, driven by `--enter` and
+`--leave` modifier classes.
+
+Sequence in `public/scripts/feature/writing-feedback.ts`:
+
+```
+expand    fetch submissions -> render rows into the panel -> clear `hidden`
+          -> read scrollHeight -> animate max-height 0 -> scrollHeight
+          -> on transitionend set max-height: none
+
+collapse  set max-height from scrollHeight -> add the leave class
+          -> on transitionend set `hidden`
+```
+
+Duration is 0.3s `ease`, matching the chevron so both finish together.
+
+Three constraints:
+
+- The panel is filled by an asynchronous fetch, so `scrollHeight` must be read after rows are
+  rendered. Measuring earlier yields 0 and the panel never opens.
+- `max-height` is cleared to `none` once the open transition finishes, so a submission list that
+  grows later is never clipped. A fixed ceiling would clip long lists, which matters because
+  this view is designed for a TA working through many submissions.
+- A `setTimeout` fallback performs the same cleanup if `transitionend` does not fire.
+
+`toggleAssignmentExpand` currently collapses sibling panels by assigning `hidden` directly
+(`writing-feedback.ts:177`). That path routes through the same collapse helper so siblings
+animate out rather than disappearing instantly.
+
+Collapsed panels keep `hidden` at rest, which preserves current behaviour: their rows stay out
+of the tab order and out of the accessibility tree.
+
+No reduced-motion work is required. The existing
+`@media (prefers-reduced-motion: reduce)` block at line 1766 already targets `.wf-page *` and
+forces `transition-duration: 0.01ms`, which still fires `transitionend`, so the JavaScript
+sequence completes normally with no visible motion.
+
 ### 9. Module moves
 
 ```
@@ -282,6 +346,17 @@ shared-ownership rule.
 | Symbols and comments naming A2 or LLED | Generic Writing Feedback vocabulary |
 | `documents/WRITING_FEEDBACK_*.md` course-specific passages | Rewritten to describe the capability; LLED 200 appears only as a named pilot course, not as the system's subject |
 
+Two files spell the level literals out inline and are easy to miss:
+
+- `src/db/enge-ai-mongodb.ts:289` — facade signature typed
+  `Partial<Record<'emerging' \| 'developing' \| 'competent' \| 'strong', number>>`
+- `src/writing-feedback/feedback-schema.ts:189` — the same union in `resolveNumericGrade`
+
+`WritingAssignment.profileVersion` becomes `writing-feedback-v1` for every assignment created
+from the default template, and is preserved verbatim on assignments that already carry
+`lled200-a2-technical-description-v1`. It records which platform template an assignment
+originated from, and it is never derived from course or assignment identity.
+
 ### 11. Control flow and comments
 
 Structural targets, ranked by measured maximum brace depth:
@@ -293,6 +368,15 @@ Structural targets, ranked by measured maximum brace depth:
 | `src/report-generation/writing-feedback-layout.ts` (was `annotated-text-layout.ts`) | 5 | 206 |
 | `src/writing-feedback/feedback-schema.ts` | 5 | 180 |
 | `public/scripts/feature/writing-feedback-review.ts` | 4 | 921 |
+
+The comment pass additionally covers the frontend modules that carry the renamed types and were
+not otherwise restructured: `public/scripts/feature/writing-feedback-shared.ts` (752 LOC),
+`writing-feedback.ts` (611), and `writing-feedback-anchors.ts` (589), plus
+`src/db/mongo/writing-feedback-mongo.ts` (736) and `src/routes/route-writing-feedback.ts` (494).
+
+`public/styles/instructor-components/writing-feedback.css` gains rules for the add, remove, and
+reorder controls in the rubric editor, and the submission panel transition from section 8c. New
+rules follow the existing token and radius scale in that file; no new palette is introduced.
 
 Techniques: guard clauses instead of `else` chains, lookup tables instead of `if`/`else if`
 ladders, named predicates for compound conditions, and extraction where one function serves two
@@ -335,6 +419,28 @@ New coverage:
 | PDF renders 3 and 6 criteria | Rendering is not fixed at four |
 | Unknown criterion id renders as its slug | A rubric edit cannot crash review |
 | Prompt contains no course-specific literal | Regression guard against reintroduction |
+| Approval replaces `gradeMapping` wholesale | A deleted level leaves no stale points entry |
+| Approval unsets `gradeMapping` when points are incomplete | Partial mappings never reach release |
+
+The submission panel animation and the rubric editor controls are DOM behaviour. This repository
+has no frontend test infrastructure — Jest `roots` is `<rootDir>/src` only and no
+`public/**/*.test.ts` file exists anywhere — so they are verified by `tsc --noEmit`, the build,
+and a manual browser pass rather than by new unit tests. Introducing a frontend test layer is a
+recorded open question and is not decided here.
+
+## Documentation
+
+Required by the repository rules because contracts change:
+
+- `documents/ENDPOINT_ARCHITECTURE.md` — the assignment-create payload gains `instructions`, and
+  the rubric approval contract changes shape
+- `documents/MONGO_DATA_LAYER.md` — the stored rubric gains per-criterion `functionTag` and
+  per-level `rank`, and `gradeMapping` ownership is documented as derived state
+- `documents/WRITING_FEEDBACK_ARCHITECTURE.md`, `WRITING_FEEDBACK_ASSESSMENT_LOGIC.md`, and
+  `WRITING_FEEDBACK_STYLE_GUIDE.md` — course-specific passages rewritten per section 10
+
+`package.json` and `package-lock.json` receive a minor version bump, matching the convention used
+by the preceding feature branches.
 
 ## Verification
 
@@ -387,9 +493,22 @@ a live database. It is outside this spec's scope.
 | WF-6 | The default rubric ships as a draft and requires explicit approval before governing generation |
 | WF-7 | Existing documents need no migration; only `rank` is backfilled at the read boundary |
 | WF-8 | PDF rendering moves to `src/report-generation`; the port stays in the Writing Feedback domain |
+| WF-9 | `gradeMapping` is derived state with the approval path as its only writer, always replaced wholesale |
 
 These are proposed here and should be promoted to the shared decision log once the
 implementation lands.
+
+## Production risks outside this spec
+
+These predate this work, are recorded in the shared project memory as known major flaws, and are
+not addressed here. Each affects whether the feature can be called production-ready and each
+warrants its own spec.
+
+| Risk | Evidence | Why it matters at scale |
+| --- | --- | --- |
+| Generation runs synchronously inside the HTTP request | The `WritingJob` queue, leasing, and retry machinery exist but are unwired | One LLM call per request. A staff member working through a batch will hit request timeouts, and the problem grows as assignments and submissions multiply |
+| Nothing sets `retentionAt` | TTL covers submissions only | Feedback runs holding excerpts of student text are orphaned indefinitely, which is a privacy-review problem before any real student data is used |
+| Release fingerprint hashes non-deterministic PDF bytes | `canvas-release-service.ts` | External-release idempotency would not survive a retry against a live Canvas gateway |
 
 ## Open questions carried forward
 
