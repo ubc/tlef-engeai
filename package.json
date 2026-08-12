@@ -1,6 +1,6 @@
 {
   "name": "tlef-EngE-AI",
-  "version": "1.7.13",
+  "version": "1.8.0",
   "description": "",
   "main": "dist/server.js",
   "scripts": {
@@ -24,6 +24,7 @@
     "export:system-prompt-samples": "npm run prompts:export-samples",
     "prompts": "ts-node --transpile-only scripts/prompt-tools.ts",
     "prompts:validate": "ts-node --transpile-only scripts/prompt-tools.ts validate",
+    "prompts:size": "ts-node --transpile-only scripts/prompt-tools.ts size",
     "prompts:export-samples": "ts-node --transpile-only scripts/prompt-tools.ts export-samples",
     "version:patch": "npm version patch --no-git-tag-version",
     "version:minor": "npm version minor --no-git-tag-version",

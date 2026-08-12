@@ -57,6 +57,13 @@ export interface GuidedPathway {
     updatedAt: number;
 }
 
+/** Must match src/types/shared.ts — pathway classifier shell stored in pathways collection. */
+export interface PathwayEvaluationPromptConfig {
+    usePlatformDefault: boolean;
+    body: string;
+    updatedAt: number;
+}
+
 /**
  * Must match src/types/shared.ts.
  * Persisted turn — plain UI text only (no RAG/struggle tags in MongoDB).

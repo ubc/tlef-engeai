@@ -100,6 +100,24 @@ Optional course capabilities live on `activeCourse.features`. Missing entries ar
 
 Struggle-topic document APIs require `requireCourseFeatureAPI('memoryAgent')`. Pathway Library APIs require `requireCourseFeatureAPI('guidedPathway')`.
 
+### 4.0.0 Guided Pathway Library (`/api/courses/:courseId/pathways`)
+
+Instructor APIs for pathway cards and the shared evaluation system-prompt shell. All routes use instructor RBAC + `requireCourseFeatureAPI('guidedPathway')`. Ensure provisions the `{courseName}_pathways` collection, runs GP-001 (removes legacy `off-topic` docs), and upserts the evaluation-prompt singleton when missing.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/courses/:courseId/pathways` | List pathway cards (excludes evaluation-prompt singleton) |
+| POST | `/api/courses/:courseId/pathways` | Create pathway card |
+| PUT | `/api/courses/:courseId/pathways/reorder` | Body `{ orderedIds: string[] }` — rewrite list order |
+| POST | `/api/courses/:courseId/pathways/reset` | Wipe cards + shell; re-seed platform defaults (2 pathways + evaluation shell) |
+| GET | `/api/courses/:courseId/pathways/evaluation-prompt` | Load classifier shell (`PathwayEvaluationPromptConfig`) |
+| PUT | `/api/courses/:courseId/pathways/evaluation-prompt` | Body `{ body: string }` — save customized shell (`usePlatformDefault: false`) |
+| POST | `/api/courses/:courseId/pathways/evaluation-prompt/reset` | Restore platform default classifier shell |
+| PUT | `/api/courses/:courseId/pathways/:pathwayId` | Update one pathway card |
+| DELETE | `/api/courses/:courseId/pathways/:pathwayId` | Delete one pathway card |
+
+**Evaluation prompt success data:** `{ usePlatformDefault: boolean, body: string, updatedAt: number }`. Runtime fills `{{pathway_trigger_sections}}` from enabled pathway triggers. Off-topic student messages are **not** intercepted by a pathway; teaching system prompts handle LO scope.
+
 **Chat unstruggle gating:** When `memoryAgent` is disabled, chat never injects `<questionUnstruggle>` / struggle tags, the Yes/No special send path is skipped, and any model-emitted unstruggle tags are stripped before persistence. When `memoryAgent` is enabled but `scenarioGeneration` is disabled, unstruggle Yes still clears the struggle topic but returns a No-style hardcoded reply with no `<scenarioSuggestions>` list (even if published scenarios exist). Chat FE always renders those tags when present in message text; capability policy is server-side only.
 
 **Scenario Generation Extra Feature:** When off, Practice Scenarios / Scenario Questions APIs return 403 (`requireCourseFeatureAPI('scenarioGeneration')`); instructor and student scenario page routes redirect; student sidebar and instructor nav hide the tool. Unstruggle Yes chips remain gated as above.
@@ -430,7 +448,7 @@ Chat metadata is ordered by most recent activity and contains no conversation-le
 | POST | `/api/chat/newchat` | Yes | Any | Create new welcome-only chat with persisted `conversationMode: 'undeclared'` |
 | POST | `/api/chat/restore/:chatId` | Yes | Any | Restore chat into server memory; lazy mode migration uses message history |
 | PATCH | `/api/chat/:chatId/conversation-mode` | Yes | Any | Update teaching mode before the first user message; rejects chats that already contain a user turn |
-| POST | `/api/chat/:chatId` | Yes | Any (admin for `/DEBUG`) | Send message; first user message finalizes an undeclared chat to `socratic` or `explanatory` before LLM processing. Platform admins may send `/DEBUG` to toggle sticky prompt-engineer inspection for that chat only. Unstruggle **Yes** (`yes, I am confident with "topic"`) removes the struggle label, strips the prior bot `<questionUnstruggle>` tag, runs a forked LLM call to pick up to 3 verbatim learning-objective **texts** (not ids), randomly samples up to 3 published scenario questions matching those LO texts, and returns a bot message with a random preconfigured encouragement (`{topic}` substitution) plus optional `<scenarioSuggestions>` JSON tag (no main chat LLM). |
+| POST | `/api/chat/:chatId` | Yes | Any (admin for `/DEBUG` and sticky-DEBUG `/scenario`) | Send message; first user message finalizes an undeclared chat to `socratic` or `explanatory` before LLM processing. Platform admins may send `/DEBUG` to toggle sticky prompt-engineer inspection for that chat only. While sticky DEBUG is on, admins may send `/scenario` or `/scenario <topic>` to short-circuit into the unstruggle-Yes practice suggestion path (chips). Unstruggle **Yes** (`yes, I am confident with "topic"`) removes the struggle label, strips the prior bot `<questionUnstruggle>` tag, runs a forked LLM call to pick up to 3 verbatim learning-objective **texts** (not ids), randomly samples up to 3 published scenario questions matching those LO texts, and returns a bot message with a random preconfigured encouragement (`{topic}` substitution) plus optional `<scenarioSuggestions>` JSON tag (no main chat LLM). |
 | POST | `/api/chat/:chatId/dismiss-unstruggle` | Yes | Any | Dismiss unstruggle |
 | GET | `/api/chat/:chatId/history` | Yes | Any | Get chat history |
 | GET | `/api/chat/:chatId/message/:messageId` | Yes | Any | Get single message |
@@ -590,6 +608,8 @@ On each student message, `ChatApp` orchestrates retrieval through two RAG classe
 **Conversation mode lifecycle:** `undeclared` is a persisted chat lifecycle state, not an LLM prompt mode. New chats are stored as `conversationMode === 'undeclared'` while they contain only the welcome message. The first `POST /api/chat/:chatId` includes the selected real mode (`socratic` or `explanatory`); the backend persists that mode, rebuilds the LLM conversation, and only then processes the user turn. `PATCH /api/chat/:chatId/conversation-mode` remains available for welcome-only chats, but chats with a user message reject mode changes.
 
 **Admin `/DEBUG`:** Platform admins (`ADMINS` / `GlobalUser.isAdmin`) may send exactly `/DEBUG` to toggle a sticky in-memory debug flag for that chat. While on, subsequent messages skip pathways/RAG/MOCK_RESPONSE and use a prompt-engineer system prompt that includes the full teaching system prompt; replies are wrapped as `**DEBUG MODE**`. Non-admins receive 403. Flag clears when the chat is evicted from memory.
+
+**Admin `/scenario` (sticky DEBUG only):** While sticky DEBUG is on, platform admins may send `/scenario` or `/scenario <topic>` to invoke the same practice-suggestion pipeline as unstruggle Yes (`suggestPracticeAfterUnstruggleYes`) without clearing struggle labels or requiring a prior `<questionUnstruggle>` tag. Optional topic defaults to `debug`. Outside sticky DEBUG the text is treated as a normal user message. Non-admins receive 403 if they send `/scenario…`.
 
 **Lazy restore migration:** if `conversationMode` is already `socratic` or `explanatory`, restore leaves it unchanged. Missing, invalid, or `undeclared` rows with any user message are backfilled to `socratic` to preserve historical default behavior. Missing, invalid, or `undeclared` rows with no user messages are written as `undeclared` so the picker remains editable.
 

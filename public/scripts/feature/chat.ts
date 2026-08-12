@@ -1751,16 +1751,6 @@ export class ChatManager {
     }
 
     private bindModalEvents(): void {
-        // Use event delegation to handle dynamically loaded disclaimer links
-        document.addEventListener('click', (e) => {
-            const target = e.target as HTMLElement;
-            const disclaimerLink = target.closest('#disclaimer a') as HTMLAnchorElement | null;
-            if (disclaimerLink) {
-                e.preventDefault();
-                this.openDisclaimerModal();
-            }
-        });
-        
         // Use event delegation to handle questionUnstruggle button clicks
         document.addEventListener('click', async (e) => {
             const target = e.target as HTMLElement;

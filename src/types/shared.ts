@@ -86,6 +86,7 @@ export interface PathwayCta {
  *
  * Evaluated pre-LLM on Socratic/Explanatory sends. List `order` is library list position.
  * Empty `assistantResponse` or `enabled: false` makes the pathway ineligible to intercept.
+ * The evaluation system-prompt shell is a separate singleton in the same collection (not this type).
  */
 export interface GuidedPathway {
     id: string; // stable pathway id (seed keeps mental-health-crisis etc.)
@@ -96,6 +97,18 @@ export interface GuidedPathway {
     assistantResponse: string; // markdown reply; empty => cannot intercept
     ctas: PathwayCta[]; // resource buttons shown with the predetermined reply
     updatedAt: number; // Unix epoch ms of last instructor edit
+}
+
+/**
+ * Course-scoped Guided Pathway classifier system-prompt shell (API + instructor UI).
+ *
+ * Stored as a reserved singleton in `{courseName}_pathways` (`__evaluation_system_prompt`).
+ * Runtime fills `{{pathway_trigger_sections}}` from pathway trigger cards.
+ */
+export interface PathwayEvaluationPromptConfig {
+    usePlatformDefault: boolean; // true => body is the platform default (or treat as such)
+    body: string; // shell text shown/edited; platform default when usePlatformDefault
+    updatedAt: number; // Unix epoch ms of last change
 }
 
 /**

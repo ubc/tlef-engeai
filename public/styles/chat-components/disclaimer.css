@@ -5,6 +5,15 @@
     width: 100%;
 }
 
+.disclaimer-page {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    background-color: #f5f7fa;
+    padding: 2rem 1rem;
+}
+
 .disclaimer-box {
     background-color: white;
     padding: 2.5rem 3rem;
@@ -34,6 +43,33 @@
 .disclaimer-content strong {
     color: var(--color-eng-red);
     font-weight: 600;
+}
+
+.disclaimer-section-title {
+    margin: 2rem 0 1rem;
+    color: var(--color-navy-blue);
+    font-size: 1.25rem;
+}
+
+.disclaimer-terms,
+.disclaimer-privacy-list {
+    margin: 0 0 1.25rem;
+    padding-left: 1.5rem;
+    line-height: 1.7;
+}
+
+.disclaimer-terms li,
+.disclaimer-privacy-list li {
+    margin-bottom: 0.85rem;
+}
+
+.disclaimer-privacy-list ul {
+    margin: 0.5rem 0 0;
+    padding-left: 1.25rem;
+}
+
+.disclaimer-content a {
+    color: var(--color-ubc-blue);
 }
 
 .disclaimer-footer {

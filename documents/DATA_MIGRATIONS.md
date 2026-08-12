@@ -29,6 +29,7 @@ Operational startup migrations (OB-001) are documented here but are **not** tied
 | **ADM-001** | Platform admin `isAdmin` backfill | Startup | `migratePlatformAdmins` in `src/helpers/migrate-platform-admins.ts` | GlobalUsers matching `CHARISMA_RUSDIYANTO_PUID` / `RICHARD_TAPE_PUID` → `isAdmin: true` | Operational — keep unless product changes |
 | **SQ-001** | Scenario Questions collection backfill | Lazy (first API call) | `ensureScenarioQuestionsCollection` in `src/db/mongo/scenario-questions-mongo.ts` | missing `activeCourse.collections.scenarioQuestions` → creates `{courseName}_scenario_questions` + `$set` the field | Keep while any pre-feature course document may lack `collections.scenarioQuestions` |
 | **SQ-004** | Scenario Progress collection backfill | Lazy (first progress API call) | `ensureScenarioProgressCollection` in `src/db/mongo/scenario-progress-mongo.ts` | missing `activeCourse.collections.scenarioProgress` → creates `{courseName}_scenario_progress` + `$set` the field | Keep while any course may lack `collections.scenarioProgress` |
+| **GP-001** | Remove legacy off-topic pathway | Lazy (pathways ensure/list/seed) | `healRemoveOffTopicPathway` in `src/db/mongo/pathways-mongo.ts` | `{courseName}_pathways` docs with `id: 'off-topic'` → deleted | Keep while legacy courses may still hold the seed; audit then remove |
 
 ---
 
@@ -241,6 +242,22 @@ See `documentation/ENDPOINT_ARCHITECTURE.md` (lazy restore migration note).
 Sets `instructorOnboardingCompleted` and `studentOnboardingCompleted` on `active-users` from existing course and roster data. Idempotent; runs every server restart.
 
 See `migrateOnboardingFlags` in `src/helpers/migrate-onboarding-flags.ts`.
+
+---
+
+## GP-001: Remove legacy off-topic pathway
+
+**Status:** Active (lazy heal)
+
+**Collection:** `{courseName}_pathways`
+
+### Behavior
+
+On pathways ensure / list / seed, `healRemoveOffTopicPathway` runs `deleteMany({ id: 'off-topic' })`. Idempotent. Does not delete instructor-created pathways with other ids. Off-topic / LO scope is handled by the teaching system prompt (`course main intro`), not a pathway intercept.
+
+Platform seeds no longer include `off-topic`. Library Reset re-seeds mental-health + inappropriate + evaluation-prompt singleton only.
+
+**Removal:** After an audit shows no course pathways collections still contain `id: 'off-topic'`.
 
 ---
 
