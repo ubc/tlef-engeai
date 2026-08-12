@@ -63,11 +63,11 @@ export function instructorPeriodAllowancesCollection(db: Db): Collection {
 /**
  * guidedPathwayFlagsCollection
  *
- * Returns the global alert collection. Every query must still apply an explicit
- * course or administrator scope and must project identity fields deliberately.
+ * Returns the legacy shared alert collection used only as the GPF-001 migration source.
+ * Runtime alert reads and writes use deterministic course-owned collections.
  *
  * @param db - Connected Mongo database handle
- * @returns `Collection` - `guided-pathway-flags`
+ * @returns `Collection` - legacy `guided-pathway-flags` migration source
  */
 export function guidedPathwayFlagsCollection(db: Db): Collection {
     return db.collection(GUIDED_PATHWAY_FLAGS_COLLECTION);

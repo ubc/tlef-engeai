@@ -113,10 +113,13 @@ export async function listAdminGuidedPathwayFlags(
     return parseData<GuidedPathwayFlagListPage>(response);
 }
 
-/** Mark an escalated alert as reviewed by the current platform administrator. */
-export async function reviewAdminGuidedPathwayFlag(flagId: string): Promise<GuidedPathwayFlagView> {
+/** Mark a course-owned escalated alert as reviewed by the current platform administrator. */
+export async function reviewAdminGuidedPathwayFlag(
+    courseId: string,
+    flagId: string
+): Promise<GuidedPathwayFlagView> {
     const response = await fetch(
-        `/api/admin/guided-pathway-flags/${encodeURIComponent(flagId)}/review`,
+        `/api/admin/guided-pathway-flags/${encodeURIComponent(courseId)}/${encodeURIComponent(flagId)}/review`,
         {
             method: 'PATCH',
             credentials: 'same-origin',
@@ -130,10 +133,11 @@ export async function reviewAdminGuidedPathwayFlag(flagId: string): Promise<Guid
  * The returned name is intentionally not part of any list DTO.
  */
 export async function revealAdminGuidedPathwayFlagIdentity(
+    courseId: string,
     flagId: string
 ): Promise<RevealedGuidedPathwayIdentity> {
     const response = await fetch(
-        `/api/admin/guided-pathway-flags/${encodeURIComponent(flagId)}/reveal-identity`,
+        `/api/admin/guided-pathway-flags/${encodeURIComponent(courseId)}/${encodeURIComponent(flagId)}/reveal-identity`,
         {
             method: 'POST',
             credentials: 'same-origin',

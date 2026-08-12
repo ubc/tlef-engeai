@@ -27,6 +27,11 @@ import {
 import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
 
 const PAGE_SIZE = 20;
+const STATUS_LABELS: Record<GuidedPathwayFlagStatus, string> = {
+    pending: 'Pending review',
+    escalated: 'Escalated to LTIC',
+    dismissed: 'Dismissed',
+};
 
 let activeCourseId = '';
 let activeStatus: GuidedPathwayFlagStatus = 'pending';
@@ -46,9 +51,7 @@ function formatDate(value: string | undefined): string {
 }
 
 function statusLabel(status: GuidedPathwayFlagStatus): string {
-    if (status === 'escalated') return 'Escalated to LTIC';
-    if (status === 'dismissed') return 'Dismissed';
-    return 'Pending review';
+    return STATUS_LABELS[status];
 }
 
 function setDomainTab(domain: 'manual' | 'guided'): void {

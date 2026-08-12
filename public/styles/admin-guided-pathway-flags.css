@@ -1,4 +1,4 @@
-/* Platform-admin Guided Pathway queue embedded in the shared Flags view. */
+/* Reusable platform-admin Guided Pathway queue for Flags and dashboard modal. */
 
 .admin-guided-alert-count {
     display: inline-flex;
@@ -284,10 +284,43 @@
     padding: 1rem 1.1rem;
     border: 1px solid var(--admin-guided-border);
     border-inline-start: 4px solid #aab1a7;
-    border-radius: 10px;
+    border-radius: 8px;
     background: var(--chat-bg, #fff);
     box-shadow: 0 2px 8px rgba(35, 45, 30, 0.07);
     transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.admin-guided-alerts-modal {
+    width: min(1120px, 94vw);
+    max-height: 92vh;
+}
+
+.admin-guided-alerts-modal .modal-body {
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+.admin-guided-alerts-modal .modal-content {
+    width: 100%;
+}
+
+.admin-guided-alerts-modal .admin-guided-alerts {
+    margin-bottom: 0;
+}
+
+.admin-guided-alerts-modal .modal-body::-webkit-scrollbar {
+    background: transparent;
+}
+
+.admin-guided-alerts-modal .modal-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.admin-guided-alerts-modal .modal-body::-webkit-scrollbar-thumb {
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.22);
 }
 
 .admin-guided-alert-card--pending {
@@ -483,39 +516,44 @@
         position: static;
     }
 
-    .admin-guided-alerts__header .instructor-mobile-hamburger-btn {
+    #main-content-area .admin-guided-alerts__header .instructor-mobile-hamburger-btn {
         display: inline-flex;
         flex-shrink: 0;
         color: var(--color-chbe-green);
     }
 
-    .admin-guided-alerts__header h1 {
+    #main-content-area .admin-guided-alerts__header h1 {
         color: var(--color-chbe-green);
     }
 
-    .admin-guided-alerts__scope {
+    #main-content-area .admin-guided-alerts__scope {
         border-color: rgba(77, 122, 47, 0.28);
         background: rgba(77, 122, 47, 0.1);
         color: var(--color-chbe-green);
     }
 
-    .admin-guided-alerts__refresh {
+    #main-content-area .admin-guided-alerts__refresh {
         align-self: flex-start;
         border-color: var(--color-chbe-green);
         background: #fff;
         color: var(--color-chbe-green);
     }
 
-    .admin-guided-alerts__refresh:hover {
+    #main-content-area .admin-guided-alerts__refresh:hover {
         background: var(--admin-guided-soft-green);
     }
 
-    .admin-guided-alerts__refresh:focus-visible {
+    #main-content-area .admin-guided-alerts__refresh:focus-visible {
         outline-color: var(--color-chbe-green);
     }
 }
 
 @media (max-width: 560px) {
+    .admin-guided-alerts-modal {
+        width: calc(100vw - 1rem);
+        max-height: calc(100vh - 1rem);
+    }
+
     .admin-guided-alert-filters {
         grid-template-columns: 1fr;
         padding: 0.85rem;

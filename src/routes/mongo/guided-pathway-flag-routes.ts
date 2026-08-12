@@ -91,8 +91,7 @@ export function mountGuidedPathwayFlagRoutes(router: Router): void {
 
             try {
                 const mongo = await EngEAI_MongoDB.getInstance();
-                const data = await mongo.listGuidedPathwayFlags({
-                    courseId,
+                const data = await mongo.listGuidedPathwayFlagsForCourse(courseId, {
                     page,
                     pageSize,
                     status: rawStatus as GuidedPathwayFlagStatus | undefined

@@ -11,6 +11,7 @@ import type { activeCourse } from '../../types/shared';
 import { fetchActiveCourseDocByCourseName, fetchActiveCourseDocById } from './active-course-queries-mongo';
 import { lazyMigrateCourseAcademicPeriod } from './academic-period-mongo';
 import { createFlagIndexes } from './flag-mongo';
+import { guidedPathwayFlagCollectionNameForCourse } from './guided-pathway-flag-collection-mongo';
 import type { MongoDalContext } from './mongo-context';
 import { activeCourseListCollection, activeUsersMongoCollection } from './mongo-collections';
 import { seedPathwaysForNewCourse } from './pathways-mongo';
@@ -78,6 +79,7 @@ export async function postActiveCourse(ctx: MongoDalContext, course: activeCours
         // ensureScenarioQuestionsCollection on first scenario-questions API call (scenario-questions-mongo.ts).
         const scenarioQuestionsCollection = `${courseName}_scenario_questions`;
         const pathwaysCollection = `${courseName}_pathways`;
+        const guidedPathwayFlagsCollection = guidedPathwayFlagCollectionNameForCourse(course.id);
 
         for (const colName of [
             userCollection,
@@ -86,6 +88,7 @@ export async function postActiveCourse(ctx: MongoDalContext, course: activeCours
             scheduledTasksCollection,
             scenarioQuestionsCollection,
             pathwaysCollection,
+            guidedPathwayFlagsCollection,
         ]) {
             try {
                 await ctx.db.createCollection(colName);
@@ -104,6 +107,7 @@ export async function postActiveCourse(ctx: MongoDalContext, course: activeCours
                 scheduledTasks: scheduledTasksCollection,
                 scenarioQuestions: scenarioQuestionsCollection,
                 pathways: pathwaysCollection,
+                guidedPathwayFlags: guidedPathwayFlagsCollection,
             }
         };
 

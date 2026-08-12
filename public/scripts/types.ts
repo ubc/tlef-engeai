@@ -282,6 +282,8 @@ export interface activeCourse {
         scenarioQuestions?: string;
         /** Per-course Guided Pathway Library; lazy-provisions on existing courses */
         pathways?: string;
+        /** Course-owned automatic Guided Pathway alerts; derived from stable course id */
+        guidedPathwayFlags?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
     /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */

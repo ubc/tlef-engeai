@@ -1,13 +1,16 @@
 // public/scripts/feature/admin-guided-pathway-flags.ts
 
 /**
- * Platform-admin, cross-course Guided Pathway alert queue.
- * List data stays anonymous; identity is requested only through the audited reveal action.
+ * Platform-admin Guided Pathway alert queue
+ *
+ * Mounts the same anonymous cross-course queue inside any supplied root. Each
+ * controller owns its filters, pagination, listeners, and load sequencing so
+ * the Flags page and dashboard modal can coexist without document-id collisions.
  *
  * @author EngE-AI Team
  * @date 2026-08-09
- * @version 1.1.0
- * @description Global anonymous alert queue embedded in Flags, with audited reveal and admin review.
+ * @version 2.0.0
+ * @description Reusable admin alert queue with audited reveal and review actions.
  */
 
 import type {
@@ -26,6 +29,11 @@ import {
 import { showConfirmModal, showErrorModal } from '../ui/modal-overlay.js';
 
 const PAGE_SIZE = 20;
+const STATUS_LABELS: Record<GuidedPathwayFlagStatus, string> = {
+    pending: 'Pending instructor decision',
+    escalated: 'Escalated to LTIC',
+    dismissed: 'Dismissed',
+};
 
 export interface AdminGuidedPathwayPeriodOption {
     id: string;
@@ -33,19 +41,18 @@ export interface AdminGuidedPathwayPeriodOption {
     courses: Array<{ id: string; courseName: string }>;
 }
 
-let periods: AdminGuidedPathwayPeriodOption[] = [];
-let currentPage = 1;
-let pageData: GuidedPathwayFlagListPage | null = null;
-let queueLoaded = false;
-let boundControlsRoot: HTMLFormElement | null = null;
-
 interface AdminGuidedPathwayContextPayload {
     periods: AdminGuidedPathwayPeriodOption[];
     guidedPathwayEscalationsAwaitingReview: number;
 }
 
-function byId<T extends HTMLElement>(id: string): T | null {
-    return document.getElementById(id) as T | null;
+/** Configuration for one independently mounted administrator alert queue. */
+export interface AdminGuidedPathwayFlagsOptions {
+    periods?: AdminGuidedPathwayPeriodOption[];
+    initialAwaitingReviewCount?: number;
+    initialFilters?: Pick<AdminGuidedPathwayFlagFilters, 'status' | 'reviewState'>;
+    showMobileMenuButton?: boolean;
+    onAwaitingReviewCountChange?: (count: number) => void;
 }
 
 function formatDate(value: string | undefined): string {
@@ -58,31 +65,9 @@ function formatDate(value: string | undefined): string {
     }).format(date);
 }
 
-function statusLabel(status: GuidedPathwayFlagStatus): string {
-    if (status === 'escalated') return 'Escalated to LTIC';
-    if (status === 'dismissed') return 'Dismissed';
-    return 'Pending instructor decision';
-}
-
-function setQueueStatus(message: string): void {
-    const status = byId('admin-guided-alerts-status');
-    if (status) status.textContent = message;
-}
-
-function setQueueBusy(busy: boolean): void {
-    byId('admin-guided-alerts-list')?.setAttribute('aria-busy', String(busy));
-    const form = byId<HTMLFormElement>('admin-guided-alert-filters');
-    form?.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
-        button.disabled = busy;
-    });
-}
-
-function setAwaitingReviewCount(count: number): void {
-    const badge = byId('admin-guided-alert-count');
-    if (!badge) return;
-    const safeCount = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
-    badge.textContent = String(safeCount);
-    badge.setAttribute('aria-label', `${safeCount} awaiting review`);
+function replaceFeatherIcons(): void {
+    const feather = (window as any).feather;
+    if (typeof feather?.replace === 'function') feather.replace();
 }
 
 async function loadAdminQueueContext(): Promise<AdminGuidedPathwayContextPayload> {
@@ -98,24 +83,27 @@ async function loadAdminQueueContext(): Promise<AdminGuidedPathwayContextPayload
 }
 
 function replaceSelectOptions(
-    select: HTMLSelectElement | null,
+    select: HTMLSelectElement,
     firstLabel: string,
     options: Array<{ value: string; label: string }>
 ): void {
-    if (!select) return;
     const selected = select.value;
     const selectedLabel = select.selectedOptions[0]?.textContent?.trim() || selected;
     select.replaceChildren();
+
     const first = document.createElement('option');
     first.value = '';
     first.textContent = firstLabel;
     select.appendChild(first);
-    options.forEach(({ value, label }) => {
+
+    for (const { value, label } of options) {
         const option = document.createElement('option');
         option.value = value;
         option.textContent = label;
         select.appendChild(option);
-    });
+    }
+
+    // Keep an active filter visible if its course/pathway was removed between requests.
     if (selected && ![...select.options].some((option) => option.value === selected)) {
         const preserved = document.createElement('option');
         preserved.value = selected;
@@ -125,327 +113,505 @@ function replaceSelectOptions(
     if (selected) select.value = selected;
 }
 
-function populatePeriodOptions(): void {
-    replaceSelectOptions(
-        byId<HTMLSelectElement>('admin-guided-alert-period'),
-        'All periods',
-        periods.map((period) => ({ value: period.id, label: period.title }))
-    );
-    populateCourseOptions();
+function queueMarkup(showMobileMenuButton: boolean): string {
+    const menuButton = showMobileMenuButton
+        ? `<button class="instructor-mobile-hamburger-btn icon-btn" type="button" title="Open menu" aria-label="Open menu">
+                <i data-feather="menu"></i>
+           </button>`
+        : '';
+
+    return `
+        <header class="admin-guided-alerts__header mobile-header-bar">
+            <div class="admin-guided-alerts__heading-row">
+                ${menuButton}
+                <div class="admin-guided-alerts__title-group">
+                    <h1>Guided Pathway Alerts</h1>
+                    <span class="admin-guided-alerts__scope">All courses</span>
+                </div>
+            </div>
+            <button type="button" data-admin-guided-role="refresh" class="admin-guided-alerts__refresh">
+                <i data-feather="refresh-cw"></i>
+                Refresh
+            </button>
+        </header>
+
+        <aside class="admin-guided-alerts__notices" aria-label="Important alert information">
+            <p class="admin-guided-alerts__notice">
+                <i data-feather="shield"></i>
+                <span>Messages are anonymous by default. Student-written text may still include identifying details.</span>
+            </p>
+            <p class="admin-guided-alerts__notice">
+                <i data-feather="info"></i>
+                <span>Escalation records a decision only; EngE-AI does not notify LTIC.</span>
+            </p>
+        </aside>
+
+        <form data-admin-guided-role="filters" class="admin-guided-alert-filters">
+            <div class="admin-guided-alert-filters__heading">
+                <i data-feather="filter"></i>
+                <h2>Filters</h2>
+            </div>
+            <label>Academic period
+                <select data-admin-guided-role="period"><option value="">All periods</option></select>
+            </label>
+            <label>Course
+                <select data-admin-guided-role="course"><option value="">All courses</option></select>
+            </label>
+            <label>Pathway
+                <select data-admin-guided-role="pathway"><option value="">All pathways</option></select>
+            </label>
+            <label>Decision
+                <select data-admin-guided-role="status-filter">
+                    <option value="">All decisions</option>
+                    <option value="pending">Pending</option>
+                    <option value="escalated">Escalated</option>
+                    <option value="dismissed">Dismissed</option>
+                </select>
+            </label>
+            <label>Admin review
+                <select data-admin-guided-role="review-state">
+                    <option value="all">All</option>
+                    <option value="needs-review">Needs review</option>
+                    <option value="reviewed">Reviewed</option>
+                </select>
+            </label>
+            <label>Reviewer
+                <select data-admin-guided-role="reviewer"><option value="">All reviewers</option></select>
+            </label>
+            <label>From
+                <input type="date" data-admin-guided-role="date-from">
+            </label>
+            <label>To
+                <input type="date" data-admin-guided-role="date-to">
+            </label>
+            <div class="admin-guided-alert-filters__actions">
+                <button type="button" data-admin-guided-role="clear">Clear</button>
+                <button type="submit">Apply filters</button>
+            </div>
+        </form>
+
+        <p data-admin-guided-role="status" class="admin-guided-alerts__status" role="status" aria-live="polite"></p>
+        <div data-admin-guided-role="list" class="admin-guided-alerts__list" aria-live="polite"></div>
+        <nav class="admin-guided-alerts__pagination" aria-label="Admin Guided Pathway alert pages">
+            <button type="button" data-admin-guided-role="previous">Previous</button>
+            <span data-admin-guided-role="page-summary">Page 1 of 1</span>
+            <button type="button" data-admin-guided-role="next">Next</button>
+        </nav>
+    `;
 }
 
-function populateCourseOptions(): void {
-    const periodId = byId<HTMLSelectElement>('admin-guided-alert-period')?.value ?? '';
-    const visiblePeriods = periodId ? periods.filter((period) => period.id === periodId) : periods;
-    const courses = visiblePeriods
-        .flatMap((period) => period.courses)
-        .filter((course, index, all) => all.findIndex((candidate) => candidate.id === course.id) === index)
-        .sort((a, b) => a.courseName.localeCompare(b.courseName));
-    replaceSelectOptions(
-        byId<HTMLSelectElement>('admin-guided-alert-course'),
-        'All courses',
-        courses.map((course) => ({ value: course.id, label: course.courseName }))
-    );
-}
+/** Owns one root-scoped administrator Guided Pathway queue instance. */
+export class AdminGuidedPathwayFlagsController {
+    private periods: AdminGuidedPathwayPeriodOption[] = [];
+    private currentPage = 1;
+    private pageData: GuidedPathwayFlagListPage | null = null;
+    private queueLoaded = false;
+    private loadGeneration = 0;
+    private readonly listeners = new AbortController();
 
-function refreshFacetOptions(facets: GuidedPathwayFlagFacets | undefined): void {
-    if (!facets) return;
-    const pathways = facets.pathways
-        .map((pathway) => ({ value: pathway.pathwayId, label: pathway.pathwayTitle }))
-        .sort((a, b) => a.label.localeCompare(b.label));
-    replaceSelectOptions(byId<HTMLSelectElement>('admin-guided-alert-pathway'), 'All pathways', pathways);
+    constructor(
+        private readonly root: HTMLElement,
+        private readonly options: AdminGuidedPathwayFlagsOptions = {}
+    ) {}
 
-    replaceSelectOptions(
-        byId<HTMLSelectElement>('admin-guided-alert-reviewer'),
-        'All reviewers',
-        [...facets.reviewers].sort().map((name) => ({ value: name, label: name }))
-    );
-}
-
-function currentFilters(): AdminGuidedPathwayFlagFilters {
-    const status = byId<HTMLSelectElement>('admin-guided-alert-status-filter')?.value;
-    const reviewState = byId<HTMLSelectElement>('admin-guided-alert-review-state')?.value;
-    return {
-        page: currentPage,
-        pageSize: PAGE_SIZE,
-        status: status ? (status as GuidedPathwayFlagStatus) : undefined,
-        reviewState: (reviewState || 'all') as GuidedPathwayFlagReviewState,
-        academicPeriodId: byId<HTMLSelectElement>('admin-guided-alert-period')?.value || undefined,
-        courseId: byId<HTMLSelectElement>('admin-guided-alert-course')?.value || undefined,
-        pathwayId: byId<HTMLSelectElement>('admin-guided-alert-pathway')?.value || undefined,
-        reviewer: byId<HTMLSelectElement>('admin-guided-alert-reviewer')?.value || undefined,
-        dateFrom: byId<HTMLInputElement>('admin-guided-alert-date-from')?.value || undefined,
-        dateTo: byId<HTMLInputElement>('admin-guided-alert-date-to')?.value || undefined,
-    };
-}
-
-async function loadQueue(): Promise<void> {
-    setQueueBusy(true);
-    setQueueStatus('Loading Guided Pathway alerts...');
-    try {
-        pageData = await listAdminGuidedPathwayFlags(currentFilters());
-        refreshFacetOptions(pageData.facets);
-        renderQueue();
-        setQueueStatus(`${pageData.total} ${pageData.total === 1 ? 'alert' : 'alerts'}`);
-    } catch (error) {
-        pageData = null;
-        renderQueue('Alerts could not be loaded. Use Refresh to try again.');
-        setQueueStatus(error instanceof Error ? error.message : 'Unable to load Guided Pathway alerts.');
-    } finally {
-        setQueueBusy(false);
+    private element<T extends HTMLElement>(role: string): T {
+        const element = this.root.querySelector<T>(`[data-admin-guided-role="${role}"]`);
+        if (!element) throw new Error(`Missing Guided Pathway queue control: ${role}`);
+        return element;
     }
-}
 
-async function refreshAwaitingReviewCount(): Promise<void> {
-    try {
-        const page = await listAdminGuidedPathwayFlags({
-            page: 1,
-            pageSize: 1,
-            status: 'escalated',
-            reviewState: 'needs-review',
-        });
-        setAwaitingReviewCount(page.total);
-    } catch {
-        // Keep the last known count; the queue itself reports actionable load errors.
-    }
-}
+    /**
+     * initialize - Renders controls and loads filter context without fetching queue rows.
+     *
+     * @returns When period/course choices and the initial awaiting-review count are ready
+     */
+    public async initialize(): Promise<void> {
+        this.root.classList.add('admin-guided-alerts');
+        this.root.innerHTML = queueMarkup(this.options.showMobileMenuButton === true);
+        this.bindControls();
 
-function metadataItem(label: string, value: string): HTMLElement {
-    const item = document.createElement('span');
-    const strong = document.createElement('strong');
-    strong.textContent = `${label}: `;
-    item.append(strong, document.createTextNode(value));
-    return item;
-}
-
-function createRevealControl(flag: GuidedPathwayFlagView): HTMLElement {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'admin-guided-alert-card__identity';
-    const label = document.createElement('label');
-    label.className = 'admin-guided-alert-card__identity-toggle';
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    const labelText = document.createElement('span');
-    labelText.textContent = 'Reveal student identity';
-    const revealed = document.createElement('span');
-    revealed.className = 'admin-guided-alert-card__revealed-name';
-    revealed.setAttribute('role', 'status');
-    revealed.setAttribute('aria-live', 'polite');
-    label.append(checkbox, labelText);
-    wrapper.append(label, revealed);
-
-    checkbox.addEventListener('change', async () => {
-        if (!checkbox.checked) {
-            revealed.textContent = '';
-            return;
+        let context: AdminGuidedPathwayContextPayload | undefined;
+        if (!this.options.periods || this.options.initialAwaitingReviewCount === undefined) {
+            try {
+                context = await loadAdminQueueContext();
+            } catch (error) {
+                this.setQueueStatus(error instanceof Error ? error.message : 'Unable to load course filters.');
+            }
         }
 
-        const confirmation = await showConfirmModal(
-            'Reveal student identity',
-            'This access is restricted to escalated alerts and will be recorded with your administrator account and the current time.',
-            'Reveal identity',
-            'Cancel',
-            'danger'
-        );
-        if (confirmation.action !== 'reveal-identity') {
-            checkbox.checked = false;
-            return;
-        }
-
-        checkbox.disabled = true;
-        try {
-            const identity = await revealAdminGuidedPathwayFlagIdentity(flag.id);
-            revealed.textContent = `Student: ${identity.studentName}`;
-        } catch (error) {
-            checkbox.checked = false;
-            revealed.textContent = '';
-            await showErrorModal(
-                'Unable to reveal identity',
-                error instanceof Error ? error.message : 'The identity could not be revealed.'
-            );
-        } finally {
-            checkbox.disabled = false;
-        }
-    });
-    return wrapper;
-}
-
-async function markReviewed(flag: GuidedPathwayFlagView, button: HTMLButtonElement): Promise<void> {
-    button.disabled = true;
-    button.setAttribute('aria-busy', 'true');
-    try {
-        await reviewAdminGuidedPathwayFlag(flag.id);
-        await Promise.all([loadQueue(), refreshAwaitingReviewCount()]);
-    } catch (error) {
-        button.disabled = false;
-        await showErrorModal(
-            'Unable to mark alert reviewed',
-            error instanceof Error ? error.message : 'The review could not be saved.'
-        );
-    } finally {
-        button.removeAttribute('aria-busy');
-    }
-}
-
-function createAlertCard(flag: GuidedPathwayFlagView): HTMLElement {
-    const card = document.createElement('article');
-    card.className = `admin-guided-alert-card admin-guided-alert-card--${flag.status}`;
-
-    const header = document.createElement('div');
-    header.className = 'admin-guided-alert-card__header';
-    const title = document.createElement('h2');
-    title.textContent = flag.pathwayTitle;
-    const status = document.createElement('span');
-    status.className = `admin-guided-alert-card__status admin-guided-alert-card__status--${flag.status}`;
-    status.textContent = statusLabel(flag.status);
-    header.append(title, status);
-
-    const metadata = document.createElement('div');
-    metadata.className = 'admin-guided-alert-card__metadata';
-    metadata.append(
-        metadataItem('Course', flag.courseName),
-        metadataItem('Triggered', formatDate(flag.triggeredAt))
-    );
-    if (flag.decidedAt) metadata.append(metadataItem('Decision', formatDate(flag.decidedAt)));
-    if (flag.decidedByName) metadata.append(metadataItem('Decision by', flag.decidedByName));
-    if (flag.adminReviewedAt) metadata.append(metadataItem('Admin review', formatDate(flag.adminReviewedAt)));
-    if (flag.adminReviewedByName) metadata.append(metadataItem('Reviewed by', flag.adminReviewedByName));
-
-    const messageLabel = document.createElement('h3');
-    messageLabel.textContent = 'Student message';
-    const message = document.createElement('p');
-    message.className = 'admin-guided-alert-card__message';
-    message.textContent = flag.messageText;
-
-    card.append(header, metadata, messageLabel, message);
-
-    if (flag.status === 'escalated') {
-        card.appendChild(createRevealControl(flag));
-        if (!flag.adminReviewedAt) {
-            const actions = document.createElement('div');
-            actions.className = 'admin-guided-alert-card__actions';
-            const review = document.createElement('button');
-            review.type = 'button';
-            review.textContent = 'Mark reviewed';
-            review.addEventListener('click', () => void markReviewed(flag, review));
-            actions.appendChild(review);
-            card.appendChild(actions);
-        }
-    }
-
-    return card;
-}
-
-function renderQueue(errorMessage?: string): void {
-    const list = byId('admin-guided-alerts-list');
-    if (!list) return;
-    list.replaceChildren();
-    const items = pageData?.items ?? [];
-    if (errorMessage) {
-        const error = document.createElement('p');
-        error.className = 'admin-guided-alerts__empty admin-guided-alerts__empty--error';
-        error.textContent = errorMessage;
-        list.appendChild(error);
-    } else if (items.length === 0) {
-        const empty = document.createElement('p');
-        empty.className = 'admin-guided-alerts__empty';
-        empty.textContent = 'No Guided Pathway alerts match these filters.';
-        list.appendChild(empty);
-    } else {
-        items.forEach((item) => list.appendChild(createAlertCard(item)));
-    }
-
-    const page = pageData?.page ?? currentPage;
-    const total = pageData?.total ?? 0;
-    const pageSize = pageData?.pageSize ?? PAGE_SIZE;
-    const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    const summary = byId('admin-guided-alerts-page-summary');
-    const previous = byId<HTMLButtonElement>('admin-guided-alerts-previous');
-    const next = byId<HTMLButtonElement>('admin-guided-alerts-next');
-    if (summary) summary.textContent = `Page ${page} of ${totalPages}`;
-    if (previous) previous.disabled = page <= 1;
-    if (next) next.disabled = page >= totalPages;
-}
-
-function clearFilters(): void {
-    const form = byId<HTMLFormElement>('admin-guided-alert-filters');
-    form?.reset();
-    populateCourseOptions();
-    currentPage = 1;
-    void loadQueue();
-}
-
-function bindControls(): void {
-    byId('admin-guided-alerts-refresh')?.addEventListener('click', () => {
-        void Promise.all([loadQueue(), refreshAwaitingReviewCount()]);
-    });
-    byId<HTMLSelectElement>('admin-guided-alert-period')?.addEventListener('change', () => {
-        const course = byId<HTMLSelectElement>('admin-guided-alert-course');
-        if (course) course.value = '';
-        populateCourseOptions();
-    });
-    byId<HTMLSelectElement>('admin-guided-alert-review-state')?.addEventListener('change', (event) => {
-        const reviewState = (event.currentTarget as HTMLSelectElement).value;
-        const status = byId<HTMLSelectElement>('admin-guided-alert-status-filter');
-        if (reviewState !== 'all' && status) status.value = 'escalated';
-    });
-    byId<HTMLSelectElement>('admin-guided-alert-status-filter')?.addEventListener('change', (event) => {
-        const status = (event.currentTarget as HTMLSelectElement).value;
-        const reviewState = byId<HTMLSelectElement>('admin-guided-alert-review-state');
-        if (status !== 'escalated' && reviewState) reviewState.value = 'all';
-    });
-    byId<HTMLFormElement>('admin-guided-alert-filters')?.addEventListener('submit', (event) => {
-        event.preventDefault();
-        currentPage = 1;
-        void loadQueue();
-    });
-    byId('admin-guided-alert-filters-clear')?.addEventListener('click', clearFilters);
-    byId('admin-guided-alerts-previous')?.addEventListener('click', () => {
-        if (currentPage <= 1) return;
-        currentPage -= 1;
-        void loadQueue();
-    });
-    byId('admin-guided-alerts-next')?.addEventListener('click', () => {
-        currentPage += 1;
-        void loadQueue();
-    });
-}
-
-/** Initialize the embedded admin queue, its course filters, and awaiting-review count. */
-export async function initializeAdminGuidedPathwayFlags(): Promise<void> {
-    currentPage = 1;
-    pageData = null;
-    queueLoaded = false;
-
-    try {
-        const context = await loadAdminQueueContext();
-        periods = context.periods.map((period) => ({
+        const sourcePeriods = this.options.periods ?? context?.periods ?? [];
+        this.periods = sourcePeriods.map((period) => ({
             id: period.id,
             title: period.title,
-            courses: period.courses.map((course) => ({
-                id: course.id,
-                courseName: course.courseName,
-            })),
+            courses: period.courses.map(({ id, courseName }) => ({ id, courseName })),
         }));
-        setAwaitingReviewCount(context.guidedPathwayEscalationsAwaitingReview ?? 0);
-    } catch (error) {
-        periods = [];
-        setAwaitingReviewCount(0);
-        setQueueStatus(error instanceof Error ? error.message : 'Unable to load course filters.');
+        this.populatePeriodOptions();
+        this.applyInitialFilters();
+        this.renderQueue();
+
+        const initialCount = this.options.initialAwaitingReviewCount
+            ?? context?.guidedPathwayEscalationsAwaitingReview;
+        if (initialCount !== undefined) this.publishAwaitingReviewCount(initialCount);
+        replaceFeatherIcons();
     }
 
-    populatePeriodOptions();
-    const controlsRoot = byId<HTMLFormElement>('admin-guided-alert-filters');
-    if (controlsRoot && controlsRoot !== boundControlsRoot) {
-        bindControls();
-        boundControlsRoot = controlsRoot;
+    /** Loads the queue once when its tab or modal first becomes visible. */
+    public async activate(): Promise<void> {
+        if (this.queueLoaded) return;
+        this.queueLoaded = true;
+        await this.loadQueue();
     }
-    renderQueue();
+
+    /** Reloads queue rows and the external awaiting-review badge. */
+    public async refresh(): Promise<void> {
+        await Promise.all([this.loadQueue(), this.refreshAwaitingReviewCount()]);
+    }
+
+    /** Detaches persistent control listeners and invalidates in-flight queue renders. */
+    public destroy(): void {
+        this.loadGeneration += 1;
+        this.listeners.abort();
+    }
+
+    private applyInitialFilters(): void {
+        const filters = this.options.initialFilters;
+        if (!filters) return;
+        if (filters.status) this.element<HTMLSelectElement>('status-filter').value = filters.status;
+        if (filters.reviewState) this.element<HTMLSelectElement>('review-state').value = filters.reviewState;
+    }
+
+    private setQueueStatus(message: string): void {
+        this.element('status').textContent = message;
+    }
+
+    private setQueueBusy(busy: boolean): void {
+        this.element('list').setAttribute('aria-busy', String(busy));
+        this.root.querySelectorAll<HTMLButtonElement | HTMLSelectElement | HTMLInputElement>(
+            'button, select, input'
+        ).forEach((control) => {
+            control.disabled = busy;
+        });
+        if (!busy) this.renderPagination();
+    }
+
+    private publishAwaitingReviewCount(count: number): void {
+        const safeCount = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+        this.options.onAwaitingReviewCountChange?.(safeCount);
+    }
+
+    private populatePeriodOptions(): void {
+        replaceSelectOptions(
+            this.element<HTMLSelectElement>('period'),
+            'All periods',
+            this.periods.map((period) => ({ value: period.id, label: period.title }))
+        );
+        this.populateCourseOptions();
+    }
+
+    private populateCourseOptions(): void {
+        const periodId = this.element<HTMLSelectElement>('period').value;
+        const visiblePeriods = periodId
+            ? this.periods.filter((period) => period.id === periodId)
+            : this.periods;
+        const courses = visiblePeriods
+            .flatMap((period) => period.courses)
+            .filter((course, index, all) => all.findIndex((candidate) => candidate.id === course.id) === index)
+            .sort((a, b) => a.courseName.localeCompare(b.courseName));
+        replaceSelectOptions(
+            this.element<HTMLSelectElement>('course'),
+            'All courses',
+            courses.map((course) => ({ value: course.id, label: course.courseName }))
+        );
+    }
+
+    private refreshFacetOptions(facets: GuidedPathwayFlagFacets | undefined): void {
+        if (!facets) return;
+        replaceSelectOptions(
+            this.element<HTMLSelectElement>('pathway'),
+            'All pathways',
+            facets.pathways
+                .map((pathway) => ({ value: pathway.pathwayId, label: pathway.pathwayTitle }))
+                .sort((a, b) => a.label.localeCompare(b.label))
+        );
+        replaceSelectOptions(
+            this.element<HTMLSelectElement>('reviewer'),
+            'All reviewers',
+            [...facets.reviewers].sort().map((name) => ({ value: name, label: name }))
+        );
+    }
+
+    private currentFilters(): AdminGuidedPathwayFlagFilters {
+        const status = this.element<HTMLSelectElement>('status-filter').value;
+        const reviewState = this.element<HTMLSelectElement>('review-state').value;
+        return {
+            page: this.currentPage,
+            pageSize: PAGE_SIZE,
+            status: status ? status as GuidedPathwayFlagStatus : undefined,
+            reviewState: (reviewState || 'all') as GuidedPathwayFlagReviewState,
+            academicPeriodId: this.element<HTMLSelectElement>('period').value || undefined,
+            courseId: this.element<HTMLSelectElement>('course').value || undefined,
+            pathwayId: this.element<HTMLSelectElement>('pathway').value || undefined,
+            reviewer: this.element<HTMLSelectElement>('reviewer').value || undefined,
+            dateFrom: this.element<HTMLInputElement>('date-from').value || undefined,
+            dateTo: this.element<HTMLInputElement>('date-to').value || undefined,
+        };
+    }
+
+    private async loadQueue(): Promise<void> {
+        const generation = ++this.loadGeneration;
+        this.setQueueBusy(true);
+        this.setQueueStatus('Loading Guided Pathway alerts...');
+        try {
+            const page = await listAdminGuidedPathwayFlags(this.currentFilters());
+            if (generation !== this.loadGeneration) return;
+            this.pageData = page;
+            this.refreshFacetOptions(page.facets);
+            this.renderQueue();
+            this.setQueueStatus(`${page.total} ${page.total === 1 ? 'alert' : 'alerts'}`);
+        } catch (error) {
+            if (generation !== this.loadGeneration) return;
+            this.pageData = null;
+            this.renderQueue('Alerts could not be loaded. Use Refresh to try again.');
+            this.setQueueStatus(error instanceof Error ? error.message : 'Unable to load Guided Pathway alerts.');
+        } finally {
+            if (generation === this.loadGeneration) this.setQueueBusy(false);
+        }
+    }
+
+    private async refreshAwaitingReviewCount(): Promise<void> {
+        try {
+            const page = await listAdminGuidedPathwayFlags({
+                page: 1,
+                pageSize: 1,
+                status: 'escalated',
+                reviewState: 'needs-review',
+            });
+            this.publishAwaitingReviewCount(page.total);
+        } catch {
+            // Keep the last known badge value; the queue reports actionable request failures.
+        }
+    }
+
+    private metadataItem(label: string, value: string): HTMLElement {
+        const item = document.createElement('span');
+        const strong = document.createElement('strong');
+        strong.textContent = `${label}: `;
+        item.append(strong, document.createTextNode(value));
+        return item;
+    }
+
+    private createRevealControl(flag: GuidedPathwayFlagView): HTMLElement {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'admin-guided-alert-card__identity';
+        const label = document.createElement('label');
+        label.className = 'admin-guided-alert-card__identity-toggle';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        const labelText = document.createElement('span');
+        labelText.textContent = 'Reveal student identity';
+        const revealed = document.createElement('span');
+        revealed.className = 'admin-guided-alert-card__revealed-name';
+        revealed.setAttribute('role', 'status');
+        revealed.setAttribute('aria-live', 'polite');
+        label.append(checkbox, labelText);
+        wrapper.append(label, revealed);
+
+        checkbox.addEventListener('change', async () => {
+            if (!checkbox.checked) {
+                revealed.textContent = '';
+                return;
+            }
+
+            const confirmation = await showConfirmModal(
+                'Reveal student identity',
+                'This access is restricted to escalated alerts and will be recorded with your administrator account and the current time.',
+                'Reveal identity',
+                'Cancel',
+                'danger'
+            );
+            if (confirmation.action !== 'reveal-identity') {
+                checkbox.checked = false;
+                return;
+            }
+
+            checkbox.disabled = true;
+            try {
+                const identity = await revealAdminGuidedPathwayFlagIdentity(flag.courseId, flag.id);
+                revealed.textContent = `Student: ${identity.studentName}`;
+            } catch (error) {
+                checkbox.checked = false;
+                revealed.textContent = '';
+                await showErrorModal(
+                    'Unable to reveal identity',
+                    error instanceof Error ? error.message : 'The identity could not be revealed.'
+                );
+            } finally {
+                checkbox.disabled = false;
+            }
+        }, { signal: this.listeners.signal });
+        return wrapper;
+    }
+
+    private async markReviewed(flag: GuidedPathwayFlagView, button: HTMLButtonElement): Promise<void> {
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+        try {
+            await reviewAdminGuidedPathwayFlag(flag.courseId, flag.id);
+            await Promise.all([this.loadQueue(), this.refreshAwaitingReviewCount()]);
+        } catch (error) {
+            if (button.isConnected) button.disabled = false;
+            await showErrorModal(
+                'Unable to mark alert reviewed',
+                error instanceof Error ? error.message : 'The review could not be saved.'
+            );
+        } finally {
+            button.removeAttribute('aria-busy');
+        }
+    }
+
+    private createAlertCard(flag: GuidedPathwayFlagView): HTMLElement {
+        const card = document.createElement('article');
+        card.className = `admin-guided-alert-card admin-guided-alert-card--${flag.status}`;
+
+        const header = document.createElement('div');
+        header.className = 'admin-guided-alert-card__header';
+        const title = document.createElement('h2');
+        title.textContent = flag.pathwayTitle;
+        const status = document.createElement('span');
+        status.className = `admin-guided-alert-card__status admin-guided-alert-card__status--${flag.status}`;
+        status.textContent = STATUS_LABELS[flag.status];
+        header.append(title, status);
+
+        const metadata = document.createElement('div');
+        metadata.className = 'admin-guided-alert-card__metadata';
+        metadata.append(
+            this.metadataItem('Course', flag.courseName),
+            this.metadataItem('Triggered', formatDate(flag.triggeredAt))
+        );
+        if (flag.decidedAt) metadata.append(this.metadataItem('Decision', formatDate(flag.decidedAt)));
+        if (flag.decidedByName) metadata.append(this.metadataItem('Decision by', flag.decidedByName));
+        if (flag.adminReviewedAt) metadata.append(this.metadataItem('Admin review', formatDate(flag.adminReviewedAt)));
+        if (flag.adminReviewedByName) metadata.append(this.metadataItem('Reviewed by', flag.adminReviewedByName));
+
+        const messageLabel = document.createElement('h3');
+        messageLabel.textContent = 'Student message';
+        const message = document.createElement('p');
+        message.className = 'admin-guided-alert-card__message';
+        message.textContent = flag.messageText;
+        card.append(header, metadata, messageLabel, message);
+
+        if (flag.status === 'escalated') {
+            card.appendChild(this.createRevealControl(flag));
+            if (!flag.adminReviewedAt) {
+                const actions = document.createElement('div');
+                actions.className = 'admin-guided-alert-card__actions';
+                const review = document.createElement('button');
+                review.type = 'button';
+                review.textContent = 'Mark reviewed';
+                review.addEventListener('click', () => void this.markReviewed(flag, review), {
+                    signal: this.listeners.signal
+                });
+                actions.appendChild(review);
+                card.appendChild(actions);
+            }
+        }
+
+        return card;
+    }
+
+    private renderQueue(errorMessage?: string): void {
+        const list = this.element('list');
+        list.replaceChildren();
+        const items = this.pageData?.items ?? [];
+        if (errorMessage) {
+            const error = document.createElement('p');
+            error.className = 'admin-guided-alerts__empty admin-guided-alerts__empty--error';
+            error.textContent = errorMessage;
+            list.appendChild(error);
+        } else if (items.length === 0) {
+            const empty = document.createElement('p');
+            empty.className = 'admin-guided-alerts__empty';
+            empty.textContent = 'No Guided Pathway alerts match these filters.';
+            list.appendChild(empty);
+        } else {
+            for (const item of items) list.appendChild(this.createAlertCard(item));
+        }
+        this.renderPagination();
+        replaceFeatherIcons();
+    }
+
+    private renderPagination(): void {
+        const page = this.pageData?.page ?? this.currentPage;
+        const total = this.pageData?.total ?? 0;
+        const pageSize = this.pageData?.pageSize ?? PAGE_SIZE;
+        const totalPages = Math.max(1, Math.ceil(total / pageSize));
+        this.element('page-summary').textContent = `Page ${page} of ${totalPages}`;
+        this.element<HTMLButtonElement>('previous').disabled = page <= 1;
+        this.element<HTMLButtonElement>('next').disabled = page >= totalPages;
+    }
+
+    private clearFilters(): void {
+        this.element<HTMLFormElement>('filters').reset();
+        this.populateCourseOptions();
+        this.currentPage = 1;
+        void this.loadQueue();
+    }
+
+    private bindControls(): void {
+        const signal = this.listeners.signal;
+        this.element('refresh').addEventListener('click', () => void this.refresh(), { signal });
+        this.element<HTMLSelectElement>('period').addEventListener('change', () => {
+            this.element<HTMLSelectElement>('course').value = '';
+            this.populateCourseOptions();
+        }, { signal });
+        this.element<HTMLSelectElement>('review-state').addEventListener('change', (event) => {
+            const reviewState = (event.currentTarget as HTMLSelectElement).value;
+            if (reviewState !== 'all') this.element<HTMLSelectElement>('status-filter').value = 'escalated';
+        }, { signal });
+        this.element<HTMLSelectElement>('status-filter').addEventListener('change', (event) => {
+            const status = (event.currentTarget as HTMLSelectElement).value;
+            if (status !== 'escalated') this.element<HTMLSelectElement>('review-state').value = 'all';
+        }, { signal });
+        this.element<HTMLFormElement>('filters').addEventListener('submit', (event) => {
+            event.preventDefault();
+            this.currentPage = 1;
+            void this.loadQueue();
+        }, { signal });
+        this.element('clear').addEventListener('click', () => this.clearFilters(), { signal });
+        this.element('previous').addEventListener('click', () => {
+            if (this.currentPage <= 1) return;
+            this.currentPage -= 1;
+            void this.loadQueue();
+        }, { signal });
+        this.element('next').addEventListener('click', () => {
+            this.currentPage += 1;
+            void this.loadQueue();
+        }, { signal });
+    }
 }
 
-/** Load the global queue the first time an administrator opens its Flags tab. */
+let embeddedController: AdminGuidedPathwayFlagsController | null = null;
+
+function updateEmbeddedAwaitingReviewCount(count: number): void {
+    const badge = document.getElementById('admin-guided-alert-count');
+    if (!badge) return;
+    badge.textContent = String(count);
+    badge.setAttribute('aria-label', `${count} awaiting review`);
+}
+
+/** Initialize the reusable queue inside the existing shared Flags tab. */
+export async function initializeAdminGuidedPathwayFlags(): Promise<void> {
+    const root = document.getElementById('admin-guided-pathway-alerts-content');
+    if (!root) return;
+    embeddedController?.destroy();
+    embeddedController = new AdminGuidedPathwayFlagsController(root, {
+        showMobileMenuButton: true,
+        onAwaitingReviewCountChange: updateEmbeddedAwaitingReviewCount,
+    });
+    await embeddedController.initialize();
+}
+
+/** Load the embedded queue the first time an administrator opens its Flags tab. */
 export function activateAdminGuidedPathwayFlags(): void {
-    if (queueLoaded) return;
-    queueLoaded = true;
-    void loadQueue();
+    void embeddedController?.activate();
 }

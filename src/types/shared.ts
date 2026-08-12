@@ -332,6 +332,8 @@ export interface activeCourse {
         scenarioProgress?: string;
         /** Per-course Guided Pathway Library (e.g. `${courseName}_pathways`); lazy-provisions on existing courses */
         pathways?: string;
+        /** Course-owned automatic Guided Pathway alerts; derived from stable course id by GPF-001 */
+        guidedPathwayFlags?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
     /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */

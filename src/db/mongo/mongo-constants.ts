@@ -19,5 +19,5 @@ export const ACADEMIC_PERIODS_COLLECTION = 'academic-periods';
 /** MongoDB collection name for period-scoped instructor course allow-lists. */
 export const INSTRUCTOR_PERIOD_ALLOWANCES_COLLECTION = 'instructor-period-allowances';
 
-/** MongoDB collection name for anonymous Guided Pathway trigger alerts across all courses. */
+/** Legacy shared Guided Pathway collection retained as the GPF-001 migration source. */
 export const GUIDED_PATHWAY_FLAGS_COLLECTION = 'guided-pathway-flags';

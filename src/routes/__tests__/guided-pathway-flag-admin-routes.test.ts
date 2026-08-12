@@ -23,6 +23,10 @@ import { EngEAI_MongoDB } from '../../db/enge-ai-mongodb';
 import adminGuidedPathwayFlagRoutes from '../mongo/admin-guided-pathway-flag-routes';
 
 describe('administrator Guided Pathway flag list API', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
     it('returns server-provided safe facets and requests facet-wide Mongo queries', async () => {
         const data = {
             items: [],
@@ -34,9 +38,9 @@ describe('administrator Guided Pathway flag list API', () => {
                 reviewers: ['Instructor A']
             }
         };
-        const listGuidedPathwayFlags = jest.fn().mockResolvedValue(data);
+        const listGuidedPathwayFlagsForAdmin = jest.fn().mockResolvedValue(data);
         (EngEAI_MongoDB.getInstance as jest.Mock).mockResolvedValue({
-            listGuidedPathwayFlags
+            listGuidedPathwayFlagsForAdmin
         });
 
         const app = express();
@@ -49,7 +53,7 @@ describe('administrator Guided Pathway flag list API', () => {
 
         expect(response.status).toBe(200);
         expect(response.body).toEqual({ success: true, data });
-        expect(listGuidedPathwayFlags).toHaveBeenCalledWith(expect.objectContaining({
+        expect(listGuidedPathwayFlagsForAdmin).toHaveBeenCalledWith(expect.objectContaining({
             page: 1,
             pageSize: 20,
             status: 'escalated',
@@ -63,9 +67,9 @@ describe('administrator Guided Pathway flag list API', () => {
     });
 
     it('rejects review-state filters combined with a non-escalated decision', async () => {
-        const listGuidedPathwayFlags = jest.fn();
+        const listGuidedPathwayFlagsForAdmin = jest.fn();
         (EngEAI_MongoDB.getInstance as jest.Mock).mockResolvedValue({
-            listGuidedPathwayFlags
+            listGuidedPathwayFlagsForAdmin
         });
 
         const app = express();
@@ -79,6 +83,42 @@ describe('administrator Guided Pathway flag list API', () => {
             success: false,
             error: 'Admin review filters apply only to escalated alerts'
         });
-        expect(listGuidedPathwayFlags).not.toHaveBeenCalled();
+        expect(listGuidedPathwayFlagsForAdmin).not.toHaveBeenCalled();
+    });
+
+    it('uses both course id and flag id for administrator review and reveal mutations', async () => {
+        const reviewed = { id: 'shared-flag', courseId: 'course-2', status: 'escalated' };
+        const markGuidedPathwayFlagAdminReviewed = jest.fn().mockResolvedValue(reviewed);
+        const revealGuidedPathwayFlagIdentity = jest.fn().mockResolvedValue({ studentName: 'Student' });
+        (EngEAI_MongoDB.getInstance as jest.Mock).mockResolvedValue({
+            markGuidedPathwayFlagAdminReviewed,
+            revealGuidedPathwayFlagIdentity
+        });
+
+        const app = express();
+        app.use(express.json());
+        app.use((req, _res, next) => {
+            (req as any).session = {
+                globalUser: { userId: 'admin-1', name: 'Admin' }
+            };
+            next();
+        });
+        app.use('/', adminGuidedPathwayFlagRoutes);
+
+        const reviewResponse = await request(app).patch('/course-2/shared-flag/review');
+        const revealResponse = await request(app).post('/course-2/shared-flag/reveal-identity');
+
+        expect(reviewResponse.status).toBe(200);
+        expect(revealResponse.status).toBe(200);
+        expect(markGuidedPathwayFlagAdminReviewed).toHaveBeenCalledWith(
+            'course-2',
+            'shared-flag',
+            { userId: 'admin-1', name: 'Admin' }
+        );
+        expect(revealGuidedPathwayFlagIdentity).toHaveBeenCalledWith(
+            'course-2',
+            'shared-flag',
+            { userId: 'admin-1', name: 'Admin' }
+        );
     });
 });

@@ -27,8 +27,44 @@ Operational startup migrations (OB-001) are documented here but are **not** tied
 | **AP-001** | Course `academicPeriodId` backfill | Lazy (request) | `lazyMigrateCourseAcademicPeriod` in `src/db/mongo/academic-period-mongo.ts` via `getActiveCourse` / `getAllActiveCourses` | missing `academicPeriodId` → default `2025W2` period; `$addToSet` on period `courseIds` | **Remove by 2026-06-30** — see [AP-001](#ap-001-academic-period-lazy-link) |
 | **IPA-001** | Instructor allow-list period scope | Startup (once) | `migrateInstructorAllowances` in `src/helpers/migrate-instructor-allowances.ts` | `instructor-allowed-courses` → `instructor-period-allowances` for `2025W2` | Operational after first successful run |
 | **ADM-001** | Platform admin `isAdmin` backfill | Startup | `migratePlatformAdmins` in `src/helpers/migrate-platform-admins.ts` | GlobalUsers matching `CHARISMA_RUSDIYANTO_PUID` / `RICHARD_TAPE_PUID` → `isAdmin: true` | Operational — keep unless product changes |
+| **GPF-001** | Guided Pathway alert course isolation | Startup + operation gate | `migrateGuidedPathwayFlagsToCourseCollections` in `src/db/mongo/guided-pathway-flag-collection-mongo.ts` | shared `guided-pathway-flags` rows → deterministic course-owned collections | Operational — retain until every environment has no recoverable legacy rows |
 | **SQ-001** | Scenario Questions collection backfill | Lazy (first API call) | `ensureScenarioQuestionsCollection` in `src/db/mongo/scenario-questions-mongo.ts` | missing `activeCourse.collections.scenarioQuestions` → creates `{courseName}_scenario_questions` + `$set` the field | Keep while any pre-feature course document may lack `collections.scenarioQuestions` |
 | **SQ-004** | Scenario Progress collection backfill | Lazy (first progress API call) | `ensureScenarioProgressCollection` in `src/db/mongo/scenario-progress-mongo.ts` | missing `activeCourse.collections.scenarioProgress` → creates `{courseName}_scenario_progress` + `$set` the field | Keep while any course may lack `collections.scenarioProgress` |
+
+---
+
+## GPF-001: Guided Pathway alert course isolation
+
+**Status:** Active (startup migration with operation-level gate)
+
+**Collections:** legacy `guided-pathway-flags`, `active-course-list`, and one `guided-pathway-flags-course-<hash>` collection per course id
+
+### Behavior
+
+1. Derive each active course namespace from a 96-bit SHA-256 prefix of its stable `courseId`, persist it as `activeCourse.collections.guidedPathwayFlags`, and ensure the alert indexes.
+2. Read distinct string `courseId` values from the legacy shared collection. A legacy course id missing from the active catalog receives its own isolated destination so it cannot merge with another course's rows.
+3. Copy at most 200 records at a time with `_id`-keyed replacement upserts. Verify every source `_id` exists in the destination before deleting that exact source batch.
+4. Drop the legacy collection when empty. Retain malformed rows without a usable string `courseId` and log their count for manual recovery.
+
+Startup invokes the migration after academic-period initialization. Every Guided Pathway persistence operation also awaits the memoized migration, so requests cannot race ahead of it. A failed migration promise is discarded and the next call retries from the last verified batch.
+
+### Idempotency and failure safety
+
+Destination writes are upserts by Mongo `_id`; retrying after copy but before source deletion does not duplicate an alert. Source deletion never runs for an unverified batch. Concurrent migrators accept a batch already removed by another instance only after confirming no source `_id` remains. Per-course unique alert-id and deduplication indexes remain the runtime guards after migration.
+
+### Verification (Mongo shell)
+
+```js
+db.getCollection('guided-pathway-flags').countDocuments({
+  courseId: { $type: 'string' }
+})
+```
+
+Target after a successful deployment: `0`. If the legacy collection remains, inspect malformed retained rows before removing it manually.
+
+### Rollback
+
+Restore the database from the pre-deployment backup. Do not merge course collections back into a shared namespace while this application version is running because runtime reads and lifecycle cleanup intentionally resolve one course-owned collection.
 
 ---
 

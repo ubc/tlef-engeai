@@ -191,7 +191,7 @@ router.get(
                 courseIds = period.courseIds;
             }
 
-            const data = await mongo.listGuidedPathwayFlags({
+            const data = await mongo.listGuidedPathwayFlagsForAdmin({
                 page,
                 pageSize,
                 status: status as GuidedPathwayFlagStatus | undefined,
@@ -217,12 +217,13 @@ router.get(
 );
 
 router.patch(
-    '/:flagId/review',
+    '/:courseId/:flagId/review',
     requireAdminGlobal,
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
             const mongo = await EngEAI_MongoDB.getInstance();
             const data = await mongo.markGuidedPathwayFlagAdminReviewed(
+                routeParam(req.params, 'courseId'),
                 routeParam(req.params, 'flagId'),
                 actorFromSession(req)
             );
@@ -239,12 +240,13 @@ router.patch(
 );
 
 router.post(
-    '/:flagId/reveal-identity',
+    '/:courseId/:flagId/reveal-identity',
     requireAdminGlobal,
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
             const mongo = await EngEAI_MongoDB.getInstance();
             const data = await mongo.revealGuidedPathwayFlagIdentity(
+                routeParam(req.params, 'courseId'),
                 routeParam(req.params, 'flagId'),
                 actorFromSession(req)
             );

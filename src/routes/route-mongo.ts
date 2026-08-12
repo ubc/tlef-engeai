@@ -1331,7 +1331,7 @@ router.delete('/:id/restart-onboarding', requireInstructorOrAdminForCourseAPI(['
         // Get collection names before deleting the course (to use stored names if available)
         const collectionNames = await instance.getCollectionNames(courseName);
 
-        // Remove rows from the global Guided Pathway alert collection before replacing the course id.
+        // Drop the course-owned Guided Pathway alert collection before replacing the course id.
         await instance.deleteGuidedPathwayFlagsForCourse(course.id);
         
         // Remove course from active-course-list
@@ -1541,7 +1541,7 @@ router.delete('/:id', requireInstructorOrAdminForCourseAPI(['paramsId']), asyncH
         });
     }
     
-    // Remove rows owned by this course from the global Guided Pathway alert collection.
+    // Drop the physical Guided Pathway alert collection owned by this course.
     await instance.deleteGuidedPathwayFlagsForCourse(existingCourse.id);
 
     // Delete the course catalog row.

@@ -12,32 +12,42 @@ jest.mock('../collection-registry-mongo', () => ({
         scenarioQuestions: 'TestCourse_scenario_questions',
         scenarioProgress: 'TestCourse_scenario_progress',
         pathways: 'TestCourse_pathways',
+        guidedPathwayFlags: 'resolved-by-guided-pathway-owner',
     })
 }));
 
 jest.mock('../mongo-collections', () => ({
     activeCourseListCollection: jest.fn(() => ({
+        find: jest.fn(() => ({
+            toArray: jest.fn().mockResolvedValue([{
+                id: 'course-id-1',
+                courseName: 'TestCourse'
+            }])
+        })),
         findOne: jest.fn().mockResolvedValue({
             id: 'course-id-1',
             courseName: 'TestCourse',
             _id: new ObjectId()
-        })
+        }),
+        updateOne: jest.fn().mockResolvedValue({ matchedCount: 1 })
     })),
     guidedPathwayFlagsCollection: jest.fn((db) => db.collection('guided-pathway-flags'))
 }));
 
 import { getCollectionNames } from '../collection-registry-mongo';
+import { guidedPathwayFlagCollectionNameForCourse } from '../guided-pathway-flag-collection-mongo';
 import { activeCourseListCollection } from '../mongo-collections';
 
 describe('course-backup-mongo loadCourseMongoBackupPayloads', () => {
-    it('queries catalog and four per-course collections; EJSON round-trips ObjectIds', async () => {
+    it('queries catalog and course-owned collections; EJSON round-trips ObjectIds', async () => {
         const oid = new ObjectId();
+        const guidedPathwayCollection = guidedPathwayFlagCollectionNameForCourse('course-id-1');
         const rows: Record<string, unknown[]> = {
             TestCourse_users: [{ _id: oid, userId: 'student-1' }],
             TestCourse_flags: [{ id: 'f1' }],
             TestCourse_scheduled_tasks: [],
             'TestCourse_memory-agent': [{ userId: 'student-1', struggleTopics: ['a'] }],
-            'guided-pathway-flags': [{
+            [guidedPathwayCollection]: [{
                 id: 'gpf-1',
                 courseId: 'course-id-1',
                 courseName: 'TestCourse',
@@ -54,6 +64,10 @@ describe('course-backup-mongo loadCourseMongoBackupPayloads', () => {
 
         const mockDb = {
             collection: (name: string) => ({
+                createIndex: jest.fn().mockResolvedValue('index-name'),
+                distinct: jest.fn().mockResolvedValue([]),
+                countDocuments: jest.fn().mockResolvedValue((rows[name] ?? []).length),
+                drop: jest.fn().mockResolvedValue(true),
                 find: (filter: { courseId?: string } = {}) => {
                     const matching = (rows[name] ?? []).filter((row: any) =>
                         !filter.courseId || row.courseId === filter.courseId

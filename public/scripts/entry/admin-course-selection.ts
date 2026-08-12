@@ -13,6 +13,7 @@ import {
 } from '../ui/user-search-multi-select.js';
 import { authService } from '../services/auth-service.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
+import { AdminGuidedPathwayFlagsController } from '../feature/admin-guided-pathway-flags.js';
 
 interface AdminPeriodSection extends AcademicPeriodDocument {
     courseCount: number;
@@ -23,10 +24,13 @@ interface AdminCourseSelectionPayload {
     periods: AdminPeriodSection[];
     defaultPeriodId: string;
     defaultPeriodTitle: string;
+    guidedPathwayEscalationsAwaitingReview: number;
 }
 
 let currentGlobalUser: GlobalUser | null = null;
 let pageData: AdminCourseSelectionPayload | null = null;
+let notificationButtonBound = false;
+let notificationModalOpen = false;
 
 async function initializeAdminCourseSelection(): Promise<void> {
     try {
@@ -53,6 +57,7 @@ async function initializeAdminCourseSelection(): Promise<void> {
 
         setupLogoutButton();
         setupCreatePeriodButton();
+        setupNotificationButton();
         await loadAdminData();
     } catch (error) {
         console.error('[ADMIN-COURSE-SELECTION]', error);
@@ -68,6 +73,7 @@ async function loadAdminData(): Promise<void> {
     }
     const json = await response.json();
     pageData = json.data as AdminCourseSelectionPayload;
+    updateNotificationCount(pageData.guidedPathwayEscalationsAwaitingReview);
     renderPeriodSections();
     showLoading(false);
     showError(false);
@@ -482,6 +488,68 @@ function showError(show: boolean): void {
     if (el) {
         el.style.display = show ? 'block' : 'none';
     }
+}
+
+function updateNotificationCount(count: number): void {
+    const safeCount = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+    const badge = document.getElementById('admin-notification-count');
+    const button = document.getElementById('admin-notification-btn');
+    if (badge) badge.textContent = String(safeCount);
+    button?.setAttribute(
+        'aria-label',
+        `Open Guided Pathway notifications, ${safeCount} awaiting review`
+    );
+    if (pageData) pageData.guidedPathwayEscalationsAwaitingReview = safeCount;
+}
+
+async function openGuidedPathwayNotifications(): Promise<void> {
+    if (!pageData || notificationModalOpen) return;
+    notificationModalOpen = true;
+    const button = document.getElementById('admin-notification-btn');
+    button?.setAttribute('aria-expanded', 'true');
+
+    const queueRoot = document.createElement('section');
+    queueRoot.setAttribute('aria-label', 'Guided Pathway notifications requiring administrator review');
+    const controller = new AdminGuidedPathwayFlagsController(queueRoot, {
+        periods: pageData.periods,
+        initialAwaitingReviewCount: pageData.guidedPathwayEscalationsAwaitingReview,
+        initialFilters: { status: 'escalated', reviewState: 'needs-review' },
+        onAwaitingReviewCountChange: updateNotificationCount,
+    });
+
+    try {
+        await controller.initialize();
+        const modal = new ModalOverlay();
+        const modalClosed = modal.show({
+            type: 'custom',
+            title: 'Guided Pathway notifications',
+            content: queueRoot,
+            showCloseButton: true,
+            closeOnOverlayClick: true,
+            closeOnEscape: true,
+            maxWidth: '1120px',
+            customClass: 'admin-guided-alerts-modal',
+        });
+        await controller.activate();
+        await modalClosed;
+    } catch (error) {
+        await showErrorModal(
+            'Unable to open notifications',
+            error instanceof Error ? error.message : 'Guided Pathway notifications could not be opened.'
+        );
+    } finally {
+        controller.destroy();
+        notificationModalOpen = false;
+        button?.setAttribute('aria-expanded', 'false');
+    }
+}
+
+function setupNotificationButton(): void {
+    if (notificationButtonBound) return;
+    const button = document.getElementById('admin-notification-btn');
+    if (!button) return;
+    button.addEventListener('click', () => void openGuidedPathwayNotifications());
+    notificationButtonBound = true;
 }
 
 function setupLogoutButton(): void {

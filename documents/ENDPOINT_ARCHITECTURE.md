@@ -318,8 +318,8 @@ records where the field is missing.
 | GET | `/api/courses/:courseId/guided-pathway-flags` | Yes | Faculty instructor or **Admin** | Paginated anonymous course alert list; optional `status` |
 | PATCH | `/api/courses/:courseId/guided-pathway-flags/:flagId/decision` | Yes | Faculty instructor or **Admin** | Atomic pending decision; body `{ decision: 'escalate' | 'dismiss' }` |
 | GET | `/api/admin/guided-pathway-flags` | Yes | **Admin** | Cross-course anonymous queue with period/course/pathway/status/reviewer/date filters |
-| PATCH | `/api/admin/guided-pathway-flags/:flagId/review` | Yes | **Admin** | Mark an escalated item reviewed without deleting it |
-| POST | `/api/admin/guided-pathway-flags/:flagId/reveal-identity` | Yes | **Admin** | Audit an escalated-item reveal, then return only the current roster display name |
+| PATCH | `/api/admin/guided-pathway-flags/:courseId/:flagId/review` | Yes | **Admin** | Mark an escalated item reviewed in its owning course without deleting it |
+| POST | `/api/admin/guided-pathway-flags/:courseId/:flagId/reveal-identity` | Yes | **Admin** | Audit an escalated-item reveal in its owning course, then return only the current roster display name |
 
 List and action responses use an explicit anonymous projection: pathway/course snapshots, exact
 student message, trigger/decision/review times, state, and staff reviewer display names. They never
@@ -334,10 +334,17 @@ only on escalated records, requires confirmation in the client, is re-masked aft
 fails closed when the audit write fails. Students and teaching assistants cannot call these APIs;
 automatic alerts never enter Student Flag History.
 
+Each course stores automatic alerts in its own deterministic Mongo collection. Course routes resolve
+only that collection, while the platform-admin queue aggregates canonical active-course collections
+server-side. Including `courseId` in admin action paths makes equal alert ids in different courses
+unambiguous. Existing rows in the former shared collection are moved by GPF-001; see
+[DATA_MIGRATIONS.md](DATA_MIGRATIONS.md#gpf-001-guided-pathway-alert-course-isolation).
+
 `GET /api/admin/course-selection` also returns
 `data.guidedPathwayEscalationsAwaitingReview`, counting escalated records with no admin review time.
-The dashboard refreshes this count on page load and after review actions; there is no polling, live
-popup, email, or external notification.
+The course-selection dashboard renders that count as a bell badge between the welcome text and logout.
+Clicking the bell opens the same anonymous admin queue, prefiltered to escalated items needing review;
+the badge refreshes after review actions. There is no polling, email, or external notification.
 
 #### Monitor (instructor roster; post-period analytics)
 

@@ -1,18 +1,19 @@
 /**
  * Guided Pathway flag Mongo delegate
  *
- * Owns the single global `guided-pathway-flags` collection, including atomic
- * trigger deduplication, instructor decisions, platform review, and audited
- * identity reveal. Public reads always use an allowlisted anonymous projection.
+ * Owns anonymous alert CRUD inside course-specific collections. Course reads
+ * address exactly one collection; platform-admin reads build a server-owned
+ * `$unionWith` pipeline over canonical active-course namespaces. Every public
+ * projection excludes student identity, dedupe material, and reveal audit data.
  *
  * @author: EngE-AI Team
  * @date: 2026-08-08
- * @version: 1.0.0
- * @description: Privacy-bounded persistence for Guided Pathway trigger alerts.
+ * @version: 2.0.0
+ * @description: Privacy-bounded persistence for course-isolated Guided Pathway alerts.
  */
 
 import { createHash, randomUUID } from 'crypto';
-import type { Collection, Filter } from 'mongodb';
+import type { Collection, Document, Filter } from 'mongodb';
 import type {
     GuidedPathwayFlagDecision,
     GuidedPathwayFlagFacets,
@@ -22,7 +23,14 @@ import type {
     GuidedPathwayFlagView
 } from '../../types/shared';
 import { getCourseUsersMongoCollection } from './course-user-mongo';
-import { guidedPathwayFlagsCollection } from './mongo-collections';
+import {
+    GuidedPathwayFlagCourseNotFoundError,
+    getGuidedPathwayFlagCourseScope,
+    guidedPathwayFlagCourseCollection,
+    listGuidedPathwayFlagCourseScopes,
+    migrateGuidedPathwayFlagsToCourseCollections,
+    type GuidedPathwayFlagCourseScope
+} from './guided-pathway-flag-collection-mongo';
 import type { MongoDalContext } from './mongo-context';
 
 /** Server-owned actor snapshot used for decisions, review, and reveal audit. */
@@ -44,7 +52,7 @@ export interface CreateGuidedPathwayFlagInput {
     triggeredAt?: Date;
 }
 
-/** Filters shared by course and global administrator queues. */
+/** Filters supported by the platform-wide administrator queue. */
 export interface GuidedPathwayFlagListFilters {
     page?: number;
     pageSize?: number;
@@ -94,7 +102,14 @@ interface GuidedPathwayFlagDocument {
     updatedAt: Date;
 }
 
-/** Raised when an alert id is absent from the required scope. */
+interface AdminAggregationResult {
+    items: Partial<GuidedPathwayFlagDocument>[];
+    totals: Array<{ value: number }>;
+    pathways?: Array<{ pathwayId: string; pathwayTitle: string }>;
+    reviewers?: Array<{ name: string }>;
+}
+
+/** Raised when an alert id is absent from the required course scope. */
 export class GuidedPathwayFlagNotFoundError extends Error {
     constructor(message = 'Guided Pathway alert not found') {
         super(message);
@@ -120,6 +135,11 @@ export class GuidedPathwayFlagIdentityUnavailableError extends Error {
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
+const STATUS_PRIORITY: Record<GuidedPathwayFlagStatus, number> = {
+    escalated: 0,
+    pending: 1,
+    dismissed: 2
+};
 
 /** Inclusion-only projection used by every queue and backup read. */
 const SAFE_FLAG_PROJECTION = {
@@ -138,10 +158,25 @@ const SAFE_FLAG_PROJECTION = {
     adminReviewedByName: 1
 } as const;
 
-const indexPromises = new WeakMap<object, Promise<void>>();
+function collectionFor(
+    ctx: MongoDalContext,
+    scope: GuidedPathwayFlagCourseScope
+): Collection<GuidedPathwayFlagDocument> {
+    return guidedPathwayFlagCourseCollection<GuidedPathwayFlagDocument>(ctx, scope);
+}
 
-function flags(ctx: MongoDalContext): Collection<GuidedPathwayFlagDocument> {
-    return guidedPathwayFlagsCollection(ctx.db) as unknown as Collection<GuidedPathwayFlagDocument>;
+async function requireCourseScope(
+    ctx: MongoDalContext,
+    courseId: string
+): Promise<GuidedPathwayFlagCourseScope> {
+    try {
+        return await getGuidedPathwayFlagCourseScope(ctx, courseId);
+    } catch (error) {
+        if (error instanceof GuidedPathwayFlagCourseNotFoundError) {
+            throw new GuidedPathwayFlagNotFoundError('Guided Pathway alert course not found');
+        }
+        throw error;
+    }
 }
 
 function asIso(value: Date | string): string {
@@ -182,63 +217,129 @@ function isDuplicateKeyError(error: unknown): boolean {
     return Boolean(error && typeof error === 'object' && (error as { code?: number }).code === 11000);
 }
 
-function statusPriority(status: GuidedPathwayFlagStatus): number {
-    if (status === 'escalated') return 0;
-    if (status === 'pending') return 1;
-    return 2;
+function normalizedPagination(filters: GuidedPathwayFlagListFilters): { page: number; pageSize: number } {
+    return {
+        page: Math.max(1, Math.floor(filters.page ?? 1)),
+        pageSize: Math.min(MAX_PAGE_SIZE, Math.max(1, Math.floor(filters.pageSize ?? DEFAULT_PAGE_SIZE)))
+    };
 }
 
 async function findSafeFlag(
-    ctx: MongoDalContext,
+    collection: Collection<GuidedPathwayFlagDocument>,
     filter: Filter<GuidedPathwayFlagDocument>
 ): Promise<GuidedPathwayFlagView | null> {
-    const doc = await flags(ctx).findOne(filter, { projection: SAFE_FLAG_PROJECTION });
+    const doc = await collection.findOne(filter, { projection: SAFE_FLAG_PROJECTION });
     return doc ? toSafeView(doc) : null;
 }
 
-/**
- * ensureGuidedPathwayFlagIndexes - Installs global dedupe, queue, and review indexes.
- *
- * A per-database shared promise prevents concurrent first-use callers from racing
- * index installation. Failed attempts are removed so a later call can retry.
- *
- * @param ctx - Connected Mongo data-layer context
- * @returns When all collection indexes are available
- */
-export async function ensureGuidedPathwayFlagIndexes(ctx: MongoDalContext): Promise<void> {
-    const key = ctx.db as object;
-    let pending = indexPromises.get(key);
-    if (!pending) {
-        const collection = flags(ctx);
-        pending = Promise.all([
-            collection.createIndex({ id: 1 }, { unique: true, name: 'guided_pathway_flag_id_unique' }),
-            collection.createIndex({ dedupeKey: 1 }, { unique: true, name: 'guided_pathway_flag_dedupe_unique' }),
-            collection.createIndex(
-                { courseId: 1, status: 1, triggeredAt: -1 },
-                { name: 'guided_pathway_flag_course_status_time' }
-            ),
-            collection.createIndex(
-                { status: 1, adminReviewedAt: 1, adminSortPriority: 1, triggeredAt: -1 },
-                { name: 'guided_pathway_flag_admin_review_queue' }
-            ),
-            collection.createIndex(
-                { courseId: 1, pathwayId: 1, status: 1, triggeredAt: -1 },
-                { name: 'guided_pathway_flag_course_pathway_status_time' }
-            ),
-            collection.createIndex(
-                { adminSortPriority: 1, triggeredAt: -1 },
-                { name: 'guided_pathway_flag_admin_order' }
-            )
-        ]).then(() => undefined);
-        indexPromises.set(key, pending);
+function applyReviewState(
+    query: Filter<GuidedPathwayFlagDocument>,
+    filters: GuidedPathwayFlagListFilters
+): void {
+    if (!filters.reviewState || filters.reviewState === 'all') return;
+
+    // Review state only exists on escalations; incompatible status pairs intentionally match nothing.
+    query.status = filters.status && filters.status !== 'escalated' ? { $in: [] } : 'escalated';
+    query.adminReviewedAt = { $exists: filters.reviewState === 'reviewed' };
+}
+
+function buildListFilter(
+    filters: GuidedPathwayFlagListFilters,
+    omitOwnFacet?: 'pathwayId' | 'reviewer'
+): Filter<GuidedPathwayFlagDocument> {
+    const query: Filter<GuidedPathwayFlagDocument> = {};
+
+    if (filters.courseId) {
+        query.courseId = filters.courseIds && !filters.courseIds.includes(filters.courseId)
+            ? { $in: [] }
+            : filters.courseId;
+    } else if (filters.courseIds) {
+        query.courseId = { $in: filters.courseIds };
     }
 
-    try {
-        await pending;
-    } catch (error) {
-        indexPromises.delete(key);
-        throw error;
+    if (filters.status) query.status = filters.status;
+    if (filters.pathwayId && omitOwnFacet !== 'pathwayId') query.pathwayId = filters.pathwayId;
+    applyReviewState(query, filters);
+
+    if (filters.reviewer && omitOwnFacet !== 'reviewer') {
+        query.$or = [
+            { decidedByName: filters.reviewer },
+            { adminReviewedByName: filters.reviewer }
+        ];
     }
+
+    if (filters.dateFrom || filters.dateTo) {
+        const triggeredAt: { $gte?: Date; $lte?: Date } = {};
+        if (filters.dateFrom) triggeredAt.$gte = filters.dateFrom;
+        if (filters.dateTo) triggeredAt.$lte = filters.dateTo;
+        query.triggeredAt = triggeredAt;
+    }
+
+    return query;
+}
+
+function unionCourseCollections(scopes: GuidedPathwayFlagCourseScope[]): Document[] {
+    const [first, ...remaining] = scopes;
+    const pipeline: Document[] = [{ $match: { courseId: first.courseId } }];
+    for (const scope of remaining) {
+        pipeline.push({
+            $unionWith: {
+                coll: scope.collectionName,
+                pipeline: [{ $match: { courseId: scope.courseId } }]
+            }
+        });
+    }
+    return pipeline;
+}
+
+function adminFacetPipeline(
+    filters: GuidedPathwayFlagListFilters,
+    page: number,
+    pageSize: number
+): Document {
+    const sort = filters.escalatedFirst
+        ? { adminSortPriority: 1, triggeredAt: -1 }
+        : { triggeredAt: -1 };
+    const facet: Record<string, Document[]> = {
+        items: [
+            { $match: buildListFilter(filters) },
+            { $sort: sort },
+            { $skip: (page - 1) * pageSize },
+            { $limit: pageSize },
+            { $project: SAFE_FLAG_PROJECTION }
+        ],
+        totals: [
+            { $match: buildListFilter(filters) },
+            { $count: 'value' }
+        ]
+    };
+
+    if (filters.includeFacets) {
+        facet.pathways = [
+            { $match: buildListFilter(filters, 'pathwayId') },
+            { $sort: { triggeredAt: -1 } },
+            {
+                $group: {
+                    _id: '$pathwayId',
+                    pathwayTitle: { $first: '$pathwayTitle' }
+                }
+            },
+            { $match: { _id: { $type: 'string', $ne: '' }, pathwayTitle: { $type: 'string', $ne: '' } } },
+            { $project: { _id: 0, pathwayId: '$_id', pathwayTitle: 1 } },
+            { $sort: { pathwayTitle: 1, pathwayId: 1 } }
+        ];
+        facet.reviewers = [
+            { $match: buildListFilter(filters, 'reviewer') },
+            { $project: { names: ['$decidedByName', '$adminReviewedByName'] } },
+            { $unwind: '$names' },
+            { $match: { names: { $type: 'string', $regex: /\S/ } } },
+            { $group: { _id: '$names' } },
+            { $sort: { _id: 1 } },
+            { $project: { _id: 0, name: '$_id' } }
+        ];
+    }
+
+    return { $facet: facet };
 }
 
 /**
@@ -255,23 +356,24 @@ export async function createGuidedPathwayFlag(
     ctx: MongoDalContext,
     input: CreateGuidedPathwayFlagInput
 ): Promise<CreateGuidedPathwayFlagResult> {
-    await ensureGuidedPathwayFlagIndexes(ctx);
     if (!input.clientMessageId || !input.chatId) {
         throw new Error('chatId and clientMessageId are required for Guided Pathway alert deduplication');
     }
 
+    const scope = await requireCourseScope(ctx, input.courseId);
+    const collection = collectionFor(ctx, scope);
     const now = input.triggeredAt ?? new Date();
     const doc: GuidedPathwayFlagDocument = {
         id: randomUUID(),
-        courseId: input.courseId,
-        courseName: input.courseName,
+        courseId: scope.courseId,
+        courseName: scope.courseName,
         pathwayId: input.pathwayId,
         pathwayTitle: input.pathwayTitle,
         messageText: input.messageText,
         studentUserId: input.studentUserId,
         dedupeKey: dedupeKeyFor(input),
         status: 'pending',
-        adminSortPriority: statusPriority('pending'),
+        adminSortPriority: STATUS_PRIORITY.pending,
         triggeredAt: now,
         identityRevealEvents: [],
         createdAt: now,
@@ -279,156 +381,99 @@ export async function createGuidedPathwayFlag(
     };
 
     try {
-        await flags(ctx).insertOne(doc);
+        await collection.insertOne(doc);
         return { created: true, flag: toSafeView(doc) };
     } catch (error) {
         if (!isDuplicateKeyError(error)) throw error;
-        const existing = await findSafeFlag(ctx, { dedupeKey: doc.dedupeKey });
+        const existing = await findSafeFlag(collection, { dedupeKey: doc.dedupeKey, courseId: scope.courseId });
         if (!existing) throw error;
         return { created: false, flag: existing };
     }
 }
 
-function buildListFilter(
-    filters: GuidedPathwayFlagListFilters,
-    omitOwnFacet?: 'pathwayId' | 'reviewer'
-): Filter<GuidedPathwayFlagDocument> {
-    const query: Filter<GuidedPathwayFlagDocument> = {};
-
-    if (filters.courseId) {
-        if (filters.courseIds && !filters.courseIds.includes(filters.courseId)) {
-            query.courseId = { $in: [] };
-        } else {
-            query.courseId = filters.courseId;
-        }
-    } else if (filters.courseIds) {
-        query.courseId = { $in: filters.courseIds };
-    }
-
-    if (filters.status) query.status = filters.status;
-    if (filters.pathwayId && omitOwnFacet !== 'pathwayId') query.pathwayId = filters.pathwayId;
-
-    if (filters.reviewState === 'needs-review') {
-        query.status = filters.status && filters.status !== 'escalated'
-            ? { $in: [] }
-            : 'escalated';
-        query.adminReviewedAt = { $exists: false };
-    } else if (filters.reviewState === 'reviewed') {
-        query.status = filters.status && filters.status !== 'escalated'
-            ? { $in: [] }
-            : 'escalated';
-        query.adminReviewedAt = { $exists: true };
-    }
-
-    if (filters.reviewer && omitOwnFacet !== 'reviewer') {
-        query.$or = [
-            { decidedByName: filters.reviewer },
-            { adminReviewedByName: filters.reviewer }
-        ];
-    }
-
-    if (filters.dateFrom || filters.dateTo) {
-        query.triggeredAt = {};
-        if (filters.dateFrom) query.triggeredAt.$gte = filters.dateFrom;
-        if (filters.dateTo) query.triggeredAt.$lte = filters.dateTo;
-    }
-
-    return query;
-}
-
-async function loadSafeFacets(
+/**
+ * listGuidedPathwayFlagsForCourse - Returns one course's paginated anonymous queue.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Required course ownership boundary
+ * @param filters - Status and pagination controls
+ * @returns Safe page with total matching count
+ */
+export async function listGuidedPathwayFlagsForCourse(
     ctx: MongoDalContext,
-    filters: GuidedPathwayFlagListFilters
-): Promise<GuidedPathwayFlagFacets> {
-    const collection = flags(ctx);
-    const pathwayFilter = buildListFilter(filters, 'pathwayId');
-    const reviewerFilter = buildListFilter(filters, 'reviewer');
+    courseId: string,
+    filters: Pick<GuidedPathwayFlagListFilters, 'page' | 'pageSize' | 'status'>
+): Promise<GuidedPathwayFlagListPage> {
+    const scope = await requireCourseScope(ctx, courseId);
+    const collection = collectionFor(ctx, scope);
+    const pagination = normalizedPagination(filters);
+    const query = buildListFilter({ ...filters, courseId });
+    const cursor = collection.find(query, { projection: SAFE_FLAG_PROJECTION }).sort({ triggeredAt: -1 });
 
-    // Fetch only the non-student fields needed to build full-queue filter choices.
-    const pathwayCursor = collection.find(pathwayFilter, {
-        projection: { _id: 0, pathwayId: 1, pathwayTitle: 1, triggeredAt: 1 }
-    });
-    pathwayCursor.sort({ triggeredAt: -1 });
-    const reviewerCursor = collection.find(reviewerFilter, {
-        projection: { _id: 0, decidedByName: 1, adminReviewedByName: 1 }
-    });
-    const [pathwayDocs, reviewerDocs] = await Promise.all([
-        pathwayCursor.toArray(),
-        reviewerCursor.toArray()
+    const [docs, total] = await Promise.all([
+        cursor
+            .skip((pagination.page - 1) * pagination.pageSize)
+            .limit(pagination.pageSize)
+            .toArray(),
+        collection.countDocuments(query)
     ]);
 
-    // Keep the newest title snapshot for each stable pathway id.
-    const pathwayById = new Map<string, string>();
-    for (const doc of pathwayDocs) {
-        if (
-            typeof doc.pathwayId === 'string' && doc.pathwayId &&
-            typeof doc.pathwayTitle === 'string' && doc.pathwayTitle &&
-            !pathwayById.has(doc.pathwayId)
-        ) {
-            pathwayById.set(doc.pathwayId, doc.pathwayTitle);
-        }
-    }
-
-    const reviewers = new Set<string>();
-    for (const doc of reviewerDocs) {
-        if (typeof doc.decidedByName === 'string' && doc.decidedByName.trim()) {
-            reviewers.add(doc.decidedByName);
-        }
-        if (typeof doc.adminReviewedByName === 'string' && doc.adminReviewedByName.trim()) {
-            reviewers.add(doc.adminReviewedByName);
-        }
-    }
-
     return {
-        pathways: [...pathwayById.entries()]
-            .map(([pathwayId, pathwayTitle]) => ({ pathwayId, pathwayTitle }))
-            .sort((a, b) => a.pathwayTitle.localeCompare(b.pathwayTitle) || a.pathwayId.localeCompare(b.pathwayId)),
-        reviewers: [...reviewers].sort((a, b) => a.localeCompare(b))
+        items: docs.map((doc) => toSafeView(doc)),
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        total
     };
 }
 
 /**
- * listGuidedPathwayFlags - Returns one paginated anonymous queue page.
+ * listGuidedPathwayFlagsForAdmin - Aggregates active course collections into one safe queue.
  *
- * The Mongo projection is inclusion-only and the mapper repeats the allowlist,
- * preventing identity fields from leaking if the stored schema grows later.
+ * Collection names come from canonical course scopes, never request input.
+ * `$facet` computes rows, total, and optional filter choices from one consistent
+ * cross-course snapshot while projecting only allowlisted fields to Node.
  *
  * @param ctx - Connected Mongo data-layer context
- * @param filters - Course/admin filters and pagination
- * @returns Safe page with total matching count
+ * @param filters - Administrator filters and pagination
+ * @returns Safe cross-course page and optional facets
  */
-export async function listGuidedPathwayFlags(
+export async function listGuidedPathwayFlagsForAdmin(
     ctx: MongoDalContext,
     filters: GuidedPathwayFlagListFilters
 ): Promise<GuidedPathwayFlagListPage> {
-    await ensureGuidedPathwayFlagIndexes(ctx);
-    const page = Math.max(1, Math.floor(filters.page ?? 1));
-    const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, Math.floor(filters.pageSize ?? DEFAULT_PAGE_SIZE)));
-    const query = buildListFilter(filters);
-    const collection = flags(ctx);
-    const cursor = collection.find(query, { projection: SAFE_FLAG_PROJECTION });
-    if (filters.escalatedFirst) {
-        cursor.sort({ adminSortPriority: 1, triggeredAt: -1 });
-    } else {
-        cursor.sort({ triggeredAt: -1 });
+    const pagination = normalizedPagination(filters);
+    const scopes = await listGuidedPathwayFlagCourseScopes(ctx, filters);
+    if (scopes.length === 0) {
+        return {
+            items: [],
+            page: pagination.page,
+            pageSize: pagination.pageSize,
+            total: 0,
+            ...(filters.includeFacets ? { facets: { pathways: [], reviewers: [] } } : {})
+        };
     }
 
-    const [docs, total, facets] = await Promise.all([
-        cursor
-            .skip((page - 1) * pageSize)
-            .limit(pageSize)
-            .toArray(),
-        collection.countDocuments(query),
-        filters.includeFacets ? loadSafeFacets(ctx, filters) : Promise.resolve(undefined)
-    ]);
+    const pipeline = [
+        ...unionCourseCollections(scopes),
+        adminFacetPipeline(filters, pagination.page, pagination.pageSize)
+    ];
+    const [aggregation] = await ctx.db
+        .collection<GuidedPathwayFlagDocument>(scopes[0].collectionName)
+        .aggregate<AdminAggregationResult>(pipeline, { allowDiskUse: true })
+        .toArray();
 
     const result: GuidedPathwayFlagListPage = {
-        items: docs.map((doc) => toSafeView(doc)),
-        page,
-        pageSize,
-        total
+        items: (aggregation?.items ?? []).map((doc) => toSafeView(doc)),
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        total: aggregation?.totals?.[0]?.value ?? 0
     };
-    if (facets) result.facets = facets;
+    if (filters.includeFacets) {
+        result.facets = {
+            pathways: aggregation?.pathways ?? [],
+            reviewers: (aggregation?.reviewers ?? []).map(({ name }) => name)
+        };
+    }
     return result;
 }
 
@@ -452,15 +497,18 @@ export async function decideGuidedPathwayFlag(
     decision: GuidedPathwayFlagDecision,
     actor: GuidedPathwayFlagActor
 ): Promise<GuidedPathwayFlagView> {
-    await ensureGuidedPathwayFlagIndexes(ctx);
+    const scope = await requireCourseScope(ctx, courseId);
+    const collection = collectionFor(ctx, scope);
     const nextStatus: GuidedPathwayFlagStatus = decision === 'escalate' ? 'escalated' : 'dismissed';
     const now = new Date();
-    const updated = await flags(ctx).findOneAndUpdate(
+
+    // The lifecycle predicate and write share one BSON command, preventing competing decisions.
+    const updated = await collection.findOneAndUpdate(
         { id: flagId, courseId, status: 'pending' },
         {
             $set: {
                 status: nextStatus,
-                adminSortPriority: statusPriority(nextStatus),
+                adminSortPriority: STATUS_PRIORITY[nextStatus],
                 decidedAt: now,
                 decidedByUserId: actor.userId,
                 decidedByName: actor.name,
@@ -471,32 +519,32 @@ export async function decideGuidedPathwayFlag(
     );
     if (updated) return toSafeView(updated);
 
-    const existing = await findSafeFlag(ctx, { id: flagId, courseId });
+    const existing = await findSafeFlag(collection, { id: flagId, courseId });
     if (!existing) throw new GuidedPathwayFlagNotFoundError();
     if (existing.status === nextStatus) return existing;
     throw new GuidedPathwayFlagConflictError('Guided Pathway alert already has a different decision');
 }
 
 /**
- * markGuidedPathwayFlagAdminReviewed - Marks an escalated alert reviewed once.
- *
- * Repeated review calls return the original completed record without replacing
- * its first-review actor or timestamp.
+ * markGuidedPathwayFlagAdminReviewed - Marks an escalated course alert reviewed once.
  *
  * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Required physical ownership boundary
  * @param flagId - Escalated alert id
  * @param actor - Server-owned platform administrator snapshot
  * @returns Updated safe anonymous alert
  */
 export async function markGuidedPathwayFlagAdminReviewed(
     ctx: MongoDalContext,
+    courseId: string,
     flagId: string,
     actor: GuidedPathwayFlagActor
 ): Promise<GuidedPathwayFlagView> {
-    await ensureGuidedPathwayFlagIndexes(ctx);
+    const scope = await requireCourseScope(ctx, courseId);
+    const collection = collectionFor(ctx, scope);
     const now = new Date();
-    const updated = await flags(ctx).findOneAndUpdate(
-        { id: flagId, status: 'escalated', adminReviewedAt: { $exists: false } },
+    const updated = await collection.findOneAndUpdate(
+        { id: flagId, courseId, status: 'escalated', adminReviewedAt: { $exists: false } },
         {
             $set: {
                 adminReviewedAt: now,
@@ -509,7 +557,7 @@ export async function markGuidedPathwayFlagAdminReviewed(
     );
     if (updated) return toSafeView(updated);
 
-    const existing = await findSafeFlag(ctx, { id: flagId });
+    const existing = await findSafeFlag(collection, { id: flagId, courseId });
     if (!existing) throw new GuidedPathwayFlagNotFoundError();
     if (existing.status !== 'escalated') {
         throw new GuidedPathwayFlagConflictError('Only escalated alerts can be marked reviewed');
@@ -525,19 +573,22 @@ export async function markGuidedPathwayFlagAdminReviewed(
  * only a display name and never exposes the stored student user id or a PUID.
  *
  * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Required physical ownership boundary
  * @param flagId - Escalated alert whose author is being revealed
  * @param actor - Platform administrator performing the reveal
  * @returns Current course-roster display name
  */
 export async function revealGuidedPathwayFlagIdentity(
     ctx: MongoDalContext,
+    courseId: string,
     flagId: string,
     actor: GuidedPathwayFlagActor
 ): Promise<{ studentName: string }> {
-    await ensureGuidedPathwayFlagIndexes(ctx);
+    const scope = await requireCourseScope(ctx, courseId);
+    const collection = collectionFor(ctx, scope);
     const revealedAt = new Date();
-    const audited = await flags(ctx).findOneAndUpdate(
-        { id: flagId, status: 'escalated' },
+    const audited = await collection.findOneAndUpdate(
+        { id: flagId, courseId, status: 'escalated' },
         {
             $push: {
                 identityRevealEvents: {
@@ -549,21 +600,21 @@ export async function revealGuidedPathwayFlagIdentity(
         },
         {
             returnDocument: 'after',
-            projection: { _id: 0, courseName: 1, studentUserId: 1 }
+            projection: { _id: 0, studentUserId: 1 }
         }
-    ) as Pick<GuidedPathwayFlagDocument, 'courseName' | 'studentUserId'> | null;
+    ) as Pick<GuidedPathwayFlagDocument, 'studentUserId'> | null;
 
     if (!audited) {
-        const existing = await flags(ctx).findOne(
-            { id: flagId },
+        const existing = await collection.findOne(
+            { id: flagId, courseId },
             { projection: { _id: 0, status: 1 } }
         );
         if (!existing) throw new GuidedPathwayFlagNotFoundError();
         throw new GuidedPathwayFlagConflictError('Identity can be revealed only for escalated alerts');
     }
 
-    // Read only the current display name from the course roster after the audit succeeds.
-    const roster = await getCourseUsersMongoCollection(ctx, audited.courseName);
+    // Read the roster only after the append-only audit event has persisted.
+    const roster = await getCourseUsersMongoCollection(ctx, scope.courseName);
     const student = await roster.findOne(
         { userId: audited.studentUserId },
         { projection: { _id: 0, name: 1 } }
@@ -575,21 +626,29 @@ export async function revealGuidedPathwayFlagIdentity(
 }
 
 /**
- * countGuidedPathwayFlagsAwaitingAdminReview - Counts escalations without platform review.
+ * countGuidedPathwayFlagsAwaitingAdminReview - Counts unreviewed escalations across active courses.
  *
  * @param ctx - Connected Mongo data-layer context
  * @returns Persistent administrator dashboard count
  */
 export async function countGuidedPathwayFlagsAwaitingAdminReview(ctx: MongoDalContext): Promise<number> {
-    await ensureGuidedPathwayFlagIndexes(ctx);
-    return flags(ctx).countDocuments({ status: 'escalated', adminReviewedAt: { $exists: false } });
+    const scopes = await listGuidedPathwayFlagCourseScopes(ctx);
+    if (scopes.length === 0) return 0;
+
+    const pipeline = [
+        ...unionCourseCollections(scopes),
+        { $match: { status: 'escalated', adminReviewedAt: { $exists: false } } },
+        { $count: 'value' }
+    ];
+    const [result] = await ctx.db
+        .collection<GuidedPathwayFlagDocument>(scopes[0].collectionName)
+        .aggregate<{ value: number }>(pipeline, { allowDiskUse: true })
+        .toArray();
+    return result?.value ?? 0;
 }
 
 /**
- * listGuidedPathwayFlagsForBackup - Loads an anonymous course-scoped backup slice.
- *
- * Restricted identity, opaque dedupe material, request identifiers, and reveal
- * audit events are excluded by the same allowlist used for interface reads.
+ * listGuidedPathwayFlagsForBackup - Loads an anonymous course-owned backup slice.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Course whose alerts are being exported
@@ -599,7 +658,8 @@ export async function listGuidedPathwayFlagsForBackup(
     ctx: MongoDalContext,
     courseId: string
 ): Promise<GuidedPathwayFlagView[]> {
-    const docs = await flags(ctx)
+    const scope = await requireCourseScope(ctx, courseId);
+    const docs = await collectionFor(ctx, scope)
         .find({ courseId }, { projection: SAFE_FLAG_PROJECTION })
         .sort({ triggeredAt: -1 })
         .toArray();
@@ -607,16 +667,21 @@ export async function listGuidedPathwayFlagsForBackup(
 }
 
 /**
- * deleteGuidedPathwayFlagsForCourse - Removes global alert rows for a deleted/reset course.
+ * deleteGuidedPathwayFlagsForCourse - Drops the collection owned by a deleted/reset course.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Course lifecycle boundary
- * @returns Number of global alert rows removed
+ * @returns Number of alert rows removed with the collection
  */
 export async function deleteGuidedPathwayFlagsForCourse(
     ctx: MongoDalContext,
     courseId: string
 ): Promise<number> {
-    const result = await flags(ctx).deleteMany({ courseId });
-    return result.deletedCount;
+    const scope = await requireCourseScope(ctx, courseId);
+    const collection = collectionFor(ctx, scope);
+    const removed = await collection.countDocuments({ courseId });
+    await collection.drop();
+    return removed;
 }
+
+export { migrateGuidedPathwayFlagsToCourseCollections };
