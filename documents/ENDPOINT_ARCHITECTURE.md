@@ -432,7 +432,7 @@ Two auth tiers: `requireCourseMemberForScenarioAPI` (enrolled student **or** sta
 | POST | `/api/rag/search` | Yes | Any | Vector search |
 | DELETE | `/api/rag/wipe-all` | Yes | Instructor | Wipe all RAG data for course |
 
-**Post-upload struggle generation:** After a successful material save, when **Memory Agent** (`features.memoryAgent.enabled`) is on, the server may append instructor struggle-topic labels to the section catalog. When Memory Agent is off, generation is skipped (`struggleGenerationSkipped: true`) and the upload still succeeds. For course **`Test 3`**, labels are loaded deterministically from `src/fixtures/APSC183-instructor-struggle-topics.json` (matched by `Topic N` in section title or filename; up to 5 labels per upload, FIFO dedup). Other courses use LLM structured generation (or mock-response mode when `MOCK_RESPONSE=true`).
+**Post-upload struggle generation:** After a successful material save, when **Memory Agent** (`features.memoryAgent.enabled`) is on, the server may append instructor struggle-topic labels to the section catalog. When Memory Agent is off, generation is skipped (`struggleGenerationSkipped: true`) and the upload still succeeds. Labels come from LLM structured generation (or mock-response mode when `MOCK_RESPONSE=true`).
 
 ### 4.5 Chat (`/api/chat`)
 

@@ -22,7 +22,7 @@ import {
 } from "../types.js";
 import { ConversationModePicker } from "./conversation-mode-picker.js";
 import { RenderChat } from "./render-chat.js";
-import { showDisclaimerModal, showDeleteConfirmationModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
+import { showDeleteConfirmationModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
 import { getCourseIdFromURL, navigateToStudentScenarios } from "../utils/url-parser.js";
 import {
     clearChatDraftPrefill,
@@ -1208,21 +1208,6 @@ export class ChatManager {
             performScroll();
         }
     }
-
-    /**
-     * Open disclaimer modal using the proper modal-overlay system
-     */
-    public async openDisclaimerModal(): Promise<void> {
-        const disclaimerContent = `
-            <p><strong>Purpose:</strong> This AI is designed as a study assistant to help you understand course materials. It is not a substitute for attending lectures, completing assignments, or your own critical thinking.</p>
-            <p><strong>Accuracy:</strong> While we strive for accuracy, the AI can make mistakes, misunderstand context, or generate incorrect information. Always verify critical information against your course materials and lectures.</p>
-            <p><strong>Academic Integrity:</strong> You are responsible for your own work. Do not submit AI-generated responses as your own. Use this tool to learn, not to cheat.</p>
-            <p><strong>Privacy:</strong> Your conversations may be reviewed for quality assurance and to improve the system. Do not share personal or sensitive information.</p>
-        `;
-        
-        await showDisclaimerModal('AI Assistant Disclaimer', disclaimerContent);
-    }
-
 
     // Artefact panel loading removed - now embedded in chat-window.html
 

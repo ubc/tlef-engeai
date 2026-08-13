@@ -3,10 +3,10 @@
  * 
  * This module provides a comprehensive modal overlay system for EngE-AI.
  * It supports various types of modals including error, warning, success, info,
- * disclaimer, and custom content modals.
+ * and custom content modals.
  * 
  * FEATURES:
- * - Multiple modal types (error, warning, success, info, disclaimer, custom)
+ * - Multiple modal types (error, warning, success, info, custom)
  * - Keyboard navigation support (ESC to close, Tab navigation)
  * - Focus management and accessibility
  * - Responsive design
@@ -449,7 +449,6 @@ export class ModalOverlay {
         if (classList.contains('modal-error')) return 'error';
         if (classList.contains('modal-success')) return 'success';
         if (classList.contains('modal-info')) return 'info';
-        if (classList.contains('modal-disclaimer')) return 'disclaimer';
         
         return 'custom';
     }
@@ -874,31 +873,6 @@ export async function showInputModal(
             input.focus();
             input.select();
         }, 100);
-    });
-}
-
-/**
- * Shows a disclaimer modal
- * 
- * @param title - Modal title
- * @param content - Disclaimer content (HTML string)
- * @param buttons - Optional custom buttons
- * @returns Promise that resolves when modal is closed
- */
-export async function showDisclaimerModal(
-    title: string = 'Disclaimer',
-    content: string,
-    buttons?: ModalButton[]
-): Promise<ModalResult> {
-    const modal = getModal();
-    return modal.show({
-        type: 'disclaimer',
-        title,
-        content,
-        maxWidth: '600px',
-        buttons: buttons || [
-            { text: 'I Understand', type: 'primary', closeOnClick: true }
-        ]
     });
 }
 
@@ -1983,7 +1957,6 @@ export default {
     showConfirmModal,
     showSkipOnboardingModal,
     showInputModal,
-    showDisclaimerModal,
     showHelpModal,
     showCustomModal,
     showSimpleErrorModal,

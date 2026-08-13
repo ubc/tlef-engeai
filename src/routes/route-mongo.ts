@@ -45,6 +45,7 @@ import {
     parseStruggleTopicsByStudentBody,
     ReportFixtureSeedError
 } from '../db/mongo/report-fixture-seed-mongo';
+import { materialChunkIds } from '../migrate/schema-walker';
 import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt, SystemPromptItem } from '../types/shared';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { memoryAgent } from '../memory-agent/memory-agent';
@@ -3265,7 +3266,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
         }
         
         let qdrantResult: { materialName: string; chunksDeleted: number } | null = null;
-        if (material.qdrantId) {
+        if (materialChunkIds(material).length > 0) {
             try {
                 const ragApp = await RAGApp.getInstance();
                 const deleteResult = await ragApp.deleteDocument(materialId, courseId, topicOrWeekId, itemId);
@@ -3780,7 +3781,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId', requireInstru
             const ragPromises: Promise<{ deleted: boolean; materialName: string; chunksDeleted: number }>[] = [];
             topicOrWeekInstance.items?.forEach((item: TopicOrWeekItem) => {
                 (item.additionalMaterials || []).forEach((material: any) => {
-                    if (material.id && material.qdrantId) {
+                    if (material.id && materialChunkIds(material).length > 0) {
                         ragPromises.push(ragApp.deleteDocument(material.id, courseId, topicOrWeekId, item.id));
                     }
                 });
@@ -4023,7 +4024,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
         try {
             const ragApp = await RAGApp.getInstance();
             const ragPromises = (item.additionalMaterials || [])
-                .filter((material: any) => material.id && material.qdrantId)
+                .filter((material: any) => material.id && materialChunkIds(material).length > 0)
                 .map((material: any) => ragApp.deleteDocument(material.id, courseId, topicOrWeekId, itemId));
             const results = await Promise.allSettled(ragPromises);
             results.forEach((r, i) => {

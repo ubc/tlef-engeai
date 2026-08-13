@@ -567,40 +567,64 @@ export interface InstructorStruggleTopicForDisplay {
 }
 
 /**
- * Additional material attached to a course content item (front-end only for now)
+ * Additional material attached to a course content item.
  *
- * additional material is only applicable for text only eventually (as we use RAG)
- * 
- * So initially, instructor can upload file, url, or text.
- * 
- * But eventually, we will only allow text (processed in the backend).
+ * This is the persisted shape: Mongo `additionalMaterials[]`, RAG 201 `data`, and the
+ * Documents UI list. Browser `File`, nested `file`, `extractedText`, and singular
+ * `qdrantId` are upload leftovers — hoist then strip; never store them.
  */
 export type AdditionalMaterialSource = 'file' | 'url' | 'text';
 
+/** Keys stored on Mongo / returned to the Documents UI. Must match `additionalMaterialFields`. */
+export const PERSISTED_ADDITIONAL_MATERIAL_KEYS = [
+    'id',
+    'date',
+    'name',
+    'courseName',
+    'topicOrWeekTitle',
+    'itemTitle',
+    'sourceType',
+    'text',
+    'fileName',
+    'uploaded',
+    'qdrantChunkIds',
+    'chunksGenerated',
+    'deleted',
+    'deletedAt',
+    'uploadedBy',
+    'courseId',
+    'topicOrWeekId',
+    'itemId',
+] as const;
+
+export type PersistedAdditionalMaterialKey = (typeof PERSISTED_ADDITIONAL_MATERIAL_KEYS)[number];
+
 export interface AdditionalMaterial {
-    id: string,
-    date : Date,
+    id: string;
+    date: Date;
     name: string;
     courseName: string;
     topicOrWeekTitle: string;
     itemTitle: string;
     sourceType: AdditionalMaterialSource;
-    file?: File;
     text?: string;
-    fileName?: string; // Store the actual filename for display
-    uploaded?: boolean; // Track if successfully uploaded to Qdrant
-    qdrantId?: string; // Store Qdrant document ID
-    chunksGenerated?: number; // Number of chunks generated in Qdrant
-    /** Parsed upload text for struggle-topic generation; not persisted on Mongo material records. */
-    extractedText?: string;
-    deleted?: boolean; // Soft delete flag (defaults to false/undefined for backward compatibility)
-    deletedAt?: Date; // Timestamp when material was deleted
-    uploadedBy?: string; // Track who uploaded the material
-    // Add these three optional fields:
+    fileName?: string;
+    uploaded?: boolean;
+    qdrantChunkIds?: string[];
+    chunksGenerated?: number;
+    deleted?: boolean;
+    deletedAt?: Date;
+    uploadedBy?: string;
     courseId?: string;
     topicOrWeekId?: string;
     itemId?: string;
 }
+
+/** In-memory upload only. `file` and `extractedText` are never written to Mongo. */
+export type AdditionalMaterialUpload = AdditionalMaterial & {
+    file?: { buffer: Buffer; originalname?: string };
+    extractedText?: string;
+};
 
 /**
  * Optional fields on RAG upload 201 responses when struggle-topic generation runs post-upload.

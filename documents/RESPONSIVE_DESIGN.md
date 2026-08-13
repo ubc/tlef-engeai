@@ -212,7 +212,7 @@ Course Information was removed from the instructor sidebar footer; course code l
 
 ---
 
-## Marketing homepage (`/` and `/team`)
+## Marketing homepage (`/`, `/team`, `/pages/ai-disclaimer.html`)
 
 Public marketing shell (not the course app). Styles live in `public/styles/home.css`.
 
@@ -228,7 +228,8 @@ Public marketing shell (not the course app). Styles live in `public/styles/home.
 | Security | `#security` — decorative database SVG (dark blue `--home-navy`, transparent bg) on the **left** of the copy at **768px+**; icon gently floats via `homeSecurityFloat` (disabled under `prefers-reduced-motion`). Stacks centered on small screens. |
 | Investigators | `#investigators` — mirrored pair: Alireza (text right-aligned, photo toward center) + Amir (photo toward center, text left-aligned). Circular portraits (`alireza-bagherzadeh.jpg` / `amir-dehkhoda.png`), no borders; hover zoom on photo (`prefers-reduced-motion` off). Stacks on small screens. |
 | Funding | `#funding` — TLEF title + external proposal link only; empty `.home-grant-stat` spacer keeps the prior amount/year-selector stack height. No dollar amount or Year 1 / Year 2 / Total controls. |
-| Team page (`/team`) | Roster only (no funding acknowledgement — that lives on `/#funding` + footer). Hairline member rows; section labels are uppercase CHBE-green. Link hover is **color only** (no lift). Shared topbar/footer/theme with `/`. Footer links include UBC LTIC (`https://ltic.ubc.ca/`). |
+| Team page (`/team`) | Roster only (no funding acknowledgement — that lives on `/#funding` + footer). Hairline member rows; section labels are uppercase CHBE-green. Link hover is **color only** (no lift). Shared topbar/footer/theme with `/`. Footer links include Disclaimer (`/pages/ai-disclaimer.html`) and UBC LTIC (`https://ltic.ubc.ca/`). |
+| Disclaimer page (`/pages/ai-disclaimer.html`) | Counsel terms + FIPPA notice as a **borderless Medium-like article** (`max-width: ~42rem`, ~1.25rem / 1.8 line-height). Shared topbar (`is-scrolled`), footer, and theme with `/` and `/team`. No card, shadow, or header underline. Linked from the marketing footer and the chat footer; there is no in-app disclaimer modal. |
 | Touch targets | Login / Learn more / Play / theme toggle use ≥ ~44px targets. Feature step titles are clickable scrub jumps at **768px+** only (plain `<h3>` on phone / reduced-motion). |
 
 ### Testing additions
@@ -242,7 +243,8 @@ Public marketing shell (not the course app). Styles live in `public/styles/home.
 - [ ] Funding band: TLEF title + link only; spacer keeps prior section height (no dollar amount / year tabs)
 - [ ] Features: `prefers-reduced-motion` and phone widths show title→desc→image cards (no sticky scrub)
 - [ ] `/team` readable at phone and desktop; solo sections stay 1-col; multi-member grids 2-col at 480px+; theme preference shared with `/`
-- [ ] Footer APSC link hover: UBC red color only (no lift); LTIC link opens `https://ltic.ubc.ca/`
+- [ ] `/pages/ai-disclaimer.html` readable at phone and desktop; homepage topbar/theme/footer; no card around the article; theme preference shared with `/`
+- [ ] Footer APSC link hover: UBC red color only (no lift); Disclaimer opens `/pages/ai-disclaimer.html`; LTIC link opens `https://ltic.ubc.ca/`
 
 ---
 

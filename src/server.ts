@@ -26,8 +26,6 @@ import sessionMiddleware from './middleware/session';
 import { passport } from './middleware/passport';
 import { EngEAI_MongoDB } from './db/enge-ai-mongodb';
 import { initAcademicPeriods } from './helpers/init-academic-periods';
-import { migrateInstructorAllowances } from './helpers/migrate-instructor-allowances';
-import { migrateOnboardingFlags } from './helpers/migrate-onboarding-flags';
 import { getCourseSelectionRedirectPath } from './helpers/course-selection-redirect';
 import { resolveAffiliation } from './utils/affiliation';
 import { isAdminUser, isAdminName } from './utils/admin';
@@ -294,18 +292,6 @@ app.listen(port, async () => {
         await initAcademicPeriods();
     } catch (err) {
         logger.error('Failed to initialize academic periods:', err as any);
-    }
-
-    try {
-        await migrateInstructorAllowances();
-    } catch (err) {
-        logger.error('Failed to migrate instructor allowances:', err as any);
-    }
-
-    try {
-        await migrateOnboardingFlags();
-    } catch (err) {
-        logger.error('Onboarding migration failed:', err as any);
     }
 
 });

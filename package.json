@@ -1,13 +1,14 @@
 {
   "name": "tlef-EngE-AI",
-  "version": "1.8.0",
+  "version": "1.8.4",
   "description": "",
   "main": "dist/server.js",
   "scripts": {
     "clean": "rm -rf dist public/dist",
     "vendor:chart": "node scripts/vendor-chart-js.cjs",
     "build:info": "node scripts/generate-build-info.cjs",
-    "build:backend": "npm run build:info && tsc -p tsconfig.json && mkdir -p dist/chat/system-prompts/shared-default dist/chat/system-prompts/socratic-default dist/chat/system-prompts/explanatory-default dist/fixtures dist/generated && cp -R src/chat/system-prompts/shared-default/. dist/chat/system-prompts/shared-default/ && cp -R src/chat/system-prompts/socratic-default/. dist/chat/system-prompts/socratic-default/ && cp -R src/chat/system-prompts/explanatory-default/. dist/chat/system-prompts/explanatory-default/ && cp src/fixtures/*.json dist/fixtures/ && cp src/generated/build-info.json dist/generated/build-info.json",
+    "build:backend": "npm run build:info && tsc -p tsconfig.json && mkdir -p dist/chat/system-prompts/shared-default dist/chat/system-prompts/socratic-default dist/chat/system-prompts/explanatory-default dist/generated && cp -R src/chat/system-prompts/shared-default/. dist/chat/system-prompts/shared-default/ && cp -R src/chat/system-prompts/socratic-default/. dist/chat/system-prompts/socratic-default/ && cp -R src/chat/system-prompts/explanatory-default/. dist/chat/system-prompts/explanatory-default/ && cp src/generated/build-info.json dist/generated/build-info.json",
+    "migrate": "ts-node --transpile-only src/migrate/cli.ts",
     "build:frontend": "npm run vendor:chart && tsc -p public/tsconfig.json",
     "build": "sleep 2 && npm run clean && npm run build:backend && npm run build:frontend",
     "start": "cross-env NODE_ENV=production node dist/server.js",

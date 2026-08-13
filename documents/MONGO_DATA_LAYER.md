@@ -47,6 +47,7 @@
 - **Topic/week embedded content** (`topic-week-mongo.ts` on `active-course-list`):
   - **`learningObjectives[]`** per `items[]` — instructor CRUD; flattened via `getAllLearningObjectives` for system-prompt injection.
   - **`instructorStruggleTopics[]`** per `items[]` — instructor CRUD (`/struggle-topics` API); gated by `features.memoryAgent`; flattened via `getAllInstructorStruggleTopics` for memory-agent catalog only (not main chat system prompt).
+  - **`additionalMaterials[]`** — one parent record per uploaded file (not a chunk). Display title is `name`; OS filename is top-level `fileName`. `qdrantChunkIds[]` holds Qdrant point UUIDs; `chunksGenerated` equals that list length after `npm run migrate` C. Nested `file` blobs and singular `qdrantId` are stripped by migrate op A. Qdrant stores chunk vectors only; original file bytes are not in Mongo.
 - **Course capabilities** (`activeCourse.features` on `active-course-list`):
   - Keys: `writingFeedback`, `memoryAgent`, `guidedPathway`, `scenarioGeneration` — each `{ enabled, enabledAt?, enabledBy? }`; missing = disabled at read time.
   - New-course defaults live in `src/dashboard-setting/course-feature-defaults.ts` (builders in `course-features.ts`). Create/setup persist a full map with all off unless opted in.
@@ -115,7 +116,8 @@
 
 ## Changelog / migration notes
 
-- **Data migrations registry:** [DATA_MIGRATIONS.md](DATA_MIGRATIONS.md) — SP-001 (system prompts), CM-001 (chat mode), OB-001 (startup backfill), SQ-001 (scenario questions collection), SQ-004 (scenario progress collection).
+- **Data migrations registry:** [DATA_MIGRATIONS.md](DATA_MIGRATIONS.md) — SP-001 (system prompts), CM-001 (chat mode), OB-001 / IPA-001 (`npm run migrate` op A), MIG-A/B/C/D (Mongo/Qdrant CLI), SQ-001, SQ-004.
+- **Manual migrate CLI:** `src/migrate/cli.ts` — `npm run migrate`. Not run from `server.ts`.
 - Façade delegates live under `src/db/mongo/` (split from monolithic `enge-ai-mongodb.ts`).
 
 ## References
