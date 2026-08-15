@@ -30,6 +30,7 @@ All API routes are prefixed with `/api/`. Page routes are served from `/` and `/
 | `/api/user` | userManagementRoutes | User profile, onboarding, activity |
 | `/api/health` | healthRoutes | Health check |
 | `/api/version` | versionRoutes | App version (SemVer) |
+| `/api/lms` | lmsRoutes | Canvas + Moodle per-user connections |
 
 ---
 
@@ -451,6 +452,132 @@ Chat metadata is ordered by most recent activity and contains no conversation-le
 |--------|------|------|-------------|
 | GET | `/api/health` | No | Health check (DB ping) |
 | GET | `/api/version` | No | App version (SemVer) |
+
+---
+
+### 4.8 LMS Integration (`/api/lms`)
+
+Per-user connections to Canvas (OAuth 2.0) and Moodle (pasted web service token),
+provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
+`src/routes/route-lms.ts`, with the enrollment-sync logic in
+`src/lms/canvas-course-sync.ts`.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/lms/status` | Authenticated | Which providers are enabled; configuration presence only, never secrets |
+| GET | `/api/lms/canvas/auth/login` | Authenticated | Redirect to the Canvas authorize screen |
+| GET | `/api/lms/canvas/auth/callback` | Authenticated | Exchange the OAuth code and store tokens |
+| POST | `/api/lms/canvas/auth/logout` | Authenticated | Revoke and clear stored Canvas tokens |
+| GET | `/api/lms/canvas/available-courses` | Authenticated + Canvas connection | The user's Canvas courses, annotated with whether EngE-AI already has each one |
+| POST | `/api/lms/canvas/connect-course` | Authenticated + Canvas connection | Import (instructor) or join (student) one Canvas course; body `{ canvasCourseId, academicPeriodId? }` |
+| GET | `/api/lms/canvas/courses` | Instructor + Canvas connection | Raw Canvas course list including provider `raw`; diagnostics only |
+| POST | `/api/lms/moodle/auth/connect` | Instructor | Validate and store a pasted `wstoken` (body `{ token }`) |
+| POST | `/api/lms/moodle/auth/disconnect` | Instructor | Delete the stored Moodle token (does not revoke it in Moodle) |
+| GET | `/api/lms/moodle/courses` | Instructor + Moodle connection | Moodle courses the user is enrolled in |
+
+**Course enrollment sync**
+
+- EngE-AI has two kinds of course. **Admin-created** courses are unchanged: students
+  join with the six-character `courseCode`. **Canvas-imported** courses carry an
+  `activeCourse.lmsLink` and are joined by connecting Canvas.
+- An instructor's import creates the EngE-AI course immediately with
+  `courseSetup: false`, so the existing setup redirect walks them through week/topic
+  configuration on first entry. Canvas supplies a name and code and nothing else.
+- A second instructor importing the same Canvas course **joins** the existing EngE-AI
+  course rather than creating a duplicate; otherwise co-taught courses would split
+  their students across two copies.
+- A student connecting a Canvas course their instructor has not imported gets
+  `status: 'awaiting_instructor'` on a `200`, not an error — nothing is wrong, and
+  only the instructor can resolve it.
+- **Sync only ever adds enrollment.** A student whose Canvas enrollment disappears
+  keeps EngE-AI access and chat history: a transient Canvas error, a revoked token,
+  and a genuine drop are indistinguishable, and silently locking someone out of their
+  own conversations is the worse failure.
+- **Enrollment is per-user, not roster-matched.** Each user authorizes Canvas as
+  themselves, so `getCourses` already returns their own enrollments; there is no
+  roster-wide matching of Canvas users to EngE-AI accounts.
+
+**Instructor identity verification**
+
+- An instructor import requires the Canvas `integration_id` — the PUID at UBC — of the
+  account **the stored token belongs to** to match the PUID CWL authenticated. OAuth
+  alone proves only that *some* Canvas account with a teacher enrollment was authorized,
+  not that it belongs to the signed-in user; a shared machine or a colleague still signed
+  in would satisfy it.
+- **It is not enough to find someone on the roster carrying the user's PUID.** That only
+  proves the EngE-AI user teaches the course, which they may do while the token in hand
+  belongs to a different teacher on the same course — the exact case a co-taught course
+  on a shared browser produces. The connected account is therefore resolved first via
+  `GET /users/self` (which returns the account id for anyone, but withholds
+  `integration_id` from an ordinary instructor), and the roster is searched **by Canvas
+  user id** so the identifier compared is that account's own.
+- Reading that identifier requires a roster read. Canvas grants `read_sis` through a
+  `TeacherEnrollment` on a **course**, not at the account level, so `GET /users/self`
+  returns no `integration_id` for an instructor. Verified against Canvas's
+  `lib/api/v1/user.rb` (`user_can_read_sis_data?` resolves against the course context)
+  and `permissions_registry.rb` (`read_sis` is `true_for: [AccountAdmin, TeacherEnrollment]`).
+- The read is narrowed accordingly: **teacher roster only** (`enrollmentTypes: ['teacher']`
+  passed explicitly, since `getCourseUsers` defaults to students), **instructor paths only**,
+  compared in memory and never persisted or logged. No student roster is ever read;
+  `active-users` remains the only collection holding a PUID at rest.
+- **The check runs when listing courses, not only when importing one.** Canvas
+  re-authorizes whoever is already signed in to it, so two EngE-AI users sharing a
+  browser end up with the second account holding the first user's Canvas token.
+  Verifying only at import would mean `available-courses` had already returned the
+  other person's course names. One check settles the whole list: `integration_id`
+  identifies the Canvas *account*, not the enrollment, so confirming it against the
+  first course they teach covers every row and costs one extra request.
+- **A genuine mismatch deletes the stored token** (`handleCanvasIdentityError` in
+  `route-lms.ts`). Keeping it traps the user: every retry reaches the same wrong Canvas
+  account, and the "reconnect" advice cannot work while the bad credential is on file.
+  `identifiers_withheld` and `no_puid` deliberately keep the token — the credential may
+  be entirely correct, and only Canvas's answer was incomplete.
+- Failures raise `CanvasIdentityError` carrying a `reason` (`mismatch` |
+  `identifiers_withheld` | `no_puid` | `self_not_on_roster`), which is what the route
+  branches on. The reason is also returned in the 403 body. Matching on message text
+  would couple credential deletion to wording that exists to be read by humans and changed.
+- `self_not_on_roster` means Canvas listed the course under the account's teacher
+  enrollments but the account is absent from the teacher roster — a concluded or
+  restricted enrolment. No identifier to read and no evidence of impersonation, so the
+  credential is kept.
+- A roster where *nobody* carried an `integration_id` is reported as a distinct error
+  ("Canvas did not return SIS identifiers") rather than as a mismatch. The symptoms are
+  identical, and only one is the instructor's to fix — re-authorizing cannot resolve a
+  missing account permission. `rosterFieldCoverage` makes the distinction.
+- **Students are not verified this way, and cannot be.** Canvas grants `read_sis` to
+  teachers, not students, so a student token cannot read `integration_id` for anyone
+  including itself. The exposure is bounded — joining this way reaches exactly what the
+  course code already grants — but it is a known gap, not an oversight. Closing it needs
+  an identity source outside Canvas.
+
+**Notes**
+
+- Not course-scoped — these are per-user LMS connections, so the course-scoped
+  guards do not apply. Every route sits behind `requireAuthAPI`.
+- **A provider's `requireAuth` proves a usable LMS credential exists, not that the
+  holder may act on a course.** Every write therefore re-derives the caller's Canvas
+  enrollment from Canvas (`enrollment_type: teacher|student`) and refuses a course id
+  absent from it, so a forged `canvasCourseId` cannot import a course the caller does
+  not teach.
+- Canvas connection is **open to students**, because enrollment sync is a genuine
+  student-facing feature — the earlier instructor-only gate existed to avoid storing
+  tokens EngE-AI had no use for. **Moodle stays instructor-only**: it has no
+  equivalent student feature, so that reasoning still applies there.
+- `/api/lms/canvas/courses` remains instructor-only because it returns each course's
+  provider `raw` payload verbatim. `/canvas/available-courses` returns normalized
+  fields only and is what the UI calls.
+- Each provider **self-disables** when its environment variables are unset
+  (`CANVAS_DOMAIN`, `CANVAS_CLIENT_ID`, `CANVAS_CLIENT_SECRET`,
+  `CANVAS_REDIRECT_URI`; `MOODLE_DOMAIN`). The app boots normally without LMS
+  configuration; `GET /api/lms/status` reports `missingEnv`, and the course-selection
+  page renders no Canvas button at all.
+- The course routes use the package's `requireAuth`, which answers `401` with a
+  `connectUrl` rather than redirecting. A browser-facing LMS **page** route
+  should use `canvas.ensureAuth` instead, which redirects to `/login`.
+- `CANVAS_REDIRECT_URI` must match the Canvas Developer Key byte-for-byte,
+  including port, and its path is this router's `/canvas/auth/callback`.
+- Token persistence and the PUID invariant are documented in
+  `MONGO_DATA_LAYER.md`.
 
 ---
 

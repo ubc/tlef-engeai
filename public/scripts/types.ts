@@ -207,6 +207,22 @@ export interface UpdateCourseLlmSettingsRequest {
 }
 
 /**
+ * Link between an EngE-AI course and the LMS course it was imported from.
+ * Absent on admin-created courses, which students join by course code.
+ *
+ * Must match src/types/shared.ts
+ */
+export interface CourseLmsLink {
+    provider: 'canvas';
+    courseId: string;
+    name: string;
+    code: string;
+    linkedAt: Date;
+    /** `GlobalUser.userId` of the importing instructor — never a PUID. */
+    linkedBy: string;
+}
+
+/**
  * Must match src/types/shared.ts
  */
 export interface activeCourse {
@@ -223,6 +239,8 @@ export interface activeCourse {
     tilesNumber: number;
     topicOrWeekInstances: TopicOrWeekInstance[]; // previously content, previously divisions
     courseCode?: string; // 6-character uppercase alphanumeric PIN code for course entry
+    /** Present only on courses imported from an LMS. */
+    lmsLink?: CourseLmsLink;
     collections?: {
         users: string;
         flags: string;
