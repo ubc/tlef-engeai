@@ -14,11 +14,10 @@ import { showConfirmModal,
     showSimpleErrorModal,
     showErrorModal, 
     showSuccessModal, 
-    showInactivityWarningModal, 
     showInputModal,
     ModalOverlay 
 } from '../ui/modal-overlay.js';
-import { inactivityTracker } from '../services/inactivity-tracker.js';
+import { startInactivityTracking } from '../services/inactivity-tracker.js';
 import { authService } from '../services/auth-service.js';
 
 // Store current user's affiliation to check if they're an instructor
@@ -488,51 +487,10 @@ async function restartOnboarding(courseId: string, courseName: string): Promise<
 }
 
 /**
- * Initialize inactivity tracking for course selection page
- * Shows countdown warning modal at 4 min idle, logs out at 5 min
- */
-/**
- * initializeInactivityTracking
- * 
- * @returns void
- * Sets up inactivityTracker warning and logout events. Shows modal on warning; redirects on timeout.
+ * Initialize server-directed inactivity tracking for course selection page.
  */
 function initializeInactivityTracking(): void {
-    inactivityTracker.on('warning', async (data: any) => {
-        inactivityTracker.pause();
-
-        const remainingSeconds = Math.floor((data.remainingTimeUntilLogout || 60000) / 1000);
-        const result = await showInactivityWarningModal(remainingSeconds, () => {
-            inactivityTracker.reset();
-        });
-
-        inactivityTracker.resume();
-
-        if (result.action === 'timeout') {
-            inactivityTracker.stop();
-            authService.logout();
-            return;
-        }
-    });
-
-    inactivityTracker.on('logout', async () => {
-        inactivityTracker.stop();
-
-        try {
-            await showConfirmModal(
-                'Session Expired',
-                'You have been inactive for too long. You will be logged out now.',
-                'OK',
-                ''
-            );
-        } catch (error) {
-            console.warn('[COURSE-SELECTION] ⚠️ Could not show logout modal:', error);
-        }
-
-        authService.logout();
-    });
-
-    inactivityTracker.start();
+    startInactivityTracking();
 }
 
 /**

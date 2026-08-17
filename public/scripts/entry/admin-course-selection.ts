@@ -12,7 +12,7 @@ import {
     type FacultyPickerUser
 } from '../ui/user-search-multi-select.js';
 import { authService } from '../services/auth-service.js';
-import { inactivityTracker } from '../services/inactivity-tracker.js';
+import { startInactivityTracking } from '../services/inactivity-tracker.js';
 
 interface AdminPeriodSection extends AcademicPeriodDocument {
     courseCount: number;
@@ -501,5 +501,5 @@ document.getElementById('retry-btn')?.addEventListener('click', () => {
 
 document.addEventListener('DOMContentLoaded', () => {
     void initializeAdminCourseSelection();
-    inactivityTracker.start();
+    startInactivityTracking();
 });

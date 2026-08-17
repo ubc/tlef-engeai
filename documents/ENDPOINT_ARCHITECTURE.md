@@ -443,7 +443,58 @@ Chat metadata is ordered by most recent activity and contains no conversation-le
 |--------|------|------|------|-------------|
 | GET | `/api/user/current` | Yes | Any | Current user info |
 | POST | `/api/user/update-onboarding` | Yes | Any | Update onboarding state |
-| POST | `/api/user/activity` | Yes | Any | Record activity |
+| GET | `/api/user/activity` | Yes | Any | Idle poll (read-only; does not bump `lastActivityAt`) |
+| POST | `/api/user/activity` | Yes | Any | Bump activity when `{ userActivity: true }`; same response shape as GET |
+
+#### User activity (session idle UX)
+
+Server-owned idle thresholds and client directives. Authenticated `/api/*` (except `GET`/`POST` `/api/user/activity`) bumps `session.lastActivityAt` via `sessionActivityMiddleware`. Expired sessions receive `401` with `code: "INACTIVITY_EXPIRED"` **without** destroying the session (teardown is deferred so SAML SLO can run).
+
+On expiry the frontend redirects to `GET /auth/logout` (same as the Logout button). When SAML is configured, that triggers full IdP Single Log-Out via `SAML_LOGOUT_URL` (e.g. Docker SimpleSAMLphp `SingleLogoutService.php`). `GET /auth/logout` without `req.user` still runs local teardown and clears `engeai.sid`.
+
+**Environment variables**
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `INACTIVITY_IDLE_BEFORE_WARNING_MS` | `240000` (4 min) | Ms idle before `state → warning`. Legacy alias: `INACTIVITY_WARNING_MS` |
+| `INACTIVITY_GRACE_AFTER_WARNING_MS` | `60000` (1 min) | Ms grace after `warningAt` before `state → expired`. Legacy alias: `INACTIVITY_LOGOUT_MS` |
+| `INACTIVITY_POLL_INTERVAL_DURING_GRACE_MS` | `5000` | Fixed poll interval while `state === warning` |
+| `INACTIVITY_POLL_JITTER_MS` | `250` | Added to active-phase poll so boundary poll lands just after warning |
+| `INACTIVITY_POLL_MAX_DELAY_MS` | unset | Optional cap on `pollAfterMs` while `active` |
+
+**Threshold math:** `warningAt = lastActivityAt + idleBeforeWarning`; `expiresAt = warningAt + graceAfterWarning` (not `lastActivityAt + grace`).
+
+**Response shape (200 or 401 when expired):**
+
+```json
+{
+  "success": true,
+  "idle": {
+    "serverTime": 0,
+    "lastActivityAt": 0,
+    "state": "active",
+    "warningAt": 0,
+    "expiresAt": 0,
+    "remainingMsUntilWarning": 0,
+    "remainingMsUntilGraceExpiry": 0
+  },
+  "client": {
+    "pollAfterMs": 240250,
+    "uiAction": "none",
+    "warningCountdownSec": 60
+  }
+}
+```
+
+`client.uiAction`: `none` | `show_inactivity_warning` | `force_logout`. Frontend must schedule the next poll only via `client.pollAfterMs` (`setTimeout`, not `setInterval`) and must not open the warning modal from `idle.state` alone.
+
+**`pollAfterMs` formulas**
+
+| `idle.state` | Formula |
+|--------------|---------|
+| `active` | `remainingMsUntilWarning + jitter` (optionally `min(..., INACTIVITY_POLL_MAX_DELAY_MS)`) |
+| `warning` | `min(remainingMsUntilGraceExpiry + jitter, INACTIVITY_POLL_INTERVAL_DURING_GRACE_MS)` |
+| `expired` | `0` |
 
 ### 4.7 Health & Version
 

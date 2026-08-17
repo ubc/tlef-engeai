@@ -24,6 +24,7 @@ import adminCourseRoutes from './routes/mongo/admin-course-routes';
 // Import SAML authentication middleware
 import sessionMiddleware from './middleware/session';
 import { passport } from './middleware/passport';
+import { sessionActivityMiddleware } from './middleware/session-activity';
 import { EngEAI_MongoDB } from './db/enge-ai-mongodb';
 import { initAcademicPeriods } from './helpers/init-academic-periods';
 import { migrateInstructorAllowances } from './helpers/migrate-instructor-allowances';
@@ -53,6 +54,9 @@ app.use(sessionMiddleware);
 // Passport middleware
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Session idle: bump activity on /api/* (except poll endpoint); block expired sessions
+app.use(sessionActivityMiddleware);
 
 // When running from src/server.ts, __dirname is .../src
 // When running from dist/server.js, __dirname is .../dist
