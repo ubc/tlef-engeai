@@ -26,6 +26,10 @@ coverage/
 # Chart.js UMD copied from npm by `npm run vendor:chart`
 public/vendor/chart.js/chart.umd.js
 
+# marked bundles copied from npm by `npm run vendor:marked`
+public/vendor/marked/marked.umd.js
+public/vendor/marked/marked.esm.js
+
 # Dependency directories
 node_modules/
 
