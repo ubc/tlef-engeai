@@ -2840,3 +2840,144 @@
         gap: 0.4rem;
     }
 }
+
+
+/* ===========================================
+   WRITING FEEDBACK SETUP ONBOARDING STYLES
+   Namespaced under .writing-feedback-setup.
+   =========================================== */
+
+.writing-feedback-setup .wf-setup-rubric-demo {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+}
+
+.writing-feedback-setup .wf-setup-rubric-block {
+    padding: 1rem 1.25rem;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+}
+
+.writing-feedback-setup .wf-setup-rubric-block h4 {
+    margin-top: 0;
+    margin-bottom: 0.25rem;
+}
+
+.writing-feedback-setup .wf-setup-hint {
+    margin-top: 0;
+    margin-bottom: 0.75rem;
+    color: #6c757d;
+    font-size: 0.85rem;
+}
+
+.writing-feedback-setup .wf-setup-feedback-demo {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin: 1rem 0;
+}
+
+.writing-feedback-setup .wf-setup-comment {
+    padding: 1rem 1.25rem;
+    border: 1px solid #dee2e6;
+    border-left: 4px solid #0d6efd;
+    border-radius: 8px;
+    background-color: #fff;
+}
+
+.writing-feedback-setup .wf-setup-comment-head {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.6rem;
+}
+
+.writing-feedback-setup .wf-setup-criterion-pill {
+    padding: 0.2rem 0.7rem;
+    border-radius: 999px;
+    background-color: #e7f1ff;
+    color: #0d6efd;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.writing-feedback-setup .wf-setup-level {
+    color: #6c757d;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.writing-feedback-setup .wf-setup-comment blockquote {
+    margin: 0 0 0.6rem 0;
+    padding: 0.5rem 0.9rem;
+    border-left: 3px solid #ced4da;
+    background-color: #f8f9fa;
+    color: #495057;
+    font-style: italic;
+}
+
+.writing-feedback-setup .wf-setup-comment p {
+    margin-bottom: 0;
+}
+
+.writing-feedback-setup .wf-setup-approve-panel {
+    margin: 1rem 0;
+    padding: 1.25rem;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+}
+
+.writing-feedback-setup .wf-setup-approve-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    padding: 0.6rem 1.2rem;
+    border: none;
+    border-radius: 6px;
+    background-color: #198754;
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.writing-feedback-setup .wf-setup-approve-btn:disabled {
+    background-color: #adb5bd;
+    cursor: default;
+}
+
+.writing-feedback-setup .wf-setup-approved {
+    margin-top: 1rem;
+    padding: 1.25rem;
+    border: 1px solid #198754;
+    border-left-width: 4px;
+    border-radius: 8px;
+    background-color: #f1f9f4;
+}
+
+.writing-feedback-setup .wf-setup-approved h4 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0;
+    color: #146c43;
+}
+
+@media (max-width: 768px) {
+    .writing-feedback-setup .wf-setup-rubric-demo {
+        grid-template-columns: 1fr;
+    }
+
+    .writing-feedback-setup .wf-setup-comment-head {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.35rem;
+    }
+}
