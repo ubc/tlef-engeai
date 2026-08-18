@@ -108,6 +108,14 @@ app.get('/team', (_req: any, res: any) => {
     sendHtmlPageWithBuildComment(res, path.join(publicPath, 'pages/team.html'));
 });
 
+// Public markdown files first so /docs/overview.md is never the HTML shell.
+app.use('/docs', express.static(path.join(publicPath, 'docs'), { index: false }));
+
+// Public markdown docs shell (no auth). Unmatched /docs paths get the viewer.
+app.get(/^\/docs(\/.*)?$/, (_req: any, res: any) => {
+    sendHtmlPageWithBuildComment(res, path.join(publicPath, 'pages/docs.html'));
+});
+
 // Serve static files from the 'public' directory (but not for root path)
 app.use(express.static(publicPath));
 

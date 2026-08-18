@@ -31,6 +31,14 @@ All API routes are prefixed with `/api/`. Page routes are served from `/` and `/
 | `/api/health` | healthRoutes | Health check |
 | `/api/version` | versionRoutes | App version (SemVer) |
 
+Public HTML (no auth), registered in `server.ts` before `express.static`:
+
+| Path | File | Purpose |
+|------|------|---------|
+| `GET /` | `public/index.html` | Marketing home (authenticated users are redirected) |
+| `GET /team` | `public/pages/team.html` | Project team |
+| `GET /docs` and `GET /docs/*` | `public/pages/docs.html` | Markdown docs shell. `express.static` for `public/docs/` is mounted first (`index: false`) so `.md` / `nav.json` are real files, not the HTML shell. |
+
 ---
 
 ## 3. Page Routes (course-routes.ts)
