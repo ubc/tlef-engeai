@@ -1107,3 +1107,40 @@ export interface ScenarioSolutionResponse {
     };
     error?: string;
 }
+
+// ===========================================
+// ========= SESSION IDLE UX ================
+// ===========================================
+
+/** Server idle phase derived from lastActivityAt and env thresholds. */
+export type SessionIdleState = 'active' | 'warning' | 'expired';
+
+/** Per-response client instruction for inactivity UX (not a persisted state). */
+export type SessionIdleUiAction = 'none' | 'show_inactivity_warning' | 'force_logout';
+
+/** Idle snapshot returned on GET/POST /api/user/activity. */
+export interface SessionIdleStatus {
+    serverTime: number; // server epoch ms at computation time
+    lastActivityAt: number; // session anchor epoch ms
+    state: SessionIdleState; // active | warning | expired
+    warningAt: number; // lastActivityAt + idle-before-warning
+    expiresAt: number; // warningAt + grace-after-warning
+    remainingMsUntilWarning: number; // ms until warningAt (0 when past)
+    remainingMsUntilGraceExpiry: number; // ms until expiresAt (0 when past)
+}
+
+/** Client poll/UI directive for one activity API response. */
+export interface SessionIdleClientDirective {
+    pollAfterMs: number; // ms until next GET /api/user/activity (0 = stop)
+    uiAction: SessionIdleUiAction; // modal/logout instruction for this response
+    warningCountdownSec?: number; // when uiAction is show_inactivity_warning
+}
+
+/** GET/POST /api/user/activity response shape. */
+export interface SessionIdleStatusResponse {
+    success: boolean;
+    idle: SessionIdleStatus;
+    client: SessionIdleClientDirective;
+    error?: string;
+    code?: string; // INACTIVITY_EXPIRED on 401
+}

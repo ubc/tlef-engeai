@@ -17,6 +17,7 @@ import { resolveAffiliation } from '../utils/affiliation';
 import { isAdminName, isAdminUser } from '../utils/admin';
 import { getCourseSelectionRedirectPath } from '../helpers/course-selection-redirect';
 import { sendHtmlPageWithBuildComment } from '../utils/build-info';
+import { teardownSession, clearSessionCookie } from '../helpers/session-teardown';
 
 const router = express.Router();
 
@@ -294,19 +295,43 @@ router.get('/login-failed', (req: express.Request, res: express.Response) => {
 /**
  * GET /logout
  * Terminates session. For SAML: destroys local session and redirects to IdP logout; for local: destroys session and redirects home.
+ * `?reason=inactivity` is logged only; uses the same SAML SLO path as manual logout when req.user exists.
+ * When req.user is absent, runs local teardown and clears engeai.sid.
  *
  * @route GET /auth/logout
  * @returns {void} Redirects to IdP logout URL or home
  * @response 302 - Redirect to IdP or /
  */
 router.get('/logout', (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const reason = typeof req.query.reason === 'string' ? req.query.reason : '';
+    const inactivityLogout = reason === 'inactivity';
+
+    const redirectHome = () => {
+        res.redirect('/');
+    };
+
+    const localTeardownAndRedirect = () => {
+        teardownSession(req, res, (err) => {
+            if (err) {
+                appLogger.error('[AUTH] Local session teardown error:', err);
+                return next(err);
+            }
+            redirectHome();
+        });
+    };
+
     if (!(req as any).user) {
-        return res.redirect('/');
+        appLogger.log('[AUTH] Logout without req.user — clearing session cookie');
+        localTeardownAndRedirect();
+        return;
     }
 
     if (ubcShibStrategy) {
-        // SAML Single Log-Out flow
-        appLogger.log('[AUTH] Initiating SAML logout...');
+        if (inactivityLogout) {
+            appLogger.log('[AUTH] Inactivity logout — initiating SAML logout...');
+        } else {
+            appLogger.log('[AUTH] Initiating SAML logout...');
+        }
 
         ubcShibStrategy.logout(req as any, (err: any, requestUrl?: string | null) => {
             if (err) {
@@ -326,6 +351,7 @@ router.get('/logout', (req: express.Request, res: express.Response, next: expres
                         appLogger.error('[AUTH] Session destruction error:', sessionErr);
                         return next(sessionErr);
                     }
+                    clearSessionCookie(res);
                     // 3. Redirect to the SAML IdP to terminate that session
                     if (requestUrl) {
                         res.redirect(requestUrl);
@@ -336,8 +362,11 @@ router.get('/logout', (req: express.Request, res: express.Response, next: expres
             });
         });
     } else {
-        // Local authentication logout - simple session destruction
-        appLogger.log('[AUTH-LOCAL] 🚪 Logging out local user...');
+        if (inactivityLogout) {
+            appLogger.log('[AUTH-LOCAL] Inactivity logout — logging out local user...');
+        } else {
+            appLogger.log('[AUTH-LOCAL] 🚪 Logging out local user...');
+        }
 
         (req as any).logout((logoutErr: any) => {
             if (logoutErr) {
@@ -351,6 +380,7 @@ router.get('/logout', (req: express.Request, res: express.Response, next: expres
                     return next(sessionErr);
                 }
 
+                clearSessionCookie(res);
                 appLogger.log('[AUTH-LOCAL] ✅ Logout successful');
                 res.redirect('/');
             });
