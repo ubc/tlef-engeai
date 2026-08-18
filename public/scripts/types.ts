@@ -299,6 +299,24 @@ export interface activeCourse {
     features?: CourseFeatures;
     /** Per-feature LLM model + reasoning for Chat, Writing Feedback, Scenarios, Guided Pathway. */
     llmSettings?: CourseLlmSettings;
+    /** Per-feature onboarding tutorial progress; missing entries remain incomplete for legacy courses. */
+    featureOnboarding?: FeatureOnboardingProgress;
+}
+
+/**
+ * Per-feature instructor onboarding tutorial progress.
+ *
+ * Must match src/types/shared.ts
+ *
+ * A missing or false entry means the tutorial is still owed whenever its course
+ * feature is enabled, which is how courses that predate this field are routed
+ * through the new stages. Completion survives disabling and re-enabling a
+ * feature, so an instructor is never taught the same tutorial twice.
+ */
+export interface FeatureOnboardingProgress {
+    scenarioGeneration?: boolean;
+    writingFeedback?: boolean;
+    guidedPathway?: boolean;
 }
 
 /**
