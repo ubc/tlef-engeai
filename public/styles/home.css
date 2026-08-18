@@ -122,14 +122,16 @@ html[data-home-theme='light'] {
 }
 
 html:has(body.home-page),
-html:has(body.team-page) {
+html:has(body.team-page),
+html:has(body.docs-page) {
 	/* clip (not hidden) so position:sticky still works for hero + features scrub */
 	overflow-x: clip;
 	overflow-y: visible;
 }
 
 body.home-page,
-body.team-page {
+body.team-page,
+body.docs-page {
 	height: auto;
 	min-height: 100vh;
 	/* clip (not hidden) so position:sticky still works for hero + features scrub */
@@ -148,6 +150,7 @@ body.team-page {
 /* Keep sticky containing blocks free of overflow/transform traps */
 body.home-page > main,
 body.team-page > main,
+body.docs-page > .docs-layout,
 #home-more {
 	overflow: visible;
 }
@@ -159,19 +162,22 @@ body.team-page > main,
 }
 
 body.home-page::-webkit-scrollbar,
-body.team-page::-webkit-scrollbar {
+body.team-page::-webkit-scrollbar,
+body.docs-page::-webkit-scrollbar {
 	width: 10px;
 	height: 10px;
 	background: transparent;
 }
 
 body.home-page::-webkit-scrollbar-track,
-body.team-page::-webkit-scrollbar-track {
+body.team-page::-webkit-scrollbar-track,
+body.docs-page::-webkit-scrollbar-track {
 	background: transparent;
 }
 
 body.home-page::-webkit-scrollbar-thumb,
-body.team-page::-webkit-scrollbar-thumb {
+body.team-page::-webkit-scrollbar-thumb,
+body.docs-page::-webkit-scrollbar-thumb {
 	background: rgba(128, 128, 128, 0.4);
 	border-radius: 4px;
 	border: 2px solid transparent;
@@ -1773,14 +1779,46 @@ html[data-home-theme='light'] .home-features-panel img {
 
 .home-footer-inner {
 	display: grid;
+	grid-template-columns: 1fr;
+	grid-template-areas:
+		'brand'
+		'nav'
+		'meta';
 	gap: 1.5rem;
 	max-width: 1120px;
 	margin: 0 auto;
 }
 
+.home-footer-brand {
+	grid-area: brand;
+}
+
+.home-footer-title {
+	display: none;
+	margin: 0.2rem 0 0;
+	font-family: var(--home-font-display);
+	font-size: 0.95rem;
+	font-weight: 600;
+	color: var(--home-footer-brand);
+}
+
+.home-footer-nav {
+	grid-area: nav;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem 1.25rem;
+}
+
+.home-footer-meta {
+	grid-area: meta;
+}
+
 @media (min-width: 640px) {
 	.home-footer-inner {
-		grid-template-columns: 1fr auto;
+		grid-template-columns: minmax(12rem, 1fr) auto;
+		grid-template-areas:
+			'brand nav'
+			'meta meta';
 		align-items: start;
 	}
 }
@@ -1788,12 +1826,6 @@ html[data-home-theme='light'] .home-features-panel img {
 .home-footer-brand p {
 	margin: 0.35rem 0 0;
 	color: var(--home-footer-text);
-}
-
-.home-footer-nav {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.75rem 1.25rem;
 }
 
 @media (min-width: 640px) {

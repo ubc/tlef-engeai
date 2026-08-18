@@ -229,6 +229,7 @@ Public marketing shell (not the course app). Styles live in `public/styles/home.
 | Investigators | `#investigators` — mirrored pair: Alireza (text right-aligned, photo toward center) + Amir (photo toward center, text left-aligned). Circular portraits, no borders; hover zoom on photo (`prefers-reduced-motion` off). Mock `avatar-placeholder.svg` until real headshots (`investigator-alireza.jpg` / `investigator-amir.jpg`). Stacks on small screens. |
 | Grant selector | `#funding` — Year 1 · Year 2 · Total as underline tabs; a single ink bar **slides** under the active option. |
 | Team page (`/team`) | Roster only (no funding acknowledgement — that lives on `/#funding` + footer). Hairline member rows; section labels are uppercase CHBE-green. Link hover is **color only** (no lift). Shared topbar/footer/theme with `/`. |
+| Docs page (`/docs`) | Three-pane markdown viewer: left nav (link labels from `nav.json`), article, right “On this page”. **Phone:** hamburger **Menu** at the **top-left of the article**; left nav is a full-height overlay (`z-index` above the topbar) with backdrop covering the topbar; EngE-AI brand shows at the top of the drawer only. **768px+:** sticky left nav (no sidebar brand) + article. **1024px+:** sticky right TOC. Article callouts: collapsible **Developer note** (code icon) and **Agent note** (robot icon, purple); **Prerequisites** and **Relevant readings** stack vertically with bulleted green underlined links (external readings open in a new tab). `` ```mermaid `` fences render as diagrams via Mermaid v10 (CDN). Shared topbar (EngE-AI + Documentation) / footer (logo + EngE-AI + Documentation) / theme with `/`. |
 | Touch targets | Login / Learn more / Play / theme toggle / grant options use ≥ ~44px targets. Feature step titles are clickable scrub jumps at **768px+** only (plain `<h3>` on phone / reduced-motion). |
 
 ### Testing additions
@@ -242,6 +243,9 @@ Public marketing shell (not the course app). Styles live in `public/styles/home.
 - [ ] Grant selector: underline tabs Year 1 → Year 2 → Total; dark + light readable
 - [ ] Features: `prefers-reduced-motion` and phone widths show title→desc→image cards (no sticky scrub)
 - [ ] `/team` readable at phone and desktop; solo sections stay 1-col; multi-member grids 2-col at 480px+; theme preference shared with `/`
+- [ ] `/docs` at 375px: Menu at top-left of the article opens full-height overlay (covers topbar); EngE-AI brand in drawer; article readable; TOC hidden
+- [ ] `/docs` at 768px: sticky left nav + article
+- [ ] `/docs` at 1024px+: three panes including On this page
 - [ ] Footer APSC link hover: UBC red color only (no lift)
 
 ---

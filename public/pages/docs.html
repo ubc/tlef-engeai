@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Documentation | EngE-AI</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Poppins:wght@500;600;700&display=swap"
+			rel="stylesheet"
+		/>
+		<link rel="stylesheet" href="/styles/style.css" />
+		<link rel="stylesheet" href="/styles/home.css" />
+		<link rel="stylesheet" href="/styles/docs.css" />
+		<script>
+			(function () {
+				try {
+					var t = localStorage.getItem('engeai-home-theme');
+					document.documentElement.setAttribute(
+						'data-home-theme',
+						t === 'light' || t === 'dark' ? t : 'dark'
+					);
+				} catch (e) {
+					document.documentElement.setAttribute('data-home-theme', 'dark');
+				}
+			})();
+		</script>
+	</head>
+	<body class="docs-page">
+		<header class="home-topbar" id="home-topbar">
+			<div class="home-topbar-inner">
+				<a class="home-brand" href="/">
+					<svg class="home-brand-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+						<polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+						<line x1="12" y1="22.08" x2="12" y2="12"></line>
+					</svg>
+					<span>EngE-AI</span>
+				</a>
+				<a class="docs-topbar-title" href="/docs">Docs</a>
+				<div class="home-topbar-actions">
+					<button
+						type="button"
+						class="home-theme-toggle"
+						id="home-theme-toggle"
+						aria-pressed="true"
+						aria-label="Switch to light mode"
+						title="Toggle color theme"
+					>
+						<svg class="home-theme-toggle-icon home-theme-toggle-sun" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<circle cx="12" cy="12" r="4"></circle>
+							<path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
+						</svg>
+						<svg class="home-theme-toggle-icon home-theme-toggle-moon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M21 14.5A8.5 8.5 0 0 1 9.5 3 7 7 0 1 0 21 14.5z"></path>
+						</svg>
+					</button>
+					<button type="button" id="login-cwl-btn" class="home-btn home-btn-cwl js-login-cwl">
+						Login with CWL
+					</button>
+				</div>
+			</div>
+		</header>
+
+		<div class="docs-backdrop" id="docs-backdrop" hidden></div>
+
+		<div class="docs-layout">
+			<nav class="docs-sidebar" id="docs-sidebar" aria-label="Documentation">
+				<a class="docs-sidebar-brand" href="/">
+					<svg class="home-brand-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+						<polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+						<line x1="12" y1="22.08" x2="12" y2="12"></line>
+					</svg>
+					<span>EngE-AI</span>
+				</a>
+				<div class="docs-sidebar-links" id="docs-sidebar-links"></div>
+			</nav>
+			<main class="docs-main">
+				<div class="docs-content-bar">
+					<button
+						type="button"
+						class="docs-nav-toggle"
+						id="docs-nav-toggle"
+						aria-expanded="false"
+						aria-controls="docs-sidebar"
+						aria-label="Open documentation menu"
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+							<line x1="4" y1="7" x2="20" y2="7"></line>
+							<line x1="4" y1="12" x2="20" y2="12"></line>
+							<line x1="4" y1="17" x2="20" y2="17"></line>
+						</svg>
+						Menu
+					</button>
+				</div>
+				<article class="docs-article" id="docs-article"></article>
+			</main>
+			<nav class="docs-toc is-empty" id="docs-toc" aria-label="On this page">
+				<p class="docs-toc-heading">On this page</p>
+				<ol class="docs-toc-list" id="docs-toc-list"></ol>
+			</nav>
+		</div>
+
+		<div id="home-footer-mount"></div>
+
+		<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+		<script src="/vendor/marked/marked.umd.js"></script>
+		<script type="module" src="/dist/public/scripts/auth/auth-manager.js"></script>
+		<script type="module" src="/dist/public/scripts/home/home-page.js"></script>
+		<script type="module" src="/dist/public/scripts/docs/docs-page.js"></script>
+	</body>
+</html>
