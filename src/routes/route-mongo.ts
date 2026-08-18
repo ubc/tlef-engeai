@@ -50,6 +50,7 @@ import {
     InvalidTopicOrWeekInstanceReorderError
 } from '../db/mongo/topic-week-mongo';
 import { parseOrderedIdsBody } from './topic-week-reorder-body';
+import type { OnboardingFeatureKey } from '../helpers/instructor-onboarding-redirect';
 import {
     parseStruggleTopicsByStudentBody,
     ReportFixtureSeedError
@@ -991,6 +992,68 @@ router.patch(
     requireRosterManageAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         return patchCourseFeature(req, res, 'scenarioGeneration');
+    })
+);
+
+/** URL slug to `featureOnboarding` key for the tutorials that have an onboarding stage. */
+const FEATURE_ONBOARDING_SLUGS: Record<string, OnboardingFeatureKey> = {
+    'scenario-generation': 'scenarioGeneration',
+    'writing-feedback': 'writingFeedback',
+    'guided-pathway': 'guidedPathway'
+};
+
+/**
+ * PATCH /:courseId/onboarding/features/:feature/complete
+ * Marks one instructor feature onboarding tutorial as complete.
+ *
+ * Restricted to course instructors and platform administrators; teaching
+ * assistants do not run course setup. Idempotent by design, because the
+ * completion screen may retry after a transient failure and a second call must
+ * not read as an error.
+ *
+ * Only Scenario Generation, Writing Feedback, and Guided Pathway have tutorials.
+ * Memory Agent is a valid course feature but not a valid slug here.
+ *
+ * @route PATCH /api/courses/:courseId/onboarding/features/:feature/complete
+ * @param {string} courseId - Owning course id
+ * @param {string} feature - Tutorial slug: scenario-generation | writing-feedback | guided-pathway
+ * @returns Updated course
+ */
+router.patch(
+    '/:courseId/onboarding/features/:feature/complete',
+    requireInstructorOrAdminForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const courseId = String(req.params.courseId);
+        const feature = String(req.params.feature);
+        const featureKey = FEATURE_ONBOARDING_SLUGS[feature];
+
+        if (!featureKey) {
+            return res.status(400).json({
+                success: false,
+                error: `Unknown onboarding feature: ${feature}`
+            });
+        }
+
+        const instance = await EngEAI_MongoDB.getInstance();
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+
+        // A dotted path updates one key so a sibling tutorial flag written by a
+        // concurrent tab survives. `updateActiveCourse` forwards it straight into
+        // `$set`, which is why the cast is needed for a key `Partial<activeCourse>`
+        // cannot express.
+        const updatedCourse = await instance.updateActiveCourse(
+            courseId,
+            { [`featureOnboarding.${featureKey}`]: true } as unknown as Partial<activeCourse>
+        );
+
+        return res.status(200).json({
+            success: true,
+            data: updatedCourse,
+            message: `${featureKey} onboarding marked complete`
+        });
     })
 );
 
