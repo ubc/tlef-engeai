@@ -310,6 +310,14 @@ function setupReviewFormListeners(state: OnboardingState, onBoardingCourse: acti
             guidedPathway: { enabled: guidedPathwayInput.checked }
         };
     });
+
+    const scenarioGenerationInput = document.getElementById('reviewScenarioGenerationEnabled') as HTMLInputElement;
+    scenarioGenerationInput?.addEventListener('change', () => {
+        onBoardingCourse.features = {
+            ...onBoardingCourse.features,
+            scenarioGeneration: { enabled: scenarioGenerationInput.checked }
+        };
+    });
 }
 
 function setupHelpListener(state: OnboardingState): void {
@@ -565,6 +573,11 @@ function updateReviewContent(onBoardingCourse: activeCourse): void {
     const guidedPathwayInput = document.getElementById('reviewGuidedPathwayEnabled') as HTMLInputElement;
     if (guidedPathwayInput) {
         guidedPathwayInput.checked = onBoardingCourse.features?.guidedPathway?.enabled === true;
+    }
+
+    const scenarioGenerationInput = document.getElementById('reviewScenarioGenerationEnabled') as HTMLInputElement;
+    if (scenarioGenerationInput) {
+        scenarioGenerationInput.checked = onBoardingCourse.features?.scenarioGeneration?.enabled === true;
     }
 
     updateReviewContentCountDescription(onBoardingCourse);
