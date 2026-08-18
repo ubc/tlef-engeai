@@ -2981,3 +2981,239 @@
         gap: 0.35rem;
     }
 }
+
+
+/* ===========================================
+   GUIDED PATHWAY SETUP ONBOARDING STYLES
+   Namespaced under .guided-pathway-setup. This matters more here than in the
+   other feature stages because the real Pathway Library component is mounted
+   inside step 2 and brings its own styling.
+   =========================================== */
+
+.guided-pathway-setup .gp-setup-defaults {
+    margin: 1rem 0;
+    padding: 1rem 1.25rem;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+}
+
+.guided-pathway-setup .gp-setup-defaults h4 {
+    margin-top: 0;
+}
+
+.guided-pathway-setup .gp-setup-pathway-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.guided-pathway-setup .gp-setup-pathway-list li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.guided-pathway-setup .gp-setup-pathway-list li:last-child {
+    border-bottom: none;
+}
+
+.guided-pathway-setup .gp-setup-pathway-name {
+    font-weight: 600;
+    color: #212529;
+}
+
+.guided-pathway-setup .gp-setup-pathway-note {
+    color: #6c757d;
+    font-size: 0.88rem;
+}
+
+.guided-pathway-setup .gp-setup-library-mount {
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid #dee2e6;
+}
+
+.guided-pathway-setup .gp-setup-library-error {
+    padding: 0.9rem 1.1rem;
+    border: 1px solid #dc3545;
+    border-radius: 6px;
+    background-color: #fdf2f3;
+    color: #842029;
+}
+
+.guided-pathway-setup .gp-setup-notify-demo {
+    margin: 1rem 0;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.guided-pathway-setup .gp-setup-notify-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1.1rem;
+    border-bottom: 1px solid #e9ecef;
+    background-color: #fff;
+}
+
+.guided-pathway-setup .gp-setup-notify-row:last-child {
+    border-bottom: none;
+}
+
+.guided-pathway-setup .gp-setup-toggle {
+    padding: 0.2rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+}
+
+.guided-pathway-setup .gp-setup-toggle-on {
+    background-color: #d1e7dd;
+    color: #0f5132;
+}
+
+.guided-pathway-setup .gp-setup-toggle-off {
+    background-color: #e9ecef;
+    color: #6c757d;
+}
+
+.guided-pathway-setup .gp-setup-alert-card {
+    margin: 1rem 0;
+    padding: 1.25rem;
+    border: 1px solid #ffc107;
+    border-left-width: 4px;
+    border-radius: 8px;
+    background-color: #fffdf5;
+}
+
+.guided-pathway-setup .gp-setup-alert-head {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    margin-bottom: 0.75rem;
+}
+
+.guided-pathway-setup .gp-setup-alert-pill {
+    padding: 0.2rem 0.7rem;
+    border-radius: 999px;
+    background-color: #ffc107;
+    color: #212529;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.guided-pathway-setup .gp-setup-alert-pathway {
+    font-weight: 600;
+    color: #212529;
+}
+
+.guided-pathway-setup .gp-setup-alert-meta {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.25rem 1rem;
+    margin: 0 0 0.85rem 0;
+    font-size: 0.88rem;
+}
+
+.guided-pathway-setup .gp-setup-alert-meta dt {
+    color: #6c757d;
+    font-weight: 600;
+}
+
+.guided-pathway-setup .gp-setup-alert-meta dd {
+    margin: 0;
+    color: #212529;
+}
+
+.guided-pathway-setup .gp-setup-alert-body {
+    margin-bottom: 1rem;
+}
+
+.guided-pathway-setup .gp-setup-alert-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.guided-pathway-setup .gp-setup-dismiss-btn,
+.guided-pathway-setup .gp-setup-escalate-btn {
+    padding: 0.55rem 1.1rem;
+    border-radius: 6px;
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.guided-pathway-setup .gp-setup-dismiss-btn {
+    border: 1px solid #6c757d;
+    background-color: #fff;
+    color: #495057;
+}
+
+.guided-pathway-setup .gp-setup-escalate-btn {
+    border: 1px solid #b02a37;
+    background-color: #dc3545;
+    color: #fff;
+}
+
+.guided-pathway-setup .gp-setup-dismiss-btn:disabled,
+.guided-pathway-setup .gp-setup-escalate-btn:disabled {
+    border-color: #ced4da;
+    background-color: #e9ecef;
+    color: #adb5bd;
+    cursor: default;
+}
+
+.guided-pathway-setup .gp-setup-outcome {
+    margin-top: 1rem;
+    padding: 1.1rem 1.25rem;
+    border: 1px solid #dee2e6;
+    border-left-width: 4px;
+    border-radius: 8px;
+}
+
+.guided-pathway-setup .gp-setup-outcome h4 {
+    margin-top: 0;
+}
+
+.guided-pathway-setup .gp-setup-outcome p:last-child {
+    margin-bottom: 0;
+}
+
+.guided-pathway-setup .gp-setup-outcome-dismissed {
+    border-left-color: #6c757d;
+    background-color: #f8f9fa;
+}
+
+.guided-pathway-setup .gp-setup-outcome-escalated {
+    border-left-color: #dc3545;
+    background-color: #fdf2f3;
+}
+
+@media (max-width: 768px) {
+    .guided-pathway-setup .gp-setup-notify-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.35rem;
+    }
+
+    .guided-pathway-setup .gp-setup-alert-head {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.35rem;
+    }
+
+    .guided-pathway-setup .gp-setup-alert-actions button {
+        width: 100%;
+    }
+}
