@@ -29,7 +29,7 @@ describe('mongo collections helpers', () => {
         expect(activeUsersMongoCollection(mockDb()).collectionName).toBe(ACTIVE_USERS_COLLECTION);
     });
 
-    it('guidedPathwayFlagsCollection resolves the legacy GPF-001 migration source', () => {
+    it('guidedPathwayFlagsCollection resolves the legacy GPF-002 migration source', () => {
         expect(guidedPathwayFlagsCollection(mockDb()).collectionName).toBe(
             GUIDED_PATHWAY_FLAGS_COLLECTION
         );

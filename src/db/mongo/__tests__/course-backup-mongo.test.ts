@@ -17,31 +17,58 @@ jest.mock('../collection-registry-mongo', () => ({
 }));
 
 jest.mock('../mongo-collections', () => ({
-    activeCourseListCollection: jest.fn(() => ({
-        find: jest.fn(() => ({
-            toArray: jest.fn().mockResolvedValue([{
-                id: 'course-id-1',
-                courseName: 'TestCourse'
-            }])
-        })),
-        findOne: jest.fn().mockResolvedValue({
+    activeCourseListCollection: jest.fn(() => {
+        const course = {
             id: 'course-id-1',
             courseName: 'TestCourse',
-            _id: new ObjectId()
-        }),
-        updateOne: jest.fn().mockResolvedValue({ matchedCount: 1 })
+            collections: {
+                users: 'TestCourse_users',
+                flags: 'TestCourse_flags',
+                memoryAgent: 'TestCourse_memory-agent',
+                guidedPathwayFlags: 'resolved-by-guided-pathway-owner'
+            }
+        };
+        return {
+            createIndex: jest.fn().mockResolvedValue('guided_pathway_flag_collection_unique'),
+            find: jest.fn(() => ({
+                toArray: jest.fn().mockResolvedValue([course])
+            })),
+            findOne: jest.fn().mockImplementation((filter: any) => {
+                if (filter.id && typeof filter.id === 'object' && '$ne' in filter.id) return null;
+                return Promise.resolve({
+                    ...course,
+                    _id: new ObjectId()
+                });
+            }),
+            updateOne: jest.fn().mockResolvedValue({ matchedCount: 1 })
+        };
+    }),
+    applicationMigrationsCollection: jest.fn(() => ({
+        findOne: jest.fn().mockResolvedValue({
+            _id: 'GPF-002',
+            state: 'complete',
+            result: {
+                registeredCourseCollections: 0,
+                migratedRows: 0,
+                migratedGlobalRows: 0,
+                migratedHashedRows: 0,
+                droppedHashedCollections: 0,
+                retainedLegacyRows: 0,
+                retainedHashedCollections: 0,
+                orphanCourseCollections: 0
+            }
+        })
     })),
     guidedPathwayFlagsCollection: jest.fn((db) => db.collection('guided-pathway-flags'))
 }));
 
 import { getCollectionNames } from '../collection-registry-mongo';
-import { guidedPathwayFlagCollectionNameForCourse } from '../guided-pathway-flag-collection-mongo';
 import { activeCourseListCollection } from '../mongo-collections';
 
 describe('course-backup-mongo loadCourseMongoBackupPayloads', () => {
     it('queries catalog and course-owned collections; EJSON round-trips ObjectIds', async () => {
         const oid = new ObjectId();
-        const guidedPathwayCollection = guidedPathwayFlagCollectionNameForCourse('course-id-1');
+        const guidedPathwayCollection = 'resolved-by-guided-pathway-owner';
         const rows: Record<string, unknown[]> = {
             TestCourse_users: [{ _id: oid, userId: 'student-1' }],
             TestCourse_flags: [{ id: 'f1' }],
@@ -63,11 +90,18 @@ describe('course-backup-mongo loadCourseMongoBackupPayloads', () => {
         };
 
         const mockDb = {
+            listCollections: () => ({
+                toArray: async () => Object.keys(rows).map((name) => ({ name }))
+            }),
+            createCollection: jest.fn().mockRejectedValue({ codeName: 'NamespaceExists' }),
             collection: (name: string) => ({
                 createIndex: jest.fn().mockResolvedValue('index-name'),
                 distinct: jest.fn().mockResolvedValue([]),
                 countDocuments: jest.fn().mockResolvedValue((rows[name] ?? []).length),
                 drop: jest.fn().mockResolvedValue(true),
+                findOne: jest.fn().mockImplementation((filter: any) => Promise.resolve(
+                    (rows[name] ?? []).find((row: any) => row.courseId !== filter.courseId?.$ne) ?? null
+                )),
                 find: (filter: { courseId?: string } = {}) => {
                     const matching = (rows[name] ?? []).filter((row: any) =>
                         !filter.courseId || row.courseId === filter.courseId
@@ -122,5 +156,6 @@ describe('course-backup-mongo loadCourseMongoBackupPayloads', () => {
         expect(pathwayFlags[0]).not.toHaveProperty('studentUserId');
         expect(pathwayFlags[0]).not.toHaveProperty('dedupeKey');
         expect(pathwayFlags[0]).not.toHaveProperty('identityRevealEvents');
+        expect(mockDb.createCollection).not.toHaveBeenCalled();
     });
 });

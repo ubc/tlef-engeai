@@ -1,16 +1,5 @@
-/**
- * Tests for failure-isolated Guided Pathway alert persistence.
- *
- * @author: EngE-AI Team
- * @date: 2026-08-08
- * @version: 1.0.0
- * @description: Verifies eligibility, exact-message forwarding, and safe write failure behavior.
- */
-
-import {
-    persistGuidedPathwayAlertSafely,
-    type GuidedPathwayFlagWriter,
-} from '../pathway-alert-persistence';
+import type { GuidedPathwayFlagWriter } from '../guided-pathway-flag-contracts';
+import { persistGuidedPathwayFlagSafely } from '../guided-pathway-flag-service';
 
 const trigger = {
     pathwayId: 'pathway-1',
@@ -25,33 +14,47 @@ function baseInput(writer: GuidedPathwayFlagWriter) {
         courseId: 'course-1',
         courseName: 'Course One',
         messageText: '  Keep my exact spacing.  ',
-        studentUserId: 'student-1',
+        actor: { origin: 'student' as const, userId: 'student-1' },
         chatId: 'chat-1',
         clientMessageId: 'client-message-1',
-        isEligibleStudent: true,
     };
 }
 
-describe('persistGuidedPathwayAlertSafely', () => {
-    it('writes one alert with the exact message for an eligible notification-enabled trigger', async () => {
+describe('persistGuidedPathwayFlagSafely', () => {
+    it('writes one flag with the exact message for an eligible notification-enabled trigger', async () => {
         const writer: GuidedPathwayFlagWriter = {
             createGuidedPathwayFlag: jest.fn().mockResolvedValue({ created: true }),
         };
 
-        await expect(persistGuidedPathwayAlertSafely(baseInput(writer))).resolves.toEqual({
+        await expect(persistGuidedPathwayFlagSafely(baseInput(writer))).resolves.toEqual({
             status: 'created',
         });
         expect(writer.createGuidedPathwayFlag).toHaveBeenCalledWith(expect.objectContaining({
             courseId: 'course-1',
             pathwayId: 'pathway-1',
             messageText: '  Keep my exact spacing.  ',
-            studentUserId: 'student-1',
+            actor: { origin: 'student', userId: 'student-1' },
             chatId: 'chat-1',
             clientMessageId: 'client-message-1',
         }));
     });
 
-    it('returns failed instead of throwing when alert storage rejects', async () => {
+    it('forwards an explicit instructor-test actor without changing the exact message', async () => {
+        const writer: GuidedPathwayFlagWriter = {
+            createGuidedPathwayFlag: jest.fn().mockResolvedValue({ created: true }),
+        };
+
+        await expect(persistGuidedPathwayFlagSafely({
+            ...baseInput(writer),
+            actor: { origin: 'instructor-test', userId: 'instructor-1' },
+        })).resolves.toEqual({ status: 'created' });
+        expect(writer.createGuidedPathwayFlag).toHaveBeenCalledWith(expect.objectContaining({
+            messageText: '  Keep my exact spacing.  ',
+            actor: { origin: 'instructor-test', userId: 'instructor-1' },
+        }));
+    });
+
+    it('returns failed instead of throwing when flag storage rejects', async () => {
         const writer: GuidedPathwayFlagWriter = {
             createGuidedPathwayFlag: jest.fn().mockRejectedValue({
                 code: 91,
@@ -59,7 +62,7 @@ describe('persistGuidedPathwayAlertSafely', () => {
             }),
         };
 
-        await expect(persistGuidedPathwayAlertSafely(baseInput(writer))).resolves.toEqual({
+        await expect(persistGuidedPathwayFlagSafely(baseInput(writer))).resolves.toEqual({
             status: 'failed',
             errorCode: 91,
         });
@@ -67,14 +70,14 @@ describe('persistGuidedPathwayAlertSafely', () => {
 
     it.each([
         ['notification is disabled', { trigger: { ...trigger, notifyInstructorOnTrigger: false } }],
-        ['the sender is not an eligible student', { isEligibleStudent: false }],
+        ['the sender has no eligible server-derived actor', { actor: null }],
         ['the course id is unavailable', { courseId: undefined }],
     ])('skips storage when %s', async (_label, overrides) => {
         const writer: GuidedPathwayFlagWriter = {
             createGuidedPathwayFlag: jest.fn(),
         };
 
-        await expect(persistGuidedPathwayAlertSafely({
+        await expect(persistGuidedPathwayFlagSafely({
             ...baseInput(writer),
             ...overrides,
         })).resolves.toEqual({ status: 'skipped' });

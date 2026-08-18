@@ -288,16 +288,28 @@ Live Canvas OAuth routes are intentionally absent from this table until the priv
 | PUT | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId` | Yes | Instructor | Update struggle topic (response includes `changed`) |
 | DELETE | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/struggle-topics/:struggleTopicId` | Yes | Instructor | Delete struggle topic (response includes `changed`) |
 
-#### Flags (student creates; instructor manages)
+#### Manual flags (explicit report; instructor manages)
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
 | POST | `/api/courses/:courseId/flags` | Yes | Student or Instructor | Create flag (shared) |
 | GET | `/api/courses/:courseId/flags` | Yes | Instructor | List flags |
 | GET | `/api/courses/:courseId/flags/with-names` | Yes | Instructor | List flags with names |
+| GET | `/api/courses/:courseId/flags/validate` | Yes | Instructor | Validate flag collection integrity |
+| GET | `/api/courses/:courseId/flags/statistics` | Yes | Instructor | Flag counts for the course |
+| GET | `/api/courses/:courseId/flags/student/:userId` | Yes | **Record owner or course staff** | One student's flag history |
 | GET | `/api/courses/:courseId/flags/:flagId` | Yes | Instructor | Get flag report |
 | PUT | `/api/courses/:courseId/flags/:flagId` | Yes | Instructor | Update flag |
 | PATCH | `/api/courses/:courseId/flags/:flagId/response` | Yes | Instructor | Update response |
+
+`GET /flags/student/:userId` is student-facing — a student reads their own history — so it uses
+`requireSelfOrInstructorForCourseAPI` rather than an instructor-only guard: the record owner passes,
+course staff pass, and every other authenticated caller receives `403`. The target user id arrives in
+the path and is untrusted, so course scope alone is not sufficient authorization.
+
+The literal `/flags/validate`, `/flags/statistics`, `/flags/with-names`, and `/flags/student/:userId`
+routes must stay declared **above** `/flags/:flagId`. Express matches in declaration order, so a
+literal route registered after the capture is shadowed and never runs.
 
 #### Guided Pathway Library and automatic alerts
 
@@ -305,7 +317,9 @@ Guided Pathway configuration is separate from manual student-created flags. Facu
 and platform admins may configure pathways; teaching assistants cannot. `enabled` controls whether
 a pathway can trigger. The independent `notifyInstructorOnTrigger` setting controls whether a
 successful trigger creates an automatic alert, and defaults to `true` for new, seeded, and legacy
-records where the field is missing.
+records where the field is missing. Manually created and seeded pathways use the same evaluator.
+When a listed faculty instructor exercises a notification-enabled pathway in normal instructor chat,
+the server records a course-local `instructor-test` alert; the client cannot request or forge test mode.
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
@@ -315,36 +329,56 @@ records where the field is missing.
 | PUT | `/api/courses/:courseId/pathways/:pathwayId` | Yes | Faculty instructor or **Admin** | Update configuration, including either independent switch |
 | DELETE | `/api/courses/:courseId/pathways/:pathwayId` | Yes | Faculty instructor or **Admin** | Delete a pathway definition |
 | POST | `/api/courses/:courseId/pathways/reset` | Yes | Faculty instructor or **Admin** | Restore platform defaults with notification on |
-| GET | `/api/courses/:courseId/guided-pathway-flags` | Yes | Faculty instructor or **Admin** | Paginated anonymous course alert list; optional `status` |
-| PATCH | `/api/courses/:courseId/guided-pathway-flags/:flagId/decision` | Yes | Faculty instructor or **Admin** | Atomic pending decision; body `{ decision: 'escalate' | 'dismiss' }` |
-| GET | `/api/admin/guided-pathway-flags` | Yes | **Admin** | Cross-course anonymous queue with period/course/pathway/status/reviewer/date filters |
-| PATCH | `/api/admin/guided-pathway-flags/:courseId/:flagId/review` | Yes | **Admin** | Mark an escalated item reviewed in its owning course without deleting it |
-| POST | `/api/admin/guided-pathway-flags/:courseId/:flagId/reveal-identity` | Yes | **Admin** | Audit an escalated-item reveal in its owning course, then return only the current roster display name |
+| GET | `/api/courses/:courseId/guided-pathway-flags` | Yes | Faculty instructor or **Admin** | Paginated anonymous owning-course alert list, including labelled instructor tests; optional `status` |
+| PATCH | `/api/courses/:courseId/guided-pathway-flags/:flagId/decision` | Yes | Faculty instructor or **Admin** | Atomic pending decision; student body `{ decision: 'escalate' \| 'dismiss' }`; instructor tests permit `dismiss` only |
+| GET | `/api/admin/guided-pathway-flags` | Yes | **Admin** | Cross-course anonymous student-alert queue with period/course/pathway/status/reviewer/date filters; instructor tests excluded |
+| PATCH | `/api/admin/guided-pathway-flags/:courseId/:flagId/review` | Yes | **Admin** | Mark an escalated student alert reviewed in its owning course without deleting it; tests rejected |
+| POST | `/api/admin/guided-pathway-flags/:courseId/:flagId/reveal-identity` | Yes | **Admin** | Audit an escalated student-alert reveal in its owning course, then return only the current roster display name; tests rejected |
 
-List and action responses use an explicit anonymous projection: pathway/course snapshots, exact
-student message, trigger/decision/review times, state, and staff reviewer display names. They never
-include the student's name or user ID, PUID, chat/request identifiers, deduplication key, or reveal
+List and action responses use an explicit anonymous projection: `origin`, pathway/course snapshots,
+exact message, trigger/decision/review times, state, and staff reviewer display names. They never
+include a student or tester user ID, PUID, chat/request identifiers, deduplication key, or reveal
 audit events. The exact message is not automatically redacted and can still identify its author if
-the student writes personal information in it.
+the author writes personal information in it. Existing rows with no `origin` are returned as
+`origin: 'student'`.
 
-Automatic alerts have `pending`, `escalated`, and `dismissed` states. Instructor decisions are
-final in this version, and completed records remain viewable. Escalation is an internal decision:
+Production student alerts have `pending`, `escalated`, and `dismissed` states. Instructor decisions
+are final in this version, and completed records remain viewable. Escalation is an internal decision:
 EngE-AI surfaces it to platform admins but does not contact LTIC. Admin identity reveal is available
-only on escalated records, requires confirmation in the client, is re-masked after refresh, and
-fails closed when the audit write fails. Students and teaching assistants cannot call these APIs;
-automatic alerts never enter Student Flag History.
+only on escalated student records, requires confirmation in the client, is re-masked after refresh,
+and fails closed when the audit write fails. Student records retain a restricted internal
+`studentUserId` only for this audited reveal path.
 
-Each course stores automatic alerts in its own deterministic Mongo collection. Course routes resolve
-only that collection, while the platform-admin queue aggregates canonical active-course collections
-server-side. Including `courseId` in admin action paths makes equal alert ids in different courses
-unambiguous. Existing rows in the former shared collection are moved by GPF-001; see
-[DATA_MIGRATIONS.md](DATA_MIGRATIONS.md#gpf-001-guided-pathway-alert-course-isolation).
+At creation, instructor-test records store neither `studentUserId` nor a separate raw trigger-actor
+identity. A listed instructor's ID may participate in the opaque deduplication digest but is not
+returned as trigger identity. A later dismissal retains the ordinary authorized decision-actor audit
+fields; those describe who made the decision, not who originally triggered the test.
+Tests are visible only in the owning course, show a `Test` label and `Instructor test message`, and
+offer only `Mark test complete` (the dismiss transition). Server guards reject test escalation,
+admin review, and identity reveal with `409` before mutation, audit, or roster access. TA membership,
+platform-admin
+privilege without explicit instructor listing, outsiders, and missing course/user context do not
+create tests. Students and teaching assistants cannot call these APIs; automatic alerts never enter
+Student Flag History.
+
+Each course stores automatic alerts separately from manual flags in the physical collection named by
+`activeCourse.collections.guidedPathwayFlags`. New registrations default to the readable
+`${courseName}_guided-pathway-flags` name, but the stored registry value remains authoritative after
+a rename. Course routes resolve only that registered collection, while the platform-admin queue
+aggregates existing registered active-course collections server-side. Alert creation may provision a
+missing legacy-course target; list, count, backup, and admin aggregation paths do not create empty
+collections. Including `courseId` in admin action paths makes equal alert ids in different courses
+unambiguous. GPF-001 hash namespaces are migration inputs only; GPF-002 moves shared/hash rows to
+registered targets under a Mongo-backed lease. See
+[DATA_MIGRATIONS.md](DATA_MIGRATIONS.md#gpf-002-guided-pathway-registered-collection-normalization).
 
 `GET /api/admin/course-selection` also returns
 `data.guidedPathwayEscalationsAwaitingReview`, counting escalated records with no admin review time.
 The course-selection dashboard renders that count as a bell badge between the welcome text and logout.
 Clicking the bell opens the same anonymous admin queue, prefiltered to escalated items needing review;
-the badge refreshes after review actions. There is no polling, email, or external notification.
+the badge refreshes after review actions. Instructor tests are excluded from the queue, all filter
+facets and totals, reviewer facets, and this bell count. There is no polling, email, or external
+notification.
 
 #### Monitor (instructor roster; post-period analytics)
 

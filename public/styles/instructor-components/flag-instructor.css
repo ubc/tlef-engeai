@@ -1076,6 +1076,25 @@
     overflow-wrap: anywhere;
 }
 
+.guided-pathway-alert-card__title-group {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    min-width: 0;
+}
+
+.guided-pathway-alert-card__test-badge {
+    flex-shrink: 0;
+    padding: 0.16rem 0.48rem;
+    border: 1px solid rgba(0, 92, 77, 0.3);
+    border-radius: 999px;
+    background: #e5f3ef;
+    color: var(--color-chbe-green);
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
 .guided-pathway-alert-card__status {
     flex-shrink: 0;
     padding: 0.25rem 0.55rem;

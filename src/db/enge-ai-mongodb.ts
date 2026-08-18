@@ -28,6 +28,12 @@ import {
 } from '../types/shared';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { appLogger } from '../utils/logger';
+import type {
+    CreateGuidedPathwayFlagInput,
+    GuidedPathwayFlagListFilters,
+    GuidedPathwayFlagReviewActor
+} from '../flags/guided-pathway-flag-contracts';
+import { validateManualFlagStatusTransition } from '../flags/manual-flag-policy';
 
 import type { MongoDalContext, CourseCollectionNames } from './mongo/mongo-context';
 import * as ChatMongo from './mongo/chat-mongo';
@@ -720,7 +726,7 @@ export class EngEAI_MongoDB {
     public deleteAllFlagReports = async (courseName: string) =>
         FlagMongo.deleteAllFlagReports(this.ctx(), courseName);
 
-    public validateStatusTransition = FlagMongo.validateStatusTransition;
+    public validateStatusTransition = validateManualFlagStatusTransition;
 
     public updateFlagStatus = async (
         courseName: string,
@@ -748,17 +754,17 @@ export class EngEAI_MongoDB {
      * #########################################################
      */
     /** Creates or deduplicates one course-owned Guided Pathway trigger alert and returns its safe view. */
-    public createGuidedPathwayFlag = async (input: GuidedPathwayFlagMongo.CreateGuidedPathwayFlagInput) =>
+    public createGuidedPathwayFlag = async (input: CreateGuidedPathwayFlagInput) =>
         GuidedPathwayFlagMongo.createGuidedPathwayFlag(this.ctx(), input);
 
     /** Lists one course's paginated, explicitly anonymous Guided Pathway alert queue. */
     public listGuidedPathwayFlagsForCourse = async (
         courseId: string,
-        filters: Pick<GuidedPathwayFlagMongo.GuidedPathwayFlagListFilters, 'page' | 'pageSize' | 'status'>
+        filters: Pick<GuidedPathwayFlagListFilters, 'page' | 'pageSize' | 'status'>
     ) => GuidedPathwayFlagMongo.listGuidedPathwayFlagsForCourse(this.ctx(), courseId, filters);
 
     /** Aggregates active course collections into the platform administrator queue. */
-    public listGuidedPathwayFlagsForAdmin = async (filters: GuidedPathwayFlagMongo.GuidedPathwayFlagListFilters) =>
+    public listGuidedPathwayFlagsForAdmin = async (filters: GuidedPathwayFlagListFilters) =>
         GuidedPathwayFlagMongo.listGuidedPathwayFlagsForAdmin(this.ctx(), filters);
 
     /** Records an immutable course instructor Escalate or Dismiss decision. */
@@ -766,21 +772,21 @@ export class EngEAI_MongoDB {
         courseId: string,
         flagId: string,
         decision: import('../types/shared').GuidedPathwayFlagDecision,
-        actor: GuidedPathwayFlagMongo.GuidedPathwayFlagActor
+        actor: GuidedPathwayFlagReviewActor
     ) => GuidedPathwayFlagMongo.decideGuidedPathwayFlag(this.ctx(), courseId, flagId, decision, actor);
 
     /** Marks one escalated alert reviewed by a platform administrator. */
     public markGuidedPathwayFlagAdminReviewed = async (
         courseId: string,
         flagId: string,
-        actor: GuidedPathwayFlagMongo.GuidedPathwayFlagActor
+        actor: GuidedPathwayFlagReviewActor
     ) => GuidedPathwayFlagMongo.markGuidedPathwayFlagAdminReviewed(this.ctx(), courseId, flagId, actor);
 
     /** Audits an administrator reveal and returns only the current course-roster display name. */
     public revealGuidedPathwayFlagIdentity = async (
         courseId: string,
         flagId: string,
-        actor: GuidedPathwayFlagMongo.GuidedPathwayFlagActor
+        actor: GuidedPathwayFlagReviewActor
     ) => GuidedPathwayFlagMongo.revealGuidedPathwayFlagIdentity(this.ctx(), courseId, flagId, actor);
 
     /** Counts escalated alerts that still require platform administrator review. */
@@ -791,7 +797,7 @@ export class EngEAI_MongoDB {
     public deleteGuidedPathwayFlagsForCourse = async (courseId: string) =>
         GuidedPathwayFlagMongo.deleteGuidedPathwayFlagsForCourse(this.ctx(), courseId);
 
-    /** Runs the idempotent GPF-001 shared-to-course collection migration. */
+    /** Runs the idempotent GPF-002 shared-to-course collection migration. */
     public migrateGuidedPathwayFlagsToCourseCollections = async () =>
         GuidedPathwayFlagMongo.migrateGuidedPathwayFlagsToCourseCollections(this.ctx());
 

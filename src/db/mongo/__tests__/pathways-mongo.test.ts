@@ -7,6 +7,7 @@ import type { MongoDalContext } from '../mongo-context';
 import {
     seedPathwaysIfEmpty,
     listPathways,
+    listPathwaysForEvaluation,
     createPathway,
     updatePathway,
     deletePathway,
@@ -184,6 +185,26 @@ describe('pathways-mongo', () => {
         const deleted = await deletePathway(ctx, 'Test', created.id);
         expect(deleted).toBe(true);
         expect(store).toHaveLength(0);
+    });
+
+    it('returns an instructor-created pathway through the chat evaluation list', async () => {
+        const created = await createPathway(ctx, 'Test', {
+            title: 'Instructor support route',
+            triggerDescription: 'Detect a request for instructor support',
+            assistantResponse: 'Please use these support options.',
+            enabled: true,
+            notifyInstructorOnTrigger: true,
+            ctas: []
+        });
+
+        const evaluable = await listPathwaysForEvaluation(ctx, 'Test');
+
+        expect(evaluable).toEqual([expect.objectContaining({
+            id: created.id,
+            title: 'Instructor support route',
+            enabled: true,
+            notifyInstructorOnTrigger: true
+        })]);
     });
 
     it('reorderPathways rewrites order', async () => {

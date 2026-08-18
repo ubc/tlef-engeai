@@ -301,9 +301,9 @@ app.listen(port, async () => {
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
         const migration = await mongo.migrateGuidedPathwayFlagsToCourseCollections();
-        logger.info('Guided Pathway GPF-001 storage migration complete', migration);
+        logger.info('Guided Pathway GPF-002 storage migration complete', migration);
     } catch (err) {
-        logger.error('Guided Pathway GPF-001 storage migration failed:', err as any);
+        logger.error('Guided Pathway GPF-002 storage migration failed:', err as any);
     }
 
     try {

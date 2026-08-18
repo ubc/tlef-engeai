@@ -17,9 +17,9 @@ import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { ChatApp, RETIRED_CONVERSATION_MODE_MESSAGE, DEBUG_MODE_FORBIDDEN } from '../chat/chat-app';
 import { conversationModePrompts } from '../chat/compose-system-prompt';
 import { isAdminUser } from '../utils/admin';
-import { isCourseStaff } from '../utils/course-staff';
 import { isDebugToggleMessage } from '../chat/system-prompts/debug-mode-prompt';
-import { persistGuidedPathwayAlertSafely } from '../guided-pathways/pathway-alert-persistence';
+import { persistGuidedPathwayFlagSafely } from '../flags/guided-pathway-flag-service';
+import { resolveGuidedPathwayFlagTriggerActor } from '../flags/guided-pathway-flag-policy';
 
 import { getRandomNoResponse } from '../memory-agent/unstruggle-responses';
 import { memoryAgent } from '../memory-agent/memory-agent';
@@ -936,25 +936,22 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 // Continue execution - messages are still in memory
             }
 
-            // Persist an anonymous alert only for enrolled students and notification-enabled triggers.
+            // Derive the flag origin from server-owned course roles; request fields never select test mode.
             const courseId = courseForFeatures?.id;
-            const isEnrolledStudent = Boolean(
-                courseForFeatures &&
-                courseId &&
-                globalUserFromDB.coursesEnrolled.includes(courseId) &&
-                !isCourseStaff(courseForFeatures, globalUserFromDB)
+            const flagActor = resolveGuidedPathwayFlagTriggerActor(
+                courseForFeatures,
+                globalUserFromDB
             );
 
-            const flagResult = await persistGuidedPathwayAlertSafely({
+            const flagResult = await persistGuidedPathwayFlagSafely({
                 writer: mongoDB,
                 trigger: pathwayTrigger,
                 courseId,
                 courseName,
                 messageText: message,
-                studentUserId: userId,
+                actor: flagActor,
                 chatId,
                 clientMessageId,
-                isEligibleStudent: isEnrolledStudent,
             });
             if (flagResult.status === 'failed') {
                 appLogger.error(

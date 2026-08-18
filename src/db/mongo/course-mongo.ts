@@ -11,7 +11,13 @@ import type { activeCourse } from '../../types/shared';
 import { fetchActiveCourseDocByCourseName, fetchActiveCourseDocById } from './active-course-queries-mongo';
 import { lazyMigrateCourseAcademicPeriod } from './academic-period-mongo';
 import { createFlagIndexes } from './flag-mongo';
-import { guidedPathwayFlagCollectionNameForCourse } from './guided-pathway-flag-collection-mongo';
+import {
+    assertGuidedPathwayFlagCollectionAvailable,
+    ensureGuidedPathwayFlagCollectionIndexes,
+    guidedPathwayFlagCollectionNameForCourse,
+    invalidateGuidedPathwayFlagCollectionIndexes,
+    migrateGuidedPathwayFlagsToCourseCollections
+} from './guided-pathway-flag-collection-mongo';
 import type { MongoDalContext } from './mongo-context';
 import { activeCourseListCollection, activeUsersMongoCollection } from './mongo-collections';
 import { seedPathwaysForNewCourse } from './pathways-mongo';
@@ -28,6 +34,7 @@ import { appLogger } from '../../utils/logger';
  * @returns Promise<void>
  *
  * Actions:
+ * - Wait for GPF-002 so course creation cannot claim a namespace reserved by migration.
  * - Exit early when `course.id` already exists in `active-course-list`.
  * - Derive **`courseCode`**: reuse provided code or retry `idGenerator.courseCodeID` against uniqueness (bounded attempts).
  * - `createCollection` for `{courseName}_users`, `_flags`, `_memory-agent`, `_scheduled_tasks` (ignore NamespaceExists).
@@ -39,6 +46,10 @@ import { appLogger } from '../../utils/logger';
  */
 export async function postActiveCourse(ctx: MongoDalContext, course: activeCourse): Promise<void> {
     try {
+        // Course creation can claim a readable namespace that GPF-002 predicted for
+        // an existing legacy course, so wait for the cross-process migration first.
+        await migrateGuidedPathwayFlagsToCourseCollections(ctx);
+
         const existingCourse = await getActiveCourse(ctx, course.id);
         if (existingCourse) {
             appLogger.log(`⚠️ Course with id ${course.id} already exists, skipping creation`);
@@ -79,7 +90,14 @@ export async function postActiveCourse(ctx: MongoDalContext, course: activeCours
         // ensureScenarioQuestionsCollection on first scenario-questions API call (scenario-questions-mongo.ts).
         const scenarioQuestionsCollection = `${courseName}_scenario_questions`;
         const pathwaysCollection = `${courseName}_pathways`;
-        const guidedPathwayFlagsCollection = guidedPathwayFlagCollectionNameForCourse(course.id);
+        const guidedPathwayFlagsCollection = guidedPathwayFlagCollectionNameForCourse(courseName);
+
+        // Reserve automatic-alert ownership before accepting an inherited NamespaceExists result.
+        await assertGuidedPathwayFlagCollectionAvailable(
+            ctx,
+            course.id,
+            guidedPathwayFlagsCollection
+        );
 
         for (const colName of [
             userCollection,
@@ -92,6 +110,9 @@ export async function postActiveCourse(ctx: MongoDalContext, course: activeCours
         ]) {
             try {
                 await ctx.db.createCollection(colName);
+                if (colName === guidedPathwayFlagsCollection) {
+                    invalidateGuidedPathwayFlagCollectionIndexes(ctx, colName);
+                }
             } catch (error: any) {
                 if (error.codeName !== 'NamespaceExists') throw error;
             }
@@ -112,6 +133,13 @@ export async function postActiveCourse(ctx: MongoDalContext, course: activeCours
         };
 
         await activeCourseListCollection(ctx.db).insertOne(courseWithCollections as any);
+
+        try {
+            await ensureGuidedPathwayFlagCollectionIndexes(ctx, guidedPathwayFlagsCollection);
+        } catch (indexError) {
+            // The first alert operation retries index provisioning before it writes.
+            appLogger.error(`❌ Error creating Guided Pathway alert indexes for ${courseName}:`, indexError);
+        }
 
         try {
             await seedPathwaysForNewCourse(ctx, courseName);
@@ -220,16 +248,26 @@ export async function getAllActiveCourses(ctx: MongoDalContext) {
  * @returns Updated `activeCourse` document after the write, or `null` when not found
  *
  * Actions:
- * - `$set` merges `updateData` with `updatedAt: Date.now().toString()`.
+ * - Strip immutable ids, the server-owned `collections` object, and dotted `collections.*` paths.
+ * - `$set` merges the remaining fields with `updatedAt: Date.now().toString()`.
  */
 export async function updateActiveCourse(
     ctx: MongoDalContext,
     id: string,
     updateData: Partial<activeCourse>
 ): Promise<activeCourse | null> {
+    // Physical collection registrations are mutated only by dedicated provisioning/CAS paths.
+    const safeUpdateData = Object.fromEntries(
+        Object.entries(updateData).filter(([key]) => (
+            key !== 'id'
+            && key !== '_id'
+            && key !== 'collections'
+            && !key.startsWith('collections.')
+        ))
+    ) as Partial<activeCourse>;
     const result = await activeCourseListCollection(ctx.db).findOneAndUpdate(
         { id: id },
-        { $set: { ...updateData, updatedAt: Date.now().toString() } },
+        { $set: { ...safeUpdateData, updatedAt: Date.now().toString() } },
         { returnDocument: 'after' }
     );
     return (result as activeCourse | null) ?? null;

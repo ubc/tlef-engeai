@@ -54,6 +54,13 @@ function statusLabel(status: GuidedPathwayFlagStatus): string {
     return STATUS_LABELS[status];
 }
 
+function cardStatusLabel(flag: GuidedPathwayFlagView): string {
+    if (flag.origin === 'instructor-test' && flag.status === 'dismissed') {
+        return 'Test complete';
+    }
+    return statusLabel(flag.status);
+}
+
 function setDomainTab(domain: 'manual' | 'guided'): void {
     const manualTab = document.getElementById('manual-flags-tab');
     const guidedTab = document.getElementById('guided-pathway-alerts-tab');
@@ -152,10 +159,19 @@ function createGuidedAlertCard(flag: GuidedPathwayFlagView): HTMLElement {
     const title = document.createElement('h3');
     title.className = 'guided-pathway-alert-card__title';
     title.textContent = flag.pathwayTitle;
+    const titleGroup = document.createElement('div');
+    titleGroup.className = 'guided-pathway-alert-card__title-group';
+    titleGroup.appendChild(title);
+    if (flag.origin === 'instructor-test') {
+        const testBadge = document.createElement('span');
+        testBadge.className = 'guided-pathway-alert-card__test-badge';
+        testBadge.textContent = 'Test';
+        titleGroup.appendChild(testBadge);
+    }
     const status = document.createElement('span');
     status.className = `guided-pathway-alert-card__status guided-pathway-alert-card__status--${flag.status}`;
-    status.textContent = statusLabel(flag.status);
-    header.append(title, status);
+    status.textContent = cardStatusLabel(flag);
+    header.append(titleGroup, status);
 
     const metadata = document.createElement('div');
     metadata.className = 'guided-pathway-alert-card__metadata';
@@ -164,7 +180,9 @@ function createGuidedAlertCard(flag: GuidedPathwayFlagView): HTMLElement {
 
     const messageLabel = document.createElement('h4');
     messageLabel.className = 'guided-pathway-alert-card__message-label';
-    messageLabel.textContent = 'Student message';
+    messageLabel.textContent = flag.origin === 'instructor-test'
+        ? 'Instructor test message'
+        : 'Student message';
     const message = document.createElement('p');
     message.className = 'guided-pathway-alert-card__message';
     message.textContent = flag.messageText;
@@ -174,20 +192,29 @@ function createGuidedAlertCard(flag: GuidedPathwayFlagView): HTMLElement {
     if (flag.status === 'pending') {
         const actions = document.createElement('div');
         actions.className = 'guided-pathway-alert-card__actions';
-        actions.append(
-            createDecisionButton(
+        if (flag.origin === 'instructor-test') {
+            actions.append(createDecisionButton(
                 flag,
                 'dismiss',
-                'Dismiss',
+                'Mark test complete',
                 'guided-pathway-alert-card__action--secondary'
-            ),
-            createDecisionButton(
-                flag,
-                'escalate',
-                'Escalate to LTIC',
-                'guided-pathway-alert-card__action--primary'
-            )
-        );
+            ));
+        } else {
+            actions.append(
+                createDecisionButton(
+                    flag,
+                    'dismiss',
+                    'Dismiss',
+                    'guided-pathway-alert-card__action--secondary'
+                ),
+                createDecisionButton(
+                    flag,
+                    'escalate',
+                    'Escalate to LTIC',
+                    'guided-pathway-alert-card__action--primary'
+                )
+            );
+        }
         card.appendChild(actions);
     }
 
@@ -208,7 +235,12 @@ async function submitDecision(
 
     try {
         await decideGuidedPathwayFlag(activeCourseId, flag.id, decision);
-        showSuccessToast(decision === 'escalate' ? 'Escalation decision recorded.' : 'Alert dismissed.');
+        const successMessage = flag.origin === 'instructor-test'
+            ? 'Instructor test marked complete.'
+            : decision === 'escalate'
+                ? 'Escalation decision recorded.'
+                : 'Alert dismissed.';
+        showSuccessToast(successMessage);
         await loadGuidedAlerts();
     } catch (error) {
         showErrorToast(error instanceof Error ? error.message : 'Unable to save this decision.');

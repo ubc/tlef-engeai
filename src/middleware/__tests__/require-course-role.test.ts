@@ -2,7 +2,8 @@ import type { Request, Response, NextFunction } from 'express';
 import {
     requireAdminForCourseAPI,
     requireInstructorForCourseAPI,
-    requireInstructorOrAdminForCourseAPI
+    requireInstructorOrAdminForCourseAPI,
+    requireSelfOrInstructorForCourseAPI
 } from '../require-course-role';
 
 jest.mock('../../db/enge-ai-mongodb', () => ({
@@ -161,5 +162,70 @@ describe('require-course-role admin', () => {
                 error: 'Instructor or administrator access required'
             });
         });
+    });
+});
+
+describe('require-course-role self-or-instructor', () => {
+    const course = {
+        id: 'course-1',
+        instructors: [{ userId: 'user-inst', name: 'Inst' }],
+        teachingAssistants: [{ userId: 'user-ta', name: 'TA' }]
+    };
+
+    /** Wires the middleware's two Mongo lookups for one authenticated caller. */
+    function mockCaller(globalUser: Record<string, unknown>) {
+        (EngEAI_MongoDB.getInstance as jest.Mock).mockResolvedValue({
+            findGlobalUserByPUID: jest.fn().mockResolvedValue(globalUser),
+            getActiveCourse: jest.fn().mockResolvedValue(course)
+        });
+    }
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('allows a student to read their own record', async () => {
+        mockCaller({ userId: 'user-student', affiliation: 'student', isAdmin: false });
+
+        const { req, res, next } = mockReqResNext({
+            params: { courseId: 'course-1', userId: 'user-student' }
+        });
+        await requireSelfOrInstructorForCourseAPI('userId', ['params'])(req, res, next);
+
+        expect(next).toHaveBeenCalled();
+    });
+
+    it('denies a student reading a different student record', async () => {
+        mockCaller({ userId: 'user-student', affiliation: 'student', isAdmin: false });
+
+        const { req, res, next } = mockReqResNext({
+            params: { courseId: 'course-1', userId: 'user-other' }
+        });
+        await requireSelfOrInstructorForCourseAPI('userId', ['params'])(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it('allows course staff to read any student record', async () => {
+        mockCaller({ userId: 'user-ta', affiliation: 'student', isAdmin: false });
+
+        const { req, res, next } = mockReqResNext({
+            params: { courseId: 'course-1', userId: 'user-other' }
+        });
+        await requireSelfOrInstructorForCourseAPI('userId', ['params'])(req, res, next);
+
+        expect(next).toHaveBeenCalled();
+    });
+
+    it('compares numeric and string user ids as the same identity', async () => {
+        mockCaller({ userId: 12345, affiliation: 'student', isAdmin: false });
+
+        const { req, res, next } = mockReqResNext({
+            params: { courseId: 'course-1', userId: '12345' }
+        });
+        await requireSelfOrInstructorForCourseAPI('userId', ['params'])(req, res, next);
+
+        expect(next).toHaveBeenCalled();
     });
 });

@@ -61,6 +61,9 @@ export interface GuidedPathway {
 /** Must match src/types/shared.ts. Automatic Guided Pathway alert lifecycle. */
 export type GuidedPathwayFlagStatus = 'pending' | 'escalated' | 'dismissed';
 
+/** Must match src/types/shared.ts. Server-owned trigger origin. */
+export type GuidedPathwayFlagOrigin = 'student' | 'instructor-test';
+
 /** Must match src/types/shared.ts. Instructor decision request value. */
 export type GuidedPathwayFlagDecision = 'escalate' | 'dismiss';
 
@@ -77,7 +80,8 @@ export interface GuidedPathwayFlagView {
     courseName: string; // course-name snapshot at trigger time
     pathwayId: string; // winning pathway id
     pathwayTitle: string; // winning pathway title snapshot
-    messageText: string; // exact student-authored message
+    messageText: string; // exact triggering chat message
+    origin: GuidedPathwayFlagOrigin; // production student alert or non-escalatable instructor test
     status: GuidedPathwayFlagStatus; // instructor decision lifecycle
     triggeredAt: string; // ISO trigger timestamp
     decidedAt?: string; // ISO instructor-decision timestamp
@@ -282,7 +286,7 @@ export interface activeCourse {
         scenarioQuestions?: string;
         /** Per-course Guided Pathway Library; lazy-provisions on existing courses */
         pathways?: string;
-        /** Course-owned automatic Guided Pathway alerts; derived from stable course id */
+        /** Registered course-owned collection for automatic Guided Pathway alerts. */
         guidedPathwayFlags?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];

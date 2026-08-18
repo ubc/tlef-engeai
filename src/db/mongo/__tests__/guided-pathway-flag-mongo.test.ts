@@ -4,8 +4,10 @@ import type { MongoDalContext } from '../mongo-context';
 
 jest.mock('../guided-pathway-flag-collection-mongo', () => ({
     GuidedPathwayFlagCourseNotFoundError: class GuidedPathwayFlagCourseNotFoundError extends Error {},
+    getExistingGuidedPathwayFlagCourseScope: jest.fn(),
     getGuidedPathwayFlagCourseScope: jest.fn(),
     guidedPathwayFlagCourseCollection: jest.fn(),
+    invalidateGuidedPathwayFlagCollectionIndexes: jest.fn(),
     listGuidedPathwayFlagCourseScopes: jest.fn(),
     migrateGuidedPathwayFlagsToCourseCollections: jest.fn()
 }));
@@ -17,8 +19,10 @@ jest.mock('../course-user-mongo', () => ({
 import { getCourseUsersMongoCollection } from '../course-user-mongo';
 import {
     GuidedPathwayFlagCourseNotFoundError,
+    getExistingGuidedPathwayFlagCourseScope,
     getGuidedPathwayFlagCourseScope,
     guidedPathwayFlagCourseCollection,
+    invalidateGuidedPathwayFlagCollectionIndexes,
     listGuidedPathwayFlagCourseScopes
 } from '../guided-pathway-flag-collection-mongo';
 import {
@@ -26,12 +30,13 @@ import {
     createGuidedPathwayFlag,
     decideGuidedPathwayFlag,
     deleteGuidedPathwayFlagsForCourse,
-    GuidedPathwayFlagNotFoundError,
     listGuidedPathwayFlagsForAdmin,
+    listGuidedPathwayFlagsForBackup,
     listGuidedPathwayFlagsForCourse,
     markGuidedPathwayFlagAdminReviewed,
     revealGuidedPathwayFlagIdentity
 } from '../guided-pathway-flag-mongo';
+import { GuidedPathwayFlagNotFoundError } from '../../../flags/guided-pathway-flag-errors';
 
 const courseScope = {
     courseId: 'course-1',
@@ -100,7 +105,7 @@ const createInput = {
     pathwayId: 'pathway-1',
     pathwayTitle: 'Support',
     messageText: 'I need help',
-    studentUserId: 'student-1',
+    actor: { origin: 'student' as const, userId: 'student-1' },
     chatId: 'chat-1',
     clientMessageId: 'client-message-1',
     triggeredAt: new Date('2026-08-08T12:00:00.000Z')
@@ -109,6 +114,7 @@ const createInput = {
 describe('guided-pathway-flag-mongo', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        (getExistingGuidedPathwayFlagCourseScope as jest.Mock).mockResolvedValue(courseScope);
         (getGuidedPathwayFlagCourseScope as jest.Mock).mockResolvedValue(courseScope);
         (listGuidedPathwayFlagCourseScopes as jest.Mock).mockResolvedValue([courseScope]);
     });
@@ -126,6 +132,7 @@ describe('guided-pathway-flag-mongo', () => {
             courseName: 'Test Course',
             pathwayTitle: 'Support',
             messageText: 'I need help',
+            origin: 'student',
             status: 'pending'
         });
         expect(first.flag).not.toHaveProperty('studentUserId');
@@ -136,7 +143,40 @@ describe('guided-pathway-flag-mongo', () => {
         expect(firstDoc.dedupeKey).toMatch(/^[a-f0-9]{64}$/);
         expect(firstDoc.dedupeKey).not.toBe(secondDoc.dedupeKey);
         expect(firstDoc.courseName).toBe('Test Course');
+        expect(firstDoc.studentUserId).toBe('student-1');
         expect(firstDoc).not.toHaveProperty('clientMessageId');
+    });
+
+    it('stores an instructor test without persisting tester or student identity', async () => {
+        const coll = collection();
+        (guidedPathwayFlagCourseCollection as jest.Mock).mockReturnValue(coll);
+
+        const result = await createGuidedPathwayFlag(context(), {
+            ...createInput,
+            actor: { origin: 'instructor-test', userId: 'instructor-1' }
+        });
+
+        expect(result.flag).toMatchObject({ origin: 'instructor-test', status: 'pending' });
+        const stored = coll.insertOne.mock.calls[0][0];
+        expect(stored.origin).toBe('instructor-test');
+        expect(stored).not.toHaveProperty('studentUserId');
+        expect(stored).not.toHaveProperty('testerUserId');
+        expect(stored).not.toHaveProperty('actor');
+        expect(JSON.stringify(stored)).not.toContain('instructor-1');
+    });
+
+    it('includes origin in opaque deduplication material', async () => {
+        const coll = collection();
+        (guidedPathwayFlagCourseCollection as jest.Mock).mockReturnValue(coll);
+
+        await createGuidedPathwayFlag(context(), createInput);
+        await createGuidedPathwayFlag(context(), {
+            ...createInput,
+            actor: { origin: 'instructor-test', userId: 'student-1' }
+        });
+
+        expect(coll.insertOne.mock.calls[0][0].dedupeKey)
+            .not.toBe(coll.insertOne.mock.calls[1][0].dedupeKey);
     });
 
     it('returns the existing safe alert after an atomic duplicate-key collision', async () => {
@@ -171,6 +211,7 @@ describe('guided-pathway-flag-mongo', () => {
         });
 
         expect(page.total).toBe(1);
+        expect(page.items[0].origin).toBe('student');
         expect(page.items[0]).not.toHaveProperty('studentUserId');
         expect(page.items[0]).not.toHaveProperty('dedupeKey');
         expect(page.items[0]).not.toHaveProperty('identityRevealEvents');
@@ -180,8 +221,19 @@ describe('guided-pathway-flag-mongo', () => {
         );
     });
 
+    it('returns an empty course page without provisioning missing flag storage', async () => {
+        (getExistingGuidedPathwayFlagCourseScope as jest.Mock).mockResolvedValue(null);
+
+        await expect(listGuidedPathwayFlagsForCourse(context(), 'course-1', {
+            page: 2,
+            pageSize: 20
+        })).resolves.toEqual({ items: [], page: 2, pageSize: 20, total: 0 });
+        expect(getGuidedPathwayFlagCourseScope).not.toHaveBeenCalled();
+        expect(guidedPathwayFlagCourseCollection).not.toHaveBeenCalled();
+    });
+
     it('maps a missing active course to the public not-found contract', async () => {
-        (getGuidedPathwayFlagCourseScope as jest.Mock).mockRejectedValue(
+        (getExistingGuidedPathwayFlagCourseScope as jest.Mock).mockRejectedValue(
             new GuidedPathwayFlagCourseNotFoundError()
         );
 
@@ -231,8 +283,15 @@ describe('guided-pathway-flag-mongo', () => {
             }
         });
         const facet = pipeline[2].$facet;
+        const studentOriginFilter = {
+            $or: [{ origin: 'student' }, { origin: { $exists: false } }]
+        };
+        expect(facet.items[0].$match.$and).toContainEqual(studentOriginFilter);
+        expect(facet.totals[0].$match.$and).toContainEqual(studentOriginFilter);
+        expect(facet.pathways[0].$match.$and).toContainEqual(studentOriginFilter);
+        expect(facet.reviewers[0].$match.$and).toContainEqual(studentOriginFilter);
         const itemProjection = facet.items.at(-1).$project;
-        expect(itemProjection).toEqual(expect.objectContaining({ id: 1, messageText: 1 }));
+        expect(itemProjection).toEqual(expect.objectContaining({ id: 1, messageText: 1, origin: 1 }));
         expect(itemProjection).not.toHaveProperty('studentUserId');
         expect(facet.pathways.some((stage: any) => stage.$project?.messageText)).toBe(false);
         expect(facet.reviewers.some((stage: any) => stage.$project?.studentUserId)).toBe(false);
@@ -257,7 +316,12 @@ describe('guided-pathway-flag-mongo', () => {
         );
 
         expect(coll.findOneAndUpdate).toHaveBeenCalledWith(
-            { id: 'flag-1', courseId: 'course-1', status: 'pending' },
+            {
+                id: 'flag-1',
+                courseId: 'course-1',
+                status: 'pending',
+                $and: [{ $or: [{ origin: 'student' }, { origin: { $exists: false } }] }]
+            },
             expect.objectContaining({
                 $set: expect.objectContaining({
                     status: 'escalated',
@@ -269,6 +333,43 @@ describe('guided-pathway-flag-mongo', () => {
         );
         expect(result.status).toBe('escalated');
         expect(result).not.toHaveProperty('decidedByUserId');
+    });
+
+    it('rejects escalation for an instructor test without changing its lifecycle', async () => {
+        const coll = collection({
+            findOne: jest.fn().mockResolvedValue(rawFlag({ origin: 'instructor-test' }))
+        });
+        (guidedPathwayFlagCourseCollection as jest.Mock).mockReturnValue(coll);
+
+        await expect(decideGuidedPathwayFlag(
+            context(),
+            'course-1',
+            'flag-1',
+            'escalate',
+            { userId: 'instructor-1', name: 'Instructor' }
+        )).rejects.toThrow('Instructor test flags cannot be escalated');
+        expect(coll.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('allows an instructor test to be dismissed as complete', async () => {
+        const coll = collection({
+            findOneAndUpdate: jest.fn().mockResolvedValue(rawFlag({
+                origin: 'instructor-test',
+                status: 'dismissed'
+            }))
+        });
+        (guidedPathwayFlagCourseCollection as jest.Mock).mockReturnValue(coll);
+
+        const result = await decideGuidedPathwayFlag(
+            context(),
+            'course-1',
+            'flag-1',
+            'dismiss',
+            { userId: 'instructor-1', name: 'Instructor' }
+        );
+
+        expect(result).toMatchObject({ origin: 'instructor-test', status: 'dismissed' });
+        expect(coll.findOneAndUpdate.mock.calls[0][0]).not.toHaveProperty('$and');
     });
 
     it('does not merge equal alert ids across two course collections', async () => {
@@ -285,7 +386,7 @@ describe('guided-pathway-flag-mongo', () => {
                 status: 'dismissed'
             }))
         });
-        (getGuidedPathwayFlagCourseScope as jest.Mock).mockImplementation(
+        (getExistingGuidedPathwayFlagCourseScope as jest.Mock).mockImplementation(
             async (_ctx: MongoDalContext, courseId: string) => courseId === 'course-1' ? courseScope : secondScope
         );
         (guidedPathwayFlagCourseCollection as jest.Mock).mockImplementation(
@@ -331,10 +432,29 @@ describe('guided-pathway-flag-mongo', () => {
             id: 'flag-1',
             courseId: 'course-1',
             status: 'escalated',
-            adminReviewedAt: { $exists: false }
+            adminReviewedAt: { $exists: false },
+            $and: [{ $or: [{ origin: 'student' }, { origin: { $exists: false } }] }]
         });
         expect(result.adminReviewedByName).toBe('Admin');
         expect(result).not.toHaveProperty('adminReviewedByUserId');
+    });
+
+    it('rejects administrator review for an instructor test', async () => {
+        const coll = collection({
+            findOne: jest.fn().mockResolvedValue(rawFlag({
+                origin: 'instructor-test',
+                status: 'escalated'
+            }))
+        });
+        (guidedPathwayFlagCourseCollection as jest.Mock).mockReturnValue(coll);
+
+        await expect(markGuidedPathwayFlagAdminReviewed(
+            context(),
+            'course-1',
+            'flag-1',
+            { userId: 'admin-1', name: 'Admin' }
+        )).rejects.toThrow('Instructor test flags do not enter administrator review');
+        expect(coll.findOneAndUpdate).not.toHaveBeenCalled();
     });
 
     it('appends the reveal audit before returning only the current roster display name', async () => {
@@ -356,12 +476,35 @@ describe('guided-pathway-flag-mongo', () => {
         expect(coll.findOneAndUpdate.mock.calls[0][0]).toEqual({
             id: 'flag-1',
             courseId: 'course-1',
-            status: 'escalated'
+            status: 'escalated',
+            $and: [{ $or: [{ origin: 'student' }, { origin: { $exists: false } }] }]
         });
         expect(coll.findOneAndUpdate.mock.invocationCallOrder[0]).toBeLessThan(
             roster.findOne.mock.invocationCallOrder[0]
         );
         expect(getCourseUsersMongoCollection).toHaveBeenCalledWith(expect.anything(), 'Test Course');
+    });
+
+    it('rejects identity reveal for an instructor test before audit or roster access', async () => {
+        const coll = collection({
+            findOne: jest.fn().mockResolvedValue(rawFlag({
+                origin: 'instructor-test',
+                status: 'escalated'
+            }))
+        });
+        const roster = { findOne: jest.fn() };
+        (guidedPathwayFlagCourseCollection as jest.Mock).mockReturnValue(coll);
+        (getCourseUsersMongoCollection as jest.Mock).mockResolvedValue(roster);
+
+        await expect(revealGuidedPathwayFlagIdentity(
+            context(),
+            'course-1',
+            'flag-1',
+            { userId: 'admin-1', name: 'Admin' }
+        )).rejects.toThrow('Instructor test flags have no student identity to reveal');
+        expect(coll.findOneAndUpdate).not.toHaveBeenCalled();
+        expect(getCourseUsersMongoCollection).not.toHaveBeenCalled();
+        expect(roster.findOne).not.toHaveBeenCalled();
     });
 
     it('fails closed without reading the roster when the reveal audit write fails', async () => {
@@ -396,9 +539,57 @@ describe('guided-pathway-flag-mongo', () => {
 
         const pipeline = aggregate.mock.calls[0][0];
         expect(pipeline.at(-2)).toEqual({
-            $match: { status: 'escalated', adminReviewedAt: { $exists: false } }
+            $match: {
+                status: 'escalated',
+                adminReviewedAt: { $exists: false },
+                $and: [{ $or: [{ origin: 'student' }, { origin: { $exists: false } }] }]
+            }
         });
         expect(coll.countDocuments).toHaveBeenCalledWith({ courseId: 'course-1' });
         expect(coll.drop).toHaveBeenCalledTimes(1);
+        expect(invalidateGuidedPathwayFlagCollectionIndexes).toHaveBeenCalledWith(
+            ctx,
+            courseScope.collectionName
+        );
+    });
+
+    it('treats a concurrently missing collection as an idempotent delete', async () => {
+        const coll = collection({
+            countDocuments: jest.fn().mockResolvedValue(2),
+            drop: jest.fn().mockRejectedValue({ code: 26, codeName: 'NamespaceNotFound' })
+        });
+        (guidedPathwayFlagCourseCollection as jest.Mock).mockReturnValue(coll);
+        const ctx = context();
+
+        await expect(deleteGuidedPathwayFlagsForCourse(ctx, 'course-1')).resolves.toBe(2);
+
+        expect(coll.countDocuments).toHaveBeenCalledWith({ courseId: 'course-1' });
+        expect(coll.drop).toHaveBeenCalledTimes(1);
+        expect(invalidateGuidedPathwayFlagCollectionIndexes).toHaveBeenCalledWith(
+            ctx,
+            courseScope.collectionName
+        );
+    });
+
+    it('returns empty backup/delete results without provisioning absent storage', async () => {
+        (getExistingGuidedPathwayFlagCourseScope as jest.Mock).mockResolvedValue(null);
+
+        await expect(listGuidedPathwayFlagsForBackup(context(), 'course-1')).resolves.toEqual([]);
+        await expect(deleteGuidedPathwayFlagsForCourse(context(), 'course-1')).resolves.toBe(0);
+        expect(getGuidedPathwayFlagCourseScope).not.toHaveBeenCalled();
+        expect(guidedPathwayFlagCourseCollection).not.toHaveBeenCalled();
+    });
+
+    it('returns not-found for a targeted mutation when no collection exists', async () => {
+        (getExistingGuidedPathwayFlagCourseScope as jest.Mock).mockResolvedValue(null);
+
+        await expect(decideGuidedPathwayFlag(
+            context(),
+            'course-1',
+            'flag-1',
+            'dismiss',
+            { userId: 'instructor-1', name: 'Instructor' }
+        )).rejects.toBeInstanceOf(GuidedPathwayFlagNotFoundError);
+        expect(getGuidedPathwayFlagCourseScope).not.toHaveBeenCalled();
     });
 });

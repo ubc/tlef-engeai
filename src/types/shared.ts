@@ -332,7 +332,7 @@ export interface activeCourse {
         scenarioProgress?: string;
         /** Per-course Guided Pathway Library (e.g. `${courseName}_pathways`); lazy-provisions on existing courses */
         pathways?: string;
-        /** Course-owned automatic Guided Pathway alerts; derived from stable course id by GPF-001 */
+        /** Registered course-owned collection for automatic Guided Pathway alerts (GPF-002). */
         guidedPathwayFlags?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
@@ -639,6 +639,9 @@ export interface FlagReport {
 /** Lifecycle state for an automatic alert created by a Guided Pathway trigger. */
 export type GuidedPathwayFlagStatus = 'pending' | 'escalated' | 'dismissed';
 
+/** Server-owned origin separating production student alerts from instructor tests. */
+export type GuidedPathwayFlagOrigin = 'student' | 'instructor-test';
+
 /** Instructor decision accepted by the Guided Pathway alert review API. */
 export type GuidedPathwayFlagDecision = 'escalate' | 'dismiss';
 
@@ -657,7 +660,8 @@ export interface GuidedPathwayFlagView {
     courseName: string; // course-name snapshot captured when the pathway triggered
     pathwayId: string; // winning pathway id for filtering
     pathwayTitle: string; // winning pathway title snapshot shown to reviewers
-    messageText: string; // exact student-authored message; may contain self-identifying text
+    messageText: string; // exact triggering chat message; may contain self-identifying text
+    origin: GuidedPathwayFlagOrigin; // production student alert or non-escalatable instructor test
     status: GuidedPathwayFlagStatus; // instructor review lifecycle
     triggeredAt: string; // ISO timestamp for the pathway trigger
     decidedAt?: string; // ISO timestamp for Escalate or Dismiss

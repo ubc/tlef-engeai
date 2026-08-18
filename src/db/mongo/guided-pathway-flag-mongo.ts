@@ -18,61 +18,33 @@ import type {
     GuidedPathwayFlagDecision,
     GuidedPathwayFlagFacets,
     GuidedPathwayFlagListPage,
-    GuidedPathwayFlagReviewState,
+    GuidedPathwayFlagOrigin,
     GuidedPathwayFlagStatus,
     GuidedPathwayFlagView
 } from '../../types/shared';
+import type {
+    CreateGuidedPathwayFlagInput,
+    CreateGuidedPathwayFlagResult,
+    GuidedPathwayFlagListFilters,
+    GuidedPathwayFlagReviewActor
+} from '../../flags/guided-pathway-flag-contracts';
+import {
+    GuidedPathwayFlagConflictError,
+    GuidedPathwayFlagIdentityUnavailableError,
+    GuidedPathwayFlagNotFoundError
+} from '../../flags/guided-pathway-flag-errors';
 import { getCourseUsersMongoCollection } from './course-user-mongo';
 import {
     GuidedPathwayFlagCourseNotFoundError,
+    getExistingGuidedPathwayFlagCourseScope,
     getGuidedPathwayFlagCourseScope,
     guidedPathwayFlagCourseCollection,
+    invalidateGuidedPathwayFlagCollectionIndexes,
     listGuidedPathwayFlagCourseScopes,
     migrateGuidedPathwayFlagsToCourseCollections,
     type GuidedPathwayFlagCourseScope
 } from './guided-pathway-flag-collection-mongo';
 import type { MongoDalContext } from './mongo-context';
-
-/** Server-owned actor snapshot used for decisions, review, and reveal audit. */
-export interface GuidedPathwayFlagActor {
-    userId: string;
-    name: string;
-}
-
-/** Input from the chat trigger path. Chat/request identifiers are hashed, never stored verbatim. */
-export interface CreateGuidedPathwayFlagInput {
-    courseId: string;
-    courseName: string;
-    pathwayId: string;
-    pathwayTitle: string;
-    messageText: string;
-    studentUserId: string;
-    chatId: string;
-    clientMessageId: string;
-    triggeredAt?: Date;
-}
-
-/** Filters supported by the platform-wide administrator queue. */
-export interface GuidedPathwayFlagListFilters {
-    page?: number;
-    pageSize?: number;
-    status?: GuidedPathwayFlagStatus;
-    reviewState?: GuidedPathwayFlagReviewState;
-    courseId?: string;
-    courseIds?: string[];
-    pathwayId?: string;
-    reviewer?: string;
-    dateFrom?: Date;
-    dateTo?: Date;
-    escalatedFirst?: boolean;
-    includeFacets?: boolean;
-}
-
-/** Result of an idempotent trigger insert. */
-export interface CreateGuidedPathwayFlagResult {
-    created: boolean;
-    flag: GuidedPathwayFlagView;
-}
 
 interface GuidedPathwayIdentityRevealEvent {
     adminUserId: string;
@@ -86,7 +58,8 @@ interface GuidedPathwayFlagDocument {
     pathwayId: string;
     pathwayTitle: string;
     messageText: string;
-    studentUserId: string;
+    origin?: GuidedPathwayFlagOrigin;
+    studentUserId?: string;
     dedupeKey: string;
     status: GuidedPathwayFlagStatus;
     adminSortPriority: number;
@@ -109,30 +82,6 @@ interface AdminAggregationResult {
     reviewers?: Array<{ name: string }>;
 }
 
-/** Raised when an alert id is absent from the required course scope. */
-export class GuidedPathwayFlagNotFoundError extends Error {
-    constructor(message = 'Guided Pathway alert not found') {
-        super(message);
-        this.name = 'GuidedPathwayFlagNotFoundError';
-    }
-}
-
-/** Raised when an action conflicts with the alert's completed lifecycle state. */
-export class GuidedPathwayFlagConflictError extends Error {
-    constructor(message: string) {
-        super(message);
-        this.name = 'GuidedPathwayFlagConflictError';
-    }
-}
-
-/** Raised after a successful reveal audit when the current roster name no longer exists. */
-export class GuidedPathwayFlagIdentityUnavailableError extends Error {
-    constructor() {
-        super('Student identity is unavailable in the current course roster');
-        this.name = 'GuidedPathwayFlagIdentityUnavailableError';
-    }
-}
-
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
 const STATUS_PRIORITY: Record<GuidedPathwayFlagStatus, number> = {
@@ -150,6 +99,7 @@ const SAFE_FLAG_PROJECTION = {
     pathwayId: 1,
     pathwayTitle: 1,
     messageText: 1,
+    origin: 1,
     status: 1,
     triggeredAt: 1,
     decidedAt: 1,
@@ -165,7 +115,7 @@ function collectionFor(
     return guidedPathwayFlagCourseCollection<GuidedPathwayFlagDocument>(ctx, scope);
 }
 
-async function requireCourseScope(
+async function requireWritableCourseScope(
     ctx: MongoDalContext,
     courseId: string
 ): Promise<GuidedPathwayFlagCourseScope> {
@@ -177,6 +127,29 @@ async function requireCourseScope(
         }
         throw error;
     }
+}
+
+async function existingCourseScope(
+    ctx: MongoDalContext,
+    courseId: string
+): Promise<GuidedPathwayFlagCourseScope | null> {
+    try {
+        return await getExistingGuidedPathwayFlagCourseScope(ctx, courseId);
+    } catch (error) {
+        if (error instanceof GuidedPathwayFlagCourseNotFoundError) {
+            throw new GuidedPathwayFlagNotFoundError('Guided Pathway alert course not found');
+        }
+        throw error;
+    }
+}
+
+async function requireExistingCourseScope(
+    ctx: MongoDalContext,
+    courseId: string
+): Promise<GuidedPathwayFlagCourseScope> {
+    const scope = await existingCourseScope(ctx, courseId);
+    if (!scope) throw new GuidedPathwayFlagNotFoundError();
+    return scope;
 }
 
 function asIso(value: Date | string): string {
@@ -191,6 +164,7 @@ function toSafeView(doc: Partial<GuidedPathwayFlagDocument>): GuidedPathwayFlagV
         pathwayId: String(doc.pathwayId),
         pathwayTitle: String(doc.pathwayTitle),
         messageText: String(doc.messageText),
+        origin: doc.origin === 'instructor-test' ? 'instructor-test' : 'student',
         status: doc.status as GuidedPathwayFlagStatus,
         triggeredAt: asIso(doc.triggeredAt as Date)
     };
@@ -205,7 +179,8 @@ function dedupeKeyFor(input: CreateGuidedPathwayFlagInput): string {
     return createHash('sha256')
         .update(JSON.stringify([
             input.courseId,
-            input.studentUserId,
+            input.actor.origin,
+            input.actor.userId,
             input.chatId,
             input.clientMessageId,
             input.messageText
@@ -215,6 +190,12 @@ function dedupeKeyFor(input: CreateGuidedPathwayFlagInput): string {
 
 function isDuplicateKeyError(error: unknown): boolean {
     return Boolean(error && typeof error === 'object' && (error as { code?: number }).code === 11000);
+}
+
+function isNamespaceNotFoundError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const mongoError = error as { code?: number; codeName?: string };
+    return mongoError.code === 26 || mongoError.codeName === 'NamespaceNotFound';
 }
 
 function normalizedPagination(filters: GuidedPathwayFlagListFilters): { page: number; pageSize: number } {
@@ -278,6 +259,23 @@ function buildListFilter(
     return query;
 }
 
+/** Legacy rows have no origin and are treated as production student alerts. */
+const STUDENT_ORIGIN_FILTER: Filter<GuidedPathwayFlagDocument> = {
+    $or: [
+        { origin: 'student' },
+        { origin: { $exists: false } }
+    ]
+};
+
+function buildAdminListFilter(
+    filters: GuidedPathwayFlagListFilters,
+    omitOwnFacet?: 'pathwayId' | 'reviewer'
+): Filter<GuidedPathwayFlagDocument> {
+    const query = buildListFilter(filters, omitOwnFacet);
+    query.$and = [...(query.$and ?? []), STUDENT_ORIGIN_FILTER];
+    return query;
+}
+
 function unionCourseCollections(scopes: GuidedPathwayFlagCourseScope[]): Document[] {
     const [first, ...remaining] = scopes;
     const pipeline: Document[] = [{ $match: { courseId: first.courseId } }];
@@ -302,21 +300,21 @@ function adminFacetPipeline(
         : { triggeredAt: -1 };
     const facet: Record<string, Document[]> = {
         items: [
-            { $match: buildListFilter(filters) },
+            { $match: buildAdminListFilter(filters) },
             { $sort: sort },
             { $skip: (page - 1) * pageSize },
             { $limit: pageSize },
             { $project: SAFE_FLAG_PROJECTION }
         ],
         totals: [
-            { $match: buildListFilter(filters) },
+            { $match: buildAdminListFilter(filters) },
             { $count: 'value' }
         ]
     };
 
     if (filters.includeFacets) {
         facet.pathways = [
-            { $match: buildListFilter(filters, 'pathwayId') },
+            { $match: buildAdminListFilter(filters, 'pathwayId') },
             { $sort: { triggeredAt: -1 } },
             {
                 $group: {
@@ -329,7 +327,7 @@ function adminFacetPipeline(
             { $sort: { pathwayTitle: 1, pathwayId: 1 } }
         ];
         facet.reviewers = [
-            { $match: buildListFilter(filters, 'reviewer') },
+            { $match: buildAdminListFilter(filters, 'reviewer') },
             { $project: { names: ['$decidedByName', '$adminReviewedByName'] } },
             { $unwind: '$names' },
             { $match: { names: { $type: 'string', $regex: /\S/ } } },
@@ -345,8 +343,8 @@ function adminFacetPipeline(
 /**
  * createGuidedPathwayFlag - Atomically creates one alert per processed client message.
  *
- * The opaque unique dedupe key includes course, student, chat, and client message
- * identity. A duplicate insert returns the already stored anonymous alert.
+ * The opaque unique dedupe key includes course, actor origin/id, chat, and client
+ * message identity. Instructor-test actors never persist an identity field.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param input - Trigger context from the chat pipeline
@@ -360,7 +358,7 @@ export async function createGuidedPathwayFlag(
         throw new Error('chatId and clientMessageId are required for Guided Pathway alert deduplication');
     }
 
-    const scope = await requireCourseScope(ctx, input.courseId);
+    const scope = await requireWritableCourseScope(ctx, input.courseId);
     const collection = collectionFor(ctx, scope);
     const now = input.triggeredAt ?? new Date();
     const doc: GuidedPathwayFlagDocument = {
@@ -370,7 +368,8 @@ export async function createGuidedPathwayFlag(
         pathwayId: input.pathwayId,
         pathwayTitle: input.pathwayTitle,
         messageText: input.messageText,
-        studentUserId: input.studentUserId,
+        origin: input.actor.origin,
+        ...(input.actor.origin === 'student' ? { studentUserId: input.actor.userId } : {}),
         dedupeKey: dedupeKeyFor(input),
         status: 'pending',
         adminSortPriority: STATUS_PRIORITY.pending,
@@ -404,9 +403,18 @@ export async function listGuidedPathwayFlagsForCourse(
     courseId: string,
     filters: Pick<GuidedPathwayFlagListFilters, 'page' | 'pageSize' | 'status'>
 ): Promise<GuidedPathwayFlagListPage> {
-    const scope = await requireCourseScope(ctx, courseId);
-    const collection = collectionFor(ctx, scope);
     const pagination = normalizedPagination(filters);
+    const scope = await existingCourseScope(ctx, courseId);
+    if (!scope) {
+        return {
+            items: [],
+            page: pagination.page,
+            pageSize: pagination.pageSize,
+            total: 0
+        };
+    }
+
+    const collection = collectionFor(ctx, scope);
     const query = buildListFilter({ ...filters, courseId });
     const cursor = collection.find(query, { projection: SAFE_FLAG_PROJECTION }).sort({ triggeredAt: -1 });
 
@@ -495,16 +503,28 @@ export async function decideGuidedPathwayFlag(
     courseId: string,
     flagId: string,
     decision: GuidedPathwayFlagDecision,
-    actor: GuidedPathwayFlagActor
+    actor: GuidedPathwayFlagReviewActor
 ): Promise<GuidedPathwayFlagView> {
-    const scope = await requireCourseScope(ctx, courseId);
+    const scope = await requireExistingCourseScope(ctx, courseId);
     const collection = collectionFor(ctx, scope);
     const nextStatus: GuidedPathwayFlagStatus = decision === 'escalate' ? 'escalated' : 'dismissed';
     const now = new Date();
+    const transitionFilter: Filter<GuidedPathwayFlagDocument> = {
+        id: flagId,
+        courseId,
+        status: 'pending'
+    };
+    if (decision === 'escalate') {
+        const candidate = await findSafeFlag(collection, { id: flagId, courseId });
+        if (candidate?.origin === 'instructor-test') {
+            throw new GuidedPathwayFlagConflictError('Instructor test flags cannot be escalated');
+        }
+        transitionFilter.$and = [STUDENT_ORIGIN_FILTER];
+    }
 
     // The lifecycle predicate and write share one BSON command, preventing competing decisions.
     const updated = await collection.findOneAndUpdate(
-        { id: flagId, courseId, status: 'pending' },
+        transitionFilter,
         {
             $set: {
                 status: nextStatus,
@@ -521,6 +541,9 @@ export async function decideGuidedPathwayFlag(
 
     const existing = await findSafeFlag(collection, { id: flagId, courseId });
     if (!existing) throw new GuidedPathwayFlagNotFoundError();
+    if (existing.origin === 'instructor-test' && decision === 'escalate') {
+        throw new GuidedPathwayFlagConflictError('Instructor test flags cannot be escalated');
+    }
     if (existing.status === nextStatus) return existing;
     throw new GuidedPathwayFlagConflictError('Guided Pathway alert already has a different decision');
 }
@@ -538,13 +561,23 @@ export async function markGuidedPathwayFlagAdminReviewed(
     ctx: MongoDalContext,
     courseId: string,
     flagId: string,
-    actor: GuidedPathwayFlagActor
+    actor: GuidedPathwayFlagReviewActor
 ): Promise<GuidedPathwayFlagView> {
-    const scope = await requireCourseScope(ctx, courseId);
+    const scope = await requireExistingCourseScope(ctx, courseId);
     const collection = collectionFor(ctx, scope);
+    const candidate = await findSafeFlag(collection, { id: flagId, courseId });
+    if (candidate?.origin === 'instructor-test') {
+        throw new GuidedPathwayFlagConflictError('Instructor test flags do not enter administrator review');
+    }
     const now = new Date();
     const updated = await collection.findOneAndUpdate(
-        { id: flagId, courseId, status: 'escalated', adminReviewedAt: { $exists: false } },
+        {
+            id: flagId,
+            courseId,
+            status: 'escalated',
+            adminReviewedAt: { $exists: false },
+            $and: [STUDENT_ORIGIN_FILTER]
+        },
         {
             $set: {
                 adminReviewedAt: now,
@@ -559,6 +592,9 @@ export async function markGuidedPathwayFlagAdminReviewed(
 
     const existing = await findSafeFlag(collection, { id: flagId, courseId });
     if (!existing) throw new GuidedPathwayFlagNotFoundError();
+    if (existing.origin === 'instructor-test') {
+        throw new GuidedPathwayFlagConflictError('Instructor test flags do not enter administrator review');
+    }
     if (existing.status !== 'escalated') {
         throw new GuidedPathwayFlagConflictError('Only escalated alerts can be marked reviewed');
     }
@@ -582,13 +618,22 @@ export async function revealGuidedPathwayFlagIdentity(
     ctx: MongoDalContext,
     courseId: string,
     flagId: string,
-    actor: GuidedPathwayFlagActor
+    actor: GuidedPathwayFlagReviewActor
 ): Promise<{ studentName: string }> {
-    const scope = await requireCourseScope(ctx, courseId);
+    const scope = await requireExistingCourseScope(ctx, courseId);
     const collection = collectionFor(ctx, scope);
+    const candidate = await findSafeFlag(collection, { id: flagId, courseId });
+    if (candidate?.origin === 'instructor-test') {
+        throw new GuidedPathwayFlagConflictError('Instructor test flags have no student identity to reveal');
+    }
     const revealedAt = new Date();
     const audited = await collection.findOneAndUpdate(
-        { id: flagId, courseId, status: 'escalated' },
+        {
+            id: flagId,
+            courseId,
+            status: 'escalated',
+            $and: [STUDENT_ORIGIN_FILTER]
+        },
         {
             $push: {
                 identityRevealEvents: {
@@ -607,10 +652,17 @@ export async function revealGuidedPathwayFlagIdentity(
     if (!audited) {
         const existing = await collection.findOne(
             { id: flagId, courseId },
-            { projection: { _id: 0, status: 1 } }
+            { projection: { _id: 0, origin: 1, status: 1 } }
         );
         if (!existing) throw new GuidedPathwayFlagNotFoundError();
+        if (existing.origin === 'instructor-test') {
+            throw new GuidedPathwayFlagConflictError('Instructor test flags have no student identity to reveal');
+        }
         throw new GuidedPathwayFlagConflictError('Identity can be revealed only for escalated alerts');
+    }
+
+    if (typeof audited.studentUserId !== 'string' || !audited.studentUserId) {
+        throw new GuidedPathwayFlagIdentityUnavailableError();
     }
 
     // Read the roster only after the append-only audit event has persisted.
@@ -637,7 +689,13 @@ export async function countGuidedPathwayFlagsAwaitingAdminReview(ctx: MongoDalCo
 
     const pipeline = [
         ...unionCourseCollections(scopes),
-        { $match: { status: 'escalated', adminReviewedAt: { $exists: false } } },
+        {
+            $match: {
+                status: 'escalated',
+                adminReviewedAt: { $exists: false },
+                $and: [STUDENT_ORIGIN_FILTER]
+            }
+        },
         { $count: 'value' }
     ];
     const [result] = await ctx.db
@@ -658,7 +716,8 @@ export async function listGuidedPathwayFlagsForBackup(
     ctx: MongoDalContext,
     courseId: string
 ): Promise<GuidedPathwayFlagView[]> {
-    const scope = await requireCourseScope(ctx, courseId);
+    const scope = await existingCourseScope(ctx, courseId);
+    if (!scope) return [];
     const docs = await collectionFor(ctx, scope)
         .find({ courseId }, { projection: SAFE_FLAG_PROJECTION })
         .sort({ triggeredAt: -1 })
@@ -677,11 +736,20 @@ export async function deleteGuidedPathwayFlagsForCourse(
     ctx: MongoDalContext,
     courseId: string
 ): Promise<number> {
-    const scope = await requireCourseScope(ctx, courseId);
+    const scope = await existingCourseScope(ctx, courseId);
+    if (!scope) return 0;
     const collection = collectionFor(ctx, scope);
-    const removed = await collection.countDocuments({ courseId });
-    await collection.drop();
-    return removed;
+    let removed = 0;
+    try {
+        removed = await collection.countDocuments({ courseId });
+        await collection.drop();
+        invalidateGuidedPathwayFlagCollectionIndexes(ctx, scope.collectionName);
+        return removed;
+    } catch (error) {
+        if (!isNamespaceNotFoundError(error)) throw error;
+        invalidateGuidedPathwayFlagCollectionIndexes(ctx, scope.collectionName);
+        return removed;
+    }
 }
 
 export { migrateGuidedPathwayFlagsToCourseCollections };

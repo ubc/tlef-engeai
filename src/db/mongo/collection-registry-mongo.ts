@@ -56,7 +56,10 @@ export async function getCollectionNames(
             const scenarioQuestions = c.collections.scenarioQuestions ?? `${courseName}_scenario_questions`;
             const scenarioProgress = c.collections.scenarioProgress ?? `${courseName}_scenario_progress`;
             const pathways = c.collections.pathways ?? `${courseName}_pathways`;
-            const guidedPathwayFlags = guidedPathwayFlagCollectionNameForCourse(c.id);
+            // GPF-002: the catalog is authoritative; the readable fallback is used only
+            // until a legacy course is lazily provisioned and the name is persisted.
+            const guidedPathwayFlags = c.collections.guidedPathwayFlags
+                ?? guidedPathwayFlagCollectionNameForCourse(courseName);
             const collectionNames = {
                 users: c.collections.users,
                 flags: c.collections.flags,

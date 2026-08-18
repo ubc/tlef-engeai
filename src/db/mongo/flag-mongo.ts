@@ -7,6 +7,10 @@
 
 import type { Collection } from 'mongodb';
 import type { FlagReport } from '../../types/shared';
+import {
+    isManualFlagType,
+    validateManualFlagStatusTransition
+} from '../../flags/manual-flag-policy';
 import { batchFindUsersByUserIds } from './course-user-mongo';
 import { getCollectionNames } from './collection-registry-mongo';
 import type { MongoDalContext } from './mongo-context';
@@ -61,17 +65,7 @@ function validateFlagDocument(flagDocument: any): { isValid: boolean; issues: st
     if (flagDocument.status && !['unresolved', 'resolved'].includes(flagDocument.status)) {
         issues.push('Field "status" must be "unresolved" or "resolved"');
     }
-    if (
-        flagDocument.flagType &&
-        ![
-            'innacurate_response',
-            'harassment',
-            'inappropriate',
-            'dishonesty',
-            'interface bug',
-            'other'
-        ].includes(flagDocument.flagType)
-    ) {
+    if (flagDocument.flagType && !isManualFlagType(flagDocument.flagType)) {
         issues.push('Field "flagType" has invalid value');
     }
     if (flagDocument.date && !(flagDocument.date instanceof Date)) {
@@ -84,52 +78,6 @@ function validateFlagDocument(flagDocument: any): { isValid: boolean; issues: st
         issues.push('Field "updatedAt" must be a Date object');
     }
     return { isValid: issues.length === 0, issues };
-}
-
-/**
- * validateStatusTransition
- *
- * Pure validator for moderator workflows — unresolved ↔︎ resolved only.
- *
- * @param currentStatus - string — existing value on the flag (`unresolved` | `resolved`)
- * @param newStatus - string — requested next state
- *
- * @returns `{ isValid: true }` or `{ isValid: false, error: string }`
- *
- * Actions:
- * - Confirm both statuses are members of `{ unresolved, resolved }`.
- * - Allow unresolved→resolved and resolved→unresolved only.
- */
-export function validateStatusTransition(
-    currentStatus: string,
-    newStatus: string
-): { isValid: boolean; error?: string } {
-    appLogger.log(`[MONGODB] 🔄 Validating status transition: ${currentStatus} -> ${newStatus}`);
-    const validStatuses = ['unresolved', 'resolved'];
-    if (!validStatuses.includes(newStatus)) {
-        return {
-            isValid: false,
-            error: `Invalid status: ${newStatus}. Must be one of: ${validStatuses.join(', ')}`
-        };
-    }
-    if (!validStatuses.includes(currentStatus)) {
-        return {
-            isValid: false,
-            error: `Invalid current status: ${currentStatus}. Must be one of: ${validStatuses.join(', ')}`
-        };
-    }
-    const validTransitions: { [key: string]: string[] } = {
-        unresolved: ['resolved'],
-        resolved: ['unresolved']
-    };
-    if (!validTransitions[currentStatus].includes(newStatus)) {
-        return {
-            isValid: false,
-            error: `Invalid transition: ${currentStatus} -> ${newStatus}. Valid transitions: ${validTransitions[currentStatus].join(', ')}`
-        };
-    }
-    appLogger.log(`[MONGODB] ✅ Status transition validated: ${currentStatus} -> ${newStatus}`);
-    return { isValid: true };
 }
 
 /**
@@ -282,7 +230,7 @@ export async function deleteAllFlagReports(ctx: MongoDalContext, courseName: str
  * @returns Updated `FlagReport` or throws if missing / invalid
  *
  * Actions:
- * - Load current doc, run `validateStatusTransition`.
+ * - Load current doc, run `validateManualFlagStatusTransition`.
  * - `$set` status, timestamps, optional response / audit metadata.
  */
 export async function updateFlagStatus(
@@ -300,7 +248,7 @@ export async function updateFlagStatus(
         if (!currentFlag) {
             throw new Error(`Flag not found: ${flagId}`);
         }
-        const validation = validateStatusTransition((currentFlag as any).status, newStatus);
+        const validation = validateManualFlagStatusTransition((currentFlag as any).status, newStatus);
         if (!validation.isValid) {
             throw new Error(validation.error);
         }

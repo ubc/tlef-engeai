@@ -12,12 +12,12 @@
 
 import { Router, type Request, type Response } from 'express';
 import { EngEAI_MongoDB } from '../../db/enge-ai-mongodb';
+import type { GuidedPathwayFlagReviewActor } from '../../flags/guided-pathway-flag-contracts';
 import {
     GuidedPathwayFlagConflictError,
     GuidedPathwayFlagIdentityUnavailableError,
-    GuidedPathwayFlagNotFoundError,
-    type GuidedPathwayFlagActor
-} from '../../db/mongo/guided-pathway-flag-mongo';
+    GuidedPathwayFlagNotFoundError
+} from '../../flags/guided-pathway-flag-errors';
 import { routeParam } from '../../helpers/route-params';
 import { asyncHandlerWithAuth } from '../../middleware/async-handler';
 import { requireAdminGlobal } from '../../middleware/require-course-role';
@@ -113,7 +113,7 @@ export function parseGuidedPathwayFlagDateQuery(
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function actorFromSession(req: Request): GuidedPathwayFlagActor {
+function actorFromSession(req: Request): GuidedPathwayFlagReviewActor {
     const actor = (req.session as any)?.globalUser as GlobalUser | undefined;
     if (!actor?.userId || !actor.name) {
         throw new Error('Authenticated administrator identity is unavailable');
