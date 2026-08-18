@@ -58,6 +58,11 @@
   - New-course defaults live in `src/dashboard-setting/course-feature-defaults.ts` (builders in `course-features.ts`). Create/setup persist a full map with all off unless opted in.
   - Staff-visible on course GET; student / non-staff course payloads omit `features` entirely (`course-student-view.ts`). Runtime chat/API gates still read Mongo server-side. Students may fetch `{ scenarioGeneration }` only via `GET .../student-capabilities`.
   - `scenarioGeneration` Extra Feature gates Practice Scenarios / Scenario Questions (pages + APIs) and unstruggle Yes scenario chips.
+- **Feature onboarding progress** (`activeCourse.featureOnboarding` on `active-course-list`):
+  - Keys: `scenarioGeneration`, `writingFeedback`, `guidedPathway` — each an optional boolean; missing = incomplete at read time.
+  - No backfill migration exists and none is wanted: treating a missing value as incomplete is what routes courses created before this field through the new tutorials once their feature is enabled.
+  - Written only by `PATCH /api/courses/:courseId/onboarding/features/:feature/complete` (single dotted `featureOnboarding.<key>` `$set`, so a concurrent tab's sibling flag survives) and by the Skip Setup payloads, which set all three at once through the generic course `PUT`.
+  - Completion is sticky across a feature being disabled and re-enabled; a feature never previously completed triggers its tutorial the first time it is enabled, whenever that happens.
 - **Course LLM settings** (`activeCourse.llmSettings` on `active-course-list`):
   - Per-feature map: `chat`, `scenarioGeneration`, `writingFeedback`, `guidedPathway`, `memoryAgent` — each `{ modelId, reasoningLevel }`, plus optional `updatedAt` / `updatedBy`.
   - Staff-visible on course GET; omitted from student / non-staff projections with `features`.

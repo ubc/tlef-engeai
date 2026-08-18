@@ -64,6 +64,9 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 | `GET /course/:courseId/instructor/about` | About page |
 | `GET /course/:courseId/instructor/onboarding/course-setup` | Onboarding |
 | `GET /course/:courseId/instructor/onboarding/document-setup` | Onboarding |
+| `GET /course/:courseId/instructor/onboarding/scenario-generation-setup` | Onboarding — rendered only when `scenarioGeneration` is enabled and its tutorial incomplete |
+| `GET /course/:courseId/instructor/onboarding/writing-feedback-setup` | Onboarding — rendered only when `writingFeedback` is enabled and its tutorial incomplete |
+| `GET /course/:courseId/instructor/onboarding/guided-pathway-setup` | Onboarding — rendered only when `guidedPathway` is enabled and its tutorial incomplete |
 | `GET /course/:courseId/instructor/onboarding/flag-setup` | Onboarding |
 | `GET /course/:courseId/instructor/onboarding/monitor-setup` | Onboarding |
 | `GET /instructor/onboarding/new-course` | New course creation (no courseId) |
@@ -98,6 +101,20 @@ Optional course capabilities live on `activeCourse.features`. Missing entries ar
 
 **Success (200):** `{ success: true, data: activeCourse, message }`  
 **Errors:** `400` invalid body, `403` non–roster-manager, `404` course missing
+
+#### Feature Onboarding Progress
+
+Per-feature tutorial progress lives on `activeCourse.featureOnboarding`. A missing or `false` entry means the tutorial is still owed whenever its feature is enabled, which routes courses created before this field through the new stages. Completion survives disabling and re-enabling a feature.
+
+| Method | Path | Description |
+|---|---|---|
+| PATCH | `/api/courses/:courseId/onboarding/features/:feature/complete` | Marks one tutorial complete. `:feature` is `scenario-generation`, `writing-feedback`, or `guided-pathway`. No body. Idempotent. Writes a single dotted `featureOnboarding.<key>` path so a sibling flag set by a concurrent tab survives. |
+
+- **Auth:** course instructors and platform administrators (`requireInstructorOrAdminForCourseAPI`); teaching assistants are denied.
+- **Success (200):** `{ success: true, data: activeCourse, message }`
+- **Errors:** `400` unknown feature slug (`memory-agent` has no tutorial), `403` non-instructor, `404` course missing
+
+Stage ordering is resolved by `resolveNextOnboardingStage` in `src/helpers/instructor-onboarding-redirect.ts`, mirrored for the browser in `public/scripts/utils/onboarding-stage-order.ts`. Sequence: Course, Document, then each enabled-and-incomplete feature tutorial in Scenario Generation, Writing Feedback, Guided Pathway order, then Flag and Monitor.
 
 Struggle-topic document APIs require `requireCourseFeatureAPI('memoryAgent')`. Pathway Library APIs require `requireCourseFeatureAPI('guidedPathway')`.
 
