@@ -466,6 +466,52 @@ router.get('/course/:courseId/instructor/onboarding/flag-setup', validateCourseA
 
 
 /**
+ * GET /course/:courseId/instructor/onboarding/scenario-generation-setup
+ * Serves the Scenario Generation tutorial. Requires course access and instructor role.
+ *
+ * The stage renders only when the course has Scenario Generation enabled and its
+ * tutorial incomplete; that decision belongs to the shared stage resolver, so the
+ * shell route stays a plain instructor-scoped page like its four siblings.
+ *
+ * @route GET /course/:courseId/instructor/onboarding/scenario-generation-setup
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Scenario Generation onboarding page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
+router.get('/course/:courseId/instructor/onboarding/scenario-generation-setup', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+
+/**
+ * GET /course/:courseId/instructor/onboarding/writing-feedback-setup
+ * Serves the Writing Feedback tutorial. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/onboarding/writing-feedback-setup
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Writing Feedback onboarding page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
+router.get('/course/:courseId/instructor/onboarding/writing-feedback-setup', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+
+/**
+ * GET /course/:courseId/instructor/onboarding/guided-pathway-setup
+ * Serves the Guided Pathway tutorial. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/onboarding/guided-pathway-setup
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Guided Pathway onboarding page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
+router.get('/course/:courseId/instructor/onboarding/guided-pathway-setup', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+
+/**
  * GET /course/:courseId/instructor/onboarding/monitor-setup
  * Serves monitor setup onboarding page. Requires course access and instructor role.
  *

@@ -16,6 +16,9 @@ import { renderOnCourseSetup } from "../onboarding/course-setup.js";
 import { renderDocumentSetup } from "../onboarding/document-setup.js";
 import { renderFlagSetup } from "../onboarding/flag-setup.js";
 import { renderMonitorSetup } from "../onboarding/monitor-setup.js";
+import { renderScenarioGenerationSetup } from "../onboarding/scenario-generation-setup.js";
+import { renderWritingFeedbackSetup } from "../onboarding/writing-feedback-setup.js";
+import { renderGuidedPathwaySetup } from "../onboarding/guided-pathway-setup.js";
 import { initializeFlags } from "../feature/flags.js";
 import { initializeMonitorDashboard } from "../feature/monitor.js";
 import { ChatManager } from "../feature/chat.js";
@@ -43,6 +46,12 @@ import {
     isNewCourseOnboardingURL,
     replaceInstructorViewURL
 } from '../utils/url-parser.js';
+import {
+    buildOnboardingStagePath,
+    FEATURE_ONBOARDING_STAGES,
+    resolveNextOnboardingStage,
+    type InstructorOnboardingStage
+} from '../utils/onboarding-stage-order.js';
 
 /**
  * checkAuthentication
@@ -445,46 +454,58 @@ document.addEventListener('DOMContentLoaded', async () => {
         void configureCourseSummaryFabVisibility(currentClass.id);
     }
     
-    // Remove onboarding-active class if all setup is complete
-    if (currentClass.courseSetup && currentClass.contentSetup && currentClass.flagSetup && currentClass.monitorSetup) {
+    // Remove onboarding-active class if no onboarding stage remains
+    if (resolveNextOnboardingStage(currentClass) === null) {
         document.body.classList.remove('onboarding-active');
     }
 
+    /**
+     * Applies a stage's local progress, then navigates to whatever the resolver
+     * says comes next. Keeping every completion listener on one resolver is what
+     * lets a conditional feature stage sit between two inherited stages.
+     */
+    const advanceAfterOnboardingStage = (applyLocalProgress: () => void): void => {
+        applyLocalProgress();
+
+        const courseId = getCourseIdFromURL();
+        if (!courseId) {
+            redirectToDocumentsPage();
+            return;
+        }
+
+        const nextStage = resolveNextOnboardingStage(currentClass);
+        window.location.href = nextStage
+            ? buildOnboardingStagePath(courseId, nextStage)
+            : `/course/${courseId}/instructor/documents`;
+    };
+
     // Listen for document setup completion event
     window.addEventListener('documentSetupComplete', () => {
-        // console.log('📋 Document setup completed, redirecting to next onboarding stage...');
-        
-        const courseId = getCourseIdFromURL();
-        if (courseId) {
-            // Check if flag setup is needed
-            if (!currentClass.flagSetup) {
-                window.location.href = `/course/${courseId}/instructor/onboarding/flag-setup`;
-            } else if (!currentClass.monitorSetup) {
-                window.location.href = `/course/${courseId}/instructor/onboarding/monitor-setup`;
-            } else {
-                window.location.href = `/course/${courseId}/instructor/documents`;
-            }
-        } else {
-            // Fallback to old behavior
-            redirectToDocumentsPage();
-        }
+        advanceAfterOnboardingStage(() => {
+            currentClass.contentSetup = true;
+        });
     });
 
     // Listen for flag setup completion event
     window.addEventListener('flagSetupComplete', () => {
-        // console.log('🏁 Flag setup completed, redirecting to monitor setup...');
-        
-        const courseId = getCourseIdFromURL();
-        if (courseId) {
-            if (!currentClass.monitorSetup) {
-                window.location.href = `/course/${courseId}/instructor/onboarding/monitor-setup`;
-            } else {
-                window.location.href = `/course/${courseId}/instructor/documents`;
-            }
-        } else {
-            // Fallback to old behavior
-            updateUI();
-        }
+        advanceAfterOnboardingStage(() => {
+            currentClass.flagSetup = true;
+        });
+    });
+
+    // Listen for each feature tutorial completion event. The tutorial has already
+    // persisted its progress, so the local mirror only keeps the resolver honest
+    // for the redirect that follows.
+    FEATURE_ONBOARDING_STAGES.forEach(({ feature }) => {
+        const eventName = `${feature}SetupComplete`;
+        window.addEventListener(eventName, () => {
+            advanceAfterOnboardingStage(() => {
+                currentClass.featureOnboarding = {
+                    ...currentClass.featureOnboarding,
+                    [feature]: true
+                };
+            });
+        });
     });
 
     // Listen for monitor setup completion event
@@ -935,6 +956,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
+    /** Renders one onboarding stage. Exhaustive over `InstructorOnboardingStage`. */
+    const renderOnboardingStage = (stage: InstructorOnboardingStage) => {
+        switch (stage) {
+            case 'course-setup':
+                renderOnCourseSetup(currentClass);
+                return;
+            case 'document-setup':
+                renderDocumentSetup(currentClass);
+                return;
+            case 'scenario-generation-setup':
+                renderScenarioGenerationSetup(currentClass);
+                return;
+            case 'writing-feedback-setup':
+                renderWritingFeedbackSetup(currentClass);
+                return;
+            case 'guided-pathway-setup':
+                renderGuidedPathwaySetup(currentClass);
+                return;
+            case 'flag-setup':
+                renderFlagSetup(currentClass);
+                return;
+            case 'monitor-setup':
+                renderMonitorSetup(currentClass);
+                return;
+        }
+    };
+
     const updateUI = () => {
 
         // console.log("updateUI is called");
@@ -953,37 +1001,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const onboardingStageFromURL = getInstructorOnboardingStageFromURL();
         if (onboardingStageFromURL) {
             console.log(`[INSTRUCTOR-MODE] 🎓 Rendering onboarding stage from URL: ${onboardingStageFromURL}`);
-            switch (onboardingStageFromURL) {
-                case 'course-setup':
-                    renderOnCourseSetup(currentClass);
-                    return;
-                case 'document-setup':
-                    renderDocumentSetup(currentClass);
-                    return;
-                case 'flag-setup':
-                    renderFlagSetup(currentClass);
-                    return;
-                case 'monitor-setup':
-                    renderMonitorSetup(currentClass);
-                    return;
-            }
+            renderOnboardingStage(onboardingStageFromURL);
+            return;
         }
 
-        // Fallback to flag-based detection if not on onboarding URL
-        if (!currentClass.courseSetup) {
-            renderOnCourseSetup(currentClass);
-            return;
-        }
-        if (!currentClass.contentSetup) {
-            renderDocumentSetup(currentClass); // change this to renderOnContentSetup later
-            return;
-        }
-        if (!currentClass.flagSetup) {
-            renderFlagSetup(currentClass);
-            return;
-        }
-        if (!currentClass.monitorSetup) {
-            renderMonitorSetup(currentClass);
+        // Fallback to the shared stage resolver if not on an onboarding URL.
+        const nextStage = resolveNextOnboardingStage(currentClass);
+        if (nextStage) {
+            renderOnboardingStage(nextStage);
             return;
         }
 
@@ -1620,7 +1645,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                             courseSetup: true,
                             contentSetup: true,
                             flagSetup: true,
-                            monitorSetup: true
+                            monitorSetup: true,
+                            featureOnboarding: { scenarioGeneration: true, writingFeedback: true, guidedPathway: true }
                         })
                     });
                     const updateData = await updateRes.json();
@@ -1658,7 +1684,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 courseSetup: true,
                                 contentSetup: true,
                                 flagSetup: true,
-                                monitorSetup: true
+                                monitorSetup: true,
+                                featureOnboarding: { scenarioGeneration: true, writingFeedback: true, guidedPathway: true }
                             })
                         });
                         const updateData = await updateRes.json();

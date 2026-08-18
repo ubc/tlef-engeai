@@ -20,6 +20,7 @@
 import { loadComponentHTML } from "../api/api.js";
 import { activeCourse } from "../types.js";
 import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
+import { buildOnboardingStagePath, resolveNextOnboardingStage } from "../utils/onboarding-stage-order.js";
 
 type SetupMode = 'create' | 'resume';
 
@@ -32,19 +33,10 @@ interface OnboardingState {
 
 /** Mirrors backend resolveInstructorModeRedirect for client-side forward redirects. */
 function getInstructorForwardRedirect(courseId: string, course: activeCourse): string {
-    if (!course.courseSetup) {
-        return `/course/${courseId}/instructor/onboarding/course-setup`;
-    }
-    if (!course.contentSetup) {
-        return `/course/${courseId}/instructor/onboarding/document-setup`;
-    }
-    if (!course.flagSetup) {
-        return `/course/${courseId}/instructor/onboarding/flag-setup`;
-    }
-    if (!course.monitorSetup) {
-        return `/course/${courseId}/instructor/onboarding/monitor-setup`;
-    }
-    return `/course/${courseId}/instructor/documents`;
+    const nextStage = resolveNextOnboardingStage(course);
+    return nextStage
+        ? buildOnboardingStagePath(courseId, nextStage)
+        : `/course/${courseId}/instructor/documents`;
 }
 
 function applyCourseFields(target: activeCourse, source: activeCourse): void {

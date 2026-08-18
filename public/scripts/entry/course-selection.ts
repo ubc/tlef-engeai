@@ -1071,7 +1071,8 @@ async function handleCourseCodeSubmit(courseCode: string, inputElement: HTMLInpu
                         courseSetup: true,
                         contentSetup: true,
                         flagSetup: true,
-                        monitorSetup: true
+                        monitorSetup: true,
+                        featureOnboarding: { scenarioGeneration: true, writingFeedback: true, guidedPathway: true }
                     })
                 });
                 const updateData = await updateRes.json();

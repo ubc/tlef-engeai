@@ -69,6 +69,9 @@ export async function loadComponentHTML(
                     | 'writing-feedback'
                     | 'course-setup'
                     | 'document-setup'
+                    | 'scenario-generation-setup'
+                    | 'writing-feedback-setup'
+                    | 'guided-pathway-setup'
                     | 'flag-setup'
                     | 'monitor-setup'
                     | 'student-onboarding'
@@ -111,6 +114,9 @@ export async function loadComponentHTML(
             break;
         case 'course-setup':
         case 'document-setup':
+        case 'scenario-generation-setup':
+        case 'writing-feedback-setup':
+        case 'guided-pathway-setup':
         case 'flag-setup':
         case 'monitor-setup':
         case 'student-onboarding':
