@@ -48,7 +48,22 @@ interface ConnectCanvasCourseResult {
  */
 const RETURN_MARKER = 'canvas';
 const RETURN_MARKER_VALUE = 'connected';
-const RETURN_PATH = `/course-selection?${RETURN_MARKER}=${RETURN_MARKER_VALUE}`;
+const RETURN_PERIOD_PARAM = 'canvasPeriod';
+
+/**
+ * Builds the path Canvas should return the browser to after authorization.
+ *
+ * The academic period is carried across the round trip because it is only known to the button
+ * that opened step 1, and the page is destroyed and rebuilt in between. Without it, an imported
+ * course would land in no period at all.
+ */
+function buildReturnPath(academicPeriodId?: string): string {
+    const params = new URLSearchParams({ [RETURN_MARKER]: RETURN_MARKER_VALUE });
+    if (academicPeriodId) {
+        params.set(RETURN_PERIOD_PARAM, academicPeriodId);
+    }
+    return `/course-selection?${params.toString()}`;
+}
 
 /** Whether this deployment has Canvas configured at all. Resolved once, on load. */
 let canvasEnabled = false;
@@ -82,15 +97,17 @@ export async function initCanvasConnect(onConnected: () => Promise<void>): Promi
     }
 
     if (canvasEnabled && returnedFromCanvasOAuth()) {
+        const academicPeriodId =
+            new URLSearchParams(window.location.search).get(RETURN_PERIOD_PARAM) ?? undefined;
         // Drop the marker before reopening so a later refresh does not reopen the modal again.
         window.history.replaceState({}, '', '/course-selection');
-        void openCanvasConnectModal();
+        void openCanvasConnectModal(academicPeriodId);
     }
 
     return canvasEnabled;
 }
 
-/** True when the current URL carries the post-OAuth marker set in {@link RETURN_PATH}. */
+/** True when the current URL carries the post-OAuth marker set by {@link buildReturnPath}. */
 function returnedFromCanvasOAuth(): boolean {
     return new URLSearchParams(window.location.search).get(RETURN_MARKER) === RETURN_MARKER_VALUE;
 }
@@ -118,7 +135,7 @@ export async function openCanvasConnectModal(academicPeriodId?: string): Promise
 
         if (response.status === 401) {
             const body = await response.json().catch(() => ({}));
-            await showConnectAccountStep(body?.connectUrl);
+            await showConnectAccountStep(body?.connectUrl, academicPeriodId);
             return;
         }
 
@@ -143,7 +160,10 @@ export async function openCanvasConnectModal(academicPeriodId?: string): Promise
  * Only reached when no usable credential is stored. The `connectUrl` comes from the LMS package
  * rather than being built here, so token handling and the OAuth base path stay its concern.
  */
-async function showConnectAccountStep(connectUrl: unknown): Promise<void> {
+async function showConnectAccountStep(
+    connectUrl: unknown,
+    academicPeriodId?: string
+): Promise<void> {
     if (typeof connectUrl !== 'string' || !connectUrl.startsWith('/')) {
         await showErrorModal(
             'Canvas',
@@ -181,8 +201,13 @@ async function showConnectAccountStep(connectUrl: unknown): Promise<void> {
     continueBtn.textContent = 'Continue to Canvas';
     continueBtn.addEventListener('click', () => {
         modal.close('success');
-        // The package validates `returnTo` as a local absolute path and falls back to `/`.
-        window.location.href = `${connectUrl}${connectUrl.includes('?') ? '&' : '?'}returnTo=${encodeURIComponent(RETURN_PATH)}`;
+        // `connectUrl` already carries a `returnTo` pointing at the JSON endpoint that issued the
+        // 401. Appending a second one makes `req.query.returnTo` an array, which the package
+        // rejects as non-string and silently replaces with `/` — dropping the user on the home
+        // page. Overwrite the existing parameter instead of adding to it.
+        const loginUrl = new URL(connectUrl, window.location.origin);
+        loginUrl.searchParams.set('returnTo', buildReturnPath(academicPeriodId));
+        window.location.href = `${loginUrl.pathname}${loginUrl.search}`;
     });
 
     actions.append(cancelBtn, continueBtn);
