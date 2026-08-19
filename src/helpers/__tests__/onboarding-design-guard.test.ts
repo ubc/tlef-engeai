@@ -65,4 +65,23 @@ describe('onboarding design guard', () => {
         const markup = readFileSync(join(COMPONENT_DIR, file), 'utf8');
         expect(markup).not.toMatch(EMOJI);
     });
+
+    it('scenario generation mounts the real generate partial rather than a copy', () => {
+        const controller = readFileSync(
+            join(REPO_ROOT, 'public', 'scripts', 'onboarding', 'scenario-generation-setup.ts'),
+            'utf8'
+        );
+        expect(controller).toContain('/components/scenarios/scenario-questions-generate.html');
+
+        const markup = readFileSync(join(COMPONENT_DIR, 'scenario-generation-setup.html'), 'utf8');
+        expect(markup).not.toContain('sg-setup-form');
+    });
+
+    it('teaches only subquestion types the product actually has', () => {
+        // SUB_QUESTION_TYPE_LABELS defines calculation, troubleshoot, action,
+        // corrective. The original copy invented two others.
+        const markup = readFileSync(join(COMPONENT_DIR, 'scenario-generation-setup.html'), 'utf8');
+        expect(markup).not.toMatch(/Conceptual/i);
+        expect(markup).not.toMatch(/Interpretation/i);
+    });
 });

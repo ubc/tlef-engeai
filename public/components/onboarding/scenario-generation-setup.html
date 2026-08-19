@@ -1,6 +1,8 @@
 <div class="onboarding scenario-generation-setup">
     <link rel="stylesheet" href="/styles/instructor-components/onboarding.css">
     <link rel="stylesheet" href="/styles/modal-overlay.css">
+    <link rel="stylesheet" href="/styles/scenario-generation/sg-shared.css">
+    <link rel="stylesheet" href="/styles/instructor-components/scenario-questions-instructor.css">
 
     <!-- Left Steps Panel -->
     <div class="onboarding-steps-panel">
@@ -130,41 +132,8 @@
                         <p>This is the same form you'll use in the Practice Scenarios page. Try it now — the fields below are already filled in with an example.</p>
                     </div>
 
-                    <div class="sg-setup-form">
-                        <div class="form-group">
-                            <label for="sgSetupPrompt">Base question or situation</label>
-                            <textarea id="sgSetupPrompt" rows="3" readonly>A shell-and-tube heat exchanger is underperforming after six months of service. Cooling water outlet temperature has dropped by 8 °C at unchanged flow rates.</textarea>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Learning objectives</label>
-                            <div class="sg-setup-chip-row">
-                                <span class="sg-setup-chip sg-setup-chip-selected">Energy balances on process equipment</span>
-                                <span class="sg-setup-chip sg-setup-chip-selected">Fouling and heat transfer resistance</span>
-                                <span class="sg-setup-chip">Pressure drop in pipe networks</span>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Sub-question types</label>
-                            <div class="sg-setup-chip-row">
-                                <span class="sg-setup-chip sg-setup-chip-selected">Conceptual</span>
-                                <span class="sg-setup-chip sg-setup-chip-selected">Calculation</span>
-                                <span class="sg-setup-chip sg-setup-chip-selected">Interpretation</span>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="sgSetupDifficulty">Difficulty</label>
-                            <select id="sgSetupDifficulty" disabled>
-                                <option selected>Intermediate</option>
-                            </select>
-                        </div>
-
-                        <button type="button" class="sg-setup-generate-btn" id="sgSetupGenerateBtn">
-                            <i data-feather="zap"></i>
-                            <span>Generate</span>
-                        </button>
+                    <div id="sgSetupGenerateMount" class="sg-setup-mount" aria-live="polite">
+                        <p class="sg-setup-mount-loading">Loading the scenario generator…</p>
                     </div>
 
                     <div class="sg-setup-draft" id="sgSetupGeneratedDraft" hidden>
@@ -175,9 +144,9 @@
                         <p><strong>Scenario.</strong> Six months into service, a shell-and-tube exchanger on your cooling loop shows an 8 °C drop in cooling water outlet temperature at unchanged flow rates. Inlet conditions and pump curves are unchanged.</p>
                         <p><strong>Sub-questions.</strong></p>
                         <ul>
-                            <li><em>Conceptual.</em> Name two physical mechanisms that would reduce overall heat transfer without any change in flow rate.</li>
                             <li><em>Calculation.</em> Using the given duty and temperatures, estimate the current overall heat transfer coefficient and compare it to the clean value.</li>
-                            <li><em>Interpretation.</em> Based on your comparison, argue whether cleaning or retubing is the appropriate intervention.</li>
+                            <li><em>Troubleshoot.</em> Name two physical mechanisms that would reduce overall heat transfer without any change in flow rate.</li>
+                            <li><em>Corrective.</em> Based on your comparison, argue whether cleaning or retubing is the appropriate intervention.</li>
                         </ul>
                         <p class="sg-setup-draft-note"><i data-feather="eye-off"></i> This draft is visible only to you. Students cannot see it until you publish it.</p>
                     </div>
