@@ -110,9 +110,9 @@ Per-feature tutorial progress lives on `activeCourse.featureOnboarding`. A missi
 |---|---|---|
 | PATCH | `/api/courses/:courseId/onboarding/features/:feature/complete` | Marks one tutorial complete. `:feature` is `scenario-generation`, `writing-feedback`, or `guided-pathway`. No body. Idempotent. Writes a single dotted `featureOnboarding.<key>` path so a sibling flag set by a concurrent tab survives. |
 
-- **Auth:** course instructors and platform administrators (`requireInstructorOrAdminForCourseAPI`); teaching assistants are denied.
+- **Auth:** course staff (`requireInstructorForCourseAPI`, which resolves to `isCourseStaff`) — instructors, platform administrators, and teaching assistants. TAs are routed through onboarding by the same predicate in `route-course-entry.ts`, so an instructor-only guard here left them unable to finish a tutorial they had been sent into: the PATCH returned 403, progress never persisted, and the same stage was served again on every course entry. Course *configuration* stays narrower — `/:id/complete-course-setup` and `/:courseId/features/*` both still require roster-management authority.
 - **Success (200):** `{ success: true, data: activeCourse, message }`
-- **Errors:** `400` unknown feature slug (`memory-agent` has no tutorial), `403` non-instructor, `404` course missing
+- **Errors:** `400` unknown feature slug (`memory-agent` has no tutorial), `403` non-staff, `404` course missing
 
 Stage ordering is resolved by `resolveNextOnboardingStage` in `src/helpers/instructor-onboarding-redirect.ts`, mirrored for the browser in `public/scripts/utils/onboarding-stage-order.ts`. Sequence: Course, Document, then each enabled-and-incomplete feature tutorial in Scenario Generation, Writing Feedback, Guided Pathway order, then Flag and Monitor.
 

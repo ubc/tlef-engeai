@@ -1019,9 +1019,17 @@ const FEATURE_ONBOARDING_SLUGS: Record<string, OnboardingFeatureKey> = {
  * @param {string} feature - Tutorial slug: scenario-generation | writing-feedback | guided-pathway
  * @returns Updated course
  */
+// Course staff, not just instructors: `route-course-entry.ts` routes every staff member
+// through onboarding via `isCourseStaff`, so an instructor-only guard here left teaching
+// assistants unable to finish a tutorial they had been sent into — the completion PATCH
+// returned 403, progress never persisted, and the same stage was served again on the next
+// course entry. This endpoint records that a tutorial has been taught, which is exactly
+// what a TA completing it means. Course configuration stays narrower: creating a course
+// still requires roster-management authority (`/:id/complete-course-setup`), and toggling
+// a capability on or off still requires it too (`/:courseId/features/*`).
 router.patch(
     '/:courseId/onboarding/features/:feature/complete',
-    requireInstructorOrAdminForCourseAPI(['params']),
+    requireInstructorForCourseAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         const courseId = String(req.params.courseId);
         const feature = String(req.params.feature);

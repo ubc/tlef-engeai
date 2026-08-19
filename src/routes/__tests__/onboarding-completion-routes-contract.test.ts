@@ -16,6 +16,8 @@
 
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 /**
  * Toggles the stubbed course guards between deny and pass-through.
@@ -46,10 +48,10 @@ jest.mock('../../middleware/require-course-role', () => {
     return {
         requireAdminForCourseAPI: passThroughGuard,
         requireCourseFeatureAPI: passThroughGuard,
-        requireInstructorForCourseAPI: passThroughGuard,
+        requireInstructorForCourseAPI: courseGuard,
         requireSelfOrInstructorForCourseAPI: passThroughGuard,
         requireInstructorGlobal: passThroughGuard(),
-        requireInstructorOrAdminForCourseAPI: courseGuard,
+        requireInstructorOrAdminForCourseAPI: passThroughGuard,
         requirePostPeriodAnalyticsAPI: passThroughGuard,
         requireRosterManageAPI: passThroughGuard,
         requireAdminGlobal: passThroughGuard()
@@ -105,7 +107,7 @@ describe('feature onboarding completion route contracts', () => {
         guardState.deny = true;
     });
 
-    it('guards completion behind instructor-or-admin course authorization', async () => {
+    it('guards completion behind course-staff authorization', async () => {
         const updateActiveCourse = jest.fn();
         mockMongo({ updateActiveCourse });
 
@@ -114,6 +116,21 @@ describe('feature onboarding completion route contracts', () => {
 
         expect(response.status).toBe(403);
         expect(updateActiveCourse).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Teaching assistants are routed through onboarding by `isCourseStaff`, so an
+     * instructor-only guard here left them unable to finish a tutorial they had been
+     * sent into: the PATCH returned 403, progress never persisted, and the same stage
+     * was served again on every course entry. The guard must be the course-staff one.
+     */
+    it('authorizes completion with the course-staff guard, not the narrower instructor-or-admin guard', async () => {
+        const source = readFileSync(join(__dirname, '..', 'route-mongo.ts'), 'utf8');
+        const route = source.slice(source.indexOf("'/:courseId/onboarding/features/:feature/complete'"));
+        const guard = route.slice(0, route.indexOf('asyncHandlerWithAuth'));
+
+        expect(guard).toContain('requireInstructorForCourseAPI');
+        expect(guard).not.toContain('requireInstructorOrAdminForCourseAPI');
     });
 
     it.each([
