@@ -50,6 +50,7 @@ import {
 } from './writing-feedback-shared.js';
 import { openRubricPage } from './writing-feedback-rubric.js';
 import { openReview } from './writing-feedback-review.js';
+import { setWritingFeedbackDemoMode } from './writing-feedback-demo-mode.js';
 
 // ---------------------------------------------------------------------------
 // Landing view
@@ -714,6 +715,11 @@ function bindStaticActions(): void {
  * @param currentClass - Active course used to scope every Writing Feedback request
  */
 export async function initializeWritingFeedback(currentClass: activeCourse): Promise<void> {
+    // A tutorial may have armed demo mode and been abandoned without completing.
+    // Clearing unconditionally here is what guarantees the real staff workspace
+    // can always save, however the tutorial was left.
+    setWritingFeedbackDemoMode(false);
+
     // Reset all cross-view state because the instructor shell can replace the
     // component while switching courses without reloading the browser tab.
     state.course = currentClass;

@@ -15,6 +15,7 @@
 
 import type { activeCourse } from '../types.js';
 import { showConfirmModal, showErrorModal } from '../ui/modal-overlay.js';
+import { isWritingFeedbackDemoMode, WritingFeedbackDemoModeError } from './writing-feedback-demo-mode.js';
 
 /** Lifecycle state displayed in staff queues and enforced by server transitions. */
 export type SubmissionStatus = 'imported' | 'verification_needed' | 'generating' | 'draft_ready' | 'approved' | 'released' | 'failed';
@@ -436,6 +437,14 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
  * @returns Typed API response data
  */
 export function jsonRequest<T>(path: string, method: 'POST' | 'PUT' | 'DELETE', body?: unknown): Promise<T> {
+    // Step 1: refuse every mutation while a tutorial is on screen. This is the
+    // single choke point for all 17 mutation call sites across the feature, so
+    // gating here fails closed: a handler nobody remembered still cannot write.
+    if (isWritingFeedbackDemoMode()) {
+        return Promise.reject(new WritingFeedbackDemoModeError());
+    }
+
+    // Step 2: normal same-origin mutation through the shared envelope.
     return request<T>(path, {
         method,
         headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
