@@ -269,7 +269,13 @@ export async function openRubricPage(assignmentId: string): Promise<void> {
     renderRubricPage(root, assignment, data);
 }
 
-function renderRubricPage(root: HTMLDivElement, assignment: Assignment, data: RubricResponse): void {
+/**
+ * Exported so the onboarding tutorial can render the production interface from
+ * canned data. The handlers attached here still perform real mutations, so any
+ * caller outside the real workspace must arm demo mode first — see
+ * `writing-feedback-demo-mode.ts`.
+ */
+export function renderRubricPage(root: HTMLDivElement, assignment: Assignment, data: RubricResponse): void {
     root.replaceChildren();
     const source = data.draft ?? data.approved;
     if (!source) throw new Error('This assignment does not have a rubric draft or approved rubric.');
