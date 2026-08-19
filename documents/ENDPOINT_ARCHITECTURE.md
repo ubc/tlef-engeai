@@ -155,7 +155,9 @@ Each `models[]` entry: `{ id, label, costTier, reasoningOptions: [{ id, label }]
 <!-- @rdschrs: Implemented the course-scoped Writing Feedback API boundary. -->
 ### 4.0.2 Writing Feedback (`/api/courses/:courseId/writing-feedback`)
 
-Every endpoint requires course-staff RBAC followed by `requireCourseFeatureAPI('writingFeedback')`. Feature configuration is separate: `PATCH /api/courses/:courseId/features/writing-feedback` (see §4.0). Instructors and TAs can operate intake/review endpoints after enablement; rubric mutation and future Canvas connection configuration add instructor/admin roster-management permission.
+Every endpoint requires course-staff RBAC followed by `requireCourseFeatureAPI('writingFeedback')`. That router-level pair is the complete authorization for this section — no endpoint layers a narrower guard on top. Instructors, platform admins, and TAs therefore have identical access to the whole workspace: intake, assignment creation, rubric mutation and approval, review, and release (D-049, 2026-08-18; reverses the earlier rule that rubric mutation additionally required roster-management permission).
+
+Feature configuration remains separate and narrower: `PATCH /api/courses/:courseId/features/writing-feedback` (see §4.0) still requires roster-management permission, so only instructors and admins can enable or disable the capability for a course.
 
 Canvas endpoints report their integration mode honestly. `demo` with `integration: mock_canvas` lists/imports synthetic local data without contacting Canvas; `not_configured` with `integration: none` explains the institutional OAuth gate. No endpoint in the current local slice establishes live OAuth or writes a rubric/grade/comment to Canvas without a separate explicit release action.
 

@@ -14,7 +14,7 @@
 import express, { Request, Response } from 'express';
 import multer from 'multer';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
-import { requireCourseFeatureAPI, requireInstructorForCourseAPI, requireRosterManageAPI } from '../middleware/require-course-role';
+import { requireCourseFeatureAPI, requireInstructorForCourseAPI } from '../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { LocalDocumentExtractionService } from '../writing-feedback/document-extraction-service';
 import { WritingFeedbackService } from '../writing-feedback/writing-feedback-service';
@@ -30,7 +30,7 @@ import {
     writingRubricDraftInputSchema
 } from '../writing-feedback/rubric-schema';
 import { listCriterionLibrary } from '../writing-feedback/criterion-library';
-import { canManageCourseRoster } from '../utils/course-staff';
+import { isCourseStaff } from '../utils/course-staff';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -78,6 +78,14 @@ function safeError(error: unknown): string {
 }
 
 // Authorize course staff before checking capability state; feature flags never grant access.
+//
+// This router-level pair is the complete authorization for every Writing Feedback
+// route. `requireInstructorForCourseAPI` resolves to `isCourseStaff`, so instructors,
+// platform admins, and teaching assistants all pass. Per D-049 teaching assistants
+// have full workspace parity here — assignments, rubrics, review, approval, release —
+// so no route layers a narrower guard on top. Enabling or disabling the capability for
+// a course is course settings rather than feature operation and remains
+// instructor/admin, enforced where that toggle lives, not here.
 router.use(
     '/:courseId/writing-feedback',
     requireInstructorForCourseAPI(['params']),
@@ -98,7 +106,6 @@ router.get('/:courseId/writing-feedback/assignments', asyncHandlerWithAuth(async
 
 router.post(
     '/:courseId/writing-feedback/assignments',
-    requireRosterManageAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
             const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
@@ -121,7 +128,6 @@ router.post(
 
 router.post(
     '/:courseId/writing-feedback/instructions/extract',
-    requireRosterManageAPI(['params']),
     upload.single('file'),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         try {
@@ -145,7 +151,7 @@ router.get('/:courseId/writing-feedback/workspace-context', asyncHandlerWithAuth
     res.json({
         success: true,
         data: {
-            permissions: { canManageRubric: Boolean(currentCourse && canManageCourseRoster(currentCourse, globalUser)) },
+            permissions: { canManageRubric: Boolean(currentCourse && isCourseStaff(currentCourse, globalUser)) },
             canvas
         }
     });
@@ -218,14 +224,13 @@ router.get('/:courseId/writing-feedback/assignments/:assignmentId/rubric', async
             draft: assignment.rubricDraft ?? (assignment.rubric.status === 'draft' ? assignment.rubric : undefined),
             history: assignment.rubricHistory ?? [],
             library: listCriterionLibrary(),
-            permissions: { canEdit: Boolean(currentCourse && canManageCourseRoster(currentCourse, globalUser)) }
+            permissions: { canEdit: Boolean(currentCourse && isCourseStaff(currentCourse, globalUser)) }
         }
     });
 }));
 
 router.put(
     '/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft',
-    requireRosterManageAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         const parsed = writingRubricDraftInputSchema.safeParse(req.body);
         if (!parsed.success) {
@@ -258,7 +263,6 @@ router.put(
 
 router.delete(
     '/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft',
-    requireRosterManageAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         const mongo = await EngEAI_MongoDB.getInstance();
         const updated = await mongo.discardWritingRubricDraft(courseId(req), String(req.params.assignmentId));
@@ -269,7 +273,6 @@ router.delete(
 
 router.post(
     '/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft/approve',
-    requireRosterManageAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         const mongo = await EngEAI_MongoDB.getInstance();
         const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
