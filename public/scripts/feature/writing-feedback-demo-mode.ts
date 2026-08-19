@@ -44,3 +44,14 @@ export function setWritingFeedbackDemoMode(enabled: boolean): void {
 export function isWritingFeedbackDemoMode(): boolean {
     return demoModeEnabled;
 }
+
+/**
+ * Throws when a tutorial is on screen, refusing a mutation before it is sent.
+ *
+ * Call this at every mutation site that cannot route through `jsonRequest` —
+ * today that is the multipart submission-file upload, which must build its own
+ * `fetch` because it sends `FormData` rather than JSON.
+ */
+export function assertNotWritingFeedbackDemoMode(): void {
+    if (demoModeEnabled) throw new WritingFeedbackDemoModeError();
+}

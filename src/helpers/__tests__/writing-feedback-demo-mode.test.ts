@@ -12,6 +12,7 @@
  */
 
 import {
+    assertNotWritingFeedbackDemoMode,
     isWritingFeedbackDemoMode,
     setWritingFeedbackDemoMode,
     WritingFeedbackDemoModeError
@@ -42,5 +43,14 @@ describe('writing feedback demo mode', () => {
         expect(error).toBeInstanceOf(Error);
         expect(error.name).toBe('WritingFeedbackDemoModeError');
         expect(error.message).toContain('tutorial');
+    });
+
+    it('assertNotWritingFeedbackDemoMode throws while demo mode is on', () => {
+        setWritingFeedbackDemoMode(true);
+        expect(() => assertNotWritingFeedbackDemoMode()).toThrow(WritingFeedbackDemoModeError);
+    });
+
+    it('assertNotWritingFeedbackDemoMode returns normally while demo mode is off', () => {
+        expect(() => assertNotWritingFeedbackDemoMode()).not.toThrow();
     });
 });

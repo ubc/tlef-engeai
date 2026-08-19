@@ -437,9 +437,11 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
  * @returns Typed API response data
  */
 export function jsonRequest<T>(path: string, method: 'POST' | 'PUT' | 'DELETE', body?: unknown): Promise<T> {
-    // Step 1: refuse every mutation while a tutorial is on screen. This is the
-    // single choke point for all 17 mutation call sites across the feature, so
-    // gating here fails closed: a handler nobody remembered still cannot write.
+    // Step 1: refuse every mutation while a tutorial is on screen. This covers
+    // all mutations that use the JSON envelope; the multipart upload in
+    // writing-feedback.ts guards itself with assertNotWritingFeedbackDemoMode
+    // for the same reason (it cannot route through jsonRequest, since it sends
+    // FormData rather than JSON).
     if (isWritingFeedbackDemoMode()) {
         return Promise.reject(new WritingFeedbackDemoModeError());
     }

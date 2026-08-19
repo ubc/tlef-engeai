@@ -50,7 +50,7 @@ import {
 } from './writing-feedback-shared.js';
 import { openRubricPage } from './writing-feedback-rubric.js';
 import { openReview } from './writing-feedback-review.js';
-import { setWritingFeedbackDemoMode } from './writing-feedback-demo-mode.js';
+import { setWritingFeedbackDemoMode, assertNotWritingFeedbackDemoMode } from './writing-feedback-demo-mode.js';
 
 // ---------------------------------------------------------------------------
 // Landing view
@@ -554,6 +554,9 @@ async function showManualImport(assignment: Assignment): Promise<void> {
         // Files use multipart extraction and always return through transcript
         // verification; pasted text uses the JSON path as already-verified content.
         if (fileRadio.checked && file.files?.[0]) {
+            // This upload builds its own fetch (FormData, not JSON) so it cannot
+            // route through jsonRequest's gate; guard it explicitly instead.
+            assertNotWritingFeedbackDemoMode();
             const formData = new FormData();
             formData.append('assignmentId', assignment.id);
             formData.append('studentId', studentId.value);
