@@ -242,7 +242,7 @@
 }
 
 .help-btn:hover {
-    background-color: var(--color-chbe-green);
+    filter: brightness(0.88);
     transform: translateY(-1px);
 }
 
@@ -510,7 +510,7 @@
 
 .add-instructor-btn:hover,
 .add-ta-btn:hover {
-    background-color: var(--color-chbe-green);
+    filter: brightness(0.88);
     transform: translateY(-1px);
 }
 
@@ -650,7 +650,7 @@
 }
 
 .btn-back:hover {
-    background-color: var(--text-secondary);
+    filter: brightness(0.88);
     transform: translateY(-1px);
 }
 
@@ -660,7 +660,7 @@
 }
 
 .btn-next:hover {
-    background-color: var(--color-chbe-green);
+    filter: brightness(0.88);
     transform: translateY(-1px);
 }
 
@@ -799,7 +799,7 @@
 }
 
 .demo-btn:hover {
-    background-color: var(--color-chbe-green);
+    filter: brightness(0.88);
     transform: translateY(-1px);
 }
 
@@ -808,7 +808,7 @@
 }
 
 .demo-btn.secondary:hover {
-    background-color: var(--text-secondary);
+    filter: brightness(0.88);
 }
 
 /* Demo objectives list */
@@ -1633,8 +1633,7 @@
 }
 
 .resolve-button:hover {
-    background: var(--color-chbe-green);
-    border-color: var(--color-chbe-green);
+    filter: brightness(0.88);
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(92, 138, 58, 0.3);
 }
