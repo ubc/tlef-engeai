@@ -19,8 +19,13 @@ const REPO_ROOT = join(__dirname, '..', '..', '..');
 const ONBOARDING_CSS = join(REPO_ROOT, 'public', 'styles', 'instructor-components', 'onboarding.css');
 const COMPONENT_DIR = join(REPO_ROOT, 'public', 'components', 'onboarding');
 
-/** Colours belonging to Bootstrap or an unrelated slate palette, never to EngE-AI. */
-const BANNED_COLOURS = ['#0d6efd', '#198754', '#ffc107', '#dee2e6', '#adb5bd', '#2c3e50', '#495057', '#f8f9fa'];
+/**
+ * The only hex literals permitted anywhere in onboarding.css. Everything else must
+ * come from the palette via `var()` or an `rgba()` tint, never a bare hex literal,
+ * so the stylesheet cannot drift back toward Bootstrap or an unrelated palette one
+ * literal at a time while this test stays green.
+ */
+const PERMITTED_HEX = ['#fff', '#ffffff', '#000', '#e67e22'];
 
 /**
  * Matches pictographic emoji.
@@ -37,13 +42,15 @@ function onboardingComponents(): string[] {
 describe('onboarding design guard', () => {
     const css = readFileSync(ONBOARDING_CSS, 'utf8');
 
-    it.each(BANNED_COLOURS)('does not use the off-palette literal %s', colour => {
-        expect(css.toLowerCase()).not.toContain(colour.toLowerCase());
+    it('uses no hex literal outside the permitted set', () => {
+        const literals = [...css.matchAll(/#[0-9a-fA-F]{3,6}/g)].map(m => m[0].toLowerCase());
+        const offenders = [...new Set(literals)].filter(hex => !PERMITTED_HEX.includes(hex));
+        expect(offenders).toEqual([]);
     });
 
     it('uses no left-accent callout bars', () => {
-        expect(css).not.toMatch(/border-left:\s*4px/);
-        expect(css).not.toMatch(/border-left-width:\s*4px/);
+        expect(css).not.toMatch(/border-left:\s*\d/);
+        expect(css).not.toMatch(/border-left-width:\s*\d/);
     });
 
     it('defines the shared callout primitive', () => {

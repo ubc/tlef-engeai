@@ -1123,6 +1123,11 @@
     flex-shrink: 0;
 }
 
+.accordion-icon svg {
+    width: 20px;
+    height: 20px;
+}
+
 .accordion-title {
     flex: 1;
     font-weight: 600;
@@ -1533,6 +1538,12 @@
     border: 1px solid #e67e22;
 }
 
+.status-badge svg {
+    width: 12px;
+    height: 12px;
+    vertical-align: -1px;
+}
+
 .status-badge.resolved {
     background-color: rgba(92, 138, 58, 0.1);
     color: var(--color-chbe-green);
@@ -1670,6 +1681,11 @@
 .empty-state-icon {
     font-size: 48px;
     margin-bottom: 15px;
+}
+
+.empty-state-icon svg {
+    width: 48px;
+    height: 48px;
 }
 
 .empty-state-content h4 {
