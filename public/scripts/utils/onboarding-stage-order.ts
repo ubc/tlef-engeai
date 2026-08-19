@@ -83,19 +83,28 @@ function isFeatureTutorialComplete(course: OnboardingCourseProgress, feature: On
 }
 
 /**
- * resolveNextOnboardingStage - first onboarding stage the instructor still owes.
+ * resolveNextOnboardingStage - first onboarding stage this staff member still owes.
  *
  * Sequence: Course, Document, then each enabled-and-incomplete feature tutorial
  * in `FEATURE_ONBOARDING_STAGES` order, then Flag and Monitor.
  *
+ * Course Setup is reserved for roster managers. It defines `frameType` and
+ * `tilesNumber` — whether the course runs by week or by topic, and how many
+ * divisions it has — and its endpoint requires roster-management authority. Every
+ * later stage files content under those divisions, so a teaching assistant reaching
+ * an unconfigured course is owed nothing here rather than being sent into a stage
+ * they cannot complete or a document step with no structure to populate.
+ *
  * @param course - course progress flags, capability map, and tutorial progress
- * @returns the stage slug to render, or null when onboarding is complete
+ * @param canManageRoster - true for faculty instructors and platform admins
+ * @returns the stage slug to render, or null when nothing is owed
  */
 export function resolveNextOnboardingStage(
-    course: OnboardingCourseProgress
+    course: OnboardingCourseProgress,
+    canManageRoster = true
 ): InstructorOnboardingStage | null {
     if (!course.courseSetup) {
-        return 'course-setup';
+        return canManageRoster ? 'course-setup' : null;
     }
     if (!course.contentSetup) {
         return 'document-setup';

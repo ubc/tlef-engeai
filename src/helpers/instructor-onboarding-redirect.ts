@@ -48,16 +48,30 @@ function isFeatureTutorialComplete(courseData: activeCourse, feature: Onboarding
 }
 
 /**
- * resolveNextOnboardingStage - first onboarding stage the instructor still owes.
+ * resolveNextOnboardingStage - first onboarding stage this staff member still owes.
  *
  * Sequence: Course, Document, then each enabled-and-incomplete feature tutorial
  * in `FEATURE_ONBOARDING_STAGES` order, then Flag and Monitor.
  *
- * @returns the stage slug to render, or null when onboarding is complete
+ * Course Setup is reserved for roster managers. It defines `frameType` and
+ * `tilesNumber` — whether the course runs by week or by topic, and how many
+ * divisions it has — and its endpoint requires roster-management authority. Every
+ * later stage files content under those divisions, so a teaching assistant reaching
+ * an unconfigured course is owed nothing here rather than being sent into a stage
+ * they cannot complete or a document step with no structure to populate. Course
+ * entry routes all staff through this resolver, so without the distinction a TA
+ * looped on Course Setup forever.
+ *
+ * @param courseData - course whose onboarding flags drive the sequence
+ * @param canManageRoster - true for faculty instructors and platform admins
+ * @returns the stage slug to render, or null when nothing is owed
  */
-export function resolveNextOnboardingStage(courseData: activeCourse): InstructorOnboardingStage | null {
+export function resolveNextOnboardingStage(
+    courseData: activeCourse,
+    canManageRoster = true
+): InstructorOnboardingStage | null {
     if (!courseData.courseSetup) {
-        return 'course-setup';
+        return canManageRoster ? 'course-setup' : null;
     }
     if (!courseData.contentSetup) {
         return 'document-setup';
@@ -78,12 +92,18 @@ export function resolveNextOnboardingStage(courseData: activeCourse): Instructor
     return null;
 }
 
-/** Instructor-mode redirect based on course onboarding flags and feature tutorial progress. */
+/**
+ * Instructor-mode redirect based on course onboarding flags and feature tutorial progress.
+ *
+ * @param canManageRoster - true for faculty instructors and platform admins; teaching
+ * assistants pass false so Course Setup is never selected for them
+ */
 export function resolveInstructorModeRedirect(
     courseId: string,
-    courseData: activeCourse
+    courseData: activeCourse,
+    canManageRoster = true
 ): { redirect: string; requiresOnboarding: boolean } {
-    const stage = resolveNextOnboardingStage(courseData);
+    const stage = resolveNextOnboardingStage(courseData, canManageRoster);
     if (stage === null) {
         return { redirect: `/course/${courseId}/instructor/dashboard`, requiresOnboarding: false };
     }

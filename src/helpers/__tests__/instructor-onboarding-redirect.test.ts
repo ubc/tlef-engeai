@@ -56,11 +56,15 @@ function expectedRedirect(stage: InstructorOnboardingStage | null): string {
         : `/course/${COURSE_ID}/instructor/onboarding/${stage}`;
 }
 
-/** Asserts both implementations resolve to the same stage. */
-function expectStage(course: activeCourse, stage: InstructorOnboardingStage | null): void {
-    expect(resolveNextOnboardingStage(course as OnboardingCourseProgress)).toBe(stage);
+/** Asserts both implementations resolve to the same stage for the given authority. */
+function expectStage(
+    course: activeCourse,
+    stage: InstructorOnboardingStage | null,
+    canManageRoster = true
+): void {
+    expect(resolveNextOnboardingStage(course as OnboardingCourseProgress, canManageRoster)).toBe(stage);
 
-    const result = resolveInstructorModeRedirect(COURSE_ID, course);
+    const result = resolveInstructorModeRedirect(COURSE_ID, course, canManageRoster);
     expect(result.redirect).toBe(expectedRedirect(stage));
     expect(result.requiresOnboarding).toBe(stage !== null);
 }
@@ -208,6 +212,51 @@ describe('instructor onboarding stage order', () => {
                     featureOnboarding: { scenarioGeneration: true, writingFeedback: true, guidedPathway: true }
                 }),
                 'flag-setup'
+            );
+        });
+    });
+
+    /**
+     * Course entry routes every staff member through this resolver via `isCourseStaff`,
+     * but Course Setup's endpoint requires roster-management authority. Without the
+     * distinction a teaching assistant was sent to a stage they could not complete and
+     * looped on it at every course entry.
+     */
+    describe('roster authority', () => {
+        it('offers course-setup to a roster manager', () => {
+            expectStage(buildCourse({ courseSetup: false }), 'course-setup', true);
+        });
+
+        it('owes a teaching assistant nothing while the course is unconfigured', () => {
+            // Not merely "skip course-setup": every later stage files content under the
+            // divisions course-setup defines, so document-setup on an unconfigured course
+            // would trade the loop for a broken flow.
+            expectStage(buildCourse({ courseSetup: false, contentSetup: false }), null, false);
+        });
+
+        it('resumes the normal sequence for a teaching assistant once setup is done', () => {
+            expectStage(buildCourse({ contentSetup: false }), 'document-setup', false);
+        });
+
+        it('treats every stage after course-setup identically for both authorities', () => {
+            const cases: Array<[Partial<activeCourse>, InstructorOnboardingStage | null]> = [
+                [{ contentSetup: false }, 'document-setup'],
+                [{ flagSetup: false }, 'flag-setup'],
+                [{ monitorSetup: false }, 'monitor-setup'],
+                [{}, null]
+            ];
+
+            for (const [overrides, stage] of cases) {
+                expectStage(buildCourse(overrides), stage, true);
+                expectStage(buildCourse(overrides), stage, false);
+            }
+        });
+
+        it('defaults to roster-manager behaviour when authority is omitted', () => {
+            const course = buildCourse({ courseSetup: false });
+            expect(resolveNextOnboardingStage(course as OnboardingCourseProgress)).toBe('course-setup');
+            expect(resolveInstructorModeRedirect(COURSE_ID, course).redirect).toBe(
+                expectedRedirect('course-setup')
             );
         });
     });
