@@ -24,10 +24,12 @@ import { SafeCanvasImportService } from '../writing-feedback/canvas-import-servi
 import { anchoredCommentsInputSchema } from '../writing-feedback/anchored-comments';
 import {
     approveRubricDraft,
+    assertApprovedRubricIdsStable,
     buildRubricDraft,
     gradeMappingFromApprovedRubric,
     writingRubricDraftInputSchema
 } from '../writing-feedback/rubric-schema';
+import { listCriterionLibrary } from '../writing-feedback/criterion-library';
 import { canManageCourseRoster } from '../utils/course-staff';
 
 const router = express.Router();
@@ -46,6 +48,14 @@ function cleanId(value: unknown, field: string): string {
     if (typeof value !== 'string' || !value.trim()) throw new Error(`${field} is required`);
     return value.trim().slice(0, 160);
 }
+function cleanOptionalText(value: unknown, field: string): string | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    if (typeof value !== 'string') throw new Error(`${field} must be text`);
+    const text = value.replace(/\u0000/g, '').trim();
+    if (!text) return undefined;
+    if (text.length > MAX_TEXT_CHARS) throw new Error(`${field} exceeds the 30,000-character limit`);
+    return text;
+}
 function safeError(error: unknown): string {
     const message = error instanceof Error ? error.message : 'Writing feedback request failed';
     const safePrefixes = [
@@ -59,7 +69,8 @@ function safeError(error: unknown): string {
         'An approved rubric is required', 'Rubric changed after feedback generation',
         'Generate feedback before staff approval',
         'Feedback comments no longer match', 'Feedback comments failed validation',
-        'Assignment title is required', 'Assignment deadline is invalid'
+        'Assignment title is required', 'Assignment deadline is invalid',
+        'Assignment instructions must be text', 'Assignment instructions exceeds'
     ];
     return safePrefixes.some((prefix) => message.startsWith(prefix))
         ? message
@@ -92,6 +103,7 @@ router.post(
         try {
             const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
             if (!title || title.length > 200) throw new Error('Assignment title is required and must be at most 200 characters');
+            const instructions = cleanOptionalText(req.body?.instructions, 'Assignment instructions');
             let dueAt: Date | undefined;
             if (req.body?.dueAt !== undefined && req.body?.dueAt !== null && req.body?.dueAt !== '') {
                 const parsed = new Date(String(req.body.dueAt));
@@ -99,8 +111,26 @@ router.post(
                 dueAt = parsed;
             }
             const mongo = await EngEAI_MongoDB.getInstance();
-            const assignment = await mongo.createManualWritingAssignment(courseId(req), title, dueAt);
+            const assignment = await mongo.createManualWritingAssignment(courseId(req), title, instructions, dueAt);
             res.status(201).json({ success: true, data: assignment });
+        } catch (error) {
+            res.status(400).json({ success: false, error: safeError(error) });
+        }
+    })
+);
+
+router.post(
+    '/:courseId/writing-feedback/instructions/extract',
+    requireRosterManageAPI(['params']),
+    upload.single('file'),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        try {
+            if (!req.file) throw new Error('A file is required');
+            const extracted = await new LocalDocumentExtractionService().extract({
+                buffer: req.file.buffer,
+                fileName: req.file.originalname
+            });
+            res.json({ success: true, data: { text: cleanText(extracted.text), fileName: extracted.fileName } });
         } catch (error) {
             res.status(400).json({ success: false, error: safeError(error) });
         }
@@ -156,6 +186,7 @@ router.post('/:courseId/writing-feedback/canvas/import', asyncHandlerWithAuth(as
             courseId(req),
             canvasAssignmentId,
             preview.assignment.title,
+            preview.assignment.description,
             preview.assignment.dueAt ? new Date(preview.assignment.dueAt) : undefined
         );
 
@@ -183,9 +214,10 @@ router.get('/:courseId/writing-feedback/assignments/:assignmentId/rubric', async
     res.json({
         success: true,
         data: {
-            approved: assignment.rubric,
-            draft: assignment.rubricDraft,
+            approved: assignment.rubric.status === 'approved' ? assignment.rubric : undefined,
+            draft: assignment.rubricDraft ?? (assignment.rubric.status === 'draft' ? assignment.rubric : undefined),
             history: assignment.rubricHistory ?? [],
+            library: listCriterionLibrary(),
             permissions: { canEdit: Boolean(currentCourse && canManageCourseRoster(currentCourse, globalUser)) }
         }
     });
@@ -205,8 +237,17 @@ router.put(
         const mongo = await EngEAI_MongoDB.getInstance();
         const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
         if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+        try {
+            assertApprovedRubricIdsStable(assignment.rubric, parsed.data);
+        } catch (error) {
+            return res.status(400).json({
+                success: false,
+                error: error instanceof Error ? error.message : 'Approved rubric ids cannot be changed'
+            });
+        }
         const globalUser = (req.session as any).globalUser;
-        const version = assignment.rubricDraft?.version ?? assignment.rubric.version + 1;
+        const version = assignment.rubricDraft?.version
+            ?? (assignment.rubric.status === 'draft' ? assignment.rubric.version : assignment.rubric.version + 1);
         const draft = buildRubricDraft(parsed.data, version, globalUser.userId);
 
         // Saving is deliberately separate from approval and does not change the active rubric.
@@ -272,7 +313,7 @@ router.post('/:courseId/writing-feedback/assignments/:assignmentId/canvas-import
     const result = await new SafeCanvasImportService(mongo).importAssignment({
         courseId: courseId(req),
         targetAssignmentId: String(req.params.assignmentId),
-        canvasAssignmentId: 'demo-lled200-a2-description'
+        canvasAssignmentId: 'demo-technical-description'
     });
     res.status(result.importedCount ? 201 : 200).json({ success: true, data: result, integration: 'mock_canvas' });
 }));

@@ -1,3 +1,4 @@
+// src/report-generation/writing-feedback-layout.ts
 /**
  * Annotated-text layout — exact PDF geometry for verified submission spans
  *

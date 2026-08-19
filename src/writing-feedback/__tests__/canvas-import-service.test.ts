@@ -10,7 +10,7 @@
  * @description: Regression coverage for safe Canvas-to-local submission imports.
  */
 
-import { buildA2Assignment } from '../a2-profile';
+import { buildDefaultWritingAssignment } from '../default-rubric-profile';
 import {
     buildCanvasImportIdentity,
     createCanvasImportGateway,
@@ -23,7 +23,11 @@ import type { WritingAssignment, WritingSubmission } from '../contracts';
 
 /** Minimal in-memory persistence double used to expose import idempotency in isolation. */
 class MemoryStore implements CanvasImportStore {
-    readonly assignment: WritingAssignment = buildA2Assignment('course-1', 'assignment-1');
+    readonly assignment: WritingAssignment = buildDefaultWritingAssignment(
+        'course-1',
+        'assignment-1',
+        'Local writing assignment'
+    );
     readonly submissions: WritingSubmission[] = [];
 
     async getWritingAssignment(courseId: string, assignmentId: string): Promise<WritingAssignment | null> {
@@ -79,28 +83,28 @@ describe('SafeCanvasImportService', () => {
         const first = await service.importAssignment({
             courseId: 'course-1',
             targetAssignmentId: 'assignment-1',
-            canvasAssignmentId: 'demo-lled200-a2-description'
+            canvasAssignmentId: 'demo-technical-description'
         });
         const retry = await service.importAssignment({
             courseId: 'course-1',
             targetAssignmentId: 'assignment-1',
-            canvasAssignmentId: 'demo-lled200-a2-description'
+            canvasAssignmentId: 'demo-technical-description'
         });
 
-        expect(first).toMatchObject({ importedCount: 2, skippedCount: 0, integration: 'mock_canvas' });
-        expect(first.submissions).toHaveLength(2);
+        expect(first).toMatchObject({ importedCount: 1, skippedCount: 0, integration: 'mock_canvas' });
+        expect(first.submissions).toHaveLength(1);
         expect(first.submissions.every((item) => item.sourceType === 'canvas_text')).toBe(true);
         expect(first.submissions.every((item) => item.verifiedText === item.originalText)).toBe(true);
         expect(first.submissions.every((item) => item.requiresVerification === false)).toBe(true);
-        expect(retry).toMatchObject({ importedCount: 0, skippedCount: 2 });
-        expect(store.submissions).toHaveLength(2);
+        expect(retry).toMatchObject({ importedCount: 0, skippedCount: 1 });
+        expect(store.submissions).toHaveLength(1);
     });
 
     it('builds deterministic, non-source identities for idempotency', () => {
         const input = {
             courseId: 'course-1',
             targetAssignmentId: 'assignment-1',
-            canvasAssignmentId: 'demo-lled200-a2-description',
+            canvasAssignmentId: 'demo-technical-description',
             sourceRecordKey: 'synthetic-learner-a',
             attempt: 1
         };

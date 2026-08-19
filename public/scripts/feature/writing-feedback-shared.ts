@@ -19,25 +19,27 @@ import { showConfirmModal, showErrorModal } from '../ui/modal-overlay.js';
 /** Lifecycle state displayed in staff queues and enforced by server transitions. */
 export type SubmissionStatus = 'imported' | 'verification_needed' | 'generating' | 'draft_ready' | 'approved' | 'released' | 'failed';
 
-/** Fixed A2/SFL criterion identifiers shared by rubric and feedback responses. */
-export type A2CriterionId = 'organization' | 'content' | 'interpersonal_positioning' | 'task_constraints';
+/** Instructor-authored criterion slug, frozen after its first rubric approval. */
+export type WritingCriterionId = string;
 
-/** Ordered qualitative levels supported by the Writing Feedback rubric. */
-export type A2Level = 'emerging' | 'developing' | 'competent' | 'strong';
+/** Instructor-authored performance-level slug, frozen after its first approval. */
+export type WritingLevelId = string;
 
 /** One instructor-visible criterion in an approved or draft rubric definition. */
 export interface RubricCriterion {
-    id: A2CriterionId; // stable key used to join rubric criteria to model feedback
+    id: WritingCriterionId; // stable key used to join rubric criteria to model feedback
     label: string; // student-facing criterion name editable by authorized staff
     description: string; // assignment-specific expectations supplied to generation
-    sflDimension: string; // locked linguistic lens enforced by the A2 profile
+    functionTag?: WfFunctionTag; // optional Academic Writing Matrix function
+    sflDimension?: string; // optional instructor-authored linguistic lens
 }
 
 /** One ordinal performance level, optionally participating in numeric release mapping. */
 export interface RubricLevel {
-    id: A2Level; // stable qualitative value emitted by structured feedback
+    id: WritingLevelId; // stable qualitative value emitted by structured feedback
     label: string; // student-facing name shown in rubric and PDF views
     description: string; // instructor-authored performance expectation
+    rank: number; // explicit worst-to-best order, contiguous from one
     points?: number; // present for every level or none; partial mappings are invalid
 }
 
@@ -52,7 +54,7 @@ export interface RubricDefinition {
     constraints: string[]; // explicit task requirements; never inferred by the model
     learningOutcomes: string[]; // instructor-approved outcomes governing feedback
     gradingIntent: string; // states formative/summative intent and grading boundaries
-    criteria: RubricCriterion[]; // fixed supported criteria with editable descriptions
+    criteria: RubricCriterion[]; // assignment-specific criteria and optional SFL lenses
     levels: RubricLevel[]; // complete ordinal scale and optional point mapping
     updatedAt: string; // server timestamp shown in rubric provenance/history
 }
@@ -63,9 +65,11 @@ export interface Assignment {
     title: string; // queue and review heading
     canvasAssignmentId?: string; // external key retained only for Canvas-linked intake/release
     rubricSource: 'internal_profile' | 'canvas'; // provenance label; import never implies approval
-    gradeMapping?: Partial<Record<A2Level, number>>; // numeric release mapping derived from approved levels
-    rubric: RubricDefinition; // current approved definition used by generation
+    instructions?: string; // instructor-approved assignment directions shown beside rubric setup
+    gradeMapping?: Record<WritingLevelId, number>; // numeric release mapping derived from approved levels
+    rubric: RubricDefinition; // current rubric; new assignments begin with a draft
     rubricDraft?: RubricDefinition; // inactive staff draft, when one exists
+    rubricHistory?: RubricDefinition[]; // immutable prior approved versions used for review labels
     dueAt?: string; // optional deadline used only for queue late-status display
     createdAt: string; // assignment creation timestamp for staff context
     submissionCount?: number; // summary count used before submissions are expanded
@@ -73,8 +77,8 @@ export interface Assignment {
 
 /** Structured model judgment for one supported rubric criterion. */
 export interface CriterionFeedback {
-    criterion: A2CriterionId; // joins the result to the approved rubric criterion
-    suggestedLevel: A2Level; // model draft level requiring human review
+    criterion: WritingCriterionId; // joins the result to the approved rubric criterion
+    suggestedLevel: WritingLevelId; // model draft level requiring human review
     evidence: Array<{ quote: string; rationale: string }>; // exact verified-text quote and the model's rationale for citing it
     explanation: string; // criterion-level formative explanation
     confidence: number; // staff-only diagnostic excluded from student output
@@ -105,7 +109,7 @@ export type WfPriority = 'high' | 'medium' | 'low';
 /** Exact verified-text annotation stored in model seeds and staff revision snapshots. */
 export interface AnchoredComment {
     id: string; // stable identity used to diff comments across review revisions
-    criterion?: A2CriterionId; // optional rubric link retained from a model seed
+    criterion?: WritingCriterionId; // optional rubric link retained from a model seed
     quote: string; // exact substring copied from the verified submission text
     startOffset: number; // inclusive UTF-16 offset into the verified text snapshot
     endOffset: number; // exclusive UTF-16 offset paired with the exact quote
@@ -226,6 +230,7 @@ export interface CanvasStatus {
 export interface CanvasAssignment {
     canvasAssignmentId: string; // external selection key submitted to the import endpoint
     title: string; // Canvas-provided assignment label shown before import
+    description?: string; // Canvas-provided directions carried into local assignment context
     submissionCount: number; // eligible candidate count shown in the picker
     pointsPossible?: number; // informational Canvas value; never inferred as rubric mapping
     dueAt?: string; // external due date preview
@@ -241,9 +246,10 @@ export interface WorkspaceContext {
 
 /** Approved/draft rubric pair and history returned to the rubric page. */
 export interface RubricResponse {
-    approved: RubricDefinition; // active rubric used by generation and release
-    draft?: RubricDefinition; // inactive editable candidate, when present
+    approved?: RubricDefinition; // active rubric used by generation and release after first approval
+    draft?: RubricDefinition; // editable candidate; always present before the first approval
     history: RubricDefinition[]; // immutable prior versions available for provenance
+    library: RubricCriterion[]; // optional criteria available for explicit instructor addition
     permissions: { canEdit: boolean }; // server-derived mutation permission for the current staff user
 }
 

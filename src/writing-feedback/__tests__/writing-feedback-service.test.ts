@@ -10,17 +10,40 @@
  * @description: Regression coverage for the human-in-the-loop feedback lifecycle.
  */
 
-import { buildA2Assignment } from '../a2-profile';
-import type { A2FeedbackResult, AnchoredComment, StaffReviewRevision, WritingFeedbackRun, WritingSubmission } from '../contracts';
+import { ModelSelectionService } from '../../dashboard-setting/model-selection-service';
+import { buildDefaultWritingAssignment } from '../default-rubric-profile';
+import { approveRubricDraft } from '../rubric-schema';
+import type {
+    AnchoredComment,
+    StaffReviewRevision,
+    WritingAssignment,
+    WritingFeedbackResult,
+    WritingFeedbackRun,
+    WritingSubmission
+} from '../contracts';
 import { WritingFeedbackService } from '../writing-feedback-service';
 import type { EngEAI_MongoDB } from '../../db/enge-ai-mongodb';
 
-const result: A2FeedbackResult = {
+const result: WritingFeedbackResult = {
     criteria: [],
     strengths: [],
     revisionGoals: [],
     internalFlags: []
 };
+
+function approvedAssignment(version = 1): WritingAssignment {
+    const assignment = buildDefaultWritingAssignment(
+        'course-1',
+        'assignment-1',
+        'Local writing assignment'
+    );
+    assignment.rubric = approveRubricDraft(
+        { ...assignment.rubric, version },
+        'instructor-1',
+        new Date('2026-01-01T00:00:00.000Z')
+    );
+    return assignment;
+}
 
 function submission(status: WritingSubmission['status'] = 'imported'): WritingSubmission {
     return {
@@ -41,8 +64,7 @@ function submission(status: WritingSubmission['status'] = 'imported'): WritingSu
 
 describe('WritingFeedbackService rubric provenance', () => {
     it('stamps the active approved rubric version on each generated run', async () => {
-        const assignment = buildA2Assignment('course-1', 'assignment-1');
-        assignment.rubric.version = 3;
+        const assignment = approvedAssignment(3);
         const createRun = jest.fn(async (input) => ({ ...input, id: 'run-1', createdAt: new Date() }));
         const mongo = {
             getWritingSubmission: jest.fn(async () => submission()),
@@ -51,15 +73,20 @@ describe('WritingFeedbackService rubric provenance', () => {
             createWritingFeedbackRun: createRun
         } as unknown as EngEAI_MongoDB;
         const engine = { generate: jest.fn(async () => result) };
+        const modelOptions = jest.spyOn(ModelSelectionService.getInstance(), 'buildFeatureLlmCallOptions')
+            .mockResolvedValue({});
 
-        await new WritingFeedbackService(mongo, engine).generate('course-1', 'submission-1');
+        try {
+            await new WritingFeedbackService(mongo, engine).generate('course-1', 'submission-1');
+        } finally {
+            modelOptions.mockRestore();
+        }
 
         expect(createRun).toHaveBeenCalledWith(expect.objectContaining({ rubricVersion: 3 }));
     });
 
     it('blocks approval when feedback was generated against an older rubric', async () => {
-        const assignment = buildA2Assignment('course-1', 'assignment-1');
-        assignment.rubric.version = 2;
+        const assignment = approvedAssignment(2);
         const run: WritingFeedbackRun = {
             id: 'run-1',
             courseId: 'course-1',
@@ -88,6 +115,7 @@ describe('WritingFeedbackService rubric provenance', () => {
 
 describe('WritingFeedbackService anchored comments', () => {
     const engine = { generate: jest.fn(async () => result) };
+    const assignment = approvedAssignment();
 
     function runFor(sub: WritingSubmission): WritingFeedbackRun {
         return {
@@ -100,7 +128,7 @@ describe('WritingFeedbackService anchored comments', () => {
             result: {
                 criteria: [{
                     criterion: 'organization',
-                    suggestedLevel: 'competent',
+                    suggestedLevel: 'proficient',
                     evidence: [{ quote: 'Verified student text.', rationale: 'Anchors the description.' }],
                     explanation: 'Sequencing is clear.',
                     confidence: 0.8
@@ -130,6 +158,7 @@ describe('WritingFeedbackService anchored comments', () => {
         const sub = submission('draft_ready');
         const mongo = {
             getWritingSubmission: jest.fn(async () => sub),
+            getWritingAssignment: jest.fn(async () => assignment),
             getLatestWritingFeedbackRun: jest.fn(async () => runFor(sub))
         } as unknown as EngEAI_MongoDB;
 
@@ -150,6 +179,7 @@ describe('WritingFeedbackService anchored comments', () => {
         };
         const mongo = {
             getWritingSubmission: jest.fn(async () => ({ ...sub, reviews: [review] })),
+            getWritingAssignment: jest.fn(async () => assignment),
             getLatestWritingFeedbackRun: jest.fn(async () => runFor(sub))
         } as unknown as EngEAI_MongoDB;
 
@@ -242,7 +272,6 @@ describe('WritingFeedbackService anchored comments', () => {
             ],
             createdAt: new Date('2026-07-26T10:00:00Z')
         };
-        const assignment = buildA2Assignment('course-1', 'assignment-1');
         const mongo = {
             getWritingSubmission: jest.fn(async () => ({ ...sub, reviews: [firstCycle, secondCycle] })),
             getWritingAssignment: jest.fn(async () => assignment),
@@ -267,7 +296,6 @@ describe('WritingFeedbackService anchored comments', () => {
             id: 'review-1', submissionId: sub.id, feedbackRunId: 'run-1', staffUserId: 'instructor-1',
             studentFeedback: 'Nice work.', comments: [storedComment(), drifted], createdAt: new Date()
         };
-        const assignment = buildA2Assignment('course-1', 'assignment-1');
         const mongo = {
             getWritingSubmission: jest.fn(async () => ({ ...sub, reviews: [review] })),
             getWritingAssignment: jest.fn(async () => assignment),

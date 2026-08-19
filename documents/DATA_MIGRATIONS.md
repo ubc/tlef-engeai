@@ -31,6 +31,30 @@ Operational startup migrations (OB-001) are documented here but are **not** tied
 | **GPF-002** | Guided Pathway registered collection normalization | Startup + operation gate | `migrateGuidedPathwayFlagsToCourseCollections` in `src/db/mongo/guided-pathway-flag-collection-mongo.ts` | shared and hashed rows → readable `activeCourse.collections.guidedPathwayFlags` targets; lease/result → `application-migrations` | Operational — retain until every environment passes the GPF-002 postchecks and retained legacy data is resolved |
 | **SQ-001** | Scenario Questions collection backfill | Lazy (first API call) | `ensureScenarioQuestionsCollection` in `src/db/mongo/scenario-questions-mongo.ts` | missing `activeCourse.collections.scenarioQuestions` → creates `{courseName}_scenario_questions` + `$set` the field | Keep while any pre-feature course document may lack `collections.scenarioQuestions` |
 | **SQ-004** | Scenario Progress collection backfill | Lazy (first progress API call) | `ensureScenarioProgressCollection` in `src/db/mongo/scenario-progress-mongo.ts` | missing `activeCourse.collections.scenarioProgress` → creates `{courseName}_scenario_progress` + `$set` the field | Keep while any course may lack `collections.scenarioProgress` |
+| **WF-001** | Writing Canvas mapping index repair | Lazy (first Writing Feedback index ensure) | `ensureWritingFeedbackIndexes` in `src/db/mongo/writing-feedback-mongo.ts` | unique compound sparse `{ courseId, canvasAssignmentId }` → unique partial index limited to string Canvas ids | Keep while deployments may carry the legacy index |
+| **WF-002** | Writing rubric level-rank compatibility | Lazy (assignment read) | `normalizeWritingAssignment` in `src/db/mongo/writing-feedback-mongo.ts` | missing `rubric.levels[].rank` in current/draft/history → detached value using array position + 1 | Keep while any pre-Spec-1 rubric may lack rank |
+
+---
+
+## WF-001: Writing Canvas mapping index repair
+
+**Status:** Active (lazy index reconciliation)
+
+The former unique compound sparse index still indexed every writing assignment because `courseId` is always present. Manual rows therefore shared the same missing/null Canvas key and a course could not insert a second manual assignment. On the first Writing Feedback index ensure, the delegate inspects the server index catalog, drops only the conflicting legacy key, and creates `writing_canvas_assignment_unique` with `partialFilterExpression: { canvasAssignmentId: { $type: 'string' } }`.
+
+**Idempotency:** A correct partial unique index is left untouched. A missing collection/index is created. Repeated process starts do not drop or rebuild a matching index.
+
+**Rollback:** Recreating the old sparse index would reintroduce the one-manual-assignment defect and is not a safe rollback. If code rollback is unavoidable, retain the partial index; older query paths use the same key pattern and remain compatible.
+
+## WF-002: Writing rubric level-rank compatibility
+
+**Status:** Active (read-only compatibility path)
+
+Legacy rubrics have meaningful level array order but no explicit `rank`. Assignment reads return detached current, draft, and history values with missing ranks filled from `index + 1`. No Mongo document is rewritten, so old releases and rubric provenance remain byte-for-byte unchanged.
+
+**Idempotency:** Existing positive integer ranks pass through unchanged; repeated reads produce the same detached value.
+
+**Rollback:** Remove the normalizer only after every supported stored rubric has an explicit rank. Until then, removal would make legacy records fail the new contract.
 
 ---
 

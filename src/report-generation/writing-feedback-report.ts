@@ -33,17 +33,17 @@ import { randomUUID } from 'crypto';
 import PDFDocument from 'pdfkit';
 import type {
     WritingFeedbackPdfService,
-    A2FeedbackResult,
+    WritingFeedbackResult,
     AnchoredComment,
     FeedbackPdfInclude,
     WritingAssignment,
     WritingSubmission
-} from './contracts';
+} from '../writing-feedback/contracts';
 import {
     layoutVerifiedText,
     highlightRectsForSpan,
     type HighlightRect
-} from './annotated-text-layout';
+} from './writing-feedback-layout';
 
 const PAGE_MARGIN = 64;
 const BODY_SIZE = 11;
@@ -76,7 +76,7 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
     async render(input: {
         assignment: WritingAssignment;
         submission: WritingSubmission;
-        feedback: A2FeedbackResult;
+        feedback: WritingFeedbackResult;
         grade?: number;
         staffFeedback?: string;
         comments?: AnchoredComment[];
@@ -152,7 +152,7 @@ function bullet(doc: PDFKit.PDFDocument, text: string): void {
 function renderGeneralSections(
     doc: PDFKit.PDFDocument,
     assignment: WritingAssignment,
-    feedback: A2FeedbackResult,
+    feedback: WritingFeedbackResult,
     staffFeedback?: string
 ): void {
     sectionHeading(doc, 'What you did well');

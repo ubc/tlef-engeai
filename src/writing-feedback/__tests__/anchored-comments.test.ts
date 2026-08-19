@@ -17,6 +17,8 @@ import {
     validateAnchoredComments,
     withStaleFlags
 } from '../anchored-comments';
+import { buildDefaultWritingAssignment } from '../default-rubric-profile';
+import { approveRubricDraft } from '../rubric-schema';
 import type { AnchoredComment, WritingFeedbackRun } from '../contracts';
 
 const verifiedText = 'First sample sentence. Second sample sentence. First sample sentence.';
@@ -33,7 +35,7 @@ function comment(overrides: Partial<AnchoredComment> = {}): AnchoredComment {
     };
 }
 
-function run(quotes: string[]): WritingFeedbackRun {
+function run(quotes: string[], criterion = 'organization'): WritingFeedbackRun {
     return {
         id: 'run-1',
         courseId: 'course-1',
@@ -43,8 +45,8 @@ function run(quotes: string[]): WritingFeedbackRun {
         rubricVersion: 1,
         result: {
             criteria: [{
-                criterion: 'organization',
-                suggestedLevel: 'competent',
+                criterion,
+                suggestedLevel: 'proficient',
                 evidence: quotes.map((quote) => ({ quote, rationale: 'Signals the text structure.' })),
                 explanation: 'Sequencing is mostly clear.',
                 confidence: 0.8
@@ -144,9 +146,28 @@ describe('seedCommentsFromRun', () => {
         expect(verifiedText.slice(seeds[1].startOffset, seeds[1].endOffset)).toBe('First sample sentence.');
     });
 
-    it('maps rubric criterion to matrix function tag; never seeds level or priority', () => {
-        const seeds = seedCommentsFromRun(run(['Second sample sentence.']), verifiedText);
-        expect(seeds[0].functionTag).toBe('organizational');
+    it('maps an assignment-authored criterion to its matrix function tag; never seeds level or priority', () => {
+        const assignment = buildDefaultWritingAssignment(
+            'course-1',
+            'assignment-1',
+            'Local writing assignment'
+        );
+        assignment.rubric = approveRubricDraft({
+            ...assignment.rubric,
+            criteria: [{
+                id: 'analysis_depth',
+                label: 'Analysis Depth',
+                description: 'How completely the submission interprets its observations.',
+                functionTag: 'content'
+            }]
+        }, 'instructor-1');
+
+        const seeds = seedCommentsFromRun(
+            run(['Second sample sentence.'], 'analysis_depth'),
+            verifiedText,
+            assignment.rubric
+        );
+        expect(seeds[0].functionTag).toBe('content');
         expect(seeds[0].levelTag).toBeUndefined();
         expect(seeds[0].priority).toBeUndefined();
     });

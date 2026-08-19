@@ -104,6 +104,10 @@
     transition: transform 0.22s ease;
 }
 
+.wf-header-btn[hidden] {
+    display: none;
+}
+
 .wf-header-btn:hover {
     transform: scale(1.05);
 }
@@ -474,6 +478,23 @@
     height: 18px;
 }
 
+.wf-submission-panel {
+    overflow: hidden;
+    opacity: 1;
+    transform: translateY(0);
+    transition:
+        max-height 0.3s ease,
+        opacity 0.3s ease,
+        transform 0.3s ease;
+}
+
+.wf-submission-panel--enter,
+.wf-submission-panel--leave {
+    opacity: 0;
+    transform: translateY(-0.35rem);
+    pointer-events: none;
+}
+
 .wf-submission-panel[hidden] {
     display: none;
 }
@@ -638,6 +659,13 @@
     margin: 2px 0 6px;
 }
 
+.wf-inline-field-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+}
+
 .wf-form-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -735,6 +763,44 @@
 
 /* Rubric page */
 
+.wf-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.wf-assignment-instructions {
+    margin: 15px 0 20px;
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.wf-assignment-instructions summary {
+    min-height: 44px;
+    padding: 12px 20px;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.wf-assignment-instructions__text,
+.wf-assignment-instructions > .wf-muted-note {
+    margin: 0;
+    padding: 0 20px 16px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+}
+
 .wf-rubric-layout {
     display: grid;
     grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 0.65fr);
@@ -776,6 +842,35 @@
     gap: 15px;
 }
 
+.wf-rubric-tools {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 12px 0 15px;
+}
+
+.wf-rubric-tools .wf-button {
+    min-height: 44px;
+}
+
+.wf-rubric-library-select {
+    min-height: 40px;
+    min-width: min(100%, 16rem);
+    padding: 8px 12px;
+    background: white;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 14px;
+}
+
+.wf-rubric-library-select:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
+}
+
 .wf-rubric-card {
     background: var(--chat-bg);
     border: 1px solid var(--border-color);
@@ -784,11 +879,33 @@
 }
 
 .wf-rubric-card h3 {
-    margin: 0 0 8px;
+    margin: 0;
     color: var(--text-primary);
     font-size: 15px;
     font-weight: 600;
-    text-transform: capitalize;
+}
+
+.wf-rubric-item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.wf-rubric-item-header .wf-icon-button {
+    width: 44px;
+    height: 44px;
+}
+
+.wf-rubric-card-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 16px;
+}
+
+.wf-rubric-card-fields .wf-field--wide {
+    grid-column: 1 / -1;
 }
 
 .wf-locked-value {
@@ -802,10 +919,46 @@
     line-height: 1.4;
 }
 
+.wf-level-list {
+    display: grid;
+    gap: 12px;
+}
+
 .wf-level-row {
     display: grid;
-    grid-template-columns: minmax(8rem, 0.7fr) minmax(0, 1.5fr) minmax(6rem, 0.45fr);
+    grid-template-columns: minmax(8rem, 0.7fr) minmax(8rem, 0.8fr) minmax(12rem, 1.5fr) minmax(7rem, 0.5fr);
     gap: 12px;
+    padding: 16px 20px;
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.wf-level-row .wf-field {
+    margin-bottom: 0;
+}
+
+.wf-level-row__header {
+    grid-column: 1 / -1;
+    margin-bottom: 0;
+}
+
+.wf-level-row__header h3 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.wf-reorder-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.wf-reorder-controls .wf-icon-button {
+    width: 44px;
+    height: 44px;
 }
 
 /* Review — top bar + layout */
@@ -1699,9 +1852,15 @@ mark.wf-anchor.is-filtered-out,
         grid-column: auto;
     }
 
-    .wf-level-row {
+    .wf-level-row,
+    .wf-rubric-card-fields {
         grid-template-columns: 1fr;
         gap: 0;
+    }
+
+    .wf-rubric-card-fields .wf-field--wide,
+    .wf-level-row__header {
+        grid-column: auto;
     }
 
     .wf-doc-paper {
@@ -1755,6 +1914,16 @@ mark.wf-anchor.is-filtered-out,
     }
 
     .wf-button-row .wf-button {
+        width: 100%;
+    }
+
+    .wf-rubric-tools {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .wf-rubric-library-select,
+    .wf-rubric-tools .wf-button {
         width: 100%;
     }
 
