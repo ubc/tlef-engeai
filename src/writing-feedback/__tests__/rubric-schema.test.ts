@@ -11,6 +11,7 @@
  */
 
 import { buildDefaultWritingRubric } from '../default-rubric-profile';
+import { buildLabReportRubric } from '../lab-report-profile';
 import {
     approveRubricDraft,
     assertApprovedRubricIdsStable,
@@ -210,5 +211,55 @@ describe('approved rubric identifier stability', () => {
         const reshaped = inputWithSixCriteria();
 
         expect(() => assertApprovedRubricIdsStable(initialDraft, reshaped)).not.toThrow();
+    });
+});
+
+describe('lab context', () => {
+    const validInput = () => {
+        const rubric = buildLabReportRubric();
+        return {
+            title: rubric.title,
+            task: rubric.task,
+            audience: rubric.audience,
+            purpose: rubric.purpose,
+            constraints: rubric.constraints,
+            learningOutcomes: rubric.learningOutcomes,
+            gradingIntent: rubric.gradingIntent,
+            criteria: rubric.criteria,
+            levels: rubric.levels
+        };
+    };
+
+    it('accepts an absent lab context', () => {
+        expect(writingRubricDraftInputSchema.safeParse(validInput()).success).toBe(true);
+    });
+
+    it('accepts a lab context and trims it', () => {
+        const parsed = writingRubricDraftInputSchema.safeParse({
+            ...validInput(),
+            labContext: '  Heat the rod with steam and record elongation.  '
+        });
+        expect(parsed.success).toBe(true);
+        expect(parsed.success && parsed.data.labContext).toBe('Heat the rod with steam and record elongation.');
+    });
+
+    it('rejects a lab context over twelve thousand characters', () => {
+        const parsed = writingRubricDraftInputSchema.safeParse({
+            ...validInput(),
+            labContext: 'x'.repeat(12001)
+        });
+        expect(parsed.success).toBe(false);
+    });
+
+    it('carries the lab context into a built draft', () => {
+        const parsed = writingRubricDraftInputSchema.parse({ ...validInput(), labContext: 'Steps 1 to 4.' });
+        const draft = buildRubricDraft(parsed, 2, 'user-1', new Date('2026-08-20T00:00:00.000Z'));
+        expect(draft.labContext).toBe('Steps 1 to 4.');
+    });
+
+    it('leaves the lab context unset when it was not supplied', () => {
+        const parsed = writingRubricDraftInputSchema.parse(validInput());
+        const draft = buildRubricDraft(parsed, 2, 'user-1', new Date('2026-08-20T00:00:00.000Z'));
+        expect(draft.labContext).toBeUndefined();
     });
 });

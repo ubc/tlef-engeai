@@ -34,6 +34,8 @@ export const writingRubricDraftInputSchema = z.object({
     constraints: z.array(z.string().trim().min(1).max(300)).min(1).max(12),
     learningOutcomes: z.array(z.string().trim().min(1).max(400)).min(1).max(12),
     gradingIntent: compactText,
+    /** Optional instructor-approved lab handout context supplied to the technical lens. */
+    labContext: z.string().trim().max(12000).optional(),
     criteria: z.array(z.object({
         id: slug,
         label: z.string().trim().min(1).max(80),
@@ -124,6 +126,7 @@ export function buildRubricDraft(
 ): WritingRubricDefinition {
     return {
         ...input,
+        ...(input.labContext ? { labContext: input.labContext } : {}),
         version: nextVersion,
         status: 'draft',
         updatedAt: now,
