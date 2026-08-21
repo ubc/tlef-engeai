@@ -20,12 +20,16 @@ import type {
     StaffReviewRevision,
     WritingAssignment,
     WritingFeedbackEngine,
+    WritingFeedbackLens,
     WritingFeedbackResult,
     WritingFeedbackRun,
+    WritingRubricDefinition,
     WritingSubmission
 } from './contracts';
 import { seedCommentsFromRun, stampCommentAuthors, validateAnchoredComments, withStaleFlags, type AnchoredCommentWithState } from './anchored-comments';
 import { RubricWritingFeedbackEngine } from './feedback-engine';
+import { TECHNICAL_PROMPT_VERSION, TechnicalWritingFeedbackEngine } from './technical-feedback-engine';
+import { lensesForAssignment, selectRubric } from './rubric-lens';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 import { StudentWritingFeedbackPdfService } from '../report-generation/writing-feedback-report';
 import { resolveNumericGrade } from './feedback-schema';
@@ -35,7 +39,9 @@ type ReviewableSubmission = WritingSubmission & { reviews?: StaffReviewRevision[
 /** Staff detail payload combining persistent state with safe read-time comment derivations. */
 export interface SubmissionDetail {
     submission: ReviewableSubmission; // submission plus append-only review history
-    feedbackRun: WritingFeedbackRun | null; // latest immutable model draft
+    feedbackRun: WritingFeedbackRun | null; // latest immutable linguistic model draft
+    /** Latest immutable technical draft; null for assignments without the technical lens. */
+    technicalFeedbackRun: WritingFeedbackRun | null;
     /** Latest stored working set, stale-flagged against the current verified text. */
     comments: AnchoredCommentWithState[];
     /** Model-derived seeds; present only while no revision has stored comments yet. */
@@ -49,63 +55,140 @@ export interface SubmissionDetail {
  * Canvas release is delegated only after current-rubric validation.
  */
 export class WritingFeedbackService {
+    /** Memoised technical engine; built at most once, and only if the technical lens ever runs. */
+    private lazyTechnicalEngine?: WritingFeedbackEngine;
+
     /**
      * Creates the lifecycle service with injectable generation and PDF implementations.
      *
      * @param mongo - Persistence façade for course-scoped Writing Feedback records
-     * @param engine - Structured feedback generator; defaults to the rubric-driven engine
+     * @param engine - Structured linguistic feedback generator; defaults to the rubric-driven engine
      * @param pdfService - Student-safe renderer; defaults to the PDFKit implementation
+     * @param technicalEngine - Structured technical feedback generator for lab reports; a test
+     *   double passed here always takes precedence. Left undefined in production so the real
+     *   LLM-backed engine (and its client construction) is built lazily, only the first time a
+     *   lab report's technical lens actually runs, and never for assignments that are not lab reports.
      */
     constructor(
         private readonly mongo: EngEAI_MongoDB,
         private readonly engine: WritingFeedbackEngine = new RubricWritingFeedbackEngine(),
-        private readonly pdfService = new StudentWritingFeedbackPdfService()
+        private readonly pdfService = new StudentWritingFeedbackPdfService(),
+        private readonly technicalEngine?: WritingFeedbackEngine
     ) {}
 
     /**
-     * Generates a new immutable feedback run from staff-verified text.
+     * Resolves the technical engine, constructing the default implementation at most once.
+     *
+     * @returns The injected test double, or the lazily-built default technical engine
+     */
+    private getTechnicalEngine(): WritingFeedbackEngine {
+        if (this.technicalEngine) return this.technicalEngine;
+        if (!this.lazyTechnicalEngine) this.lazyTechnicalEngine = new TechnicalWritingFeedbackEngine();
+        return this.lazyTechnicalEngine;
+    }
+
+    /**
+     * Generates an immutable feedback run for every lens this assignment requires.
+     *
+     * The linguistic lens is mandatory: its failure fails the submission and rethrows. The
+     * technical lens runs only for a lab report whose technical rubric is currently approved,
+     * and it is best-effort — its failure leaves the linguistic draft reviewable rather than
+     * discarding it. Every model error (linguistic or technical) can carry prompt/student
+     * content, so none of it is ever logged.
      *
      * @param courseId - Course authorization/persistence boundary
      * @param submissionId - Submission selected by staff
-     * @returns Validated structured model draft
-     * @throws Error when verification, assignment lookup, generation, or persistence fails
+     * @returns Validated model drafts keyed by lens; a skipped or failed lens is absent
+     * @throws Error when verification, assignment lookup, or linguistic generation fails
      */
-    async generate(courseId: string, submissionId: string): Promise<WritingFeedbackResult> {
+    async generate(
+        courseId: string,
+        submissionId: string
+    ): Promise<Partial<Record<WritingFeedbackLens, WritingFeedbackResult>>> {
         // Verified text is the only student content allowed across the model boundary.
         const submission = await this.requireSubmission(courseId, submissionId);
         if (submission.requiresVerification || !submission.verifiedText?.trim()) {
             throw new Error('Staff must verify the submission text before feedback generation');
         }
         const assignment = await this.requireAssignment(courseId, submission.assignmentId);
+        const verifiedText = submission.verifiedText;
         // Expose a durable in-progress state before the asynchronous model call begins.
         await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'generating');
+
+        const llmCallOptions = await ModelSelectionService.getInstance().buildFeatureLlmCallOptions(
+            courseId,
+            'writingFeedback'
+        );
+        const results: Partial<Record<WritingFeedbackLens, WritingFeedbackResult>> = {};
+
         try {
-            const llmCallOptions = await ModelSelectionService.getInstance().buildFeatureLlmCallOptions(
-                courseId,
-                'writingFeedback'
-            );
-            const result = await this.engine.generate({
-                assignment,
-                verifiedText: submission.verifiedText,
-                llmCallOptions,
+            results.linguistic = await this.runLens('linguistic', {
+                courseId, submissionId, assignment, verifiedText, llmCallOptions
             });
-            // Persist immutable provenance before declaring the draft review-ready.
-            await this.mongo.createWritingFeedbackRun({
-                courseId,
-                assignmentId: assignment.id,
-                submissionId,
-                profileVersion: assignment.profileVersion,
-                rubricVersion: assignment.rubric.version,
-                result,
-                modelMetadata: { engine: this.engine.constructor.name, promptVersion: 'writing-feedback-v1' }
-            });
-            await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'draft_ready');
-            return result;
         } catch (error) {
             // Preserve a visible retryable failure state without logging student/model content.
             await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'failed');
             throw error;
         }
+
+        // The technical lens only ever applies to a lab report with a currently-approved rubric.
+        if (lensesForAssignment(assignment).includes('technical') && selectRubric(assignment, 'technical').approved) {
+            try {
+                results.technical = await this.runLens('technical', {
+                    courseId, submissionId, assignment, verifiedText, llmCallOptions
+                });
+            } catch {
+                // Swallowed deliberately: the error can carry prompt/student content and must
+                // never be logged or surfaced. Staff see the missing technical draft in the
+                // review view and can regenerate; the linguistic draft stays reviewable.
+            }
+        }
+
+        await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'draft_ready');
+        return results;
+    }
+
+    /**
+     * Generates and persists one lens's immutable run against its currently-approved rubric.
+     *
+     * @param lens - Lens to generate; selects the engine and stamped prompt version
+     * @param input - Shared generation context common to every lens
+     * @returns Validated structured model draft for this lens
+     * @throws Error when this lens has no approved rubric, or the engine call fails
+     */
+    private async runLens(
+        lens: WritingFeedbackLens,
+        input: {
+            courseId: string;
+            submissionId: string;
+            assignment: WritingAssignment;
+            verifiedText: string;
+            llmCallOptions: Awaited<ReturnType<ModelSelectionService['buildFeatureLlmCallOptions']>>;
+        }
+    ): Promise<WritingFeedbackResult> {
+        const engine = lens === 'technical' ? this.getTechnicalEngine() : this.engine;
+        const rubric = selectRubric(input.assignment, lens).approved;
+        if (!rubric) throw new Error(`An approved ${lens} rubric is required before feedback generation`);
+        const result = await engine.generate({
+            assignment: input.assignment,
+            verifiedText: input.verifiedText,
+            llmCallOptions: input.llmCallOptions
+        });
+        // Persist immutable provenance before declaring the draft review-ready.
+        await this.mongo.createWritingFeedbackRun({
+            courseId: input.courseId,
+            assignmentId: input.assignment.id,
+            submissionId: input.submissionId,
+            profileVersion: input.assignment.profileVersion,
+            rubricVersion: rubric.version,
+            lens,
+            result,
+            modelMetadata: {
+                engine: engine.constructor.name,
+                promptVersion: lens === 'technical' ? TECHNICAL_PROMPT_VERSION : 'writing-feedback-v1'
+            }
+        });
+        return result;
     }
 
     /**
@@ -118,6 +201,7 @@ export class WritingFeedbackService {
     async detail(courseId: string, submissionId: string): Promise<SubmissionDetail> {
         const submission = await this.requireSubmission(courseId, submissionId);
         const feedbackRun = await this.mongo.getLatestWritingFeedbackRun(submissionId);
+        const technicalFeedbackRun = await this.mongo.getLatestWritingFeedbackRun(submissionId, 'technical');
         const verifiedText = submission.verifiedText ?? '';
         const assignment = feedbackRun
             ? await this.requireAssignment(courseId, submission.assignmentId)
@@ -135,7 +219,7 @@ export class WritingFeedbackService {
         const seedComments = !latestWithComments && feedbackRun && verifiedText
             ? seedCommentsFromRun(feedbackRun, verifiedText, runRubric)
             : [];
-        return { submission, feedbackRun, comments, seedComments };
+        return { submission, feedbackRun, technicalFeedbackRun, comments, seedComments };
     }
 
     /**
@@ -178,14 +262,26 @@ export class WritingFeedbackService {
      * @param staffUserId - Internal approving actor
      * @param staffName - Optional display name used as PDF annotation author
      * @returns Approved submission from persistence
-     * @throws Error when no run exists, rubric provenance is stale, or state is not draft-ready
+     * @throws Error when a required lens has no current run, its rubric changed since
+     *   generation, or the submission is not draft-ready
      */
     async approve(courseId: string, submissionId: string, staffUserId: string, staffName?: string) {
         const submission = await this.requireSubmission(courseId, submissionId);
         const assignment = await this.requireAssignment(courseId, submission.assignmentId);
-        const run = await this.mongo.getLatestWritingFeedbackRun(submissionId);
-        if (!run) throw new Error('Generate feedback before staff approval');
-        this.assertCurrentRubric(run.rubricVersion, assignment);
+
+        for (const lens of lensesForAssignment(assignment)) {
+            const rubric = selectRubric(assignment, lens).approved;
+            // A lab report whose technical rubric was never approved cannot owe a technical run.
+            if (lens === 'technical' && !rubric) continue;
+            const run = await this.mongo.getLatestWritingFeedbackRun(submissionId, lens);
+            if (!run) {
+                throw new Error(lens === 'technical'
+                    ? 'Generate technical feedback before staff approval'
+                    : 'Generate feedback before staff approval');
+            }
+            this.assertCurrentRubricForLens(run.rubricVersion, rubric, lens);
+        }
+
         const approved = await this.mongo.approveWritingSubmission(courseId, submissionId, staffUserId, staffName);
         if (!approved) throw new Error('A draft-ready submission is required before approval');
         return approved;
@@ -296,6 +392,28 @@ export class WritingFeedbackService {
         const effectiveRunVersion = runRubricVersion ?? 1;
         if (effectiveRunVersion !== assignment.rubric.version) {
             throw new Error('Rubric changed after feedback generation; regenerate feedback before approval or release');
+        }
+    }
+
+    /**
+     * Checks one lens's run against its currently-approved rubric version.
+     *
+     * @param runRubricVersion - Rubric version stamped on the run being checked
+     * @param rubric - This lens's currently-approved rubric, if any
+     * @param lens - Lens being checked, selecting the error message
+     * @throws Error when the rubric is missing or the run predates the current approval
+     */
+    private assertCurrentRubricForLens(
+        runRubricVersion: number | undefined,
+        rubric: WritingRubricDefinition | undefined,
+        lens: WritingFeedbackLens
+    ): void {
+        // Legacy runs predate explicit provenance and are treated as profile version 1.
+        const effectiveRunVersion = runRubricVersion ?? 1;
+        if (!rubric || effectiveRunVersion !== rubric.version) {
+            throw new Error(lens === 'technical'
+                ? 'Technical rubric changed after feedback generation; regenerate technical feedback before approval or release'
+                : 'Rubric changed after feedback generation; regenerate feedback before approval or release');
         }
     }
 }
