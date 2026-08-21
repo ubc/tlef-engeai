@@ -12,11 +12,12 @@
  */
 
 import { randomUUID } from 'crypto';
-import type { Collection, IndexDescriptionInfo, UpdateFilter } from 'mongodb';
+import type { Collection, Filter, IndexDescriptionInfo, UpdateFilter } from 'mongodb';
 import type { MongoDalContext } from './mongo-context';
 import type {
     StaffReviewRevision,
     WritingAssignment,
+    WritingFeedbackLens,
     WritingFeedbackRun,
     WritingJob,
     WritingRelease,
@@ -25,6 +26,7 @@ import type {
     WritingSubmissionStatus
 } from '../../writing-feedback/contracts';
 import { buildDefaultWritingAssignment } from '../../writing-feedback/default-rubric-profile';
+import { rubricFieldPaths } from '../../writing-feedback/rubric-lens';
 
 const ASSIGNMENTS = 'writing-assignments';
 const SUBMISSIONS = 'writing-submissions';
@@ -115,6 +117,13 @@ export function normalizeWritingAssignment(assignment: WritingAssignment): Writi
         ...(assignment.rubricDraft ? { rubricDraft: normalizeRubricRanks(assignment.rubricDraft) } : {}),
         ...(assignment.rubricHistory
             ? { rubricHistory: assignment.rubricHistory.map(normalizeRubricRanks) }
+            : {}),
+        ...(assignment.technicalRubric ? { technicalRubric: normalizeRubricRanks(assignment.technicalRubric) } : {}),
+        ...(assignment.technicalRubricDraft
+            ? { technicalRubricDraft: normalizeRubricRanks(assignment.technicalRubricDraft) }
+            : {}),
+        ...(assignment.technicalRubricHistory
+            ? { technicalRubricHistory: assignment.technicalRubricHistory.map(normalizeRubricRanks) }
             : {})
     };
 }
@@ -316,62 +325,76 @@ export async function createCanvasWritingAssignment(
 }
 
 /**
- * saveWritingRubricDraft — replaces only the editable draft for an assignment.
+ * saveWritingRubricDraft — replaces only the editable draft for one lens on an assignment.
  *
  * The approved rubric and history remain unchanged until a separate approval.
+ * Each lens owns independent draft/approved/history fields (see `rubric-lens.ts`),
+ * so saving one lens's draft never touches the other lens's rubric state.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Owning course id
  * @param assignmentId - Assignment receiving the draft
  * @param draft - Validated staff-authored rubric draft
+ * @param lens - Feedback lens the draft belongs to; defaults to `'linguistic'`
  * @returns Updated assignment, or `null` when the scoped assignment is absent
  */
 export async function saveWritingRubricDraft(
     ctx: MongoDalContext,
     courseId: string,
     assignmentId: string,
-    draft: WritingRubricDefinition
+    draft: WritingRubricDefinition,
+    lens: WritingFeedbackLens = 'linguistic'
 ): Promise<WritingAssignment | null> {
+    const fields = rubricFieldPaths(lens);
     const updated = await assignments(ctx).findOneAndUpdate(
         { id: assignmentId, courseId },
-        { $set: { rubricDraft: draft, updatedAt: new Date() } },
+        { $set: { [fields.draft]: draft, updatedAt: new Date() } },
         { returnDocument: 'after' }
     );
     return updated ? normalizeWritingAssignment(updated) : null;
 }
 
 /**
- * discardWritingRubricDraft — removes the editable draft without changing active behavior.
+ * discardWritingRubricDraft — removes one lens's editable draft without changing active behavior.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Owning course id
  * @param assignmentId - Assignment whose draft is discarded
+ * @param lens - Feedback lens whose draft is discarded; defaults to `'linguistic'`
  * @returns Updated assignment, or `null` when the scoped assignment is absent
  */
 export async function discardWritingRubricDraft(
     ctx: MongoDalContext,
     courseId: string,
-    assignmentId: string
+    assignmentId: string,
+    lens: WritingFeedbackLens = 'linguistic'
 ): Promise<WritingAssignment | null> {
+    const fields = rubricFieldPaths(lens);
     const updated = await assignments(ctx).findOneAndUpdate(
         { id: assignmentId, courseId },
-        { $unset: { rubricDraft: '' }, $set: { updatedAt: new Date() } },
+        { $unset: { [fields.draft]: '' }, $set: { updatedAt: new Date() } },
         { returnDocument: 'after' }
     );
     return updated ? normalizeWritingAssignment(updated) : null;
 }
 
 /**
- * approveWritingRubricDraft — atomically promotes the expected draft version.
+ * approveWritingRubricDraft — atomically promotes the expected draft version for one lens.
  *
- * The previously approved rubric is appended to history. Version predicates
- * prevent a stale reviewer from overwriting a concurrently changed rubric.
+ * The previously approved rubric for that lens is appended to its history.
+ * Version predicates prevent a stale reviewer from overwriting a concurrently
+ * changed rubric. A lens with no prior approval (the technical lens on a
+ * freshly toggled lab report) has no approved-version predicate to guard —
+ * that guard applies only once an approved rubric already exists for the
+ * lens. `gradeMapping` is linguistic-only: it is never read or written for
+ * the technical lens, regardless of what the caller passes.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Owning course id
  * @param assignmentId - Assignment whose draft is being approved
  * @param approvedRubric - Approved form of the currently persisted draft
- * @param gradeMapping - Optional complete ordinal-to-points mapping
+ * @param gradeMapping - Optional complete ordinal-to-points mapping (linguistic lens only)
+ * @param lens - Feedback lens being approved; defaults to `'linguistic'`
  * @returns Updated assignment, or `null` for missing/stale draft state
  */
 export async function approveWritingRubricDraft(
@@ -379,32 +402,65 @@ export async function approveWritingRubricDraft(
     courseId: string,
     assignmentId: string,
     approvedRubric: WritingRubricDefinition,
-    gradeMapping?: WritingAssignment['gradeMapping']
+    gradeMapping?: WritingAssignment['gradeMapping'],
+    lens: WritingFeedbackLens = 'linguistic'
 ): Promise<WritingAssignment | null> {
+    const fields = rubricFieldPaths(lens);
     const current = await assignments(ctx).findOne({ id: assignmentId, courseId });
-    if (!current?.rubricDraft || current.rubricDraft.version !== approvedRubric.version) return null;
+    const currentDraft = current?.[fields.draft as 'rubricDraft'] as WritingRubricDefinition | undefined;
+    if (!currentDraft || currentDraft.version !== approvedRubric.version) return null;
+    const currentApproved = current?.[fields.approved as 'rubric'] as WritingRubricDefinition | undefined;
 
-    // Archive only a previously approved rubric; the initial template is an unapproved draft.
+    // Archive only a previously approved rubric; an initial template is an unapproved draft.
     const update: UpdateFilter<WritingAssignment> = {
         $set: {
-            rubric: approvedRubric,
+            [fields.approved]: approvedRubric,
             updatedAt: new Date(),
-            ...(gradeMapping ? { gradeMapping } : {})
+            // Only the linguistic rubric drives the released numeric grade today.
+            ...(lens === 'linguistic' && gradeMapping ? { gradeMapping } : {})
         },
-        ...(current.rubric.status === 'approved' ? { $push: { rubricHistory: current.rubric } } : {}),
+        ...(currentApproved?.status === 'approved' ? { $push: { [fields.history]: currentApproved } } : {}),
         $unset: {
-            rubricDraft: '',
-            ...(gradeMapping ? {} : { gradeMapping: '' })
+            [fields.draft]: '',
+            ...(lens === 'linguistic' && !gradeMapping ? { gradeMapping: '' } : {})
         }
-    };
+    } as UpdateFilter<WritingAssignment>;
+
     const updated = await assignments(ctx).findOneAndUpdate(
         {
             id: assignmentId,
             courseId,
-            'rubric.version': current.rubric.version,
-            'rubricDraft.version': approvedRubric.version
+            // A never-approved lens has no version to guard; guard it once one exists.
+            ...(currentApproved ? { [`${fields.approved}.version`]: currentApproved.version } : {}),
+            [`${fields.draft}.version`]: approvedRubric.version
         },
         update,
+        { returnDocument: 'after' }
+    );
+    return updated ? normalizeWritingAssignment(updated) : null;
+}
+
+/**
+ * setWritingAssignmentLabReport — marks or clears an assignment as a lab report.
+ *
+ * Seeding and clearing rules live in the service; this delegate performs only the
+ * course-scoped write.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Assignment being marked
+ * @param isLabReport - Whether the assignment receives technical feedback
+ * @returns Updated assignment, or `null` when the scoped assignment is absent
+ */
+export async function setWritingAssignmentLabReport(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string,
+    isLabReport: boolean
+): Promise<WritingAssignment | null> {
+    const updated = await assignments(ctx).findOneAndUpdate(
+        { id: assignmentId, courseId },
+        { $set: { isLabReport, updatedAt: new Date() } },
         { returnDocument: 'after' }
     );
     return updated ? normalizeWritingAssignment(updated) : null;
@@ -585,14 +641,26 @@ export async function createWritingFeedbackRun(
 }
 
 /**
- * getLatestWritingFeedbackRun — retrieves the newest generated run for a submission.
+ * getLatestWritingFeedbackRun — retrieves the newest generated run for a submission and lens.
+ *
+ * Runs written before two-lens generation carry no `lens` field at all; those
+ * legacy records are treated as linguistic so they keep surfacing as the
+ * latest linguistic run instead of silently disappearing from history.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param submissionId - Submission whose model provenance is requested
- * @returns Most recent run, or `null` when feedback has not been generated
+ * @param lens - Feedback lens whose latest run is requested; defaults to `'linguistic'`
+ * @returns Most recent run for the lens, or `null` when feedback has not been generated
  */
-export async function getLatestWritingFeedbackRun(ctx: MongoDalContext, submissionId: string): Promise<WritingFeedbackRun | null> {
-    return runs(ctx).find({ submissionId }).sort({ createdAt: -1 }).limit(1).next();
+export async function getLatestWritingFeedbackRun(
+    ctx: MongoDalContext,
+    submissionId: string,
+    lens: WritingFeedbackLens = 'linguistic'
+): Promise<WritingFeedbackRun | null> {
+    const lensFilter: Filter<WritingFeedbackRun> = lens === 'linguistic'
+        ? { $or: [{ lens: 'linguistic' }, { lens: { $exists: false } }] }
+        : { lens };
+    return runs(ctx).find({ submissionId, ...lensFilter }).sort({ createdAt: -1 }).limit(1).next();
 }
 
 /**
