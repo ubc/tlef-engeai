@@ -189,7 +189,11 @@ export interface WritingFeedbackRun {
 /** Staff/model comment anchored to an exact UTF-16 span of verified submission text. */
 export interface AnchoredComment {
     id: string; // stable client/revision identity
-    criterion?: WritingCriterionId; // optional rubric association for filtering
+    // Optional rubric association for filtering. Carries no lens marker today —
+    // only linguistic comments and model seeds exist, and the Technical tab is
+    // read-only. Technical annotations will need an explicit lens field before
+    // anchored comments can distinguish linguistic vs. technical criteria.
+    criterion?: WritingCriterionId;
     /** Exact substring of the verified text; validation checksum for the offsets. */
     quote: string;
     /** UTF-16 code-unit offsets into the verified text. Offsets are the anchor source of truth. */

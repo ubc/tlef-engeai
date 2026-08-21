@@ -335,8 +335,50 @@ function renderRubricPage(
 
     if (technicalData) {
         root.append(createText('h2', 'Technical rubric (lab report)', 'wf-section-title'));
-        root.append(...renderRubricSection(assignment, technicalData, 'technical'));
+        // A lab report can lose its only technical rubric (e.g. its draft was
+        // deleted directly via the API before ever being approved). Offer a
+        // re-seed action instead of throwing out of renderRubricSection.
+        if (!technicalData.draft && !technicalData.approved) {
+            root.append(renderMissingTechnicalRubric(assignment));
+        } else {
+            root.append(...renderRubricSection(assignment, technicalData, 'technical'));
+        }
     }
+}
+
+/**
+ * renderMissingTechnicalRubric - placeholder shown when a lab-report assignment
+ * has neither a draft nor an approved technical rubric (the only reachable
+ * empty state, since the linguistic template always seeds one)
+ *
+ * @param assignment - Parent assignment; re-seeding reuses the same
+ * `PATCH .../lab-report` route the "Lab report" toggle already calls
+ * @returns Detached callout with a re-seed action for staff who can manage the rubric
+ */
+function renderMissingTechnicalRubric(assignment: Assignment): HTMLElement {
+    const status = document.createElement('div');
+    status.className = 'wf-callout wf-callout--warning';
+    const canManageRubric = Boolean(state.workspace?.permissions.canManageRubric);
+    status.append(
+        createText('strong', 'No technical rubric'),
+        createText(
+            'span',
+            'This lab report has no technical rubric draft or approved version. Re-seed it to start editing.'
+        )
+    );
+    if (canManageRubric) {
+        status.append(createButton('Re-seed technical rubric', 'secondary', async () => {
+            const updated = await jsonRequest<Assignment>(
+                `/assignments/${encodeURIComponent(assignment.id)}/lab-report`,
+                'PATCH',
+                { isLabReport: true }
+            );
+            Object.assign(assignment, updated);
+            showSuccessToast('Technical rubric seeded.');
+            await openRubricPage(assignment.id);
+        }));
+    }
+    return status;
 }
 
 /**

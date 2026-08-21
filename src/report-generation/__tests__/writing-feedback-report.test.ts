@@ -424,7 +424,12 @@ describe('technical section', () => {
             technicalRubric,
             include: 'general'
         });
-        expect(searchableText(pdf)).toContain('Technical feedback');
+        const text = searchableText(pdf);
+        expect(text).toContain('Technical feedback');
+        // Guards against labelling the technical section against `assignment.rubric`
+        // instead of the supplied `technicalRubric` — a regression that would still
+        // pass the assertion above but fall back to the raw id ("criterion_1").
+        expect(text).toContain('Criterion 1');
     });
 
     it('omits the technical section when none is supplied', async () => {

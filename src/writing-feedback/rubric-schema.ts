@@ -126,7 +126,6 @@ export function buildRubricDraft(
 ): WritingRubricDefinition {
     return {
         ...input,
-        ...(input.labContext ? { labContext: input.labContext } : {}),
         version: nextVersion,
         status: 'draft',
         updatedAt: now,

@@ -363,14 +363,37 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
         root.append(warning);
     }
 
+    // The technical lens can drift (or be missing) independently of the linguistic
+    // run above; approval/release/PDF all require it once the assignment is a lab
+    // report with an approved technical rubric, so surface that gap here too.
+    const technicalStale = Boolean(
+        assignment?.isLabReport
+        && assignment.technicalRubric?.status === 'approved'
+        && (!detail.technicalFeedbackRun
+            || (detail.technicalFeedbackRun.rubricVersion ?? 1) !== assignment.technicalRubric.version)
+    );
+    if (technicalStale) {
+        const warning = createText(
+            'div',
+            detail.technicalFeedbackRun
+                ? `The approved technical rubric is now v${assignment?.technicalRubric?.version}. Regenerate this feedback before approval or release.`
+                : 'The technical rubric is approved but no technical feedback has been generated. Regenerate feedback before approval or release.',
+            'wf-workspace-message'
+        );
+        warning.dataset.tone = 'warning';
+        root.append(warning);
+    }
+
     const layout = document.createElement('div');
     layout.className = 'wf-review-layout';
     const storedWidth = window.localStorage.getItem('wf-panel-width');
     if (storedWidth) layout.style.setProperty('--wf-panel-width', `${storedWidth}px`);
     layout.append(
+        // Doc-pane annotations are anchored to the linguistic run only; keep this
+        // gate on staleRubric alone regardless of technical lens state.
         renderDocPane(submission, feedbackRun !== null && !staleRubric),
         createPanelResizeHandle(layout),
-        renderFeedbackPanel(detail, assignment, staleRubric)
+        renderFeedbackPanel(detail, assignment, staleRubric || technicalStale)
     );
     root.append(layout);
 }
@@ -538,7 +561,24 @@ function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assignment | 
                     ? 'Confirm the transcript first. The model will only evaluate verified text.'
                     : 'The draft produces summary guidance with guiding questions plus annotations anchored to the text. Everything remains staff-only until it is reviewed and approved.',
                 'wf-muted-note'
-            ),
+            )
+        );
+        // Name the technical rubric explicitly when it — not the linguistic run —
+        // is what is stuck, so staff know which lens the regenerate call must fix.
+        if (feedbackRun && assignment?.isLabReport && assignment.technicalRubric?.status === 'approved') {
+            const technicalRunStale = !detail.technicalFeedbackRun
+                || (detail.technicalFeedbackRun.rubricVersion ?? 1) !== assignment.technicalRubric.version;
+            if (technicalRunStale) {
+                card.append(createText(
+                    'p',
+                    detail.technicalFeedbackRun
+                        ? `The technical rubric is now v${assignment.technicalRubric.version}; the technical feedback run is out of date.`
+                        : 'The technical rubric is approved but no technical feedback has been generated yet.',
+                    'wf-muted-note'
+                ));
+            }
+        }
+        card.append(
             createButton(
                 staleRubric ? 'Regenerate with approved rubric' : 'Generate feedback',
                 'primary',
