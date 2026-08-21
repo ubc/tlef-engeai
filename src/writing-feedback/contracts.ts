@@ -29,6 +29,9 @@ export type WritingSubmissionStatus =
 /** Supported intake provenance; scan sources require explicit staff verification. */
 export type WritingSourceType = 'manual' | 'canvas_text' | 'digital_file' | 'paper_scan';
 
+/** Which feedback lens a rubric, prompt, or generated run belongs to. */
+export type WritingFeedbackLens = 'linguistic' | 'technical';
+
 /** Instructor-authored criterion slug, frozen after its first approval. */
 export type WritingCriterionId = string;
 
@@ -74,6 +77,8 @@ export interface WritingRubricDefinition {
     updatedBy: string; // internal actor responsible for the latest edit
     approvedAt?: Date; // present only after explicit rubric approval
     approvedBy?: string; // internal approving instructor/admin actor
+    /** Instructor-approved lab handout context: indications, steps, and expected observations. */
+    labContext?: string;
 }
 
 /** Course-scoped assignment whose current approved rubric governs all downstream artifacts. */
@@ -93,6 +98,14 @@ export interface WritingAssignment {
     rubricDraft?: WritingRubricDefinition;
     /** Immutable, previously approved versions retained for audit and calibration. */
     rubricHistory?: WritingRubricDefinition[];
+    /** True when this assignment is a lab report and also receives technical feedback. */
+    isLabReport?: boolean;
+    /** Approved technical rubric governing the technical lens. Absent until first approval. */
+    technicalRubric?: WritingRubricDefinition;
+    /** Editable staff draft of the technical rubric; saving never changes the approved one. */
+    technicalRubricDraft?: WritingRubricDefinition;
+    /** Immutable previously approved technical rubrics retained for audit. */
+    technicalRubricHistory?: WritingRubricDefinition[];
     canvasAssignmentId?: string; // optional source reference for approved integration work
     /** Submission deadline shown to staff; sourced from Canvas or manual entry. */
     dueAt?: Date;
@@ -165,6 +178,8 @@ export interface WritingFeedbackRun {
     profileVersion: string; // immutable course-profile provenance
     /** Approved rubric version used to produce this immutable model result. */
     rubricVersion: number;
+    /** Lens that produced this run. Absent means 'linguistic' for records written before two-lens generation. */
+    lens?: WritingFeedbackLens;
     result: WritingFeedbackResult; // validated model draft, never mutated by staff edits
     createdAt: Date; // generation timestamp
     /** Model metadata excludes prompt bodies and student text. */
