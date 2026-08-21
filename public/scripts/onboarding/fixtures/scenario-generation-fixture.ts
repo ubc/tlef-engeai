@@ -19,13 +19,80 @@ export interface ScenarioDemoObjective {
     selected: boolean;
 }
 
+/** Subquestion types supported by the production Scenario Generation feature. */
+export type ScenarioTutorialSubquestionType = 'calculation' | 'troubleshoot' | 'action' | 'corrective';
+
+/** Difficulty choices supported by the production Scenario Generation feature. */
+export type ScenarioTutorialDifficulty = 'easy' | 'medium' | 'hard';
+
+/** Editable values used to build a local tutorial preview. */
+export interface ScenarioTutorialSelection {
+    prompt: string;
+    selectedObjectiveLabels: string[];
+    subquestionTypes: ScenarioTutorialSubquestionType[];
+    difficulty: ScenarioTutorialDifficulty;
+}
+
+/** One deterministic subquestion in the local tutorial preview. */
+export interface ScenarioTutorialPreviewPart {
+    type: ScenarioTutorialSubquestionType;
+    label: string;
+    prompt: string;
+}
+
+/** DOM-free preview model rendered after the tutorial's Generate action. */
+export interface ScenarioTutorialPreview {
+    prompt: string;
+    selectedObjectiveLabels: string[];
+    difficulty: ScenarioTutorialDifficulty;
+    subquestions: ScenarioTutorialPreviewPart[];
+}
+
 /** Everything the tutorial seeds into the real generate partial. */
 export interface ScenarioGenerationDemo {
     prompt: string;
     learningObjectives: ScenarioDemoObjective[];
     /** Real product subquestion type keys, not invented ones. */
-    subquestionTypes: Array<'calculation' | 'troubleshoot' | 'action' | 'corrective'>;
-    difficulty: 'easy' | 'medium' | 'hard';
+    subquestionTypes: ScenarioTutorialSubquestionType[];
+    difficulty: ScenarioTutorialDifficulty;
+}
+
+const TUTORIAL_PROMPTS: Record<ScenarioTutorialSubquestionType, string> = {
+    calculation: 'Estimate the relevant performance value using the information in the base question, and state your assumptions.',
+    troubleshoot: 'Identify two plausible causes and explain what evidence would help distinguish between them.',
+    action: 'Choose the next diagnostic action and explain what evidence it should produce.',
+    corrective: 'Recommend a corrective response and justify when it should be used.'
+};
+
+const TUTORIAL_LABELS: Record<ScenarioTutorialSubquestionType, string> = {
+    calculation: 'Calculation',
+    troubleshoot: 'Troubleshoot',
+    action: 'Action',
+    corrective: 'Corrective'
+};
+
+/**
+ * Builds the deterministic preview used by onboarding without touching the DOM,
+ * a scenario endpoint, or an AI model.
+ */
+export function buildScenarioTutorialPreview(selection: ScenarioTutorialSelection): ScenarioTutorialPreview {
+    if (!selection.prompt.trim()) {
+        throw new Error('Enter a base question before generating a sample.');
+    }
+    if (selection.subquestionTypes.length === 0) {
+        throw new Error('Choose at least one subquestion type before generating a sample.');
+    }
+
+    return {
+        prompt: selection.prompt,
+        selectedObjectiveLabels: [...selection.selectedObjectiveLabels],
+        difficulty: selection.difficulty,
+        subquestions: selection.subquestionTypes.map(type => ({
+            type,
+            label: TUTORIAL_LABELS[type],
+            prompt: TUTORIAL_PROMPTS[type]
+        }))
+    };
 }
 
 /** Fixed example shown to every instructor taking the tutorial. */

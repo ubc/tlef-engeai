@@ -1,20 +1,20 @@
 /**
  * DOCUMENT SETUP MODULE - ONBOARDING VERSION
  * 
- * This module handles the document setup onboarding flow for instructors.
- * It provides a step-by-step tutorial on how to add learning objectives and upload documents.
+ * This module handles the document setup onboarding flow for course staff.
+ * It provides a step-by-step tutorial for saving learning objectives and course materials.
  * 
  * FEATURES:
  * - 4-step onboarding process with navigation
- * - Learning objectives demo with add/delete functionality
- * - Document upload demo with file handling
- * - Backend integration placeholders (unimplemented)
+ * - Learning objectives saved to the selected course area
+ * - Document uploads processed and saved through the production upload service
+ * - No tutorial deletion controls for actions that are not represented faithfully
  * - Data structure initialization and validation
  * 
  * ONBOARDING STEPS:
  * 1. Welcome - Overview of document setup process
- * 2. Learning Objectives - Demo how to add learning objectives
- * 3. Document Upload - Demo how to upload course materials
+ * 2. Learning Objectives - Add a learning objective to the course
+ * 3. Document Upload - Upload course materials
  * 4. Completion - Summary and next steps
  * 
  * @author: gatahcha (revised)
@@ -24,9 +24,10 @@
 
 import { loadComponentHTML } from "../api/api.js";
 import { activeCourse, LearningObjective, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem } from "../types.js";
-import { showErrorModal, showHelpModal, showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal } from "../ui/modal-overlay.js";
+import { showErrorModal, showHelpModal, showConfirmModal, openUploadModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
 import { DocumentUploadModule } from '../services/document-upload-module.js';
 import type { UploadResult } from '../types.js';
+import { updateStaffOnboardingProgress } from './staff-onboarding-ui.js';
 
 // ===========================================
 // TYPE DEFINITIONS
@@ -72,7 +73,7 @@ interface DemoFile {
  * 4. Manages step navigation and validation
  * 5. Handles demo functionality for learning objectives and file uploads
  * 
- * @param instructorCourse - The instructor's course object to be populated
+ * @param instructorCourse - The course object to be populated
  * @returns Promise<void>
  */
 export const renderDocumentSetup = async (instructorCourse: activeCourse): Promise<void> => {
@@ -230,20 +231,13 @@ function setupNavigationListeners(state: DocumentSetupState, instructorCourse: a
 function setupDemoListeners(state: DocumentSetupState): void {
     // Learning objectives demo
     const addDemoObjectiveBtn = document.getElementById('addDemoObjective') as HTMLButtonElement;
-    const clearDemoBtn = document.getElementById('clearDemo') as HTMLButtonElement;
     
     if (addDemoObjectiveBtn) {
         addDemoObjectiveBtn.addEventListener('click', async () => await addDemoObjective());
     }
     
-    if (clearDemoBtn) {
-        clearDemoBtn.addEventListener('click', async () => await clearDemoObjectives());
-    }
-
     // File upload demo
     const demoUploadBtn = document.getElementById('demoUploadBtn') as HTMLButtonElement;
-    const processDemoFilesBtn = document.getElementById('processDemoFiles') as HTMLButtonElement;
-    const clearDemoFilesBtn = document.getElementById('clearDemoFiles') as HTMLButtonElement;
     
     if (demoUploadBtn) {
         console.log('DEBUG #15: Setting up demoUploadBtn event listener');
@@ -257,13 +251,6 @@ function setupDemoListeners(state: DocumentSetupState): void {
         console.error('DEBUG #16: demoUploadBtn not found!');
     }
     
-    if (processDemoFilesBtn) {
-        processDemoFilesBtn.addEventListener('click', () => processDemoFiles());
-    }
-    
-    if (clearDemoFilesBtn) {
-        clearDemoFilesBtn.addEventListener('click', () => clearDemoFiles());
-    }
 }
 
 /**
@@ -516,6 +503,8 @@ function updateStepDisplay(state: DocumentSetupState): void {
         // Check if content overflows and adjust justify-content accordingly
         setTimeout(() => adjustContentJustification(currentStepElement), 10);
     }
+
+    updateStaffOnboardingProgress(state.currentStep, state.totalSteps);
 }
 
 /**
@@ -696,116 +685,6 @@ async function addDemoObjective(): Promise<void> {
 }
 
 /**
- * Removes a specific demo learning objective from both demo and real course data
- * 
- * @param index - The index of the objective to remove
- */
-async function removeDemoObjective(index: number): Promise<void> {
-    if (index < 0 || index >= demoObjectives.length) {
-        await showSimpleErrorModal('Invalid objective index', 'Remove Learning Objective Error');
-        return;
-    }
-    
-    const objectiveToRemove = demoObjectives[index];
-    if (!objectiveToRemove) {
-        await showSimpleErrorModal('Objective not found', 'Remove Learning Objective Error');
-        return;
-    }
-    
-    // Show confirmation modal
-    const result = await showDeleteConfirmationModal(
-        'Learning Objective',
-        objectiveToRemove.learningObjective
-    );
-    
-    if (result.action !== 'delete') {
-        return; // User cancelled
-    }
-    
-    // Remove from demo display
-    demoObjectives.splice(index, 1);
-    updateDemoObjectivesDisplay();
-    
-    // Remove from real course data (first topic/week instance, first item)
-    const course = getCurrentCourse();
-    if (course?.topicOrWeekInstances?.[0]?.items?.[0]) {
-        const firstItem = course.topicOrWeekInstances[0].items[0];
-        if (firstItem.learningObjectives) {
-            // Find and remove the objective from real data
-            const realObjectiveIndex = firstItem.learningObjectives.findIndex((obj: LearningObjective) => obj.id === objectiveToRemove.id);
-            if (realObjectiveIndex !== -1) {
-                try {
-                    // Delete from database
-                    await deleteLearningObjectiveFromBackend(
-                        objectiveToRemove.id,
-                        course.id,
-                        course.topicOrWeekInstances[0].id,
-                        firstItem.id
-                    );
-                    
-                    // Remove from local data
-                    firstItem.learningObjectives.splice(realObjectiveIndex, 1);
-                    
-                    console.log('Learning objective removed from real course data:', objectiveToRemove.id);
-                } catch (error) {
-                    console.error('Error removing learning objective from database:', error);
-                    await showSimpleErrorModal('An error occurred while removing the learning objective from the database.', 'Remove Learning Objective Error');
-                }
-            }
-        }
-    }
-    
-    console.log('Removed demo objective:', objectiveToRemove);
-}
-
-/**
- * Clears all demo learning objectives
- */
-async function clearDemoObjectives(): Promise<void> {
-    // Show confirmation modal
-    const result = await showDeleteConfirmationModal('All Learning Objectives');
-    
-    if (result.action !== 'delete') {
-        return; // User cancelled
-    }
-    
-    // Clear demo display
-    demoObjectives = [];
-    updateDemoObjectivesDisplay();
-    
-    // Clear input
-    const objectiveInput = document.getElementById('demoObjectiveTitle') as HTMLInputElement;
-    
-    if (objectiveInput) objectiveInput.value = '';
-    
-    // Clear from real course data (first topic/week instance, first item)
-    const course = getCurrentCourse();
-    if (course?.topicOrWeekInstances?.[0]?.items?.[0]) {
-        const firstItem = course.topicOrWeekInstances[0].items[0];
-        if (firstItem.learningObjectives) {
-            // Delete each learning objective from database
-            for (const objective of firstItem.learningObjectives) {
-                try {
-                    await deleteLearningObjectiveFromBackend(
-                        objective.id,
-                        course.id,
-                        course.topicOrWeekInstances[0].id,
-                        firstItem.id
-                    );
-                } catch (error) {
-                    console.error('Error deleting learning objective:', error);
-                    await showSimpleErrorModal('An error occurred while clearing learning objectives.', 'Clear Learning Objectives Error');
-                }
-            }
-            // Clear from local data
-            firstItem.learningObjectives = [];
-        }
-    }
-    
-    console.log('Cleared all demo objectives from both demo and real course data');
-}
-
-/**
  * Updates the demo objectives display
  */
 function updateDemoObjectivesDisplay(): void {
@@ -822,23 +701,15 @@ function updateDemoObjectivesDisplay(): void {
         return;
     }
     
-    demoObjectives.forEach((objective, index) => {
+    demoObjectives.forEach(objective => {
         const objectiveElement = document.createElement('div');
         objectiveElement.className = 'demo-objective-item';
-        objectiveElement.innerHTML = `
-            <div class="objective-header">
-                <h5>${objective.learningObjective}</h5>
-                <button class="delete-demo-btn" data-index="${index}">×</button>
-            </div>
-        `;
-        
-        // Add delete functionality
-        const deleteBtn = objectiveElement.querySelector('.delete-demo-btn') as HTMLButtonElement;
-        if (deleteBtn) {
-            deleteBtn.addEventListener('click', async () => {
-                await removeDemoObjective(index);
-            });
-        }
+        const header = document.createElement('div');
+        header.className = 'objective-header';
+        const title = document.createElement('h5');
+        title.textContent = objective.learningObjective;
+        header.append(title);
+        objectiveElement.append(header);
         
         container.appendChild(objectiveElement);
     });
@@ -970,56 +841,6 @@ async function handleOnboardingUpload(material: any): Promise<{ success: boolean
 }
 
 /**
- * Removes a demo file from both the UI and actual course data
- *
- * @param index - The index of the file to remove
- */
-async function removeDemoFile(index: number): Promise<void> {
-    if (index < 0 || index >= demoFiles.length) {
-        await showSimpleErrorModal('Invalid file index', 'Remove File Error');
-        return;
-    }
-
-    const fileToRemove = demoFiles[index];
-    if (!fileToRemove) {
-        await showSimpleErrorModal('File not found', 'Remove File Error');
-        return;
-    }
-
-    // Show confirmation modal
-    const result = await showDeleteConfirmationModal(
-        'Uploaded File',
-        fileToRemove.name
-    );
-
-    if (result.action !== 'delete') {
-        return; // User cancelled
-    }
-
-    // Remove from demo display
-    demoFiles.splice(index, 1);
-    updateDemoFilesDisplay();
-
-    // Remove from real course data (first topic/week instance, first item)
-    const course = getCurrentCourse();
-    if (course?.topicOrWeekInstances?.[0]?.items?.[0]) {
-        const firstItem = course.topicOrWeekInstances[0].items[0];
-        if (firstItem.additionalMaterials) {
-            // Find and remove the material from real data
-            const realMaterialIndex = firstItem.additionalMaterials.findIndex((material: AdditionalMaterial) => material.id === fileToRemove.id);
-            if (realMaterialIndex !== -1) {
-                // TODO: Also delete from vectorDB if needed
-                // For now, just remove from local data
-                firstItem.additionalMaterials.splice(realMaterialIndex, 1);
-                console.log('File removed from real course data:', fileToRemove.id);
-            }
-        }
-    }
-
-    console.log('Removed uploaded file:', fileToRemove);
-}
-
-/**
  * Updates the demo files display
  */
 function updateDemoFilesDisplay(): void {
@@ -1036,57 +857,20 @@ function updateDemoFilesDisplay(): void {
         return;
     }
     
-    demoFiles.forEach((file, index) => {
+    demoFiles.forEach(file => {
         const fileElement = document.createElement('div');
         fileElement.className = 'demo-file-item';
-        fileElement.innerHTML = `
-            <div class="file-info">
-                <span class="file-name">${file.name}</span>
-            </div>
-            <button class="delete-file-btn" data-index="${index}">×</button>
-        `;
-        
-        // Add delete functionality
-        const deleteBtn = fileElement.querySelector('.delete-file-btn') as HTMLButtonElement;
-        if (deleteBtn) {
-            deleteBtn.addEventListener('click', async () => {
-                await removeDemoFile(index);
-            });
-        }
+        const info = document.createElement('div');
+        info.className = 'file-info';
+        const name = document.createElement('span');
+        name.className = 'file-name';
+        name.textContent = file.name;
+        info.append(name);
+        fileElement.append(info);
         
         container.appendChild(fileElement);
     });
 }
-
-/**
- * Shows information about uploaded files during onboarding
- */
-async function processDemoFiles(): Promise<void> {
-    if (demoFiles.length === 0) {
-        alert('No files uploaded yet. Please upload some files first.');
-        return;
-    }
-
-    console.log('Uploaded files during onboarding:', demoFiles);
-
-    // Show success message - files are already uploaded to vectorDB
-    alert(`Successfully uploaded ${demoFiles.length} files to the knowledge base! These documents are now available for the AI tutor.`);
-}
-
-/**
- * Clears all demo files
- */
-function clearDemoFiles(): void {
-    demoFiles = [];
-    updateDemoFilesDisplay();
-    
-    // Clear file input
-    const fileInput = document.getElementById('demoFileInput') as HTMLInputElement;
-    if (fileInput) fileInput.value = '';
-    
-    console.log('Cleared demo files');
-}
-
 
 // ===========================================
 // BACKEND INTEGRATION
@@ -1133,42 +917,3 @@ async function addLearningObjectiveToBackend(objective: LearningObjective, cours
         };
     }
 }
-
-/**
- * Delete learning objective from backend
- * 
- * @param objectiveId - ID of objective to delete
- * @param courseId - Course ID
- * @param topicOrWeekId - Topic/Week Instance ID
- * @param contentId - Content ID
- * @returns Promise with result
- */
-async function deleteLearningObjectiveFromBackend(objectiveId: string, courseId: string, topicOrWeekId: string, contentId: string): Promise<{ success: boolean }> {
-    try {
-        const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objectiveId}`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
-        const result = await response.json();
-        
-        if (result.success) {
-            return {
-                success: true
-            };
-        } else {
-            console.error('Failed to delete learning objective:', result.error);
-            return {
-                success: false
-            };
-        }
-    } catch (error) {
-        console.error('Error deleting learning objective from backend:', error);
-        return {
-            success: false
-        };
-    }
-}
-

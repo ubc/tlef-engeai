@@ -34,11 +34,32 @@ const definition: FeatureTutorialDefinition = {
         5: "Writing Feedback Complete"
     },
     initializeStep: (stepNumber: number, context: FeatureTutorialContext) => {
+        if (stepNumber === 1) {
+            initializeIntakeDemo();
+        }
         if (stepNumber === 4) {
             initializeApproveDemo(context);
         }
     }
 };
+
+/** Wires Canvas and manual intake controls as local orientation-only actions. */
+function initializeIntakeDemo(): void {
+    const importBtn = document.getElementById('wfSetupImportCanvasBtn') as HTMLButtonElement | null;
+    const addBtn = document.getElementById('wfSetupAddAssignmentBtn') as HTMLButtonElement | null;
+    const message = document.getElementById('wfSetupIntakeMessage');
+    if (!importBtn || !addBtn || !message || importBtn.dataset.wired === 'true') return;
+
+    importBtn.dataset.wired = 'true';
+    importBtn.addEventListener('click', () => {
+        message.textContent = 'In the full workspace, this lets course staff choose an assignment and submissions from Canvas.';
+        message.hidden = false;
+    });
+    addBtn.addEventListener('click', () => {
+        message.textContent = 'In the full workspace, this starts a manual assignment that course staff can add submissions to.';
+        message.hidden = false;
+    });
+}
 
 /**
  * Wires the simulated Approve button.

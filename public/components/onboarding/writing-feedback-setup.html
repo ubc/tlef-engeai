@@ -1,5 +1,6 @@
-<div class="onboarding writing-feedback-setup">
+<div class="onboarding staff-onboarding writing-feedback-setup">
     <link rel="stylesheet" href="/styles/instructor-components/onboarding.css">
+    <link rel="stylesheet" href="/styles/instructor-components/writing-feedback.css">
     <link rel="stylesheet" href="/styles/modal-overlay.css">
 
     <!-- Left Steps Panel -->
@@ -10,7 +11,7 @@
                 <i data-feather="file-text"></i>
                 <div class="logo-text">
                     <span>EngE-AI</span>
-                    <p>Instructor Mode: Writing Feedback</p>
+                    <p>Course Staff: Writing Feedback</p>
                 </div>
             </div>
         </div>
@@ -106,30 +107,40 @@
                 <div class="content-step-inner">
                     <div class="step-header">
                         <h1>Welcome to Writing Feedback</h1>
-                        <p>Draft formative feedback on student writing, with you approving every word that reaches a student</p>
+                    <p>Bring in an assignment, review the evidence, and control release</p>
                     </div>
 
                     <div class="welcome-content">
                         <div class="welcome-message">
-                            <h3>Feedback that quotes the student's own writing</h3>
-                            <p>Writing Feedback reads a verified student submission against a rubric you approved, and drafts formative comments anchored to exact passages in that submission. It does not rewrite the student's sentences and it does not produce a model answer.</p>
+                            <h3>Feedback grounded in the student's writing</h3>
+                            <p>Writing Feedback compares verified submission text with an approved rubric, then drafts comments tied to exact passages. Course staff review and edit those comments before a student can receive them.</p>
 
                             <div class="demo-explanation">
                                 <h4>How writing gets in:</h4>
                                 <ul class="feature-list">
-                                    <li><strong>Create an assignment</strong> directly, giving it a title and optional due date.</li>
-                                    <li><strong>Or import one</strong> from your LMS, bringing its description along with it.</li>
-                                    <li><strong>Add submissions</strong> as pasted text or uploaded documents.</li>
-                                    <li><strong>Verify the text</strong> before anything is generated — staff confirm the extracted text matches what the student actually wrote.</li>
+                                    <li><strong>Import from Canvas</strong> to bring in an assignment and its submissions.</li>
+                                    <li><strong>Add an assignment manually</strong> and add submissions as text or documents.</li>
+                                    <li><strong>Verify the text</strong> before generating feedback.</li>
                                 </ul>
                             </div>
 
-                            <div class="completion-note">
-                                <p><strong>Verification is not optional.</strong> Feedback is generated only from staff-verified text, because every quotation in the feedback must exist exactly in the student's submission.</p>
+                            <div class="wf-setup-intake-panel" aria-label="Assignment intake examples">
+                                <p>Assignments and submissions can come from Canvas or be entered manually.</p>
+                                <div class="wf-header-actions">
+                                    <button id="wfSetupImportCanvasBtn" class="wf-header-btn" type="button">
+                                        <i data-feather="download-cloud" aria-hidden="true"></i>
+                                        <span>Import from Canvas</span>
+                                    </button>
+                                    <button id="wfSetupAddAssignmentBtn" class="wf-header-btn" type="button">
+                                        <i data-feather="plus" aria-hidden="true"></i>
+                                        <span>Add assignment</span>
+                                    </button>
+                                </div>
+                                <p class="wf-setup-intake-message" id="wfSetupIntakeMessage" role="status" aria-live="polite" hidden></p>
                             </div>
 
                             <div class="completion-note">
-                                <p><strong>Nothing in this tutorial is real.</strong> Every example below is fixed sample content. No assignment, rubric, submission, or feedback is created in your course.</p>
+                                <p><strong>This tutorial is a simulation.</strong> These controls do not import, create, or save anything.</p>
                             </div>
                         </div>
                     </div>
@@ -145,14 +156,14 @@
                     </div>
 
                     <div class="demo-explanation">
-                        <h4>A rubric describes the assignment, not just its scoring</h4>
-                        <p>Alongside criteria and levels, a rubric records the task, the audience, the purpose, the constraints students must work within, the learning outcomes it assesses, and your grading intent. That context is what keeps drafted feedback aimed at your assignment rather than at generic "good writing".</p>
+                        <h4>Give the feedback enough context</h4>
+                        <p>The rubric combines the assignment's purpose and learning outcomes with the criteria and performance levels course staff will use.</p>
                     </div>
 
                     <div class="wf-setup-rubric-demo">
                         <div class="wf-setup-rubric-block">
                             <h4>Criteria</h4>
-                            <p class="wf-setup-hint">Between 1 and 10. Each has a label and a description.</p>
+                            <p class="wf-setup-hint">Name what staff should look for.</p>
                             <ul>
                                 <li><strong>Organization</strong> — structure, staging, and cohesion across the report</li>
                                 <li><strong>Content</strong> — accuracy and sufficiency of technical explanation</li>
@@ -162,7 +173,7 @@
 
                         <div class="wf-setup-rubric-block">
                             <h4>Performance levels</h4>
-                            <p class="wf-setup-hint">Between 2 and 8, ranked contiguously from 1.</p>
+                            <p class="wf-setup-hint">Describe how performance differs.</p>
                             <ol>
                                 <li><strong>Weak</strong></li>
                                 <li><strong>Developing</strong></li>
@@ -173,15 +184,11 @@
                     </div>
 
                     <div class="completion-note">
-                        <p><strong>Points are all-or-nothing.</strong> Give every level a point value or leave every level ordinal. A partial scale would let a numeric grade be invented from levels that never had one, so it is rejected.</p>
-                    </div>
-
-                    <div class="completion-note">
                         <p><strong>Saving a draft is not approving it.</strong> The two are deliberately separate actions. Feedback generation stays blocked until an approved rubric exists.</p>
                     </div>
 
                     <div class="completion-note">
-                        <p><strong>After the first approval, structure is frozen.</strong> Labels, descriptions, ordering, and points stay editable in later versions, but the set of criteria and levels stops changing, so feedback already stored against them cannot be silently reinterpreted.</p>
+                        <p><strong>Course staff can keep editing.</strong> Rubric versions protect feedback already generated against an earlier approved version.</p>
                     </div>
                 </div>
             </div>
@@ -195,7 +202,7 @@
                     </div>
 
                     <div class="demo-explanation">
-                        <p>Generated feedback arrives as anchored comments. Each one names the criterion it addresses and quotes the passage it is about, so you can verify the judgement rather than take it on trust.</p>
+                        <p>Each draft comment names its criterion and quotes the passage it addresses, so course staff can check the evidence before editing or approving it.</p>
                     </div>
 
                     <div class="wf-setup-feedback-demo">
@@ -223,7 +230,7 @@
                     </div>
 
                     <div class="completion-note">
-                        <p><strong>Edit anything.</strong> Rewrite a comment, delete one you disagree with, or add your own. Your revisions are what the student sees.</p>
+                        <p><strong>Edit anything.</strong> Rewrite, remove, or add comments. The reviewed version is what the student sees.</p>
                     </div>
                 </div>
             </div>
@@ -237,7 +244,7 @@
                     </div>
 
                     <div class="demo-explanation">
-                        <p><strong>Approving</strong> marks the feedback as finished and ready. <strong>Releasing</strong> is what actually delivers it. Keeping them apart means you can finish reviewing a stack of submissions and still choose when students receive them.</p>
+                        <p><strong>Approving</strong> marks feedback as reviewed. <strong>Releasing</strong> delivers it. Keeping them separate lets course staff control timing.</p>
                     </div>
 
                     <div class="wf-setup-approve-panel">
@@ -250,11 +257,11 @@
 
                     <div class="wf-setup-approved" id="wfSetupApprovedState" hidden>
                         <h4><i data-feather="check"></i> Approved</h4>
-                        <p>The feedback is now marked approved. In your real course the release card appears next, showing exactly what the student would receive, with a preview before anything is sent.</p>
+                        <p>The feedback is now marked approved. In the full workspace, a release preview shows exactly what the student would receive.</p>
                         <ul class="feature-list">
                             <li>Students never see confidence scores, internal flags, model details, or staff-only notes.</li>
                             <li>Release is blocked while a rubric has changed since generation, so a student cannot receive feedback judged against a rubric that no longer exists.</li>
-                            <li>Nothing is delivered automatically. Release is always an action you take.</li>
+                                <li>Nothing is delivered automatically. Course staff must choose Release.</li>
                         </ul>
                     </div>
                 </div>
@@ -267,12 +274,11 @@
                         <div class="completion-message">
                             <div class="success-icon"><i data-feather="award" aria-hidden="true"></i></div>
                             <h3>Writing Feedback tutorial complete</h3>
-                            <p>You now know how student writing enters the workspace, how rubrics gate generation, and how approval and release stay under your control.</p>
+                            <p>You can now bring in writing, review grounded feedback, and control its release.</p>
                             <ul class="completion-list">
-                                <li>Learned how assignments and submissions are brought in and verified</li>
-                                <li>Understood the draft-then-approve rubric workflow</li>
-                                <li>Reviewed evidence-anchored feedback comments</li>
-                                <li>Approved an example submission and saw what release involves</li>
+                                <li>Compared Canvas and manual assignment intake</li>
+                                <li>Reviewed the approved-rubric safeguard</li>
+                                <li>Approved an evidence-anchored feedback sample</li>
                             </ul>
                             <div class="completion-note">
                                 <p><strong>The assistant drafts; you decide.</strong> Generated feedback is always a draft, and no student receives anything without your explicit approval and release.</p>
@@ -311,7 +317,7 @@
         <div id="help-step-1">
             <p><strong>Welcome to Writing Feedback!</strong></p>
             <p>Writing Feedback drafts formative comments on student writing, anchored to exact passages and judged against a rubric you approved.</p>
-            <p><strong>Getting writing in:</strong> create an assignment directly or import one from your LMS, then add submissions as text or documents.</p>
+            <p><strong>Getting writing in:</strong> import an assignment and submissions from Canvas, or create an assignment manually and add submissions as text or documents.</p>
             <p><strong>Verification:</strong> staff confirm the extracted text matches the student's actual writing before any feedback is generated. This is what makes exact quotation possible.</p>
         </div>
 
@@ -320,7 +326,8 @@
             <p>Each assignment has its own rubric, holding the task, audience, purpose, constraints, learning outcomes, and grading intent alongside its criteria and levels.</p>
             <p><strong>Limits:</strong> 1 to 10 criteria, and 2 to 8 performance levels ranked contiguously from 1.</p>
             <p><strong>Points:</strong> either every level has points or none does. Partial scales are rejected because they would let a numeric grade be invented.</p>
-            <p><strong>Approval:</strong> saving a draft and approving it are separate actions. Generation stays blocked until an approved rubric exists. After the first approval the set of criteria and levels is frozen, though labels, descriptions, order, and points remain editable.</p>
+            <p><strong>Approval:</strong> saving a draft and approving it are separate actions. Generation stays blocked until an approved rubric exists.</p>
+            <p><strong>Later edits:</strong> after first approval, labels, descriptions, order, and points remain editable. The criteria and level sets stay stable so stored feedback is not silently reinterpreted.</p>
         </div>
 
         <div id="help-step-3">

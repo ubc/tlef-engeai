@@ -1,4 +1,4 @@
-<div class="onboarding scenario-generation-setup">
+<div class="onboarding staff-onboarding scenario-generation-setup">
     <link rel="stylesheet" href="/styles/instructor-components/onboarding.css">
     <link rel="stylesheet" href="/styles/modal-overlay.css">
     <link rel="stylesheet" href="/styles/scenario-generation/sg-shared.css">
@@ -12,7 +12,7 @@
                 <i data-feather="edit-3"></i>
                 <div class="logo-text">
                     <span>EngE-AI</span>
-                    <p>Instructor Mode: Scenario Generation</p>
+                    <p>Course Staff: Scenario Generation</p>
                 </div>
             </div>
         </div>
@@ -94,26 +94,26 @@
                 <div class="content-step-inner">
                     <div class="step-header">
                         <h1>Welcome to Scenario Generation</h1>
-                        <p>Build a bank of practice scenarios your students can work through</p>
+                    <p>Learn the draft, review, and publish workflow</p>
                     </div>
 
                     <div class="welcome-content">
                         <div class="welcome-message">
-                            <h3>Practice scenarios, drafted by AI and approved by you</h3>
-                            <p>Scenario Generation helps you build a practice question bank without writing every scenario from scratch. You describe the situation you want students to reason about, and the assistant drafts a full scenario with sub-questions and a worked solution for you to review.</p>
+                            <h3>Start with a prompt, then review the draft</h3>
+                            <p>Scenario Generation turns a situation you describe into a practice scenario with subquestions and a worked solution. Course staff review and edit every draft before publishing it.</p>
 
                             <div class="demo-explanation">
                                 <h4>What you can do:</h4>
                                 <ul class="feature-list">
-                                    <li>Draft a scenario from a short prompt and your learning objectives</li>
-                                    <li>Choose which sub-question types appear and how difficult the scenario is</li>
-                                    <li>Edit any part of a draft before students ever see it</li>
-                                    <li>Publish scenarios individually, on your own schedule</li>
+                                    <li>Describe the situation students should reason about</li>
+                                    <li>Choose learning objectives, subquestion types, and difficulty</li>
+                                    <li>Edit the draft and worked solution</li>
+                                    <li>Publish only when it is ready for students</li>
                                 </ul>
                             </div>
 
                             <div class="completion-note">
-                                <p><strong>Nothing in this tutorial is real.</strong> The scenario you generate on the next step is a fixed example. No scenario is saved to your course and no AI model is called.</p>
+                                <p><strong>This tutorial is a simulation.</strong> You can edit the next form, but no scenario is saved and no AI model is called.</p>
                             </div>
                         </div>
                     </div>
@@ -129,25 +129,29 @@
                     </div>
 
                     <div class="demo-explanation">
-                        <p>This is the same form you'll use in the Practice Scenarios page. Try it now — the fields below are already filled in with an example.</p>
+                        <p>This is the same form used in Practice Scenarios. The example is filled in so you can focus on how the controls work.</p>
                     </div>
+
+                    <p class="sg-setup-action-prompt" id="sgSetupActionPrompt" role="status" aria-live="polite">
+                        <strong>Try it:</strong> Edit any field, then select Generate to continue.
+                    </p>
 
                     <div id="sgSetupGenerateMount" class="sg-setup-mount" aria-live="polite">
                         <p class="sg-setup-mount-loading">Loading the scenario generator…</p>
                     </div>
 
-                    <div class="sg-setup-draft" id="sgSetupGeneratedDraft" hidden>
+                    <div class="sg-setup-draft" id="sgSetupGeneratedDraft" tabindex="-1" aria-labelledby="sgSetupDraftTitle" hidden>
                         <div class="sg-setup-draft-header">
                             <span class="sg-setup-status-pill">Draft</span>
-                            <h3>Diagnosing Heat Exchanger Fouling</h3>
+                            <h3 id="sgSetupDraftTitle">Generated sample</h3>
                         </div>
-                        <p><strong>Scenario.</strong> Six months into service, a shell-and-tube exchanger on your cooling loop shows an 8 °C drop in cooling water outlet temperature at unchanged flow rates. Inlet conditions and pump curves are unchanged.</p>
-                        <p><strong>Sub-questions.</strong></p>
-                        <ul>
-                            <li><em>Calculation.</em> Using the given duty and temperatures, estimate the current overall heat transfer coefficient and compare it to the clean value.</li>
-                            <li><em>Troubleshoot.</em> Name two physical mechanisms that would reduce overall heat transfer without any change in flow rate.</li>
-                            <li><em>Corrective.</em> Based on your comparison, argue whether cleaning or retubing is the appropriate intervention.</li>
-                        </ul>
+                        <dl class="sg-setup-preview-summary">
+                            <div><dt>Base question</dt><dd id="sgSetupPreviewPrompt"></dd></div>
+                            <div><dt>Learning objectives</dt><dd id="sgSetupPreviewObjectives"></dd></div>
+                            <div><dt>Difficulty</dt><dd id="sgSetupPreviewDifficulty"></dd></div>
+                        </dl>
+                        <h4>Subquestions</h4>
+                        <ol id="sgSetupPreviewSubquestions"></ol>
                         <p class="sg-setup-draft-note"><i data-feather="eye-off"></i> This draft is visible only to you. Students cannot see it until you publish it.</p>
                     </div>
                 </div>
@@ -163,21 +167,17 @@
 
                     <div class="demo-explanation">
                         <h4>Every generated scenario starts as a draft</h4>
-                        <p>A draft is not a hidden question — it does not exist for students at all. Requesting one directly returns a not-found response rather than a permission error, so students cannot even learn that unpublished scenarios exist.</p>
+                        <p>Students cannot see or open drafts. Course staff decide what is published and when.</p>
 
                         <ul class="feature-list">
                             <li><strong>Review the scenario body.</strong> Check that the situation is solvable with what your students know.</li>
                             <li><strong>Review each sub-question.</strong> Add, remove, reorder, or rewrite any of them.</li>
-                            <li><strong>Review the worked solution.</strong> It is never shown to students while they attempt the scenario.</li>
-                            <li><strong>Check the estimated time.</strong> It is derived from the difficulty you chose and is worth adjusting.</li>
+                            <li><strong>Review the worked solution.</strong> Check every step before publishing.</li>
+                            <li><strong>Check the estimated time.</strong> Adjust it if the difficulty estimate feels wrong.</li>
                         </ul>
 
                         <div class="completion-note">
-                            <p><strong>Generating in batches.</strong> You can request several scenarios at once, up to ten. Siblings from one batch are grouped so you can review them together and publish only the ones that earn it.</p>
-                        </div>
-
-                        <div class="completion-note">
-                            <p><strong>The assistant drafts; you decide.</strong> A generated scenario is a starting point, not an approved assessment. Nothing reaches your students without you publishing it.</p>
+                            <p><strong>Need several?</strong> You can generate up to ten scenarios in a batch, review them together, and publish only the ones you want.</p>
                         </div>
                     </div>
                 </div>
@@ -190,14 +190,13 @@
                         <div class="completion-message">
                             <div class="success-icon"><i data-feather="award" aria-hidden="true"></i></div>
                             <h3>Scenario Generation tutorial complete</h3>
-                            <p>You now know how to draft, review, and publish practice scenarios for your course.</p>
+                            <p>You can now create and review a practice scenario draft.</p>
                             <ul class="completion-list">
-                                <li>Learned what Scenario Generation drafts for you</li>
-                                <li>Generated an example scenario from a prompt</li>
-                                <li>Understood why every draft stays hidden until published</li>
+                                <li>Generated a sample from editable choices</li>
+                                <li>Learned that drafts stay hidden until published</li>
                             </ul>
                             <div class="completion-note">
-                                <p><strong>Setup is complete.</strong> Practice Scenarios is available from your course navigation whenever you want to start building your question bank.</p>
+                                <p>Practice Scenarios is available from your course navigation.</p>
                             </div>
                         </div>
 
@@ -244,7 +243,8 @@
         <div id="help-step-2">
             <p><strong>Generating a scenario</strong></p>
             <p>The form takes a base question or situation, the learning objectives it should target, which sub-question types to include, and a difficulty level.</p>
-            <p>Press <strong>Generate</strong> to see an example draft. In your real course this calls the assistant; here it reveals a fixed example, so nothing is saved and no model runs.</p>
+            <p>Edit any field, then select <strong>Generate</strong>. The preview reflects your choices, but nothing is saved and no model runs.</p>
+            <p>The question-mark control beside the type pills opens this Help panel. Use the plus control to add another real subquestion type.</p>
             <p><strong>Tip:</strong> a specific prompt with concrete numbers produces a far more useful draft than a broad topic name.</p>
         </div>
 

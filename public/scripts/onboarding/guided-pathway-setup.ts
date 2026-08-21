@@ -3,7 +3,7 @@
  *
  * Guided Pathway onboarding tutorial.
  *
- * Teaches the recommended default pathways, per-pathway instructor notifications,
+ * Teaches the recommended default pathways, per-pathway staff notifications,
  * and the anonymous alert decision. Two behaviors differ deliberately:
  *
  * - "Customize now" mounts the real Pathway Library, so edits persist through the
@@ -34,7 +34,7 @@ const definition: FeatureTutorialDefinition = {
     stepTitles: {
         1: "Welcome to Guided Pathways",
         2: "Recommended Default Pathways",
-        3: "Instructor Notifications",
+        3: "Pathway Notifications",
         4: "Responding to an Alert",
         5: "Guided Pathways Complete"
     },

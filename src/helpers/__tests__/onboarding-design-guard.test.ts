@@ -18,6 +18,16 @@ import { join } from 'path';
 const REPO_ROOT = join(__dirname, '..', '..', '..');
 const ONBOARDING_CSS = join(REPO_ROOT, 'public', 'styles', 'instructor-components', 'onboarding.css');
 const COMPONENT_DIR = join(REPO_ROOT, 'public', 'components', 'onboarding');
+const STAFF_COMPONENTS = [
+    'course-setup.html',
+    'document-setup.html',
+    'flag-setup.html',
+    'monitor-setup.html',
+    'scenario-generation-setup.html',
+    'writing-feedback-setup.html',
+    'guided-pathway-setup.html'
+] as const;
+const TA_ACCESSIBLE_COMPONENTS = STAFF_COMPONENTS.filter(file => file !== 'course-setup.html');
 
 /**
  * The only hex literals permitted anywhere in onboarding.css. Everything else must
@@ -61,6 +71,26 @@ describe('onboarding design guard', () => {
         expect(onboardingComponents()).toHaveLength(8);
     });
 
+    it.each(STAFF_COMPONENTS)('%s uses the shared staff onboarding shell', file => {
+        const markup = readFileSync(join(COMPONENT_DIR, file), 'utf8');
+        expect(markup).toContain('class="onboarding staff-onboarding');
+    });
+
+    it('keeps the student tutorial outside the staff shell', () => {
+        const markup = readFileSync(join(COMPONENT_DIR, 'student-onboarding.html'), 'utf8');
+        expect(markup).not.toContain('staff-onboarding');
+    });
+
+    it.each(TA_ACCESSIBLE_COMPONENTS)('%s uses course-staff rather than instructor-mode framing', file => {
+        const markup = readFileSync(join(COMPONENT_DIR, file), 'utf8');
+        expect(markup).not.toMatch(/Instructor Mode|Welcome, Professor|As an instructor/i);
+    });
+
+    it.each(STAFF_COMPONENTS)('%s avoids misleading novice-facing terms', file => {
+        const markup = readFileSync(join(COMPONENT_DIR, file), 'utf8');
+        expect(markup).not.toMatch(/\bLMS\b|PowerPoint|Process Files|Clear All/i);
+    });
+
     it.each(onboardingComponents())('%s contains no emoji', file => {
         const markup = readFileSync(join(COMPONENT_DIR, file), 'utf8');
         expect(markup).not.toMatch(EMOJI);
@@ -83,5 +113,52 @@ describe('onboarding design guard', () => {
         const markup = readFileSync(join(COMPONENT_DIR, 'scenario-generation-setup.html'), 'utf8');
         expect(markup).not.toMatch(/Conceptual/i);
         expect(markup).not.toMatch(/Interpretation/i);
+    });
+
+    it('keeps scenario generation local and renders edited text through DOM APIs', () => {
+        const controller = readFileSync(
+            join(REPO_ROOT, 'public', 'scripts', 'onboarding', 'scenario-generation-setup.ts'),
+            'utf8'
+        );
+        expect(controller).not.toContain('/api/');
+        expect(controller).toContain("fetch('/components/scenarios/scenario-questions-generate.html')");
+        expect(controller).toContain('prompt.textContent = preview.prompt');
+        expect(controller).toContain('document.createTextNode(part.prompt)');
+        expect(controller).toContain("submit.textContent = 'Update sample'");
+    });
+
+    it('presents Canvas and manual assignment intake as simulations', () => {
+        const markup = readFileSync(join(COMPONENT_DIR, 'writing-feedback-setup.html'), 'utf8');
+        const controller = readFileSync(
+            join(REPO_ROOT, 'public', 'scripts', 'onboarding', 'writing-feedback-setup.ts'),
+            'utf8'
+        );
+        expect(markup).toContain('id="wfSetupImportCanvasBtn"');
+        expect(markup).toContain('Import from Canvas');
+        expect(markup).toContain('id="wfSetupAddAssignmentBtn"');
+        expect(markup).toContain('Add assignment');
+        expect(markup).toContain('do not import, create, or save anything');
+        expect(controller).not.toMatch(/\bfetch\s*\(/);
+    });
+
+    it('lists the supported document inputs and removes inaccurate processing controls', () => {
+        const markup = readFileSync(join(COMPONENT_DIR, 'document-setup.html'), 'utf8');
+        expect(markup).toMatch(/PDF, DOCX, HTML, Markdown, and TXT/);
+        expect(markup).toContain('Direct text');
+        expect(markup).not.toMatch(/processDemoFiles|clearDemoFiles|clearDemo|delete-demo-btn|delete-file-btn/);
+    });
+
+    it('uses the shared progress helper in feature and legacy controllers', () => {
+        const controllers = [
+            'feature-tutorial-runtime.ts',
+            'course-setup.ts',
+            'document-setup.ts',
+            'flag-setup.ts',
+            'monitor-setup.ts'
+        ];
+        controllers.forEach(file => {
+            const source = readFileSync(join(REPO_ROOT, 'public', 'scripts', 'onboarding', file), 'utf8');
+            expect(source).toContain('updateStaffOnboardingProgress');
+        });
     });
 });

@@ -26,6 +26,7 @@
 import { loadComponentHTML } from "../api/api.js";
 import { activeCourse } from "../types.js";
 import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
+import { updateStaffOnboardingProgress } from "./staff-onboarding-ui.js";
 
 // Make currentClass globally accessible
 declare global {
@@ -293,6 +294,7 @@ async function showStep(state: MonitorSetupState, stepNumber: number): Promise<v
     // Update state
     state.currentStep = stepNumber;
     state.completedSteps.add(stepNumber);
+    updateStaffOnboardingProgress(state.currentStep, state.totalSteps);
 
     // Initialize step-specific functionality
     await initializeStepFunctionality(stepNumber);
@@ -1184,4 +1186,3 @@ function setupResizeListener(state: MonitorSetupState): void {
 
 // Additional imports for instructor-mode integration
 import { renderFeatherIcons } from "../api/api.js";
-

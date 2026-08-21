@@ -21,6 +21,7 @@ import { loadComponentHTML } from "../api/api.js";
 import { activeCourse } from "../types.js";
 import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
 import { buildOnboardingStagePath, resolveNextOnboardingStage } from "../utils/onboarding-stage-order.js";
+import { updateStaffOnboardingProgress } from "./staff-onboarding-ui.js";
 
 type SetupMode = 'create' | 'resume';
 
@@ -447,6 +448,8 @@ function updateStepDisplay(state: OnboardingState, onBoardingCourse: activeCours
         currentStepElement.classList.add('active');
         setTimeout(() => adjustContentJustification(currentStepElement), 10);
     }
+
+    updateStaffOnboardingProgress(state.currentStep, state.totalSteps);
 
     synchronizeFormValues(state, onBoardingCourse);
 }

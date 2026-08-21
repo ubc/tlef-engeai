@@ -741,6 +741,7 @@
     border-radius: 8px;
     background: rgba(92, 138, 58, 0.1);
     color: var(--text-primary);
+    margin: 1.5rem 0;
 }
 
 .demo-explanation h3 {
@@ -2333,66 +2334,8 @@
     }
 }
 
-/* Course Setup: mobile-responsive overrides (768px) */
+/* Stage-specific mobile controls; the shared shell appears below. */
 @media (max-width: 768px) {
-    body.onboarding-active .course-setup .onboarding-steps-panel {
-        display: none !important;
-    }
-
-    body.onboarding-active .course-setup {
-        min-height: 100vh;
-        max-height: 100vh;
-        overflow: hidden;
-        flex: 1;
-        min-height: 0;
-    }
-
-    .course-setup .onboarding-content-area {
-        border: none !important;
-        margin: 0 !important;
-        border-radius: 0;
-        flex: 1;
-        min-height: 0;
-        overflow: hidden;
-    }
-
-    .course-setup .onboarding-content-steps {
-        flex: 1;
-        min-height: 0;
-        overflow-y: auto;
-        overflow-x: hidden;
-        -webkit-overflow-scrolling: touch;
-        background: var(--chat-bg);
-    }
-
-    .course-setup .onboarding-navigation {
-        position: fixed;
-        bottom: 1rem;
-        left: 1rem;
-        right: 1rem;
-        display: flex;
-        justify-content: space-between;
-        padding: 0.75rem 1rem;
-        gap: 0.5rem;
-        margin-top: 0;
-        background: transparent;
-        z-index: 10;
-    }
-
-    .course-setup .onboarding-navigation .nav-btn {
-        min-width: 44px;
-        min-height: 44px;
-        padding: 0.75rem;
-    }
-
-    .course-setup .onboarding-navigation .btn-next {
-        margin-left: auto !important;
-    }
-
-    .course-setup .onboarding-navigation .nav-btn-text {
-        display: none;
-    }
-
     .course-setup select.form-input {
         min-height: 44px;
     }
@@ -2403,71 +2346,6 @@
 
     .course-setup .radio-option {
         padding: 1.5rem;
-    }
-}
-
-/* Flag Setup: mobile-responsive overrides (768px) */
-@media (max-width: 768px) {
-    body.onboarding-active .flag-setup .onboarding-steps-panel {
-        display: none !important;
-    }
-
-    body.onboarding-active .flag-setup {
-        min-height: 100vh;
-        max-height: 100vh;
-        overflow: hidden;
-        flex: 1;
-        min-height: 0;
-    }
-
-    .flag-setup .onboarding-content-area {
-        border: none !important;
-        margin: 0 !important;
-        border-radius: 0;
-        flex: 1;
-        min-height: 0;
-        overflow: hidden;
-    }
-
-    .flag-setup .onboarding-content-steps {
-        flex: 1;
-        min-height: 0;
-        overflow-y: auto;
-        overflow-x: hidden;
-        -webkit-overflow-scrolling: touch;
-        background: var(--chat-bg);
-    }
-
-    .flag-setup .onboarding-navigation {
-        position: fixed;
-        bottom: 1rem;
-        left: 1rem;
-        right: 1rem;
-        display: flex;
-        justify-content: space-between;
-        padding: 0.75rem 1rem;
-        gap: 0.5rem;
-        margin-top: 0;
-        background: transparent;
-        z-index: 10;
-    }
-
-    .flag-setup .onboarding-navigation .nav-btn {
-        min-width: 44px;
-        min-height: 44px;
-        padding: 0.75rem;
-    }
-
-    .flag-setup .onboarding-navigation .btn-next {
-        margin-left: auto !important;
-    }
-
-    .flag-setup .onboarding-navigation .nav-btn-text {
-        display: none;
-    }
-
-    .flag-setup .content-step {
-        padding: 2rem 1.5rem;
     }
 
     /* Accordion: touch targets */
@@ -2482,62 +2360,6 @@
         min-width: 44px;
         min-height: 44px;
         padding: 0.75rem 1rem;
-    }
-}
-
-/* Monitor Setup: mobile-responsive overrides (768px) */
-@media (max-width: 768px) {
-    body.onboarding-active .monitor-setup .onboarding-steps-panel {
-        display: none !important;
-    }
-
-    body.onboarding-active .monitor-setup {
-        min-height: 100vh;
-        max-height: 100vh;
-        overflow: hidden;
-        flex: 1;
-        min-height: 0;
-    }
-
-    .monitor-setup .onboarding-content-area {
-        border: none !important;
-        margin: 0 !important;
-        border-radius: 0;
-        flex: 1;
-        min-height: 0;
-        overflow: hidden;
-    }
-
-    .monitor-setup .content-step {
-        padding-bottom: 5rem;
-    }
-
-    body.onboarding-active .monitor-setup .onboarding-navigation {
-        position: fixed;
-        bottom: 1rem;
-        left: 1rem;
-        right: 1rem;
-        display: flex;
-        justify-content: space-between;
-        padding: 0.75rem 1rem;
-        gap: 0.5rem;
-        margin-top: 0;
-        background: transparent;
-        z-index: 10;
-    }
-
-    .monitor-setup .onboarding-navigation .nav-btn {
-        min-width: 44px;
-        min-height: 44px;
-        padding: 0.75rem;
-    }
-
-    .monitor-setup .onboarding-navigation .btn-next {
-        margin-left: auto !important;
-    }
-
-    .monitor-setup .onboarding-navigation .nav-btn-text {
-        display: none;
     }
 
     /* Usage stats: stack vertically on narrow screens */
@@ -2579,80 +2401,10 @@
     .monitor-setup .monitor-student-content {
         overflow-y: auto;
     }
-}
-
-/* Document Setup: mobile-responsive overrides (768px) */
-@media (max-width: 768px) {
-    body.onboarding-active .document-setup .onboarding-steps-panel {
-        display: none !important;
-    }
-
-    body.onboarding-active .document-setup {
-        min-height: 100vh;
-        max-height: 100vh;
-        overflow: hidden;
-        flex: 1;
-        min-height: 0;
-    }
-
-    .document-setup .onboarding-content-area {
-        border: none !important;
-        margin: 0 !important;
-        border-radius: 0;
-        flex: 1;
-        min-height: 0;
-        overflow: hidden;
-    }
-
-    .document-setup .onboarding-content-steps {
-        flex: 1;
-        min-height: 0;
-        overflow-y: auto;
-        overflow-x: hidden;
-        -webkit-overflow-scrolling: touch;
-        background: var(--chat-bg);
-    }
-
-    .document-setup .onboarding-navigation {
-        position: fixed;
-        bottom: 1rem;
-        left: 1rem;
-        right: 1rem;
-        display: flex;
-        justify-content: space-between;
-        padding: 0.75rem 1rem;
-        gap: 0.5rem;
-        margin-top: 0;
-        background: transparent;
-        z-index: 10;
-    }
-
-    .document-setup .onboarding-navigation .nav-btn {
-        min-width: 44px;
-        min-height: 44px;
-        padding: 0.75rem;
-    }
-
-    .document-setup .onboarding-navigation .btn-next {
-        margin-left: auto !important;
-    }
-
-    .document-setup .onboarding-navigation .nav-btn-text {
-        display: none;
-    }
 
     /* Learning Objectives (Step 2): touch targets */
     .document-setup #demoObjectiveTitle {
         min-height: 44px;
-    }
-
-    .document-setup .demo-objective-item .delete-demo-btn {
-        min-width: 44px;
-        min-height: 44px;
-        padding: 0.5rem;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
     }
 
     .document-setup .demo-actions {
@@ -2680,15 +2432,6 @@
     .document-setup .demo-file-item {
         min-height: 44px;
         padding: 0.75rem 1rem;
-    }
-
-    .document-setup .delete-file-btn {
-        min-width: 44px;
-        min-height: 44px;
-        padding: 0.5rem;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
     }
 
 }
@@ -2730,19 +2473,11 @@
     }
 }
 
-/* Reduced motion support (course setup) */
-@media (prefers-reduced-motion: reduce) {
-    .course-setup .onboarding-navigation .nav-btn {
-        transition: none;
-    }
-}
-
 /* Reduced motion support (flag setup) */
 @media (prefers-reduced-motion: reduce) {
     .flag-setup .accordion-content,
     .flag-setup .accordion-chevron,
-    .flag-setup .report-card .expanded-content,
-    .flag-setup .onboarding-navigation .nav-btn {
+    .flag-setup .report-card .expanded-content {
         transition: none;
     }
 }
@@ -2751,15 +2486,7 @@
 @media (prefers-reduced-motion: reduce) {
     .monitor-setup .student-item.expanded .monitor-student-content,
     .monitor-setup .calendar-modal,
-    .monitor-setup .calendar-modal *,
-    .monitor-setup .onboarding-navigation .nav-btn {
-        transition: none;
-    }
-}
-
-/* Reduced motion support (document setup) */
-@media (prefers-reduced-motion: reduce) {
-    .document-setup .onboarding-navigation .nav-btn {
+    .monitor-setup .calendar-modal * {
         transition: none;
     }
 }
@@ -2793,6 +2520,198 @@
 }
 
 /* ===========================================
+   SHARED STAFF ONBOARDING STATUS AND MOBILE SHELL
+   =========================================== */
+
+.staff-onboarding-progress {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+@media (max-width: 768px) {
+    body.onboarding-active {
+        margin: 0;
+        overflow: hidden;
+    }
+
+    body.onboarding-active #main-content-area {
+        padding: 0;
+        overflow: hidden;
+    }
+
+    body.onboarding-active .staff-onboarding {
+        --staff-onboarding-mobile-nav-height: calc(4.3125rem + env(safe-area-inset-bottom));
+        flex: 1;
+        flex-direction: column;
+        width: 100%;
+        min-height: 0;
+        height: 100dvh;
+        max-height: 100dvh;
+        overflow: hidden;
+    }
+
+    body.onboarding-active .staff-onboarding .onboarding-steps-panel {
+        display: none !important;
+    }
+
+    .staff-onboarding .onboarding-content-area {
+        flex: 1;
+        width: 100%;
+        min-height: 0;
+        margin: 0 !important;
+        overflow: hidden;
+        border: 0 !important;
+        border-radius: 0;
+    }
+
+    .staff-onboarding-progress {
+        display: flex;
+        position: static;
+        flex: 0 0 auto;
+        align-items: baseline;
+        gap: 0.65rem;
+        width: auto;
+        height: auto;
+        min-height: 52px;
+        margin: 0;
+        padding: calc(0.75rem + env(safe-area-inset-top)) 7rem 0.75rem max(1rem, env(safe-area-inset-left));
+        overflow: visible;
+        clip: auto;
+        white-space: normal;
+        border-bottom: 1px solid var(--border-color);
+        background: #fff;
+        color: var(--text-primary);
+    }
+
+    .staff-onboarding-progress__count {
+        flex: 0 0 auto;
+        font-size: 0.88rem;
+        font-weight: 700;
+    }
+
+    .staff-onboarding-progress__title {
+        min-width: 0;
+        overflow: hidden;
+        color: var(--text-secondary);
+        font-size: 0.84rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .staff-onboarding .help-menu {
+        top: calc(0.5rem + env(safe-area-inset-top));
+        right: max(0.75rem, env(safe-area-inset-right));
+    }
+
+    .staff-onboarding .help-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .staff-onboarding .onboarding-content-steps {
+        flex: 1;
+        min-height: 0;
+        margin-bottom: var(--staff-onboarding-mobile-nav-height);
+        overflow: hidden;
+        background: var(--chat-bg);
+    }
+
+    .staff-onboarding .content-step {
+        min-height: 0;
+        padding: 1.5rem max(1rem, env(safe-area-inset-right)) 2rem max(1rem, env(safe-area-inset-left));
+        overflow-x: hidden;
+        overflow-y: auto;
+        scroll-padding-bottom: 2rem;
+    }
+
+    .staff-onboarding .content-step-inner {
+        margin-bottom: 0;
+    }
+
+    .staff-onboarding .step-header {
+        margin-bottom: 1.5rem;
+    }
+
+    .staff-onboarding .step-header h1 {
+        margin-top: 0;
+        font-size: 1.65rem;
+        line-height: 1.2;
+    }
+
+    .staff-onboarding .step-header p {
+        font-size: 1rem;
+    }
+
+    .staff-onboarding .onboarding-navigation,
+    body.onboarding-active .staff-onboarding .onboarding-navigation {
+        position: fixed;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        display: flex;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin: 0;
+        padding: 0.75rem max(1rem, env(safe-area-inset-right)) calc(0.75rem + env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+        border-top: 1px solid var(--border-color);
+        background: #fff;
+        z-index: 20;
+    }
+
+    .staff-onboarding .onboarding-navigation .nav-btn {
+        width: auto;
+        min-width: 92px;
+        min-height: 44px;
+        padding: 0.75rem 1rem;
+    }
+
+    .staff-onboarding .onboarding-navigation .btn-next {
+        margin-left: auto !important;
+    }
+
+    .staff-onboarding .onboarding-navigation .nav-btn-text {
+        display: inline !important;
+    }
+
+    .staff-onboarding button,
+    .staff-onboarding select,
+    .staff-onboarding input[type="text"],
+    .staff-onboarding input[type="number"] {
+        min-height: 44px;
+    }
+}
+
+@media (max-width: 360px) {
+    .staff-onboarding-progress__title {
+        display: none;
+    }
+
+    .staff-onboarding .onboarding-navigation .nav-btn {
+        min-width: 86px;
+        padding-right: 0.75rem;
+        padding-left: 0.75rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .staff-onboarding *,
+    .staff-onboarding *::before,
+    .staff-onboarding *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ===========================================
    SCENARIO GENERATION SETUP ONBOARDING STYLES
    Namespaced under .scenario-generation-setup because the surrounding file is
    otherwise global and this stage mounts form-like demo markup.
@@ -2803,6 +2722,19 @@
     margin: 0;
     color: var(--text-secondary);
     font-size: 0.9rem;
+}
+
+.scenario-generation-setup .sg-setup-action-prompt {
+    margin: 1rem 0;
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--color-ubc-blue);
+    border-radius: 8px;
+    background: rgba(47, 95, 143, 0.1);
+    color: var(--text-primary);
+}
+
+.scenario-generation-setup .sg-setup-action-prompt strong {
+    color: var(--color-ubc-blue);
 }
 
 .scenario-generation-setup .sg-setup-draft {
@@ -2846,11 +2778,78 @@
     font-style: italic;
 }
 
+.scenario-generation-setup .sg-setup-preview-summary {
+    display: grid;
+    gap: 0.65rem;
+    margin: 0 0 1rem;
+}
+
+.scenario-generation-setup .sg-setup-preview-summary div {
+    display: grid;
+    grid-template-columns: minmax(130px, 0.3fr) 1fr;
+    gap: 0.75rem;
+    padding-bottom: 0.65rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.scenario-generation-setup .sg-setup-preview-summary dt {
+    font-weight: 700;
+}
+
+.scenario-generation-setup .sg-setup-preview-summary dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.scenario-generation-setup .sg-setup-draft ol {
+    padding-left: 1.4rem;
+}
+
+.scenario-generation-setup .sg-setup-draft li {
+    margin-bottom: 0.6rem;
+}
+
 @media (max-width: 768px) {
+    .scenario-generation-setup .sg-instructor-generate-card,
+    .scenario-generation-setup .sg-instructor-generate-prompt {
+        box-sizing: border-box;
+        width: 100%;
+    }
+
+    .scenario-generation-setup .sg-instructor-type-pills-row,
+    .scenario-generation-setup .sg-instructor-generate-controls-right {
+        width: 100%;
+        max-width: none;
+    }
+
+    .scenario-generation-setup .sg-instructor-type-help-btn,
+    .scenario-generation-setup .sg-instructor-type-add-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .scenario-generation-setup .sg-instructor-generate-controls-right {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        margin-left: 0;
+    }
+
+    .scenario-generation-setup .sg-instructor-type-popover,
+    .scenario-generation-setup .sg-instructor-difficulty-menu {
+        bottom: auto;
+        top: calc(100% + 6px);
+    }
+
     .scenario-generation-setup .sg-setup-draft-header {
         flex-direction: column;
         align-items: flex-start;
         gap: 0.4rem;
+    }
+
+    .scenario-generation-setup .sg-setup-preview-summary div {
+        grid-template-columns: 1fr;
+        gap: 0.2rem;
     }
 }
 
@@ -2865,6 +2864,26 @@
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 1rem;
     margin: 1rem 0;
+}
+
+.writing-feedback-setup .wf-setup-intake-panel {
+    display: grid;
+    gap: 0.8rem;
+    margin-top: 1rem;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--background-2);
+}
+
+.writing-feedback-setup .wf-setup-intake-panel p {
+    margin: 0;
+    font-size: 0.95rem;
+}
+
+.writing-feedback-setup .wf-setup-intake-message {
+    color: var(--color-ubc-blue);
+    font-weight: 600;
 }
 
 .writing-feedback-setup .wf-setup-rubric-block {
@@ -2982,6 +3001,16 @@
 }
 
 @media (max-width: 768px) {
+    .writing-feedback-setup .wf-setup-intake-panel .wf-header-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .writing-feedback-setup .wf-setup-intake-panel .wf-header-btn {
+        justify-content: center;
+        width: 100%;
+    }
+
     .writing-feedback-setup .wf-setup-rubric-demo {
         grid-template-columns: 1fr;
     }
@@ -3153,6 +3182,15 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.75rem;
+}
+
+.guided-pathway-setup .gp-setup-escalation-note {
+    margin: 0.9rem 0 0;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    line-height: 1.5;
 }
 
 .guided-pathway-setup .gp-setup-dismiss-btn,

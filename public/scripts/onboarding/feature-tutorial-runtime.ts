@@ -18,6 +18,7 @@ import { loadComponentHTML } from "../api/api.js";
 import { activeCourse } from "../types.js";
 import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
 import type { OnboardingFeatureKey } from "../utils/onboarding-stage-order.js";
+import { updateStaffOnboardingProgress } from "./staff-onboarding-ui.js";
 
 /** Component names for the three feature tutorials. */
 export type FeatureTutorialComponent =
@@ -115,6 +116,7 @@ function updateNavigationButtons(state: FeatureTutorialState): void {
     if (state.currentStep === state.totalSteps) {
         setNextButtonText(nextBtn, 'Complete Setup');
         nextBtn.disabled = false;
+        nextBtn.removeAttribute('aria-label');
         return;
     }
 
@@ -122,11 +124,13 @@ function updateNavigationButtons(state: FeatureTutorialState): void {
     const requiresCompletion = nextStepElement?.getAttribute('data-requires-completion');
     if (requiresCompletion && !state.completedSteps.has(parseInt(requiresCompletion, 10))) {
         nextBtn.disabled = true;
-        setNextButtonText(nextBtn, 'Complete Previous Step First');
+        nextBtn.setAttribute('aria-label', 'Next, complete this step first');
+        setNextButtonText(nextBtn, 'Next');
         return;
     }
 
     nextBtn.disabled = false;
+    nextBtn.removeAttribute('aria-label');
     setNextButtonText(nextBtn, 'Next');
 }
 
@@ -198,6 +202,7 @@ export async function runFeatureTutorial(
             state.currentStep = stepNumber;
             updateStepIndicators(stepNumber);
             updateNavigationButtons(state);
+            updateStaffOnboardingProgress(state.currentStep, state.totalSteps);
 
             await definition.initializeStep?.(stepNumber, context);
 

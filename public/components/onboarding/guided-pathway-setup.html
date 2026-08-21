@@ -1,4 +1,4 @@
-<div class="onboarding guided-pathway-setup">
+<div class="onboarding staff-onboarding guided-pathway-setup">
     <link rel="stylesheet" href="/styles/instructor-components/onboarding.css">
     <link rel="stylesheet" href="/styles/modal-overlay.css">
 
@@ -10,7 +10,7 @@
                 <i data-feather="git-branch"></i>
                 <div class="logo-text">
                     <span>EngE-AI</span>
-                    <p>Instructor Mode: Guided Pathways</p>
+                    <p>Course Staff: Guided Pathways</p>
                 </div>
             </div>
         </div>
@@ -111,8 +111,8 @@
 
                     <div class="welcome-content">
                         <div class="welcome-message">
-                            <h3>Some messages need a known answer, not a generated one</h3>
-                            <p>A guided pathway watches for a particular kind of student message and, when one arrives, replies with wording you approved in advance instead of a generated response. That matters most where a wrong answer causes real harm — a student in distress should reach a crisis line, not a chatbot's improvisation.</p>
+                        <h3>Some messages need a known answer</h3>
+                        <p>A guided pathway watches for a defined kind of student message and replies with approved wording instead of a generated response. This is especially important when an improvised answer could cause harm.</p>
 
                             <div class="demo-explanation">
                                 <h4>Each pathway has three parts:</h4>
@@ -183,12 +183,12 @@
             <div class="content-step" id="content-step-3">
                 <div class="content-step-inner">
                     <div class="step-header">
-                        <h1>Instructor Notifications</h1>
-                        <p>Each pathway decides on its own whether triggering it alerts you</p>
+                        <h1>Pathway Notifications</h1>
+                        <p>Each pathway controls whether it records an alert for course staff</p>
                     </div>
 
                     <div class="demo-explanation">
-                        <p>Every pathway carries its own <strong>Notify instructor when triggered</strong> setting. When it is on and the pathway fires, an alert is recorded for your course. When it is off, the student still receives the predefined response exactly as normal — you simply are not notified.</p>
+                        <p>Every pathway carries the production setting <strong>Notify instructor when triggered</strong>. When it is on, a trigger records an alert for course staff. When it is off, the student still receives the same predefined response, but no course alert is recorded.</p>
                     </div>
 
                     <div class="gp-setup-notify-demo">
@@ -207,11 +207,11 @@
                     </div>
 
                     <div class="completion-note">
-                        <p><strong>Alerts are anonymous.</strong> An alert tells you that something happened in your course and what the pathway matched. It does not tell you which student sent the message.</p>
+                        <p><strong>The student field is anonymous.</strong> Treat the message as sensitive because a student may include identifying information in their own text.</p>
                     </div>
 
                     <div class="completion-note">
-                        <p><strong>Turning notifications off never disables a pathway.</strong> The student still gets the approved response. Off-topic is a reasonable one to quieten; a crisis pathway is not.</p>
+                        <p><strong>Notifications do not control the response.</strong> Turning them off leaves the approved student response active.</p>
                     </div>
                 </div>
             </div>
@@ -221,7 +221,7 @@
                 <div class="content-step-inner">
                     <div class="step-header">
                         <h1>Responding to an Alert</h1>
-                        <p>Every alert needs one decision from you</p>
+                        <p>Course staff can dismiss it or record an escalation</p>
                     </div>
 
                     <div class="demo-explanation">
@@ -247,6 +247,7 @@
                             <button type="button" class="gp-setup-dismiss-btn" id="gpSetupDismissBtn">Dismiss</button>
                             <button type="button" class="gp-setup-escalate-btn" id="gpSetupEscalateBtn">Escalate to LTIC</button>
                         </div>
+                        <p class="gp-setup-escalation-note"><strong>Learning Technology Innovation Centre (LTIC):</strong> This button only records a request for internal administrator review. It does not contact LTIC, send email, or notify anyone outside EngE-AI.</p>
                     </div>
 
                     <div class="gp-setup-outcome gp-setup-outcome-dismissed" id="gpSetupDismissedState" hidden>
@@ -256,8 +257,7 @@
 
                     <div class="gp-setup-outcome gp-setup-outcome-escalated" id="gpSetupEscalatedState" hidden>
                         <h4>Escalated</h4>
-                        <p>The alert is marked for administrator review and appears in the platform administrator's queue.</p>
-                        <p><strong>Escalating records an internal decision. It does not contact LTIC, send an email, or notify anyone outside this application.</strong> If a situation needs urgent attention, use your institution's real support and reporting channels.</p>
+                        <p>The alert is marked for internal administrator review. For urgent situations, use your institution's real support and reporting channels.</p>
                     </div>
                 </div>
             </div>
@@ -269,15 +269,15 @@
                         <div class="completion-message">
                             <div class="success-icon"><i data-feather="award" aria-hidden="true"></i></div>
                             <h3>Guided Pathways tutorial complete</h3>
-                            <p>Your pathways are active and your course is protected for the cases that matter most.</p>
+                            <p>You know how predefined responses and course alerts work together.</p>
                             <ul class="completion-list">
                                 <li>Learned what a guided pathway watches for and answers with</li>
                                 <li>Reviewed the three recommended default pathways</li>
-                                <li>Understood per-pathway instructor notifications</li>
+                                <li>Understood per-pathway course-staff notifications</li>
                                 <li>Made a decision on an example anonymous alert</li>
                             </ul>
                             <div class="completion-note">
-                                <p><strong>Alerts stay anonymous.</strong> They tell you what happened in your course, never who it was.</p>
+                                <p>The student field stays anonymous, but staff should still handle message text as sensitive.</p>
                             </div>
                         </div>
 
@@ -326,15 +326,15 @@
         <div id="help-step-3">
             <p><strong>Notifications</strong></p>
             <p>Each pathway has its own <strong>Notify instructor when triggered</strong> setting.</p>
-            <p>Turning notifications off does not disable the pathway — the student still receives the approved response. It only stops an alert being recorded for you.</p>
-            <p>Alerts are anonymous: they never identify the student who sent the message.</p>
+            <p>Turning notifications off does not disable the pathway. It only stops a course alert from being recorded.</p>
+            <p>The student field is anonymous, but message text may contain identifying details and should be handled as sensitive.</p>
         </div>
 
         <div id="help-step-4">
             <p><strong>Responding to alerts</strong></p>
             <p>Alerts appear on the Flags page, which the Flag Setup stage covers later in this tutorial.</p>
             <p><strong>Dismiss</strong> closes an alert that did not reflect a real concern.</p>
-            <p><strong>Escalate to LTIC</strong> marks it for administrator review inside this application. It does not send email or contact anyone externally. Use your institution's real channels for anything urgent.</p>
+            <p><strong>Escalate to LTIC</strong> records an internal administrator-review decision. It does not send email or contact anyone externally. Use your institution's real channels for anything urgent.</p>
             <p>The alert shown here is an example. Neither button sends a request or changes any record.</p>
         </div>
 
