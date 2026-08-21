@@ -13,6 +13,7 @@ import writingFeedbackRoutes from './routes/route-writing-feedback';
 import healthRoutes from './routes/route-health';
 import versionRoutes from './routes/route-version';
 import onboardingRoutes from './routes/route-onboarding';
+import lmsRoutes from './routes/route-lms';  // Canvas + Moodle integration routes
 import authRoutes from './routes/route-auth';  // Import authentication routes
 import courseEntryRoutes from './routes/route-course-entry';  // Import course entry routes
 import userManagementRoutes from './routes/route-user-management';  // Import user management routes
@@ -284,6 +285,9 @@ app.use('/api/user', userManagementRoutes);  // User management routes
 app.use('/api/health', healthRoutes);    // Health check routes
 app.use('/api/version', versionRoutes);  // Version endpoint for UI display
 app.use('/api/onboarding', onboardingRoutes);  // Onboarding demo routes (e.g. sample chat download)
+// Canvas/Moodle per-user connections. Each provider self-disables when its env
+// vars are unset, so this mount is safe without LMS configuration present.
+app.use('/api/lms', lmsRoutes);
 
 // Final 404 handler for any requests that do not match a route
 app.use((req: express.Request, res: express.Response) => {
@@ -318,6 +322,15 @@ app.listen(port, async () => {
         await migrateOnboardingFlags();
     } catch (err) {
         logger.error('Onboarding migration failed:', err as any);
+    }
+
+    // Guards against two EngE-AI courses claiming the same LMS course, which would make
+    // student enrollment sync ambiguous. Best-effort inside the helper — a failure here
+    // must not stop the server, and the import path checks for a conflict before writing.
+    try {
+        await (await EngEAI_MongoDB.getInstance()).createCourseLmsLinkIndex();
+    } catch (err) {
+        logger.error('Failed to create LMS course-link index:', err as any);
     }
 
 });
