@@ -384,6 +384,17 @@ export class EngEAI_MongoDB {
         WritingFeedbackMongo.getLatestWritingFeedbackRun(this.ctx(), submissionId, lens);
 
     /**
+     * countWritingFeedbackRunsByLens — reports whether one lens has ever produced a run for an assignment.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment being inspected
+     * @param lens - Lens whose runs are counted
+     * @returns Number of stored runs for that assignment and lens
+     */
+    public countWritingFeedbackRunsByLens = async (courseId: string, assignmentId: string, lens: WritingFeedbackLens) =>
+        WritingFeedbackMongo.countWritingFeedbackRunsByLens(this.ctx(), courseId, assignmentId, lens);
+
+    /**
      * appendWritingReview — appends an immutable staff revision and invalidates approval.
      *
      * @param courseId - Owning course id

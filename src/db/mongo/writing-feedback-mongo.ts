@@ -664,6 +664,28 @@ export async function getLatestWritingFeedbackRun(
 }
 
 /**
+ * countWritingFeedbackRunsByLens — reports whether one lens has ever produced a run.
+ *
+ * `getLatestWritingFeedbackRun` answers per-submission; unmarking a lab report
+ * needs an assignment-scoped answer, because its technical criterion ids may
+ * be referenced by runs across many submissions.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Assignment being inspected
+ * @param lens - Lens whose runs are counted
+ * @returns Number of stored runs for that assignment and lens
+ */
+export async function countWritingFeedbackRunsByLens(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string,
+    lens: WritingFeedbackLens
+): Promise<number> {
+    return runs(ctx).countDocuments({ courseId, assignmentId, lens });
+}
+
+/**
  * appendWritingReview — appends an immutable staff-authored revision.
  *
  * Every edit receives a new id and timestamp. Appending a revision invalidates

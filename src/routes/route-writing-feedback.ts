@@ -31,6 +31,9 @@ import {
 } from '../writing-feedback/rubric-schema';
 import { listCriterionLibrary } from '../writing-feedback/criterion-library';
 import { isCourseStaff } from '../utils/course-staff';
+import { parseLens, selectRubric } from '../writing-feedback/rubric-lens';
+import { buildLabReportRubric } from '../writing-feedback/lab-report-profile';
+import type { WritingFeedbackLens } from '../writing-feedback/contracts';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -212,18 +215,30 @@ router.post('/:courseId/writing-feedback/canvas/import', asyncHandlerWithAuth(as
 }));
 
 router.get('/:courseId/writing-feedback/assignments/:assignmentId/rubric', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    let lens: WritingFeedbackLens;
+    try {
+        lens = parseLens(req.query.lens);
+    } catch {
+        return res.status(400).json({ success: false, error: 'Unknown feedback lens' });
+    }
     const mongo = await EngEAI_MongoDB.getInstance();
     const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
     if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+    if (lens === 'technical' && !assignment.isLabReport) {
+        return res.status(409).json({ success: false, error: 'Mark this assignment as a lab report before editing its technical rubric' });
+    }
+    const selected = selectRubric(assignment, lens);
     const currentCourse = await mongo.getActiveCourse(courseId(req));
     const globalUser = (req.session as any).globalUser;
     res.json({
         success: true,
         data: {
-            approved: assignment.rubric.status === 'approved' ? assignment.rubric : undefined,
-            draft: assignment.rubricDraft ?? (assignment.rubric.status === 'draft' ? assignment.rubric : undefined),
-            history: assignment.rubricHistory ?? [],
-            library: listCriterionLibrary(),
+            lens,
+            approved: selected.approved,
+            draft: selected.draft,
+            history: selected.history,
+            // The optional criterion library applies to the linguistic lens only.
+            library: lens === 'linguistic' ? listCriterionLibrary() : [],
             permissions: { canEdit: Boolean(currentCourse && isCourseStaff(currentCourse, globalUser)) }
         }
     });
@@ -232,6 +247,12 @@ router.get('/:courseId/writing-feedback/assignments/:assignmentId/rubric', async
 router.put(
     '/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft',
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        let lens: WritingFeedbackLens;
+        try {
+            lens = parseLens(req.query.lens);
+        } catch {
+            return res.status(400).json({ success: false, error: 'Unknown feedback lens' });
+        }
         const parsed = writingRubricDraftInputSchema.safeParse(req.body);
         if (!parsed.success) {
             return res.status(400).json({
@@ -242,21 +263,28 @@ router.put(
         const mongo = await EngEAI_MongoDB.getInstance();
         const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
         if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
-        try {
-            assertApprovedRubricIdsStable(assignment.rubric, parsed.data);
-        } catch (error) {
-            return res.status(400).json({
-                success: false,
-                error: error instanceof Error ? error.message : 'Approved rubric ids cannot be changed'
-            });
+        if (lens === 'technical' && !assignment.isLabReport) {
+            return res.status(409).json({ success: false, error: 'Mark this assignment as a lab report before editing its technical rubric' });
+        }
+        const selected = selectRubric(assignment, lens);
+        const currentApproved = selected.approved;
+        if (currentApproved) {
+            try {
+                assertApprovedRubricIdsStable(currentApproved, parsed.data);
+            } catch (error) {
+                return res.status(400).json({
+                    success: false,
+                    error: error instanceof Error ? error.message : 'Approved rubric ids cannot be changed'
+                });
+            }
         }
         const globalUser = (req.session as any).globalUser;
-        const version = assignment.rubricDraft?.version
-            ?? (assignment.rubric.status === 'draft' ? assignment.rubric.version : assignment.rubric.version + 1);
+        const version = selected.draft?.version
+            ?? (currentApproved ? currentApproved.version + 1 : 1);
         const draft = buildRubricDraft(parsed.data, version, globalUser.userId);
 
         // Saving is deliberately separate from approval and does not change the active rubric.
-        const updated = await mongo.saveWritingRubricDraft(courseId(req), assignment.id, draft);
+        const updated = await mongo.saveWritingRubricDraft(courseId(req), assignment.id, draft, lens);
         res.json({ success: true, data: updated });
     })
 );
@@ -264,8 +292,14 @@ router.put(
 router.delete(
     '/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft',
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        let lens: WritingFeedbackLens;
+        try {
+            lens = parseLens(req.query.lens);
+        } catch {
+            return res.status(400).json({ success: false, error: 'Unknown feedback lens' });
+        }
         const mongo = await EngEAI_MongoDB.getInstance();
-        const updated = await mongo.discardWritingRubricDraft(courseId(req), String(req.params.assignmentId));
+        const updated = await mongo.discardWritingRubricDraft(courseId(req), String(req.params.assignmentId), lens);
         if (!updated) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
         res.json({ success: true, data: updated });
     })
@@ -274,24 +308,88 @@ router.delete(
 router.post(
     '/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft/approve',
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        let lens: WritingFeedbackLens;
+        try {
+            lens = parseLens(req.query.lens);
+        } catch {
+            return res.status(400).json({ success: false, error: 'Unknown feedback lens' });
+        }
         const mongo = await EngEAI_MongoDB.getInstance();
         const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
         if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
-        if (!assignment.rubricDraft) {
+        if (lens === 'technical' && !assignment.isLabReport) {
+            return res.status(409).json({ success: false, error: 'Mark this assignment as a lab report before editing its technical rubric' });
+        }
+        const selected = selectRubric(assignment, lens);
+        if (!selected.draft) {
             return res.status(409).json({ success: false, error: 'Save a rubric draft before approval' });
         }
         const globalUser = (req.session as any).globalUser;
 
         // Promote only the persisted draft version; the delegate rejects concurrent rubric changes.
-        const approved = approveRubricDraft(assignment.rubricDraft, globalUser.userId);
+        const approved = approveRubricDraft(selected.draft, globalUser.userId);
         const updated = await mongo.approveWritingRubricDraft(
             courseId(req),
             assignment.id,
             approved,
-            gradeMappingFromApprovedRubric(approved)
+            lens === 'linguistic' ? gradeMappingFromApprovedRubric(approved) : undefined,
+            lens
         );
         if (!updated) {
             return res.status(409).json({ success: false, error: 'The rubric changed while you were editing. Reload and try again.' });
+        }
+        res.json({ success: true, data: updated });
+    })
+);
+
+/**
+ * Marks or clears an assignment as a lab report.
+ *
+ * Marking seeds an editable technical rubric draft so staff have something to
+ * edit. Clearing is refused once the technical rubric is approved or any
+ * technical feedback exists, because those records reference its criterion ids.
+ */
+router.patch(
+    '/:courseId/writing-feedback/assignments/:assignmentId/lab-report',
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const isLabReport = req.body?.isLabReport;
+        if (typeof isLabReport !== 'boolean') {
+            return res.status(400).json({ success: false, error: 'isLabReport must be true or false' });
+        }
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const assignmentId = String(req.params.assignmentId);
+        const assignment = await mongo.getWritingAssignment(courseId(req), assignmentId);
+        if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+
+        if (!isLabReport) {
+            if (assignment.technicalRubric?.status === 'approved') {
+                return res.status(409).json({
+                    success: false,
+                    error: 'This assignment has an approved technical rubric and can no longer be unmarked as a lab report'
+                });
+            }
+            const technicalRunCount = await mongo.countWritingFeedbackRunsByLens(courseId(req), assignmentId, 'technical');
+            if (technicalRunCount > 0) {
+                return res.status(409).json({
+                    success: false,
+                    error: 'Technical feedback already exists for this assignment'
+                });
+            }
+        }
+
+        const globalUser = (req.session as any).globalUser;
+        const updated = await mongo.setWritingAssignmentLabReport(courseId(req), assignmentId, isLabReport);
+        if (!updated) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+
+        // Seed an editable technical draft so staff open a populated editor, never a blank one.
+        if (isLabReport && !updated.technicalRubric && !updated.technicalRubricDraft) {
+            const seeded = await mongo.saveWritingRubricDraft(
+                courseId(req),
+                assignmentId,
+                buildLabReportRubric(globalUser.userId),
+                'technical'
+            );
+            return res.json({ success: true, data: seeded ?? updated });
         }
         res.json({ success: true, data: updated });
     })
@@ -410,6 +508,13 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/verify', asyn
     }
 }));
 
+/**
+ * Generates a feedback draft for every lens the assignment requires.
+ *
+ * Responds with `{ linguistic?, technical? }`. A lab report whose technical
+ * lens failed or whose technical rubric is unapproved responds without the
+ * `technical` key; the linguistic draft remains reviewable.
+ */
 router.post('/:courseId/writing-feedback/submissions/:submissionId/generate', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
