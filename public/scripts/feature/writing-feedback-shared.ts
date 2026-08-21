@@ -19,6 +19,9 @@ import { showConfirmModal, showErrorModal } from '../ui/modal-overlay.js';
 /** Lifecycle state displayed in staff queues and enforced by server transitions. */
 export type SubmissionStatus = 'imported' | 'verification_needed' | 'generating' | 'draft_ready' | 'approved' | 'released' | 'failed';
 
+/** Which feedback lens a rubric or run belongs to. */
+export type WritingFeedbackLens = 'linguistic' | 'technical';
+
 /** Instructor-authored criterion slug, frozen after its first rubric approval. */
 export type WritingCriterionId = string;
 
@@ -57,6 +60,7 @@ export interface RubricDefinition {
     criteria: RubricCriterion[]; // assignment-specific criteria and optional SFL lenses
     levels: RubricLevel[]; // complete ordinal scale and optional point mapping
     updatedAt: string; // server timestamp shown in rubric provenance/history
+    labContext?: string; // instructor-approved lab handout context supplied to the technical lens
 }
 
 /** Assignment summary used by the landing queue and current rubric context. */
@@ -70,6 +74,10 @@ export interface Assignment {
     rubric: RubricDefinition; // current rubric; new assignments begin with a draft
     rubricDraft?: RubricDefinition; // inactive staff draft, when one exists
     rubricHistory?: RubricDefinition[]; // immutable prior approved versions used for review labels
+    isLabReport?: boolean; // whether this assignment also receives technical (lab-report) feedback
+    technicalRubric?: RubricDefinition; // approved technical rubric; absent until first approval
+    technicalRubricDraft?: RubricDefinition; // editable staff draft of the technical rubric
+    technicalRubricHistory?: RubricDefinition[]; // immutable prior approved technical versions used for review labels
     dueAt?: string; // optional deadline used only for queue late-status display
     createdAt: string; // assignment creation timestamp for staff context
     submissionCount?: number; // summary count used before submissions are expanded
@@ -88,6 +96,7 @@ export interface CriterionFeedback {
 export interface FeedbackRun {
     id: string; // provenance key attached to subsequent staff revisions
     rubricVersion?: number; // approved rubric version used to detect stale runs
+    lens?: WritingFeedbackLens; // which feedback lens produced this run
     createdAt: string; // generation timestamp shown in review provenance
     result: {
         criteria: CriterionFeedback[]; // supported criterion judgments with exact evidence
@@ -210,6 +219,7 @@ export interface Submission {
 export interface SubmissionDetail {
     submission: Submission; // current server-authoritative submission and reviews
     feedbackRun: FeedbackRun | null; // latest immutable model result, if generated
+    technicalFeedbackRun: FeedbackRun | null; // latest immutable technical (lab-report) model result, if generated
     comments: AnchoredComment[]; // newest saved staff comment snapshot
     seedComments: AnchoredComment[]; // model-derived fallback used before the first save
 }
@@ -246,6 +256,7 @@ export interface WorkspaceContext {
 
 /** Approved/draft rubric pair and history returned to the rubric page. */
 export interface RubricResponse {
+    lens: WritingFeedbackLens; // feedback lens this rubric response governs
     approved?: RubricDefinition; // active rubric used by generation and release after first approval
     draft?: RubricDefinition; // editable candidate; always present before the first approval
     history: RubricDefinition[]; // immutable prior versions available for provenance
@@ -435,7 +446,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
  * @param body - Optional value serialized as JSON
  * @returns Typed API response data
  */
-export function jsonRequest<T>(path: string, method: 'POST' | 'PUT' | 'DELETE', body?: unknown): Promise<T> {
+export function jsonRequest<T>(path: string, method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', body?: unknown): Promise<T> {
     return request<T>(path, {
         method,
         headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },

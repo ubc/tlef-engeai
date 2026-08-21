@@ -194,6 +194,37 @@ function renderAssignmentCard(assignment: Assignment): HTMLElement {
         chip(`${assignment.submissionCount ?? 0} submissions`, 'green')
     );
     const canManageRubric = Boolean(state.workspace?.permissions.canManageRubric);
+    if (canManageRubric) {
+        const labHint = createText('span', '', 'wf-help-text');
+        const labToggle = document.createElement('label');
+        labToggle.className = 'wf-lab-toggle';
+        const labInput = document.createElement('input');
+        labInput.type = 'checkbox';
+        labInput.checked = Boolean(assignment.isLabReport);
+        labInput.setAttribute('aria-label', `Mark "${assignment.title}" as a lab report`);
+        labInput.addEventListener('click', (event) => event.stopPropagation());
+        labInput.addEventListener('change', async (event) => {
+            event.stopPropagation();
+            const next = labInput.checked;
+            try {
+                const updated = await jsonRequest<Assignment>(
+                    `/assignments/${encodeURIComponent(assignment.id)}/lab-report`,
+                    'PATCH',
+                    { isLabReport: next }
+                );
+                Object.assign(assignment, updated);
+                labHint.textContent = next
+                    ? 'Technical rubric seeded. Open Rubric to review and approve it.'
+                    : '';
+            } catch (error) {
+                // Restore the control to server truth before surfacing the refusal.
+                labInput.checked = !next;
+                await handleActionError(error);
+            }
+        });
+        labToggle.append(labInput, document.createTextNode('Lab report'));
+        controls.append(labToggle, labHint);
+    }
     const rubricButton = createButton(
         canManageRubric ? 'Edit rubric' : 'View rubric',
         'secondary',

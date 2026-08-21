@@ -17,7 +17,7 @@
  */
 
 import { showConfirmModal } from '../ui/modal-overlay.js';
-import { showSuccessToast } from '../ui/toast-notification.js';
+import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
 import {
     AnchoredComment,
     Assignment,
@@ -31,6 +31,7 @@ import {
     STATUS_TONES,
     Submission,
     SubmissionDetail,
+    WritingFeedbackLens,
     baseUrl,
     chip,
     confirmDiscardDirty,
@@ -162,12 +163,15 @@ function latestReview(submission: Submission): ReviewRevision | undefined {
     return submission.reviews?.[submission.reviews.length - 1];
 }
 
-/** Resolves labels against the immutable rubric version used by this model run. */
-function rubricForRun(assignment: Assignment | null, run: FeedbackRun): RubricDefinition | undefined {
+/** Resolves labels against the immutable rubric version used by this model run, for the given lens. */
+function rubricForRun(assignment: Assignment | null, run: FeedbackRun, lens: WritingFeedbackLens = 'linguistic'): RubricDefinition | undefined {
     if (!assignment) return undefined;
-    const candidates = [assignment.rubric, ...(assignment.rubricHistory ?? []), assignment.rubricDraft]
+    const current = lens === 'technical' ? assignment.technicalRubric : assignment.rubric;
+    const history = lens === 'technical' ? assignment.technicalRubricHistory : assignment.rubricHistory;
+    const draft = lens === 'technical' ? assignment.technicalRubricDraft : assignment.rubricDraft;
+    const candidates = [current, ...(history ?? []), draft]
         .filter((rubric): rubric is RubricDefinition => Boolean(rubric));
-    if (run.rubricVersion === undefined) return assignment.rubric;
+    if (run.rubricVersion === undefined) return current;
     return candidates.find((rubric) => rubric.version === run.rubricVersion);
 }
 
@@ -539,8 +543,17 @@ function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assignment | 
                 staleRubric ? 'Regenerate with approved rubric' : 'Generate feedback',
                 'primary',
                 async () => {
-                    await jsonRequest(`/submissions/${encodeURIComponent(submission.id)}/generate`, 'POST');
-                    showSuccessToast('Feedback draft generated for staff review.');
+                    // The technical lens is allowed to fail without failing the linguistic
+                    // draft; surface that gap instead of silently reporting full success.
+                    const generated = await jsonRequest<{ linguistic?: unknown; technical?: unknown }>(
+                        `/submissions/${encodeURIComponent(submission.id)}/generate`,
+                        'POST'
+                    );
+                    if (assignment?.isLabReport && !generated.technical) {
+                        showErrorToast('Technical feedback was not generated. Check that the technical rubric is approved, then generate again.');
+                    } else {
+                        showSuccessToast('Feedback draft generated for staff review.');
+                    }
                     await refreshReview(submission.id);
                 },
                 submission.requiresVerification
@@ -567,10 +580,17 @@ function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assignment | 
     summaryBody.id = 'wf-tab-panel-summary';
     summaryBody.setAttribute('role', 'tabpanel');
     summaryBody.hidden = true;
+    const technicalBody = document.createElement('div');
+    technicalBody.className = 'wf-panel-body';
+    technicalBody.id = 'wf-tab-panel-technical';
+    technicalBody.setAttribute('role', 'tabpanel');
+    technicalBody.hidden = true;
 
     const tabs: Array<{ id: string; label: string; panel: HTMLElement }> = [
         { id: 'annotations', label: 'Annotations', panel: annotationsBody },
-        { id: 'summary', label: 'Summary', panel: summaryBody }
+        { id: 'summary', label: 'Summary', panel: summaryBody },
+        // The technical tab only exists for a lab report whose technical lens has run.
+        ...(detail.technicalFeedbackRun ? [{ id: 'technical', label: 'Technical', panel: technicalBody }] : [])
     ];
     const buttons: HTMLButtonElement[] = [];
     const selectTab = (selected: number) => {
@@ -630,6 +650,13 @@ function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assignment | 
     const internalNote = summaryContent.internalNote;
 
     panel.append(annotationsBody, summaryBody);
+
+    // Technical tab — read-only technical (lab-report) draft. Approval and
+    // release remain whole-submission actions on the Summary tab.
+    if (detail.technicalFeedbackRun) {
+        technicalBody.append(...renderTechnicalTab(detail.technicalFeedbackRun, assignment));
+        panel.append(technicalBody);
+    }
 
     // One explicit save snapshots both summary fields and the annotation working
     // set as an append-only staff revision; editing never overwrites model provenance.
@@ -693,6 +720,97 @@ function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assignment | 
     panel.append(footer);
 
     return panel;
+}
+
+/**
+ * renderTechnicalTab - renders the read-only technical (lab-report) draft
+ *
+ * The technical run judges argument consistency and evidence support against
+ * the approved technical rubric and lab context; it never judges agreement
+ * with theory. Approval and release stay whole-submission actions on the
+ * Summary tab, so this tab only displays the draft for staff review.
+ *
+ * @param run - Latest immutable technical model result
+ * @param assignment - Parent assignment supplying the technical rubric used to label criteria
+ * @returns Detached section nodes ready for insertion into the technical tab panel
+ */
+function renderTechnicalTab(run: FeedbackRun, assignment: Assignment | null): HTMLElement[] {
+    const children: HTMLElement[] = [];
+
+    children.push(createText(
+        'p',
+        'Read-only technical draft from the lab-report engine. Approve and release from the Summary tab apply to the whole submission.',
+        'wf-muted-note'
+    ));
+
+    const strengths = document.createElement('section');
+    strengths.className = 'wf-feedback-section';
+    strengths.append(createText('h3', 'What works (technical)'));
+    const strengthList = document.createElement('ul');
+    strengthList.className = 'wf-strength-list';
+    run.result.strengths.forEach((strength) => strengthList.append(createText('li', strength)));
+    strengths.append(strengthList);
+    children.push(strengths);
+
+    const rubric = rubricForRun(assignment, run, 'technical');
+    const rubricSection = document.createElement('section');
+    rubricSection.className = 'wf-feedback-section';
+    rubricSection.append(createText('h3', 'Feedback by technical rubric criterion'));
+    const criterionList = document.createElement('div');
+    criterionList.className = 'wf-criterion-list';
+    orderedCriterionIds(rubric, run.result.criteria).forEach((criterionId) => {
+        const criterion = run.result.criteria.find((item) => item.criterion === criterionId);
+        const item = document.createElement('article');
+        item.className = 'wf-criterion';
+        const criterionHeader = document.createElement('div');
+        criterionHeader.className = 'wf-criterion-header';
+        criterionHeader.append(createText('h4', criterionLabel(rubric, criterionId)));
+        if (criterion) criterionHeader.append(chip(levelLabel(rubric, criterion.suggestedLevel), 'neutral'));
+        item.append(criterionHeader);
+        if (!criterion) {
+            item.append(createText('p', 'No stored feedback was found for this rubric criterion.', 'wf-muted-note'));
+            criterionList.append(item);
+            return;
+        }
+        item.append(createText('p', criterion.explanation));
+        criterion.evidence.forEach((evidence) => {
+            item.append(createText('blockquote', `“${evidence.quote}”`, 'wf-evidence'));
+        });
+        criterionList.append(item);
+    });
+    rubricSection.append(criterionList);
+    children.push(rubricSection);
+
+    const goalsSection = document.createElement('section');
+    goalsSection.className = 'wf-feedback-section';
+    goalsSection.append(
+        createText('h3', 'Priority technical revision goals'),
+        createText('p', 'At most three high-impact goals, each posed as a guiding question rather than a corrected answer.', 'wf-muted-note')
+    );
+    run.result.revisionGoals.slice(0, 3).forEach((goal) => {
+        const goalCard = document.createElement('article');
+        goalCard.className = 'wf-goal-card';
+        goalCard.append(
+            createText('strong', goal.goal),
+            createText('p', `Guiding question: ${goal.guidedQuestion}`, 'wf-guided-question'),
+            chip(goal.skillTag, 'neutral')
+        );
+        goalsSection.append(goalCard);
+    });
+    children.push(goalsSection);
+
+    // Internal flags stay in the staff workspace only, matching the Summary tab.
+    if (run.result.internalFlags.length) {
+        const flags = document.createElement('section');
+        flags.className = 'wf-feedback-section wf-internal-note';
+        flags.append(
+            createText('h3', 'Internal review flags'),
+            createText('p', run.result.internalFlags.join(', '))
+        );
+        children.push(flags);
+    }
+
+    return children;
 }
 
 interface SummaryContent {

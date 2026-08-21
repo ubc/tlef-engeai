@@ -23,6 +23,7 @@ import {
     RubricLevel,
     RubricResponse,
     WfFunctionTag,
+    WritingFeedbackLens,
     chip,
     confirmDiscardDirty,
     createButton,
@@ -63,6 +64,7 @@ interface RubricDraftInput {
     gradingIntent: string;
     criteria: RubricCriterion[];
     levels: RubricLevel[];
+    labContext?: string;
 }
 
 type RubricControl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
@@ -134,7 +136,7 @@ function validateSlugs(values: Array<{ id: string }>, noun: string): void {
     }
 }
 
-function collectRubric(form: HTMLFormElement, working: RubricDefinition): RubricDraftInput {
+function collectRubric(form: HTMLFormElement, working: RubricDefinition, includeLabContext = false): RubricDraftInput {
     const requiredNames = ['title', 'task', 'audience', 'purpose', 'gradingIntent'];
     if (requiredNames.some((name) => !rubricTextValue(form, name))) {
         throw new Error('Complete every required rubric context field.');
@@ -179,7 +181,8 @@ function collectRubric(form: HTMLFormElement, working: RubricDefinition): Rubric
         learningOutcomes,
         gradingIntent: rubricTextValue(form, 'gradingIntent'),
         criteria: working.criteria.map((criterion) => ({ ...criterion })),
-        levels: working.levels.map((level, index) => ({ ...level, rank: index + 1 }))
+        levels: working.levels.map((level, index) => ({ ...level, rank: index + 1 })),
+        ...(includeLabContext ? { labContext: rubricTextValue(form, 'labContext').slice(0, 12000) || undefined } : {})
     };
 }
 
@@ -265,17 +268,29 @@ export async function openRubricPage(assignmentId: string): Promise<void> {
     if (!state.assignments.length) state.assignments = await request<Assignment[]>('/assignments');
     const assignment = state.assignments.find((item) => item.id === assignmentId);
     if (!assignment) throw new Error('Writing assignment not found');
-    const data = await request<RubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/rubric`);
-    renderRubricPage(root, assignment, data);
+    const linguisticData = await request<RubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/rubric?lens=linguistic`);
+    const technicalData = assignment.isLabReport
+        ? await request<RubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/rubric?lens=technical`)
+        : undefined;
+    renderRubricPage(root, assignment, linguisticData, technicalData);
 }
 
-function renderRubricPage(root: HTMLDivElement, assignment: Assignment, data: RubricResponse): void {
+/**
+ * renderRubricPage - renders the shared assignment header plus one rubric
+ * editor section per lens the assignment requires
+ *
+ * @param root - Detached rubric view container to populate
+ * @param assignment - Parent assignment supplying title, instructions, and lab-report state
+ * @param linguisticData - Always-present linguistic rubric response
+ * @param technicalData - Technical rubric response, present only for a lab-report assignment
+ */
+function renderRubricPage(
+    root: HTMLDivElement,
+    assignment: Assignment,
+    linguisticData: RubricResponse,
+    technicalData?: RubricResponse
+): void {
     root.replaceChildren();
-    const source = data.draft ?? data.approved;
-    if (!source) throw new Error('This assignment does not have a rubric draft or approved rubric.');
-    const working = detachedRubric(source);
-    const canEdit = data.permissions.canEdit;
-    const structureLocked = Boolean(data.approved || data.history.some((rubric) => rubric.status === 'approved'));
 
     const back = createButton('Back to assignments', 'quiet', async () => {
         if (!(await confirmDiscardDirty('setup'))) return;
@@ -289,14 +304,57 @@ function renderRubricPage(root: HTMLDivElement, assignment: Assignment, data: Ru
     const heading = createText('h2', 'Assignment Rubric and Details', 'wf-section-title');
     const meta = document.createElement('p');
     meta.className = 'wf-assignment-meta';
+    const canEditAny = linguisticData.permissions.canEdit;
     meta.append(
         createText('strong', assignment.title),
         createText('span', `Created ${formatDate(assignment.createdAt)}`),
         createText('span', assignment.dueAt ? `Deadline ${formatDate(assignment.dueAt, true)}` : 'No deadline'),
-        chip(canEdit ? 'Editable' : 'Read-only', canEdit ? 'green' : 'neutral')
+        chip(canEditAny ? 'Editable' : 'Read-only', canEditAny ? 'green' : 'neutral')
     );
     header.append(heading, meta);
     root.append(header);
+
+    const instructions = document.createElement('details');
+    instructions.className = 'wf-assignment-instructions';
+    instructions.open = Boolean(assignment.instructions);
+    const instructionsSummary = document.createElement('summary');
+    instructionsSummary.textContent = 'Assignment instructions';
+    instructions.append(
+        instructionsSummary,
+        createText(
+            'div',
+            assignment.instructions || 'No assignment instructions were provided. Add task context directly in the rubric before approval.',
+            assignment.instructions ? 'wf-assignment-instructions__text' : 'wf-muted-note'
+        )
+    );
+    root.append(instructions);
+
+    // A disambiguating heading only matters once a second (technical) rubric section exists.
+    if (technicalData) root.append(createText('h2', 'Linguistic rubric', 'wf-section-title'));
+    root.append(...renderRubricSection(assignment, linguisticData, 'linguistic'));
+
+    if (technicalData) {
+        root.append(createText('h2', 'Technical rubric (lab report)', 'wf-section-title'));
+        root.append(...renderRubricSection(assignment, technicalData, 'technical'));
+    }
+}
+
+/**
+ * renderRubricSection - builds one lens-scoped rubric editor (status callout plus form/preview)
+ *
+ * @param assignment - Parent assignment; only its id is used for lens-scoped API routes
+ * @param data - Rubric response for this lens
+ * @param lens - Feedback lens this section edits; `?lens=technical` is appended to every mutation route
+ * @returns Detached top-level nodes ready for insertion into the rubric view
+ * @throws Error when the lens has neither a draft nor an approved rubric
+ */
+function renderRubricSection(assignment: Assignment, data: RubricResponse, lens: WritingFeedbackLens): HTMLElement[] {
+    const source = data.draft ?? data.approved;
+    if (!source) throw new Error('This assignment does not have a rubric draft or approved rubric.');
+    const working = detachedRubric(source);
+    const canEdit = data.permissions.canEdit;
+    const structureLocked = Boolean(data.approved || data.history.some((rubric) => rubric.status === 'approved'));
+    const lensQuery = lens === 'technical' ? '?lens=technical' : '';
 
     const status = document.createElement('div');
     status.className = `wf-callout${data.draft ? ' wf-callout--warning' : ' wf-callout--success'}`;
@@ -314,22 +372,6 @@ function renderRubricPage(root: HTMLDivElement, assignment: Assignment, data: Ru
                 : 'You can inspect rubric details. Only an instructor or platform administrator can modify or approve them.'
         )
     );
-    root.append(status);
-
-    const instructions = document.createElement('details');
-    instructions.className = 'wf-assignment-instructions';
-    instructions.open = Boolean(assignment.instructions);
-    const instructionsSummary = document.createElement('summary');
-    instructionsSummary.textContent = 'Assignment instructions';
-    instructions.append(
-        instructionsSummary,
-        createText(
-            'div',
-            assignment.instructions || 'No assignment instructions were provided. Add task context directly in the rubric before approval.',
-            assignment.instructions ? 'wf-assignment-instructions__text' : 'wf-muted-note'
-        )
-    );
-    root.append(instructions);
 
     const layout = document.createElement('div');
     layout.className = 'wf-rubric-layout';
@@ -391,6 +433,49 @@ function renderRubricPage(root: HTMLDivElement, assignment: Assignment, data: Ru
         bindTextControl(entry.control, canEdit);
         contextGrid.append(field(entry.label, entry.control, entry.help, entry.wide));
     });
+
+    // The lab-context field only applies to the technical lens: it supplies the
+    // handout indications the technical engine judges evidence against.
+    if (lens === 'technical') {
+        const labContext = namedControl(textAreaControl(source.labContext ?? '', 10), 'labContext');
+        labContext.maxLength = 12000;
+        labContext.placeholder = 'Paste the lab handout: what students were asked to do, the steps, and any expected observations.';
+        bindTextControl(labContext, canEdit);
+
+        const labContextFile = inputControl('', 'file');
+        labContextFile.accept = '.txt,.docx,.pdf,.html,.htm';
+        const extractionState = createText('p', '', 'wf-help-text');
+        extractionState.setAttribute('role', 'status');
+        extractionState.setAttribute('aria-live', 'polite');
+
+        const extractLabContext = async (): Promise<void> => {
+            const selectedFile = labContextFile.files?.[0];
+            if (!selectedFile) throw new Error('Choose a lab handout file first.');
+            const payload = new FormData();
+            payload.append('file', selectedFile);
+            // Reuses the existing local extractor; nothing here enters the RAG pipeline.
+            const extracted = await request<{ text: string }>('/instructions/extract', { method: 'POST', body: payload });
+            labContext.value = extracted.text.slice(0, 12000);
+            markDirty();
+            extractionState.textContent = `Extracted ${selectedFile.name}. Review and trim the text before saving.`;
+            labContext.focus();
+        };
+
+        const labContextField = field(
+            'Lab context',
+            labContext,
+            'Optional. The lab handout’s indications and steps. Only approved text reaches the model.'
+        );
+        labContextField.classList.add('wf-field--wide');
+        if (canEdit) {
+            const labContextActions = document.createElement('div');
+            labContextActions.className = 'wf-inline-field-actions';
+            labContextActions.append(createButton('Extract into lab context', 'secondary', extractLabContext));
+            labContextField.append(labContextActions, extractionState);
+        }
+        contextGrid.append(labContextField);
+    }
+
     context.append(contextGrid);
     form.append(context);
 
@@ -683,10 +768,10 @@ function renderRubricPage(root: HTMLDivElement, assignment: Assignment, data: Ru
         actions.className = 'wf-button-row';
         const saveDraft = async (): Promise<Assignment> => {
             try {
-                const input = collectRubric(form, working);
+                const input = collectRubric(form, working, lens === 'technical');
                 validation.hidden = true;
                 return await jsonRequest<Assignment>(
-                    `/assignments/${encodeURIComponent(assignment.id)}/rubric-draft`,
+                    `/assignments/${encodeURIComponent(assignment.id)}/rubric-draft${lensQuery}`,
                     'PUT',
                     input
                 );
@@ -719,7 +804,7 @@ function renderRubricPage(root: HTMLDivElement, assignment: Assignment, data: Ru
                 );
                 if (confirmation.action !== 'approve-rubric') return;
                 await jsonRequest(
-                    `/assignments/${encodeURIComponent(assignment.id)}/rubric-draft/approve`,
+                    `/assignments/${encodeURIComponent(assignment.id)}/rubric-draft/approve${lensQuery}`,
                     'POST'
                 );
                 state.panelDirty = false;
@@ -738,7 +823,7 @@ function renderRubricPage(root: HTMLDivElement, assignment: Assignment, data: Ru
                     'danger'
                 );
                 if (confirmation.action !== 'discard-draft') return;
-                await jsonRequest(`/assignments/${encodeURIComponent(assignment.id)}/rubric-draft`, 'DELETE');
+                await jsonRequest(`/assignments/${encodeURIComponent(assignment.id)}/rubric-draft${lensQuery}`, 'DELETE');
                 state.panelDirty = false;
                 state.assignments = await request<Assignment[]>('/assignments');
                 showSuccessToast('Rubric draft discarded.');
@@ -750,6 +835,6 @@ function renderRubricPage(root: HTMLDivElement, assignment: Assignment, data: Ru
 
     editor.append(form);
     layout.append(editor, preview);
-    root.append(layout);
     updatePreview();
+    return [status, layout];
 }

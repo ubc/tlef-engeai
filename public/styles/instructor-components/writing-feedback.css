@@ -462,6 +462,24 @@
     gap: 10px;
 }
 
+.wf-lab-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.wf-lab-toggle input[type="checkbox"] {
+    margin: 0;
+}
+
 .wf-expand-icon {
     display: inline-flex;
     color: var(--text-secondary);
