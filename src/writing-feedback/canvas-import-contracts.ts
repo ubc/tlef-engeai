@@ -29,6 +29,7 @@ export interface CanvasImportStatus {
 export interface CanvasImportAssignmentSummary {
     canvasAssignmentId: string; // opaque source key used only for the selected import
     title: string; // staff-facing chooser label
+    description?: string; // raw assignment directions available for local rubric setup
     submissionCount: number; // preview count before local writes begin
     pointsPossible?: number; // optional context, never an inferred local grade mapping
     dueAt?: Date; // source deadline shown for assignment disambiguation

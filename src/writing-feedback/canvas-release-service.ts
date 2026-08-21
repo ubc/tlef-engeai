@@ -14,27 +14,40 @@
 import { createHash } from 'crypto';
 import type {
     CanvasGateway,
+    CanvasReleaseInput,
     CanvasReleaseService,
-    WritingAssignment,
-    WritingFeedbackRun,
     WritingRelease,
-    WritingSubmission
+    WritingReleasePayload
 } from './contracts';
 import { resolveNumericGrade } from './feedback-schema';
 
+/**
+ * computeReleaseFingerprint — stable idempotency key for one released payload.
+ *
+ * Hashes only what changes what a student receives. The rendered PDF is excluded
+ * on purpose: each render stamps fresh annotation identifiers and timestamps, so a
+ * byte hash would make every retry look like new content and duplicate the external
+ * write. Optional fields are length-prefixed and absence is encoded distinctly from
+ * an empty string, so no two different payloads can serialize identically.
+ *
+ * @param payload - Semantic description of the release
+ * @returns Hex SHA-256 digest usable as a persisted idempotency key
+ */
+export function computeReleaseFingerprint(payload: WritingReleasePayload): string {
+    const field = (value: string | number | undefined): string =>
+        value === undefined ? '\0-' : `\0${String(value).length}:${String(value)}`;
+    return createHash('sha256')
+        .update('writing-release-v1')
+        .update(field(payload.submissionId))
+        .update(field(payload.feedbackRunId))
+        .update(field(payload.rubricVersion))
+        .update(field(payload.grade))
+        .update(field(payload.studentFeedback))
+        .digest('hex');
+}
+
 /** Local adapter used until a scoped Canvas OAuth connection is approved. */
 export class MockCanvasGateway implements CanvasGateway {
-    /** Computes the release fingerprint locally without contacting Canvas. */
-    async previewRelease(input: { submissionId: string; pdf: Buffer; grade?: number }): Promise<{ payloadFingerprint: string }> {
-        return { 
-            payloadFingerprint: createHash('sha256')
-                                    .update(input.submissionId)
-                                    .update(input.pdf)
-                                    .update(String(input.grade ?? ''))
-                                    .digest('hex') 
-        };
-    }
-
     /** Returns deterministic synthetic Canvas identifiers for local workflow testing. */
     async release(input: { submissionId: string; pdf: Buffer; grade: number; payloadFingerprint: string }): Promise<{ canvasCommentId: string; canvasSubmissionId: string }> {
         return {
@@ -75,9 +88,15 @@ export class SafeCanvasReleaseService implements CanvasReleaseService {
      * @param input - Rubric context and student-safe PDF payload
      * @returns Existing or newly persisted preview record
      */
-    async preview(input: { submission: WritingSubmission; assignment: WritingAssignment; feedbackRun: WritingFeedbackRun; pdf: Buffer }): Promise<WritingRelease> {
+    async preview(input: CanvasReleaseInput): Promise<WritingRelease> {
         const grade = resolveNumericGrade(input.feedbackRun.result, input.assignment.gradeMapping);
-        const { payloadFingerprint } = await this.gateway.previewRelease({ submissionId: input.submission.id, pdf: input.pdf, grade });
+        const payloadFingerprint = computeReleaseFingerprint({
+            submissionId: input.submission.id,
+            feedbackRunId: input.feedbackRun.id,
+            rubricVersion: input.feedbackRun.rubricVersion,
+            grade,
+            studentFeedback: input.studentFeedback
+        });
         // Fingerprint lookup makes repeated previews and release retries reuse one record.
         const existing = await this.findByFingerprint(payloadFingerprint);
         if (existing) return existing;
@@ -99,7 +118,7 @@ export class SafeCanvasReleaseService implements CanvasReleaseService {
      * @returns Finalized release or the prior terminal record on retry
      * @throws Error when approval/mapping is missing or reconciliation cannot be persisted
      */
-    async release(input: { submission: WritingSubmission; assignment: WritingAssignment; feedbackRun: WritingFeedbackRun; pdf: Buffer }): Promise<WritingRelease> {
+    async release(input: CanvasReleaseInput): Promise<WritingRelease> {
         if (input.submission.status !== 'approved') throw new Error('Staff approval is required before Canvas release');
         const grade = resolveNumericGrade(input.feedbackRun.result, input.assignment.gradeMapping);
         if (grade === undefined) throw new Error('Numeric release is blocked until an instructor-approved grade mapping exists');

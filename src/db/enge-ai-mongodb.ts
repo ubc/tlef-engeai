@@ -178,16 +178,7 @@ export class EngEAI_MongoDB {
         CourseMongo.deleteActiveCourse(this.ctx(), course);
 
     /**
-     * ensureA2WritingAssignment — returns or seeds the course's canonical A2 assignment.
-     *
-     * @param courseId - Owning course id
-     * @returns Existing, migrated, or newly seeded assignment
-     */
-    public ensureA2WritingAssignment = async (courseId: string) =>
-        WritingFeedbackMongo.ensureA2WritingAssignment(this.ctx(), courseId);
-
-    /**
-     * listWritingAssignments — lists course assignments after ensuring the A2 seed.
+     * listWritingAssignments — lists course assignments without implicit record creation.
      *
      * @param courseId - Owning course id
      * @returns Assignments in creation order
@@ -221,6 +212,7 @@ export class EngEAI_MongoDB {
      * @param courseId - Owning course id
      * @param canvasAssignmentId - Stable Canvas assignment identifier
      * @param title - Imported assignment title
+     * @param instructions - Optional imported assignment directions
      * @param dueAt - Optional imported deadline
      * @returns Newly created or concurrently existing assignment
      */
@@ -228,19 +220,32 @@ export class EngEAI_MongoDB {
         courseId: string,
         canvasAssignmentId: string,
         title: string,
+        instructions?: string,
         dueAt?: Date
-    ) => WritingFeedbackMongo.createCanvasWritingAssignment(this.ctx(), courseId, canvasAssignmentId, title, dueAt);
+    ) => WritingFeedbackMongo.createCanvasWritingAssignment(
+        this.ctx(),
+        courseId,
+        canvasAssignmentId,
+        title,
+        instructions,
+        dueAt
+    );
 
     /**
      * createManualWritingAssignment — persists a staff-created local assignment.
      *
      * @param courseId - Owning course id
      * @param title - Validated display title
+     * @param instructions - Optional raw assignment directions
      * @param dueAt - Optional deadline
      * @returns Newly created assignment
      */
-    public createManualWritingAssignment = async (courseId: string, title: string, dueAt?: Date) =>
-        WritingFeedbackMongo.createManualWritingAssignment(this.ctx(), courseId, title, dueAt);
+    public createManualWritingAssignment = async (
+        courseId: string,
+        title: string,
+        instructions?: string,
+        dueAt?: Date
+    ) => WritingFeedbackMongo.createManualWritingAssignment(this.ctx(), courseId, title, instructions, dueAt);
 
     /**
      * countWritingSubmissionsByAssignment — aggregates queue counts for a course.
@@ -288,7 +293,7 @@ export class EngEAI_MongoDB {
         courseId: string,
         assignmentId: string,
         rubric: WritingRubricDefinition,
-        gradeMapping?: Partial<Record<'emerging' | 'developing' | 'competent' | 'strong', number>>
+        gradeMapping?: Record<string, number>
     ) => WritingFeedbackMongo.approveWritingRubricDraft(this.ctx(), courseId, assignmentId, rubric, gradeMapping);
 
     /**

@@ -1,22 +1,29 @@
 /**
- * Rubric schema — complete A2 drafts, approval promotion, and grade mapping
+ * Rubric schema — assignment-specific drafts, approval, and grade mapping
  *
- * Validates instructor-authored rubric drafts against the fixed four-criterion and
- * four-level A2 contract. Builders create new versioned values rather than mutating
- * approved rubrics, and numeric mapping remains unavailable unless every level has points.
+ * Validates bounded instructor-authored criteria and performance levels without
+ * embedding a course or assignment taxonomy. Builders create versioned values,
+ * and numeric mapping remains unavailable unless every level has points.
  *
  * @author: @rdschrs
  * @date: 2026-07-13
- * @version: 1.0.0
- * @description: Validates and promotes versioned Writing Feedback rubric definitions.
+ * @version: 2.0.0
+ * @description: Validates and promotes assignment-specific Writing Feedback rubrics.
  */
 
 import { z } from 'zod';
-import type { A2Level, WritingRubricDefinition } from './contracts';
+import type {
+    WritingLevelId,
+    WritingRubricDefinition
+} from './contracts';
 
-const criterionIds = ['organization', 'content', 'interpersonal_positioning', 'task_constraints'] as const;
-const levelIds = ['emerging', 'developing', 'competent', 'strong'] as const;
 const compactText = z.string().trim().min(1).max(1200);
+const optionalCompactText = z.string().trim().max(1200).optional();
+const slug = z.string()
+    .trim()
+    .min(1)
+    .max(64)
+    .regex(/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/, 'Use a lowercase slug with letters, numbers, and underscores');
 
 /** Instructor-editable rubric payload required before a draft can be saved or approved. */
 export const writingRubricDraftInputSchema = z.object({
@@ -28,28 +35,41 @@ export const writingRubricDraftInputSchema = z.object({
     learningOutcomes: z.array(z.string().trim().min(1).max(400)).min(1).max(12),
     gradingIntent: compactText,
     criteria: z.array(z.object({
-        id: z.enum(criterionIds),
+        id: slug,
         label: z.string().trim().min(1).max(80),
         description: compactText,
-        sflDimension: compactText
-    })).length(4),
+        functionTag: z.enum(['content', 'interpersonal', 'organizational']).optional(),
+        sflDimension: optionalCompactText
+    })).min(1).max(10),
     levels: z.array(z.object({
-        id: z.enum(levelIds),
+        id: slug,
         label: z.string().trim().min(1).max(60),
         description: compactText,
+        rank: z.number().int().min(1).max(8),
         points: z.number().finite().min(0).max(1000).optional()
-    })).length(4)
+    })).min(2).max(8)
 }).superRefine((rubric, ctx) => {
-    // Fixed lengths do not prevent duplicate IDs, so enforce complete unique sets.
-    if (new Set(rubric.criteria.map((criterion) => criterion.id)).size !== criterionIds.length) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Rubric must contain each supported criterion exactly once', path: ['criteria'] });
+    // Stable slugs are the join keys used by runs, comments, reports, and releases.
+    if (new Set(rubric.criteria.map((criterion) => criterion.id)).size !== rubric.criteria.length) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Criterion ids must be unique', path: ['criteria'] });
     }
-    if (new Set(rubric.levels.map((level) => level.id)).size !== levelIds.length) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Rubric must contain each supported level exactly once', path: ['levels'] });
+    if (new Set(rubric.levels.map((level) => level.id)).size !== rubric.levels.length) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Performance-level ids must be unique', path: ['levels'] });
     }
-    // Partial point scales would create invented/ambiguous numeric grades.
+
+    // Persist explicit contiguous order so reports never infer meaning from array position.
+    const ranks = rubric.levels.map((level) => level.rank).sort((left, right) => left - right);
+    if (ranks.some((rank, index) => rank !== index + 1)) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Performance-level ranks must be unique and contiguous from 1',
+            path: ['levels']
+        });
+    }
+
+    // Partial point scales would create invented or ambiguous numeric grades.
     const pointCount = rubric.levels.filter((level) => level.points !== undefined).length;
-    if (pointCount > 0 && pointCount !== levelIds.length) {
+    if (pointCount > 0 && pointCount !== rubric.levels.length) {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: 'Provide points for every performance level or leave every level ordinal',
@@ -62,7 +82,33 @@ export const writingRubricDraftInputSchema = z.object({
 export type WritingRubricDraftInput = z.infer<typeof writingRubricDraftInputSchema>;
 
 /**
- * buildRubricDraft — creates a new editable rubric version from validated input.
+ * assertApprovedRubricIdsStable - prevents structural id changes after first approval.
+ *
+ * New assignments may freely shape their initial draft. Once approved, the exact
+ * criterion and level id sets remain stable across versions so stored joins cannot
+ * be reinterpreted; labels, descriptions, ordering, and points remain editable.
+ *
+ * @param approved - Current approved rubric, or a still-unapproved initial draft
+ * @param input - Validated next draft payload
+ * @throws Error when an approved id is added, removed, or renamed
+ */
+export function assertApprovedRubricIdsStable(
+    approved: WritingRubricDefinition,
+    input: WritingRubricDraftInput
+): void {
+    if (approved.status !== 'approved') return;
+    const sameSet = (current: string[], next: string[]): boolean =>
+        current.length === next.length && current.every((id) => next.includes(id));
+    if (!sameSet(approved.criteria.map((criterion) => criterion.id), input.criteria.map((criterion) => criterion.id))) {
+        throw new Error('Approved criterion ids cannot be added, removed, or renamed');
+    }
+    if (!sameSet(approved.levels.map((level) => level.id), input.levels.map((level) => level.id))) {
+        throw new Error('Approved performance-level ids cannot be added, removed, or renamed');
+    }
+}
+
+/**
+ * buildRubricDraft - creates a new editable rubric version from validated input.
  *
  * @param input - Complete instructor-authored rubric payload
  * @param nextVersion - Monotonically increasing version selected by persistence
@@ -86,7 +132,7 @@ export function buildRubricDraft(
 }
 
 /**
- * approveRubricDraft — promotes a draft value with explicit approval provenance.
+ * approveRubricDraft - promotes a draft value with explicit approval provenance.
  *
  * @param draft - Versioned definition selected for approval
  * @param actorUserId - Instructor/admin performing the approval
@@ -109,18 +155,15 @@ export function approveRubricDraft(
 }
 
 /**
- * gradeMappingFromApprovedRubric — derives points only from a complete level scale.
- *
- * Callers supply the approved definition; this helper checks point completeness rather
- * than changing or independently validating rubric status.
+ * gradeMappingFromApprovedRubric - derives points only from a complete level scale.
  *
  * @param rubric - Instructor-approved rubric definition
- * @returns Level-to-points mapping, or undefined when any level remains ordinal
+ * @returns Complete level-to-points mapping, or undefined when any level remains ordinal
  */
 export function gradeMappingFromApprovedRubric(
     rubric: WritingRubricDefinition
-): Partial<Record<A2Level, number>> | undefined {
-    const mapping: Partial<Record<A2Level, number>> = {};
+): Record<WritingLevelId, number> | undefined {
+    const mapping: Record<WritingLevelId, number> = {};
     for (const level of rubric.levels) {
         if (level.points === undefined) return undefined;
         mapping[level.id] = level.points;

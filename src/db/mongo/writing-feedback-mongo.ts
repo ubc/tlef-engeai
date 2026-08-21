@@ -12,7 +12,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import type { Collection, UpdateFilter } from 'mongodb';
+import type { Collection, IndexDescriptionInfo, UpdateFilter } from 'mongodb';
 import type { MongoDalContext } from './mongo-context';
 import type {
     StaffReviewRevision,
@@ -24,7 +24,7 @@ import type {
     WritingSubmission,
     WritingSubmissionStatus
 } from '../../writing-feedback/contracts';
-import { buildA2Assignment, buildA2Rubric } from '../../writing-feedback/a2-profile';
+import { buildDefaultWritingAssignment } from '../../writing-feedback/default-rubric-profile';
 
 const ASSIGNMENTS = 'writing-assignments';
 const SUBMISSIONS = 'writing-submissions';
@@ -33,6 +33,7 @@ const RELEASES = 'writing-releases';
 const JOBS = 'writing-jobs';
 /** Reserved for a future Canvas OAuth integration; no token is written by the MVP. */
 const CANVAS_CONNECTIONS = 'canvas-connections';
+const CANVAS_ASSIGNMENT_INDEX = 'writing_canvas_assignment_unique';
 
 function assignments(ctx: MongoDalContext): Collection<WritingAssignment> {
     return ctx.db.collection<WritingAssignment>(ASSIGNMENTS);
@@ -45,6 +46,78 @@ function releases(ctx: MongoDalContext): Collection<WritingRelease> { return ctx
 function jobs(ctx: MongoDalContext): Collection<WritingJob> { return ctx.db.collection(JOBS); }
 
 let indexesEnsured = false;
+
+function isNamespaceMissing(error: unknown): boolean {
+    return typeof error === 'object' && error !== null
+        && (('code' in error && (error as { code?: unknown }).code === 26)
+            || ('codeName' in error && (error as { codeName?: unknown }).codeName === 'NamespaceNotFound'));
+}
+
+function isCanvasAssignmentIndex(index: IndexDescriptionInfo): boolean {
+    return index.key?.courseId === 1 && index.key?.canvasAssignmentId === 1;
+}
+
+function isCorrectCanvasAssignmentIndex(index: IndexDescriptionInfo): boolean {
+    const condition = index.partialFilterExpression?.canvasAssignmentId as { $type?: unknown } | undefined;
+    return index.unique === true && !index.sparse && condition?.$type === 'string';
+}
+
+/**
+ * ensureCanvasAssignmentIndex - reconciles the legacy sparse uniqueness defect.
+ *
+ * A compound sparse index still includes every record because `courseId` is
+ * always present, so it permits only one manual assignment per course. The
+ * replacement applies uniqueness only to rows carrying a real Canvas id.
+ *
+ * @param collection - Writing-assignment collection to inspect and repair
+ * @returns When the partial unique Canvas mapping index is active
+ */
+async function ensureCanvasAssignmentIndex(collection: Collection<WritingAssignment>): Promise<void> {
+    let indexes: IndexDescriptionInfo[] = [];
+    try {
+        indexes = await collection.listIndexes().toArray();
+    } catch (error) {
+        if (!isNamespaceMissing(error)) throw error;
+    }
+
+    const existing = indexes.find(isCanvasAssignmentIndex);
+    if (existing && !isCorrectCanvasAssignmentIndex(existing) && existing.name) {
+        // Drop only the exact legacy key after resolving its server-reported name.
+        await collection.dropIndex(existing.name);
+    }
+    if (existing && isCorrectCanvasAssignmentIndex(existing)) return;
+
+    await collection.createIndex(
+        { courseId: 1, canvasAssignmentId: 1 },
+        {
+            name: CANVAS_ASSIGNMENT_INDEX,
+            unique: true,
+            partialFilterExpression: { canvasAssignmentId: { $type: 'string' } }
+        }
+    );
+}
+
+function normalizeRubricRanks(rubric: WritingRubricDefinition): WritingRubricDefinition {
+    return {
+        ...rubric,
+        levels: rubric.levels.map((level, index) => ({
+            ...level,
+            rank: Number.isInteger(level.rank) && level.rank > 0 ? level.rank : index + 1
+        }))
+    };
+}
+
+/** Backfills level rank only in detached read values; stored legacy records remain untouched. */
+export function normalizeWritingAssignment(assignment: WritingAssignment): WritingAssignment {
+    return {
+        ...assignment,
+        rubric: normalizeRubricRanks(assignment.rubric),
+        ...(assignment.rubricDraft ? { rubricDraft: normalizeRubricRanks(assignment.rubricDraft) } : {}),
+        ...(assignment.rubricHistory
+            ? { rubricHistory: assignment.rubricHistory.map(normalizeRubricRanks) }
+            : {})
+    };
+}
 
 /**
  * ensureWritingFeedbackIndexes — installs uniqueness, lookup, and retention indexes once per process.
@@ -59,9 +132,10 @@ let indexesEnsured = false;
 export async function ensureWritingFeedbackIndexes(ctx: MongoDalContext): Promise<void> {
     if (indexesEnsured) return;
 
+    await ensureCanvasAssignmentIndex(assignments(ctx));
+
     // Build all domain indexes before marking this process as initialized.
     await Promise.all([
-        assignments(ctx).createIndex({ courseId: 1, canvasAssignmentId: 1 }, { unique: true, sparse: true }),
         assignments(ctx).createIndex({ courseId: 1, profileVersion: 1 }),
         submissions(ctx).createIndex({ courseId: 1, assignmentId: 1, studentId: 1, attempt: 1 }, { unique: true }),
         submissions(ctx).createIndex({ courseId: 1, assignmentId: 1, status: 1, updatedAt: -1 }),
@@ -75,51 +149,19 @@ export async function ensureWritingFeedbackIndexes(ctx: MongoDalContext): Promis
 }
 
 /**
- * ensureA2WritingAssignment — returns the course's canonical A2 assignment seed.
- *
- * Existing pre-rubric records are migrated in place, while new courses receive
- * exactly one profile assignment under the course/profile lookup.
- *
- * @param ctx - Connected Mongo data-layer context
- * @param courseId - Course that owns the assignment
- * @returns Existing, migrated, or newly inserted A2 assignment
- * @throws MongoDB errors, including an unexpected concurrent insert conflict
- */
-export async function ensureA2WritingAssignment(ctx: MongoDalContext, courseId: string): Promise<WritingAssignment> {
-    await ensureWritingFeedbackIndexes(ctx);
-    const existing = await assignments(ctx).findOne({ courseId, profileVersion: 'lled200-a2-technical-description-v1' });
-    if (existing?.rubric) return existing;
-
-    // Upgrade the legacy seed only when its rubric is still absent.
-    if (existing) {
-        const now = new Date();
-        const migrated = await assignments(ctx).findOneAndUpdate(
-            { id: existing.id, courseId, rubric: { $exists: false } },
-            { $set: { rubric: buildA2Rubric('platform-migration', now), updatedAt: now } },
-            { returnDocument: 'after' }
-        );
-        return migrated ?? { ...existing, rubric: buildA2Rubric('platform-migration', now), updatedAt: now };
-    }
-
-    // Insert the platform seed only after both current and legacy forms were ruled out.
-    const assignment = buildA2Assignment(courseId, randomUUID());
-    await assignments(ctx).insertOne(assignment);
-    return assignment;
-}
-
-/**
  * listWritingAssignments — lists all course assignments in creation order.
  *
- * Ensures the canonical A2 seed exists before reading, so callers always receive
- * at least the platform assignment unless persistence fails.
+ * Empty courses remain empty until staff manually create or explicitly import an
+ * assignment; listing never creates assessment records as a side effect.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Course whose assignments are requested
  * @returns Course-scoped assignments ordered oldest first
  */
 export async function listWritingAssignments(ctx: MongoDalContext, courseId: string): Promise<WritingAssignment[]> {
-    await ensureA2WritingAssignment(ctx, courseId);
-    return assignments(ctx).find({ courseId }).sort({ createdAt: 1 }).toArray();
+    await ensureWritingFeedbackIndexes(ctx);
+    const rows = await assignments(ctx).find({ courseId }).sort({ createdAt: 1 }).toArray();
+    return rows.map(normalizeWritingAssignment);
 }
 
 /**
@@ -131,7 +173,8 @@ export async function listWritingAssignments(ctx: MongoDalContext, courseId: str
  * @returns Matching assignment, or `null` when absent or outside the course
  */
 export async function getWritingAssignment(ctx: MongoDalContext, courseId: string, assignmentId: string): Promise<WritingAssignment | null> {
-    return assignments(ctx).findOne({ id: assignmentId, courseId });
+    const assignment = await assignments(ctx).findOne({ id: assignmentId, courseId });
+    return assignment ? normalizeWritingAssignment(assignment) : null;
 }
 
 /**
@@ -147,11 +190,12 @@ export async function getWritingAssignmentByCanvasId(
     courseId: string,
     canvasAssignmentId: string
 ): Promise<WritingAssignment | null> {
-    return assignments(ctx).findOne({ courseId, canvasAssignmentId });
+    const assignment = await assignments(ctx).findOne({ courseId, canvasAssignmentId });
+    return assignment ? normalizeWritingAssignment(assignment) : null;
 }
 
 /**
- * createManualWritingAssignment — inserts a local assignment using the A2 rubric profile.
+ * createManualWritingAssignment — inserts a local assignment with a neutral rubric draft.
  *
  * Titles are trimmed and capped at 200 characters; route validation is expected
  * to reject blank input before this persistence boundary.
@@ -159,6 +203,7 @@ export async function getWritingAssignmentByCanvasId(
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Course that owns the assignment
  * @param title - Staff-provided display title
+ * @param instructions - Optional raw assignment directions
  * @param dueAt - Optional assignment deadline
  * @returns Newly persisted assignment
  */
@@ -166,12 +211,17 @@ export async function createManualWritingAssignment(
     ctx: MongoDalContext,
     courseId: string,
     title: string,
+    instructions?: string,
     dueAt?: Date
 ): Promise<WritingAssignment> {
     await ensureWritingFeedbackIndexes(ctx);
     const assignment = {
-        ...buildA2Assignment(courseId, randomUUID()),
-        title: title.trim().slice(0, 200),
+        ...buildDefaultWritingAssignment(
+            courseId,
+            randomUUID(),
+            title.trim().slice(0, 200),
+            instructions?.trim() || undefined
+        ),
         ...(dueAt ? { dueAt } : {})
     };
     await assignments(ctx).insertOne(assignment);
@@ -228,6 +278,7 @@ export async function deleteWritingAssignment(
  * @param courseId - Course that owns the imported assignment
  * @param canvasAssignmentId - Stable Canvas assignment identifier
  * @param title - Canvas assignment title, trimmed and capped at 200 characters
+ * @param instructions - Optional source assignment directions
  * @param dueAt - Optional Canvas deadline
  * @returns Newly inserted or concurrently existing assignment
  * @throws Non-duplicate MongoDB errors
@@ -237,12 +288,17 @@ export async function createCanvasWritingAssignment(
     courseId: string,
     canvasAssignmentId: string,
     title: string,
+    instructions?: string,
     dueAt?: Date
 ): Promise<WritingAssignment> {
     await ensureWritingFeedbackIndexes(ctx);
     const assignment = {
-        ...buildA2Assignment(courseId, randomUUID()),
-        title: title.trim().slice(0, 200),
+        ...buildDefaultWritingAssignment(
+            courseId,
+            randomUUID(),
+            title.trim().slice(0, 200),
+            instructions?.trim() || undefined
+        ),
         canvasAssignmentId,
         ...(dueAt ? { dueAt } : {})
     };
@@ -276,11 +332,12 @@ export async function saveWritingRubricDraft(
     assignmentId: string,
     draft: WritingRubricDefinition
 ): Promise<WritingAssignment | null> {
-    return assignments(ctx).findOneAndUpdate(
+    const updated = await assignments(ctx).findOneAndUpdate(
         { id: assignmentId, courseId },
         { $set: { rubricDraft: draft, updatedAt: new Date() } },
         { returnDocument: 'after' }
     );
+    return updated ? normalizeWritingAssignment(updated) : null;
 }
 
 /**
@@ -296,11 +353,12 @@ export async function discardWritingRubricDraft(
     courseId: string,
     assignmentId: string
 ): Promise<WritingAssignment | null> {
-    return assignments(ctx).findOneAndUpdate(
+    const updated = await assignments(ctx).findOneAndUpdate(
         { id: assignmentId, courseId },
         { $unset: { rubricDraft: '' }, $set: { updatedAt: new Date() } },
         { returnDocument: 'after' }
     );
+    return updated ? normalizeWritingAssignment(updated) : null;
 }
 
 /**
@@ -326,20 +384,20 @@ export async function approveWritingRubricDraft(
     const current = await assignments(ctx).findOne({ id: assignmentId, courseId });
     if (!current?.rubricDraft || current.rubricDraft.version !== approvedRubric.version) return null;
 
-    // Archive the active rubric while promoting the draft in one atomic update.
+    // Archive only a previously approved rubric; the initial template is an unapproved draft.
     const update: UpdateFilter<WritingAssignment> = {
         $set: {
             rubric: approvedRubric,
             updatedAt: new Date(),
             ...(gradeMapping ? { gradeMapping } : {})
         },
-        $push: { rubricHistory: current.rubric },
+        ...(current.rubric.status === 'approved' ? { $push: { rubricHistory: current.rubric } } : {}),
         $unset: {
             rubricDraft: '',
             ...(gradeMapping ? {} : { gradeMapping: '' })
         }
     };
-    return assignments(ctx).findOneAndUpdate(
+    const updated = await assignments(ctx).findOneAndUpdate(
         {
             id: assignmentId,
             courseId,
@@ -349,6 +407,7 @@ export async function approveWritingRubricDraft(
         update,
         { returnDocument: 'after' }
     );
+    return updated ? normalizeWritingAssignment(updated) : null;
 }
 
 /**
@@ -370,11 +429,12 @@ export async function mapWritingAssignmentToCanvas(
     assignmentId: string,
     canvasAssignmentId: string
 ): Promise<WritingAssignment | null> {
-    return assignments(ctx).findOneAndUpdate(
+    const updated = await assignments(ctx).findOneAndUpdate(
         { id: assignmentId, courseId },
         { $set: { canvasAssignmentId, updatedAt: new Date() } },
         { returnDocument: 'after' }
     );
+    return updated ? normalizeWritingAssignment(updated) : null;
 }
 
 /**

@@ -24,17 +24,19 @@ import type {
 
 const DEMO_ASSIGNMENTS: ReadonlyArray<CanvasImportAssignmentSummary> = [
     {
-        canvasAssignmentId: 'demo-lled200-a2-description',
-        title: '[Synthetic demo] Technical Description Paragraph 1',
-        submissionCount: 2,
+        canvasAssignmentId: 'demo-technical-description',
+        title: '[Synthetic demo] Technical Description',
+        description: 'Explain how a familiar technical object or process works for a reader who is new to it.',
+        submissionCount: 1,
         pointsPossible: 20,
         dueAt: new Date('2026-09-22T06:59:00.000Z'),
         rubricState: 'canvas_rubric',
         synthetic: true
     },
     {
-        canvasAssignmentId: 'demo-lled200-description-revision',
-        title: '[Synthetic demo] Technical Description Revision',
+        canvasAssignmentId: 'demo-lab-report',
+        title: '[Synthetic demo] Short Lab Report',
+        description: 'Report a synthetic observation, explain the result, and state one limitation for a technical audience.',
         submissionCount: 1,
         pointsPossible: 20,
         dueAt: new Date('2026-10-06T06:59:00.000Z'),
@@ -44,32 +46,24 @@ const DEMO_ASSIGNMENTS: ReadonlyArray<CanvasImportAssignmentSummary> = [
 ];
 
 const DEMO_SUBMISSIONS: Readonly<Record<string, ReadonlyArray<CanvasImportSubmissionPreview>>> = {
-    'demo-lled200-a2-description': [
+    'demo-technical-description': [
         {
             sourceRecordKey: 'synthetic-learner-a',
             studentLabel: '[Synthetic] Learner A',
             attempt: 1,
             submittedAt: new Date('2026-09-21T18:15:00.000Z'),
             synthetic: true,
-            text: 'A shell-and-tube heat exchanger transfers thermal energy between two streams without mixing them. Hot fluid enters the shell and flows across metal tube walls. The walls conduct energy to cooler fluid moving inside the tubes. This arrangement provides a large surface area, which improves heat transfer while keeping the fluids separate. An operator can compare inlet and outlet temperatures to determine whether the exchanger is performing as expected. The accompanying diagram identifies the tubes, shell, inlets, outlets, and direction of flow for a reader who has not previously used this equipment.'
-        },
-        {
-            sourceRecordKey: 'synthetic-learner-b',
-            studentLabel: '[Synthetic] Learner B',
-            attempt: 1,
-            submittedAt: new Date('2026-09-21T20:40:00.000Z'),
-            synthetic: true,
-            text: 'A centrifugal pump moves liquid by converting rotational motion into fluid pressure. Liquid enters through the eye at the centre of the impeller. Curved blades accelerate the liquid outward into the surrounding casing. The casing gradually widens, so some velocity becomes pressure before the liquid reaches the outlet. A motor and shaft keep the impeller rotating. In the labelled cross-section, arrows show the path from the suction inlet to the discharge outlet. This representation helps a non-specialist connect each visible component with its role in moving the liquid.'
+            text: 'The synthetic sensor records room temperature once per minute. A small processor converts each reading into a timestamped value and sends it to the display. The display then plots the most recent values so a reader can identify changes over time.'
         }
     ],
-    'demo-lled200-description-revision': [
+    'demo-lab-report': [
         {
             sourceRecordKey: 'synthetic-learner-c',
             studentLabel: '[Synthetic] Learner C',
             attempt: 2,
             submittedAt: new Date('2026-10-05T22:05:00.000Z'),
             synthetic: true,
-            text: 'A pressure relief valve protects a closed system from excessive pressure. Under normal conditions, a spring presses the valve disc against its seat and keeps the outlet closed. When inlet pressure produces a force greater than the spring force, the disc lifts. Fluid then exits through the discharge port, reducing system pressure. As pressure returns to the permitted range, the spring reseats the disc. The cutaway drawing distinguishes the inlet, disc, spring, adjustment screw, and outlet, allowing an educated non-specialist to follow the opening and closing sequence.'
+            text: 'In this synthetic trial, the insulated container cooled more slowly than the uncovered container. After ten minutes, its recorded temperature was four degrees higher. The observation supports the expected effect of insulation, although the single trial does not establish how consistent the difference would be.'
         }
     ]
 };

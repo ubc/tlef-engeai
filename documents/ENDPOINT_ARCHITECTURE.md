@@ -164,22 +164,25 @@ Each `models[]` entry: `{ id, label, costTier, reasoningOptions: [{ id, label }]
 <!-- @rdschrs: Implemented the course-scoped Writing Feedback API boundary. -->
 ### 4.0.2 Writing Feedback (`/api/courses/:courseId/writing-feedback`)
 
-Every endpoint requires course-staff RBAC followed by `requireCourseFeatureAPI('writingFeedback')`. Feature configuration is separate: `PATCH /api/courses/:courseId/features/writing-feedback` (see §4.0). Instructors and TAs can operate intake/review endpoints after enablement; rubric mutation and future Canvas connection configuration add instructor/admin roster-management permission.
+Every endpoint requires course-staff RBAC followed by `requireCourseFeatureAPI('writingFeedback')`. That router-level pair is the complete authorization for this section — no endpoint layers a narrower guard on top. Instructors, platform admins, and TAs therefore have identical access to the whole workspace: intake, assignment creation, rubric mutation and approval, review, and release (D-049, 2026-08-18; reverses the earlier rule that rubric mutation additionally required roster-management permission).
+
+Feature configuration remains separate and narrower: `PATCH /api/courses/:courseId/features/writing-feedback` (see §4.0) still requires roster-management permission, so only instructors and admins can enable or disable the capability for a course.
 
 Canvas endpoints report their integration mode honestly. `demo` with `integration: mock_canvas` lists/imports synthetic local data without contacting Canvas; `not_configured` with `integration: none` explains the institutional OAuth gate. No endpoint in the current local slice establishes live OAuth or writes a rubric/grade/comment to Canvas without a separate explicit release action.
 
 | Method | Path | Description |
 |---|---|---|
 | GET | `/workspace-context` | Returns UI permissions (including rubric management) and non-secret integration context for the current staff member |
-| GET | `/assignments` | Lists assignments (with a per-assignment `submissionCount`) and seeds the A2 profile when absent |
-| POST | `/assignments` | Creates a manual writing assignment (`{ title, dueAt? }`) seeded from the A2 rubric profile; instructor/admin only |
+| GET | `/assignments` | Lists assignments with per-assignment `submissionCount`; an empty course stays empty until an explicit create/import action |
+| POST | `/assignments` | Creates a manual assignment from `{ title, dueAt?, instructions? }` with a neutral, unapproved rubric draft; instructor/admin only |
+| POST | `/instructions/extract` | Multipart `file` extraction for assignment directions (TXT, DOCX, text-PDF, HTML/HTM, or Markdown); returns text for staff review before create; instructor/admin only |
 | GET | `/canvas/status` | Returns `demo` or `not_configured` status and safe staff-facing setup guidance; never returns tokens |
 | GET | `/canvas/assignments` | Lists selectable synthetic assignments in local demo mode; live listing remains OAuth-gated |
 | GET | `/canvas/assignments/:canvasAssignmentId/preview` | Read-only preview of the selected synthetic assignment/submissions before import |
 | POST | `/canvas/import` | Creates/reuses the mapped writing assignment, imports/reconciles its selected demo submissions, and reports imported/skipped counts; allowed for instructors/TAs |
 | POST | `/assignments/:assignmentId/canvas-import-fixture` | Backward-compatible, clearly labelled synthetic import helper for local testing only |
 | DELETE | `/assignments/:assignmentId` | Deletes an assignment; `409` while it still has any submissions (delete those first). Any course staff |
-| GET | `/assignments/:assignmentId/rubric` | Returns approved rubric, optional draft, immutable history, and the caller's edit permission |
+| GET | `/assignments/:assignmentId/rubric` | Returns optional approved rubric, current draft, immutable history, optional criterion library, and caller edit permission |
 | PUT | `/assignments/:assignmentId/rubric-draft` | Validates and saves the next rubric draft version without changing the approved rubric; instructor/admin only |
 | DELETE | `/assignments/:assignmentId/rubric-draft` | Explicitly discards the inactive saved draft; instructor/admin only |
 | POST | `/assignments/:assignmentId/rubric-draft/approve` | Explicitly promotes the saved draft to a new immutable approved version and derives a numeric mapping only when every level has points; instructor/admin only |
@@ -195,9 +198,9 @@ Canvas endpoints report their integration mode honestly. `demo` with `integratio
 | POST | `/submissions/:submissionId/release-preview` | Dry-run Canvas payload preview |
 | POST | `/submissions/:submissionId/release` | Mock-only release; real Canvas requires OAuth gates |
 
-`POST /canvas/import` reads a selected source and writes local writing records only. It creates or reuses one writing assignment per Canvas assignment mapping. The current response explicitly reports `rubricImport: not_imported`; native Canvas rubric ingestion remains future work. Import does not approve a rubric, generate feedback, or call a Canvas write endpoint. Repeating the same assignment/student/attempt import is idempotent and is returned as skipped/reconciled rather than duplicated.
+`POST /canvas/import` reads a selected source and writes local writing records only. It creates or reuses one writing assignment per Canvas assignment mapping and carries the source description into local assignment instructions when available. The current response explicitly reports `rubricImport: not_imported`; native Canvas rubric ingestion remains future work. Import does not approve a rubric, generate feedback, or call a Canvas write endpoint. Repeating the same assignment/student/attempt import is idempotent and is returned as skipped/reconciled rather than duplicated.
 
-The rubric draft body contains complete task, audience, purpose, constraints, learning outcomes, grading intent, four A2 criteria/SFL descriptions, and four ordinal levels with optional points. Draft validation failures return field-safe `400` responses. Approving without a saved draft is a conflict; TAs receive `403` for both rubric mutation routes. Saving or approving a rubric never updates Canvas automatically.
+The rubric draft body contains complete task, audience, purpose, constraints, learning outcomes, grading intent, 1–10 assignment-specific criteria, and 2–8 ranked ordinal levels. Criterion/level ids are unique lowercase slugs; ranks are unique and contiguous from 1; points are supplied for every level or none. Before the first approval, instructors may shape the criterion/level sets. After approval, those id sets are frozen while labels, descriptions, order/rank, lenses, and points remain versioned and editable. Draft validation failures return field-safe `400` responses. Approving without a saved draft is a conflict; TAs receive `403` for rubric mutation routes. Saving or approving a rubric never updates Canvas automatically.
 
 Anchored comments carry `{ id, criterion?, quote, startOffset, endOffset, comment, howToImprove?, courseMaterialLink?, glossaryDefinition?, origin, functionTag?, levelTag?, priority? }` with UTF-16 offsets into the verified text, a 50-comment cap, and http(s)-only links. `functionTag` (`content|interpersonal|organizational`), `levelTag` (`text|section|clause_word`), and `priority` (`high|medium|low`) mirror the Academic Writing Matrix taxonomy; they are staff-facing triage metadata, seeded only as a criterion→function mapping, and never printed in the student PDF. Offsets are the anchor source of truth and the quote is a checksum: saving rejects any comment whose slice no longer matches, and reads mark such comments `stale` instead of re-anchoring them. Seed comments derive from immutable model-run evidence at read time and are only persisted when staff save a revision. The student PDF includes only comments whose anchors still validate and never exposes `origin`, confidence, internal flags, or staff notes.
 

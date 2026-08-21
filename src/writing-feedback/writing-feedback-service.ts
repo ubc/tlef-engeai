@@ -14,20 +14,20 @@
 
 import type { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import type {
-    A2FeedbackResult,
     AnchoredComment,
     CanvasReleaseService,
     FeedbackPdfInclude,
     StaffReviewRevision,
     WritingAssignment,
     WritingFeedbackEngine,
+    WritingFeedbackResult,
     WritingFeedbackRun,
     WritingSubmission
 } from './contracts';
 import { seedCommentsFromRun, stampCommentAuthors, validateAnchoredComments, withStaleFlags, type AnchoredCommentWithState } from './anchored-comments';
-import { A2WritingFeedbackEngine } from './feedback-engine';
+import { RubricWritingFeedbackEngine } from './feedback-engine';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
-import { StudentWritingFeedbackPdfService } from './pdf-service';
+import { StudentWritingFeedbackPdfService } from '../report-generation/writing-feedback-report';
 import { resolveNumericGrade } from './feedback-schema';
 
 type ReviewableSubmission = WritingSubmission & { reviews?: StaffReviewRevision[] };
@@ -53,12 +53,12 @@ export class WritingFeedbackService {
      * Creates the lifecycle service with injectable generation and PDF implementations.
      *
      * @param mongo - Persistence façade for course-scoped Writing Feedback records
-     * @param engine - Structured feedback generator; defaults to the A2 engine
+     * @param engine - Structured feedback generator; defaults to the rubric-driven engine
      * @param pdfService - Student-safe renderer; defaults to the PDFKit implementation
      */
     constructor(
         private readonly mongo: EngEAI_MongoDB,
-        private readonly engine: WritingFeedbackEngine = new A2WritingFeedbackEngine(),
+        private readonly engine: WritingFeedbackEngine = new RubricWritingFeedbackEngine(),
         private readonly pdfService = new StudentWritingFeedbackPdfService()
     ) {}
 
@@ -70,7 +70,7 @@ export class WritingFeedbackService {
      * @returns Validated structured model draft
      * @throws Error when verification, assignment lookup, generation, or persistence fails
      */
-    async generate(courseId: string, submissionId: string): Promise<A2FeedbackResult> {
+    async generate(courseId: string, submissionId: string): Promise<WritingFeedbackResult> {
         // Verified text is the only student content allowed across the model boundary.
         const submission = await this.requireSubmission(courseId, submissionId);
         if (submission.requiresVerification || !submission.verifiedText?.trim()) {
@@ -97,7 +97,7 @@ export class WritingFeedbackService {
                 profileVersion: assignment.profileVersion,
                 rubricVersion: assignment.rubric.version,
                 result,
-                modelMetadata: { engine: this.engine.constructor.name, promptVersion: 'a2-v1' }
+                modelMetadata: { engine: this.engine.constructor.name, promptVersion: 'writing-feedback-v1' }
             });
             await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'draft_ready');
             return result;
@@ -119,6 +119,13 @@ export class WritingFeedbackService {
         const submission = await this.requireSubmission(courseId, submissionId);
         const feedbackRun = await this.mongo.getLatestWritingFeedbackRun(submissionId);
         const verifiedText = submission.verifiedText ?? '';
+        const assignment = feedbackRun
+            ? await this.requireAssignment(courseId, submission.assignmentId)
+            : null;
+        const runRubric = feedbackRun && assignment
+            ? [assignment.rubric, ...(assignment.rubricHistory ?? [])]
+                .find((rubric) => rubric.version === feedbackRun.rubricVersion)
+            : undefined;
         // The newest revision that snapshots comments is authoritative, even if newer prose exists.
         const latestWithComments = [...(submission.reviews ?? [])].reverse().find((review) => review.comments);
         const comments = latestWithComments?.comments
@@ -126,7 +133,7 @@ export class WritingFeedbackService {
             : [];
         // Model evidence remains transient until staff explicitly saves a first comment revision.
         const seedComments = !latestWithComments && feedbackRun && verifiedText
-            ? seedCommentsFromRun(feedbackRun, verifiedText)
+            ? seedCommentsFromRun(feedbackRun, verifiedText, runRubric)
             : [];
         return { submission, feedbackRun, comments, seedComments };
     }
@@ -241,7 +248,7 @@ export class WritingFeedbackService {
             grade: resolveNumericGrade(feedbackRun.result, assignment.gradeMapping),
             staffFeedback: latestReview?.studentFeedback
         });
-        return releaseService.preview({ submission, assignment, feedbackRun, pdf });
+        return releaseService.preview({ submission, assignment, feedbackRun, pdf, studentFeedback: latestReview?.studentFeedback });
     }
 
     /**
@@ -266,7 +273,7 @@ export class WritingFeedbackService {
             grade: resolveNumericGrade(feedbackRun.result, assignment.gradeMapping),
             staffFeedback: latestReview?.studentFeedback
         });
-        const release = await releaseService.release({ submission, assignment, feedbackRun, pdf });
+        const release = await releaseService.release({ submission, assignment, feedbackRun, pdf, studentFeedback: latestReview?.studentFeedback });
         // Mark local completion only after the release boundary returns a terminal record.
         await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'released');
         return release;
