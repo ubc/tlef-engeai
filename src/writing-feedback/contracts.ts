@@ -103,6 +103,25 @@ export interface WritingSubmission {
     /** Staff-visible label; never returned to students. */
     studentLabel?: string;
     attempt: number; // distinguishes repeat attempts by the same student for idempotent import/release
+    /**
+     * Provider-scoped Canvas user id, present only on submissions pulled from a live Canvas
+     * course. It exists because {@link WritingSubmission.studentId} is a one-way hash and
+     * Canvas addresses a submission by user id on write-back, so release could not otherwise
+     * find its target without re-deriving it from a fresh fetch.
+     *
+     * This is a Canvas-internal integer, the same class of identifier as
+     * `activeCourse.lmsLink.courseId`. It is deliberately **not** an institutional identifier:
+     * `integration_id` (PUID), `sis_user_id` (student number), and `login_id` (CWL) are never
+     * read, never stored, and never logged.
+     *
+     * It travels in staff-facing responses, which is not a leak: Writing Feedback is a
+     * staff-only surface, and those same payloads already carry the student's real name in
+     * {@link WritingSubmission.studentLabel}, which identifies a person far more directly than
+     * a provider-scoped integer does. What must hold is that it never reaches a student and is
+     * never logged. The Canvas import preview strips it anyway, because that response also
+     * carries attachment download URLs that must not leave the server.
+     */
+    canvasUserId?: string;
     sourceType: WritingSourceType; // controls intake and verification expectations
     originalText: string; // extracted/source transcript retained for staff comparison
     verifiedText?: string; // sole text permitted to enter feedback generation

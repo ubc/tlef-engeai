@@ -35,8 +35,17 @@ import {
     moodle,
     createMongoTokenStore,
 } from '@ubc/ubc-genai-toolkit-lms-integration';
-import type { MongoDbLike } from '@ubc/ubc-genai-toolkit-lms-integration';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
+import {
+    CANVAS_BASE_PATH,
+    CANVAS_REQUIRED_ENV,
+    canvasConfig,
+    canvasTokenCollectionName,
+    hasEnv,
+    LMS_BASE_PATH,
+    mongoDbProvider,
+    resolveUserKey,
+} from '../lms/canvas-config';
 import { requireAuthAPI } from '../middleware/require-auth';
 import { requireInstructorGlobal } from '../middleware/require-course-role';
 import {
@@ -47,98 +56,11 @@ import {
 import type { GlobalUser } from '../types/shared';
 import { appLogger } from '../utils/logger';
 
-/** Mount point of this router, and the prefix every `basePath` below builds on. */
-const LMS_BASE_PATH = '/api/lms';
-
-/** Canvas OAuth router mount. Must line up with `CANVAS_REDIRECT_URI`'s path. */
-const CANVAS_BASE_PATH = `${LMS_BASE_PATH}/canvas/auth`;
-
 /** Moodle connect/disconnect router mount. */
 const MOODLE_BASE_PATH = `${LMS_BASE_PATH}/moodle/auth`;
 
-/**
- * Environment variables each provider requires. `loadConfigFromEnv` throws and
- * names the missing ones; these lists let us decide whether to call it at all.
- */
-const CANVAS_REQUIRED_ENV = [
-    'CANVAS_DOMAIN',
-    'CANVAS_CLIENT_ID',
-    'CANVAS_CLIENT_SECRET',
-    'CANVAS_REDIRECT_URI',
-] as const;
+/** Environment variables Moodle requires before its provider is mounted. */
 const MOODLE_REQUIRED_ENV = ['MOODLE_DOMAIN'] as const;
-
-/** True when every named variable is set to a non-empty value. */
-function hasEnv(names: readonly string[]): boolean {
-    return names.every((name) => Boolean(process.env[name]));
-}
-
-/**
- * resolveUserKey — derives the token-store key for the signed-in user.
- *
- * The LMS package persists this value as the document key in the token
- * collections. It must therefore **never** be the PUID: `active-users` is the
- * only collection permitted to store one. `GlobalUser.userId` is the stable
- * internal identifier and is what gets persisted here.
- *
- * The lookup is asynchronous because `req.user` carries only the PUID; the
- * package accepts `string | Promise<string>` for exactly this case.
- *
- * Exported for testing: the PUID-never-persisted invariant is the single most
- * important behaviour in this module and must be regression-guarded.
- *
- * @param req - Express request carrying the passport-authenticated user
- * @returns The user's internal `GlobalUser.userId`
- * @throws {Error} When no user is signed in, or has no `active-users` record
- */
-export async function resolveUserKey(req: Request): Promise<string> {
-    const puid = (req as any).user?.puid;
-    if (!puid) {
-        throw new Error('LMS token lookup attempted without an authenticated user');
-    }
-
-    const mongoDB = await EngEAI_MongoDB.getInstance();
-    const globalUser = await mongoDB.findGlobalUserByPUID(puid);
-    if (!globalUser) {
-        // Deliberately does not include the PUID — it must not reach logs.
-        throw new Error('No active-users record for the signed-in user');
-    }
-
-    return globalUser.userId;
-}
-
-/**
- * Resolves the shared `Db` handle lazily, so this module does not force a
- * connect at import time.
- *
- * The cast is necessary and sound. The package models `MongoCollectionLike`
- * structurally and documents that "any real `Collection` instance satisfies
- * this shape as-is" — which does not hold against the mongodb 6.x driver: the
- * package types `createIndex`'s spec as `Record<string, unknown>` while the
- * driver types it `IndexSpecification`, and neither is assignable to the other,
- * so even bivariant method checking rejects it. At runtime the adapter only ever
- * calls `createIndex({ userKey: 1 }, { unique: true })`, which is a valid
- * `IndexSpecification`, so the structural contract genuinely is satisfied.
- */
-const mongoDbProvider = async (): Promise<MongoDbLike> =>
-    (await EngEAI_MongoDB.getInstance()).db as unknown as MongoDbLike;
-
-/**
- * Canvas configuration, or `null` when the provider is not configured.
- *
- * A separate collection per provider is mandatory: the store is keyed only by
- * `userKey`, with no provider discriminator, so a shared collection would have
- * each provider silently overwrite the other's tokens.
- */
-const canvasConfig = hasEnv(CANVAS_REQUIRED_ENV)
-    ? canvas.loadConfigFromEnv({
-          tokenStore: createMongoTokenStore(mongoDbProvider, {
-              collectionName: process.env.CANVAS_TOKEN_COLLECTION_NAME || 'canvas_tokens',
-          }),
-          getUserKey: resolveUserKey,
-          basePath: CANVAS_BASE_PATH,
-      })
-    : null;
 
 /** Moodle configuration, or `null` when the provider is not configured. */
 const moodleConfig = hasEnv(MOODLE_REQUIRED_ENV)
@@ -211,7 +133,7 @@ router.get('/status', requireAuthAPI, (_req: Request, res: Response) => {
             canvas: {
                 enabled: canvasConfig !== null,
                 basePath: CANVAS_BASE_PATH,
-                tokenCollection: process.env.CANVAS_TOKEN_COLLECTION_NAME || 'canvas_tokens',
+                tokenCollection: canvasTokenCollectionName,
                 missingEnv: CANVAS_REQUIRED_ENV.filter((name) => !process.env[name]),
             },
             moodle: {

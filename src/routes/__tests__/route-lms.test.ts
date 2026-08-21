@@ -31,7 +31,7 @@ jest.mock('../../db/enge-ai-mongodb', () => ({
 }));
 
 // Imported after the mock so the module's lazy Mongo access resolves to it.
-import { resolveUserKey } from '../route-lms';
+import { resolveUserKey } from '../../lms/canvas-config';
 
 const PUID = 'FAKE_INSTRUCTOR_PUID_001';
 const USER_ID = 'c3c26c48f180';

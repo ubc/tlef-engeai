@@ -165,10 +165,10 @@ Canvas endpoints report their integration mode honestly. `demo` with `integratio
 | GET | `/workspace-context` | Returns UI permissions (including rubric management) and non-secret integration context for the current staff member |
 | GET | `/assignments` | Lists assignments (with a per-assignment `submissionCount`) and seeds the A2 profile when absent |
 | POST | `/assignments` | Creates a manual writing assignment (`{ title, dueAt? }`) seeded from the A2 rubric profile; instructor/admin only |
-| GET | `/canvas/status` | Returns `demo` or `not_configured` status and safe staff-facing setup guidance; never returns tokens |
-| GET | `/canvas/assignments` | Lists selectable synthetic assignments in local demo mode; live listing remains OAuth-gated |
-| GET | `/canvas/assignments/:canvasAssignmentId/preview` | Read-only preview of the selected synthetic assignment/submissions before import |
-| POST | `/canvas/import` | Creates/reuses the mapped writing assignment, imports/reconciles its selected demo submissions, and reports imported/skipped counts; allowed for instructors/TAs |
+| GET | `/canvas/status` | Returns `live`, `demo`, or `not_configured` status plus safe staff-facing guidance, and a `connectUrl` when the only blocker is this staff member's Canvas authorization. Never requires a Canvas credential (it is what tells the UI to ask for one) and never returns tokens |
+| GET | `/canvas/assignments` | Lists importable assignments: real ones from the linked Canvas course, or synthetic ones in local demo mode. `401` + `connectUrl` when the course is Canvas-linked and the caller has not authorized Canvas |
+| GET | `/canvas/assignments/:canvasAssignmentId/preview` | Read-only preview before import. Returns display label, attempt, timestamp, `contentKind`, and attachment file names only — never source record keys or Canvas file URLs, and it downloads no attachment bytes |
+| POST | `/canvas/import` | Creates/reuses the mapped writing assignment, imports/reconciles its submissions, and reports imported/skipped/unsupported/failed counts; allowed for instructors/TAs |
 | POST | `/assignments/:assignmentId/canvas-import-fixture` | Backward-compatible, clearly labelled synthetic import helper for local testing only |
 | DELETE | `/assignments/:assignmentId` | Deletes an assignment; `409` while it still has any submissions (delete those first). Any course staff |
 | GET | `/assignments/:assignmentId/rubric` | Returns approved rubric, optional draft, immutable history, and the caller's edit permission |
@@ -184,10 +184,29 @@ Canvas endpoints report their integration mode honestly. `demo` with `integratio
 | POST | `/submissions/:submissionId/reviews` | Appends a staff review revision; optional `comments` array of anchored comments is schema-validated and every anchor re-checked as an exact slice of the verified text. `authorName` is server-stamped (prior attribution carried by comment id; new staff comments attributed to the saving user's display name) — any client-sent value is discarded |
 | POST | `/submissions/:submissionId/approve` | Explicit staff approval |
 | GET | `/submissions/:submissionId/feedback.pdf` | Student-safe feedback PDF; `?include=general\|annotated\|both` selects the summary document, the verified text with Canvas-style `/Highlight` popup annotations, or both (default `general`; legacy `specific` maps to `annotated`) |
-| POST | `/submissions/:submissionId/release-preview` | Dry-run Canvas payload preview |
-| POST | `/submissions/:submissionId/release` | Mock-only release; real Canvas requires OAuth gates |
+| POST | `/submissions/:submissionId/release-preview` | Dry-run Canvas payload preview; refused in live mode |
+| POST | `/submissions/:submissionId/release` | Mock-only release. Refused for a live Canvas course — write-back is not implemented, and the feedback PDF is the return path |
 
 `POST /canvas/import` reads a selected source and writes local writing records only. It creates or reuses one writing assignment per Canvas assignment mapping. The current response explicitly reports `rubricImport: not_imported`; native Canvas rubric ingestion remains future work. Import does not approve a rubric, generate feedback, or call a Canvas write endpoint. Repeating the same assignment/student/attempt import is idempotent and is returned as skipped/reconciled rather than duplicated.
+
+### Canvas import modes
+
+Which adapter serves a request is resolved per request from three inputs — whether Canvas is configured in the environment, whether the EngE-AI course carries an `lmsLink` (i.e. it was imported from Canvas), and whether the signed-in staff member has a stored Canvas authorization:
+
+| Canvas env | Course `lmsLink` | Staff token | Mode | Behaviour |
+|---|---|---|---|---|
+| configured | present | present | `live` | Reads the real Canvas course through that staff member's own OAuth client |
+| configured | present | absent | `not_configured` + `connectUrl` | Offers a Canvas authorization link; never falls back to demo data |
+| configured | absent | — | `demo` / `not_configured` | Course has no Canvas counterpart; env-selected local adapter applies |
+| absent | — | — | `demo` / `not_configured` | Demo outside production, fail-closed in production |
+
+Live reads go through the LMS package's generic authenticated client (`GET /courses/:id/assignments` and `.../assignments/:id/submissions`), because the package has no submissions resource. Each staff member connects Canvas separately and reads with their own Canvas permissions; there is no shared service credential.
+
+Assignment listing offers only what can actually be imported: the assignment must accept text-entry or file-upload submissions, must already have submissions, and must not use anonymous grading (which withholds the identity staff review by — selecting one anyway returns an explanatory `400`). Canvas reports no submitted count on an assignment payload, so `submissionCount` is omitted in live mode and the exact figure arrives with the preview rather than being approximated from `needs_grading_count`.
+
+Two intake paths land in deliberately different states. `online_text_entry` bodies are converted from Canvas RCE HTML and stored verified (`sourceType: canvas_text`, `status: imported`). `online_upload` attachments are downloaded during the import only — never during a preview — parsed locally through the same extractor as manual uploads, and stored `requiresVerification: true` / `status: verification_needed`, because extraction from bytes can silently mangle content. Everything else (`online_url`, `media_recording`, unreadable uploads) is counted in `unsupportedCount` rather than dropped silently. Each submission is intaken independently: a download or parse failure increments `failedCount` and the run continues, and because import is idempotent, re-running retries only what failed. Attachment downloads are capped at 25 MB and constrained by the package's download guard (first hop must match the configured Canvas origin, the bearer token is dropped after any off-origin redirect, and an HTML response is rejected).
+
+Submission text never enters the course-material RAG/Qdrant pipeline. Canvas write-back is not implemented in any mode, so `release`/`release-preview` refuse for a live course with an explanatory message.
 
 The rubric draft body contains complete task, audience, purpose, constraints, learning outcomes, grading intent, four A2 criteria/SFL descriptions, and four ordinal levels with optional points. Draft validation failures return field-safe `400` responses. Approving without a saved draft is a conflict; TAs receive `403` for both rubric mutation routes. Saving or approving a rubric never updates Canvas automatically.
 

@@ -98,6 +98,7 @@ describe('SafeCanvasImportService', () => {
 
     it('builds deterministic, non-source identities for idempotency', () => {
         const input = {
+            integration: 'mock_canvas' as const,
             courseId: 'course-1',
             targetAssignmentId: 'assignment-1',
             canvasAssignmentId: 'demo-lled200-a2-description',
@@ -109,6 +110,25 @@ describe('SafeCanvasImportService', () => {
         expect(first).toEqual(second);
         expect(first.studentId).toMatch(/^canvas-demo-[a-f0-9]{24}$/);
         expect(first.studentId).not.toContain(input.sourceRecordKey);
+    });
+
+    it('keeps demo and live identities in separate id spaces', () => {
+        // A synthetic fixture and a real Canvas user must never collide on studentId, and the
+        // prefix must make a stored record's provenance readable without a join.
+        const shared = {
+            courseId: 'course-1',
+            targetAssignmentId: 'assignment-1',
+            canvasAssignmentId: 'demo-lled200-a2-description',
+            sourceRecordKey: 'synthetic-learner-a',
+            attempt: 1
+        };
+        const demo = buildCanvasImportIdentity({ ...shared, integration: 'mock_canvas' });
+        const live = buildCanvasImportIdentity({ ...shared, integration: 'canvas' });
+
+        expect(demo.fingerprint).not.toEqual(live.fingerprint);
+        expect(demo.studentId).toMatch(/^canvas-demo-[a-f0-9]{24}$/);
+        expect(live.studentId).toMatch(/^canvas-[a-f0-9]{24}$/);
+        expect(live.studentId.startsWith('canvas-demo-')).toBe(false);
     });
 
     it('does not expose assignments when Canvas is unconfigured', async () => {

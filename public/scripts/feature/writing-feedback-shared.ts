@@ -212,21 +212,22 @@ export interface SubmissionDetail {
 
 /** Canvas integration truth shown before any import or release action is offered. */
 export interface CanvasStatus {
-    mode: 'demo' | 'not_configured'; // visibly separates synthetic data from unavailable live OAuth
-    integration: 'mock_canvas' | 'none'; // adapter identity reported by the backend
+    mode: 'demo' | 'live' | 'not_configured'; // visibly separates synthetic data from a real Canvas course
+    integration: 'mock_canvas' | 'canvas' | 'none'; // adapter identity reported by the backend
     connected: boolean; // whether the current adapter has an active connection
     canImport: boolean; // authoritative UI gate for import/preview operations
     syntheticDataOnly: boolean; // prevents demo data from being described as production Canvas
     label: string; // concise mode heading for staff
     message: string; // durable explanation shown in workspace/import panels
     nextStep?: string; // configuration guidance when import is unavailable
+    connectUrl?: string; // Canvas authorization entry point when that is the only blocker
 }
 
 /** Assignment candidate returned by the Canvas preview/list adapter. */
 export interface CanvasAssignment {
     canvasAssignmentId: string; // external selection key submitted to the import endpoint
     title: string; // Canvas-provided assignment label shown before import
-    submissionCount: number; // eligible candidate count shown in the picker
+    submissionCount?: number; // eligible candidate count when the source reports one without a round trip
     pointsPossible?: number; // informational Canvas value; never inferred as rubric mapping
     dueAt?: string; // external due date preview
     rubricState: 'canvas_rubric' | 'no_canvas_rubric'; // provenance notice; no silent rubric import
@@ -247,12 +248,30 @@ export interface RubricResponse {
     permissions: { canEdit: boolean }; // server-derived mutation permission for the current staff user
 }
 
+/** One submission shown in the pre-import preview, with no source identifiers or file URLs. */
+export interface CanvasPreviewSubmission {
+    studentLabel: string; // staff-only display label used to recognise the submission
+    attempt: number; // attempt number participating in import idempotency
+    submittedAt: string; // source submission timestamp
+    contentKind: 'text_entry' | 'file_upload' | 'unsupported'; // intake path this submission will take
+    attachmentNames: string[]; // file names to be downloaded and parsed, for uploads
+    synthetic: boolean; // marks local demo records as non-production data
+}
+
+/** Read-only preview returned before any local record is written. */
+export interface CanvasPreview {
+    assignment: CanvasAssignment; // source assignment the previewed submissions belong to
+    submissions: CanvasPreviewSubmission[]; // candidates, including ones import will skip
+}
+
 /** Result of an explicit idempotent Canvas-to-local assignment import. */
 export interface CanvasImportResult {
     assignment: CanvasAssignment; // external candidate selected by staff
     targetAssignment: Assignment; // local assignment created or reused by import
     importedCount: number; // new local attempts created
     skippedCount: number; // unchanged attempts omitted by idempotency checks
+    unsupportedCount: number; // submissions with no extractable text, or text past the 30,000-character limit
+    failedCount: number; // submissions whose download or parse failed and can be retried
     submissions: Submission[]; // resulting local submission summaries
     rubricImport: 'not_imported'; // explicit guarantee that Canvas rubric data was not activated
 }
@@ -414,9 +433,28 @@ export function setView(view: WfViewName): void {
  * @returns The typed `data` member from a successful API envelope
  * @throws Error when transport status or the API success flag indicates failure
  */
+/**
+ * Raised when Canvas refuses a call because this staff member has not authorized it.
+ *
+ * Distinct from a generic failure because the remedy is a specific link, not a retry. The
+ * server sends it as a `401` carrying `connectUrl`, which is the only shape that arrives
+ * without an `error` message to display.
+ */
+export class CanvasAuthRequiredError extends Error {
+    constructor(readonly connectUrl: string) {
+        super('Connect your Canvas account to continue.');
+        this.name = 'CanvasAuthRequiredError';
+    }
+}
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${baseUrl()}${path}`, { credentials: 'same-origin', ...init });
     const body = await response.json().catch(() => ({}));
+    // The LMS package answers an unauthorized Canvas call with `connectUrl` and no `error`,
+    // so this must be recognised before the generic failure path swallows it.
+    if (response.status === 401 && typeof body.connectUrl === 'string') {
+        throw new CanvasAuthRequiredError(body.connectUrl);
+    }
     if (!response.ok || !body.success) throw new Error(body.error || 'Writing Feedback request failed');
     return body.data as T;
 }

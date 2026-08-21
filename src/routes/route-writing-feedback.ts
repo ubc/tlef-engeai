@@ -11,9 +11,9 @@
  * @description: Course-scoped Writing Feedback API endpoints and safe request validation.
  */
 
-import express, { Request, Response } from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import multer from 'multer';
-import { asyncHandlerWithAuth } from '../middleware/async-handler';
+import { asyncHandler, asyncHandlerWithAuth } from '../middleware/async-handler';
 import { requireCourseFeatureAPI, requireInstructorForCourseAPI, requireRosterManageAPI } from '../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { LocalDocumentExtractionService } from '../writing-feedback/document-extraction-service';
@@ -21,6 +21,13 @@ import { WritingFeedbackService } from '../writing-feedback/writing-feedback-ser
 import { MockCanvasGateway, SafeCanvasReleaseService } from '../writing-feedback/canvas-release-service';
 import type { WritingSourceType } from '../writing-feedback/contracts';
 import { SafeCanvasImportService } from '../writing-feedback/canvas-import-service';
+import {
+    isLiveCanvasCourse,
+    resolveCanvasImportService,
+    resolveCanvasImportStatus
+} from '../writing-feedback/canvas-import-resolver';
+import { canvasConfig } from '../lms/canvas-config';
+import { canvas as canvasProvider } from '@ubc/ubc-genai-toolkit-lms-integration';
 import { anchoredCommentsInputSchema } from '../writing-feedback/anchored-comments';
 import {
     approveRubricDraft,
@@ -55,7 +62,9 @@ function safeError(error: unknown): string {
         'Verified submission text is required', 'Feedback evidence did not match',
         'Generate feedback before', 'Staff approval is required', 'Numeric release is blocked',
         'A draft-ready submission is required', 'Released feedback cannot be edited',
-        'Canvas import is not configured', 'Canvas release is not configured', 'Canvas demo assignment not found',
+        'Canvas import is not configured', 'Canvas release is not configured',
+        'Canvas assignment not found', 'Canvas demo assignment not found',
+        'Canvas assignment uses anonymous grading', 'Canvas release is not available',
         'An approved rubric is required', 'Rubric changed after feedback generation',
         'Generate feedback before staff approval',
         'Feedback comments no longer match', 'Feedback comments failed validation',
@@ -65,6 +74,28 @@ function safeError(error: unknown): string {
         ? message
         : 'Writing feedback request could not be completed.';
 }
+
+/**
+ * Attaches an authenticated Canvas client, but only for a course that came from Canvas.
+ *
+ * A course with no `lmsLink` has nothing to read from Canvas, so demanding a Canvas
+ * authorization for it would block the local demo workflow behind an OAuth flow that could not
+ * help. A linked course does reach the package's `requireAuth`, which responds `401` with a
+ * `connectUrl` the workspace turns into a "Connect Canvas" action — deliberately not a silent
+ * fallback to synthetic data, which would look like the course's real submissions.
+ *
+ * Uses the plain `asyncHandler`, not the auth variant: the router-level guards below already
+ * establish staff access, and the auth variant would re-run the scheduled-publish sweep on
+ * every Canvas call in the workspace.
+ */
+const requireCanvasAuth = canvasConfig ? canvasProvider.requireAuth(canvasConfig) : null;
+const withCanvasClientWhenLinked = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const mongo = await EngEAI_MongoDB.getInstance();
+    if (!requireCanvasAuth || !(await isLiveCanvasCourse(mongo, courseId(req)))) {
+        return next();
+    }
+    return requireCanvasAuth(req, res, next);
+});
 
 // Authorize course staff before checking capability state; feature flags never grant access.
 router.use(
@@ -111,7 +142,7 @@ router.get('/:courseId/writing-feedback/workspace-context', asyncHandlerWithAuth
     const mongo = await EngEAI_MongoDB.getInstance();
     const currentCourse = await mongo.getActiveCourse(courseId(req));
     const globalUser = (req.session as any).globalUser;
-    const canvas = await new SafeCanvasImportService(mongo).getStatus();
+    const canvas = await resolveCanvasImportStatus(req, mongo, courseId(req));
     res.json({
         success: true,
         data: {
@@ -121,31 +152,50 @@ router.get('/:courseId/writing-feedback/workspace-context', asyncHandlerWithAuth
     });
 }));
 
-router.get('/:courseId/writing-feedback/canvas/status', asyncHandlerWithAuth(async (_req: Request, res: Response) => {
+// Status must never require a Canvas credential: it is what tells the workspace to offer one.
+router.get('/:courseId/writing-feedback/canvas/status', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const mongo = await EngEAI_MongoDB.getInstance();
-    res.json({ success: true, data: await new SafeCanvasImportService(mongo).getStatus() });
+    res.json({ success: true, data: await resolveCanvasImportStatus(req, mongo, courseId(req)) });
 }));
 
-router.get('/:courseId/writing-feedback/canvas/assignments', asyncHandlerWithAuth(async (_req: Request, res: Response) => {
+router.get('/:courseId/writing-feedback/canvas/assignments', withCanvasClientWhenLinked, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const mongo = await EngEAI_MongoDB.getInstance();
-    res.json({ success: true, data: await new SafeCanvasImportService(mongo).listAssignments() });
+    const service = await resolveCanvasImportService(req, mongo, courseId(req));
+    res.json({ success: true, data: await service.listAssignments() });
 }));
 
-router.get('/:courseId/writing-feedback/canvas/assignments/:canvasAssignmentId/preview', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.get('/:courseId/writing-feedback/canvas/assignments/:canvasAssignmentId/preview', withCanvasClientWhenLinked, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
-        const preview = await new SafeCanvasImportService(mongo).previewAssignment(String(req.params.canvasAssignmentId));
-        res.json({ success: true, data: preview });
+        const service = await resolveCanvasImportService(req, mongo, courseId(req));
+        const preview = await service.previewAssignment(String(req.params.canvasAssignmentId));
+        // Preview is staff-facing but must not ship raw source internals to the browser:
+        // attachment download URLs are Canvas-authenticated and the record key is an
+        // ephemeral identity input, neither of which the UI has any use for.
+        res.json({
+            success: true,
+            data: {
+                assignment: preview.assignment,
+                submissions: preview.submissions.map((submission) => ({
+                    studentLabel: submission.studentLabel,
+                    attempt: submission.attempt,
+                    submittedAt: submission.submittedAt,
+                    contentKind: submission.contentKind,
+                    attachmentNames: submission.attachments.map((attachment) => attachment.fileName),
+                    synthetic: submission.synthetic
+                }))
+            }
+        });
     } catch (error) {
         res.status(400).json({ success: false, error: safeError(error) });
     }
 }));
 
-router.post('/:courseId/writing-feedback/canvas/import', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.post('/:courseId/writing-feedback/canvas/import', withCanvasClientWhenLinked, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const canvasAssignmentId = cleanId(req.body?.canvasAssignmentId, 'canvasAssignmentId');
         const mongo = await EngEAI_MongoDB.getInstance();
-        const service = new SafeCanvasImportService(mongo);
+        const service = await resolveCanvasImportService(req, mongo, courseId(req));
 
         // Preview through the configured safe gateway before creating any local records.
         const preview = await service.previewAssignment(canvasAssignmentId);
@@ -443,6 +493,34 @@ router.get('/:courseId/writing-feedback/submissions/:submissionId/feedback.pdf',
     }
 }));
 
+/**
+ * assertMockReleaseAvailable — refuses release for anything but the labelled local mock.
+ *
+ * Release write-back to a real Canvas course is not implemented: it would need a comment-file
+ * upload, an idempotent grade/comment/rubric submission, and timeout reconciliation, none of
+ * which exist yet. Live import must therefore not inherit release from the demo path.
+ *
+ * Resolved per request rather than from a default-constructed service, because the default is
+ * the local adapter — asking it would report `mock_canvas` for a live Canvas course and arm the
+ * mock release against real imported submissions.
+ *
+ * @throws Error when the active integration is anything other than the local mock
+ */
+async function assertMockReleaseAvailable(
+    req: Request,
+    mongo: EngEAI_MongoDB
+): Promise<void> {
+    const status = await resolveCanvasImportStatus(req, mongo, courseId(req));
+    if (status.integration === 'canvas') {
+        throw new Error(
+            'Canvas release is not available: this course reads submissions from Canvas, and writing feedback back to Canvas is not enabled. Download the feedback PDF to return it.'
+        );
+    }
+    if (!status.canImport || status.integration !== 'mock_canvas') {
+        throw new Error('Canvas release is not configured');
+    }
+}
+
 function releaseService(mongo: EngEAI_MongoDB): SafeCanvasReleaseService {
     // Bind release persistence to payload fingerprints so retries reconcile instead of duplicating.
     return new SafeCanvasReleaseService(
@@ -457,11 +535,8 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/release-previ
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
 
-        // Keep demo and future live Canvas modes technically distinct before preparing a payload.
-        const canvasStatus = await new SafeCanvasImportService(mongo).getStatus();
-        if (!canvasStatus.canImport || canvasStatus.integration !== 'mock_canvas') {
-            throw new Error('Canvas release is not configured');
-        }
+        // Keep demo and live Canvas modes technically distinct before preparing a payload.
+        await assertMockReleaseAvailable(req, mongo);
         const release = await new WritingFeedbackService(mongo).previewRelease(courseId(req), String(req.params.submissionId), releaseService(mongo));
         res.json({ success: true, data: release, integration: 'mock_canvas' });
     } catch (error) {
@@ -474,10 +549,7 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/release', asy
         const mongo = await EngEAI_MongoDB.getInstance();
 
         // Refuse external-style release unless the explicitly labelled local mock is active.
-        const canvasStatus = await new SafeCanvasImportService(mongo).getStatus();
-        if (!canvasStatus.canImport || canvasStatus.integration !== 'mock_canvas') {
-            throw new Error('Canvas release is not configured');
-        }
+        await assertMockReleaseAvailable(req, mongo);
         const release = await new WritingFeedbackService(mongo).release(courseId(req), String(req.params.submissionId), releaseService(mongo));
         res.json({ success: true, data: release, integration: 'mock_canvas' });
     } catch (error) {
