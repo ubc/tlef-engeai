@@ -302,6 +302,7 @@ export class WritingFeedbackService {
         const run = await this.mongo.getLatestWritingFeedbackRun(submissionId);
         if (!run) throw new Error('Generate feedback before creating a PDF');
         this.assertCurrentRubric(run.rubricVersion, assignment);
+        const { technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment);
         // Narrative feedback comes from the latest revision; comments may come from the
         // latest earlier revision that explicitly snapshotted the comment working set.
         const latestReview = submission.reviews?.[submission.reviews.length - 1];
@@ -318,7 +319,10 @@ export class WritingFeedbackService {
             comments,
             include,
             // Approving staff name (user decision 2026-07-22); generic fallback pre-approval.
-            annotationAuthor: submission.approvedByName
+            annotationAuthor: submission.approvedByName,
+            ...(technicalRun && technicalRubric
+                ? { technicalFeedback: technicalRun.result, technicalRubric }
+                : {})
         });
     }
 
@@ -336,15 +340,26 @@ export class WritingFeedbackService {
         const feedbackRun = await this.mongo.getLatestWritingFeedbackRun(submissionId);
         if (!feedbackRun) throw new Error('Generate feedback before a release preview');
         this.assertCurrentRubric(feedbackRun.rubricVersion, assignment);
+        const { technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment);
         const latestReview = submission.reviews?.[submission.reviews.length - 1];
         const pdf = await this.pdfService.render({
             assignment,
             submission,
             feedback: feedbackRun.result,
             grade: resolveNumericGrade(feedbackRun.result, assignment.gradeMapping),
-            staffFeedback: latestReview?.studentFeedback
+            staffFeedback: latestReview?.studentFeedback,
+            ...(technicalRun && technicalRubric
+                ? { technicalFeedback: technicalRun.result, technicalRubric }
+                : {})
         });
-        return releaseService.preview({ submission, assignment, feedbackRun, pdf, studentFeedback: latestReview?.studentFeedback });
+        return releaseService.preview({
+            submission,
+            assignment,
+            feedbackRun,
+            pdf,
+            studentFeedback: latestReview?.studentFeedback,
+            ...(technicalRun ? { technicalFeedbackRun: technicalRun } : {})
+        });
     }
 
     /**
@@ -361,15 +376,26 @@ export class WritingFeedbackService {
         const feedbackRun = await this.mongo.getLatestWritingFeedbackRun(submissionId);
         if (!feedbackRun) throw new Error('Generate feedback before release');
         this.assertCurrentRubric(feedbackRun.rubricVersion, assignment);
+        const { technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment);
         const latestReview = submission.reviews?.[submission.reviews.length - 1];
         const pdf = await this.pdfService.render({
             assignment,
             submission,
             feedback: feedbackRun.result,
             grade: resolveNumericGrade(feedbackRun.result, assignment.gradeMapping),
-            staffFeedback: latestReview?.studentFeedback
+            staffFeedback: latestReview?.studentFeedback,
+            ...(technicalRun && technicalRubric
+                ? { technicalFeedback: technicalRun.result, technicalRubric }
+                : {})
         });
-        const release = await releaseService.release({ submission, assignment, feedbackRun, pdf, studentFeedback: latestReview?.studentFeedback });
+        const release = await releaseService.release({
+            submission,
+            assignment,
+            feedbackRun,
+            pdf,
+            studentFeedback: latestReview?.studentFeedback,
+            ...(technicalRun ? { technicalFeedbackRun: technicalRun } : {})
+        });
         // Mark local completion only after the release boundary returns a terminal record.
         await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'released');
         return release;
@@ -393,6 +419,33 @@ export class WritingFeedbackService {
         if (effectiveRunVersion !== assignment.rubric.version) {
             throw new Error('Rubric changed after feedback generation; regenerate feedback before approval or release');
         }
+    }
+
+    /**
+     * Loads the technical draft and rubric for a PDF/release call, refusing a stale draft.
+     *
+     * Mirrors {@link approve}: an assignment that is not a lab report, or whose technical
+     * rubric was never approved, owes no technical draft at all, so no run is even fetched.
+     * Once an approved technical rubric exists, any existing run is checked against it with
+     * the same staleness rule approval already enforces, before the caller renders or releases.
+     *
+     * @param submissionId - Submission whose technical draft is being resolved
+     * @param assignment - Assignment supplying the technical lens's approved rubric, if any
+     * @returns The latest technical run (or null when none applies yet) and its rubric
+     * @throws Error when a technical run exists but predates the currently-approved technical rubric
+     */
+    private async loadTechnicalLens(
+        submissionId: string,
+        assignment: WritingAssignment
+    ): Promise<{ technicalRun: WritingFeedbackRun | null; technicalRubric: WritingRubricDefinition | undefined }> {
+        if (!lensesForAssignment(assignment).includes('technical')) {
+            return { technicalRun: null, technicalRubric: undefined };
+        }
+        const technicalRubric = selectRubric(assignment, 'technical').approved;
+        if (!technicalRubric) return { technicalRun: null, technicalRubric: undefined };
+        const technicalRun = await this.mongo.getLatestWritingFeedbackRun(submissionId, 'technical');
+        if (technicalRun) this.assertCurrentRubricForLens(technicalRun.rubricVersion, technicalRubric, 'technical');
+        return { technicalRun, technicalRubric };
     }
 
     /**

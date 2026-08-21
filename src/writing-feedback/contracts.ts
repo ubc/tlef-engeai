@@ -273,6 +273,8 @@ export interface WritingReleasePayload {
     rubricVersion?: number; // approved rubric backing the judgments
     grade?: number; // instructor-mapped numeric result, when one exists
     studentFeedback?: string; // staff-approved narrative a re-approval can change
+    /** Technical model draft provenance for a lab report; absent for single-lens releases. */
+    technicalFeedbackRunId?: string;
 }
 
 /** Canvas release adapter boundary invoked only after release policy checks succeed. */
@@ -319,6 +321,10 @@ export interface WritingFeedbackPdfService {
         include?: FeedbackPdfInclude;
         /** Shown as the highlight-popup author (`/T`); defaults to "Teaching Team". */
         annotationAuthor?: string;
+        /** Technical lens draft rendered as its own section for a lab report. */
+        technicalFeedback?: WritingFeedbackResult;
+        /** Approved technical rubric supplying criterion labels for that section. */
+        technicalRubric?: WritingRubricDefinition;
     }): Promise<Buffer>;
 }
 
@@ -337,6 +343,8 @@ export interface CanvasReleaseInput {
     pdf: Buffer;
     /** Latest staff-approved narrative, so an edited re-approval releases as new content. */
     studentFeedback?: string;
+    /** Technical model draft released alongside the linguistic one, when the assignment has one. */
+    technicalFeedbackRun?: WritingFeedbackRun;
 }
 
 /** Release coordinator boundary separating preview persistence from external mutation. */

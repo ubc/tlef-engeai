@@ -409,3 +409,45 @@ describe('StudentWritingFeedbackPdfService', () => {
         expect(text).not.toContain('/Highlight');
     });
 });
+
+describe('technical section', () => {
+    const technicalAssignment = assignmentWithCriteria(2);
+    const technicalRubric = technicalAssignment.rubric;
+    const technicalResult = feedback(technicalRubric.criteria, 'advanced');
+
+    it('renders a technical section when technical feedback is supplied', async () => {
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: feedback(),
+            technicalFeedback: technicalResult,
+            technicalRubric,
+            include: 'general'
+        });
+        expect(searchableText(pdf)).toContain('Technical feedback');
+    });
+
+    it('omits the technical section when none is supplied', async () => {
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: feedback(),
+            include: 'general'
+        });
+        expect(searchableText(pdf)).not.toContain('Technical feedback');
+    });
+
+    it('never prints internal flags or confidence from either lens', async () => {
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: feedback(),
+            technicalFeedback: technicalResult,
+            technicalRubric,
+            include: 'general'
+        });
+        const text = searchableText(pdf);
+        expect(text).not.toContain('confidence');
+        expect(text).not.toContain('needs_review');
+    });
+});

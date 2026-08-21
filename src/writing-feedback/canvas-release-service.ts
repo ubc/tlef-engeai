@@ -43,6 +43,7 @@ export function computeReleaseFingerprint(payload: WritingReleasePayload): strin
         .update(field(payload.rubricVersion))
         .update(field(payload.grade))
         .update(field(payload.studentFeedback))
+        .update(field(payload.technicalFeedbackRunId))
         .digest('hex');
 }
 
@@ -95,7 +96,8 @@ export class SafeCanvasReleaseService implements CanvasReleaseService {
             feedbackRunId: input.feedbackRun.id,
             rubricVersion: input.feedbackRun.rubricVersion,
             grade,
-            studentFeedback: input.studentFeedback
+            studentFeedback: input.studentFeedback,
+            technicalFeedbackRunId: input.technicalFeedbackRun?.id
         });
         // Fingerprint lookup makes repeated previews and release retries reuse one record.
         const existing = await this.findByFingerprint(payloadFingerprint);
