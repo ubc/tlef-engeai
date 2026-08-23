@@ -106,6 +106,13 @@ interface RubricPageContext {
     detailsForm: HTMLFormElement;
     sections: RubricSectionHandle[];
     isLabReport: boolean;
+    /**
+     * True for a lab report whose technical rubric has neither a draft nor an
+     * approved version, so no technical editor registers itself. The shared
+     * 'Lab handout' field still renders, so saving must seed that rubric rather
+     * than drop the text.
+     */
+    technicalMissing: boolean;
 }
 
 function rubricTextValue(form: HTMLFormElement, name: string): string {
@@ -456,7 +463,13 @@ function renderRubricPage(
         }
     });
 
-    const context: RubricPageContext = { assignment, detailsForm, sections: [], isLabReport };
+    const context: RubricPageContext = {
+        assignment,
+        detailsForm,
+        sections: [],
+        isLabReport,
+        technicalMissing: Boolean(technicalData) && !technicalData?.draft && !technicalData?.approved
+    };
 
     root.append(renderRubricSection(context, linguisticData, 'linguistic', {
         heading: isLabReport ? '2 · Writing rubric' : 'Rubric',
@@ -609,12 +622,43 @@ function renderAssignmentDetails(
  * lab handout accompanies the technical request only, keeping its approval gate
  * on the rubric that consumes it.
  *
+ * A lab report whose technical rubric was deleted outright has no editor to
+ * register, yet the shared 'Lab handout' field is still on screen and still
+ * accepts text. Rather than discard that text, this seeds the technical rubric
+ * through the same route the 'Re-seed technical rubric' action uses and writes
+ * the handout into it, so no control on the page can swallow what staff typed.
+ *
  * @param context - Page context holding the details form and registered editors
  * @throws Error carrying the first staff-facing validation or transport failure
  */
 async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> {
     const details = collectAssignmentDetails(context.detailsForm);
     const labContext = rubricTextValue(context.detailsForm, 'labContext').slice(0, MAX_LAB_CONTEXT) || undefined;
+
+    // Seed before any other write: a failure here aborts the save with a visible
+    // message instead of leaving the handout silently unsaved. Nothing is seeded
+    // when the handout is empty, so a plain save never invents a rubric that
+    // staff did not ask for - the explicit re-seed action still owns that.
+    if (context.technicalMissing && labContext) {
+        const seededAssignment = await jsonRequest<Assignment>(
+            `/assignments/${encodeURIComponent(context.assignment.id)}/lab-report`,
+            'PATCH',
+            { isLabReport: true }
+        );
+        const seededSource = seededAssignment.technicalRubricDraft ?? seededAssignment.technicalRubric;
+        if (!seededSource) {
+            throw new Error('The lab handout could not be saved. Re-seed the technical rubric, then save again.');
+        }
+        const seeded = detachedRubric(seededSource);
+        await jsonRequest<Assignment>(
+            `/assignments/${encodeURIComponent(context.assignment.id)}/rubric-draft?lens=technical`,
+            'PUT',
+            { ...details, criteria: seeded.criteria, levels: seeded.levels, labContext } satisfies RubricDraftInput
+        );
+        Object.assign(context.assignment, seededAssignment);
+        context.technicalMissing = false;
+    }
+
     for (const section of context.sections) {
         if (!section.canEdit) continue;
         const structure = collectRubricStructure(section.form, section.working, section.errorLabel);
