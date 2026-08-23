@@ -13,6 +13,7 @@ import {
 } from '../ui/user-search-multi-select.js';
 import { authService } from '../services/auth-service.js';
 import { inactivityTracker } from '../services/inactivity-tracker.js';
+import { initCanvasConnect, isCanvasEnabled, openCanvasConnectModal } from './canvas-connect.js';
 
 interface AdminPeriodSection extends AcademicPeriodDocument {
     courseCount: number;
@@ -53,6 +54,12 @@ async function initializeAdminCourseSelection(): Promise<void> {
 
         setupLogoutButton();
         setupCreatePeriodButton();
+
+        // Resolve Canvas availability before the first render, so the Connect to Canvas button is
+        // either present from the start or never appears. A deployment without Canvas credentials
+        // must not advertise a connection it cannot make.
+        await initCanvasConnect(refreshAdminData);
+
         await loadAdminData();
     } catch (error) {
         console.error('[ADMIN-COURSE-SELECTION]', error);
@@ -72,6 +79,23 @@ async function loadAdminData(): Promise<void> {
     showLoading(false);
     showError(false);
     replaceFeather();
+}
+
+/**
+ * Reloads periods and courses for callers outside the initial bootstrap.
+ *
+ * `loadAdminData` throws on failure and leaves reporting to its caller. The Canvas flow calls back
+ * from a modal that has already closed, so a thrown error there would surface on a detached
+ * element — invisible, with a stale course list left behind. Report it on the page instead.
+ */
+async function refreshAdminData(): Promise<void> {
+    try {
+        await loadAdminData();
+    } catch (error) {
+        console.error('[ADMIN-COURSE-SELECTION]', error);
+        showLoading(false);
+        showError(true);
+    }
 }
 
 function renderPeriodSections(): void {
@@ -94,6 +118,17 @@ function renderPeriodSection(period: AdminPeriodSection): string {
         .map((course) => renderCourseRow(course, period.id))
         .join('');
 
+    // Per period rather than page-level: an imported course has to land in some period, and the
+    // header that launched the flow is the one unambiguous answer to which. Omitted entirely when
+    // the deployment has no Canvas credentials.
+    const canvasBtn = isCanvasEnabled()
+        ? `
+                    <button type="button" class="add-new-course-btn period-canvas-connect-btn" data-period-id="${period.id}" aria-label="Connect to Canvas" title="Connect to Canvas">
+                        <i data-feather="link"></i>
+                        <span class="btn-text">Connect to Canvas</span>
+                    </button>`
+        : '';
+
     return `
         <section class="course-selection-container period-section" data-period-id="${period.id}">
             <header class="course-selection-header period-section-header">
@@ -105,6 +140,7 @@ function renderPeriodSection(period: AdminPeriodSection): string {
                     <span class="period-count-pill">${period.courseCount} courses</span>
                 </div>
                 <div class="period-header-actions">
+                    ${canvasBtn}
                     <button type="button" class="create-new-course-btn period-create-course-btn" data-period-id="${period.id}">
                         <i data-feather="file-plus"></i>
                         <span class="btn-text">Create New Course</span>
@@ -169,6 +205,13 @@ function attachPeriodListeners(): void {
             if (periodId) {
                 void openCourseModal('create', periodId);
             }
+        });
+    });
+
+    document.querySelectorAll('.period-canvas-connect-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            // An imported course lands in the period whose header launched the flow.
+            void openCanvasConnectModal(btn.getAttribute('data-period-id') ?? undefined);
         });
     });
 
