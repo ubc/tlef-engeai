@@ -33,6 +33,13 @@ import { listCriterionLibrary } from '../writing-feedback/criterion-library';
 import { isCourseStaff } from '../utils/course-staff';
 import { parseLens, selectRubric } from '../writing-feedback/rubric-lens';
 import { buildLabReportRubric } from '../writing-feedback/lab-report-profile';
+import { seedRubricForLens } from '../writing-feedback/rubric-seed';
+import {
+    autofillMergeRules,
+    mergeAutofill,
+    proposeRubricFromInstructions,
+    type RubricGridSource
+} from '../writing-feedback/rubric-autofill';
 import type { WritingFeedbackLens } from '../writing-feedback/contracts';
 
 const router = express.Router();
@@ -286,6 +293,60 @@ router.put(
         // Saving is deliberately separate from approval and does not change the active rubric.
         const updated = await mongo.saveWritingRubricDraft(courseId(req), assignment.id, draft, lens);
         res.json({ success: true, data: updated });
+    })
+);
+
+/**
+ * Proposes a rubric draft from the assignment instructions and merges it into the
+ * current draft. How much of the grid the proposal may overwrite depends on where
+ * the grid came from — an instructor's imported rubric and the department's APSC
+ * 182 evaluation form both outrank anything a model proposes. Never touches the
+ * approved rubric; approval stays the gate that lets a rubric reach the model.
+ */
+router.post(
+    '/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft/fill',
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        let lens: WritingFeedbackLens;
+        try {
+            lens = parseLens(req.query.lens);
+        } catch {
+            return res.status(400).json({ success: false, error: 'Unknown feedback lens' });
+        }
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
+        if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+        if (lens === 'technical' && !assignment.isLabReport) {
+            return res.status(409).json({ success: false, error: 'Mark this assignment as a lab report before editing its technical rubric' });
+        }
+        if (!assignment.instructions?.trim()) {
+            return res.status(409).json({ success: false, error: 'Add the assignment instructions first' });
+        }
+
+        const selected = selectRubric(assignment, lens);
+        const globalUser = (req.session as any).globalUser;
+        const draft = selected.draft ?? seedRubricForLens({ lens, actorUserId: globalUser.userId });
+
+        // The grid source decides how much of the proposal the merge may apply.
+        // `rubricSource` is assignment-wide, not per-lens: an imported Canvas grid
+        // stays untouched on either lens, and otherwise the technical lens is always
+        // the department's APSC 182 form while the linguistic lens follows whether
+        // this assignment is a lab report.
+        const source: RubricGridSource = assignment.rubricSource === 'canvas'
+            ? 'canvas'
+            : lens === 'technical'
+                ? 'apsc182'
+                : assignment.isLabReport ? 'metafunctions_lab' : 'metafunctions_plain';
+
+        try {
+            const proposal = await proposeRubricFromInstructions(assignment.instructions, draft);
+            const merged = mergeAutofill(draft, proposal, autofillMergeRules(source));
+            const saved = await mongo.saveWritingRubricDraft(courseId(req), assignment.id, merged, lens);
+            res.json({ success: true, data: saved });
+        } catch {
+            // Model errors and responses can carry the prompt body, which includes the
+            // instructions. Never log or return them; staff see a fixed, generic message.
+            res.status(502).json({ success: false, error: 'Could not read the instructions. Fill the rubric in by hand.' });
+        }
     })
 );
 

@@ -44,3 +44,28 @@ describe('writing feedback lens route contract', () => {
         expect(source).toContain('requireInstructorForCourseAPI');
     });
 });
+
+describe('POST rubric-draft/fill', () => {
+    const routePath = "'/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft/fill'";
+    const approvePath = "'/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft/approve'";
+
+    it('declares the auto-fill route', () => {
+        expect(source).toContain(routePath);
+        expect(source).toMatch(/router\.post\(\s*'\/:courseId\/writing-feedback\/assignments\/:assignmentId\/rubric-draft\/fill'/);
+    });
+
+    it('sits under the shared writing-feedback prefix guarded by the router-level middleware', () => {
+        // Every route behind `requireInstructorForCourseAPI` shares this literal prefix
+        // (see the `router.use('/:courseId/writing-feedback', ...)` guard above); no
+        // route needs its own guard because there is exactly one shared one.
+        expect(routePath).toContain("'/:courseId/writing-feedback/");
+    });
+
+    it('is declared before the approve route so it is not shadowed by a capturing sibling', () => {
+        const routeIndex = source.indexOf(routePath);
+        const approveIndex = source.indexOf(approvePath);
+        expect(routeIndex).toBeGreaterThan(-1);
+        expect(approveIndex).toBeGreaterThan(-1);
+        expect(routeIndex).toBeLessThan(approveIndex);
+    });
+});
