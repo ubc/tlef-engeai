@@ -41,6 +41,18 @@ export type WritingLevelId = string;
 /** Academic Writing Matrix axis shared by rubric criteria and anchored comments. */
 export type WritingFunctionTag = 'content' | 'interpersonal' | 'organizational';
 
+/**
+ * One cell of the rubric grid: the points a criterion earns at one level, and the
+ * descriptor that justifies it. A range rather than a single value, because staff
+ * award within a band. `min` and `max` may be equal where a small weight leaves no
+ * room to spread.
+ */
+export interface WritingRubricCell {
+    min: number; // lowest points awardable in this band, inclusive
+    max: number; // highest points awardable in this band, inclusive
+    descriptor?: string; // criterion-specific meaning of this level
+}
+
 /** One instructor-authored criterion in a versioned Writing Feedback rubric. */
 export interface WritingRubricCriterion {
     id: WritingCriterionId; // stable instructor-authored slug shared across model output and staff UI
@@ -48,6 +60,14 @@ export interface WritingRubricCriterion {
     description: string; // instructor-authored assessment meaning
     functionTag?: WritingFunctionTag; // optional SFL metafunction used by staff filters
     sflDimension?: string; // optional instructor-editable linguistic lens supplied to generation
+    /** Maximum points this criterion contributes. Absent means the rubric is ordinal only. */
+    points?: number;
+    /**
+     * Per-level band and descriptor. Sparse on purpose: a level with no entry renders
+     * as an empty cell, which is how a criterion carrying fewer ratings than the rubric
+     * has columns is represented.
+     */
+    cells?: Record<WritingLevelId, WritingRubricCell>;
 }
 
 /** One allowed ordinal level, optionally carrying an instructor-approved numeric value. */

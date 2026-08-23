@@ -25,6 +25,13 @@ const slug = z.string()
     .max(64)
     .regex(/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/, 'Use a lowercase slug with letters, numbers, and underscores');
 
+/** One grid cell. Ranges are inclusive and may collapse to a single value. */
+const rubricCell = z.object({
+    min: z.number().finite().min(0).max(1000),
+    max: z.number().finite().min(0).max(1000),
+    descriptor: z.string().trim().max(400).optional()
+});
+
 /** Instructor-editable rubric payload required before a draft can be saved or approved. */
 export const writingRubricDraftInputSchema = z.object({
     title: z.string().trim().min(1).max(160),
@@ -41,7 +48,9 @@ export const writingRubricDraftInputSchema = z.object({
         label: z.string().trim().min(1).max(80),
         description: compactText,
         functionTag: z.enum(['content', 'interpersonal', 'organizational']).optional(),
-        sflDimension: optionalCompactText
+        sflDimension: optionalCompactText,
+        points: z.number().finite().min(0).max(1000).optional(),
+        cells: z.record(rubricCell).optional()
     })).min(1).max(10),
     levels: z.array(z.object({
         id: slug,
@@ -78,6 +87,27 @@ export const writingRubricDraftInputSchema = z.object({
             path: ['levels']
         });
     }
+
+    // Bands are inclusive ranges and must key to levels this rubric actually has.
+    const levelIds = new Set(rubric.levels.map((level) => level.id));
+    rubric.criteria.forEach((criterion, criterionIndex) => {
+        Object.entries(criterion.cells ?? {}).forEach(([levelId, cell]) => {
+            if (!levelIds.has(levelId)) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: `Criterion "${criterion.label}" has points for an unknown performance level`,
+                    path: ['criteria', criterionIndex, 'cells', levelId]
+                });
+            }
+            if (cell.min > cell.max) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: `A points range cannot start above where it ends`,
+                    path: ['criteria', criterionIndex, 'cells', levelId]
+                });
+            }
+        });
+    });
 });
 
 /** Validated instructor payload used to create a new rubric draft version. */

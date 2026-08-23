@@ -263,3 +263,72 @@ describe('lab context', () => {
         expect(draft.labContext).toBeUndefined();
     });
 });
+
+describe('criterion weight and cells', () => {
+    const base = {
+        title: 'T', task: 'task text', audience: 'aud', purpose: 'pur',
+        constraints: ['c'], learningOutcomes: ['o'], gradingIntent: 'gi',
+        levels: [
+            { id: 'weak', label: 'Weak', description: 'd', rank: 1 },
+            { id: 'strong', label: 'Strong', description: 'd', rank: 2 }
+        ]
+    };
+
+    it('accepts a criterion with a weight and bands', () => {
+        const parsed = writingRubricDraftInputSchema.safeParse({
+            ...base,
+            criteria: [{
+                id: 'organization', label: 'Organization', description: 'd',
+                points: 30,
+                cells: {
+                    weak: { min: 0, max: 9, descriptor: 'Sections do not follow a usable order.' },
+                    strong: { min: 10, max: 30, descriptor: 'Structure carries the argument.' }
+                }
+            }]
+        });
+        expect(parsed.success).toBe(true);
+    });
+
+    it('accepts a criterion with neither weight nor cells', () => {
+        const parsed = writingRubricDraftInputSchema.safeParse({
+            ...base,
+            criteria: [{ id: 'organization', label: 'Organization', description: 'd' }]
+        });
+        expect(parsed.success).toBe(true);
+    });
+
+    it('accepts a sparse cells map so a criterion may have fewer bands than columns', () => {
+        const parsed = writingRubricDraftInputSchema.safeParse({
+            ...base,
+            criteria: [{
+                id: 'organization', label: 'Organization', description: 'd', points: 5,
+                cells: { strong: { min: 0, max: 5 } }
+            }]
+        });
+        expect(parsed.success).toBe(true);
+    });
+
+    it('rejects a band whose min exceeds its max', () => {
+        const parsed = writingRubricDraftInputSchema.safeParse({
+            ...base,
+            criteria: [{
+                id: 'organization', label: 'Organization', description: 'd', points: 30,
+                cells: { weak: { min: 12, max: 4 } }
+            }]
+        });
+        expect(parsed.success).toBe(false);
+        expect(parsed.error?.issues[0]?.message).toContain('cannot start above');
+    });
+
+    it('rejects a cell keyed to a level the rubric does not have', () => {
+        const parsed = writingRubricDraftInputSchema.safeParse({
+            ...base,
+            criteria: [{
+                id: 'organization', label: 'Organization', description: 'd', points: 30,
+                cells: { nonexistent: { min: 0, max: 4 } }
+            }]
+        });
+        expect(parsed.success).toBe(false);
+        expect(parsed.error?.issues[0]?.message).toContain('unknown performance level');
+    });
+});

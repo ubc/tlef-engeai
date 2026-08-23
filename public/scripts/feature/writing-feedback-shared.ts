@@ -28,6 +28,13 @@ export type WritingCriterionId = string;
 /** Instructor-authored performance-level slug, frozen after its first approval. */
 export type WritingLevelId = string;
 
+/** Mirror of WritingRubricCell. Points band and descriptor for one grid cell. */
+export interface RubricCell {
+    min: number;
+    max: number;
+    descriptor?: string;
+}
+
 /** One instructor-visible criterion in an approved or draft rubric definition. */
 export interface RubricCriterion {
     id: WritingCriterionId; // stable key used to join rubric criteria to model feedback
@@ -35,6 +42,8 @@ export interface RubricCriterion {
     description: string; // assignment-specific expectations supplied to generation
     functionTag?: WfFunctionTag; // optional Academic Writing Matrix function
     sflDimension?: string; // optional instructor-authored linguistic lens
+    points?: number; // maximum points this criterion contributes
+    cells?: Record<string, RubricCell>; // sparse per-level bands, keyed by level id
 }
 
 /** One ordinal performance level, optionally participating in numeric release mapping. */
