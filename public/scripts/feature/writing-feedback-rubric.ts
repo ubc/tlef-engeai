@@ -25,6 +25,7 @@ import { showConfirmModal } from '../ui/modal-overlay.js';
 import { showSuccessToast } from '../ui/toast-notification.js';
 import {
     Assignment,
+    RubricCell,
     RubricCriterion,
     RubricDefinition,
     RubricLevel,
@@ -201,6 +202,26 @@ function syncStructuredValues(form: HTMLFormElement, working: RubricDefinition):
             rank: index + 1,
             ...(rawPoints ? { points: Number(rawPoints) } : {})
         };
+    });
+
+    // Bands are keyed by level id and the server rejects a key no level owns, so a
+    // removed performance level must take its bands with it. Carrying the bands
+    // through (above) without this prune would turn a legal edit into a 400.
+    const levelIds = new Set(working.levels.map((level) => level.id));
+    working.criteria = working.criteria.map((criterion) => {
+        const existing = criterion.cells;
+        if (!existing) return criterion;
+        const kept: Record<string, RubricCell> = {};
+        let dropped = false;
+        Object.keys(existing).forEach((levelId) => {
+            if (levelIds.has(levelId)) kept[levelId] = existing[levelId];
+            else dropped = true;
+        });
+        if (!dropped) return criterion;
+        const next: RubricCriterion = { ...criterion };
+        if (Object.keys(kept).length) next.cells = kept;
+        else delete next.cells;
+        return next;
     });
 }
 
@@ -635,7 +656,18 @@ async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> 
     const details = collectAssignmentDetails(context.detailsForm);
     const labContext = rubricTextValue(context.detailsForm, 'labContext').slice(0, MAX_LAB_CONTEXT) || undefined;
 
-    // Seed before any other write: a failure here aborts the save with a visible
+    // Validate every rubric before writing any of them. Validating inside the write
+    // loop would let the first rubric persist a new description and the second fail
+    // validation, leaving the two rubrics disagreeing about the same assignment -
+    // the exact divergence the shared description exists to prevent.
+    const pending = context.sections
+        .filter((section) => section.canEdit)
+        .map((section) => ({
+            section,
+            structure: collectRubricStructure(section.form, section.working, section.errorLabel)
+        }));
+
+    // Seed before the other writes: a failure here aborts the save with a visible
     // message instead of leaving the handout silently unsaved. Nothing is seeded
     // when the handout is empty, so a plain save never invents a rubric that
     // staff did not ask for - the explicit re-seed action still owns that.
@@ -656,12 +688,15 @@ async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> 
             { ...details, criteria: seeded.criteria, levels: seeded.levels, labContext } satisfies RubricDraftInput
         );
         Object.assign(context.assignment, seededAssignment);
-        context.technicalMissing = false;
+        // The flag is deliberately NOT cleared. Only a full page reload retires this
+        // state, and several paths leave the page standing after a successful seed
+        // (an approval the user then cancels, or a later rubric failing validation).
+        // Clearing it here would strand the handout field with no send path again on
+        // the next save. Re-seeding is harmless: PATCH .../lab-report is idempotent
+        // and returns the draft that already exists.
     }
 
-    for (const section of context.sections) {
-        if (!section.canEdit) continue;
-        const structure = collectRubricStructure(section.form, section.working, section.errorLabel);
+    for (const { section, structure } of pending) {
         const input: RubricDraftInput = {
             ...details,
             ...structure,
@@ -744,7 +779,10 @@ function renderRubricSection(
     section.open = true;
     const summary = document.createElement('summary');
     summary.className = 'wf-rubric-section__summary';
-    const summaryTitle = createText('span', options.heading, 'wf-rubric-section__title');
+    // A heading element, not a span: the Criterion/Level h3s inside this section
+    // need an ancestor heading to sit under. h2 keeps them nested one level down
+    // and matches the sibling 'Assignment details' heading above.
+    const summaryTitle = createText('h2', options.heading, 'wf-rubric-section__title');
     const summaryMeta = createText('span', rubricSizeSummary(working), 'wf-rubric-section__meta');
     summary.append(summaryTitle, summaryMeta);
     if (options.showState) summary.append(approvalStateChip(data));
