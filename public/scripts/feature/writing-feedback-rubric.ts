@@ -51,6 +51,7 @@ import {
     inputControl,
     jsonRequest,
     request,
+    setWorkspaceMessage,
     setQueryState,
     setView,
     state,
@@ -427,6 +428,98 @@ function rubricSizeSummary(working: RubricDefinition): string {
     return `${countText} · ${Number(total.toFixed(2))} points`;
 }
 
+function rubricLensQuery(lens: WritingFeedbackLens): string {
+    return lens === 'technical' ? '?lens=technical' : '?lens=linguistic';
+}
+
+function fillAttemptKey(assignmentId: string, lens: WritingFeedbackLens): string {
+    return `${assignmentId}:${lens}`;
+}
+
+function shouldFillMissingDraftOnFirstOpen(
+    assignment: Assignment,
+    data: RubricResponse | undefined,
+    lens: WritingFeedbackLens
+): boolean {
+    if (!assignment.instructions?.trim() || !data || data.draft || data.approved) return false;
+    const key = fillAttemptKey(assignment.id, lens);
+    if (firstOpenAutofillAttempts.has(key)) return false;
+    firstOpenAutofillAttempts.add(key);
+    return true;
+}
+
+async function fillRubricDraftFromInstructions(
+    assignmentId: string,
+    lens: WritingFeedbackLens
+): Promise<Assignment> {
+    return jsonRequest<Assignment>(
+        `/assignments/${encodeURIComponent(assignmentId)}/rubric-draft/fill${rubricLensQuery(lens)}`,
+        'POST'
+    );
+}
+
+async function fillMissingDraftsOnFirstOpen(
+    assignment: Assignment,
+    linguisticData: RubricResponse,
+    technicalData?: RubricResponse
+): Promise<boolean> {
+    const targets: WritingFeedbackLens[] = [];
+    if (shouldFillMissingDraftOnFirstOpen(assignment, linguisticData, 'linguistic')) {
+        targets.push('linguistic');
+    }
+    if (shouldFillMissingDraftOnFirstOpen(assignment, technicalData, 'technical')) {
+        targets.push('technical');
+    }
+    for (const lens of targets) {
+        await fillRubricDraftFromInstructions(assignment.id, lens);
+    }
+    return targets.length > 0;
+}
+
+function announceDetailsStatus(status: HTMLElement, message: string, tone: 'info' | 'success' | 'error' = 'info'): void {
+    status.textContent = '';
+    status.dataset.tone = tone;
+    window.requestAnimationFrame(() => { status.textContent = message; });
+}
+
+async function fillRubricsFromInstructions(context: RubricPageContext, status: HTMLElement): Promise<void> {
+    if (!context.assignment.instructions?.trim()) {
+        throw new Error('Add the assignment instructions first');
+    }
+    const targets = new Set<WritingFeedbackLens>(
+        context.sections.filter((section) => section.canEdit).map((section) => section.lens)
+    );
+    if (context.isLabReport && context.technicalMissing && context.sections.some((section) => section.canEdit)) {
+        targets.add('technical');
+    }
+    if (!targets.size) {
+        throw new Error('You do not have permission to edit this rubric.');
+    }
+
+    announceDetailsStatus(status, 'Reading the instructions…');
+    setWorkspaceMessage('Reading the instructions…', 'info');
+    try {
+        const orderedTargets = [...targets].sort((left, right) => {
+            if (left === right) return 0;
+            return left === 'technical' ? -1 : 1;
+        });
+        for (const lens of orderedTargets) {
+            await fillRubricDraftFromInstructions(context.assignment.id, lens);
+        }
+        state.panelDirty = false;
+        state.assignments = await request<Assignment[]>('/assignments');
+        pendingRubricNotice = { message: 'Filled from the instructions. Review before approving.', tone: 'success' };
+        setWorkspaceMessage('Filled from the instructions. Review before approving.', 'success');
+        showSuccessToast('Filled from the instructions. Review before approving.');
+        await openRubricPage(context.assignment.id);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Could not read the instructions. Fill the rubric in by hand.';
+        announceDetailsStatus(status, message, 'error');
+        setWorkspaceMessage(message, 'error');
+        throw error;
+    }
+}
+
 /**
  * openRubricPage - opens the rubric editor for one writing assignment
  *
@@ -442,13 +535,32 @@ export async function openRubricPage(assignmentId: string): Promise<void> {
     const root = element<HTMLDivElement>('wf-view-rubric');
     root.replaceChildren(createText('p', 'Loading rubric…', 'wf-muted-note'));
     if (!state.assignments.length) state.assignments = await request<Assignment[]>('/assignments');
-    const assignment = state.assignments.find((item) => item.id === assignmentId);
+    let assignment = state.assignments.find((item) => item.id === assignmentId);
     if (!assignment) throw new Error('Writing assignment not found');
-    const linguisticData = await request<RubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/rubric?lens=linguistic`);
-    const technicalData = assignment.isLabReport
+    let linguisticData = await request<RubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/rubric?lens=linguistic`);
+    let technicalData = assignment.isLabReport
         ? await request<RubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/rubric?lens=technical`)
         : undefined;
-    renderRubricPage(root, assignment, linguisticData, technicalData);
+    try {
+        const filled = await fillMissingDraftsOnFirstOpen(assignment, linguisticData, technicalData);
+        if (filled) {
+            state.assignments = await request<Assignment[]>('/assignments');
+            assignment = state.assignments.find((item) => item.id === assignmentId) ?? assignment;
+            linguisticData = await request<RubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/rubric?lens=linguistic`);
+            technicalData = assignment.isLabReport
+                ? await request<RubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/rubric?lens=technical`)
+                : undefined;
+            pendingRubricNotice = { message: 'Filled from the instructions. Review before approving.', tone: 'success' };
+        }
+    } catch (error) {
+        pendingRubricNotice = {
+            message: error instanceof Error ? error.message : 'Could not read the instructions. Fill the rubric in by hand.',
+            tone: 'error'
+        };
+    }
+    const notice = pendingRubricNotice;
+    pendingRubricNotice = null;
+    renderRubricPage(root, assignment, linguisticData, technicalData, notice ?? undefined);
 }
 
 /**
@@ -465,7 +577,8 @@ function renderRubricPage(
     root: HTMLDivElement,
     assignment: Assignment,
     linguisticData: RubricResponse,
-    technicalData?: RubricResponse
+    technicalData?: RubricResponse,
+    notice?: { message: string; tone: 'success' | 'error' }
 ): void {
     root.replaceChildren();
     const isLabReport = Boolean(technicalData);
@@ -517,25 +630,33 @@ function renderRubricPage(
         root.querySelectorAll<HTMLElement>('.wf-validation-summary').forEach((node) => { node.hidden = true; });
     };
 
+    let context: RubricPageContext | undefined;
     const detailsForm = renderAssignmentDetails(root, writingSource, {
         canEdit: linguisticData.permissions.canEdit,
         isLabReport,
         labContext: technicalSource?.labContext ?? '',
+        hasInstructions: Boolean(assignment.instructions?.trim()),
+        notice,
         onInput: () => {
             if (linguisticData.permissions.canEdit) state.panelDirty = true;
             clearValidation();
+        },
+        onFillFromInstructions: async (status) => {
+            if (!context) throw new Error('The rubric page is still loading.');
+            await fillRubricsFromInstructions(context, status);
         }
     });
 
-    const context: RubricPageContext = {
+    const pageContext: RubricPageContext = {
         assignment,
         detailsForm,
         sections: [],
         isLabReport,
         technicalMissing: Boolean(technicalData) && !technicalData?.draft && !technicalData?.approved
     };
+    context = pageContext;
 
-    root.append(renderRubricSection(context, linguisticData, 'linguistic', {
+    root.append(renderRubricSection(pageContext, linguisticData, 'linguistic', {
         heading: isLabReport ? '2 · Writing rubric' : 'Rubric',
         errorLabel: isLabReport ? 'Writing rubric' : '',
         showState: false
@@ -548,13 +669,14 @@ function renderRubricPage(
         if (!technicalData.draft && !technicalData.approved) {
             root.append(renderMissingTechnicalRubric(assignment));
         } else {
-            root.append(renderRubricSection(context, technicalData, 'technical', {
+            root.append(renderRubricSection(pageContext, technicalData, 'technical', {
                 heading: 'Technical rubric',
                 errorLabel: 'Technical rubric',
                 showState: true
             }));
         }
     }
+    if (notice) setWorkspaceMessage(notice.message, notice.tone);
 }
 
 /** Rendering options that differ between an assignment's first and second rubric. */
@@ -573,8 +695,14 @@ interface AssignmentDetailsOptions {
     isLabReport: boolean;
     /** Current lab handout text, which lives on the technical rubric only. */
     labContext: string;
+    hasInstructions: boolean;
+    notice?: { message: string; tone: 'success' | 'error' };
     onInput: () => void;
+    onFillFromInstructions: (status: HTMLElement) => Promise<void>;
 }
+
+const firstOpenAutofillAttempts = new Set<string>();
+let pendingRubricNotice: { message: string; tone: 'success' | 'error' } | null = null;
 
 /**
  * renderAssignmentDetails - renders the one assignment description the page owns
@@ -607,6 +735,21 @@ function renderAssignmentDetails(
     ));
     if (options.isLabReport) {
         headingRow.append(createText('span', 'used by both rubrics', 'wf-quiet-note'));
+    }
+    const fillStatus = createText('p', options.notice?.message ?? '', 'wf-rubric-details-status');
+    fillStatus.setAttribute('role', 'status');
+    fillStatus.setAttribute('aria-live', 'polite');
+    fillStatus.setAttribute('aria-atomic', 'true');
+    if (options.notice) fillStatus.dataset.tone = options.notice.tone;
+    if (options.canEdit) {
+        const fillButton = createButton(
+            'Fill again from instructions',
+            'secondary',
+            async () => options.onFillFromInstructions(fillStatus),
+            !options.hasInstructions
+        );
+        if (!options.hasInstructions) fillButton.title = 'Add the assignment instructions first';
+        headingRow.append(fillButton);
     }
 
     const form = document.createElement('form');
@@ -673,7 +816,7 @@ function renderAssignmentDetails(
     }
 
     form.append(grid);
-    section.append(headingRow, form);
+    section.append(headingRow, fillStatus, form);
     container.append(section);
     return form;
 }
