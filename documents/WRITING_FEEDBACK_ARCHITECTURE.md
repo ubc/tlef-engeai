@@ -19,7 +19,7 @@ The workspace keeps configuration and operation separate:
 | Import assignments/submissions after Canvas is configured | Yes | Yes |
 | Verify text, review feedback, approve feedback, and preview release | Yes | Yes |
 | Enable the course capability or configure a future Canvas connection | Yes | No |
-| Create, edit, or approve a rubric version | Yes | No |
+| Create, edit, or approve a rubric version | Yes | Yes |
 
 Canvas grade permission remains a separate release prerequisite. A staff role inside EngE-AI does not imply that Canvas will accept a grade write.
 
@@ -72,9 +72,9 @@ After a live course connection exists, instructors and TAs may read the availabl
 
 ### Rubric boundary
 
-Every new writing assignment starts with a neutral, unapproved rubric draft: three SFL-grounded criteria and four ranked ordinal levels. It cannot govern generation until an instructor or platform admin reviews and approves it. After first approval, an assignment has one active rubric and may have one editable next-version draft. TAs can view approved details but cannot create manual assignments or mutate/approve rubrics.
+Every new writing assignment starts with a neutral, unapproved rubric draft: three SFL-grounded criteria and four ranked ordinal levels. It cannot govern generation until course staff review and approve it. After first approval, an assignment has one active rubric and may have one editable next-version draft. Instructors, platform admins, and TAs operate the Writing Feedback workspace once the capability is enabled.
 
-Before first approval, instructors may shape 1–10 criteria and 2–8 ranked levels, including optional criteria from the library. Criterion/level ids are unique slugs. After first approval, the id sets are frozen so stored run and annotation joins cannot be reinterpreted; labels, descriptions, SFL metadata, rank/order, and complete point mappings remain versioned and editable.
+Course staff may shape 1–10 criteria and 2–8 ranked levels, including optional criteria from the library. Criterion/level ids are unique slugs. Criteria and levels may be added or removed after approval because every feedback run records the `rubricVersion` that produced it and resolves its criteria against that saved version through `rubricHistory`; removing a criterion never breaks an existing run. Reuse of a retired id is refused because `AnchoredComment.criterion` carries a bare id with no version, so reuse would silently retag old comments.
 
 Saving a draft never changes generation, PDF, or release behavior. Approval promotes a version; an approved version is never edited in place. Runs and releases remain attributable to the approved rubric/profile version that governed them. If any level lacks instructor-approved points, numeric release remains blocked. Approval replaces `gradeMapping` wholesale or unsets it wholesale.
 

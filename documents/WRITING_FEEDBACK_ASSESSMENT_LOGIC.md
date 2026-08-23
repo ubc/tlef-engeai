@@ -21,7 +21,7 @@ New assignments use template `writing-feedback-v1` as an unapproved starting dra
 
 ## Rubric ownership and versioning
 
-The assignment's approved rubric is the only rubric used by generation, staff review, PDF rendering, and release preview. New assignments have no active assessment rubric until an instructor or platform admin explicitly approves the starting draft. TAs may view approved rubric details but cannot create manual assignments or mutate/approve rubric drafts.
+The assignment's approved rubric is the only rubric used by generation, staff review, PDF rendering, and release preview. New assignments have no active assessment rubric until course staff explicitly approve the starting draft. TAs may create manual assignments and mutate/approve rubric drafts once the Writing Feedback capability is enabled; only the course-level capability toggle remains instructor/admin.
 
 The editor requires task, audience, purpose, constraints, learning outcomes, grading intent, 1–10 unique criterion slugs, and 2–8 unique ranked levels. Ranks are contiguous from 1. Points are present on every level or none.
 
@@ -30,7 +30,7 @@ The editor requires task, audience, purpose, constraints, learning outcomes, gra
 3. Resolve validation and optional point values.
 4. Explicitly choose **Approve and use rubric**.
 
-Before first approval, authorized staff may add/remove criteria and levels and edit their ids. After first approval, the criterion and level id sets are frozen; later versions may change labels, descriptions, SFL metadata, ordering/ranks, and points. Existing approved versions, runs, releases, and anchored comments are never rewritten.
+Authorized staff may add or remove criteria and levels before or after approval. Existing approved versions, runs, releases, and anchored comments are never rewritten: each feedback run records the `rubricVersion` that produced it and resolves its criteria against that saved version through `rubricHistory`, so removing a criterion never breaks existing feedback. Reuse of a retired id is refused because `AnchoredComment.criterion` stores a bare id with no version, and reuse would silently retag old comments.
 
 Point mapping is all-or-nothing. Blank points keep feedback ordinal and block numeric release. Approval is the only `gradeMapping` writer and replaces or unsets the complete record; the model never supplies missing values.
 
@@ -62,7 +62,7 @@ The durable crosswalk and source boundaries are recorded in the [SFL diagnostic 
 
 ## General and specific feedback
 
-- **General feedback** groups evidence under every criterion in the run's rubric snapshot, using assignment-authored labels and a readable raw-slug fallback for historical values. It states strengths and presents revision goals with guided questions.
+- **General feedback** groups evidence under every criterion in the run's rubric snapshot, using assignment-authored labels and a removed-criterion fallback for historical values. It states strengths and presents revision goals with guided questions.
 - **Specific feedback** binds a staff-editable comment to an exact UTF-16 span of verified text. Offsets are authoritative and the quote is a checksum. Comments may include revision guidance, an approved course-material link, and a glossary definition.
 
 Model evidence seeds specific comments at read time. Comments persist only when staff save an append-only review revision; the immutable model run is never mutated. Re-verification makes mismatched anchors stale and blocks saving them until resolved.
