@@ -896,17 +896,12 @@
     min-width: 0;
 }
 
-.wf-rubric-grid {
-    display: grid;
-    gap: 15px;
-}
-
 .wf-rubric-tools {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 8px;
-    margin: 12px 0 15px;
+    margin: 0 0 15px;
 }
 
 .wf-rubric-tools .wf-button {
@@ -930,43 +925,6 @@
     outline-offset: 2px;
 }
 
-.wf-rubric-card {
-    background: var(--chat-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 16px 20px;
-}
-
-.wf-rubric-card h3 {
-    margin: 0;
-    color: var(--text-primary);
-    font-size: 15px;
-    font-weight: 600;
-}
-
-.wf-rubric-item-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 12px;
-}
-
-.wf-rubric-item-header .wf-icon-button {
-    width: 44px;
-    height: 44px;
-}
-
-.wf-rubric-card-fields {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0 16px;
-}
-
-.wf-rubric-card-fields .wf-field--wide {
-    grid-column: 1 / -1;
-}
-
 .wf-locked-value {
     margin: 0 0 12px;
     padding: 8px 12px;
@@ -978,46 +936,185 @@
     line-height: 1.4;
 }
 
-.wf-level-list {
-    display: grid;
-    gap: 12px;
+/* Rubric grid — criteria as rows, performance levels as columns */
+
+.wf-grid-scroll {
+    /* Eight levels will not fit a narrow viewport; the table scrolls, the page does not. */
+    overflow-x: auto;
+    padding-bottom: 4px;
 }
 
-.wf-level-row {
-    display: grid;
-    grid-template-columns: minmax(8rem, 0.7fr) minmax(8rem, 0.8fr) minmax(12rem, 1.5fr) minmax(7rem, 0.5fr);
-    gap: 12px;
-    padding: 16px 20px;
-    background: var(--chat-bg);
+.wf-grid {
+    /* Auto layout, not fixed: the per-column min-widths below are what push a wide
+       rubric past the viewport and hand the overflow to .wf-grid-scroll. */
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.wf-grid th,
+.wf-grid td {
+    padding: 10px 12px;
+    text-align: left;
+    vertical-align: top;
     border: 1px solid var(--border-color);
-    border-radius: 10px;
 }
 
-.wf-level-row .wf-field {
-    margin-bottom: 0;
+.wf-grid thead th {
+    background: var(--gingham-color);
 }
 
-.wf-level-row__header {
-    grid-column: 1 / -1;
-    margin-bottom: 0;
+.wf-grid-corner,
+.wf-grid-row-head {
+    width: 18rem;
+    min-width: 14rem;
 }
 
-.wf-level-row__header h3 {
-    margin: 0;
+.wf-grid-col-head {
+    min-width: 11rem;
+}
+
+.wf-grid-corner,
+.wf-grid-points-head {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.wf-grid-points-head,
+.wf-grid-weight {
+    width: 9rem;
+    min-width: 8rem;
+}
+
+.wf-grid-head-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.wf-grid-head-controls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.wf-grid-label-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 6px 8px;
+    background: white;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.wf-grid-text {
+    display: block;
+    width: 100%;
+    padding: 6px 8px;
+    background: white;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.4;
+    resize: vertical;
+}
+
+.wf-grid-focus {
+    margin-top: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-style: italic;
+}
+
+.wf-grid-band {
+    width: 100%;
+    margin-bottom: 6px;
+    padding: 6px 8px;
+    background: white;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.wf-grid-cell--empty .wf-grid-text {
+    background: var(--chat-bg);
+    color: var(--text-secondary);
+}
+
+.wf-grid-weight-input {
+    width: 100%;
+    padding: 6px 8px;
+    background: white;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.wf-grid-warnings:not(:empty) {
+    margin-top: 6px;
+}
+
+.wf-grid-warning {
+    margin: 0 0 4px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.wf-grid-total-label {
+    text-align: right;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.wf-grid-total {
     color: var(--text-primary);
     font-size: 14px;
     font-weight: 600;
 }
 
-.wf-reorder-controls {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+/*
+ * Remove and reorder controls stay in the layout at all times so they keep their
+ * place in the tab order; they simply fade in on hover, on keyboard focus anywhere
+ * in the row or column, and whenever they themselves take a visible focus ring.
+ */
+
+.wf-grid-affordance {
+    width: 32px;
+    height: 32px;
+    opacity: 0;
+    transition: opacity 120ms ease;
 }
 
-.wf-reorder-controls .wf-icon-button {
-    width: 44px;
-    height: 44px;
+.wf-grid-row:hover .wf-grid-affordance,
+.wf-grid-row:focus-within .wf-grid-affordance,
+.wf-grid-col-head:hover .wf-grid-affordance,
+.wf-grid-col-head:focus-within .wf-grid-affordance,
+.wf-grid-affordance:focus-visible,
+.wf-grid-affordance:hover {
+    opacity: 1;
+}
+
+@media (hover: none) {
+    .wf-grid-affordance {
+        width: 44px;
+        height: 44px;
+        opacity: 1;
+    }
 }
 
 /* Review — top bar + layout */
@@ -1906,17 +2003,6 @@ mark.wf-anchor.is-filtered-out,
     }
 
     .wf-form-grid .wf-field--wide {
-        grid-column: auto;
-    }
-
-    .wf-level-row,
-    .wf-rubric-card-fields {
-        grid-template-columns: 1fr;
-        gap: 0;
-    }
-
-    .wf-rubric-card-fields .wf-field--wide,
-    .wf-level-row__header {
         grid-column: auto;
     }
 

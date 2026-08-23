@@ -24,6 +24,15 @@
 import { showConfirmModal } from '../ui/modal-overlay.js';
 import { showSuccessToast } from '../ui/toast-notification.js';
 import {
+    MAX_CRITERIA,
+    MAX_LEVELS,
+    MIN_CRITERIA,
+    MIN_LEVELS,
+    RUBRIC_SLUG,
+    parseBand,
+    renderRubricGrid
+} from './writing-feedback-grid.js';
+import {
     Assignment,
     RubricCell,
     RubricCriterion,
@@ -35,14 +44,12 @@ import {
     chip,
     confirmDiscardDirty,
     createButton,
-    createIconButton,
     createText,
     element,
     field,
     formatDate,
     inputControl,
     jsonRequest,
-    refreshIcons,
     request,
     setQueryState,
     setView,
@@ -51,12 +58,7 @@ import {
     views
 } from './writing-feedback-shared.js';
 
-const MIN_CRITERIA = 1;
-const MAX_CRITERIA = 10;
-const MIN_LEVELS = 2;
-const MAX_LEVELS = 8;
 const MAX_LAB_CONTEXT = 12000;
-const RUBRIC_SLUG = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const FUNCTION_OPTIONS: Array<{ value: WfFunctionTag; label: string }> = [
     { value: 'content', label: 'Content' },
     { value: 'interpersonal', label: 'Interpersonal' },
@@ -176,45 +178,112 @@ function optionalFunctionTag(value: string): WfFunctionTag | undefined {
         : undefined;
 }
 
-/** Reads dynamic rows without validating them so add/remove/reorder preserves edits. */
+/**
+ * optionalControlValue - reads a named control, distinguishing empty from absent
+ *
+ * @param form - Rubric editor form
+ * @param name - Control name following the grid's `criterion.{row}.*` / `level.{column}.*` convention
+ * @returns The trimmed value, or undefined when this grid renders no such control
+ */
+function optionalControlValue(form: HTMLFormElement, name: string): string | undefined {
+    const control = form.elements.namedItem(name) as RubricControl | null;
+    return control ? control.value.trim() : undefined;
+}
+
+/**
+ * readCellControls - rebuilds one criterion's per-level bands from its row of controls
+ *
+ * A cell exists only where staff entered a points range; a blank range means the
+ * criterion awards nothing at that level, which the schema represents by omitting
+ * the key rather than by inventing a zero.
+ *
+ * @param form - Rubric editor form
+ * @param index - Criterion row position
+ * @param levelIds - Level ids in the column order the grid rendered
+ * @returns Bands keyed by level id, or undefined when the row carries none
+ */
+function readCellControls(
+    form: HTMLFormElement,
+    index: number,
+    levelIds: string[]
+): Record<string, RubricCell> | undefined {
+    const cells: Record<string, RubricCell> = {};
+    levelIds.forEach((levelId, column) => {
+        const band = parseBand(optionalControlValue(form, `criterion.${index}.cell.${column}.band`) ?? '');
+        if (!band) return;
+        const descriptor = optionalControlValue(form, `criterion.${index}.cell.${column}.descriptor`);
+        cells[levelId] = descriptor ? { ...band, descriptor } : band;
+    });
+    return Object.keys(cells).length ? cells : undefined;
+}
+
+/**
+ * syncStructuredValues - reads the grid's controls back into the working copy
+ *
+ * The grid names every control it renders `criterion.{row}.*` or `level.{column}.*`,
+ * and this is the only reader of that convention. A name the grid does not render is
+ * not an empty value: the stored value is carried through untouched, so a grid that
+ * omits a field — the technical rubric omits the linguistic focus line, and neither
+ * grid edits the Academic Writing Matrix function or the per-level points that feed
+ * the numeric release mapping — can never blank it on save.
+ *
+ * Nothing is validated here. Add, remove, and reorder all call it first so an
+ * in-progress edit survives the structural change.
+ *
+ * @param form - Rubric editor form owning the grid
+ * @param working - Working copy for this rubric, rewritten in place
+ */
 function syncStructuredValues(form: HTMLFormElement, working: RubricDefinition): void {
+    // Column positions map to level ids through the order the grid rendered, which is
+    // the working copy's own order until a structural change re-renders it.
+    const levelIds = working.levels.map((level) => level.id);
+
     working.criteria = working.criteria.map((criterion, index) => {
-        const functionTag = optionalFunctionTag(rubricTextValue(form, `criterion.${index}.functionTag`));
-        const sflDimension = rubricTextValue(form, `criterion.${index}.sflDimension`);
+        const rawFunctionTag = optionalControlValue(form, `criterion.${index}.functionTag`);
+        const functionTag = rawFunctionTag === undefined
+            ? criterion.functionTag
+            : optionalFunctionTag(rawFunctionTag);
+        const rawFocus = optionalControlValue(form, `criterion.${index}.sflDimension`);
+        const sflDimension = rawFocus === undefined ? criterion.sflDimension : (rawFocus || undefined);
+        const rawPoints = optionalControlValue(form, `criterion.${index}.points`);
+        const points = rawPoints === undefined
+            ? criterion.points
+            : (rawPoints ? Number(rawPoints) : undefined);
+        const cellsRendered = form.elements.namedItem(`criterion.${index}.cell.0.band`) !== null;
+        const cells = cellsRendered ? readCellControls(form, index, levelIds) : criterion.cells;
         return {
             id: criterion.id,
-            label: rubricTextValue(form, `criterion.${index}.label`),
-            description: rubricTextValue(form, `criterion.${index}.description`),
+            label: optionalControlValue(form, `criterion.${index}.label`) ?? criterion.label,
+            description: optionalControlValue(form, `criterion.${index}.description`) ?? criterion.description,
             ...(functionTag ? { functionTag } : {}),
             ...(sflDimension ? { sflDimension } : {}),
-            // Points and per-level bands have no control in this shell. Carry them
-            // through untouched so saving never silently discards an authored grid.
-            ...(criterion.points !== undefined ? { points: criterion.points } : {}),
-            ...(criterion.cells ? { cells: criterion.cells } : {})
+            ...(points !== undefined ? { points } : {}),
+            ...(cells ? { cells } : {})
         };
     });
     working.levels = working.levels.map((level, index) => {
-        const rawPoints = rubricTextValue(form, `level.${index}.points`);
+        const rawPoints = optionalControlValue(form, `level.${index}.points`);
+        const points = rawPoints === undefined ? level.points : (rawPoints ? Number(rawPoints) : undefined);
         return {
             id: level.id,
-            label: rubricTextValue(form, `level.${index}.label`),
-            description: rubricTextValue(form, `level.${index}.description`),
+            label: optionalControlValue(form, `level.${index}.label`) ?? level.label,
+            description: optionalControlValue(form, `level.${index}.description`) ?? level.description,
             rank: index + 1,
-            ...(rawPoints ? { points: Number(rawPoints) } : {})
+            ...(points !== undefined ? { points } : {})
         };
     });
 
     // Bands are keyed by level id and the server rejects a key no level owns, so a
     // removed performance level must take its bands with it. Carrying the bands
     // through (above) without this prune would turn a legal edit into a 400.
-    const levelIds = new Set(working.levels.map((level) => level.id));
+    const survivingIds = new Set(working.levels.map((level) => level.id));
     working.criteria = working.criteria.map((criterion) => {
         const existing = criterion.cells;
         if (!existing) return criterion;
         const kept: Record<string, RubricCell> = {};
         let dropped = false;
         Object.keys(existing).forEach((levelId) => {
-            if (levelIds.has(levelId)) kept[levelId] = existing[levelId];
+            if (survivingIds.has(levelId)) kept[levelId] = existing[levelId];
             else dropped = true;
         });
         if (!dropped) return criterion;
@@ -312,32 +381,6 @@ function collectRubricStructure(
         criteria: working.criteria.map((criterion) => ({ ...criterion })),
         levels: working.levels.map((level, index) => ({ ...level, rank: index + 1 }))
     };
-}
-
-function nextAvailableSlug(prefix: string, existing: string[]): string {
-    let suffix = existing.length + 1;
-    let candidate = `${prefix}_${suffix}`;
-    while (existing.includes(candidate)) {
-        suffix += 1;
-        candidate = `${prefix}_${suffix}`;
-    }
-    return candidate;
-}
-
-function functionSelect(value?: WfFunctionTag): HTMLSelectElement {
-    const select = document.createElement('select');
-    const unset = document.createElement('option');
-    unset.value = '';
-    unset.textContent = 'No function selected';
-    select.append(unset);
-    FUNCTION_OPTIONS.forEach((entry) => {
-        const option = document.createElement('option');
-        option.value = entry.value;
-        option.textContent = entry.label;
-        option.selected = entry.value === value;
-        select.append(option);
-    });
-    return select;
 }
 
 /**
@@ -771,7 +814,6 @@ function renderRubricSection(
     if (!source) throw new Error('This assignment does not have a rubric draft or approved rubric.');
     const working = detachedRubric(source);
     const canEdit = data.permissions.canEdit;
-    const structureLocked = Boolean(data.approved || data.history.some((rubric) => rubric.status === 'approved'));
     const lensQuery = lens === 'technical' ? '?lens=technical' : '';
 
     const section = document.createElement('details');
@@ -779,9 +821,8 @@ function renderRubricSection(
     section.open = true;
     const summary = document.createElement('summary');
     summary.className = 'wf-rubric-section__summary';
-    // A heading element, not a span: the Criterion/Level h3s inside this section
-    // need an ancestor heading to sit under. h2 keeps them nested one level down
-    // and matches the sibling 'Assignment details' heading above.
+    // A heading element, not a span: h2 matches the sibling 'Assignment details'
+    // heading above and gives the grid below an ancestor heading to sit under.
     const summaryTitle = createText('h2', options.heading, 'wf-rubric-section__title');
     const summaryMeta = createText('span', rubricSizeSummary(working), 'wf-rubric-section__meta');
     summary.append(summaryTitle, summaryMeta);
@@ -816,283 +857,39 @@ function renderRubricSection(
         updateSummary();
     };
 
-    const criteriaFieldset = document.createElement('fieldset');
-    criteriaFieldset.className = 'wf-fieldset';
-    criteriaFieldset.append(
-        createText('legend', 'Criteria'),
-        createText(
-            'p',
-            structureLocked
-                ? 'Criteria are fixed after the first approval so released feedback stays readable. Labels and descriptions remain editable.'
-                : `Use ${MIN_CRITERIA} to ${MAX_CRITERIA} criteria.`,
-            'wf-help-text'
-        )
-    );
-    const criteriaTools = document.createElement('div');
-    criteriaTools.className = 'wf-rubric-tools';
-    const criteriaGrid = document.createElement('div');
-    criteriaGrid.className = 'wf-rubric-grid';
-    criteriaFieldset.append(criteriaTools, criteriaGrid);
-
-    const levelsFieldset = document.createElement('fieldset');
-    levelsFieldset.className = 'wf-fieldset';
-    levelsFieldset.append(
-        createText('legend', 'Performance levels'),
-        createText(
-            'p',
-            `Use ${MIN_LEVELS} to ${MAX_LEVELS} ordered levels. Enter points for every level, or leave them all blank.`,
-            'wf-help-text'
-        )
-    );
-    const levelsTools = document.createElement('div');
-    levelsTools.className = 'wf-rubric-tools';
-    const levelsList = document.createElement('div');
-    levelsList.className = 'wf-level-list';
-    levelsFieldset.append(levelsTools, levelsList);
-
-    // Single mount point for this rubric's grid. The split criteria/levels
-    // fieldsets live here until one grid replaces both.
+    // The rubric is one table: criteria are rows, performance levels are columns,
+    // and every cell carries the points range that criterion awards at that level.
     const gridMount = document.createElement('div');
     gridMount.className = 'wf-rubric-grid-mount';
     gridMount.dataset.rubricGrid = lens;
-    gridMount.append(criteriaFieldset, levelsFieldset);
     form.append(gridMount);
 
-    const focusDynamicRow = (kind: 'criterion' | 'level', index: number): void => {
-        window.requestAnimationFrame(() => {
-            const row = form.querySelector<HTMLElement>(`[data-${kind}-index="${index}"]`);
-            row?.querySelector<HTMLInputElement>('input')?.focus();
-        });
-    };
+    // A structural change lands in the next version; the confirmation names it, and
+    // the ids every approved version has used are off limits to a new row or column.
+    const approvedVersions = [
+        ...(data.approved ? [data.approved] : []),
+        ...data.history.filter((rubric) => rubric.status === 'approved')
+    ];
+    const approvedVersion = approvedVersions.length
+        ? Math.max(...approvedVersions.map((rubric) => rubric.version))
+        : undefined;
+    const reservedIds = approvedVersions.flatMap((rubric) => [
+        ...rubric.criteria.map((criterion) => criterion.id),
+        ...rubric.levels.map((level) => level.id)
+    ]);
 
-    const renderCriteria = (): void => {
-        criteriaGrid.replaceChildren();
-        criteriaTools.replaceChildren();
-        if (canEdit && !structureLocked) {
-            const addCriterion = createButton(
-                'Add criterion',
-                'secondary',
-                async () => {
-                    syncStructuredValues(form, working);
-                    const id = nextAvailableSlug('criterion', working.criteria.map((criterion) => criterion.id));
-                    working.criteria.push({ id, label: 'New criterion', description: '' });
-                    renderCriteria();
-                    state.panelDirty = true;
-                    updateSummary();
-                    announce(`Criterion added. ${working.criteria.length} criteria total.`);
-                    focusDynamicRow('criterion', working.criteria.length - 1);
-                },
-                working.criteria.length >= MAX_CRITERIA
-            );
-            const availableLibrary = (data.library ?? []).filter(
-                (candidate) => !working.criteria.some((criterion) => criterion.id === candidate.id)
-            );
-            const librarySelect = document.createElement('select');
-            librarySelect.className = 'wf-rubric-library-select';
-            librarySelect.setAttribute('aria-label', 'Criterion library');
-            const placeholder = document.createElement('option');
-            placeholder.value = '';
-            placeholder.textContent = availableLibrary.length ? 'Choose a library criterion' : 'No additional library criteria';
-            librarySelect.append(placeholder);
-            availableLibrary.forEach((candidate) => {
-                const option = document.createElement('option');
-                option.value = candidate.id;
-                option.textContent = candidate.label;
-                librarySelect.append(option);
-            });
-            librarySelect.disabled = !availableLibrary.length || working.criteria.length >= MAX_CRITERIA;
-            const addFromLibrary = createButton(
-                'Add from library',
-                'secondary',
-                async () => {
-                    const candidate = availableLibrary.find((entry) => entry.id === librarySelect.value);
-                    if (!candidate) {
-                        librarySelect.focus();
-                        return;
-                    }
-                    syncStructuredValues(form, working);
-                    working.criteria.push({ ...candidate });
-                    renderCriteria();
-                    state.panelDirty = true;
-                    updateSummary();
-                    announce(`${candidate.label} added from the criterion library. Position ${working.criteria.length} of ${working.criteria.length}.`);
-                    focusDynamicRow('criterion', working.criteria.length - 1);
-                },
-                true
-            );
-            librarySelect.addEventListener('change', () => {
-                addFromLibrary.disabled = librarySelect.disabled || !librarySelect.value;
-            });
-            criteriaTools.append(addCriterion, librarySelect, addFromLibrary);
-        }
-
-        working.criteria.forEach((criterion, index) => {
-            const card = document.createElement('article');
-            card.className = 'wf-rubric-card';
-            card.dataset.criterionIndex = String(index);
-            const cardHeader = document.createElement('div');
-            cardHeader.className = 'wf-rubric-item-header';
-            cardHeader.append(createText('h3', `Criterion ${index + 1}`));
-            if (canEdit && !structureLocked) {
-                const remove = createIconButton('trash-2', `Remove criterion ${criterion.label || `${index + 1}`}`, 'danger', async () => {
-                    if (working.criteria.length <= MIN_CRITERIA) {
-                        announce('At least one criterion is required.');
-                        return;
-                    }
-                    const confirmation = await showConfirmModal(
-                        'Remove this criterion?',
-                        `Remove "${criterion.label || `Criterion ${index + 1}`}" from this rubric draft?`,
-                        'Remove criterion',
-                        'Keep criterion',
-                        'danger'
-                    );
-                    if (confirmation.action !== 'remove-criterion') return;
-                    syncStructuredValues(form, working);
-                    const removed = working.criteria.splice(index, 1)[0];
-                    renderCriteria();
-                    state.panelDirty = true;
-                    updateSummary();
-                    announce(`${removed.label || 'Criterion'} removed. ${working.criteria.length} criteria remain.`);
-                    focusDynamicRow('criterion', Math.min(index, working.criteria.length - 1));
-                });
-                remove.disabled = working.criteria.length <= MIN_CRITERIA;
-                cardHeader.append(remove);
-            }
-
-            const label = namedControl(inputControl(criterion.label), `criterion.${index}.label`);
-            label.maxLength = 80;
-            bindTextControl(label, canEdit, () => { criterion.label = label.value; markDirty(); });
-            const description = namedControl(textAreaControl(criterion.description, 4), `criterion.${index}.description`);
-            bindTextControl(description, canEdit, () => { criterion.description = description.value; markDirty(); });
-            const functionTag = namedControl(functionSelect(criterion.functionTag), `criterion.${index}.functionTag`);
-            setEditable(functionTag, canEdit);
-            functionTag.addEventListener('change', () => {
-                criterion.functionTag = optionalFunctionTag(functionTag.value);
-                markDirty();
-            });
-            const focus = namedControl(textAreaControl(criterion.sflDimension ?? '', 3), `criterion.${index}.sflDimension`);
-            bindTextControl(focus, canEdit, () => {
-                criterion.sflDimension = focus.value.trim() || undefined;
-                markDirty();
-            });
-            const fields = document.createElement('div');
-            fields.className = 'wf-rubric-card-fields';
-            fields.append(
-                field('Label', label),
-                field('Description', description, undefined, true),
-                field('Academic Writing Matrix function (optional)', functionTag),
-                field('Linguistic focus (optional)', focus)
-            );
-            card.append(cardHeader, fields);
-            criteriaGrid.append(card);
-        });
-        refreshIcons();
-    };
-
-    const renderLevels = (): void => {
-        levelsList.replaceChildren();
-        levelsTools.replaceChildren();
-        if (canEdit && !structureLocked) {
-            levelsTools.append(createButton(
-                'Add performance level',
-                'secondary',
-                async () => {
-                    syncStructuredValues(form, working);
-                    const id = nextAvailableSlug('level', working.levels.map((level) => level.id));
-                    working.levels.push({ id, label: 'New level', description: '', rank: working.levels.length + 1 });
-                    renderLevels();
-                    state.panelDirty = true;
-                    updateSummary();
-                    announce(`Performance level added at position ${working.levels.length} of ${working.levels.length}.`);
-                    focusDynamicRow('level', working.levels.length - 1);
-                },
-                working.levels.length >= MAX_LEVELS
-            ));
-        }
-
-        working.levels.forEach((level, index) => {
-            const row = document.createElement('article');
-            row.className = 'wf-level-row';
-            row.dataset.levelIndex = String(index);
-            const rowHeader = document.createElement('div');
-            rowHeader.className = 'wf-rubric-item-header wf-level-row__header';
-            rowHeader.append(createText('h3', `Level ${index + 1} of ${working.levels.length}`));
-            if (canEdit) {
-                const controls = document.createElement('div');
-                controls.className = 'wf-reorder-controls';
-                const moveLevel = async (direction: -1 | 1): Promise<void> => {
-                    const target = index + direction;
-                    if (target < 0 || target >= working.levels.length) return;
-                    syncStructuredValues(form, working);
-                    const [moved] = working.levels.splice(index, 1);
-                    working.levels.splice(target, 0, moved);
-                    working.levels.forEach((entry, rankIndex) => { entry.rank = rankIndex + 1; });
-                    renderLevels();
-                    state.panelDirty = true;
-                    updateSummary();
-                    announce(`${moved.label || 'Level'} moved to position ${target + 1} of ${working.levels.length}.`);
-                    focusDynamicRow('level', target);
-                };
-                const up = createIconButton('arrow-up', `Move ${level.label || `level ${index + 1}`} up`, 'neutral', async () => moveLevel(-1));
-                up.disabled = index === 0;
-                const down = createIconButton('arrow-down', `Move ${level.label || `level ${index + 1}`} down`, 'neutral', async () => moveLevel(1));
-                down.disabled = index === working.levels.length - 1;
-                controls.append(up, down);
-                if (!structureLocked) {
-                    const remove = createIconButton('trash-2', `Remove performance level ${level.label || `${index + 1}`}`, 'danger', async () => {
-                        if (working.levels.length <= MIN_LEVELS) {
-                            announce(`At least ${MIN_LEVELS} performance levels are required.`);
-                            return;
-                        }
-                        const confirmation = await showConfirmModal(
-                            'Remove this performance level?',
-                            `Remove "${level.label || `Level ${index + 1}`}" from this rubric draft?`,
-                            'Remove level',
-                            'Keep level',
-                            'danger'
-                        );
-                        if (confirmation.action !== 'remove-level') return;
-                        syncStructuredValues(form, working);
-                        const removed = working.levels.splice(index, 1)[0];
-                        working.levels.forEach((entry, rankIndex) => { entry.rank = rankIndex + 1; });
-                        renderLevels();
-                        state.panelDirty = true;
-                        updateSummary();
-                        announce(`${removed.label || 'Level'} removed. ${working.levels.length} performance levels remain.`);
-                        focusDynamicRow('level', Math.min(index, working.levels.length - 1));
-                    });
-                    remove.disabled = working.levels.length <= MIN_LEVELS;
-                    controls.append(remove);
-                }
-                rowHeader.append(controls);
-            }
-
-            const label = namedControl(inputControl(level.label), `level.${index}.label`);
-            label.maxLength = 60;
-            bindTextControl(label, canEdit, () => { level.label = label.value; markDirty(); });
-            const description = namedControl(textAreaControl(level.description, 3), `level.${index}.description`);
-            bindTextControl(description, canEdit, () => { level.description = description.value; markDirty(); });
-            const points = namedControl(inputControl(level.points === undefined ? '' : String(level.points), 'number'), `level.${index}.points`);
-            points.min = '0';
-            points.max = '1000';
-            points.step = '0.01';
-            bindTextControl(points, canEdit, () => {
-                level.points = points.value.trim() ? Number(points.value) : undefined;
-                markDirty();
-            });
-            row.append(
-                rowHeader,
-                field('Label', label),
-                field('Description', description),
-                field('Points (optional)', points)
-            );
-            levelsList.append(row);
-        });
-        refreshIcons();
-    };
-
-    renderCriteria();
-    renderLevels();
+    renderRubricGrid(gridMount, working, {
+        canEdit,
+        // The linguistic focus line belongs to the writing rubric only.
+        showLinguisticFocus: lens === 'linguistic',
+        approvedVersion,
+        nextVersion: data.draft?.version ?? (approvedVersion ?? 0) + 1,
+        library: data.library ?? [],
+        reservedIds,
+        syncFromForm: () => syncStructuredValues(form, working),
+        onChange: markDirty,
+        announce
+    });
 
     context.sections.push({ lens, errorLabel: options.errorLabel, form, working, canEdit });
 
