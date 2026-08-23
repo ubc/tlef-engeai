@@ -14,10 +14,35 @@
 
 import { z } from 'zod';
 import { LLMModule } from 'ubc-genai-toolkit-llm';
-import type { WritingRubricCriterion, WritingRubricDefinition } from './contracts';
+import { isMockResponse } from '../helpers/mock-response';
+import type {
+    WritingAssignment,
+    WritingFeedbackLens,
+    WritingRubricCriterion,
+    WritingRubricDefinition
+} from './contracts';
 
 /** Where a draft's grid came from, which decides how much auto-fill may rewrite. */
 export type RubricGridSource = 'canvas' | 'apsc182' | 'metafunctions_lab' | 'metafunctions_plain';
+
+/**
+ * gridSourceFor - the merge-table row an assignment's grid falls under for a lens.
+ *
+ * The technical grid is always the department's APSC 182 form: `buildLabReportRubric`
+ * is its only source, and it is never Canvas-seeded, so the lens is checked first and
+ * a Canvas-sourced assignment does not leak into the technical branch. `rubricSource`
+ * is assignment-wide rather than per-lens and is consulted only for the writing lens,
+ * where it distinguishes an instructor's imported grid from a generated one.
+ *
+ * @param assignment - Assignment whose grid provenance is being classified
+ * @param lens - Lens the draft being filled belongs to
+ * @returns The grid source row that decides `autofillMergeRules`
+ */
+export function gridSourceFor(assignment: WritingAssignment, lens: WritingFeedbackLens): RubricGridSource {
+    if (lens === 'technical') return 'apsc182';
+    if (assignment.rubricSource === 'canvas') return 'canvas';
+    return assignment.isLabReport ? 'metafunctions_lab' : 'metafunctions_plain';
+}
 
 /** What auto-fill is permitted to change in one draft. */
 export interface AutofillMergeRules {
@@ -176,6 +201,33 @@ const autofillProposalSchema = z.object({
 });
 
 /**
+ * deterministicAutofillProposal - mock-mode substitute for a real model call.
+ *
+ * Mirrors `deterministicFeedback` in `feedback-engine.ts`: under `MOCK_RESPONSE` the
+ * system must never reach a feature LLM, so this echoes the draft's own criteria and
+ * details back verbatim (falling back to a labelled placeholder for anything blank)
+ * rather than inventing content.
+ *
+ * @param draft - Draft supplying the criteria, levels, and any existing text to echo
+ * @returns A deterministic proposal usable by `mergeAutofill` under any rule set
+ */
+function deterministicAutofillProposal(draft: WritingRubricDefinition): AutofillProposal {
+    return {
+        title: draft.title || '[MOCK] Assignment title',
+        task: draft.task || '[MOCK] Assessed task.',
+        audience: draft.audience || '[MOCK] Intended reader.',
+        purpose: draft.purpose || '[MOCK] Communicative purpose.',
+        constraints: draft.constraints.length ? [...draft.constraints] : ['[MOCK] Constraint'],
+        learningOutcomes: draft.learningOutcomes.length ? [...draft.learningOutcomes] : ['[MOCK] Learning outcome'],
+        gradingIntent: draft.gradingIntent || '[MOCK] Formative.',
+        criteria: draft.criteria.map((criterion) => ({
+            ...criterion,
+            description: criterion.description || `[MOCK] ${criterion.label} description.`
+        }))
+    };
+}
+
+/**
  * proposeRubricFromInstructions - asks the model to describe the assignment as a rubric.
  *
  * Drops any criterion id the model invented, since the prompt tells it to use exactly
@@ -184,22 +236,36 @@ const autofillProposalSchema = z.object({
  * exist ahead of the prompt/review work that would let the model add a genuinely new
  * row, which is deliberately out of scope for this change.
  *
+ * Never calls a feature LLM under `MOCK_RESPONSE`, mirroring `RubricWritingFeedbackEngine`:
+ * an injected module always wins (the seam tests use this), otherwise mock mode short-
+ * circuits to a deterministic proposal before any `LLMModule` is even constructed.
+ *
  * @param instructions - Instructor-authored assignment directions
  * @param draft - Draft supplying the criteria and levels the model must describe
+ * @param llmModule - Optional injected LLM adapter for tests or controlled composition
  * @returns A validated proposal. The caller decides how much of it may be applied.
  * @throws Error with no model text when the response cannot be parsed or validated,
  *         because model errors and responses can echo the prompt body
  */
 export async function proposeRubricFromInstructions(
     instructions: string,
-    draft: WritingRubricDefinition
+    draft: WritingRubricDefinition,
+    llmModule?: LLMModule
 ): Promise<AutofillProposal> {
-    const llm = new LLMModule({
-        provider: (process.env.LLM_PROVIDER || 'ollama') as never,
-        apiKey: process.env.LLM_API_KEY,
-        endpoint: process.env.LLM_ENDPOINT,
-        defaultModel: process.env.LLM_DEFAULT_MODEL
-    });
+    const llm = llmModule ?? (isMockResponse()
+        ? undefined
+        : new LLMModule({
+            provider: (process.env.LLM_PROVIDER || 'ollama') as never,
+            apiKey: process.env.LLM_API_KEY,
+            endpoint: process.env.LLM_ENDPOINT,
+            defaultModel: process.env.LLM_DEFAULT_MODEL
+        }));
+
+    if (!llm) {
+        const known = new Set(draft.criteria.map((criterion) => criterion.id));
+        const mocked = deterministicAutofillProposal(draft);
+        return { ...mocked, criteria: mocked.criteria.filter((criterion) => known.has(criterion.id)) };
+    }
 
     const response = await llm.sendMessage(buildAutofillPrompt(instructions, draft), {});
     const raw = String((response as { content?: unknown }).content ?? '');

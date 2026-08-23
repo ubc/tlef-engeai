@@ -36,11 +36,12 @@ import { buildLabReportRubric } from '../writing-feedback/lab-report-profile';
 import { seedRubricForLens } from '../writing-feedback/rubric-seed';
 import {
     autofillMergeRules,
+    gridSourceFor,
     mergeAutofill,
     proposeRubricFromInstructions,
     type RubricGridSource
 } from '../writing-feedback/rubric-autofill';
-import type { WritingFeedbackLens } from '../writing-feedback/contracts';
+import type { WritingFeedbackLens, WritingRubricDefinition } from '../writing-feedback/contracts';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -324,22 +325,30 @@ router.post(
 
         const selected = selectRubric(assignment, lens);
         const globalUser = (req.session as any).globalUser;
-        const draft = selected.draft ?? seedRubricForLens({ lens, actorUserId: globalUser.userId });
+        // Prefer the current draft; failing that, continue from the approved rubric
+        // (matching the version computation the sibling PUT handler uses above) rather
+        // than discarding an instructor's approved grid for a freshly seeded one. Only
+        // an assignment with neither a draft nor an approval falls back to the seed.
+        const draft: WritingRubricDefinition = selected.draft
+            ?? (selected.approved
+                ? { ...selected.approved, status: 'draft', version: selected.approved.version + 1 }
+                : seedRubricForLens({ lens, actorUserId: globalUser.userId }));
 
-        // The grid source decides how much of the proposal the merge may apply.
-        // `rubricSource` is assignment-wide, not per-lens: an imported Canvas grid
-        // stays untouched on either lens, and otherwise the technical lens is always
-        // the department's APSC 182 form while the linguistic lens follows whether
-        // this assignment is a lab report.
-        const source: RubricGridSource = assignment.rubricSource === 'canvas'
-            ? 'canvas'
-            : lens === 'technical'
-                ? 'apsc182'
-                : assignment.isLabReport ? 'metafunctions_lab' : 'metafunctions_plain';
+        // The grid source decides how much of the proposal the merge may apply — see
+        // `gridSourceFor` for why the lens is checked before `rubricSource`.
+        const source: RubricGridSource = gridSourceFor(assignment, lens);
 
         try {
             const proposal = await proposeRubricFromInstructions(assignment.instructions, draft);
             const merged = mergeAutofill(draft, proposal, autofillMergeRules(source));
+
+            // Reuse the same validation the PUT path enforces (band ordering, cells keyed
+            // to real levels) rather than writing a second one; a proposal that would leave
+            // the draft invalid is refused before it is ever saved.
+            if (!writingRubricDraftInputSchema.safeParse(merged).success) {
+                throw new Error('Auto-fill response was not usable');
+            }
+
             const saved = await mongo.saveWritingRubricDraft(courseId(req), assignment.id, merged, lens);
             res.json({ success: true, data: saved });
         } catch {

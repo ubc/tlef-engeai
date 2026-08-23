@@ -54,11 +54,26 @@ describe('POST rubric-draft/fill', () => {
         expect(source).toMatch(/router\.post\(\s*'\/:courseId\/writing-feedback\/assignments\/:assignmentId\/rubric-draft\/fill'/);
     });
 
-    it('sits under the shared writing-feedback prefix guarded by the router-level middleware', () => {
-        // Every route behind `requireInstructorForCourseAPI` shares this literal prefix
-        // (see the `router.use('/:courseId/writing-feedback', ...)` guard above); no
-        // route needs its own guard because there is exactly one shared one.
-        expect(routePath).toContain("'/:courseId/writing-feedback/");
+    it('inherits the router-level course-staff guard mounted on the writing-feedback prefix', () => {
+        // There is exactly one guard in this file, mounted once on the whole
+        // '/:courseId/writing-feedback' prefix; reading it here (rather than
+        // re-deriving a guard list per route) is what proves the fill route,
+        // whose path is a literal sub-path of that prefix, sits behind it.
+        expect(source).toMatch(
+            /router\.use\(\s*'\/:courseId\/writing-feedback',\s*requireInstructorForCourseAPI\(\['params'\]\),\s*requireCourseFeatureAPI\('writingFeedback',\s*\['params'\]\)\s*\);/
+        );
+    });
+
+    it('declares no middleware for the fill route beyond the shared async-auth wrapper', () => {
+        // Captures everything between the fill route's `router.post(` call and the
+        // next `router.` declaration; the only thing that may appear right after the
+        // path argument is `asyncHandlerWithAuth(` — no per-route guard, no upload
+        // middleware, nothing else. Fails outright (match is null) if the route is
+        // ever removed, unlike a check that only reads a locally declared constant.
+        const pattern = /router\.post\(\s*'\/:courseId\/writing-feedback\/assignments\/:assignmentId\/rubric-draft\/fill',([\s\S]*?)\nrouter\./;
+        const match = source.match(pattern);
+        expect(match).not.toBeNull();
+        expect(match?.[1].trimStart().startsWith('asyncHandlerWithAuth(')).toBe(true);
     });
 
     it('is declared before the approve route so it is not shadowed by a capturing sibling', () => {
