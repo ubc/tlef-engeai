@@ -7,21 +7,15 @@ import { seedRubricForLens } from '../rubric-seed';
 import type { WritingRubricDefinition } from '../contracts';
 
 describe('seedRubricForLens', () => {
-    it('seeds the three metafunctions for the writing rubric', () => {
-        const seeded = seedRubricForLens({ lens: 'linguistic', isLabReport: false, actorUserId: 'u' });
+    it('seeds the three metafunctions for the writing rubric, lab report or not', () => {
+        const seeded = seedRubricForLens({ lens: 'linguistic', actorUserId: 'u' });
         expect(seeded.criteria.map((c) => c.id))
             .toEqual(['organization', 'content', 'interpersonal_positioning']);
         expect(seeded.status).toBe('draft');
     });
 
-    it('seeds the three metafunctions for a lab report writing rubric too', () => {
-        const seeded = seedRubricForLens({ lens: 'linguistic', isLabReport: true, actorUserId: 'u' });
-        expect(seeded.criteria.map((c) => c.id))
-            .toEqual(['organization', 'content', 'interpersonal_positioning']);
-    });
-
     it('seeds the APSC 182 form for the technical rubric', () => {
-        const seeded = seedRubricForLens({ lens: 'technical', isLabReport: true, actorUserId: 'u' });
+        const seeded = seedRubricForLens({ lens: 'technical', actorUserId: 'u' });
         expect(seeded.criteria).toHaveLength(7);
         expect(seeded.criteria.map((c) => c.points)).toEqual([15, 5, 10, 45, 5, 5, 15]);
     });
@@ -35,7 +29,7 @@ describe('seedRubricForLens', () => {
             ]
         };
         const seeded = seedRubricForLens({
-            lens: 'linguistic', isLabReport: false, actorUserId: 'u', canvasRubric
+            lens: 'linguistic', actorUserId: 'u', canvasRubric
         });
         expect(seeded.criteria.map((c) => c.id)).toEqual(['imported']);
         expect(seeded.levels.map((l) => l.id)).toEqual(['no_marks', 'full_marks']);
@@ -44,7 +38,7 @@ describe('seedRubricForLens', () => {
 
     it('falls back to the profile when the Canvas rubric has no criteria', () => {
         const seeded = seedRubricForLens({
-            lens: 'linguistic', isLabReport: false, actorUserId: 'u',
+            lens: 'linguistic', actorUserId: 'u',
             canvasRubric: { criteria: [], levels: [] }
         });
         expect(seeded.criteria).toHaveLength(3);
@@ -52,7 +46,7 @@ describe('seedRubricForLens', () => {
 
     it('never seeds an approved rubric', () => {
         const seeded: WritingRubricDefinition = seedRubricForLens({
-            lens: 'technical', isLabReport: true, actorUserId: 'u'
+            lens: 'technical', actorUserId: 'u'
         });
         expect(seeded.status).toBe('draft');
         expect(seeded.approvedAt).toBeUndefined();

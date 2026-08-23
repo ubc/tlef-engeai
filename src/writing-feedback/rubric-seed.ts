@@ -29,7 +29,6 @@ export interface ImportedRubricShape {
 /** Everything the resolver needs to choose and build a starting rubric. */
 export interface SeedRubricInput {
     lens: WritingFeedbackLens;
-    isLabReport: boolean;
     actorUserId: string;
     /**
      * Rubric pulled from the course LMS, when the assignment carried one. Supplied by
@@ -42,7 +41,11 @@ export interface SeedRubricInput {
 /**
  * seedRubricForLens - builds the unapproved rubric a new draft starts from.
  *
- * @param input - Lens, lab-report flag, actor, and any imported rubric
+ * A lab report's writing rubric seeds from the same metafunctions as any other
+ * assignment — a lab handout describes an experiment, not linguistic expectations —
+ * so nothing here branches on whether the assignment is a lab report.
+ *
+ * @param input - Lens, actor, and any imported rubric
  * @returns A draft rubric. Never approved: approval stays the gate that lets a
  *          rubric reach the model.
  */
