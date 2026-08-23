@@ -13,13 +13,13 @@
 /* Feature foundation — shared tokens, page bounds, and box sizing */
 
 .wf-page {
-    --chat-bg: #fcfcfc;
-    --border-color: #b8b8b8;
-    --hover-bg: #efefef;
-    --text-primary: #333333;
-    --text-secondary: #6c757d;
+    --chat-bg: rgb(252, 252, 252);
+    --border-color: rgb(184, 184, 184);
+    --hover-bg: rgb(239, 239, 239);
+    --text-primary: rgb(51, 51, 51);
+    --text-secondary: rgb(108, 117, 125);
     --gingham-color: rgba(92, 138, 58, 0.1);
-    --background-2: #ECE5DD;
+    --background-2: rgb(236, 229, 221);
     --pinned-color: var(--color-chbe-green);
     display: flex;
     flex-direction: column;
@@ -140,8 +140,8 @@
 
 .wf-workspace-message[data-tone="warning"] {
     background: rgba(230, 126, 34, 0.1);
-    border-color: #e67e22;
-    color: #a35617;
+    border-color: color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
+    color: color-mix(in srgb, var(--color-eng-red) 65%, var(--text-primary));
 }
 
 .wf-workspace-message[data-tone="error"] {
@@ -175,7 +175,7 @@
 }
 
 .wf-button--primary:hover:not(:disabled) {
-    background: #2d7a2d;
+    background: color-mix(in srgb, var(--color-chbe-green) 80%, black);
 }
 
 .wf-button--secondary {
@@ -312,8 +312,8 @@
 
 .wf-chip--amber {
     background: rgba(230, 126, 34, 0.1);
-    color: #e67e22;
-    border: 1px solid #e67e22;
+    color: color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
+    border: 1px solid color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
 }
 
 .wf-chip--red {
@@ -324,8 +324,8 @@
 
 .wf-chip--purple {
     background: rgba(123, 31, 162, 0.1);
-    color: #7b1fa2;
-    border: 1px solid #7b1fa2;
+    color: var(--color-ubc-blue);
+    border: 1px solid var(--color-ubc-blue);
 }
 
 /* Section titles + cards */
@@ -384,7 +384,7 @@
 
 .wf-callout--warning {
     background: rgba(230, 126, 34, 0.1);
-    border-color: #e67e22;
+    border-color: color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
 }
 
 .wf-callout--success {
@@ -821,13 +821,15 @@
 
 .wf-rubric-heading-row {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     flex-wrap: wrap;
-    gap: 4px 10px;
+    gap: 8px 12px;
+    padding: 16px 20px 0;
 }
 
 .wf-rubric-heading-row .wf-section-title {
     flex: 1 1 auto;
+    margin-bottom: 0;
 }
 
 .wf-quiet-note {
@@ -838,13 +840,70 @@
 
 .wf-rubric-details {
     margin: 0 0 20px;
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.wf-rubric-details-status {
+    margin: 6px 20px 0;
+    min-height: 18px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.wf-rubric-details-status[data-tone="success"] {
+    color: var(--color-chbe-green);
+}
+
+.wf-rubric-details-status[data-tone="error"] {
+    color: var(--color-eng-red);
+}
+
+.wf-rubric-details .wf-rubric-details-form {
+    padding: 8px 20px 18px;
+}
+
+.wf-rubric-details .wf-form-grid {
+    display: block;
+}
+
+.wf-rubric-details .wf-field {
+    grid-template-columns: minmax(9rem, 13rem) minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+    margin: 0;
+    padding: 12px 0;
+    border-top: 1px solid var(--border-color);
+}
+
+.wf-rubric-details .wf-field:first-child {
+    border-top: 0;
+}
+
+.wf-rubric-details .wf-field label {
+    padding-top: 9px;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.wf-rubric-details .wf-field input,
+.wf-rubric-details .wf-field textarea {
+    color: var(--text-primary);
+}
+
+.wf-rubric-details .wf-field--wide {
+    grid-column: auto;
 }
 
 .wf-rubric-section {
     margin: 0 0 20px;
     background: var(--chat-bg);
     border: 1px solid var(--border-color);
-    border-radius: 10px;
+    border-radius: 8px;
+    overflow: hidden;
 }
 
 .wf-rubric-section__summary {
@@ -858,6 +917,17 @@
     font-size: 16px;
     font-weight: 600;
     cursor: pointer;
+}
+
+.wf-rubric-section__summary::before {
+    content: ">";
+    color: var(--text-secondary);
+    font-size: 13px;
+    transition: transform 120ms ease;
+}
+
+.wf-rubric-section[open] > .wf-rubric-section__summary::before {
+    transform: rotate(90deg);
 }
 
 .wf-rubric-section__title {
@@ -942,6 +1012,18 @@
     /* Eight levels will not fit a narrow viewport; the table scrolls, the page does not. */
     overflow-x: auto;
     padding-bottom: 4px;
+    scrollbar-gutter: stable;
+    scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+.wf-grid-scroll::-webkit-scrollbar,
+.wf-grid-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.wf-grid-scroll::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.22);
+    border-radius: 4px;
 }
 
 .wf-grid {
@@ -949,6 +1031,8 @@
        rubric past the viewport and hand the overflow to .wf-grid-scroll. */
     width: 100%;
     border-collapse: collapse;
+    color: var(--text-primary);
+    font-size: 13px;
 }
 
 .wf-grid th,
@@ -960,7 +1044,7 @@
 }
 
 .wf-grid thead th {
-    background: var(--gingham-color);
+    background: color-mix(in srgb, var(--color-chbe-green) 12%, var(--chat-bg));
 }
 
 .wf-grid-corner,
@@ -984,6 +1068,7 @@
 .wf-grid-weight {
     width: 9rem;
     min-width: 8rem;
+    background: var(--hover-bg);
 }
 
 .wf-grid-head-bar {
@@ -1046,9 +1131,17 @@
     font-weight: 600;
 }
 
+.wf-grid-cell .wf-grid-band {
+    color: var(--text-primary);
+}
+
 .wf-grid-cell--empty .wf-grid-text {
     background: var(--chat-bg);
     color: var(--text-secondary);
+}
+
+.wf-grid-cell--empty {
+    background: color-mix(in srgb, var(--chat-bg) 80%, var(--hover-bg));
 }
 
 .wf-grid-weight-input {
@@ -1079,12 +1172,14 @@
     color: var(--text-primary);
     font-size: 13px;
     font-weight: 600;
+    background: var(--hover-bg);
 }
 
 .wf-grid-total {
     color: var(--text-primary);
     font-size: 14px;
     font-weight: 600;
+    background: var(--hover-bg);
 }
 
 /*
@@ -1211,7 +1306,7 @@
 
 .wf-doc-paper {
     position: relative;
-    background: #fffef9;
+    background: color-mix(in srgb, var(--chat-bg) 95%, var(--background-2));
     border: 1px solid var(--border-color);
     border-radius: 10px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
@@ -1521,7 +1616,7 @@ mark.wf-anchor.is-filtered-out,
 }
 
 .wf-annotation-card--stale {
-    border-color: #e67e22;
+    border-color: color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
     background: rgba(230, 126, 34, 0.05);
 }
 
@@ -1847,14 +1942,14 @@ mark.wf-anchor.is-filtered-out,
 .wf-internal-note {
     padding: 10px 12px;
     background: rgba(230, 126, 34, 0.08);
-    border: 1px solid #e67e22;
+    border: 1px solid color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
     border-radius: 8px;
     font-size: 13px;
 }
 
 .wf-internal-note h3 {
     border: none;
-    color: #a35617;
+    color: color-mix(in srgb, var(--color-eng-red) 65%, var(--text-primary));
     padding-bottom: 0;
 }
 
@@ -1951,9 +2046,9 @@ mark.wf-anchor.is-filtered-out,
     margin: 0;
     padding: 8px 12px;
     background: rgba(230, 126, 34, 0.08);
-    border: 1px solid #e67e22;
+    border: 1px solid color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
     border-radius: 6px;
-    color: #a35617;
+    color: color-mix(in srgb, var(--color-eng-red) 65%, var(--text-primary));
     font-size: 12px;
     line-height: 1.5;
 }
@@ -1978,7 +2073,7 @@ mark.wf-anchor.is-filtered-out,
 }
 
 .wf-matrix-function[data-function='interpersonal'] h4 {
-    color: #7b1fa2;
+    color: var(--color-ubc-blue);
 }
 
 .wf-matrix-function[data-function='content'] h4 {
@@ -2078,12 +2173,55 @@ mark.wf-anchor.is-filtered-out,
 }
 
 @media (max-width: 900px) {
+    .wf-page,
+    .wf-main-content {
+        overflow-x: hidden;
+    }
+
     .wf-form-grid {
         grid-template-columns: 1fr;
     }
 
     .wf-form-grid .wf-field--wide {
         grid-column: auto;
+    }
+
+    .wf-rubric-heading-row {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .wf-rubric-heading-row .wf-button {
+        width: 100%;
+    }
+
+    .wf-rubric-details .wf-field {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+
+    .wf-rubric-details .wf-field label {
+        padding-top: 0;
+    }
+
+    .wf-grid {
+        min-width: 760px;
+    }
+
+    .wf-grid-corner,
+    .wf-grid-row-head {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        width: 12rem;
+        min-width: 12rem;
+        background: var(--chat-bg);
+        box-shadow: 1px 0 0 var(--border-color);
+    }
+
+    .wf-grid-corner {
+        z-index: 3;
+        background: color-mix(in srgb, var(--color-chbe-green) 12%, var(--chat-bg));
     }
 
     .wf-doc-paper {
