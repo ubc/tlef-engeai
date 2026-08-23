@@ -114,28 +114,48 @@ export const writingRubricDraftInputSchema = z.object({
 export type WritingRubricDraftInput = z.infer<typeof writingRubricDraftInputSchema>;
 
 /**
- * assertApprovedRubricIdsStable - prevents structural id changes after first approval.
+ * assertRetiredIdsNotReused - protects the meaning of a criterion or level id.
  *
- * New assignments may freely shape their initial draft. Once approved, the exact
- * criterion and level id sets remain stable across versions so stored joins cannot
- * be reinterpreted; labels, descriptions, ordering, and points remain editable.
+ * Criteria and levels may be added or removed at any time; each structural change
+ * produces a new rubric version, and every feedback run resolves against the version
+ * that produced it. What must never happen is a retired id returning with a different
+ * meaning: `AnchoredComment.criterion` stores a bare id with no version, so reuse
+ * would silently re-tag comments written about the old criterion.
  *
- * @param approved - Current approved rubric, or a still-unapproved initial draft
- * @param input - Validated next draft payload
- * @throws Error when an approved id is added, removed, or renamed
+ * @param approvedVersions - Every approved rubric version for this lens, current and historical
+ * @param input - Validated draft the instructor is trying to save
+ * @throws Error when an id absent from the newest approved version is reintroduced
  */
-export function assertApprovedRubricIdsStable(
-    approved: WritingRubricDefinition,
+export function assertRetiredIdsNotReused(
+    approvedVersions: ReadonlyArray<WritingRubricDefinition>,
     input: WritingRubricDraftInput
 ): void {
-    if (approved.status !== 'approved') return;
-    const sameSet = (current: string[], next: string[]): boolean =>
-        current.length === next.length && current.every((id) => next.includes(id));
-    if (!sameSet(approved.criteria.map((criterion) => criterion.id), input.criteria.map((criterion) => criterion.id))) {
-        throw new Error('Approved criterion ids cannot be added, removed, or renamed');
+    const approved = approvedVersions.filter((rubric) => rubric.status === 'approved');
+    if (approved.length === 0) return;
+
+    const newest = approved.reduce((latest, rubric) => (rubric.version > latest.version ? rubric : latest));
+    const liveCriteria = new Set(newest.criteria.map((criterion) => criterion.id));
+    const liveLevels = new Set(newest.levels.map((level) => level.id));
+
+    // Every id ever approved but no longer live is retired and must stay retired.
+    const retiredCriteria = new Set<string>();
+    const retiredLevels = new Set<string>();
+    approved.forEach((rubric) => {
+        rubric.criteria.forEach((criterion) => {
+            if (!liveCriteria.has(criterion.id)) retiredCriteria.add(criterion.id);
+        });
+        rubric.levels.forEach((level) => {
+            if (!liveLevels.has(level.id)) retiredLevels.add(level.id);
+        });
+    });
+
+    const reusedCriterion = input.criteria.find((criterion) => retiredCriteria.has(criterion.id));
+    if (reusedCriterion) {
+        throw new Error(`"${reusedCriterion.label}" reuses a name previously used by a removed criterion. Choose another.`);
     }
-    if (!sameSet(approved.levels.map((level) => level.id), input.levels.map((level) => level.id))) {
-        throw new Error('Approved performance-level ids cannot be added, removed, or renamed');
+    const reusedLevel = input.levels.find((level) => retiredLevels.has(level.id));
+    if (reusedLevel) {
+        throw new Error(`"${reusedLevel.label}" reuses a name previously used by a removed level. Choose another.`);
     }
 }
 

@@ -14,7 +14,7 @@ import { buildDefaultWritingRubric } from '../default-rubric-profile';
 import { buildLabReportRubric } from '../lab-report-profile';
 import {
     approveRubricDraft,
-    assertApprovedRubricIdsStable,
+    assertRetiredIdsNotReused,
     buildRubricDraft,
     gradeMappingFromApprovedRubric,
     writingRubricDraftInputSchema
@@ -174,7 +174,7 @@ describe('Writing rubric draft validation', () => {
     });
 });
 
-describe('approved rubric identifier stability', () => {
+describe('retired rubric identifier reuse protection', () => {
     function approvedDefault() {
         return approveRubricDraft(
             buildRubricDraft(inputFromDefault(), 1, 'instructor-1'),
@@ -182,17 +182,31 @@ describe('approved rubric identifier stability', () => {
         );
     }
 
-    it('rejects criterion and level id changes after approval', () => {
+    it('allows renaming a criterion by retiring the old id and introducing a new one', () => {
         const approved = approvedDefault();
         const renamedCriterion = inputFromDefault();
         renamedCriterion.criteria[0] = { ...renamedCriterion.criteria[0], id: 'structure' };
-        expect(() => assertApprovedRubricIdsStable(approved, renamedCriterion))
-            .toThrow('criterion ids');
+        expect(() => assertRetiredIdsNotReused([approved], renamedCriterion)).not.toThrow();
+    });
 
+    it('allows removing a performance level', () => {
+        const approved = approvedDefault();
         const removedLevel = inputFromDefault();
         removedLevel.levels = removedLevel.levels.slice(0, -1);
-        expect(() => assertApprovedRubricIdsStable(approved, removedLevel))
-            .toThrow('performance-level ids');
+        expect(() => assertRetiredIdsNotReused([approved], removedLevel)).not.toThrow();
+    });
+
+    it('rejects reintroducing a criterion id retired by an earlier approved version', () => {
+        const approved = approvedDefault();
+        const retiredId = approved.criteria[0].id;
+        const renamed = inputFromDefault();
+        renamed.criteria[0] = { ...renamed.criteria[0], id: 'structure' };
+        const approvedV2 = approveRubricDraft(buildRubricDraft(renamed, 2, 'instructor-1'), 'instructor-1');
+
+        const reintroduced = inputFromDefault();
+        reintroduced.criteria[0] = { ...reintroduced.criteria[0], id: retiredId };
+        expect(() => assertRetiredIdsNotReused([approvedV2, approved], reintroduced))
+            .toThrow(/previously used/i);
     });
 
     it('allows labels, descriptions, points, and ordering to change without changing ids', () => {
@@ -203,14 +217,14 @@ describe('approved rubric identifier stability', () => {
             .map((level) => ({ ...level, description: `${level.description} Revised.`, points: level.rank }))
             .reverse();
 
-        expect(() => assertApprovedRubricIdsStable(approved, edited)).not.toThrow();
+        expect(() => assertRetiredIdsNotReused([approved], edited)).not.toThrow();
     });
 
     it('allows the initial unapproved rubric to choose a different id set', () => {
         const initialDraft = buildRubricDraft(inputFromDefault(), 1, 'instructor-1');
         const reshaped = inputWithSixCriteria();
 
-        expect(() => assertApprovedRubricIdsStable(initialDraft, reshaped)).not.toThrow();
+        expect(() => assertRetiredIdsNotReused([initialDraft], reshaped)).not.toThrow();
     });
 });
 
@@ -330,5 +344,54 @@ describe('criterion weight and cells', () => {
         });
         expect(parsed.success).toBe(false);
         expect(parsed.error?.issues[0]?.message).toContain('unknown performance level');
+    });
+});
+
+describe('assertRetiredIdsNotReused', () => {
+    const approved = {
+        version: 1, status: 'approved' as const, title: 'T', task: 't', audience: 'a',
+        purpose: 'p', constraints: ['c'], learningOutcomes: ['o'], gradingIntent: 'g',
+        criteria: [
+            { id: 'organization', label: 'Organization', description: 'd' },
+            { id: 'content', label: 'Content', description: 'd' }
+        ],
+        levels: [
+            { id: 'weak', label: 'Weak', description: 'd', rank: 1 },
+            { id: 'strong', label: 'Strong', description: 'd', rank: 2 }
+        ],
+        updatedAt: new Date(), updatedBy: 'u'
+    };
+
+    const input = (criteriaIds: string[]) => ({
+        title: 'T', task: 't', audience: 'a', purpose: 'p',
+        constraints: ['c'], learningOutcomes: ['o'], gradingIntent: 'g',
+        criteria: criteriaIds.map((id) => ({ id, label: id, description: 'd' })),
+        levels: approved.levels
+    });
+
+    it('allows removing a criterion from an approved rubric', () => {
+        expect(() => assertRetiredIdsNotReused([approved], input(['organization']))).not.toThrow();
+    });
+
+    it('allows adding a criterion to an approved rubric', () => {
+        expect(() => assertRetiredIdsNotReused([approved], input(['organization', 'content', 'method'])))
+            .not.toThrow();
+    });
+
+    it('allows a still-present id to stay', () => {
+        expect(() => assertRetiredIdsNotReused([approved], input(['organization', 'content'])))
+            .not.toThrow();
+    });
+
+    it('rejects reusing an id that a previous version retired', () => {
+        const v2 = { ...approved, version: 2, criteria: [approved.criteria[0]] };
+        // 'content' was retired in v2. Bringing it back would re-tag old anchored comments.
+        expect(() => assertRetiredIdsNotReused([v2, approved], input(['organization', 'content'])))
+            .toThrow(/previously used/i);
+    });
+
+    it('ignores unapproved versions entirely', () => {
+        const draft = { ...approved, status: 'draft' as const };
+        expect(() => assertRetiredIdsNotReused([draft], input(['anything']))).not.toThrow();
     });
 });

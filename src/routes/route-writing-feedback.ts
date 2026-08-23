@@ -24,7 +24,7 @@ import { SafeCanvasImportService } from '../writing-feedback/canvas-import-servi
 import { anchoredCommentsInputSchema } from '../writing-feedback/anchored-comments';
 import {
     approveRubricDraft,
-    assertApprovedRubricIdsStable,
+    assertRetiredIdsNotReused,
     buildRubricDraft,
     gradeMappingFromApprovedRubric,
     writingRubricDraftInputSchema
@@ -270,11 +270,11 @@ router.put(
         const currentApproved = selected.approved;
         if (currentApproved) {
             try {
-                assertApprovedRubricIdsStable(currentApproved, parsed.data);
+                assertRetiredIdsNotReused([currentApproved, ...(selected.history ?? [])], parsed.data);
             } catch (error) {
                 return res.status(400).json({
                     success: false,
-                    error: error instanceof Error ? error.message : 'Approved rubric ids cannot be changed'
+                    error: error instanceof Error ? error.message : 'That name was used by a removed criterion'
                 });
             }
         }
