@@ -23,7 +23,10 @@ import type {
  *
  * Each band ends at its share of the weight rounded to a whole point, and the next
  * begins one point above. A weight too small to spread leaves the top bands as single
- * values, which is correct rather than an error.
+ * values, and a weight smaller than the number of levels forces adjacent levels to
+ * share a band — whole points cannot be divided more finely than one apiece. Neither
+ * case is an error; callers that render bands should warn staff when a weight cannot
+ * separate its levels.
  *
  * @param points - Maximum points the criterion contributes
  * @param levels - Levels of the rubric, in any order; rank decides the sequence

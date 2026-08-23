@@ -55,6 +55,19 @@ describe('spaceBandsEvenly', () => {
     it('returns an empty map when the criterion has no weight', () => {
         expect(spaceBandsEvenly(0, levels)).toEqual({});
     });
+
+    it('shares a band between levels when the weight is too small to separate them', () => {
+        // Bands are whole points, so a weight of 2 offers three distinct values
+        // (0, 1, 2) to divide among four levels. Two levels must therefore share.
+        // Collapsing is the intended degradation: no band ever inverts, and the
+        // grid warns staff when a weight cannot separate its levels.
+        expect(spaceBandsEvenly(2, levels)).toEqual({
+            weak: { min: 0, max: 0 },
+            developing: { min: 1, max: 1 },
+            proficient: { min: 2, max: 2 },
+            exemplary: { min: 2, max: 2 }
+        });
+    });
 });
 
 describe('resolveBand', () => {
