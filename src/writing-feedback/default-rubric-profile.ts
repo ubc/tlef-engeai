@@ -18,6 +18,7 @@ import type {
     WritingRubricLevel
 } from './contracts';
 import { DEFAULT_WRITING_PROFILE_VERSION } from './contracts';
+import { spaceBandsEvenly } from './rubric-bands';
 
 /** Default SFL criteria copied into every new assignment draft. */
 export const DEFAULT_WRITING_CRITERIA: ReadonlyArray<WritingRubricCriterion> = [
@@ -26,21 +27,24 @@ export const DEFAULT_WRITING_CRITERIA: ReadonlyArray<WritingRubricCriterion> = [
         label: 'Organization',
         description: 'How effectively the text is staged and held together for this task.',
         functionTag: 'organizational',
-        sflDimension: 'Information sequencing, theme progression, cohesive ties, and paragraph boundaries.'
+        sflDimension: 'Information sequencing, theme progression, cohesive ties, and paragraph boundaries.',
+        points: 30
     },
     {
         id: 'content',
         label: 'Content',
         description: 'How accurately and completely the text represents the subject of the assignment.',
         functionTag: 'content',
-        sflDimension: 'Technical entities, processes, participants, circumstances, and the relations between them.'
+        sflDimension: 'Technical entities, processes, participants, circumstances, and the relations between them.',
+        points: 40
     },
     {
         id: 'interpersonal_positioning',
         label: 'Interpersonal Positioning',
         description: 'How effectively the writer positions the reader for the stated audience and purpose.',
         functionTag: 'interpersonal',
-        sflDimension: 'Modality, hedging, stance, and technicality calibrated to the stated audience.'
+        sflDimension: 'Modality, hedging, stance, and technicality calibrated to the stated audience.',
+        points: 30
     }
 ];
 
@@ -77,7 +81,10 @@ export function buildDefaultWritingRubric(
             'Position language appropriately for the stated audience and purpose.'
         ],
         gradingIntent: 'Provide formative, evidence-based feedback using ordinal levels. Numeric grading requires instructor-authored points.',
-        criteria: DEFAULT_WRITING_CRITERIA.map((criterion) => ({ ...criterion })),
+        criteria: DEFAULT_WRITING_CRITERIA.map((criterion) => ({
+            ...criterion,
+            cells: spaceBandsEvenly(criterion.points ?? 0, DEFAULT_WRITING_LEVELS)
+        })),
         levels: DEFAULT_WRITING_LEVELS.map((level) => ({ ...level })),
         updatedAt: now,
         updatedBy: actorUserId

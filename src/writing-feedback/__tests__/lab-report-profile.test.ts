@@ -16,9 +16,7 @@ describe('lab report rubric profile', () => {
 
     it('carries the evaluation-form weights, summing to one hundred', () => {
         const rubric = buildLabReportRubric();
-        const weights: number[] = rubric.criteria.map(
-            (criterion) => Number(criterion.description.match(/\((\d+) points\)/)?.[1] ?? 0)
-        );
+        const weights: number[] = rubric.criteria.map((criterion) => criterion.points ?? 0);
         expect(weights).toEqual([15, 5, 10, 45, 5, 5, 15]);
         expect(weights.reduce((total, weight) => total + weight, 0)).toBe(100);
     });
@@ -55,5 +53,29 @@ describe('lab report rubric profile', () => {
         const first = buildLabReportRubric();
         first.criteria[0]!.label = 'changed';
         expect(buildLabReportRubric().criteria[0]!.label).toBe('Report Presentation');
+    });
+});
+
+describe('APSC 182 weights are data, not prose', () => {
+    it('carries the evaluation form weights as points summing to 100', () => {
+        const rubric = buildLabReportRubric('u', new Date());
+        expect(rubric.criteria.map((c) => c.points)).toEqual([15, 5, 10, 45, 5, 5, 15]);
+        expect(rubric.criteria.reduce((total, c) => total + (c.points ?? 0), 0)).toBe(100);
+    });
+
+    it('no longer states the weight inside the description', () => {
+        const rubric = buildLabReportRubric('u', new Date());
+        rubric.criteria.forEach((criterion) => {
+            expect(criterion.description).not.toMatch(/\(\d+ points?\)/);
+        });
+    });
+
+    it('gives every criterion a band at every level', () => {
+        const rubric = buildLabReportRubric('u', new Date());
+        rubric.criteria.forEach((criterion) => {
+            rubric.levels.forEach((level) => {
+                expect(criterion.cells?.[level.id]).toBeDefined();
+            });
+        });
     });
 });

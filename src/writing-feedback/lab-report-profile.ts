@@ -13,43 +13,51 @@
  */
 
 import type { WritingRubricCriterion, WritingRubricDefinition, WritingRubricLevel } from './contracts';
+import { spaceBandsEvenly } from './rubric-bands';
 
-/** The seven evaluation-form sections, in form order, with their weights stated in each description. */
+/** The seven evaluation-form sections, in form order, carrying their weights as data. */
 export const LAB_REPORT_CRITERIA: ReadonlyArray<WritingRubricCriterion> = [
     {
         id: 'report_presentation',
         label: 'Report Presentation',
-        description: 'Whether the report is properly formatted, contains all required elements, and is presented in a clear, organized, professional way (15 points).'
+        description: 'Whether the report is properly formatted, contains all required elements, and is presented in a clear, organized, professional way.',
+        points: 15
     },
     {
         id: 'language',
         label: 'Language',
-        description: 'Whether the quality of the language is appropriate and technical language is used where appropriate (5 points).'
+        description: 'Whether the quality of the language is appropriate and technical language is used where appropriate.',
+        points: 5
     },
     {
         id: 'abstract',
         label: 'Summary/Abstract',
-        description: 'Whether the summary is complete and concise, and states the experimental objectives, important results, and main conclusions (10 points).'
+        description: 'Whether the summary is complete and concise, and states the experimental objectives, important results, and main conclusions.',
+        points: 10
     },
     {
         id: 'results_discussion',
         label: 'Results and Discussion',
-        description: 'Whether every point in the lab handout is addressed, the discussion is correct and comprehensive, results are compared to theoretical or reported values, sources of error and deviations are critically discussed, and the report demonstrates understanding of the phenomena involved (45 points).'
+        description: 'Whether every point in the lab handout is addressed, the discussion is correct and comprehensive, results are compared to theoretical or reported values, sources of error and deviations are critically discussed, and the report demonstrates understanding of the phenomena involved.',
+        points: 45
     },
     {
         id: 'conclusions',
         label: 'Conclusions',
-        description: 'Whether the conclusions are supported by the results and discussion, relevant information is presented, and recommendations for improving the experiment are made (5 points).'
+        description: 'Whether the conclusions are supported by the results and discussion, relevant information is presented, and recommendations for improving the experiment are made.',
+        points: 5
     },
     {
         id: 'references',
         label: 'References',
-        description: 'Whether material is appropriately referenced in the required citation style (5 points).'
+        description: 'Whether material is appropriately referenced in the required citation style.',
+        points: 5
     },
     {
         id: 'sample_calculations',
         label: 'Sample Calculations',
-        description: 'Whether calculations are presented clearly and logically, use correct equations, are accurate, and report the correct number of significant figures (15 points).'
+        description: 'Whether calculations are presented clearly and logically, use correct equations, are accurate, and report the correct number of significant figures.',
+        points: 15
     }
 ];
 
@@ -92,7 +100,10 @@ export function buildLabReportRubric(
             'Draw conclusions that follow from the reported results.'
         ],
         gradingIntent: 'Provide formative, evidence-based technical feedback using ordinal levels. Results are not judged on agreement with theory; the quality of the analysis and explanation is what is assessed.',
-        criteria: LAB_REPORT_CRITERIA.map((criterion) => ({ ...criterion })),
+        criteria: LAB_REPORT_CRITERIA.map((criterion) => ({
+            ...criterion,
+            cells: spaceBandsEvenly(criterion.points ?? 0, LAB_REPORT_LEVELS)
+        })),
         levels: LAB_REPORT_LEVELS.map((level) => ({ ...level })),
         updatedAt: now,
         updatedBy: actorUserId
