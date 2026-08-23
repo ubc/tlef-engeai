@@ -52,6 +52,7 @@ import {
     views
 } from './writing-feedback-shared.js';
 import { getWorkingComments, initAnchorWorkingSet, renderAnnotations } from './writing-feedback-anchors.js';
+import { formatBand, resolveBand, totalRubricPoints } from './writing-feedback-grid.js';
 
 type AcademicWritingLevelId = 'text' | 'section' | 'clause_word';
 
@@ -176,7 +177,12 @@ function rubricForRun(assignment: Assignment | null, run: FeedbackRun, lens: Wri
 }
 
 function criterionLabel(rubric: RubricDefinition | undefined, id: string): string {
-    return rubric?.criteria.find((criterion) => criterion.id === id)?.label ?? id;
+    return rubric?.criteria.find((criterion) => criterion.id === id)?.label ?? 'Removed criterion';
+}
+
+function criterionTitle(rubric: RubricDefinition | undefined, id: string): string | undefined {
+    if (rubric?.criteria.some((criterion) => criterion.id === id)) return undefined;
+    return `This criterion was removed after rubric v${rubric?.version ?? 'unknown'}. Existing feedback still uses that saved rubric version.`;
 }
 
 function levelLabel(rubric: RubricDefinition | undefined, id: string): string {
@@ -189,6 +195,146 @@ function orderedCriterionIds(rubric: RubricDefinition | undefined, feedback: Cri
         if (!ids.includes(criterion.criterion)) ids.push(criterion.criterion);
     });
     return ids;
+}
+
+/** One criterion's suggested points band and staff-only reason. */
+interface SuggestedCriterionGrade {
+    criterionId: string;
+    label: string;
+    levelLabel: string;
+    min: number;
+    max: number;
+    reason: string;
+}
+
+/** Staff-only suggestion derived from one model run and never persisted. */
+interface SuggestedGrading {
+    criteria: SuggestedCriterionGrade[];
+    totalMin: number;
+    totalMax: number;
+}
+
+/**
+ * Frontend mirror of `src/writing-feedback/suggested-grading.ts`.
+ *
+ * The review page cannot import from `src/`, so this mirrors the pure derivation
+ * against the rubric version returned by `rubricForRun`. Suggested grading is
+ * staff-only display state: it is never written to a release payload or PDF.
+ */
+function deriveSuggestedGrading(run: FeedbackRun, rubric: RubricDefinition): SuggestedGrading {
+    const criteria: SuggestedCriterionGrade[] = [];
+
+    run.result.criteria.forEach((feedback) => {
+        const definition = rubric.criteria.find((criterion) => criterion.id === feedback.criterion);
+        if (!definition) return;
+        const band = resolveBand(definition, feedback.suggestedLevel, rubric.levels);
+        if (!band) return;
+        const level = rubric.levels.find((entry) => entry.id === feedback.suggestedLevel);
+
+        criteria.push({
+            criterionId: definition.id,
+            label: definition.label,
+            levelLabel: level?.label ?? feedback.suggestedLevel,
+            min: band.min,
+            max: band.max,
+            reason: feedback.explanation
+        });
+    });
+
+    return {
+        criteria,
+        totalMin: criteria.reduce((total, entry) => total + entry.min, 0),
+        totalMax: criteria.reduce((total, entry) => total + entry.max, 0)
+    };
+}
+
+function hasSuggestedGrading(rubric: RubricDefinition | undefined): rubric is RubricDefinition {
+    return Boolean(rubric?.criteria.some((criterion) => criterion.points !== undefined || Object.keys(criterion.cells ?? {}).length));
+}
+
+function renderSuggestedGrading(run: FeedbackRun, rubric: RubricDefinition): HTMLElement | null {
+    const grading = deriveSuggestedGrading(run, rubric);
+    if (!grading.criteria.length) return null;
+
+    const section = document.createElement('section');
+    section.className = 'wf-feedback-section wf-suggested-grading';
+    const header = document.createElement('div');
+    header.className = 'wf-suggested-grading__header';
+    header.append(
+        createText('h3', 'Suggested grading'),
+        createText('p', 'A suggestion for you, not a grade. Nothing here is sent to Canvas.', 'wf-muted-note')
+    );
+
+    const panel = document.createElement('div');
+    panel.className = 'wf-suggested-grading__panel';
+    panel.hidden = true;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'wf-button wf-button--secondary';
+    button.textContent = 'Show suggested grading';
+    button.addEventListener('click', () => {
+        panel.hidden = !panel.hidden;
+        button.textContent = panel.hidden ? 'Show suggested grading' : 'Hide suggested grading';
+    });
+    header.append(button);
+
+    const scroll = document.createElement('div');
+    scroll.className = 'wf-suggested-grading__scroll';
+    const table = document.createElement('table');
+    table.className = 'wf-suggested-grading__table';
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    const corner = createText('th', 'Criterion');
+    corner.setAttribute('scope', 'col');
+    headRow.append(corner);
+    rubric.levels
+        .slice()
+        .sort((left, right) => left.rank - right.rank)
+        .forEach((level) => {
+            const heading = createText('th', level.label);
+            heading.setAttribute('scope', 'col');
+            headRow.append(heading);
+        });
+    thead.append(headRow);
+    table.append(thead);
+
+    const tbody = document.createElement('tbody');
+    const feedbackByCriterion = new Map(run.result.criteria.map((feedback) => [feedback.criterion, feedback]));
+    rubric.criteria.forEach((criterion) => {
+        const feedback = feedbackByCriterion.get(criterion.id);
+        if (!feedback) return;
+        const row = document.createElement('tr');
+        const rowHeading = createText('th', criterion.label);
+        rowHeading.setAttribute('scope', 'row');
+        row.append(rowHeading);
+        rubric.levels
+            .slice()
+            .sort((left, right) => left.rank - right.rank)
+            .forEach((level) => {
+                const cell = document.createElement('td');
+                const band = resolveBand(criterion, level.id, rubric.levels);
+                if (band) cell.append(createText('strong', formatBand(band), 'wf-suggested-grading__band'));
+                if (feedback.suggestedLevel === level.id) {
+                    cell.classList.add('wf-suggested-grading__choice');
+                    cell.append(
+                        createText('span', 'Suggested', 'wf-suggested-grading__tag'),
+                        createText('p', feedback.explanation, 'wf-suggested-grading__reason')
+                    );
+                }
+                row.append(cell);
+            });
+        tbody.append(row);
+    });
+    table.append(tbody);
+    scroll.append(table);
+
+    const total = totalRubricPoints(rubric.criteria);
+    const totalText = grading.totalMin === grading.totalMax
+        ? `${grading.totalMax} of ${total}`
+        : `${grading.totalMin} – ${grading.totalMax} of ${total}`;
+    panel.append(scroll, createText('p', totalText, 'wf-suggested-grading__total'));
+    section.append(header, panel);
+    return section;
 }
 
 /**
@@ -804,7 +950,10 @@ function renderTechnicalTab(run: FeedbackRun, assignment: Assignment | null): HT
         item.className = 'wf-criterion';
         const criterionHeader = document.createElement('div');
         criterionHeader.className = 'wf-criterion-header';
-        criterionHeader.append(createText('h4', criterionLabel(rubric, criterionId)));
+        const heading = createText('h4', criterionLabel(rubric, criterionId));
+        const title = criterionTitle(rubric, criterionId);
+        if (title) heading.title = title;
+        criterionHeader.append(heading);
         if (criterion) criterionHeader.append(chip(levelLabel(rubric, criterion.suggestedLevel), 'neutral'));
         item.append(criterionHeader);
         if (!criterion) {
@@ -878,6 +1027,10 @@ function renderSummaryTab(
     children.push(strengths);
 
     const rubric = rubricForRun(assignment, feedbackRun);
+    const suggestedGrading = hasSuggestedGrading(rubric)
+        ? renderSuggestedGrading(feedbackRun, rubric)
+        : null;
+    if (suggestedGrading) children.push(suggestedGrading);
     const rubricSection = document.createElement('section');
     rubricSection.className = 'wf-feedback-section';
     rubricSection.append(createText('h3', 'Feedback by rubric criterion'));
@@ -890,7 +1043,10 @@ function renderSummaryTab(
         item.className = 'wf-criterion';
         const criterionHeader = document.createElement('div');
         criterionHeader.className = 'wf-criterion-header';
-        criterionHeader.append(createText('h4', criterionLabel(rubric, criterionId)));
+        const heading = createText('h4', criterionLabel(rubric, criterionId));
+        const title = criterionTitle(rubric, criterionId);
+        if (title) heading.title = title;
+        criterionHeader.append(heading);
         if (criterion) criterionHeader.append(chip(levelLabel(rubric, criterion.suggestedLevel), 'neutral'));
         item.append(criterionHeader);
         const lens = definition?.sflDimension
